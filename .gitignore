@@ -1,0 +1,84 @@
+# ============================================================
+# Unity generated folders (machine-local, never committed)
+# ============================================================
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+
+# Recordings can get excessive in size
+[Rr]ecordings/
+
+# Asset meta data should only be ignored when the corresponding asset is also ignored
+!/[Aa]ssets/**/*.meta
+
+# ============================================================
+# IDE / build tool artifacts
+# ============================================================
+.vs/
+.idea/
+.vscode/
+*.csproj
+*.sln
+*.user
+*.userprefs
+*.unityproj
+*.suo
+*.tmp
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+ExportedObj/
+.consulo/
+.vsconfig
+
+# Unity3D generated meta files
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# ============================================================
+# OS / misc
+# ============================================================
+.DS_Store
+crashlytics-build.properties
+
+# ============================================================
+# Build outputs / packaged artifacts
+# ============================================================
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# ============================================================
+# Source-generator build intermediates (Velvet Generators~)
+# Committed artifacts live under Runtime/Plugins; bin/obj are not committed.
+# ============================================================
+**/Generators~/**/bin/
+**/Generators~/**/obj/
+
+# ============================================================
+# DocFX generated output (docs site is built by CI, not committed)
+# ============================================================
+docs/api/
+docs/_site/
+docs/obj/
+docs/bin/
+# The hand-authored DocFX project must be tracked despite the blanket *.csproj ignore above.
+!docs/Velvet.Docs.csproj
+
+# The Source-generator solution + projects are hand-authored and must be tracked (CI builds them)
+# despite the blanket *.csproj / *.sln ignore above.
+!Packages/com.velvet.core/Generators~/Velvet.SourceGenerators.sln
+!Packages/com.velvet.core/Generators~/src/Velvet.SourceGenerators/Velvet.SourceGenerators.csproj
+!Packages/com.velvet.core/Generators~/src/Velvet.SourceGenerators.CodeFixes/Velvet.SourceGenerators.CodeFixes.csproj
+!Packages/com.velvet.core/Generators~/tests/Velvet.SourceGenerators.Tests/Velvet.SourceGenerators.Tests.csproj

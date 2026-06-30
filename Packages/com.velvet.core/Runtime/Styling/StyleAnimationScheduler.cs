@@ -1,0 +1,609 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine.UIElements;
+
+namespace Velvet
+{
+    // Manages the animation lifecycle for AnimatePresenceNode.
+    // schedule.Execute-based class swapping plus timeout management.
+    // transition-duration and transition-timing-function are set as inline styles, with C# as the
+    // Single Source of Truth.
+    internal sealed class StyleAnimationScheduler
+    {
+        // Grace time after a CSS transition completes (ms).
+        // UIToolkit's schedule.Execute runs on the next frame, so 50ms is set to absorb the
+        // 60fps (16ms) - 30fps (33ms) frame delay.
+        private const long AnimationGraceMs = 50;
+        private const float MaxDurationSec = 10f;
+        private const int MaxPoolSize = 16;
+
+        // Static cache from EasingMode to List<EasingFunction>. EasingMode values are finite, so caching is safe.
+        private static readonly Dictionary<EasingMode, List<EasingFunction>> s_easingCache = new();
+
+#if UNITY_EDITOR
+        // The cache lingers in EditorTest environments without Domain Reload, but it is safe because
+        // the same EasingMode always produces the same EasingFunction instance.
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStaticFields() => s_easingCache.Clear();
+#endif
+
+        private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
+        private readonly Dictionary<VisualElement, PendingAnimation> _pendingEnters = new();
+        private readonly Stack<List<TimeValue>> _durationPool = new();
+        private readonly Stack<List<TimeValue>> _delayPool = new();
+
+        // Starts the mount animation.
+        // 1. Adds EnterFromClass and sets duration / easing as inline styles.
+        // 2. On the next frame, removes EnterFromClass and adds EnterToClass (firing the CSS transition).
+        // 3. After the duration, removes EnterToClass and clears inline styles (clean state).
+        // additionalDelaySec:
+        // Extra delay (seconds) added on top of the StyleTransitionConfig delay.
+        // Used by AnimatePresenceNode.StaggerSec to sequentially delay child elements.
+        // 0 (default) means no extra delay.
+        public void PlayEnter(VisualElement element, StyleTransitionConfig config, Action onComplete = null, float additionalDelaySec = 0f)
+        {
+            if (element == null || config == null)
+            {
+                return;
+            }
+
+            // Classic transition enter: the to-classes are a TRANSIENT overlay (resting state = the element's
+            // base classes), so they are removed on completion (variantMode: false).
+            PlayEnterInternal(element, config.EnterFromClasses, config.EnterToClasses,
+                config.DurationSec, config.Easing, config.DelaySec, onComplete, additionalDelaySec,
+                variantMode: false);
+        }
+
+        // Variant-driven enter (initial → animate). Unlike PlayEnter, the
+        // element already carries the toClasses (the resting variants[animate], applied
+        // at create) when this is called: step 1 strips them to reveal the fromClasses
+        // (variants[initial]), step 2 swaps back to the to-classes (firing the transition), and — the key
+        // difference — the to-classes are KEPT after completion, since they ARE the persistent resting state
+        // (the animate target persists). A zero/invalid duration leaves the element at its
+        // already-applied resting state (no strip, mounts directly at animate).
+        public void PlayVariantEnter(VisualElement element, string[] fromClasses, string[] toClasses,
+            float durationSec, EasingMode easing, float delaySec, Action onComplete = null, float additionalDelaySec = 0f)
+        {
+            if (element == null)
+            {
+                return;
+            }
+
+            PlayEnterInternal(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
+                durationSec, easing, delaySec, onComplete, additionalDelaySec, variantMode: true);
+        }
+
+        private void PlayEnterInternal(VisualElement element, string[] fromClasses, string[] toClasses,
+            float durationSec, EasingMode easing, float delaySec, Action onComplete, float additionalDelaySec, bool variantMode)
+        {
+            // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
+            // the element keeps its already-applied resting (to) classes and mounts directly at animate.
+            if (!ValidateDuration(durationSec, onComplete))
+            {
+                return;
+            }
+
+            // Cancel any existing enter animation.
+            CancelEnter(element);
+
+            var staggerDelayMs = (long)(additionalDelaySec * 1000);
+
+            // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
+            // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
+            var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, delaySec,
+                allProperties: variantMode);
+            if (variantMode)
+            {
+                StyleAnimationClassUtils.RemoveClasses(element, toClasses);
+            }
+            StyleAnimationClassUtils.AddClasses(element, fromClasses);
+
+            // Step 2: swap classes on the next frame (fires the CSS transition).
+            var pending = new PendingAnimation
+            {
+                FromClasses = fromClasses,
+                ToClasses = toClasses,
+                DurationList = durationList,
+                DelayList = delayList,
+                AnimatingElement = element,
+            };
+            // Co-fade drop-shadows with the element instead of hiding them: register this enter as a shadow
+            // driver at the from-value (0 = invisible) NOW (synchronously, before the next-frame swap) so there
+            // is no first-frame flash, then the tick (started at the swap) ramps each shadow to follow the
+            // caster's opacity. Released on completion / cancel.
+            pending.Shadows = CollectShadowsForCoFade(element, pending, 0f);
+            _pendingEnters[element] = pending;
+
+            // schedule.Execute does not fire when the panel is disconnected, but CancelEnter is invoked
+            // via Reconciler.RemoveElement / CleanupDescendants, so the dictionary does not leak.
+            var startAction = new Action(() =>
+            {
+                if (!_pendingEnters.ContainsKey(element))
+                {
+                    return;
+                }
+
+                StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+                StyleAnimationClassUtils.AddClasses(element, toClasses);
+                // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so
+                // descendant shadows fade in lockstep with it.
+                StartShadowCoFadeTick(pending);
+
+                // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
+                // to-classes; variantMode KEEPS them (they are the persistent resting variant).
+                var durationMs = (long)(durationSec * 1000) + (long)(delaySec * 1000) + AnimationGraceMs;
+                var timeout = element.schedule.Execute(() =>
+                {
+                    if (_pendingEnters.Remove(element, out var completed))
+                    {
+                        if (!variantMode)
+                        {
+                            StyleAnimationClassUtils.RemoveClasses(element, toClasses);
+                        }
+                        // Target is opaque now — stop the co-fade and restore the shadows to full strength.
+                        EndShadowCoFade(completed);
+                        ClearTransitionStyles(element);
+                        ReturnDurationList(completed.DurationList);
+                        ReturnDelayList(completed.DelayList);
+                        onComplete?.Invoke();
+                    }
+                });
+                timeout.ExecuteLater(durationMs);
+                pending.TimeoutItem = timeout;
+            });
+
+            if (staggerDelayMs > 0)
+            {
+                // With extra delay: start after staggerDelayMs.
+                var scheduled = element.schedule.Execute(startAction);
+                scheduled.ExecuteLater(staggerDelayMs);
+                pending.ScheduledItem = scheduled;
+            }
+            else
+            {
+                // No extra delay: run on the next frame (matches existing behavior).
+                pending.ScheduledItem = element.schedule.Execute(startAction);
+            }
+        }
+
+        // Starts the unmount animation.
+        // 1. Adds ExitFromClass and sets duration / easing as inline styles.
+        // 2. On the next frame, removes ExitFromClass and adds ExitToClass (firing the CSS transition).
+        // 3. After the duration, invokes onComplete (the element is removed).
+        // restoreFromOnCancel:
+        // When true, the exit's FromClasses are the persistent resting state (a variant exit's
+        // variants[animate]); cancelling the exit (the key is re-added mid-exit) re-applies them so the
+        // element returns to its resting variant instead of being left without it. Default false (preset exits,
+        // whose FromClasses are transient).
+        // additionalDelaySec:
+        // Extra delay before the exit transition fires, on top of config.DelaySec. Used for exit
+        // staggering (each removed child delayed by stagger × its index), mirroring the enter stagger.
+        public void PlayExit(VisualElement element, StyleTransitionConfig config, Action onComplete,
+            bool restoreFromOnCancel = false, float additionalDelaySec = 0f)
+        {
+            if (element == null || config == null)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            // StyleTransitionConfig.None (DurationSec=0): complete immediately (no warning).
+            if (!ValidateDuration(config.DurationSec, onComplete))
+            {
+                return;
+            }
+
+            // Cancel any existing exit animation.
+            CancelExit(element);
+
+            var fromClasses = config.ExitFromClasses;
+            var toClasses = config.ExitToClasses;
+            var exitEasing = config.ExitEasing ?? config.Easing;
+
+            // Step 1: add the exit initial-state class and set duration / easing as inline styles. A variant exit
+            // (restoreFromOnCancel) swaps variant utility classes, so it needs transition-property: all to tween.
+            var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing,
+                config.DelaySec, allProperties: restoreFromOnCancel);
+            StyleAnimationClassUtils.AddClasses(element, fromClasses);
+
+            // Step 2: swap classes on the next frame.
+            var pending = new PendingAnimation
+            {
+                FromClasses = fromClasses,
+                ToClasses = toClasses,
+                RestingClasses = restoreFromOnCancel ? fromClasses : null,
+                DurationList = durationList,
+                DelayList = delayList,
+                AnimatingElement = element,
+            };
+            // Co-fade drop-shadows OUT with the element instead of hiding them: register this exit as a shadow
+            // driver at the from-value (1 = opaque, the element's current state); the tick (started at the swap)
+            // then ramps each shadow down to follow the caster's fading opacity. Released on completion / cancel.
+            pending.Shadows = CollectShadowsForCoFade(element, pending, 1f);
+            _pendingExits[element] = pending;
+
+            var staggerDelayMs = (long)(additionalDelaySec * 1000);
+
+            // Schedule the exit's frame callbacks on a STABLE host (the panel root), not on the exiting
+            // element itself. UI Toolkit silently drops an element's scheduled items the moment it leaves the
+            // panel, and a reconcile reorder briefly detaches a still-exiting ghost (RemoveFromHierarchy +
+            // re-Insert) to move it — which would drop the startAction/timeout, stall the exit, and leak the
+            // ghost (it never completes, so the diff never removes it). The panel root never detaches during
+            // the presence's life, so its scheduled items always fire; the exiting child only needs to stay
+            // attached for its CSS opacity tween (it does — a committed ghost stays in the DOM). Exit
+            // completion is driven from a global frame loop rather than a per-node timer.
+            void ScheduleOnHost()
+            {
+                // Schedule only if this exact exit is still the live one. A deferred (off-panel) exit can be
+                // cancelled or superseded by a newer PlayExit before the element attaches; the stale attach
+                // callback must not then schedule on top of the replacement.
+                if (!_pendingExits.TryGetValue(element, out var cur) || !ReferenceEquals(cur, pending))
+                {
+                    return;
+                }
+
+                var host = element.panel.visualTree;
+                var startAction = new Action(() =>
+                {
+                    if (!_pendingExits.ContainsKey(element))
+                    {
+                        return;
+                    }
+
+                    StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+                    StyleAnimationClassUtils.AddClasses(element, toClasses);
+                    // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
+                    // stable host so descendant shadows fade out in lockstep (and keep ticking through any
+                    // reconcile-reorder detach of the exiting ghost, which is why the host is the panel root).
+                    StartShadowCoFadeTick(pending);
+
+                    // Step 3: invoke onComplete after the duration.
+                    var durationMs = (long)(config.DurationSec * 1000) + (long)(config.DelaySec * 1000) + AnimationGraceMs;
+                    var timeout = host.schedule.Execute(() =>
+                    {
+                        if (_pendingExits.Remove(element, out var completed))
+                        {
+                            EndShadowCoFade(completed);
+                            ReturnDurationList(completed.DurationList);
+                            ReturnDelayList(completed.DelayList);
+                            onComplete?.Invoke();
+                        }
+                    });
+                    timeout.ExecuteLater(durationMs);
+                    pending.TimeoutItem = timeout;
+                });
+
+                // Delay the swap by the stagger offset (each removed child fades on its turn), else run next frame.
+                if (staggerDelayMs > 0)
+                {
+                    var scheduled = host.schedule.Execute(startAction);
+                    scheduled.ExecuteLater(staggerDelayMs);
+                    pending.ScheduledItem = scheduled;
+                }
+                else
+                {
+                    pending.ScheduledItem = host.schedule.Execute(startAction);
+                }
+            }
+
+            // A stable host only exists once the element is attached. If it is off-panel at exit start (the
+            // presence boundary reconciled while its subtree was temporarily detached), defer scheduling until
+            // the element attaches — scheduling on the still-detached element here would put the exit's
+            // callbacks on a host that UI Toolkit drops the next time the element moves, stalling the exit and
+            // leaking the ghost (the very failure the stable-host scheduling exists to prevent).
+            if (element.panel != null)
+            {
+                ScheduleOnHost();
+            }
+            else
+            {
+                EventCallback<AttachToPanelEvent> onAttach = null;
+                onAttach = _ =>
+                {
+                    element.UnregisterCallback(onAttach);
+                    pending.PendingAttach = null;
+                    ScheduleOnHost();
+                };
+                element.RegisterCallback(onAttach);
+                // Track it on the pending so a cancel-before-attach can remove the dangling callback.
+                pending.PendingAttach = onAttach;
+            }
+        }
+
+        // Cancels the exit animation on the given element and removes the applied CSS classes and inline styles.
+        public void CancelExit(VisualElement element) => CancelPending(_pendingExits, element);
+
+        // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
+        public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
+
+        // Whether the given element is currently exiting.
+        public bool IsExiting(VisualElement element) => _pendingExits.ContainsKey(element);
+
+        // Cancels every animation and removes the applied CSS classes and inline styles.
+        public void CancelAll()
+        {
+            CancelAllInMap(_pendingExits);
+            CancelAllInMap(_pendingEnters);
+        }
+
+        private static bool ValidateDuration(float durationSec, Action onComplete)
+        {
+            if (durationSec == 0f)
+            {
+                onComplete?.Invoke();
+                return false;
+            }
+            if (durationSec < 0f || durationSec > MaxDurationSec)
+            {
+                UnityEngine.Debug.LogWarning(
+                    $"[StyleAnimationScheduler] Invalid DurationSec: {durationSec}. Expected 0 < duration <= {MaxDurationSec}.");
+                onComplete?.Invoke();
+                return false;
+            }
+            return true;
+        }
+
+        // Sets transition-duration and transition-timing-function as inline styles.
+        // C# becomes the Single Source of Truth, so they need not be defined in USS.
+        // GC tuning: the EasingFunction list is cached statically per EasingMode; TimeValue lists are
+        // reused via per-instance pools.
+        // transition-property: all — a shared, never-mutated list (StyleList retains the reference as-is, so a
+        // static instance is safe; ClearTransitionStyles releases it via StyleKeyword.Null).
+        private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
+            new() { new UnityEngine.UIElements.StylePropertyName("all") };
+
+        private (List<TimeValue> durationList, List<TimeValue> delayList) ApplyTransitionStyles(
+            VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false)
+        {
+            var durationMs = (int)(durationSec * 1000);
+            var durationList = RentDurationList(durationMs);
+            element.style.transitionDuration = durationList;
+            element.style.transitionTimingFunction = GetOrCreateEasingList(easing);
+
+            // Variant animations swap user utility classes (e.g. opacity-0 ↔ opacity-100) that carry no
+            // transition-* of their own, so UITK has no property to tween and the swap would snap. Set
+            // transition-property: all so the changed computed values animate (a variant tween supplies just
+            // a duration). Preset transitions keep their USS transition-property and don't pass this flag.
+            if (allProperties)
+            {
+                element.style.transitionProperty = s_allTransitionProperties;
+            }
+
+            // When delaySec <= 0, transition-delay is not set (negative values are ignored, as documented in StyleTransitionConfig).
+            List<TimeValue> delayList = null;
+            if (delaySec > 0f)
+            {
+                var delayMs = (int)(delaySec * 1000);
+                delayList = RentDelayList(delayMs);
+                element.style.transitionDelay = delayList;
+            }
+
+            return (durationList, delayList);
+        }
+
+        // If the timeout callback already ran, map.Remove returns false and the cancellation is skipped.
+        // This is safe because the classes have already been cleaned up in that case.
+        private void CancelPending(Dictionary<VisualElement, PendingAnimation> map, VisualElement element)
+        {
+            if (map.Remove(element, out var pending))
+            {
+                // Pause() corresponds to cancelling a one-shot schedule produced by schedule.Execute().
+                // Removing from the dictionary also makes the ContainsKey check inside the callback fail,
+                // providing defense in depth.
+                pending.ScheduledItem?.Pause();
+                pending.TimeoutItem?.Pause();
+                // Remove the off-panel deferred-attach callback if it never fired (cancel-before-attach), else it
+                // and its captured PendingAnimation linger on the element across pool reuse.
+                if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
+                // A variant exit's FromClasses ARE the resting state (variants[animate]); cancelling the exit
+                // (key re-added mid-exit) must return the element to that resting variant rather than strip it.
+                // Re-add after the removals so the element is left in its resting state and stays consistent with
+                // the MotionAppliedClasses cache (which still records the resting class as applied).
+                if (pending.RestingClasses != null)
+                {
+                    StyleAnimationClassUtils.AddClasses(element, pending.RestingClasses);
+                }
+                // Interrupted enter / exit: the target returns to its resting (opaque) state, so stop this
+                // tween's co-fade and drop its driver — the shadow snaps back to full (product collapses to 1)
+                // unless an enclosing fade still drives it.
+                EndShadowCoFade(pending);
+                ClearTransitionStyles(element);
+                ReturnDurationList(pending.DurationList);
+                ReturnDelayList(pending.DelayList);
+            }
+        }
+
+        private void CancelAllInMap(Dictionary<VisualElement, PendingAnimation> map)
+        {
+            foreach (var (element, pending) in map)
+            {
+                pending.ScheduledItem?.Pause();
+                pending.TimeoutItem?.Pause();
+                if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
+                StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
+                EndShadowCoFade(pending);
+                ClearTransitionStyles(element);
+                ReturnDurationList(pending.DurationList);
+                ReturnDelayList(pending.DelayList);
+            }
+            map.Clear();
+        }
+
+        // Collects every drop-shadow paint under an element (the element itself and its descendants) and
+        // registers this animation as a co-fade driver on each at the given start factor (0 for an enter,
+        // 1 for an exit). The shadow is painted as a baked quad in the caster's own generateVisualContent and
+        // does NOT honor UI Toolkit opacity (neither inherited from an animating ancestor nor inline), so while
+        // a FadeSlideUp / Fade tweens the target's opacity the scheduler samples that opacity each frame
+        // (StartShadowCoFadeTick) and scales each shadow's alpha by it — the shadow fades WITH its element
+        // instead of being hidden then popping in. The returned list lets completion / cancel end the SAME
+        // co-fade without re-walking the subtree; null when there are none (the common case) so nothing is
+        // retained and no tick is scheduled. The driver token is the PendingAnimation, and a binding's opacity
+        // is the PRODUCT of its active drivers, so a nested animation whose own fade completes first does NOT
+        // reveal a shadow an enclosing, still-running fade also covers.
+        private static List<(VisualElement element, DropShadowBinding binding)> CollectShadowsForCoFade(
+            VisualElement element, object driver, float startFactor)
+        {
+            List<(VisualElement, DropShadowBinding)> shadows = null;
+            CollectShadows(element, ref shadows);
+            if (shadows == null)
+            {
+                return null;
+            }
+            foreach (var (el, binding) in shadows)
+            {
+                DropShadowSilhouette.SetCoFade(binding, el, driver, startFactor);
+            }
+            return shadows;
+        }
+
+        // Depth-first walk gathering each element that carries a shadow paint binding. The shadow is the
+        // caster's own paint, not a separate child element, so the binding is looked up per element via
+        // DropShadowSilhouette's side-channel.
+        private static void CollectShadows(VisualElement element,
+            ref List<(VisualElement, DropShadowBinding)> shadows)
+        {
+            var binding = DropShadowSilhouette.TryGet(element);
+            if (binding != null)
+            {
+                (shadows ??= new List<(VisualElement, DropShadowBinding)>()).Add((element, binding));
+            }
+            var count = element.childCount;
+            for (var i = 0; i < count; i++)
+            {
+                CollectShadows(element[i], ref shadows);
+            }
+        }
+
+        // Starts the recurring co-fade tick: every frame, sample the animating element's current (transition-
+        // interpolated) opacity and push it to each collected descendant shadow, so they fade in lockstep with
+        // the element. Scheduled on the PANEL ROOT (not the animating element) so a keyed reorder that briefly
+        // detaches the subtree — UI Toolkit drops a detached element's scheduled items — does not stall the
+        // fade. No-op when the subtree carries no shadows (the common case), so a shadowless animation costs
+        // nothing. Paused by EndShadowCoFade on completion / cancel.
+        private static void StartShadowCoFadeTick(PendingAnimation pending)
+        {
+            if (pending.Shadows == null)
+            {
+                return;
+            }
+            var animatingElement = pending.AnimatingElement;
+            var host = animatingElement.panel?.visualTree;
+            if (host == null)
+            {
+                return;
+            }
+            pending.ShadowTick = host.schedule.Execute(() =>
+            {
+                var raw = animatingElement.resolvedStyle.opacity;
+                var factor = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
+                foreach (var (el, binding) in pending.Shadows)
+                {
+                    DropShadowSilhouette.SetCoFade(binding, el, pending, factor);
+                }
+            }).Every(16);
+        }
+
+        // Stops the co-fade tick and drops this animation's driver from each shadow (null-safe; balanced
+        // one-for-one with CollectShadowsForCoFade). When a shadow's last driver is removed it returns to full
+        // strength; an enclosing, still-running fade keeps driving it.
+        private static void EndShadowCoFade(PendingAnimation pending)
+        {
+            pending.ShadowTick?.Pause();
+            if (pending.Shadows == null)
+            {
+                return;
+            }
+            foreach (var (el, binding) in pending.Shadows)
+            {
+                DropShadowSilhouette.EndCoFade(binding, el, pending);
+            }
+        }
+
+        private void ClearTransitionStyles(VisualElement element)
+        {
+            // Cleared via the implicit conversion from StyleKeyword to StyleList<T>.
+            // The clear releases UIElements' internal list reference, making pool return safe.
+            element.style.transitionDuration = StyleKeyword.Null;
+            element.style.transitionTimingFunction = StyleKeyword.Null;
+            element.style.transitionDelay = StyleKeyword.Null;
+            // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
+            // A no-op for preset transitions, which never set it inline (USS provides transition-property).
+            element.style.transitionProperty = StyleKeyword.Null;
+        }
+
+        // StyleList<T> retains the List reference as-is (no copy), so cached lists must not be mutated
+        // after creation.
+        // The reference is released when StyleKeyword.Null is assigned in ClearTransitionStyles, so it is safe.
+        private static List<EasingFunction> GetOrCreateEasingList(EasingMode easing)
+        {
+            if (!s_easingCache.TryGetValue(easing, out var list))
+            {
+                list = new List<EasingFunction>(1) { new(easing) };
+                s_easingCache[easing] = list;
+            }
+            return list;
+        }
+
+        private List<TimeValue> RentDurationList(int ms) => RentTimeValueList(_durationPool, ms);
+        private void ReturnDurationList(List<TimeValue> list) => ReturnTimeValueList(_durationPool, list);
+        private List<TimeValue> RentDelayList(int ms) => RentTimeValueList(_delayPool, ms);
+        private void ReturnDelayList(List<TimeValue> list) => ReturnTimeValueList(_delayPool, list);
+
+        private static List<TimeValue> RentTimeValueList(Stack<List<TimeValue>> pool, int ms)
+        {
+            if (!pool.TryPop(out var list))
+            {
+                list = new List<TimeValue>(1);
+            }
+            else
+            {
+                list.Clear();
+            }
+            list.Add(new TimeValue(ms, TimeUnit.Millisecond));
+            return list;
+        }
+
+        private static void ReturnTimeValueList(Stack<List<TimeValue>> pool, List<TimeValue> list)
+        {
+            if (list != null && pool.Count < MaxPoolSize)
+            {
+                pool.Push(list);
+            }
+        }
+
+        // State of an in-progress animation. Fields are sufficient since this is a private sealed class.
+        // Created and referenced only inside StyleAnimationScheduler.
+        private sealed class PendingAnimation
+        {
+            public IVisualElementScheduledItem ScheduledItem;
+            public IVisualElementScheduledItem TimeoutItem;
+            public string[] FromClasses;
+            public string[] ToClasses;
+            // Classes to RE-ADD when this animation is cancelled (interrupted). Set for a variant-driven exit
+            // whose FromClasses ARE the persistent resting state (variants[animate]): cancelling such an exit
+            // must return the element to its resting variant (interrupt behavior), not strip it. Null for
+            // preset exits / enters, whose FromClasses are transient and correctly removed on cancel.
+            public string[] RestingClasses;
+            public List<TimeValue> DurationList;
+            public List<TimeValue> DelayList;
+            // Drop-shadow paints this animation co-fades (registered as a driver at step 1), ended one-for-one
+            // on completion / cancel. Each entry is the caster element and its paint binding. Null when the
+            // animated subtree has no shadow.
+            public List<(VisualElement element, DropShadowBinding binding)> Shadows;
+            // The element whose transition-interpolated opacity the co-fade tick samples each frame (the
+            // animating subtree root). Stored so the tick reads it without recapturing.
+            public VisualElement AnimatingElement;
+            // The recurring co-fade tick (panel-root scheduled). Paused on completion / cancel. Null when the
+            // animated subtree has no shadow.
+            public IVisualElementScheduledItem ShadowTick;
+            // For an exit started while the element was off-panel: the AttachToPanelEvent callback that defers
+            // scheduling until attach. The callback unregisters itself when it fires, but a cancel-before-attach
+            // never fires it, so it must be unregistered on cancel — otherwise it (and the closure pinning this
+            // PendingAnimation) lingers on the element, surviving even pool reuse. Null for on-panel exits.
+            public EventCallback<AttachToPanelEvent> PendingAttach;
+        }
+    }
+}

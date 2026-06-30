@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # GitHub Actions — grouped into a single PR, monthly, to keep single-maintainer load low.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Roslyn source-generator solution (standalone .NET project) — one grouped PR, monthly.
+  - package-ecosystem: nuget
+    directory: /Packages/com.velvet.core/Generators~
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: chore
+    groups:
+      nuget:
+        patterns:
+          - "*"

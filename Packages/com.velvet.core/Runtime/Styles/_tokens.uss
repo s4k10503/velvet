@@ -1,0 +1,122 @@
+/* ============================================ */
+/* Design Tokens - Single Source of Truth       */
+/* ============================================ */
+
+:root {
+    /* === Spacing (1unit = 4px) === */
+    --space-0: 0px;
+    --space-px: 1px;
+    --space-0-5: 2px;
+    --space-1: 4px;
+    --space-1-5: 6px;
+    --space-2: 8px;
+    --space-2-5: 10px;
+    --space-3-5: 14px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-7: 28px;
+    --space-8: 32px;
+    --space-9: 36px;
+    --space-10: 40px;
+    --space-11: 44px;
+    --space-12: 48px;
+    --space-14: 56px;
+    --space-16: 64px;
+    --space-20: 80px;
+    --space-24: 96px;
+    --space-28: 112px;
+    --space-32: 128px;
+    --space-36: 144px;
+    --space-40: 160px;
+    --space-44: 176px;
+    --space-48: 192px;
+    --space-52: 208px;
+    --space-56: 224px;
+    --space-60: 240px;
+    --space-64: 256px;
+    --space-72: 288px;
+    --space-80: 320px;
+    --space-96: 384px;
+
+    /* === Font Size === */
+    /* Font sizes follow the Tailwind v3.4 scale (rem*16). Consumers can pin a different scale via
+       a :root rule in their own stylesheet, which wins on later source order. */
+    --text-xs: 12px;
+    --text-sm: 14px;
+    --text-base: 16px;
+    --text-lg: 18px;
+    --text-xl: 20px;
+    --text-2xl: 24px;
+    --text-3xl: 30px;
+    --text-4xl: 36px;
+    --text-5xl: 48px;
+    --text-6xl: 60px;
+    --text-7xl: 72px;
+    --text-8xl: 96px;
+    --text-9xl: 128px;
+
+    /* === Colors === */
+    --color-surface: rgba(255, 255, 255, 0.12);
+    --color-surface-strong: rgba(255, 255, 255, 0.2);
+    --color-highlight: rgba(255, 255, 255, 0.35);
+    --color-border: rgba(255, 255, 255, 0.36);
+    --color-border-strong: rgba(255, 255, 255, 0.55);
+    --color-accent: rgb(90, 200, 250);
+    --color-accent-strong: rgb(10, 132, 255);
+    --color-text: rgb(242, 247, 255);
+    --color-text-subtle: rgba(242, 247, 255, 0.7);
+    --color-primary: rgba(10, 132, 255, 0.75);
+    --color-primary-hover: rgba(10, 132, 255, 0.82);
+    --color-primary-active: rgba(10, 132, 255, 0.65);
+    --color-primary-soft: rgba(10, 132, 255, 0.22);
+    --color-primary-faint: rgba(10, 132, 255, 0.14);
+    --color-danger: rgba(255, 94, 94, 0.75);
+    --color-danger-hover: rgba(255, 94, 94, 0.82);
+    --color-danger-active: rgba(255, 94, 94, 0.62);
+    --color-success: rgba(52, 199, 89, 0.8);
+    --color-success-hover: rgba(52, 199, 89, 0.85);
+    --color-success-active: rgba(52, 199, 89, 0.65);
+    --color-neutral: rgba(255, 255, 255, 0.08);
+    --color-surface-hover: rgba(255, 255, 255, 0.18);
+    --color-surface-active: rgba(255, 255, 255, 0.14);
+    --color-border-hover: rgba(255, 255, 255, 0.7);
+    --color-border-active: rgba(255, 255, 255, 0.5);
+    --color-white-soft: rgba(255, 255, 255, 0.8);
+    --color-white-strong: rgba(255, 255, 255, 0.95);
+    --color-white-full: rgb(255, 255, 255);
+    --color-shadow: rgba(4, 12, 24, 0.35);
+    --color-overlay: rgba(0, 0, 0, 0.6);
+    --color-overlay-hover: rgba(0, 0, 0, 0.8);
+
+    /* === Border Radius (Tailwind v3.4 scale) === */
+    --radius-none: 0;
+    --radius-sm: 2px;
+    --radius-default: 4px;
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --radius-3xl: 24px;
+    /* A large length (not 50%) so a non-square box rounds to a stadium/pill, not an ellipse;
+       UI Toolkit clamps each corner to half the shorter side, matching Tailwind's rounded-full. */
+    --radius-full: 9999px;
+
+    /* === Transition === */
+    --duration-fast: 0.1s;
+    --duration-normal: 0.15s;
+    --duration-slow: 0.2s;
+
+    /* === Scale === */
+    --scale-hover: 1.05;
+    --scale-active: 0.97;
+    --scale-hover-subtle: 1.02;
+    --scale-active-subtle: 0.98;
+}
+
+/*
+ * Note: no z-index tokens.
+ * USS has no `z-index` property; stacking is controlled by sibling order and
+ * `VisualElement.BringToFront()` / `SendToBack()`. See `_layout.uss`.
+ */

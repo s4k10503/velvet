@@ -1,0 +1,32 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "files": [ "Velvet.Docs.csproj" ],
+          "src": "."
+        }
+      ],
+      "dest": "api",
+      "outputFormat": "mref",
+      "namespaceLayout": "nested",
+      "memberLayout": "separatePages",
+      "filter": "filterConfig.yml"
+    }
+  ],
+  "build": {
+    "content": [
+      { "files": [ "api/**.yml", "api/index.md" ] },
+      { "files": [ "*.md", "toc.yml" ] }
+    ],
+    "output": "_site",
+    "template": [ "default", "modern" ],
+    "globalMetadata": {
+      "_appName": "Velvet",
+      "_appTitle": "Velvet API Reference",
+      "_appFooter": "Velvet — a React-style declarative UI framework for Unity UI Toolkit. MIT License.",
+      "_enableSearch": true,
+      "_disableContribution": true
+    }
+  }
+}

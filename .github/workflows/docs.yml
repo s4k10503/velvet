@@ -1,0 +1,109 @@
+name: Docs
+
+# Builds the DocFX API reference (from the Velvet runtime XML docs) and publishes it to GitHub Pages.
+#
+# NOTE: This pipeline needs Unity to compile the reference assemblies, so it requires a Unity
+# license (skipped when absent, like the test workflow) and runs DocFX inside the Unity editor
+# image so the engine's managed DLLs are available for type resolution. The editor image tag, the
+# license activation, and the managed-assembly path are environment-specific — verify and adjust
+# them on the first run after GitHub Pages is enabled for the repository.
+#
+# Local generation needs none of this — see docs/build.sh and CONTRIBUTING.md.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs
+  cancel-in-progress: true
+
+jobs:
+  license-check:
+    name: Check Unity license secret
+    runs-on: ubuntu-latest
+    outputs:
+      has_license: ${{ steps.check.outputs.has_license }}
+    steps:
+      - id: check
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "has_license=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_license=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::UNITY_LICENSE not set — skipping API docs (Unity is needed to compile the reference assemblies)."
+          fi
+
+  build:
+    name: Build API site
+    needs: license-check
+    if: needs.license-check.outputs.has_license == 'true'
+    runs-on: ubuntu-latest
+    # The Unity editor image ships the managed assemblies DocFX resolves types against.
+    # Keep the tag in sync with ProjectSettings/ProjectVersion.txt.
+    container:
+      image: unityci/editor:ubuntu-6000.3.11f1-base-3
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          lfs: true
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: Library
+          key: Library-docs-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: Library-docs-
+
+      - name: Compile project (populates Library/ScriptAssemblies)
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          # Write the Personal license and let Unity compile every assembly on open.
+          printf '%s' "$UNITY_LICENSE" > /tmp/Unity_lic.ulf || true
+          unity-editor -batchmode -nographics -quit \
+            -manualLicenseFile /tmp/Unity_lic.ulf \
+            -projectPath "$GITHUB_WORKSPACE" -logFile - || true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install DocFX
+        run: |
+          dotnet tool install -g docfx
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Build docs
+        env:
+          # Linux editor image: managed assemblies live under <Editor>/Data.
+          UnityEditorContents: /opt/unity/Editor/Data
+        run: |
+          cd docs
+          docfx metadata docfx.json
+          docfx build docfx.json
+
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: docs/_site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

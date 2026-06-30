@@ -1,0 +1,108 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: tests only need to read the checked-out source.
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Source-generator tests (.NET / xUnit). No Unity license required.
+  # ---------------------------------------------------------------------------
+  source-generators:
+    name: Source generators (dotnet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup .NET (pinned by Generators~/global.json)
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: Packages/com.velvet.core/Generators~/global.json
+
+      - name: Test
+        working-directory: Packages/com.velvet.core/Generators~
+        run: dotnet test Velvet.SourceGenerators.sln -c Release --nologo
+
+  # ---------------------------------------------------------------------------
+  # Detect whether a Unity license secret is configured. Secrets cannot be
+  # referenced directly in a job-level `if`, so expose it as an output here.
+  # ---------------------------------------------------------------------------
+  license-check:
+    name: Check Unity license secret
+    runs-on: ubuntu-latest
+    outputs:
+      has_license: ${{ steps.check.outputs.has_license }}
+    steps:
+      - id: check
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "has_license=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_license=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::UNITY_LICENSE secret is not set — skipping Unity EditMode/PlayMode tests. See README/CONTRIBUTING for Personal license activation."
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Unity EditMode / PlayMode tests via game-ci. Requires a Unity license.
+  # A free Personal license works: activate manually (request .alf, upload to
+  # id.unity.com, download the .ulf) and store its contents as the UNITY_LICENSE
+  # secret, plus UNITY_EMAIL / UNITY_PASSWORD.
+  #
+  # NOTE: the game-ci editor Docker image for the pinned Unity version must
+  # exist (see https://game.ci/docs and unityci/editor tags). Very new editor
+  # versions may not have an image yet.
+  # ---------------------------------------------------------------------------
+  unity-tests:
+    name: Unity tests (${{ matrix.testMode }})
+    needs: license-check
+    if: needs.license-check.outputs.has_license == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        testMode: [EditMode, PlayMode]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          lfs: true
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: Library
+          key: Library-${{ matrix.testMode }}-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ matrix.testMode }}-
+            Library-
+
+      - name: Run ${{ matrix.testMode }} tests
+        uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.11f1
+          testMode: ${{ matrix.testMode }}
+          projectPath: .
+          artifactsPath: ${{ matrix.testMode }}-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: Test results (${{ matrix.testMode }})
+          path: ${{ matrix.testMode }}-results

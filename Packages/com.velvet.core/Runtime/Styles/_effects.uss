@@ -1,0 +1,59 @@
+/* Effect Utilities - opacity, cursor, transition */
+
+/* Opacity (Tailwind 5-step scale) */
+.opacity-0 { opacity: 0; }
+.opacity-5 { opacity: 0.05; }
+.opacity-10 { opacity: 0.1; }
+.opacity-15 { opacity: 0.15; }
+.opacity-20 { opacity: 0.2; }
+.opacity-25 { opacity: 0.25; }
+.opacity-30 { opacity: 0.3; }
+.opacity-35 { opacity: 0.35; }
+.opacity-40 { opacity: 0.4; }
+.opacity-45 { opacity: 0.45; }
+.opacity-50 { opacity: 0.5; }
+.opacity-55 { opacity: 0.55; }
+.opacity-60 { opacity: 0.6; }
+.opacity-65 { opacity: 0.65; }
+.opacity-70 { opacity: 0.7; }
+.opacity-75 { opacity: 0.75; }
+.opacity-80 { opacity: 0.8; }
+.opacity-85 { opacity: 0.85; }
+.opacity-90 { opacity: 0.9; }
+.opacity-95 { opacity: 0.95; }
+.opacity-100 { opacity: 1; }
+
+/* Visibility */
+.visible { visibility: visible; }
+.invisible { visibility: hidden; }
+
+/*
+ * Cursor
+ *
+ * No keyword-cursor utilities (`cursor: link` / `cursor: arrow`, etc.):
+ * USS cursor keywords only take effect in Editor UI. At runtime a cursor must
+ * be a texture, so keyword utilities are silently inert in player builds.
+ * For runtime cursors use a texture via `cursor: resource(...)` / `url(...)`
+ * in a dedicated stylesheet, or `UnityEngine.Cursor.SetCursor` from C#.
+ */
+
+/* Transition
+ *
+ * UITK 6.x cannot transition the `transform` property; the animatable transform
+ * is split into the independent `translate` / `scale` / `rotate` properties, so
+ * those are what we enumerate here (see _transforms.uss for the plain utilities).
+ * Listing `transform` would silently animate nothing.
+ */
+.transition-transform {
+    transition-property: translate, scale, rotate;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-out;
+}
+
+/* object-fit (Tailwind) — for an element showing an image as background-image. Mapped onto background-size
+   (the modern, non-deprecated property; keywords match the Tailwind names). object-contain / object-cover
+   also center the image to match CSS object-fit's 50% 50% default object-position (UITK's background default
+   is top-left). object-none / object-scale-down have no UI Toolkit equivalent and are intentionally absent. */
+.object-contain { background-size: contain; background-position: center; }
+.object-cover { background-size: cover; background-position: center; }
+.object-fill { background-size: 100% 100%; }
