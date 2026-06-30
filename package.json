@@ -1,0 +1,26 @@
+{
+  "name": "com.velvet.core",
+  "version": "1.0.0",
+  "displayName": "Velvet",
+  "description": "React-style declarative UI framework for Unity UI Toolkit. Provides virtual DOM, reconciliation engine, hooks, and component model.",
+  "license": "MIT",
+  "unity": "6000.3",
+  "unityRelease": "11f1",
+  "keywords": [
+    "velvet",
+    "declarative",
+    "ui",
+    "vdom",
+    "reconciler",
+    "hooks",
+    "uitoolkit"
+  ],
+  "author": {
+    "name": "s4k10503"
+  },
+  "dependencies": {
+    "com.unity.addressables": "2.7.4",
+    "com.unity.nuget.mono-cecil": "1.11.5",
+    "com.unity.modules.uielements": "1.0.0"
+  }
+}

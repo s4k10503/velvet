@@ -1,0 +1,22 @@
+/*
+ * StyleUtilities - Utility-First Style Aggregator
+ * All styles are imported from partials below.
+ */
+
+@import url("_tokens.uss");
+@import url("_palette.uss");
+@import url("_layout.uss");
+@import url("_spacing.uss");
+@import url("_sizing.uss");
+@import url("_typography.uss");
+@import url("_backgrounds.uss");
+@import url("_borders.uss");
+@import url("_effects.uss");
+@import url("_transforms.uss");
+@import url("_gap.uss");
+@import url("_states.uss");
+@import url("_state_variants.uss");
+@import url("_presets.uss");
+@import url("_animations.uss");
+@import url("_accessibility.uss");
+

@@ -1,0 +1,395 @@
+/* Layout Utilities - display, position, flex, overflow, inset */
+
+/*
+ * Display
+ *
+ * NOTE (Tailwind parity): in CSS/Tailwind `flex` implies `flex-direction: row`,
+ * but UI Toolkit's layout engine (Yoga) defaults a flex container to `column`.
+ * `.flex` therefore sets `flex-direction: row` explicitly so a bare `flex` lays
+ * children out HORIZONTALLY, matching Tailwind. Override the direction with:
+ *   - horizontal row : "flex" (or the redundant "flex flex-row")
+ *   - vertical column: "flex flex-col"
+ * See Documentation~/styling-flexbox-and-gap.md.
+ */
+.flex { display: flex; flex-direction: row; }
+/*
+ * NOTE (Tailwind parity): UI Toolkit has no `display: grid` (its layout is a Flexbox subset), so `.grid`
+ * is realized as a flex-wrap row and StyleGridManipulator sizes the children into the grid-cols-N columns
+ * (and owns the gap-* spacing). A bare `grid` with no grid-cols-N is a single column (the manipulator sizes
+ * each child to the full row, stacking them vertically). See Documentation~/styling-flexbox-and-gap.md.
+ */
+.grid { display: flex; flex-direction: row; flex-wrap: wrap; }
+.hidden { display: none; }
+
+/* Position */
+.relative { position: relative; }
+.absolute { position: absolute; }
+
+/* Flex Direction */
+.flex-row { flex-direction: row; }
+.flex-col { flex-direction: column; }
+
+/* Flex Wrap */
+.flex-wrap { flex-wrap: wrap; }
+.flex-nowrap { flex-wrap: nowrap; }
+
+/* Flex Direction (reverse) */
+.flex-row-reverse { flex-direction: row-reverse; }
+.flex-col-reverse { flex-direction: column-reverse; }
+
+/* Flex Wrap (reverse) */
+.flex-wrap-reverse { flex-wrap: wrap-reverse; }
+
+/* Align Items (cross axis) */
+.items-start { align-items: flex-start; }
+.items-center { align-items: center; }
+.items-end { align-items: flex-end; }
+.items-stretch { align-items: stretch; }
+.items-baseline { align-items: baseline; }
+
+/* Align Self */
+.self-auto { align-self: auto; }
+.self-start { align-self: flex-start; }
+.self-center { align-self: center; }
+.self-end { align-self: flex-end; }
+.self-stretch { align-self: stretch; }
+
+/* Align Content (multi-line cross axis).
+   Note: Unity's `align-content` uses the `Align` enum, which (unlike CSS) has no
+   space-between / space-around — only these keywords are valid. */
+.content-start { align-content: flex-start; }
+.content-center { align-content: center; }
+.content-end { align-content: flex-end; }
+.content-stretch { align-content: stretch; }
+
+/* Justify Content (main axis) */
+.justify-start { justify-content: flex-start; }
+.justify-center { justify-content: center; }
+.justify-end { justify-content: flex-end; }
+.justify-between { justify-content: space-between; }
+.justify-around { justify-content: space-around; }
+.justify-evenly { justify-content: space-evenly; }
+
+/* Flex Grow/Shrink */
+.grow { flex-grow: 1; }
+.grow-0 { flex-grow: 0; }
+.shrink { flex-shrink: 1; }
+.shrink-0 { flex-shrink: 0; }
+
+/* Flex shorthand (grow / shrink / basis) */
+.flex-1 { flex-grow: 1; flex-shrink: 1; flex-basis: 0; }
+.flex-auto { flex-grow: 1; flex-shrink: 1; flex-basis: auto; }
+.flex-initial { flex-grow: 0; flex-shrink: 1; flex-basis: auto; }
+.flex-none { flex-grow: 0; flex-shrink: 0; flex-basis: auto; }
+
+/* Flex Basis (presets; reuse --space-* tokens. basis-[..] arbitrary covers other values) */
+.basis-0 { flex-basis: var(--space-0); }
+.basis-px { flex-basis: var(--space-px); }
+.basis-0-5 { flex-basis: var(--space-0-5); }
+.basis-1 { flex-basis: var(--space-1); }
+.basis-1-5 { flex-basis: var(--space-1-5); }
+.basis-2 { flex-basis: var(--space-2); }
+.basis-2-5 { flex-basis: var(--space-2-5); }
+.basis-3 { flex-basis: var(--space-3); }
+.basis-3-5 { flex-basis: var(--space-3-5); }
+.basis-4 { flex-basis: var(--space-4); }
+.basis-5 { flex-basis: var(--space-5); }
+.basis-6 { flex-basis: var(--space-6); }
+.basis-7 { flex-basis: var(--space-7); }
+.basis-8 { flex-basis: var(--space-8); }
+.basis-9 { flex-basis: var(--space-9); }
+.basis-10 { flex-basis: var(--space-10); }
+.basis-11 { flex-basis: var(--space-11); }
+.basis-12 { flex-basis: var(--space-12); }
+.basis-14 { flex-basis: var(--space-14); }
+.basis-16 { flex-basis: var(--space-16); }
+.basis-20 { flex-basis: var(--space-20); }
+.basis-24 { flex-basis: var(--space-24); }
+.basis-28 { flex-basis: var(--space-28); }
+.basis-32 { flex-basis: var(--space-32); }
+.basis-36 { flex-basis: var(--space-36); }
+.basis-40 { flex-basis: var(--space-40); }
+.basis-44 { flex-basis: var(--space-44); }
+.basis-48 { flex-basis: var(--space-48); }
+.basis-52 { flex-basis: var(--space-52); }
+.basis-56 { flex-basis: var(--space-56); }
+.basis-60 { flex-basis: var(--space-60); }
+.basis-64 { flex-basis: var(--space-64); }
+.basis-72 { flex-basis: var(--space-72); }
+.basis-80 { flex-basis: var(--space-80); }
+.basis-96 { flex-basis: var(--space-96); }
+.basis-auto { flex-basis: auto; }
+.basis-full { flex-basis: 100%; }
+
+/* Overflow */
+.overflow-hidden { overflow: hidden; }
+.overflow-visible { overflow: visible; }
+
+/* Inset (all edges) */
+.inset-0 { top: var(--space-0); right: var(--space-0); bottom: var(--space-0); left: var(--space-0); }
+.inset-px { top: var(--space-px); right: var(--space-px); bottom: var(--space-px); left: var(--space-px); }
+.inset-0-5 { top: var(--space-0-5); right: var(--space-0-5); bottom: var(--space-0-5); left: var(--space-0-5); }
+.inset-1 { top: var(--space-1); right: var(--space-1); bottom: var(--space-1); left: var(--space-1); }
+.inset-1-5 { top: var(--space-1-5); right: var(--space-1-5); bottom: var(--space-1-5); left: var(--space-1-5); }
+.inset-2 { top: var(--space-2); right: var(--space-2); bottom: var(--space-2); left: var(--space-2); }
+.inset-2-5 { top: var(--space-2-5); right: var(--space-2-5); bottom: var(--space-2-5); left: var(--space-2-5); }
+.inset-3 { top: var(--space-3); right: var(--space-3); bottom: var(--space-3); left: var(--space-3); }
+.inset-3-5 { top: var(--space-3-5); right: var(--space-3-5); bottom: var(--space-3-5); left: var(--space-3-5); }
+.inset-4 { top: var(--space-4); right: var(--space-4); bottom: var(--space-4); left: var(--space-4); }
+.inset-5 { top: var(--space-5); right: var(--space-5); bottom: var(--space-5); left: var(--space-5); }
+.inset-6 { top: var(--space-6); right: var(--space-6); bottom: var(--space-6); left: var(--space-6); }
+.inset-7 { top: var(--space-7); right: var(--space-7); bottom: var(--space-7); left: var(--space-7); }
+.inset-8 { top: var(--space-8); right: var(--space-8); bottom: var(--space-8); left: var(--space-8); }
+.inset-9 { top: var(--space-9); right: var(--space-9); bottom: var(--space-9); left: var(--space-9); }
+.inset-10 { top: var(--space-10); right: var(--space-10); bottom: var(--space-10); left: var(--space-10); }
+.inset-11 { top: var(--space-11); right: var(--space-11); bottom: var(--space-11); left: var(--space-11); }
+.inset-12 { top: var(--space-12); right: var(--space-12); bottom: var(--space-12); left: var(--space-12); }
+.inset-14 { top: var(--space-14); right: var(--space-14); bottom: var(--space-14); left: var(--space-14); }
+.inset-16 { top: var(--space-16); right: var(--space-16); bottom: var(--space-16); left: var(--space-16); }
+.inset-20 { top: var(--space-20); right: var(--space-20); bottom: var(--space-20); left: var(--space-20); }
+.inset-24 { top: var(--space-24); right: var(--space-24); bottom: var(--space-24); left: var(--space-24); }
+.inset-28 { top: var(--space-28); right: var(--space-28); bottom: var(--space-28); left: var(--space-28); }
+.inset-32 { top: var(--space-32); right: var(--space-32); bottom: var(--space-32); left: var(--space-32); }
+.inset-36 { top: var(--space-36); right: var(--space-36); bottom: var(--space-36); left: var(--space-36); }
+.inset-40 { top: var(--space-40); right: var(--space-40); bottom: var(--space-40); left: var(--space-40); }
+.inset-44 { top: var(--space-44); right: var(--space-44); bottom: var(--space-44); left: var(--space-44); }
+.inset-48 { top: var(--space-48); right: var(--space-48); bottom: var(--space-48); left: var(--space-48); }
+.inset-52 { top: var(--space-52); right: var(--space-52); bottom: var(--space-52); left: var(--space-52); }
+.inset-56 { top: var(--space-56); right: var(--space-56); bottom: var(--space-56); left: var(--space-56); }
+.inset-60 { top: var(--space-60); right: var(--space-60); bottom: var(--space-60); left: var(--space-60); }
+.inset-64 { top: var(--space-64); right: var(--space-64); bottom: var(--space-64); left: var(--space-64); }
+.inset-72 { top: var(--space-72); right: var(--space-72); bottom: var(--space-72); left: var(--space-72); }
+.inset-80 { top: var(--space-80); right: var(--space-80); bottom: var(--space-80); left: var(--space-80); }
+.inset-96 { top: var(--space-96); right: var(--space-96); bottom: var(--space-96); left: var(--space-96); }
+
+/* Inset - Horizontal (left + right) */
+.inset-x-0 { left: var(--space-0); right: var(--space-0); }
+.inset-x-px { left: var(--space-px); right: var(--space-px); }
+.inset-x-0-5 { left: var(--space-0-5); right: var(--space-0-5); }
+.inset-x-1 { left: var(--space-1); right: var(--space-1); }
+.inset-x-1-5 { left: var(--space-1-5); right: var(--space-1-5); }
+.inset-x-2 { left: var(--space-2); right: var(--space-2); }
+.inset-x-2-5 { left: var(--space-2-5); right: var(--space-2-5); }
+.inset-x-3 { left: var(--space-3); right: var(--space-3); }
+.inset-x-3-5 { left: var(--space-3-5); right: var(--space-3-5); }
+.inset-x-4 { left: var(--space-4); right: var(--space-4); }
+.inset-x-5 { left: var(--space-5); right: var(--space-5); }
+.inset-x-6 { left: var(--space-6); right: var(--space-6); }
+.inset-x-7 { left: var(--space-7); right: var(--space-7); }
+.inset-x-8 { left: var(--space-8); right: var(--space-8); }
+.inset-x-9 { left: var(--space-9); right: var(--space-9); }
+.inset-x-10 { left: var(--space-10); right: var(--space-10); }
+.inset-x-11 { left: var(--space-11); right: var(--space-11); }
+.inset-x-12 { left: var(--space-12); right: var(--space-12); }
+.inset-x-14 { left: var(--space-14); right: var(--space-14); }
+.inset-x-16 { left: var(--space-16); right: var(--space-16); }
+.inset-x-20 { left: var(--space-20); right: var(--space-20); }
+.inset-x-24 { left: var(--space-24); right: var(--space-24); }
+.inset-x-28 { left: var(--space-28); right: var(--space-28); }
+.inset-x-32 { left: var(--space-32); right: var(--space-32); }
+.inset-x-36 { left: var(--space-36); right: var(--space-36); }
+.inset-x-40 { left: var(--space-40); right: var(--space-40); }
+.inset-x-44 { left: var(--space-44); right: var(--space-44); }
+.inset-x-48 { left: var(--space-48); right: var(--space-48); }
+.inset-x-52 { left: var(--space-52); right: var(--space-52); }
+.inset-x-56 { left: var(--space-56); right: var(--space-56); }
+.inset-x-60 { left: var(--space-60); right: var(--space-60); }
+.inset-x-64 { left: var(--space-64); right: var(--space-64); }
+.inset-x-72 { left: var(--space-72); right: var(--space-72); }
+.inset-x-80 { left: var(--space-80); right: var(--space-80); }
+.inset-x-96 { left: var(--space-96); right: var(--space-96); }
+
+/* Inset - Vertical (top + bottom) */
+.inset-y-0 { top: var(--space-0); bottom: var(--space-0); }
+.inset-y-px { top: var(--space-px); bottom: var(--space-px); }
+.inset-y-0-5 { top: var(--space-0-5); bottom: var(--space-0-5); }
+.inset-y-1 { top: var(--space-1); bottom: var(--space-1); }
+.inset-y-1-5 { top: var(--space-1-5); bottom: var(--space-1-5); }
+.inset-y-2 { top: var(--space-2); bottom: var(--space-2); }
+.inset-y-2-5 { top: var(--space-2-5); bottom: var(--space-2-5); }
+.inset-y-3 { top: var(--space-3); bottom: var(--space-3); }
+.inset-y-3-5 { top: var(--space-3-5); bottom: var(--space-3-5); }
+.inset-y-4 { top: var(--space-4); bottom: var(--space-4); }
+.inset-y-5 { top: var(--space-5); bottom: var(--space-5); }
+.inset-y-6 { top: var(--space-6); bottom: var(--space-6); }
+.inset-y-7 { top: var(--space-7); bottom: var(--space-7); }
+.inset-y-8 { top: var(--space-8); bottom: var(--space-8); }
+.inset-y-9 { top: var(--space-9); bottom: var(--space-9); }
+.inset-y-10 { top: var(--space-10); bottom: var(--space-10); }
+.inset-y-11 { top: var(--space-11); bottom: var(--space-11); }
+.inset-y-12 { top: var(--space-12); bottom: var(--space-12); }
+.inset-y-14 { top: var(--space-14); bottom: var(--space-14); }
+.inset-y-16 { top: var(--space-16); bottom: var(--space-16); }
+.inset-y-20 { top: var(--space-20); bottom: var(--space-20); }
+.inset-y-24 { top: var(--space-24); bottom: var(--space-24); }
+.inset-y-28 { top: var(--space-28); bottom: var(--space-28); }
+.inset-y-32 { top: var(--space-32); bottom: var(--space-32); }
+.inset-y-36 { top: var(--space-36); bottom: var(--space-36); }
+.inset-y-40 { top: var(--space-40); bottom: var(--space-40); }
+.inset-y-44 { top: var(--space-44); bottom: var(--space-44); }
+.inset-y-48 { top: var(--space-48); bottom: var(--space-48); }
+.inset-y-52 { top: var(--space-52); bottom: var(--space-52); }
+.inset-y-56 { top: var(--space-56); bottom: var(--space-56); }
+.inset-y-60 { top: var(--space-60); bottom: var(--space-60); }
+.inset-y-64 { top: var(--space-64); bottom: var(--space-64); }
+.inset-y-72 { top: var(--space-72); bottom: var(--space-72); }
+.inset-y-80 { top: var(--space-80); bottom: var(--space-80); }
+.inset-y-96 { top: var(--space-96); bottom: var(--space-96); }
+
+/* Top */
+.top-0 { top: var(--space-0); }
+.top-px { top: var(--space-px); }
+.top-0-5 { top: var(--space-0-5); }
+.top-1 { top: var(--space-1); }
+.top-1-5 { top: var(--space-1-5); }
+.top-2 { top: var(--space-2); }
+.top-2-5 { top: var(--space-2-5); }
+.top-3 { top: var(--space-3); }
+.top-3-5 { top: var(--space-3-5); }
+.top-4 { top: var(--space-4); }
+.top-5 { top: var(--space-5); }
+.top-6 { top: var(--space-6); }
+.top-7 { top: var(--space-7); }
+.top-8 { top: var(--space-8); }
+.top-9 { top: var(--space-9); }
+.top-10 { top: var(--space-10); }
+.top-11 { top: var(--space-11); }
+.top-12 { top: var(--space-12); }
+.top-14 { top: var(--space-14); }
+.top-16 { top: var(--space-16); }
+.top-20 { top: var(--space-20); }
+.top-24 { top: var(--space-24); }
+.top-28 { top: var(--space-28); }
+.top-32 { top: var(--space-32); }
+.top-36 { top: var(--space-36); }
+.top-40 { top: var(--space-40); }
+.top-44 { top: var(--space-44); }
+.top-48 { top: var(--space-48); }
+.top-52 { top: var(--space-52); }
+.top-56 { top: var(--space-56); }
+.top-60 { top: var(--space-60); }
+.top-64 { top: var(--space-64); }
+.top-72 { top: var(--space-72); }
+.top-80 { top: var(--space-80); }
+.top-96 { top: var(--space-96); }
+
+/* Right */
+.right-0 { right: var(--space-0); }
+.right-px { right: var(--space-px); }
+.right-0-5 { right: var(--space-0-5); }
+.right-1 { right: var(--space-1); }
+.right-1-5 { right: var(--space-1-5); }
+.right-2 { right: var(--space-2); }
+.right-2-5 { right: var(--space-2-5); }
+.right-3 { right: var(--space-3); }
+.right-3-5 { right: var(--space-3-5); }
+.right-4 { right: var(--space-4); }
+.right-5 { right: var(--space-5); }
+.right-6 { right: var(--space-6); }
+.right-7 { right: var(--space-7); }
+.right-8 { right: var(--space-8); }
+.right-9 { right: var(--space-9); }
+.right-10 { right: var(--space-10); }
+.right-11 { right: var(--space-11); }
+.right-12 { right: var(--space-12); }
+.right-14 { right: var(--space-14); }
+.right-16 { right: var(--space-16); }
+.right-20 { right: var(--space-20); }
+.right-24 { right: var(--space-24); }
+.right-28 { right: var(--space-28); }
+.right-32 { right: var(--space-32); }
+.right-36 { right: var(--space-36); }
+.right-40 { right: var(--space-40); }
+.right-44 { right: var(--space-44); }
+.right-48 { right: var(--space-48); }
+.right-52 { right: var(--space-52); }
+.right-56 { right: var(--space-56); }
+.right-60 { right: var(--space-60); }
+.right-64 { right: var(--space-64); }
+.right-72 { right: var(--space-72); }
+.right-80 { right: var(--space-80); }
+.right-96 { right: var(--space-96); }
+
+/* Bottom */
+.bottom-0 { bottom: var(--space-0); }
+.bottom-px { bottom: var(--space-px); }
+.bottom-0-5 { bottom: var(--space-0-5); }
+.bottom-1 { bottom: var(--space-1); }
+.bottom-1-5 { bottom: var(--space-1-5); }
+.bottom-2 { bottom: var(--space-2); }
+.bottom-2-5 { bottom: var(--space-2-5); }
+.bottom-3 { bottom: var(--space-3); }
+.bottom-3-5 { bottom: var(--space-3-5); }
+.bottom-4 { bottom: var(--space-4); }
+.bottom-5 { bottom: var(--space-5); }
+.bottom-6 { bottom: var(--space-6); }
+.bottom-7 { bottom: var(--space-7); }
+.bottom-8 { bottom: var(--space-8); }
+.bottom-9 { bottom: var(--space-9); }
+.bottom-10 { bottom: var(--space-10); }
+.bottom-11 { bottom: var(--space-11); }
+.bottom-12 { bottom: var(--space-12); }
+.bottom-14 { bottom: var(--space-14); }
+.bottom-16 { bottom: var(--space-16); }
+.bottom-20 { bottom: var(--space-20); }
+.bottom-24 { bottom: var(--space-24); }
+.bottom-28 { bottom: var(--space-28); }
+.bottom-32 { bottom: var(--space-32); }
+.bottom-36 { bottom: var(--space-36); }
+.bottom-40 { bottom: var(--space-40); }
+.bottom-44 { bottom: var(--space-44); }
+.bottom-48 { bottom: var(--space-48); }
+.bottom-52 { bottom: var(--space-52); }
+.bottom-56 { bottom: var(--space-56); }
+.bottom-60 { bottom: var(--space-60); }
+.bottom-64 { bottom: var(--space-64); }
+.bottom-72 { bottom: var(--space-72); }
+.bottom-80 { bottom: var(--space-80); }
+.bottom-96 { bottom: var(--space-96); }
+
+/* Left */
+.left-0 { left: var(--space-0); }
+.left-px { left: var(--space-px); }
+.left-0-5 { left: var(--space-0-5); }
+.left-1 { left: var(--space-1); }
+.left-1-5 { left: var(--space-1-5); }
+.left-2 { left: var(--space-2); }
+.left-2-5 { left: var(--space-2-5); }
+.left-3 { left: var(--space-3); }
+.left-3-5 { left: var(--space-3-5); }
+.left-4 { left: var(--space-4); }
+.left-5 { left: var(--space-5); }
+.left-6 { left: var(--space-6); }
+.left-7 { left: var(--space-7); }
+.left-8 { left: var(--space-8); }
+.left-9 { left: var(--space-9); }
+.left-10 { left: var(--space-10); }
+.left-11 { left: var(--space-11); }
+.left-12 { left: var(--space-12); }
+.left-14 { left: var(--space-14); }
+.left-16 { left: var(--space-16); }
+.left-20 { left: var(--space-20); }
+.left-24 { left: var(--space-24); }
+.left-28 { left: var(--space-28); }
+.left-32 { left: var(--space-32); }
+.left-36 { left: var(--space-36); }
+.left-40 { left: var(--space-40); }
+.left-44 { left: var(--space-44); }
+.left-48 { left: var(--space-48); }
+.left-52 { left: var(--space-52); }
+.left-56 { left: var(--space-56); }
+.left-60 { left: var(--space-60); }
+.left-64 { left: var(--space-64); }
+.left-72 { left: var(--space-72); }
+.left-80 { left: var(--space-80); }
+.left-96 { left: var(--space-96); }
+
+/*
+ * Stacking order
+ *
+ * USS has no `z-index` property (Unity 6.3 / 6.4; on the roadmap as "planning
+ * beyond Unity 6.7 LTS"). Draw order is determined by sibling order in the tree
+ * (a later sibling is drawn in front). Control it dynamically from C# with
+ * `VisualElement.BringToFront()` / `SendToBack()` / `PlaceInFront(other)` /
+ * `PlaceBehind(other)` rather than a `z-*` utility.
+ */

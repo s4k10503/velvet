@@ -1,0 +1,101 @@
+/* Typography Utilities - font-size, font-family/weight/style, text-align, text-color, white-space, text-overflow */
+
+/* Font Size */
+.text-xs { font-size: var(--text-xs); }
+.text-sm { font-size: var(--text-sm); }
+.text-base { font-size: var(--text-base); }
+.text-lg { font-size: var(--text-lg); }
+.text-xl { font-size: var(--text-xl); }
+.text-2xl { font-size: var(--text-2xl); }
+.text-3xl { font-size: var(--text-3xl); }
+.text-4xl { font-size: var(--text-4xl); }
+.text-5xl { font-size: var(--text-5xl); }
+.text-6xl { font-size: var(--text-6xl); }
+.text-7xl { font-size: var(--text-7xl); }
+.text-8xl { font-size: var(--text-8xl); }
+.text-9xl { font-size: var(--text-9xl); }
+
+/* Text Color */
+.text-strong { color: var(--color-text); }
+.text-subtle { color: var(--color-text-subtle); }
+.text-accent { color: var(--color-accent-strong); }
+.text-white { color: rgb(255, 255, 255); }
+.text-black { color: rgb(0, 0, 0); }
+
+/*
+ * Font Family / Weight / Style
+ *
+ * These rules are the USS *fallback* layer. The authoritative font layer is the C#
+ * `StyleFontResolver`, which resolves `font-<family>`, the `font-thin`…`font-black`
+ * weight scale, and `italic` together and writes them as inline
+ * `-unity-font-definition` + `-unity-font-style`. That inline pass is what makes
+ * `font-bold italic` compose and lets weight-specific Font Assets render true weights.
+ * Register families via `VelvetFonts.Register`; see Documentation~/fonts.md.
+ *
+ * Standalone (no registered fonts) these rules still give sensible output: USS's
+ * `-unity-font-style` is a binary normal/bold axis, so the 100–900 scale folds to bold
+ * at `>= 600` — exactly the threshold the resolver falls back to. `font-<family>` classes
+ * intentionally have no USS rule (a family needs a real Font Asset to take effect).
+ */
+
+/* Weight scale (Tailwind: font-thin … font-black). Folds to the binary normal/bold axis. */
+.font-thin,
+.font-extralight,
+.font-light,
+.font-normal,
+.font-medium { -unity-font-style: normal; }
+.font-semibold,
+.font-bold,
+.font-extrabold,
+.font-black { -unity-font-style: bold; }
+
+/* Style (Tailwind: italic / not-italic) */
+.italic { -unity-font-style: italic; }
+.not-italic { -unity-font-style: normal; }
+
+/* Combined bold + italic. Pure USS cannot compose two separate classes into one
+   `-unity-font-style` value; the StyleFontResolver inline layer composes `font-bold italic`. */
+.bold-italic { -unity-font-style: bold-and-italic; }
+
+/* Deprecated alias of `italic` (non-standard name; kept for back-compat). */
+.font-italic { -unity-font-style: italic; }
+
+/* Text Align */
+.text-center { -unity-text-align: middle-center; }
+.text-left { -unity-text-align: middle-left; }
+.text-right { -unity-text-align: middle-right; }
+/* Logical text-align (Tailwind text-start/end). UI Toolkit has no writing-direction, so they map to
+   the LTR physical edges: start = left, end = right. */
+.text-start { -unity-text-align: middle-left; }
+.text-end { -unity-text-align: middle-right; }
+.text-top-center { -unity-text-align: upper-center; }
+.text-top-left { -unity-text-align: upper-left; }
+
+/* White Space */
+.whitespace-normal { white-space: normal; }
+.whitespace-nowrap { white-space: nowrap; }
+
+/* Text wrap aliases (Tailwind: text-wrap / text-nowrap). UI Toolkit's white-space only has the
+   normal/nowrap axis, so text-balance / text-pretty have no equivalent and are intentionally omitted. */
+.text-wrap { white-space: normal; }
+.text-nowrap { white-space: nowrap; }
+
+/* Text Overflow (Tailwind: truncate / text-ellipsis / text-clip).
+   `truncate` needs all three declarations together; the ellipsis only renders with hidden overflow and
+   no wrapping. `-unity-text-overflow-position` defaults to `end`, matching Tailwind's trailing ellipsis. */
+.truncate {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.text-ellipsis { text-overflow: ellipsis; }
+.text-clip { text-overflow: clip; }
+
+/* Letter Spacing (Tailwind: tracking-*).
+   USS letter-spacing has no `em` unit, so values are in px (use tracking-[2px] for arbitrary). */
+.tracking-tighter { letter-spacing: -1px; }
+.tracking-tight { letter-spacing: -0.5px; }
+.tracking-normal { letter-spacing: 0; }
+.tracking-wide { letter-spacing: 0.5px; }
+.tracking-wider { letter-spacing: 1px; }
+.tracking-widest { letter-spacing: 2px; }
