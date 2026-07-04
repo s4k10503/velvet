@@ -12,9 +12,9 @@ namespace Velvet
         // A payload containing [ that parses as an arbitrary value is applied as an inline style at
         // priority (so a state variant layers over the base / lower-priority variants
         // rather than wiping the property when it turns off); otherwise it is toggled as a USS class.
-        public static void Apply(VisualElement target, string[] payloads, bool on,
+        public static void Apply(VisualElement target, string?[] payloads, bool on,
             int priority = StyleLayerPriority.Base,
-            ReconcilerContext ctx = null, object owner = null)
+            ReconcilerContext? ctx = null, object? owner = null)
         {
             if (target == null || payloads == null)
             {

@@ -24,11 +24,11 @@ namespace Velvet
         internal const float ExtraPadding = 5f;
 
         // Cached across all shadows: Shader.Find is a project-wide lookup, identical for every shadow.
-        private static Shader s_shader;
+        private static Shader? s_shader;
 
         // The single bake Material, lazily created from the shader. It is only a bake tool (the baked textures
         // are cached below), so one instance serves every shadow and is disposed once on reconciler teardown.
-        private static Material s_material;
+        private static Material? s_material;
 
         // Baked SDF silhouettes shared across all shadows, keyed by (corner/blur/spread, target size, skew).
         // A baked shadow cannot be size-independent (a full-size quad is drawn), so a card that animates
@@ -79,14 +79,14 @@ namespace Velvet
         // an earlier caster's already-handed-off texture could be evicted by a later bake that frame — well
         // beyond any realistic screen, but not an absolute guarantee. Returns null (the caller paints nothing)
         // when the shader is unavailable / headless.
-        internal static Texture2D GetOrBakeSilhouette(float corner, float blur, float spread,
+        internal static Texture2D? GetOrBakeSilhouette(float corner, float blur, float spread,
             float targetWidth, float targetHeight, float skewXDeg)
         {
             if (targetWidth <= 0f || targetHeight <= 0f)
             {
                 return null;
             }
-            if (!EnsureMaterial())
+            if (!EnsureMaterial(out var mat))
             {
                 return null;
             }
@@ -100,7 +100,7 @@ namespace Velvet
                 return tex;
             }
 
-            tex = BakeSilhouetteTexture(s_material, corner, blur, spread, targetWidth, targetHeight, skewXDeg);
+            tex = BakeSilhouetteTexture(mat, corner, blur, spread, targetWidth, targetHeight, skewXDeg);
             StoreSilhouette(key, tex); // insert + evict-if-over-cap (a null bake is not cached)
             return tex;
         }
@@ -124,10 +124,11 @@ namespace Velvet
             s_material = null;
         }
 
-        private static bool EnsureMaterial()
+        private static bool EnsureMaterial(out Material material)
         {
             if (s_material != null)
             {
+                material = s_material;
                 return true;
             }
             if (s_shader == null)
@@ -138,9 +139,11 @@ namespace Velvet
             {
                 FiberLogger.LogWarning("DropShadow", $"Shader not found: {ShadowShaderPath}. " +
                     "Ensure the project uses URP and the shader is included in the build.");
+                material = null!;
                 return false;
             }
             s_material = new Material(s_shader);
+            material = s_material;
             return true;
         }
 

@@ -29,7 +29,7 @@ namespace Velvet
         // panelRoot is typically panel.visualTree; passing it in keeps this independent of how the caller
         // obtained the panel (AttachToPanelEvent.destinationPanel vs target.panel). Reuses the shared ancestor
         // class walk so this resolution and the group-/peer- relational resolution stay one implementation.
-        internal static VisualElement ResolveWidthSource(VisualElement target, VisualElement panelRoot)
+        internal static VisualElement? ResolveWidthSource(VisualElement target, VisualElement? panelRoot)
             => StyleRelationalVariantManipulator.FindAncestorWithClass(target, MarkerClass) ?? panelRoot;
     }
 }

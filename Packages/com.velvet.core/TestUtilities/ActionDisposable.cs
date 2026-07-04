@@ -9,7 +9,7 @@ namespace Velvet.TestUtilities
     /// </summary>
     public sealed class ActionDisposable : IDisposable
     {
-        private Action _onDispose;
+        private Action? _onDispose;
 
         public ActionDisposable(Action onDispose) => _onDispose = onDispose;
 

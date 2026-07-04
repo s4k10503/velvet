@@ -15,13 +15,13 @@ namespace Velvet
         // The recurring tick. Scheduled on the PANEL ROOT (not the element) so a keyed reorder — which
         // briefly detaches the element and would make UI Toolkit silently drop a per-element scheduled item —
         // does not stall the animation. Paused on teardown.
-        public IVisualElementScheduledItem Scheduled;
+        public IVisualElementScheduledItem? Scheduled;
         // Pan axis for Gradient/Shimmer, derived from the gradient's angle at attach (vertical when the
         // gradient flows more up/down than left/right). Unused by Hue.
         public bool PanVertical;
         // For an attach that happened off-panel: the deferred-scheduling callback, unregistered on teardown
         // if it never fired (so it does not linger on the element across pool reuse).
-        public EventCallback<AttachToPanelEvent> PendingAttach;
+        public EventCallback<AttachToPanelEvent>? PendingAttach;
     }
 
     // Drives the animate-* motions. The texture is baked ONCE (the static gradient path); this only writes a
@@ -241,7 +241,7 @@ namespace Velvet
                 StartTick(element, binding);
                 return;
             }
-            EventCallback<AttachToPanelEvent> onAttach = null;
+            EventCallback<AttachToPanelEvent>? onAttach = null;
             onAttach = _ =>
             {
                 element.UnregisterCallback(onAttach);

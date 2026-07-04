@@ -201,7 +201,7 @@ namespace Velvet
         public IDisposable Select<T>(
             Func<TState, T> selector,
             Action<T, T> observer,
-            IEqualityComparer<T> comparer = null,
+            IEqualityComparer<T>? comparer = null,
             bool fireImmediately = false)
         {
             if (selector == null) throw new ArgumentNullException(nameof(selector));

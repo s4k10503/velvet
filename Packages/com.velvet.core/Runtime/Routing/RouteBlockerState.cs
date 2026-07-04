@@ -23,10 +23,10 @@ namespace Velvet
         public NavigationAttempt? Attempt { get; internal set; }
 
         /// <summary>Callback invoked when <see cref="Proceed"/> is called.</summary>
-        internal Action OnProceed { get; set; }
+        internal Action? OnProceed { get; set; }
 
         /// <summary>Callback invoked when <see cref="Reset"/> is called.</summary>
-        internal Action OnReset { get; set; }
+        internal Action? OnReset { get; set; }
 
         /// <summary>
         /// Releases the block and signals intent to allow the transition.
@@ -37,7 +37,7 @@ namespace Velvet
         /// <summary>Releases the block and signals intent to cancel the transition.</summary>
         public void Reset() => Release(OnReset);
 
-        private void Release(Action callback)
+        private void Release(Action? callback)
         {
             if (Status != RouteBlockerStatus.Blocked)
             {

@@ -58,6 +58,6 @@ namespace Velvet
         /// the default <c>"DeclaringType.MethodName"</c> form.
         /// When <c>null</c> or empty, the default name is used.
         /// </summary>
-        public string DisplayName { get; init; }
+        public string? DisplayName { get; init; }
     }
 }

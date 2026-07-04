@@ -11,7 +11,7 @@ namespace Velvet
     {
         // Operations provided by FiberNodeFactory
         VisualElement CreateElement(VNode node);                                           // Used by Patcher
-        List<(string key, VNode node)> BuildKeyedMapCopy(VNode[] children);               // Used by ChildReconciler
+        List<(string key, VNode node)> BuildKeyedMapCopy(VNode?[] children);               // Used by ChildReconciler
 
         // Operations provided by FiberElementCleaner
         void RemoveElement(VisualElement parent, int index);                               // Used by Patcher only
@@ -41,6 +41,6 @@ namespace Velvet
         // initial mount to append a new range without disturbing children already placed by
         // earlier reconcile passes — required when multiple fibers (e.g. several Portals targeting
         // the same DOM node) share parent.
-        void ReconcileChildren(VisualElement parent, VNode[] oldChildren, VNode[] newChildren, int slotStart = 0);
+        void ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart = 0);
     }
 }

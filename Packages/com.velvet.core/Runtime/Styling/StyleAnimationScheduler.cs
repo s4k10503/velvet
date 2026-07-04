@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -40,7 +41,7 @@ namespace Velvet
         // Extra delay (seconds) added on top of the StyleTransitionConfig delay.
         // Used by AnimatePresenceNode.StaggerSec to sequentially delay child elements.
         // 0 (default) means no extra delay.
-        public void PlayEnter(VisualElement element, StyleTransitionConfig config, Action onComplete = null, float additionalDelaySec = 0f)
+        public void PlayEnter(VisualElement? element, StyleTransitionConfig? config, Action? onComplete = null, float additionalDelaySec = 0f)
         {
             if (element == null || config == null)
             {
@@ -61,8 +62,8 @@ namespace Velvet
         // difference — the to-classes are KEPT after completion, since they ARE the persistent resting state
         // (the animate target persists). A zero/invalid duration leaves the element at its
         // already-applied resting state (no strip, mounts directly at animate).
-        public void PlayVariantEnter(VisualElement element, string[] fromClasses, string[] toClasses,
-            float durationSec, EasingMode easing, float delaySec, Action onComplete = null, float additionalDelaySec = 0f)
+        public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
+            float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f)
         {
             if (element == null)
             {
@@ -74,7 +75,7 @@ namespace Velvet
         }
 
         private void PlayEnterInternal(VisualElement element, string[] fromClasses, string[] toClasses,
-            float durationSec, EasingMode easing, float delaySec, Action onComplete, float additionalDelaySec, bool variantMode)
+            float durationSec, EasingMode easing, float delaySec, Action? onComplete, float additionalDelaySec, bool variantMode)
         {
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
@@ -178,7 +179,7 @@ namespace Velvet
         // additionalDelaySec:
         // Extra delay before the exit transition fires, on top of config.DelaySec. Used for exit
         // staggering (each removed child delayed by stagger × its index), mirroring the enter stagger.
-        public void PlayExit(VisualElement element, StyleTransitionConfig config, Action onComplete,
+        public void PlayExit(VisualElement? element, StyleTransitionConfig? config, Action? onComplete,
             bool restoreFromOnCancel = false, float additionalDelaySec = 0f)
         {
             if (element == null || config == null)
@@ -242,7 +243,12 @@ namespace Velvet
                     return;
                 }
 
-                var host = element.panel.visualTree;
+                var panel = element.panel;
+                if (panel == null)
+                {
+                    return;
+                }
+                var host = panel.visualTree;
                 var startAction = new Action(() =>
                 {
                     if (!_pendingExits.ContainsKey(element))
@@ -297,7 +303,7 @@ namespace Velvet
             }
             else
             {
-                EventCallback<AttachToPanelEvent> onAttach = null;
+                EventCallback<AttachToPanelEvent>? onAttach = null;
                 onAttach = _ =>
                 {
                     element.UnregisterCallback(onAttach);
@@ -326,7 +332,7 @@ namespace Velvet
             CancelAllInMap(_pendingEnters);
         }
 
-        private static bool ValidateDuration(float durationSec, Action onComplete)
+        private static bool ValidateDuration(float durationSec, Action? onComplete)
         {
             if (durationSec == 0f)
             {
@@ -352,7 +358,7 @@ namespace Velvet
         private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
             new() { new UnityEngine.UIElements.StylePropertyName("all") };
 
-        private (List<TimeValue> durationList, List<TimeValue> delayList) ApplyTransitionStyles(
+        private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
             VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false)
         {
             var durationMs = (int)(durationSec * 1000);
@@ -370,7 +376,7 @@ namespace Velvet
             }
 
             // When delaySec <= 0, transition-delay is not set (negative values are ignored, as documented in StyleTransitionConfig).
-            List<TimeValue> delayList = null;
+            List<TimeValue>? delayList = null;
             if (delaySec > 0f)
             {
                 var delayMs = (int)(delaySec * 1000);
@@ -443,10 +449,10 @@ namespace Velvet
         // retained and no tick is scheduled. The driver token is the PendingAnimation, and a binding's opacity
         // is the PRODUCT of its active drivers, so a nested animation whose own fade completes first does NOT
         // reveal a shadow an enclosing, still-running fade also covers.
-        private static List<(VisualElement element, DropShadowBinding binding)> CollectShadowsForCoFade(
+        private static List<(VisualElement element, DropShadowBinding binding)>? CollectShadowsForCoFade(
             VisualElement element, object driver, float startFactor)
         {
-            List<(VisualElement, DropShadowBinding)> shadows = null;
+            List<(VisualElement, DropShadowBinding)>? shadows = null;
             CollectShadows(element, ref shadows);
             if (shadows == null)
             {
@@ -463,7 +469,7 @@ namespace Velvet
         // caster's own paint, not a separate child element, so the binding is looked up per element via
         // DropShadowSilhouette's side-channel.
         private static void CollectShadows(VisualElement element,
-            ref List<(VisualElement, DropShadowBinding)> shadows)
+            ref List<(VisualElement, DropShadowBinding)>? shadows)
         {
             var binding = DropShadowSilhouette.TryGet(element);
             if (binding != null)
@@ -490,6 +496,10 @@ namespace Velvet
                 return;
             }
             var animatingElement = pending.AnimatingElement;
+            if (animatingElement == null)
+            {
+                return;
+            }
             var host = animatingElement.panel?.visualTree;
             if (host == null)
             {
@@ -548,9 +558,9 @@ namespace Velvet
         }
 
         private List<TimeValue> RentDurationList(int ms) => RentTimeValueList(_durationPool, ms);
-        private void ReturnDurationList(List<TimeValue> list) => ReturnTimeValueList(_durationPool, list);
+        private void ReturnDurationList(List<TimeValue>? list) => ReturnTimeValueList(_durationPool, list);
         private List<TimeValue> RentDelayList(int ms) => RentTimeValueList(_delayPool, ms);
-        private void ReturnDelayList(List<TimeValue> list) => ReturnTimeValueList(_delayPool, list);
+        private void ReturnDelayList(List<TimeValue>? list) => ReturnTimeValueList(_delayPool, list);
 
         private static List<TimeValue> RentTimeValueList(Stack<List<TimeValue>> pool, int ms)
         {
@@ -566,7 +576,7 @@ namespace Velvet
             return list;
         }
 
-        private static void ReturnTimeValueList(Stack<List<TimeValue>> pool, List<TimeValue> list)
+        private static void ReturnTimeValueList(Stack<List<TimeValue>> pool, List<TimeValue>? list)
         {
             if (list != null && pool.Count < MaxPoolSize)
             {
@@ -578,32 +588,32 @@ namespace Velvet
         // Created and referenced only inside StyleAnimationScheduler.
         private sealed class PendingAnimation
         {
-            public IVisualElementScheduledItem ScheduledItem;
-            public IVisualElementScheduledItem TimeoutItem;
-            public string[] FromClasses;
-            public string[] ToClasses;
+            public IVisualElementScheduledItem? ScheduledItem;
+            public IVisualElementScheduledItem? TimeoutItem;
+            public string[]? FromClasses;
+            public string[]? ToClasses;
             // Classes to RE-ADD when this animation is cancelled (interrupted). Set for a variant-driven exit
             // whose FromClasses ARE the persistent resting state (variants[animate]): cancelling such an exit
             // must return the element to its resting variant (interrupt behavior), not strip it. Null for
             // preset exits / enters, whose FromClasses are transient and correctly removed on cancel.
-            public string[] RestingClasses;
-            public List<TimeValue> DurationList;
-            public List<TimeValue> DelayList;
+            public string[]? RestingClasses;
+            public List<TimeValue>? DurationList;
+            public List<TimeValue>? DelayList;
             // Drop-shadow paints this animation co-fades (registered as a driver at step 1), ended one-for-one
             // on completion / cancel. Each entry is the caster element and its paint binding. Null when the
             // animated subtree has no shadow.
-            public List<(VisualElement element, DropShadowBinding binding)> Shadows;
+            public List<(VisualElement element, DropShadowBinding binding)>? Shadows;
             // The element whose transition-interpolated opacity the co-fade tick samples each frame (the
             // animating subtree root). Stored so the tick reads it without recapturing.
-            public VisualElement AnimatingElement;
+            public VisualElement? AnimatingElement;
             // The recurring co-fade tick (panel-root scheduled). Paused on completion / cancel. Null when the
             // animated subtree has no shadow.
-            public IVisualElementScheduledItem ShadowTick;
+            public IVisualElementScheduledItem? ShadowTick;
             // For an exit started while the element was off-panel: the AttachToPanelEvent callback that defers
             // scheduling until attach. The callback unregisters itself when it fires, but a cancel-before-attach
             // never fires it, so it must be unregistered on cancel — otherwise it (and the closure pinning this
             // PendingAnimation) lingers on the element, surviving even pool reuse. Null for on-panel exits.
-            public EventCallback<AttachToPanelEvent> PendingAttach;
+            public EventCallback<AttachToPanelEvent>? PendingAttach;
         }
     }
 }

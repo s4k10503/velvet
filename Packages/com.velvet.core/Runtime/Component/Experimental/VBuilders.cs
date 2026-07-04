@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -43,18 +44,18 @@ namespace Velvet.Experimental
     public abstract class VBuilder : IEnumerable<VNode>
     {
         /// <summary>Utility class string (space-separated), equivalent to the <c>className</c> factory argument.</summary>
-        public string Class { get; set; }
+        public string? Class { get; set; }
 
         /// <summary>Reconciler key, equivalent to the <c>key</c> factory argument.</summary>
-        public string Key { get; set; }
+        public string? Key { get; set; }
 
         /// <summary><see cref="UnityEngine.UIElements.VisualElement.name"/>, equivalent to the <c>name</c> factory argument.</summary>
-        public string Name { get; set; }
+        public string? Name { get; set; }
 
-        private List<VNode> _children;
+        private List<VNode>? _children;
 
         /// <param name="className">Initial value for <see cref="Class"/>; pass positionally for the concise form.</param>
-        protected VBuilder(string className) => Class = className;
+        protected VBuilder(string? className) => Class = className;
 
         /// <summary>
         /// Collection-initializer hook. Accepts any <see cref="VNode"/> (e.g. the result of a <c>V.*</c> factory or
@@ -62,7 +63,7 @@ namespace Velvet.Experimental
         /// Null children are skipped, matching the <c>V.When(false, ...)</c> convention. The scratch accumulator
         /// list is rented from a pool so repeated authoring does not churn list allocations.
         /// </summary>
-        public void Add(VNode child)
+        public void Add(VNode? child)
         {
             if (child == null)
             {
@@ -78,7 +79,7 @@ namespace Velvet.Experimental
         /// <see cref="VNodePool"/>, so the reconciler reclaims it on the next diff exactly as it does for
         /// <c>V.List</c> output — keeping the builder's only irreducible per-build cost the builder object itself.
         /// </summary>
-        protected VNode[] BuildChildren()
+        protected VNode?[] BuildChildren()
         {
             if (_children == null)
             {
@@ -111,7 +112,7 @@ namespace Velvet.Experimental
         /// Implicit conversion that lets a builder be used anywhere a <see cref="VNode"/> is expected — as a child
         /// passed to <see cref="Add"/>, or as the return value of a component <c>Render</c> method.
         /// </summary>
-        public static implicit operator VNode(VBuilder builder) => builder?.Build();
+        public static implicit operator VNode?(VBuilder? builder) => builder?.Build();
 
         // IEnumerable is a compiler requirement for collection-initializer syntax; it is not otherwise meaningful.
         IEnumerator<VNode> IEnumerable<VNode>.GetEnumerator() =>
@@ -153,7 +154,7 @@ namespace Velvet.Experimental
     public sealed class VDiv : VBuilder
     {
         /// <param name="className">Utility class string applied to the div.</param>
-        public VDiv(string className = null) : base(className) { }
+        public VDiv(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>
@@ -167,10 +168,10 @@ namespace Velvet.Experimental
     public sealed class VLabel : VBuilder
     {
         /// <summary>Label text content.</summary>
-        public string Text { get; set; }
+        public string? Text { get; set; }
 
         /// <param name="className">Utility class string applied to the label.</param>
-        public VLabel(string className = null) : base(className) { }
+        public VLabel(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>
@@ -183,16 +184,16 @@ namespace Velvet.Experimental
     public sealed class VButton : VBuilder
     {
         /// <summary>Button label text. Coexists with children.</summary>
-        public string Text { get; set; }
+        public string? Text { get; set; }
 
         /// <summary>Click handler. When null, no click event is bound.</summary>
-        public Action OnClick { get; set; }
+        public Action? OnClick { get; set; }
 
         /// <summary>When false, disables the button.</summary>
         public bool? Enabled { get; set; }
 
         /// <param name="className">Utility class string applied to the button.</param>
-        public VButton(string className = null) : base(className) { }
+        public VButton(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>
@@ -207,7 +208,7 @@ namespace Velvet.Experimental
     public sealed class VScrollView : VBuilder
     {
         /// <param name="className">Utility class string applied to the scroll view.</param>
-        public VScrollView(string className = null) : base(className) { }
+        public VScrollView(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>
@@ -223,7 +224,7 @@ namespace Velvet.Experimental
     public sealed class VCustom<T> : VBuilder where T : UnityEngine.UIElements.VisualElement
     {
         /// <param name="className">Utility class string applied to the element.</param>
-        public VCustom(string className = null) : base(className) { }
+        public VCustom(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>
@@ -237,13 +238,13 @@ namespace Velvet.Experimental
     public sealed class VTextField : VBuilder
     {
         /// <summary>Current text value (controlled).</summary>
-        public string Value { get; set; }
+        public string? Value { get; set; }
 
         /// <summary>Handler invoked when the input text changes.</summary>
-        public Action<string> OnChange { get; set; }
+        public Action<string>? OnChange { get; set; }
 
         /// <summary>Label text shown next to the field.</summary>
-        public string Label { get; set; }
+        public string? Label { get; set; }
 
         /// <summary>When true, masks the input as a password field.</summary>
         public bool? IsPasswordField { get; set; }
@@ -252,7 +253,7 @@ namespace Velvet.Experimental
         public bool? Enabled { get; set; }
 
         /// <param name="className">Utility class string applied to the field.</param>
-        public VTextField(string className = null) : base(className) { }
+        public VTextField(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>
@@ -276,13 +277,13 @@ namespace Velvet.Experimental
         public float? HighValue { get; set; }
 
         /// <summary>Handler invoked when the value changes.</summary>
-        public Action<float> OnChange { get; set; }
+        public Action<float>? OnChange { get; set; }
 
         /// <summary>When false, disables user interaction.</summary>
         public bool? Enabled { get; set; }
 
         /// <param name="className">Utility class string applied to the slider.</param>
-        public VSlider(string className = null) : base(className) { }
+        public VSlider(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>
@@ -300,16 +301,16 @@ namespace Velvet.Experimental
         public bool? Value { get; set; }
 
         /// <summary>Handler invoked when the toggle state changes.</summary>
-        public Action<bool> OnChange { get; set; }
+        public Action<bool>? OnChange { get; set; }
 
         /// <summary>Label text shown next to the toggle.</summary>
-        public string Label { get; set; }
+        public string? Label { get; set; }
 
         /// <summary>When false, disables user interaction.</summary>
         public bool? Enabled { get; set; }
 
         /// <param name="className">Utility class string applied to the toggle.</param>
-        public VToggle(string className = null) : base(className) { }
+        public VToggle(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>
@@ -325,19 +326,19 @@ namespace Velvet.Experimental
     public sealed class VImage : VBuilder
     {
         /// <summary>Inline style overrides applied on top of USS classes (sprite / image typically set here).</summary>
-        public StyleOverrides Styles { get; set; }
+        public StyleOverrides? Styles { get; set; }
 
         /// <summary>USS class toggled while the pointer hovers the element (gesture-driven).</summary>
-        public string WhileHoverClass { get; set; }
+        public string? WhileHoverClass { get; set; }
 
         /// <summary>USS class toggled while the pointer is pressed on the element (gesture-driven).</summary>
-        public string WhileTapClass { get; set; }
+        public string? WhileTapClass { get; set; }
 
         /// <summary>USS class toggled while the element holds keyboard/UI focus (gesture-driven).</summary>
-        public string WhileFocusClass { get; set; }
+        public string? WhileFocusClass { get; set; }
 
         /// <param name="className">Utility class string applied to the image.</param>
-        public VImage(string className = null) : base(className) { }
+        public VImage(string? className = null) : base(className) { }
 
         /// <inheritdoc/>
         public override VNode Build() =>

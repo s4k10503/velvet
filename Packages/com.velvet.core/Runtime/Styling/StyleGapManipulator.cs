@@ -146,7 +146,7 @@ namespace Velvet
         private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
 
         // The container children are reconciled into (a ScrollView's contentContainer; else self).
-        private VisualElement ChildContainer
+        private VisualElement? ChildContainer
             => target == null ? null : FiberNodePatcher.GetChildContainer(target);
 
         // Spaces the children for the current container mode. Non-wrap writes the leading inter-child

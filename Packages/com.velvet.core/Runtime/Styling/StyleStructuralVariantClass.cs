@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 
 namespace Velvet
@@ -39,14 +40,14 @@ namespace Velvet
         private const string ArbitraryPrefix = "[&:";
 
         /// <summary>True if <paramref name="token"/> is a recognized structural variant token.</summary>
-        public static bool IsStructural(string token) => TryParse(token, out _, out _, out _);
+        public static bool IsStructural(string? token) => TryParse(token, out _, out _, out _);
 
         /// <summary>
         /// Splits a structural variant token into its kind (+ N for the nth forms) and payload. Returns
         /// false for any non-structural token. Accepts the named forms (<c>first:</c>…<c>even:</c>) and the
         /// arbitrary selector forms (<c>[&amp;:nth-child(3)]:</c>, <c>[&amp;:first-child]:</c>, …).
         /// </summary>
-        public static bool TryParse(string token, out StyleStructuralKind kind, out int n, out string payload)
+        public static bool TryParse(string? token, out StyleStructuralKind kind, out int n, out string? payload)
         {
             kind = default;
             n = 0;
@@ -83,11 +84,16 @@ namespace Velvet
 
         // Parses the arbitrary selector form [&:<selector>]:<payload>. The selector's own ':' / '(' live
         // inside the brackets, so the variant separator is the ':' that immediately follows the ']'.
-        private static bool TryParseArbitrary(string token, out StyleStructuralKind kind, out int n, out string payload)
+        private static bool TryParseArbitrary(string? token, out StyleStructuralKind kind, out int n, out string? payload)
         {
             kind = default;
             n = 0;
             payload = null;
+
+            if (string.IsNullOrEmpty(token))
+            {
+                return false;
+            }
 
             // An empty selector ([&:]:…) is rejected by the shared split; it would match no case below anyway.
             if (!StyleBracketVariant.TrySplitBracket(token, ArbitraryPrefix.Length, out var selector, out payload))
@@ -121,10 +127,12 @@ namespace Velvet
 
         // Parses the positive integer N out of "<fn>N)" (e.g. "nth-child(3)" → 3). Only a bare 1-based
         // integer is supported; the general An+B microsyntax is intentionally out of scope.
-        private static bool TryParseNthArgument(string selector, string fn, out int n)
+        private static bool TryParseNthArgument(string? selector, string fn, out int n)
         {
             n = 0;
-            if (!selector.StartsWith(fn, StringComparison.Ordinal) || selector[selector.Length - 1] != ')')
+            if (string.IsNullOrEmpty(selector)
+                || !selector.StartsWith(fn, StringComparison.Ordinal)
+                || selector[selector.Length - 1] != ')')
             {
                 return false;
             }

@@ -259,7 +259,7 @@ namespace Velvet
         // corner is taken as representative. Last matching class wins. Returns false for
         // rounded-full / arbitrary radii (those resolve via resolvedStyle.borderTopLeftRadius
         // once laid out) and when no rounding class is present.
-        public static bool TryResolveCornerRadius(string[] classNames, out float radius)
+        public static bool TryResolveCornerRadius(string[]? classNames, out float radius)
         {
             radius = 0f;
             if (classNames == null)

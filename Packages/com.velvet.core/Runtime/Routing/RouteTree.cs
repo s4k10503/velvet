@@ -38,7 +38,7 @@ namespace Velvet
         /// </summary>
         /// <param name="path">Path to match. null and empty string are invalid and return null (use "/" for the root path).</param>
         /// <returns>The matched chain (parent first) or null when nothing matches.</returns>
-        public IReadOnlyList<RouteMatch> Match(string path)
+        public IReadOnlyList<RouteMatch>? Match(string path)
         {
             if (string.IsNullOrEmpty(path))
             {
@@ -62,8 +62,8 @@ namespace Velvet
 
         private sealed class RouteBranch
         {
-            public RouteDefinition[] Chain;
-            public List<RouteSegment> Pattern;
+            public RouteDefinition[]? Chain;
+            public List<RouteSegment>? Pattern;
             public int Score;
             public int Order;
         }
@@ -89,8 +89,9 @@ namespace Velvet
         private int _branchCounter;
 
         private void FlattenBranches(
-            RouteDefinition[] routes, List<RouteDefinition> ancestors, List<RouteBranch> output)
+            RouteDefinition[]? routes, List<RouteDefinition> ancestors, List<RouteBranch> output)
         {
+            if (routes == null) return;
             foreach (var route in routes)
             {
                 ancestors.Add(route);
@@ -138,7 +139,7 @@ namespace Velvet
         private static IEnumerable<RouteSegment> ParseRouteSegments(RouteDefinition route)
         {
             var path = route.Path;
-            if (path == "/" || path == "")
+            if (string.IsNullOrEmpty(path) || path == "/")
             {
                 // Root and index routes contribute no segments to the matchable pattern.
                 yield break;
@@ -235,7 +236,7 @@ namespace Velvet
 
         #region Branch matching
 
-        private static bool TryMatchBranch(RouteBranch branch, string[] segments, out List<RouteMatch> matches)
+        private static bool TryMatchBranch(RouteBranch branch, string[] segments, out List<RouteMatch>? matches)
         {
             matches = null;
             var captured = new Dictionary<string, string>();
@@ -255,8 +256,9 @@ namespace Velvet
         /// the remaining path tail.
         /// </summary>
         private static bool TryConsume(
-            List<RouteSegment> pattern, int pi, string[] segments, int si, Dictionary<string, string> captured)
+            List<RouteSegment>? pattern, int pi, string[] segments, int si, Dictionary<string, string> captured)
         {
+            if (pattern == null) return false;
             while (pi < pattern.Count)
             {
                 var seg = pattern[pi];
@@ -279,10 +281,10 @@ namespace Velvet
                     if (si < segments.Length)
                     {
                         var keyExisted = false;
-                        string previous = null;
+                        string snap = "";
                         if (seg.IsParam)
                         {
-                            keyExisted = captured.TryGetValue(seg.Value, out previous);
+                            keyExisted = captured.TryGetValue(seg.Value, out snap);
                         }
 
                         if (TryMatchSingle(seg, segments[si], captured) &&
@@ -295,7 +297,7 @@ namespace Velvet
                         {
                             if (keyExisted)
                             {
-                                captured[seg.Value] = previous;
+                                captured[seg.Value] = snap;
                             }
                             else
                             {
@@ -333,8 +335,9 @@ namespace Velvet
             return string.Equals(seg.Value, pathSeg, comparison);
         }
 
-        private static List<RouteMatch> BuildMatches(RouteDefinition[] chain, Dictionary<string, string> captured)
+        private static List<RouteMatch> BuildMatches(RouteDefinition[]? chain, Dictionary<string, string> captured)
         {
+            if (chain == null) return new List<RouteMatch>();
             var matches = new List<RouteMatch>(chain.Length);
             var cumulativeId = string.Empty;
             // Resolved (params-substituted) URL pathname accumulated down the chain, without a leading
@@ -377,7 +380,7 @@ namespace Velvet
         /// </summary>
         private static string ResolveRouteSegments(RouteDefinition route, IReadOnlyDictionary<string, string> captured)
         {
-            if (route.Path == "/" || route.Path == "")
+            if (string.IsNullOrEmpty(route.Path) || route.Path == "/" || route.Path == "")
             {
                 return string.Empty;
             }
@@ -439,7 +442,7 @@ namespace Velvet
                 return "/";
             }
 
-            var segment = route.Path.TrimStart('/').TrimEnd('/');
+            var segment = route.Path?.TrimStart('/').TrimEnd('/') ?? string.Empty;
             if (parentId.Length == 0 || parentId == "/")
             {
                 return "/" + segment;
@@ -460,7 +463,7 @@ namespace Velvet
                 return "";
             }
 
-            return route.Path.TrimStart('/').TrimEnd('/');
+            return route.Path?.TrimStart('/').TrimEnd('/') ?? string.Empty;
         }
 
         #endregion

@@ -101,9 +101,11 @@ namespace Velvet
         // imperative handle / measured size observes the child's already-applied effect.
         private static void DrainDeferredInlineLayoutEffects(ComponentFiber rootFiber)
         {
-            var stack = rootFiber.Reconciler?.Context?.DeferredInlineLayoutEffectFibers;
+            var reconciler = rootFiber.Reconciler;
+            if (reconciler == null) return;
+            var stack = reconciler.Context.DeferredInlineLayoutEffectFibers;
             if (stack == null || stack.Count == 0) return;
-            var bufferPool = rootFiber.Reconciler.Context.BufferPool;
+            var bufferPool = reconciler.Context.BufferPool;
 
             // Outer loop: an inline-effect callback can synchronously push more deferred fibers
             // (e.g., a UseLayoutEffect that mounts another inline child). The old `while Pop`
@@ -134,7 +136,7 @@ namespace Velvet
                 // Group entries by their nearest pushed ancestor. Non-pushed intermediates are
                 // skipped so wrapper-mount subtrees whose middle ancestors did not defer collapse
                 // naturally.
-                Dictionary<ComponentFiber, List<(ComponentFiber Fiber, bool IsMount)>> childrenByParent = null;
+                Dictionary<ComponentFiber, List<(ComponentFiber Fiber, bool IsMount)>>? childrenByParent = null;
                 var roots = new List<(ComponentFiber Fiber, bool IsMount)>();
                 for (var i = 0; i < deduped.Count; i++)
                 {
@@ -168,7 +170,7 @@ namespace Velvet
         // that FiberTreeTraversal.Visit documented away.
         private static void DrainPostOrderIterative(
             (ComponentFiber Fiber, bool IsMount) root,
-            Dictionary<ComponentFiber, List<(ComponentFiber Fiber, bool IsMount)>> childrenByParent)
+            Dictionary<ComponentFiber, List<(ComponentFiber Fiber, bool IsMount)>>? childrenByParent)
         {
             var workStack = new Stack<(int ChildIndex, (ComponentFiber Fiber, bool IsMount) Entry)>();
             workStack.Push((0, root));
@@ -334,7 +336,7 @@ namespace Velvet
         private static List<ComponentFiber> OrderFibersPostOrder(List<ComponentFiber> staged)
         {
             var stagedSet = new HashSet<ComponentFiber>(staged);
-            Dictionary<ComponentFiber, List<ComponentFiber>> childrenByParent = null;
+            Dictionary<ComponentFiber, List<ComponentFiber>>? childrenByParent = null;
             var roots = new List<ComponentFiber>();
             for (var i = 0; i < staged.Count; i++)
             {
@@ -364,7 +366,7 @@ namespace Velvet
 
         private static void EmitPostOrder(
             ComponentFiber root,
-            Dictionary<ComponentFiber, List<ComponentFiber>> childrenByParent,
+            Dictionary<ComponentFiber, List<ComponentFiber>>? childrenByParent,
             List<ComponentFiber> result)
         {
             // Iterative post-order DFS (recursion-free) to avoid .NET stack overflow on deep chains.

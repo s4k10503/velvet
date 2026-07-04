@@ -28,7 +28,7 @@ namespace Velvet
         // test driving the controller directly); then the scope is context-only and no stamping occurs. The
         // returned token must be passed back to End (carries the pre-scope child set for stamping; supports
         // nested VirtualLists).
-        object BeginDetachedItemScope(ComponentFiber host, List<KeyValuePair<object, object>> enclosingContext);
+        object? BeginDetachedItemScope(ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext);
 
         // Stamps the item fibers newly added under host since the last call with a DetachedMountContext whose
         // DescendantNodes is THIS item's rendered vnode — so an isolated re-render can rebuild not just the
@@ -36,9 +36,9 @@ namespace Velvet
         // VirtualList parallel to Portal's drained-children walk). Call once per item, after its create/patch;
         // reused items add no fibers, so the per-item set diff stamps nothing for them. No-op when host is null.
         void StampDetachedItemFibers(
-            ComponentFiber host, List<KeyValuePair<object, object>> enclosingContext, VNode itemVnode, object scopeToken);
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode itemVnode, object? scopeToken);
 
         void EndDetachedItemScope(
-            ComponentFiber host, List<KeyValuePair<object, object>> enclosingContext, object scopeToken);
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, object? scopeToken);
     }
 }

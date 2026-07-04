@@ -17,12 +17,12 @@ namespace Velvet
         // Discovered stories, computed once per domain. A domain reload tears down the AppDomain and resets every
         // static, so a recompile rebuilds this on the next access with no manual invalidation needed; the
         // expensive AppDomain-wide scan therefore runs at most once per editor session between reloads.
-        private static List<VelvetPreviewStory> s_cachedStories;
+        private static List<VelvetPreviewStory>? s_cachedStories;
 
         // Per-assembly resolved [VelvetPreviewSetup] method (null value = scanned, none found), cached so a story
         // re-mounting many times (e.g. a controls knob edited per keystroke) does not re-scan the assembly each
         // mount. Reset for free by a domain reload, like s_cachedStories.
-        private static readonly Dictionary<Assembly, MethodInfo> s_setupCache = new();
+        private static readonly Dictionary<Assembly, MethodInfo?> s_setupCache = new();
 
         /// <summary>
         /// All valid preview stories declared by the project's own (non-test) assemblies, ordered by group then
@@ -70,7 +70,7 @@ namespace Velvet
         /// returns a disposable that tears it back down — or <c>null</c> when the assembly declares no setup.
         /// Honors at most one setup per assembly (a second is ignored with a warning).
         /// </summary>
-        public static IDisposable RunSetupFor(Assembly assembly)
+        public static IDisposable? RunSetupFor(Assembly? assembly)
         {
             if (assembly == null) return null;
             var chosen = ResolveSetup(assembly);
@@ -79,11 +79,11 @@ namespace Velvet
 
         // The assembly's single [VelvetPreviewSetup] method (or null), resolved once and cached. The scan +
         // validation warnings run only on the first resolve per assembly; subsequent mounts read the cache.
-        private static MethodInfo ResolveSetup(Assembly assembly)
+        private static MethodInfo? ResolveSetup(Assembly assembly)
         {
             if (s_setupCache.TryGetValue(assembly, out var cached)) return cached;
 
-            MethodInfo chosen = null;
+            MethodInfo? chosen = null;
             foreach (var method in MethodsWith<VelvetPreviewSetupAttribute>(new[] { assembly }))
             {
                 if (!IsValidSetup(method))
@@ -225,7 +225,7 @@ namespace Velvet
             return false;
         }
 
-        private static IDisposable Invoke(MethodInfo setup)
+        private static IDisposable? Invoke(MethodInfo setup)
         {
             object result;
             try
@@ -293,7 +293,7 @@ namespace Velvet
         /// <summary>Adapts an <see cref="Action"/> teardown returned by a setup method to <see cref="IDisposable"/>.</summary>
         private sealed class ActionDisposable : IDisposable
         {
-            private Action _teardown;
+            private Action? _teardown;
             public ActionDisposable(Action teardown) => _teardown = teardown;
 
             public void Dispose()

@@ -27,14 +27,14 @@ namespace Velvet
         /// allocate fresh each render). A divergence between the two passes' signatures indicates the render body
         /// produced different structure on identical hook state, i.e. an impure render.
         /// </summary>
-        internal static string ComputeSignature(VNode[] tree)
+        internal static string ComputeSignature(VNode?[] tree)
         {
             var sb = new StringBuilder();
             AppendTree(sb, tree);
             return sb.ToString();
         }
 
-        private static void AppendTree(StringBuilder sb, VNode[] tree)
+        private static void AppendTree(StringBuilder sb, VNode?[] tree)
         {
             if (tree == null)
             {
@@ -50,8 +50,9 @@ namespace Velvet
             sb.Append(']');
         }
 
-        private static void AppendNode(StringBuilder sb, VNode node)
+        private static void AppendNode(StringBuilder sb, VNode? node)
         {
+            if (node == null) return;
             if (node == null)
             {
                 sb.Append("null");
@@ -116,7 +117,7 @@ namespace Velvet
             }
         }
 
-        private static void AppendProps(StringBuilder sb, FiberElementProps props)
+        private static void AppendProps(StringBuilder sb, FiberElementProps? props)
         {
             // Value-bearing content of the element. Impure renders most often diverge here (e.g. a
             // Label whose text is derived from mutated module state), so the signature must capture
@@ -145,7 +146,7 @@ namespace Velvet
 
         // Appends an attribute map as a key-sorted "k=v;" run: captures every key and value yet stays
         // independent of the map's iteration order (sorting makes two equal maps produce the same text).
-        private static void AppendAttributes(StringBuilder sb, IReadOnlyDictionary<string, string> attrs)
+        private static void AppendAttributes(StringBuilder sb, IReadOnlyDictionary<string, string>? attrs)
         {
             sb.Append('a').Append('(');
             if (attrs != null && attrs.Count > 0)
@@ -179,7 +180,7 @@ namespace Velvet
             sb.Append('}');
         }
 
-        private static void AppendDeps(StringBuilder sb, object[] deps)
+        private static void AppendDeps(StringBuilder sb, object?[]? deps)
         {
             sb.Append('<');
             if (deps != null)

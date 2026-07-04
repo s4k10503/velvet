@@ -113,7 +113,7 @@ namespace Velvet
             return (VisualElement)Activator.CreateInstance(type);
         }
 
-        private static void ApplyName(VisualElement element, string name)
+        private static void ApplyName(VisualElement element, string? name)
         {
             if (!string.IsNullOrEmpty(name))
             {
@@ -203,7 +203,7 @@ namespace Velvet
             }
         }
 
-        internal static void ApplyProps(VisualElement element, FiberElementProps props)
+        internal static void ApplyProps(VisualElement element, FiberElementProps? props)
         {
             if (props == null)
             {
@@ -261,7 +261,7 @@ namespace Velvet
             }
         }
 
-        internal static void ApplyStyles(VisualElement element, StyleOverrides styles)
+        internal static void ApplyStyles(VisualElement element, StyleOverrides? styles)
         {
             if (styles == null)
             {
@@ -297,7 +297,7 @@ namespace Velvet
             }
         }
 
-        internal static void ApplyFieldValue(VisualElement element, object value)
+        internal static void ApplyFieldValue(VisualElement element, object? value)
         {
             switch (element)
             {

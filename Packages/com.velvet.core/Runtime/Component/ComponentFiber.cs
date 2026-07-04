@@ -9,7 +9,7 @@ namespace Velvet
     /// </summary>
     internal sealed class LaneState
     {
-        public SortedSet<FiberUpdatePriority> Queue;
+        public SortedSet<FiberUpdatePriority>? Queue;
         public bool IsInTransition;
         public int TransitionStarvationCounter;
 
@@ -33,9 +33,9 @@ namespace Velvet
     /// </remarks>
     public sealed class ComponentFiber
     {
-        public ComponentFiber Parent { get; private set; }
-        public ComponentFiber Child { get; private set; }
-        public ComponentFiber Sibling { get; private set; }
+        public ComponentFiber? Parent { get; private set; }
+        public ComponentFiber? Child { get; private set; }
+        public ComponentFiber? Sibling { get; private set; }
 
         /// <summary>
         /// Dispatch slot for re-render scheduling triggered by context value changes.
@@ -47,7 +47,7 @@ namespace Velvet
         /// A cached static delegate is assigned via <see cref="FiberRenderer.CreateRoot"/>, eliminating per-fiber
         /// delegate allocation (zero-allocation design). Tests assign a mock delegate directly to verify dispatch behavior.
         /// </remarks>
-        public Action<ComponentFiber> RequestRenderForContextHandler;
+        public Action<ComponentFiber>? RequestRenderForContextHandler;
 
         /// <summary>
         /// The propagation generation in which <see cref="RequestRenderForContextHandler"/> was last dispatched
@@ -64,13 +64,13 @@ namespace Velvet
         /// Render delegate for a function component (the function reference that produces this fiber's tree).
         /// The wrapped tree from V.Mount or ComponentNode.Body via ComponentRegistry is stored here.
         /// </summary>
-        internal Func<VNode> Body { get; set; }
+        internal Func<VNode>? Body { get; set; }
 
         /// <summary>
         /// Props value supplied by <c>V.Component&lt;TProps&gt;</c>. Re-assigned on each parent render
         /// so the closure-captured props seen by <see cref="Body"/> stay current.
         /// </summary>
-        internal object Props { get; set; }
+        internal object? Props { get; set; }
 
         public bool IsErrorBoundary { get; internal set; }
         public bool IsSuspenseBoundary { get; internal set; }
@@ -110,37 +110,37 @@ namespace Velvet
 
         // Each List is lazily allocated (null treated as empty) since most components use only a subset of hooks.
 
-        internal List<HookStateSlot> StateSlots;
-        internal List<HookStoreSlot> StoreSlots;
-        internal List<HookEffectSlot> Effects;
-        internal List<HookEffectSlot> PendingEffects;
-        internal List<HookEffectSlot> LayoutEffects;
-        internal List<HookEffectSlot> PendingLayoutEffects;
-        internal List<HookEffectSlot> InsertionEffects;
-        internal List<HookEffectSlot> PendingInsertionEffects;
-        internal List<HookCallbackSlot> CallbackSlots;
-        internal List<HookImperativeHandleSlot> ImperativeHandleSlots;
-        internal List<HookRefSlot> RefSlots;
-        internal List<HookBlockerSlot> BlockerSlots;
-        internal List<HookMemoSlot> MemoSlots;
-        internal List<HookMemoValueSlot> MemoValueSlots;
-        internal List<HookMutationSlot> MutationSlots;
-        internal List<HookIdSlot> IdSlots;
-        internal List<HookDeferredValueSlot> DeferredValueSlots;
-        internal List<HookOptimisticSlot> OptimisticSlots;
+        internal List<HookStateSlot>? StateSlots;
+        internal List<HookStoreSlot>? StoreSlots;
+        internal List<HookEffectSlot>? Effects;
+        internal List<HookEffectSlot>? PendingEffects;
+        internal List<HookEffectSlot>? LayoutEffects;
+        internal List<HookEffectSlot>? PendingLayoutEffects;
+        internal List<HookEffectSlot>? InsertionEffects;
+        internal List<HookEffectSlot>? PendingInsertionEffects;
+        internal List<HookCallbackSlot>? CallbackSlots;
+        internal List<HookImperativeHandleSlot>? ImperativeHandleSlots;
+        internal List<HookRefSlot>? RefSlots;
+        internal List<HookBlockerSlot>? BlockerSlots;
+        internal List<HookMemoSlot>? MemoSlots;
+        internal List<HookMemoValueSlot>? MemoValueSlots;
+        internal List<HookMutationSlot>? MutationSlots;
+        internal List<HookIdSlot>? IdSlots;
+        internal List<HookDeferredValueSlot>? DeferredValueSlots;
+        internal List<HookOptimisticSlot>? OptimisticSlots;
 
         /// <summary>
         /// Cache field for the onCompleted callback of <see cref="Hooks.Use{T}"/> (Suspense) across re-renders,
         /// reducing GC allocations from per-render to once per fiber (zero-allocation design).
         /// </summary>
-        internal Action AsyncResourceCompletedCallback;
+        internal Action? AsyncResourceCompletedCallback;
 
         /// <summary>
         /// Per-call-position transition slots for <see cref="Hooks.UseTransition"/>. Each call gets its own
         /// pending flag and a reference-stable starter, so two transitions in one component report independent
         /// <c>isPending</c> values. Lazily allocated; null treated as empty.
         /// </summary>
-        internal List<HookTransitionSlot> TransitionSlots;
+        internal List<HookTransitionSlot>? TransitionSlots;
 
         /// <summary>Position cursors per hook kind within one render cycle.</summary>
         internal HookIndexTable Indices;
@@ -202,12 +202,12 @@ namespace Velvet
         /// A minimal model of the per-fiber and per-subtree pending-update lane bitsets.
         /// Allocated only on demand (lazy init preserves zero-allocation for most components).
         /// </summary>
-        internal LaneState Lanes { get; set; }
+        internal LaneState? Lanes { get; set; }
 
         internal LaneState EnsureLanes() => Lanes ??= new LaneState();
 
         /// <summary>Null-safe getter / lazy-init setter for Lane operations (used by FiberWorkLoop).</summary>
-        internal SortedSet<FiberUpdatePriority> LaneQueue
+        internal SortedSet<FiberUpdatePriority>? LaneQueue
         {
             get => Lanes?.Queue;
             set => EnsureLanes().Queue = value;
@@ -305,7 +305,7 @@ namespace Velvet
         /// The Reconciler instance responsible for reconciling this Fiber subtree. Currently per-Fiber
         /// (each component has its own Reconciler).
         /// </summary>
-        internal Reconciler Reconciler { get; set; }
+        internal Reconciler? Reconciler { get; set; }
 
         /// <summary>
         /// Set on the top-level child fiber of a detached mount (a Portal's drained children, or a
@@ -314,7 +314,7 @@ namespace Velvet
         /// Providers. This carries the context that enclosed the detached mount so
         /// <see cref="FiberContextSpine"/> can rebuild it directly. Null for every non-detached-top fiber.
         /// </summary>
-        internal DetachedMountContext DetachedMountContext { get; set; }
+        internal DetachedMountContext? DetachedMountContext { get; set; }
 
         /// <summary>
         /// The VisualElement into which this fiber's rendered output is committed as children.
@@ -324,7 +324,7 @@ namespace Velvet
         /// <c>[<see cref="MountSlotStart"/>, <see cref="MountSlotStart"/> + <see cref="MountSlotCount"/>)</c>
         /// owned by this fiber. The host VisualElement backing this fiber.
         /// </summary>
-        internal UnityEngine.UIElements.VisualElement MountPoint { get; set; }
+        internal UnityEngine.UIElements.VisualElement? MountPoint { get; set; }
 
         /// <summary>
         /// Absolute starting index in <see cref="MountPoint"/>.children at which this fiber's
@@ -350,10 +350,10 @@ namespace Velvet
         internal bool IsInlineMounted { get; set; }
 
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
-        internal VNode[] PreviousTree { get; set; }
+        internal VNode?[]? PreviousTree { get; set; }
 
         /// <summary>Reference to the previous tree retained during a pending time-sliced reconcile.</summary>
-        internal VNode[] PendingOldTree { get; set; }
+        internal VNode?[]? PendingOldTree { get; set; }
 
         /// <summary>
         /// Frame budget (milliseconds) chosen for the in-flight reconcile by the lane that started it. A resume
@@ -378,14 +378,14 @@ namespace Velvet
         /// Ref passed by the parent via <c>V.Component&lt;TRef&gt;(componentRef:)</c>. Retrieved via the
         /// <c>ForwardedRef&lt;T&gt;()</c> hook.
         /// </summary>
-        internal IHookRefSetter ExternalRef { get; set; }
+        internal IHookRefSetter? ExternalRef { get; set; }
 
         /// <summary>
         /// Fallback factory registered by a function-style Error Boundary via <see cref="Hooks.UseFallback"/>.
         /// Called from the <see cref="FiberErrorBoundary.TryCatch"/> path when a child exception is caught,
         /// returning a fallback VNode. Overwritten on each render (Hook rule: must always be called).
         /// </summary>
-        internal Func<Exception, ErrorInfo, VNode> FallbackFactory { get; set; }
+        internal Func<Exception, ErrorInfo, VNode>? FallbackFactory { get; set; }
 
         /// <summary>
         /// Calls <c>Set(null)</c> on every ref registered by <see cref="UseImperativeHandle"/>.
@@ -402,7 +402,7 @@ namespace Velvet
         }
 
         // Disposes every slot in the list and empties it; no-op when the list was never allocated.
-        private static void DisposeAndClear<T>(List<T> slots) where T : IDisposable
+        private static void DisposeAndClear<T>(List<T>? slots) where T : IDisposable
         {
             if (slots == null) return;
             foreach (var slot in slots)
@@ -479,7 +479,7 @@ namespace Velvet
 
         internal void ClearDependencies() => Dependencies.Clear();
 
-        public object Ref { get; set; }
+        public object? Ref { get; set; }
 
         public void AppendChild(ComponentFiber child)
         {
@@ -545,6 +545,6 @@ namespace Velvet
     /// </summary>
     internal sealed class ContextDependency
     {
-        public object Context { get; set; }
+        public object? Context { get; set; }
     }
 }

@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -50,17 +51,17 @@ namespace Velvet
         // flat fast path (pure-leaf containers) keeps the time-sliced Indexed/Keyed machinery.
         private sealed class GeneralCommitState
         {
-            public VisualElement Parent;
+            public VisualElement? Parent;
             public int SlotStart;
-            public VNode[] OldNodes;
-            public Dictionary<ChildKey, (int index, VNode node)> OldKeyMap;
-            public HashSet<ChildKey> UsedKeys;
-            public HashSet<ChildKey> ReplacedKeys;
-            public HashSet<int> OrphanedOldIndices;
-            public List<(VisualElement element, bool isExisting)> NewElements;
+            public VNode?[]? OldNodes;
+            public Dictionary<ChildKey, (int index, VNode? node)> OldKeyMap = null!;
+            public HashSet<ChildKey> UsedKeys = null!;
+            public HashSet<ChildKey> ReplacedKeys = null!;
+            public HashSet<int> OrphanedOldIndices = null!;
+            public List<(VisualElement? element, bool isExisting)> NewElements = null!;
             // Key committed for each NewElements entry (parallel list), so a
             // speculative subtree (Suspense primary) can be rolled back on suspend.
-            public List<ChildKey> CommittedKeys;
+            public List<ChildKey> CommittedKeys = null!;
             public int NewIndex;
         }
 
@@ -97,9 +98,9 @@ namespace Velvet
         // and committed via CommitLeaf while the live stack still reflects its ancestor
         // Providers. Removals and the LIS reorder run afterwards in FinalizeGeneralCommit.
         internal void ReconcileGeneral(
-            VisualElement parent,
-            VNode[] oldNodes,
-            VNode[] newChildren,
+            VisualElement? parent,
+            VNode?[] oldNodes,
+            VNode?[] newChildren,
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
@@ -168,9 +169,9 @@ namespace Velvet
         // element is recorded in GeneralCommitState.NewElements in new order; its final
         // placement is decided by FinalizeGeneralCommit. Existing elements stay at their
         // old DOM position (PatchNode preserves parent child order), created elements are orphans.
-        private void CommitLeaf(VNode node, GeneralCommitState commit)
+        private void CommitLeaf(VNode? node, GeneralCommitState commit)
         {
-            var parent = commit.Parent;
+            var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
             var newIdx = commit.NewIndex++;
             var key = _keying.ReconcileKey(node, newIdx);
@@ -223,10 +224,10 @@ namespace Velvet
 
         // Emits one expanded leaf: commits it in place under live context (general path) or collects
         // it into the flat structural result (old-side / fast-path expansion).
-        private void Emit(VNode node, List<VNode> result, GeneralCommitState commit)
+        private void Emit(VNode? node, List<VNode>? result, GeneralCommitState? commit)
         {
             if (commit != null) CommitLeaf(node, commit);
-            else result.Add(node);
+            else if (node != null) result!.Add(node);
         }
 
         // Rolls a speculative subtree's commits back to preCount entries. A
@@ -247,8 +248,8 @@ namespace Velvet
         // GeneralCommitState.NewIndex rewinds so the replacement subtree re-emits at
         // the same flat positions.
         private void RollbackCommitTo(GeneralCommitState commit, int preCount,
-            HashSet<ComponentFiber> fibersBefore = null,
-            HashSet<ComponentFiber> newFibers = null)
+            HashSet<ComponentFiber>? fibersBefore = null,
+            HashSet<ComponentFiber>? newFibers = null)
         {
             // A created container orphan (e.g. V.Div) reconciled its declared children during
             // CreateElement, so a Component child of that container is registered in
@@ -257,7 +258,7 @@ namespace Velvet
             // and therefore are NOT in this scope's `newFibers` set. Dispose every inline fiber
             // whose MountPoint sits inside the orphan range so its effect cleanup runs and the
             // deferred layout-effect drain short-circuits via IsDisposed.
-            HashSet<VisualElement> orphanContainers = null;
+            HashSet<VisualElement>? orphanContainers = null;
             for (var i = preCount; i < commit.NewElements.Count; i++)
             {
                 var (element, isExisting) = commit.NewElements[i];
@@ -273,7 +274,7 @@ namespace Velvet
             {
                 if (newFibers != null)
                 {
-                    List<ComponentFiber> drop = null;
+                    List<ComponentFiber>? drop = null;
                     foreach (var f in newFibers)
                     {
                         if (fibersBefore != null && fibersBefore.Contains(f)) continue;
@@ -324,9 +325,9 @@ namespace Velvet
         // no linear prefix pass — all matching happened in CommitLeaf).
         private void FinalizeGeneralCommit(GeneralCommitState commit)
         {
-            var parent = commit.Parent;
+            var parent = commit.Parent!;
             var slotStart = commit.SlotStart;
-            var oldNodes = commit.OldNodes;
+            var oldNodes = commit.OldNodes!;
             var newElements = commit.NewElements;
 
             // Removal (reverse so not-yet-visited indices stay valid).
@@ -355,12 +356,12 @@ namespace Velvet
         // Provider/Fragment is transparent, a Suspense/Memo/AnimatePresence expands inline (wrapper-less),
         // and a null is filtered. Both the fast/slow routing in NeedsExpansion and the early-out inside
         // ExpandInlineForReconcile gate on this single predicate, so the two cannot drift out of lockstep.
-        private static bool RequiresInlineExpansion(VNode n)
+        private static bool RequiresInlineExpansion(VNode? n)
             => n is FragmentNode or ContextProviderNode or ComponentNode or SuspenseNode or MemoNode or AnimatePresenceNode or null;
 
         // Whether nodes contains a node type that requires the inline-expansion walk. When false the
         // container is a flat list of host leaves and takes the fast path (the time-sliced Indexed/Keyed diff).
-        internal static bool NeedsExpansion(VNode[] nodes)
+        internal static bool NeedsExpansion(VNode?[] nodes)
         {
             if (nodes == null) return false;
             foreach (var n in nodes)
@@ -382,15 +383,15 @@ namespace Velvet
         // oldProvidersForPairing and dispatches NotifyContextChanged when the
         // value changed; finally pops. The push → notify → recurse → pop order guarantees the
         // propagated snapshot includes the new value.
-        internal VNode[] ExpandInlineForReconcile(
-            VNode[] nodes,
+        internal VNode?[] ExpandInlineForReconcile(
+            VNode?[] nodes,
             bool isNewSide,
-            VisualElement parent,
+            VisualElement? parent,
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            List<ContextProviderNode> providers = null,
-            List<ContextProviderNode> oldProvidersForPairing = null)
+            List<ContextProviderNode>? providers = null,
+            List<ContextProviderNode>? oldProvidersForPairing = null)
         {
             if (nodes == null || nodes.Length == 0) return Array.Empty<VNode>();
 
@@ -430,19 +431,19 @@ namespace Velvet
         }
 
         private void ExpandInlineRecursive(
-            VNode[] nodes,
-            List<VNode> result,
+            VNode?[] nodes,
+            List<VNode>? result,
             bool isNewSide,
-            VisualElement parent,
+            VisualElement? parent,
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            List<ContextProviderNode> providers,
-            List<ContextProviderNode> oldProvidersForPairing,
+            List<ContextProviderNode>? providers,
+            List<ContextProviderNode>? oldProvidersForPairing,
             Dictionary<object, int> positionCounters,
             ref int newProviderIndex,
-            string fragmentKeyScope,
-            GeneralCommitState commit = null)
+            string? fragmentKeyScope,
+            GeneralCommitState? commit = null)
         {
             for (var nodeIndex = 0; nodeIndex < nodes.Length; nodeIndex++)
             {
@@ -530,7 +531,7 @@ namespace Velvet
                             // emitted-leaf count so far maps 1:1 to parent's slot range. The general
                             // (commit) path commits leaves into NewElements; the structural (collect)
                             // path accumulates them in result.
-                            var emittedCount = commit != null ? commit.NewElements.Count : result.Count;
+                            var emittedCount = commit != null ? commit.NewElements.Count : result!.Count;
                             var currentSlotStart = slotStart + emittedCount;
                             var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
                                 component, parentFiber, slotKey, parent, currentSlotStart);
@@ -555,7 +556,7 @@ namespace Velvet
                                     _ctx.BufferPool.ReturnPositionCounter(childCounters);
                                 }
                             }
-                            fiber.MountSlotCount = (commit != null ? commit.NewElements.Count : result.Count) - preCount;
+                            fiber.MountSlotCount = (commit != null ? commit.NewElements.Count : result!.Count) - preCount;
                         }
                         else
                         {
@@ -646,18 +647,18 @@ namespace Velvet
         // inner is handled wrapper-less in the parent's slot range.
         private void ExpandMemoInline(
             MemoNode memo,
-            List<VNode> result,
+            List<VNode>? result,
             bool isNewSide,
-            VisualElement parent,
+            VisualElement? parent,
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            List<ContextProviderNode> providers,
-            List<ContextProviderNode> oldProvidersForPairing,
+            List<ContextProviderNode>? providers,
+            List<ContextProviderNode>? oldProvidersForPairing,
             ref int newProviderIndex,
-            string fragmentKeyScope,
+            string? fragmentKeyScope,
             int nodeIndex,
-            GeneralCommitState commit = null)
+            GeneralCommitState? commit = null)
         {
             var memoScope = FiberKeying.MemoScope(fragmentKeyScope, nodeIndex);
             var cacheKey = FiberKeying.MemoCacheKey(memo.Key, memoScope);
@@ -725,18 +726,18 @@ namespace Velvet
         // Primary and fallback children use distinct fragment scopes so their fibers never collide.
         private void ExpandSuspenseInline(
             SuspenseNode suspense,
-            List<VNode> result,
+            List<VNode>? result,
             bool isNewSide,
-            VisualElement parent,
+            VisualElement? parent,
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            List<ContextProviderNode> providers,
-            List<ContextProviderNode> oldProvidersForPairing,
+            List<ContextProviderNode>? providers,
+            List<ContextProviderNode>? oldProvidersForPairing,
             ref int newProviderIndex,
-            string fragmentKeyScope,
+            string? fragmentKeyScope,
             int nodeIndex,
-            GeneralCommitState commit = null)
+            GeneralCommitState? commit = null)
         {
             var boundaryFiber = _ctx.FiberStack.Current;
             var suspenseKey = FiberKeying.SuspenseKey(fragmentKeyScope, suspense.Key, nodeIndex);
@@ -747,7 +748,7 @@ namespace Velvet
             if (isNewSide)
             {
                 if (boundaryFiber != null) boundaryFiber.IsSuspenseBoundary = true;
-                var preCount = commit != null ? commit.NewElements.Count : result.Count;
+                var preCount = commit != null ? commit.NewElements.Count : result!.Count;
                 var suspended = false;
                 // Snapshot the fiber set so the post-expansion pending check can be scoped to THIS
                 // Suspense's own primary children (the fibers newly added during its expansion).
@@ -816,7 +817,7 @@ namespace Velvet
                     if (suspended)
                     {
                         if (commit != null) RollbackCommitTo(commit, preCount, fibersBefore, newFibers);
-                        else if (result.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
+                        else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
                         if (suspense.Fallback != null)
                         {
                             var fbCounters = _ctx.BufferPool.RentPositionCounter();
@@ -888,18 +889,18 @@ namespace Velvet
         // sibling slots).
         private void ExpandAnimatePresenceInline(
             AnimatePresenceNode presence,
-            List<VNode> result,
+            List<VNode>? result,
             bool isNewSide,
-            VisualElement parent,
+            VisualElement? parent,
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            List<ContextProviderNode> providers,
-            List<ContextProviderNode> oldProvidersForPairing,
+            List<ContextProviderNode>? providers,
+            List<ContextProviderNode>? oldProvidersForPairing,
             ref int newProviderIndex,
-            string fragmentKeyScope,
+            string? fragmentKeyScope,
             int nodeIndex,
-            GeneralCommitState commit)
+            GeneralCommitState? commit)
         {
             var boundaryFiber = _ctx.FiberStack.Current;
             var presenceKey = FiberKeying.PresenceKey(fragmentKeyScope, presence.Key, nodeIndex);
@@ -991,7 +992,7 @@ namespace Velvet
                         }
                         else
                         {
-                            state.ExitAnchors.Remove(key);
+                            state.ExitAnchors.Remove(key!);
                         }
                         if (wasExiting) _ctx.StyleAnimationScheduler.CancelExit(anchor);
 
@@ -1177,7 +1178,7 @@ namespace Velvet
         }
 
         private static bool PresenceContainsKey(
-            List<(string key, VNode node)> list, string key)
+            List<(string key, VNode node)> list, string? key)
         {
             for (var i = 0; i < list.Count; i++)
             {
@@ -1190,14 +1191,14 @@ namespace Velvet
         // because a Motion whose exit detached its element clears its PreviousTree, so the old-side
         // reproduction stops recursing into the ghost's subtree and the orphan sweep (oldFibers \ newFibers)
         // no longer sees those fibers — they would leak and be re-paired as a zombie on a same-key re-entry.
-        private void DisposeExitedGhostFibers(ReconcilerContext.PresenceBoundaryState state, string key)
+        private void DisposeExitedGhostFibers(ReconcilerContext.PresenceBoundaryState state, string? key)
         {
-            if (!state.ExitAnchors.TryGetValue(key, out var anchor))
+            if (!state.ExitAnchors.TryGetValue(key!, out var anchor))
             {
                 return;
             }
 
-            state.ExitAnchors.Remove(key);
+            state.ExitAnchors.Remove(key!);
             if (anchor == null)
             {
                 return;
@@ -1212,22 +1213,22 @@ namespace Velvet
         // under a render-stable per-child scope. Returns the child's anchor element — the first element it
         // emitted into GeneralCommitState.NewElements — for enter / exit animation, or null on
         // the structural (old-side) walk or when the child emitted nothing.
-        private VisualElement EmitPresenceChild(
-            VNode node,
-            string key,
-            string presenceScope,
-            List<VNode> result,
+        private VisualElement? EmitPresenceChild(
+            VNode? node,
+            string? key,
+            string? presenceScope,
+            List<VNode>? result,
             bool isNewSide,
-            VisualElement parent,
+            VisualElement? parent,
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            List<ContextProviderNode> providers,
-            List<ContextProviderNode> oldProvidersForPairing,
+            List<ContextProviderNode>? providers,
+            List<ContextProviderNode>? oldProvidersForPairing,
             ref int newProviderIndex,
-            GeneralCommitState commit)
+            GeneralCommitState? commit)
         {
-            var startIdx = commit != null ? commit.NewElements.Count : result.Count;
+            var startIdx = commit != null ? commit.NewElements.Count : result!.Count;
             var childScope = FiberKeying.PresenceChildScope(presenceScope, key);
             var counters = _ctx.BufferPool.RentPositionCounter();
             try
@@ -1252,11 +1253,11 @@ namespace Velvet
         // variants[Initial], toClasses = variants[Animate]. Returns false (no
         // variant-initial enter; caller falls back to the classic transition) unless the Motion sets its own
         // Initial + Animate + Variants and the initial label maps to a non-empty class string.
-        private static bool TryResolveVariantInitial(MotionNode motion, out string[] fromClasses, out string[] toClasses)
+        private static bool TryResolveVariantInitial(MotionNode? motion, out string[]? fromClasses, out string[]? toClasses)
         {
             fromClasses = null;
             toClasses = null;
-            if (motion.Initial == null || motion.Animate == null || motion.Variants == null
+            if (motion?.Initial == null || motion.Animate == null || motion.Variants == null
                 || !motion.Variants.TryGetValue(motion.Initial, out var fromClass) || string.IsNullOrEmpty(fromClass))
             {
                 return false;
@@ -1273,16 +1274,16 @@ namespace Velvet
         // transition timing, before unmount. Returns null (caller falls back to the classic transition) unless this
         // is the direct Motion child (node == motion, so anchor IS its element) and it sets its own
         // Exit + Animate + Variants with a non-empty exit class.
-        internal static StyleTransitionConfig TryResolveVariantExit(VNode node, MotionNode motion)
+        internal static StyleTransitionConfig? TryResolveVariantExit(VNode? node, MotionNode? motion)
         {
-            if (!ReferenceEquals(node, motion) || motion.Exit == null || motion.Animate == null || motion.Variants == null
+            if (!ReferenceEquals(node, motion) || motion?.Exit == null || motion.Animate == null || motion.Variants == null
                 || !motion.Variants.TryGetValue(motion.Exit, out var exitClass) || string.IsNullOrEmpty(exitClass))
             {
                 return null;
             }
 
             motion.Variants.TryGetValue(motion.Animate, out var restingClass);
-            var timing = motion.Transition;
+            var timing = motion.Transition!;
             return new StyleTransitionConfig
             {
                 ExitFromClass = restingClass ?? string.Empty,

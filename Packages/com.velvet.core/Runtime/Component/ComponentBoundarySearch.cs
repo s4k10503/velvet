@@ -9,7 +9,7 @@ namespace Velvet
     {
         // Walks ancestors of the given fiber and returns the nearest Suspense Boundary.
         // Includes the fiber itself if it is a boundary. Returns null if not found.
-        internal static ComponentFiber FindNearestSuspenseBoundary(ComponentFiber fiber)
+        internal static ComponentFiber? FindNearestSuspenseBoundary(ComponentFiber fiber)
         {
             for (var current = fiber; current != null; current = current.Parent)
             {

@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 
 namespace Velvet
@@ -29,10 +30,10 @@ namespace Velvet
         // Keys raw-pushed from a Portal-top fiber's enclosing-context snapshot (no ContextProviderNode to
         // pop). Always pushed before any _pushed Provider (the Portal edge is the spine's first), so per
         // context key the raw base sits under the Providers and unwinds last.
-        private readonly List<object> _rawPushedKeys;
+        private readonly List<object>? _rawPushedKeys;
 
         private FiberContextSpine(
-            ComponentContextStack stack, List<ContextProviderNode> pushed, List<object> rawPushedKeys)
+            ComponentContextStack stack, List<ContextProviderNode> pushed, List<object>? rawPushedKeys)
         {
             _stack = stack;
             _pushed = pushed;
@@ -45,12 +46,12 @@ namespace Velvet
         // its own Providers during its own reconcile).
         internal static FiberContextSpine Push(ComponentFiber target)
         {
-            var ctx = target?.Reconciler?.Context;
+            var ctx = target.Reconciler?.Context;
             if (ctx == null || target.Parent == null) return default;
 
             // Build the spine root -> target's parent. Each entry's committed tree contributes the
             // Providers enclosing the NEXT entry down (or the target at the deepest entry).
-            List<ComponentFiber> spine = null;
+            List<ComponentFiber>? spine = null;
             for (var f = target.Parent; f != null; f = f.Parent)
             {
                 (spine ??= new List<ComponentFiber>()).Add(f);
@@ -60,7 +61,7 @@ namespace Velvet
 
             var stack = ctx.ComponentContextStack;
             var pushed = new List<ContextProviderNode>();
-            List<object> rawPushedKeys = null;
+            List<object>? rawPushedKeys = null;
             var registry = ctx.ComponentRegistry;
             var memoCache = ctx.FiberMemoCache;
 
@@ -169,7 +170,7 @@ namespace Velvet
             var outletProvider = new ContextProviderNode<object>
             {
                 Context = RouterContext.OutletContext,
-                Value = outlet.OutletContextValue,
+                Value = outlet.OutletContextValue!,
                 Children = System.Array.Empty<VNode>(),
             };
             depthProvider.PushContext(stack);
@@ -190,11 +191,11 @@ namespace Velvet
         // contain the spine child are popped on the way out so only the path to spineChild
         // remains on the cursor.
         private static bool PushEnclosingProviders(
-            VNode[] nodes,
+            VNode?[] nodes,
             ComponentFiber ancestor,
             ComponentFiber spineChild,
             Dictionary<object, int> counters,
-            string fragmentKeyScope,
+            string? fragmentKeyScope,
             ComponentContextStack stack,
             List<ContextProviderNode> pushed,
             ComponentRegistry registry,
@@ -269,7 +270,7 @@ namespace Velvet
                         // walker-match the first Outlet and push a wrong Depth+1 context for any
                         // non-Outlet wrapper-mounted sibling's isolated re-render.
                         var spineHost = spineChild.MountPoint;
-                        if (spineHost == null || !ancestor.Reconciler.Context.OutletContainers.Contains(spineHost))
+                        if (spineHost == null || !ancestor.Reconciler!.Context.OutletContainers.Contains(spineHost))
                         {
                             // spineChild is not Outlet-hosted; the Outlet here is a sibling — skip it and
                             // keep searching for the actual wrapper host (or fall through to the default

@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using UnityEngine.UIElements;
 
@@ -47,11 +48,11 @@ namespace Velvet
     internal sealed class ClipPathSpec
     {
         public ClipPathKind Kind;
-        public string Source;
+        public string? Source;
 
         // polygon(): optional leading fill-rule, then the vertex list as x,y interleaved pairs.
         public FillRule FillRule = FillRule.NonZero;
-        public ClipPathLength[] PolygonPoints;
+        public ClipPathLength[]? PolygonPoints;
 
         // circle() / ellipse(): per-axis radius (circle uses the X slot for its single radius) and
         // the center position (CSS default: center ⇒ 50% 50%).
@@ -68,7 +69,7 @@ namespace Velvet
         public ClipPathLength InsetRight;
         public ClipPathLength InsetBottom;
         public ClipPathLength InsetLeft;
-        public ClipPathLength[] CornerRadii;
+        public ClipPathLength[]? CornerRadii;
 
         // True when the shape scales linearly per axis with the element box (every coordinate is a
         // percentage of its own axis), so a size change can reuse the existing bake stretched by
@@ -103,12 +104,12 @@ namespace Velvet
         private const string ArbitraryPrefix = "clip-path-[";
 
         // True when cls is a clip-path utility this layer owns (recognized or not-yet-valid).
-        public static bool IsClipPathClass(string cls)
+        public static bool IsClipPathClass(string? cls)
             => cls == NoneClass || (cls != null && cls.StartsWith(ArbitraryPrefix, StringComparison.Ordinal));
 
         // Cheap early-out gate: true when ANY class is a clip-path utility. Used to skip the full
         // parse on the ~99% of elements that carry no clip-path class and no binding.
-        public static bool HasClipPathClass(string[] classNames)
+        public static bool HasClipPathClass(string[]? classNames)
         {
             if (classNames == null)
             {
@@ -127,13 +128,13 @@ namespace Velvet
         // True when the class list resolves to an ACTIVE clip (a parseable clip-path-[…] not
         // overridden by a later clip-path-none). Used by the Motion create-path warning; the patch
         // layers resolve clip state once in ApplyClipPathOnPatch and pass it along instead.
-        public static bool WantsClipPath(string[] classNames)
+        public static bool WantsClipPath(string[]? classNames)
             => TryExtract(classNames, out _);
 
         // Returns the resolved spec for the last recognized clip-path utility in classNames
         // (CSS cascade: later classes win). Returns false when no clip is wanted — either no
         // clip-path class at all, an unparseable value, or the winning class is clip-path-none.
-        public static bool TryExtract(string[] classNames, out ClipPathSpec spec)
+        public static bool TryExtract(string[]? classNames, out ClipPathSpec? spec)
         {
             spec = null;
             if (classNames == null)
@@ -161,7 +162,7 @@ namespace Velvet
         // apply, because wrapping/unwrapping inside a hover/focus event callback would mutate the parent
         // (forbidden outside reconcile). At rest a variant-only clip shows no mask; the live cascade
         // (TryExtractLive) applies the shape when the variant's state turns on.
-        public static bool WantsClipWrapper(string[] classNames)
+        public static bool WantsClipWrapper(string[]? classNames)
         {
             if (classNames == null)
             {
@@ -200,7 +201,7 @@ namespace Velvet
         // variant clip payloads a manipulator has toggled on for the current state. Last-wins cascade (same as
         // TryExtract): a hover:clip payload, appended after the base clip while hovering, wins; removed on
         // hover-out, the base (or no clip) resolves again. Returns false when nothing active.
-        public static bool TryExtractLive(VisualElement element, out ClipPathSpec spec)
+        public static bool TryExtractLive(VisualElement? element, out ClipPathSpec? spec)
         {
             spec = null;
             if (element == null)
@@ -219,7 +220,7 @@ namespace Velvet
             return found;
         }
 
-        private static bool TryParse(string cls, out ClipPathSpec spec, out bool wantClip)
+        private static bool TryParse(string? cls, out ClipPathSpec? spec, out bool wantClip)
         {
             spec = null;
             wantClip = false;
@@ -252,13 +253,13 @@ namespace Velvet
                 // Unparseable value: not a recognized utility (the cascade ignores it).
                 return false;
             }
-            spec.Source = cls;
+            spec!.Source = cls;
             wantClip = true;
             return true;
         }
 
         // Parses a CSS <basic-shape> function (spaces already restored). Internal for the parser tests.
-        internal static bool TryParseShape(string css, out ClipPathSpec spec)
+        internal static bool TryParseShape(string css, out ClipPathSpec? spec)
         {
             spec = null;
             if (string.IsNullOrEmpty(css))
@@ -284,7 +285,7 @@ namespace Velvet
             }
         }
 
-        private static bool TryParsePolygon(string inner, out ClipPathSpec spec)
+        private static bool TryParsePolygon(string inner, out ClipPathSpec? spec)
         {
             spec = null;
             var args = inner.Split(',');
@@ -331,7 +332,7 @@ namespace Velvet
             return true;
         }
 
-        private static bool TryParseCircle(string inner, out ClipPathSpec spec)
+        private static bool TryParseCircle(string inner, out ClipPathSpec? spec)
         {
             spec = new ClipPathSpec { Kind = ClipPathKind.Circle };
             SplitAtPosition(inner, out var radiusPart, out var positionPart);
@@ -353,7 +354,7 @@ namespace Velvet
             return true;
         }
 
-        private static bool TryParseEllipse(string inner, out ClipPathSpec spec)
+        private static bool TryParseEllipse(string inner, out ClipPathSpec? spec)
         {
             spec = new ClipPathSpec { Kind = ClipPathKind.Ellipse };
             SplitAtPosition(inner, out var radiusPart, out var positionPart);
@@ -383,12 +384,12 @@ namespace Velvet
             return true;
         }
 
-        private static bool TryParseInset(string inner, out ClipPathSpec spec)
+        private static bool TryParseInset(string inner, out ClipPathSpec? spec)
         {
             spec = null;
 
             string edgePart = inner;
-            string roundPart = null;
+            string? roundPart = null;
             var round = inner.IndexOf(" round ", StringComparison.Ordinal);
             if (round >= 0)
             {
@@ -414,7 +415,7 @@ namespace Velvet
             // CSS 1-4 value shorthand: top, right, bottom, left.
             ExpandShorthand(edgeValues, out var top, out var right, out var bottom, out var left);
 
-            ClipPathLength[] cornerRadii = null;
+            ClipPathLength[]? cornerRadii = null;
             if (roundPart != null)
             {
                 var radii = SplitWhitespace(roundPart);
@@ -463,7 +464,7 @@ namespace Velvet
         }
 
         // Splits "radius-part at position-part"; positionPart is null when no `at` clause exists.
-        private static void SplitAtPosition(string inner, out string radiusPart, out string positionPart)
+        private static void SplitAtPosition(string inner, out string radiusPart, out string? positionPart)
         {
             var at = inner.IndexOf(" at ", StringComparison.Ordinal);
             if (at >= 0)
@@ -572,6 +573,6 @@ namespace Velvet
         }
 
         private static string[] SplitWhitespace(string text)
-            => text.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            => text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
     }
 }

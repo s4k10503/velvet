@@ -65,7 +65,7 @@ namespace Velvet
         /// </summary>
         /// <param name="id">Identifier previously passed to <see cref="Register"/>.</param>
         /// <returns>The registered <see cref="VisualElement"/>, or <c>null</c> when <paramref name="id"/> is null/empty or unregistered.</returns>
-        public static VisualElement Get(string id)
+        public static VisualElement? Get(string id)
         {
             if (string.IsNullOrEmpty(id))
             {

@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 
 namespace Velvet
@@ -19,7 +20,7 @@ namespace Velvet
             _ctx = ctx;
         }
 
-        internal bool HasAnyKey(VNode[] nodes)
+        internal bool HasAnyKey(VNode?[] nodes)
         {
             foreach (var node in nodes)
             {
@@ -39,7 +40,7 @@ namespace Velvet
         // with siblings under a Fragment carrying a different key. The override lives in
         // ReconcilerContext.EffectiveKeys for this reconcile pass; the underlying VNode
         // is never mutated.
-        internal void RegisterScopedKey(VNode node, string fragmentKeyScope, int nodeIndex)
+        internal void RegisterScopedKey(VNode? node, string? fragmentKeyScope, int nodeIndex)
         {
             if (node == null || fragmentKeyScope == null) return;
             var contribution = node.Key ?? FiberKeying.Index(nodeIndex);
@@ -49,7 +50,7 @@ namespace Velvet
         // Returns the effective key used by the keyed reconciler for node: the
         // override published by RegisterScopedKey if present, otherwise the node's
         // own VNode.Key. Null-safe — returns null for a null node.
-        internal string EffectiveKey(VNode node)
+        internal string? EffectiveKey(VNode? node)
             => node != null && _ctx.EffectiveKeys.TryGetValue(node, out var k) ? k : node?.Key;
 
         // Resolves the identity key for one sibling in the keyed reconcile path. A node carrying an
@@ -59,7 +60,7 @@ namespace Velvet
         // destroyed and recreated. An unkeyed child is thus matched between renders by its array
         // index as an implicit key. Explicit and implicit keys never collide
         // because ChildKey distinguishes them by kind.
-        internal ChildKey ReconcileKey(VNode node, int siblingIndex)
+        internal ChildKey ReconcileKey(VNode? node, int siblingIndex)
         {
             var key = EffectiveKey(node);
             return key != null ? ChildKey.Explicit(key) : ChildKey.Positional(siblingIndex);
@@ -70,8 +71,8 @@ namespace Velvet
         // last entry): the displaced earlier index is recorded as an orphan so the removal pass cleans
         // it up — it is not covered by the usedKeys removal test — and a warning is logged. Shared by
         // all three keyed-diff map-build sites (synchronous keyed, time-sliced Pass2BuildMap, general).
-        internal void RegisterOldKey(VNode node, int index,
-            Dictionary<ChildKey, (int index, VNode node)> map, HashSet<int> orphaned)
+        internal void RegisterOldKey(VNode? node, int index,
+            Dictionary<ChildKey, (int index, VNode? node)> map, HashSet<int>? orphaned)
         {
             var key = ReconcileKey(node, index);
             if (map.TryAdd(key, (index, node))) return;
@@ -79,7 +80,7 @@ namespace Velvet
             FiberLogger.LogWarning("ReconcileKeying",
                 $"Duplicate key detected in keyed reconciliation: {key}. " +
                 "Later element overwrites earlier one, causing unnecessary destroy/recreate.");
-            orphaned.Add(map[key].index);
+            orphaned!.Add(map[key].index);
             map[key] = (index, node);
         }
 
@@ -89,7 +90,7 @@ namespace Velvet
         // Same type (both ElementNode) AND same ElementType AND matching wrapper presence → true.
         // Same type (both TextNode) → true.
         // Otherwise → false.
-        internal static bool CanPatch(VNode oldNode, VNode newNode)
+        internal static bool CanPatch(VNode? oldNode, VNode? newNode)
         {
             if (oldNode == null || newNode == null)
             {

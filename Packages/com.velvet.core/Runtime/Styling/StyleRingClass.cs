@@ -207,7 +207,7 @@ namespace Velvet
             return true;
         }
 
-        private static bool TryMatchPrefix(string cls, string prefix, out string suffix)
+        private static bool TryMatchPrefix(string cls, string prefix, out string? suffix)
         {
             if (cls.StartsWith(prefix, StringComparison.Ordinal))
             {
@@ -219,7 +219,7 @@ namespace Velvet
         }
 
         // A width is either a preset (0/1/2/4/8) or an arbitrary [Npx] (px only — a ring width is pixels).
-        private static bool TryParseWidthValue(string suffix, out float width)
+        private static bool TryParseWidthValue(string? suffix, out float width)
         {
             width = 0f;
             if (string.IsNullOrEmpty(suffix))
@@ -234,7 +234,7 @@ namespace Velvet
         }
 
         // A color is a palette token (red-500 / white / black) or an arbitrary [#hex] / [rgb(...)].
-        private static bool TryParseColorValue(string suffix, out Color color)
+        private static bool TryParseColorValue(string? suffix, out Color color)
         {
             color = default;
             if (string.IsNullOrEmpty(suffix))
@@ -251,7 +251,7 @@ namespace Velvet
         // Resolves the top-left corner radius (px) the ring overlay follows, mirroring StyleShadowClass —
         // the band's outer radius is this plus the ring width (+ offset). Returns false for rounded-full /
         // arbitrary radii (resolved from resolvedStyle once laid out) and when no rounding class is present.
-        public static bool TryResolveCornerRadius(string[] classNames, out float radius)
+        public static bool TryResolveCornerRadius(string[]? classNames, out float radius)
             => StyleShadowClass.TryResolveCornerRadius(classNames, out radius);
     }
 
@@ -264,8 +264,8 @@ namespace Velvet
     {
         public readonly VisualElement Wrapper;
         public readonly VisualElement Overlay;
-        public EventCallback<GeometryChangedEvent> OnGeometry;
-        public string[] ClassNames;
+        public EventCallback<GeometryChangedEvent> OnGeometry = null!;
+        public string[] ClassNames = null!;
         public RingSpec Spec;
 
         public RingBinding(VisualElement wrapper, VisualElement overlay)

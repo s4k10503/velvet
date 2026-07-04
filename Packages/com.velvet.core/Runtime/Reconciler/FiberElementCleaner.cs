@@ -8,7 +8,7 @@ namespace Velvet
     internal sealed class FiberElementCleaner
     {
         private readonly ReconcilerContext _ctx;
-        private IReconcilerHost _host;
+        private IReconcilerHost _host = null!;
 
         public FiberElementCleaner(ReconcilerContext ctx)
         {
@@ -66,8 +66,9 @@ namespace Velvet
         // scopes (that is CleanupElement's job): those anchor on the fiber tree and may be re-paired
         // when the suspended primary later resolves. The element was never in the hierarchy, so there
         // is no DOM detach.
-        public void ReturnRolledBackOrphan(VisualElement element)
+        public void ReturnRolledBackOrphan(VisualElement? element)
         {
+            if (element == null) return;
             // A clip-path-* / ring / wrapElement orphan arrives as its structural WRAPPER (CreateElement
             // returns the wrapper). Detach the inner from the wrapper, then reclaim it by the rules below —
             // they release its binding-tracked resources (clip VectorImage, the wrapper-less skew + shadow
@@ -187,12 +188,12 @@ namespace Velvet
             // process-wide VelvetTheme.DarkModeChanged) so they do not leak past unmount.
             if (_ctx.StackedVariantManipulators.Count > 0)
             {
-                List<(VisualElement, object, int, StyleVariantKind, string, string)> stale = null;
+                List<(VisualElement, object, int, StyleVariantKind, string, string?)>? stale = null;
                 foreach (var kv in _ctx.StackedVariantManipulators)
                 {
                     if (kv.Key.target == element)
                     {
-                        (stale ??= new List<(VisualElement, object, int, StyleVariantKind, string, string)>()).Add(kv.Key);
+                        (stale ??= new List<(VisualElement, object, int, StyleVariantKind, string, string?)>()).Add(kv.Key);
                     }
                 }
                 if (stale != null)
@@ -319,7 +320,7 @@ namespace Velvet
         // Child element to skip. Specified to prevent double cleanup of the inner element when the
         // wrapper pattern places the inner as a direct child of element. When null,
         // all children are processed.
-        private void CleanupDescendants(VisualElement element, VisualElement excluded = null)
+        private void CleanupDescendants(VisualElement element, VisualElement? excluded = null)
         {
             for (var i = 0; i < element.childCount; i++)
             {

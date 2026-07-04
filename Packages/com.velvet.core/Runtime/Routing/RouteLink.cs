@@ -1,19 +1,17 @@
+#nullable enable
 using System;
 using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
-    // Functional components backing the V.Link / V.NavLink DSL primitives. They derive
-    // their behavior from the active Router and current location. Kept out of V.cs because they call hooks
-    // (UseNavigate / UseLocation) and must therefore run as [Component] bodies.
     internal static class RouteLink
     {
         public sealed record Props(
             string To,
-            string Text,
-            string ClassName,
-            string Name,
-            VNode[] Children,
+            string? Text,
+            string? ClassName,
+            string? Name,
+            VNode?[]? Children,
             bool Replace);
 
         [Component]
@@ -33,17 +31,15 @@ namespace Velvet
         }
     }
 
-    // Backing component for V.NavLink. Adds the active class to the rendered link when the current
-    // location path matches the link target.
     internal static class RouteNavLink
     {
         public sealed record Props(
             string To,
-            string Text,
-            string ClassName,
-            string ActiveClass,
-            string Name,
-            VNode[] Children,
+            string? Text,
+            string? ClassName,
+            string? ActiveClass,
+            string? Name,
+            VNode?[]? Children,
             bool End,
             bool Replace,
             bool CaseSensitive);
@@ -72,10 +68,6 @@ namespace Velvet
                 children: p.Children);
         }
 
-        // Determines active state. With end true the paths must match exactly; otherwise
-        // the current path matching the target or any sub-path of it counts as active.
-        // Comparison is case-insensitive by default; pass caseSensitive true to opt into
-        // Ordinal matching.
         private static bool IsActive(string currentPath, string to, bool end, bool caseSensitive)
         {
             var current = Normalize(currentPath);
@@ -92,13 +84,12 @@ namespace Velvet
                 return true;
             }
 
-            // Sub-path match: "/users" is active for "/users/123" but not for "/users-archive".
             return target.Length > 0
                 && current.StartsWith(target, comparison)
                 && (target == "/" || current.Length == target.Length || current[target.Length] == '/');
         }
 
-        private static string Normalize(string path)
+        private static string Normalize(string? path)
         {
             if (string.IsNullOrEmpty(path))
             {

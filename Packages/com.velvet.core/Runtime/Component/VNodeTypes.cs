@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -11,9 +12,9 @@ namespace Velvet
     public abstract class VNode
     {
         /// <summary>
-        /// Key used by the Reconciler to track node identity across renders.
+        /// Key used by the Reconciler to track node identity across renders. Null when omitted at the call site.
         /// </summary>
-        public string Key { get; internal set; }
+        public string? Key { get; internal set; }
     }
 
     /// <summary>
@@ -26,16 +27,16 @@ namespace Velvet
         public Type ElementType { get; init; } = typeof(VisualElement);
 
         /// <summary>VisualElement.name (for USS #selector). Avoid frequent changes.</summary>
-        public string Name { get; init; }
+        public string? Name { get; init; }
 
         /// <summary>Array of BEM class names.</summary>
         public string[] ClassNames { get; init; } = Array.Empty<string>();
 
-        /// <summary>Type-safe properties.</summary>
-        public FiberElementProps Props { get; init; }
+        /// <summary>Type-safe properties. Null when no element props were supplied.</summary>
+        public FiberElementProps? Props { get; init; }
 
         /// <summary>Array of child nodes.</summary>
-        public VNode[] Children { get; init; } = Array.Empty<VNode>();
+        public VNode?[] Children { get; init; } = Array.Empty<VNode>();
 
         /// <summary>Array of event bindings.</summary>
         public FiberEventBinding[] Events { get; init; } = Array.Empty<FiberEventBinding>();
@@ -45,16 +46,16 @@ namespace Velvet
         /// The returned <c>Action</c> is invoked as cleanup when the element is detached from the DOM.
         /// Return null if no cleanup is needed. Coordinates with <c>UseRef</c> and <see cref="Ref{T}.SetElement"/>.
         /// </summary>
-        public Func<VisualElement, Action> RefCallback { get; init; }
+        public Func<VisualElement, Action>? RefCallback { get; init; }
 
         /// <summary>CSS class(es) applied on pointer hover (space-separated).</summary>
-        public string WhileHoverClass { get; init; }
+        public string? WhileHoverClass { get; init; }
 
         /// <summary>CSS class(es) applied on pointer tap (space-separated).</summary>
-        public string WhileTapClass { get; init; }
+        public string? WhileTapClass { get; init; }
 
         /// <summary>CSS class(es) applied while the element holds keyboard/UI focus (space-separated).</summary>
-        public string WhileFocusClass { get; init; }
+        public string? WhileFocusClass { get; init; }
     }
 
     /// <summary>
@@ -63,10 +64,10 @@ namespace Velvet
     public sealed class ElementNode : BaseElementNode
     {
         /// <summary>Limited inline styles.</summary>
-        public StyleOverrides Styles { get; init; }
+        public StyleOverrides? Styles { get; init; }
 
         /// <summary>Callback invoked only on the first creation of the element. Used to add Manipulators, etc.</summary>
-        public Action<VisualElement> OnCreated { get; init; }
+        public Action<VisualElement>? OnCreated { get; init; }
 
         /// <summary>
         /// Function that wraps the element with a wrapper container.
@@ -74,7 +75,7 @@ namespace Velvet
         /// The Reconciler places the wrapper in the DOM and tracks the inner real element in a dictionary for patching.
         /// Primary use case: wrapping a button with a DropShadow container.
         /// </summary>
-        public Func<VisualElement, VisualElement> WrapElement { get; init; }
+        public Func<VisualElement, VisualElement>? WrapElement { get; init; }
     }
 
     /// <summary>
@@ -85,7 +86,7 @@ namespace Velvet
     public sealed class MotionNode : BaseElementNode
     {
         /// <summary>Transition configuration.</summary>
-        public StyleTransitionConfig Transition { get; init; }
+        public StyleTransitionConfig? Transition { get; init; }
 
         /// <summary>
         /// Callback invoked when the enter animation completes.
@@ -94,7 +95,7 @@ namespace Velvet
         /// On asynchronous animation completion via schedule.Execute, called outside of Reconcile, so SetState()
         /// is safe.
         /// </summary>
-        public Action OnEnterComplete { get; init; }
+        public Action? OnEnterComplete { get; init; }
 
         /// <summary>
         /// Named animation states: each label maps to a utility-class string.
@@ -102,11 +103,11 @@ namespace Velvet
         /// resolved at reconcile time — this node's <see cref="Animate"/>, else the nearest ANCESTOR Motion's
         /// active label (parent→child propagation) — and applied against these variants.
         /// </summary>
-        public IReadOnlyDictionary<string, string> Variants { get; init; }
+        public IReadOnlyDictionary<string, string>? Variants { get; init; }
 
         /// <summary>The active variant label for this node (a key of <see cref="Variants"/>); null inherits the
         /// nearest ancestor Motion's active label.</summary>
-        public string Animate { get; init; }
+        public string? Animate { get; init; }
 
         /// <summary>
         /// Mount-time starting variant label. When this Motion is the direct child of an
@@ -114,7 +115,7 @@ namespace Velvet
         /// enter starts the element at <c>variants[Initial]</c> and transitions to <c>variants[Animate]</c> (which
         /// it then rests at, persistently) using the <see cref="Transition"/> timing. Null = no variant initial state.
         /// </summary>
-        public string Initial { get; init; }
+        public string? Initial { get; init; }
 
         /// <summary>
         /// Exit variant label. When this Motion is the direct child of an AnimatePresence and
@@ -122,7 +123,7 @@ namespace Velvet
         /// <c>variants[Animate]</c> to <c>variants[Exit]</c> (using the <see cref="Transition"/> timing) before the
         /// element unmounts. Null = use the transition's own ExitFrom/ExitTo classes.
         /// </summary>
-        public string Exit { get; init; }
+        public string? Exit { get; init; }
     }
 
     /// <summary>
@@ -132,7 +133,7 @@ namespace Velvet
     public sealed class TextNode : VNode
     {
         /// <summary>Display text.</summary>
-        public string Text { get; init; }
+        public required string Text { get; init; }
     }
 
     /// <summary>
@@ -141,7 +142,7 @@ namespace Velvet
     public sealed class FragmentNode : VNode
     {
         /// <summary>Array of child nodes.</summary>
-        public VNode[] Children { get; init; }
+        public required VNode?[] Children { get; init; }
     }
 
     /// <summary>
@@ -154,14 +155,14 @@ namespace Velvet
         /// <summary>
         /// Render body of the function component. The delegate of a static method annotated with `[Component]`.
         /// </summary>
-        public Func<VNode> Body { get; init; }
+        public required Func<VNode>? Body { get; init; }
 
         /// <summary>
         /// Identity used as this component's cache key across renders.
         /// Typically a <see cref="System.Reflection.MethodInfo"/> (<c>Body.Method</c>); when left null the
         /// component falls back to <c>Body.Method</c>.
         /// </summary>
-        public object Identity { get; init; }
+        public object? Identity { get; init; }
 
         /// <summary>
         /// Props value captured by the props-receiving <c>V.Component&lt;TProps&gt;</c> overload.
@@ -169,7 +170,7 @@ namespace Velvet
         /// comparison) to decide whether to bail the re-render. Null for the refless / ref-forwarding
         /// overloads (props-less Render).
         /// </summary>
-        public object Props { get; init; }
+        public object? Props { get; init; }
 
         /// <summary>
         /// Optional custom <c>areEqual(prevProps, nextProps)</c> predicate supplied at the call site.
@@ -177,7 +178,7 @@ namespace Velvet
         /// <c>true</c> bails the re-render, <c>false</c> forces it. Supplied via <c>V.Memo(component, props, areEqual)</c>.
         /// Null means the default shallow comparison is used.
         /// </summary>
-        internal Func<object, object, bool> AreEqual { get; init; }
+        internal Func<object?, object?, bool>? AreEqual { get; init; }
 
         /// <summary>
         /// Whether this component opted into the props-bail. <c>true</c> when the component method
@@ -194,14 +195,14 @@ namespace Velvet
         /// Identity that prefers <see cref="Identity"/>, falling back to <c>Body.Method</c>.
         /// The non-null identity used by the reconciler / registry when computing the cache key.
         /// </summary>
-        internal object ResolvedIdentity => Identity ?? Body.Method;
+        internal object ResolvedIdentity => Identity ?? Body!.Method;
 
         /// <summary>
         /// Ref passed by the parent via <c>V.Component&lt;TRef&gt;(componentRef:)</c>.
         /// The child retrieves it via <c>Hooks.ForwardedRef&lt;THandle&gt;()</c> and passes it to
         /// <c>Hooks.UseImperativeHandle</c>.
         /// </summary>
-        internal IHookRefSetter ExternalRef { get; init; }
+        internal IHookRefSetter? ExternalRef { get; init; }
 
         /// <summary>
         /// Runtime hint for whether `[Component(IsErrorBoundary = true)]` is applied.
@@ -220,7 +221,7 @@ namespace Velvet
     public sealed class MemoNode : VNode
     {
         /// <summary>Factory function that produces a VNode.</summary>
-        public Func<VNode> Factory { get; init; }
+        public required Func<VNode> Factory { get; init; }
 
         /// <summary>
         /// Dependency array. Compared element-wise with <c>Object.is</c> semantics
@@ -228,7 +229,7 @@ namespace Velvet
         /// counts as changed), strings/primitives by value, floats by raw bit pattern. NOT a structural
         /// <c>SequenceEqual</c> — there is no recursion into element contents.
         /// </summary>
-        public object[] Dependencies { get; init; }
+        public object?[]? Dependencies { get; init; }
     }
 
     /// <summary>
@@ -240,10 +241,10 @@ namespace Velvet
     public sealed class PortalNode : VNode
     {
         /// <summary>ID of the mount target registered in FiberPortalRegistry.</summary>
-        public string TargetId { get; init; }
+        public required string TargetId { get; init; }
 
         /// <summary>Array of child nodes to render at the mount target.</summary>
-        public VNode[] Children { get; init; }
+        public VNode?[] Children { get; init; } = Array.Empty<VNode>();
     }
 
     /// <summary>
@@ -253,10 +254,10 @@ namespace Velvet
     public sealed class SuspenseNode : VNode
     {
         /// <summary>Fallback node displayed while pending.</summary>
-        public VNode Fallback { get; init; }
+        public required VNode Fallback { get; init; }
 
         /// <summary>Array of child nodes.</summary>
-        public VNode[] Children { get; init; }
+        public VNode?[] Children { get; init; } = Array.Empty<VNode>();
     }
 
     /// <summary>
@@ -265,12 +266,12 @@ namespace Velvet
     /// </summary>
     public sealed class OutletNode : VNode
     {
-        internal IRouteScope Scope { get; set; }
+        internal IRouteScope? Scope { get; set; }
 
         /// <summary>
         /// Value supplied to the rendered child route, surfaced via <c>Hooks.UseOutletContext</c>.
         /// </summary>
-        internal object OutletContextValue { get; init; }
+        internal object? OutletContextValue { get; init; }
     }
 
     /// <summary>
@@ -307,7 +308,7 @@ namespace Velvet
     public sealed class AnimatePresenceNode : VNode
     {
         /// <summary>Array of child nodes. May include MotionNode. Null children are treated as removed.</summary>
-        public VNode[] Children { get; init; }
+        public VNode?[] Children { get; init; } = Array.Empty<VNode>();
 
         /// <summary>
         /// When false, the enter animation on initial mount is skipped.
@@ -358,7 +359,7 @@ namespace Velvet
         /// nor for children removed without an exit animation.
         /// </summary>
         /// <remarks>Equivalent to Framer Motion's <c>onExitComplete</c> for users migrating from Framer Motion.</remarks>
-        public System.Action OnExitComplete { get; init; }
+        public Action? OnExitComplete { get; init; }
     }
 
     /// <summary>
@@ -384,10 +385,10 @@ namespace Velvet
         public int Overscan { get; }
 
         /// <summary>Array of USS class names applied to the ScrollView.</summary>
-        public string[] ClassNames { get; init; }
+        public string[] ClassNames { get; init; } = Array.Empty<string>();
 
         /// <summary>ScrollView.name (for USS #selector).</summary>
-        public string Name { get; init; }
+        public string? Name { get; init; }
 
         /// <summary>
         /// Creates a virtualized list. Prefer the <see cref="V.VirtualList{T}"/> factory; this is the
@@ -428,7 +429,7 @@ namespace Velvet
     public abstract class ContextProviderNode : VNode
     {
         /// <summary>Array of child nodes.</summary>
-        public required VNode[] Children { get; init; }
+        public required VNode?[] Children { get; init; }
 
         internal abstract void PushContext(ComponentContextStack stack);
         internal abstract void PopContext(ComponentContextStack stack);

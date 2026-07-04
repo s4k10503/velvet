@@ -1,7 +1,5 @@
-// annotations only: enable nullable reference annotations on signatures, but keep existing
-// non-null assumptions inside this file warning-free for incremental migration. The public surface
-// in Ref.cs is full-enable so consumers see accurate null state.
-#nullable enable annotations
+// Full nullable checking: hook public surface and dependency arrays are part of the shipped API contract.
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -27,7 +25,7 @@ namespace Velvet
         {
             var fiber = FiberAmbientStack.Current;
             HookGuard.ThrowIfNotRendering(fiber, hookName);
-            return fiber;
+            return fiber!;
         }
 
         /// <summary>
@@ -35,10 +33,10 @@ namespace Velvet
         /// produce externally visible side effects suppress those during this pass. Always false in player
         /// builds (the diagnostic exists only in the Editor).
         /// </summary>
-        private static bool IsStrictDiagnosticPass(ComponentFiber fiber)
+        private static bool IsStrictDiagnosticPass(ComponentFiber? fiber)
         {
 #if UNITY_EDITOR
-            return fiber.IsStrictDiagnosticPass;
+            return fiber!.IsStrictDiagnosticPass;
 #else
             return false;
 #endif
@@ -79,14 +77,38 @@ namespace Velvet
         public static (T value, StateUpdater<T> setValue) UseState<T>(Func<T> initialFactory)
         {
             if (initialFactory == null) throw new ArgumentNullException(nameof(initialFactory));
-            return UseStateInternalCore(initialFactory, default, "UseState");
+            return UseStateFromFactory(initialFactory, "UseState");
+        }
+
+        private static (T value, StateUpdater<T> setValue) UseStateFromFactory<T>(Func<T> initialFactory, string hookName)
+        {
+            var fiber = Resolve(hookName);
+            fiber.StateSlots ??= new List<HookStateSlot>();
+            var index = fiber.Indices.StateHookIndex++;
+
+            if (index >= fiber.StateSlots.Count)
+            {
+                var seed = initialFactory();
+                var slot = new HookStateSlot<T> { Value = seed };
+                var setValue = HookSetterFactory.CreateStateSetter(slot, () => fiber.IsDisposed, () => RequestRender(fiber));
+                slot.Setter = new StateUpdater<T>(setValue, CreateUpdater(slot, fiber));
+                fiber.StateSlots.Add(slot);
+                return (slot.Value, slot.Setter);
+            }
+
+            if (fiber.StateSlots[index] is not HookStateSlot<T> typed)
+            {
+                throw HookSlotTypeMismatch(fiber, hookName, fiber.StateSlots[index].GetType(), typeof(T).Name, index);
+            }
+
+            return (typed.Value, typed.Setter);
         }
 
         // Slot lookup shared by the eager and lazy overloads. Pass a non-null <paramref name="initialFactory"/>
         // when the caller wants lazy initialization (the factory is invoked once on the first render).
         // Otherwise the eager <paramref name="initial"/> seeds the slot.
         private static (T value, StateUpdater<T> setValue) UseStateInternalCore<T>(
-            Func<T> initialFactory, T initial, string hookName)
+            Func<T>? initialFactory, T initial, string hookName)
         {
             var fiber = Resolve(hookName);
             fiber.StateSlots ??= new List<HookStateSlot>();
@@ -146,7 +168,7 @@ namespace Velvet
         public static TSel UseStore<TStore, TSel>(
             Store<TStore> store,
             Func<TStore, TSel> selector,
-            IEqualityComparer<TSel> comparer = null)
+            IEqualityComparer<TSel>? comparer = null)
         {
             if (store == null) throw new ArgumentNullException(nameof(store));
             if (selector == null) throw new ArgumentNullException(nameof(selector));
@@ -249,7 +271,7 @@ namespace Velvet
             var fiber = Resolve("UseContext");
             fiber.RegisterContextDependency(context);
             var stack = fiber.Reconciler?.Context.ComponentContextStack;
-            return stack != null ? stack.Get(context) : context.DefaultValue;
+            return stack != null ? stack.Get(context) : context.DefaultValue!;
         }
 
         #endregion
@@ -378,7 +400,7 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// The single-argument overload exists so that omitting deps is unambiguous: the
-        /// <c>params object[] deps</c> overload would otherwise observe an empty array (not <c>null</c>) and
+        /// <c>params object?[]? deps</c> overload would otherwise observe an empty array (not <c>null</c>) and
         /// incorrectly freeze the value to the first-render computation.
         /// </remarks>
         /// <typeparam name="T">Type of the value to compute.</typeparam>
@@ -415,7 +437,7 @@ namespace Velvet
         /// <param name="factory">Factory invoked to produce the value on the first render and whenever the deps change.</param>
         /// <param name="deps">Dependency values. When deeply equal to the previous render, the cached value is reused.</param>
         /// <returns>The cached value (stable across renders while <paramref name="deps"/> are equal).</returns>
-        public static T UseMemo<T>(Func<T> factory, params object[] deps)
+        public static T UseMemo<T>(Func<T> factory, params object?[]? deps)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             var fiber = Resolve("UseMemo");
@@ -627,7 +649,7 @@ namespace Velvet
             return state;
         }
 
-        private static NavigationState ReadNavigationState(Router router)
+        private static NavigationState ReadNavigationState(Router? router)
         {
             if (router == null)
             {
@@ -674,7 +696,7 @@ namespace Velvet
         /// when it does not match. The pattern uses the same
         /// segment syntax as routes (literal / <c>:param</c> / <c>*</c>); matching is case-insensitive.
         /// </summary>
-        public static RouteMatch UseMatch(string pattern)
+        public static RouteMatch? UseMatch(string pattern)
         {
             if (pattern == null) throw new ArgumentNullException(nameof(pattern));
             _ = Resolve("UseMatch");
@@ -702,7 +724,7 @@ namespace Velvet
         /// Returns <c>default</c> when no context was supplied.
         /// </summary>
         /// <typeparam name="T">Expected context value type.</typeparam>
-        public static T UseOutletContext<T>()
+        public static T? UseOutletContext<T>()
         {
             _ = Resolve("UseOutletContext");
             var value = UseContext(RouterContext.OutletContext);
@@ -714,7 +736,7 @@ namespace Velvet
         /// Returns <c>default</c> when there is no data.
         /// </summary>
         /// <typeparam name="T">Expected loader data type.</typeparam>
-        public static T UseLoaderData<T>()
+        public static T? UseLoaderData<T>()
         {
             _ = Resolve("UseLoaderData");
             var routeId = CurrentRouteId();
@@ -730,7 +752,7 @@ namespace Velvet
         /// Returns the loader error for the route at the current Outlet depth, or null when the route did
         /// not error.
         /// </summary>
-        public static Exception UseRouteError()
+        public static Exception? UseRouteError()
         {
             _ = Resolve("UseRouteError");
             var location = UseContext(RouterContext.Location);
@@ -748,7 +770,8 @@ namespace Velvet
             var start = System.Math.Min(depth - 1, location.Matches.Count - 1);
             for (var i = start; i < location.Matches.Count; i++)
             {
-                if (errors.TryGetValue(location.Matches[i].RouteId, out var ex))
+                var routeId = location.Matches[i].RouteId;
+                if (routeId != null && errors.TryGetValue(routeId, out var ex))
                 {
                     return ex;
                 }
@@ -764,7 +787,7 @@ namespace Velvet
         /// an Outlet sees <see cref="RouterContext.Depth"/> incremented to depth+1, so its own match is
         /// <c>Matches[Depth - 1]</c>. Returns null when there is no enclosing matched route.
         /// </summary>
-        private static string CurrentRouteId()
+        private static string? CurrentRouteId()
         {
             var location = UseContext(RouterContext.Location);
             var depth = UseContext(RouterContext.Depth);
@@ -785,7 +808,7 @@ namespace Velvet
         /// </summary>
         /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
         /// <param name="deps">Dependency array. When deeply equal to the previous render, the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
-        public static void UseLayoutEffect(Func<Action> factory, object?[]? deps = null)
+        public static void UseLayoutEffect(Func<Action?>? factory, object?[]? deps = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             var fiber = Resolve("UseLayoutEffect");
@@ -820,7 +843,7 @@ namespace Velvet
         /// </summary>
         /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
         /// <param name="deps">Dependency array. When deeply equal to the previous render, the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
-        public static void UseInsertionEffect(Func<Action> factory, object?[]? deps = null)
+        public static void UseInsertionEffect(Func<Action?>? factory, object?[]? deps = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             var fiber = Resolve("UseInsertionEffect");
@@ -851,7 +874,7 @@ namespace Velvet
         /// </summary>
         /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
         /// <param name="deps">Dependency array. When deeply equal to the previous render, the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
-        public static void UseEffect(Func<Action> factory, object?[]? deps = null)
+        public static void UseEffect(Func<Action?>? factory, object?[]? deps = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             var fiber = Resolve("UseEffect");
@@ -896,7 +919,7 @@ namespace Velvet
         /// <typeparam name="T">Reference target type.</typeparam>
         /// <param name="initialFactory">Factory invoked once on first render to seed <see cref="Ref{T}.Current"/>. Pass null to leave it unset.</param>
         /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position.</returns>
-        public static Ref<T> UseRef<T>(Func<T> initialFactory) where T : class
+        public static Ref<T> UseRef<T>(Func<T>? initialFactory) where T : class
         {
             var fiber = Resolve("UseRef");
             fiber.RefSlots ??= new List<HookRefSlot>();
@@ -948,7 +971,7 @@ namespace Velvet
             return UseMutableRefInternal<T>(default!, initialFactory);
         }
 
-        private static MutableRef<T> UseMutableRefInternal<T>(T initial, Func<T> factory)
+        private static MutableRef<T> UseMutableRefInternal<T>(T initial, Func<T>? factory)
         {
             var fiber = Resolve("UseMutableRef");
             fiber.RefSlots ??= new List<HookRefSlot>();
@@ -975,7 +998,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Handle type expected by this component.</typeparam>
         /// <returns>The forwarded <see cref="Ref{T}"/>, or null when the parent did not forward one or types do not match.</returns>
-        public static Ref<T> ForwardedRef<T>() where T : class
+        public static Ref<T>? ForwardedRef<T>() where T : class
         {
             var fiber = Resolve("ForwardedRef");
             return fiber.ExternalRef as Ref<T>;
@@ -997,7 +1020,7 @@ namespace Velvet
         /// ignored (same convention as the initial value of UseState).
         /// </param>
         /// <returns>Format is <c>:r{hex}:</c> (no prefix) or <c>{prefix}:r{hex}:</c> (with prefix).</returns>
-        public static string UseId(string prefix = null)
+        public static string UseId(string? prefix = null)
         {
             var fiber = Resolve("UseId");
             fiber.IdSlots ??= new List<HookIdSlot>();
@@ -1082,7 +1105,7 @@ namespace Velvet
         public static void UseImperativeHandle<THandle>(
             Ref<THandle> handleRef,
             Func<THandle> factory,
-            params object[] deps) where THandle : class
+            params object?[]? deps) where THandle : class
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             var fiber = Resolve("UseImperativeHandle");
@@ -1193,14 +1216,14 @@ namespace Velvet
                 Reducer = reducer,
             };
             slot.Dispatch = HookSetterFactory.CreateReducerDispatch(slot, () => fiber.IsDisposed, () => RequestRender(fiber));
-            fiber.StateSlots.Add(slot);
+            fiber.StateSlots!.Add(slot);
             return (slot.Value, slot.Dispatch);
         }
 
         private static (TState state, Action<TAction> dispatch) UpdateReducerSlot<TState, TAction>(
             ComponentFiber fiber, int index, Func<TState, TAction, TState> reducer)
         {
-            if (fiber.StateSlots[index] is not ReducerSlot<TState, TAction> typed)
+            if (fiber.StateSlots![index] is not ReducerSlot<TState, TAction> typed)
             {
                 throw HookSlotTypeMismatch(fiber, "UseReducer", fiber.StateSlots[index].GetType(),
                     $"ReducerSlot<{typeof(TState).Name},{typeof(TAction).Name}>", index);
@@ -1231,7 +1254,7 @@ namespace Velvet
         /// <param name="factory">Factory that returns a UniTask producing the value. Must not be null.</param>
         /// <param name="resourceKey">Identity of the resource. When null, the factory delegate is the key.</param>
         /// <returns>The resolved value once the resource completes successfully.</returns>
-        public static T Use<T>(Func<UniTask<T>> factory, object resourceKey = null)
+        public static T Use<T>(Func<UniTask<T>> factory, object? resourceKey = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             return UseCore<T>(_ => factory(), resourceKey ?? factory, resourceKeyExplicit: resourceKey != null, "Use");
@@ -1246,7 +1269,7 @@ namespace Velvet
         /// <param name="factory">Factory that receives a CancellationToken and returns a UniTask producing the value. Must not be null.</param>
         /// <param name="resourceKey">Identity of the resource. When null, the factory delegate is the key.</param>
         /// <returns>The resolved value once the resource completes successfully.</returns>
-        public static T Use<T>(Func<CancellationToken, UniTask<T>> factory, object resourceKey = null)
+        public static T Use<T>(Func<CancellationToken, UniTask<T>> factory, object? resourceKey = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             return UseCore<T>(factory, resourceKey ?? factory, resourceKeyExplicit: resourceKey != null, "Use");
@@ -1305,7 +1328,7 @@ namespace Velvet
             return resource.Status switch
             {
                 FiberAsyncResourceStatus.Success => resource.Result,
-                FiberAsyncResourceStatus.Error => throw resource.Error,
+                FiberAsyncResourceStatus.Error => throw resource.Error!,
                 _ => throw FiberSuspendSignal.Instance,
             };
         }
@@ -1573,7 +1596,7 @@ namespace Velvet
         /// Render after a Transition flush: commits the pending value and returns the new value.
         /// </returns>
         public static T UseDeferredValue<T>(T value)
-            => UseDeferredValueCore(value, default, hasInitialValue: false);
+            => UseDeferredValueCore(value, default!, hasInitialValue: false);
 
         /// <summary>
         /// Overload taking an <paramref name="initialValue"/>. On the initial render the
@@ -1745,7 +1768,7 @@ namespace Velvet
         /// <param name="cached">Outputs the cached VNode on a hit; undefined on a miss.</param>
         /// <returns>True when the previous deps are equal and the cached VNode was returned.</returns>
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public static bool TryGetMemoizedVNode(object[] deps, out int slotIndex, out VNode cached)
+        public static bool TryGetMemoizedVNode(object?[]? deps, out int slotIndex, out VNode? cached)
         {
             if (deps == null) throw new ArgumentNullException(nameof(deps));
             var fiber = Resolve("TryGetMemoizedVNode");
@@ -1787,7 +1810,7 @@ namespace Velvet
         /// <param name="deps">Dependency values to record for this slot. Must not be null.</param>
         /// <param name="result">VNode to cache for subsequent hits.</param>
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public static void StoreMemoizedVNode(int slotIndex, object[] deps, VNode result)
+        public static void StoreMemoizedVNode(int slotIndex, object?[]? deps, VNode result)
         {
             if (deps == null) throw new ArgumentNullException(nameof(deps));
             var fiber = Resolve("StoreMemoizedVNode");
@@ -1813,15 +1836,15 @@ namespace Velvet
             FiberWorkLoop.RequestRenderFromHook(fiber);
         }
 
-        private static Action WrapDisposable(Func<IDisposable> factory)
+        private static Action? WrapDisposable(Func<IDisposable> factory)
         {
             var disposable = factory.Invoke();
             return disposable == null ? null : disposable.Dispose;
         }
 
-        internal static string ComponentName(ComponentFiber fiber)
+        internal static string ComponentName(ComponentFiber? fiber)
         {
-            var method = fiber.Body?.Method;
+            var method = fiber!.Body?.Method;
             if (method == null) return "[Component]";
             var displayName = ComponentMethodRegistry.TryGetDisplayName(method);
             if (displayName != null) return displayName;
@@ -1834,7 +1857,7 @@ namespace Velvet
         // runtime type; expectedDisplay is the human-readable name of the type this render wants. Shared by
         // every position-based hook so the message stays identical across them.
         private static InvalidOperationException HookSlotTypeMismatch(
-            ComponentFiber fiber, string hookName, Type actual, string expectedDisplay, int index)
+            ComponentFiber? fiber, string hookName, Type actual, string expectedDisplay, int index)
             => new InvalidOperationException(
                 $"{ComponentName(fiber)}: {hookName} type changed between the previous render ({actual.Name})" +
                 $" and the current render ({expectedDisplay}) (slot #{index}). This violates the Rules of Hooks.");

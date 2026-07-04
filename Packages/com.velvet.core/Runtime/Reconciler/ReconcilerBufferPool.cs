@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -48,13 +49,13 @@ namespace Velvet
 
         #region ChildReconciler — for ReconcileKeyed
 
-        private readonly ClearablePool<Dictionary<ChildKey, (int index, VNode node)>> _oldKeyMapPool = new(m => m.Clear());
+        private readonly ClearablePool<Dictionary<ChildKey, (int index, VNode? node)>> _oldKeyMapPool = new(m => m.Clear());
         private readonly ClearablePool<HashSet<ChildKey>> _usedKeysPool = new(s => s.Clear());
         private readonly ClearablePool<HashSet<ChildKey>> _replacedKeysPool = new(s => s.Clear());
-        private readonly ClearablePool<List<(VisualElement element, bool isExisting)>> _newElementsPool = new(l => l.Clear());
+        private readonly ClearablePool<List<(VisualElement? element, bool isExisting)>> _newElementsPool = new(l => l.Clear());
 
-        public Dictionary<ChildKey, (int index, VNode node)> RentOldKeyMap() => _oldKeyMapPool.Rent();
-        public void Return(Dictionary<ChildKey, (int index, VNode node)> map) => _oldKeyMapPool.Return(map);
+        public Dictionary<ChildKey, (int index, VNode? node)> RentOldKeyMap() => _oldKeyMapPool.Rent();
+        public void Return(Dictionary<ChildKey, (int index, VNode? node)> map) => _oldKeyMapPool.Return(map);
 
         public HashSet<ChildKey> RentKeySet() => _usedKeysPool.Rent();
         public void ReturnKeySet(HashSet<ChildKey> set) => _usedKeysPool.Return(set);
@@ -62,8 +63,8 @@ namespace Velvet
         public HashSet<ChildKey> RentReplacedKeySet() => _replacedKeysPool.Rent();
         public void ReturnReplacedKeySet(HashSet<ChildKey> set) => _replacedKeysPool.Return(set);
 
-        public List<(VisualElement element, bool isExisting)> RentElementList() => _newElementsPool.Rent();
-        public void Return(List<(VisualElement element, bool isExisting)> list) => _newElementsPool.Return(list);
+        public List<(VisualElement? element, bool isExisting)> RentElementList() => _newElementsPool.Rent();
+        public void Return(List<(VisualElement? element, bool isExisting)> list) => _newElementsPool.Return(list);
 
         #endregion
 

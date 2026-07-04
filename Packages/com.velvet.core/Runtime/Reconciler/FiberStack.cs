@@ -13,7 +13,7 @@ namespace Velvet
     {
         private readonly Stack<ComponentFiber> _stack = new();
 
-        public ComponentFiber Current => _stack.TryPeek(out var top) ? top : null;
+        public ComponentFiber? Current => _stack.TryPeek(out var top) ? top : null;
 
         public void Push(ComponentFiber fiber)
         {

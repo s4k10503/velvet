@@ -87,7 +87,7 @@ namespace Velvet
         {
             var weight = intent.HasWeight ? intent.Weight : VelvetFontWeight.Normal;
 
-            FontAsset asset;
+            FontAsset? asset;
             bool residualBold;
             bool residualItalic;
 
@@ -161,7 +161,7 @@ namespace Velvet
             return FontStyle.Normal;
         }
 
-        private static bool TryResolveAddressFamily(string family, out FontAsset asset)
+        private static bool TryResolveAddressFamily(string? family, out FontAsset? asset)
         {
             asset = null;
             if (string.IsNullOrEmpty(family) || !family.StartsWith(AddressPrefix, StringComparison.Ordinal))

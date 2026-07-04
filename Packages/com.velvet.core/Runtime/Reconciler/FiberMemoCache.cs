@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace Velvet
@@ -6,25 +7,30 @@ namespace Velvet
     // Skips the Factory invocation and returns the cached VNode when the dependency array is unchanged.
     internal sealed class FiberMemoCache
     {
-        private readonly Dictionary<string, (object[] deps, VNode cached)> _cache = new();
+        private readonly Dictionary<string, (object?[]? deps, VNode cached)> _cache = new();
 
         // Convenience overload for callers that don't need the cache-hit flags.
         public VNode GetOrCompute(string cacheKey, MemoNode memo) => GetOrComputeWithHitInfo(cacheKey, memo).result;
 
         // Returns the cached VNode or computes a new one, along with cache-hit information.
         // Used by PatchNode to skip child-tree rebuilds on a cache hit.
-        public (VNode result, bool wasHit, VNode previousCached) GetOrComputeWithHitInfo(string cacheKey, MemoNode memo)
+        public (VNode result, bool wasHit, VNode? previousCached) GetOrComputeWithHitInfo(string cacheKey, MemoNode memo)
         {
+            VNode? previousCached = null;
             if (_cache.TryGetValue(cacheKey, out var entry))
             {
                 if (ObjectIs.AreEqualDeps(entry.deps, memo.Dependencies))
                 {
                     return (entry.cached, true, null);
                 }
+                previousCached = entry.cached;
             }
 
-            var previousCached = entry.cached;
             var result = memo.Factory();
+            if (result == null)
+            {
+                throw new InvalidOperationException("MemoNode.Factory returned null.");
+            }
             _cache[cacheKey] = (memo.Dependencies, result);
             return (result, false, previousCached);
         }
@@ -33,7 +39,7 @@ namespace Velvet
         // Factory. Used by FiberContextSpine to follow a committed Memo's inner while
         // reconstructing the live context cursor — a recompute there would run the user Factory and
         // mutate the cache outside a reconcile. Returns false when nothing is cached yet.
-        public bool TryPeek(string cacheKey, out VNode cached)
+        public bool TryPeek(string cacheKey, out VNode? cached)
         {
             if (_cache.TryGetValue(cacheKey, out var entry))
             {

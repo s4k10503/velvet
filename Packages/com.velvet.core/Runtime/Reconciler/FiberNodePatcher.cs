@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -11,7 +12,7 @@ namespace Velvet
         private readonly ReconcilerContext _ctx;
         private readonly WrapperInfrastructure _wrappers;
         private readonly FiberWrapperElementAppliers _appliers;
-        private IReconcilerHost _host;
+        private IReconcilerHost _host = null!;
 
         public FiberNodePatcher(ReconcilerContext ctx)
         {
@@ -51,7 +52,7 @@ namespace Velvet
         // New VNode types must preserve this contract.
         // Exception: the MemoNode branch in PatchNode does replace the element itself, but it preserves
         // childCount via parent.RemoveAt + Insert.
-        internal void PatchNode(VisualElement element, VNode oldNode, VNode newNode)
+        internal void PatchNode(VisualElement element, VNode? oldNode, VNode? newNode)
         {
             switch (oldNode)
             {
@@ -102,7 +103,8 @@ namespace Velvet
                     break;
                 case OutletNode oldOutlet when newNode is OutletNode newOutlet:
                 {
-                    if (!ResolveOutletMatch(out var routeElement, out var routeDepth, out var match))
+                    if (!ResolveOutletMatch(out var routeElement, out var routeDepth, out var match)
+                        || routeElement == null)
                     {
                         break;
                     }
@@ -118,7 +120,7 @@ namespace Velvet
                         var scopeFactory = Router.Current?.ScopeFactory;
                         if (scopeFactory != null)
                         {
-                            newOutlet.Scope = scopeFactory.CreateScope(match.Route, null);
+                            newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
                             _ctx.OutletScopes[element] = newOutlet.Scope;
                         }
                     }
@@ -132,7 +134,7 @@ namespace Velvet
                         var scopeFactory = Router.Current?.ScopeFactory;
                         if (scopeFactory != null)
                         {
-                            newOutlet.Scope = scopeFactory.CreateScope(match.Route, null);
+                            newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
                             _ctx.OutletScopes[element] = newOutlet.Scope;
                         }
                     }
@@ -278,10 +280,10 @@ namespace Velvet
         // children Reconcile, and replace the callback ref's cleanup → setup pair.
         private void PatchCommon(
             VisualElement element,
-            string oldName, string newName,
+            string? oldName, string? newName,
             FiberEventBinding[] newEvents,
-            VNode[] oldChildren, VNode[] newChildren,
-            Func<VisualElement, Action> refCallback)
+            VNode?[] oldChildren, VNode?[] newChildren,
+            Func<VisualElement, Action>? refCallback)
         {
             if (!_ctx.EventManager.HasSameBindings(element, newEvents))
             {
@@ -756,7 +758,7 @@ namespace Velvet
         // side-table (no direct VisualElement property to set), so PatchBaseElement re-syncs them via
         // ApplyAttributes right after this call (which rebuilds the store unconditionally, so a change is
         // always observed).
-        internal static void DiffProps(VisualElement element, FiberElementProps oldProps, FiberElementProps newProps)
+        internal static void DiffProps(VisualElement element, FiberElementProps? oldProps, FiberElementProps? newProps)
         {
             oldProps ??= FiberElementProps.Empty;
             newProps ??= FiberElementProps.Empty;
@@ -817,7 +819,7 @@ namespace Velvet
         // individually, so any new property added to StyleOverrides must also receive a matching
         // branch here. Missing the addition causes the new property's diff to be silently ignored
         // without a compile error.
-        internal static void DiffStyles(VisualElement element, StyleOverrides oldStyles, StyleOverrides newStyles)
+        internal static void DiffStyles(VisualElement element, StyleOverrides? oldStyles, StyleOverrides? newStyles)
         {
             oldStyles ??= StyleOverrides.Empty;
             newStyles ??= StyleOverrides.Empty;
@@ -868,7 +870,7 @@ namespace Velvet
         // matched route's Component (routeDepth = current depth + 1). Returns false when there
         // is no match to render (no location, depth out of range, or the matched Route has no element).
         internal bool ResolveOutletMatch(
-            out ComponentNode routeElement,
+            out ComponentNode? routeElement,
             out int routeDepth,
             out RouteMatch match)
         {
@@ -886,7 +888,7 @@ namespace Velvet
             {
                 routeElement = null;
                 routeDepth = 0;
-                match = default;
+                match = null!;
                 return false;
             }
 
@@ -903,7 +905,7 @@ namespace Velvet
             var boundaryDepth = ResolveErrorBoundaryDepth(location.Matches, errors);
             if (boundaryDepth >= 0)
             {
-                var boundaryElement = location.Matches[boundaryDepth].Route.ErrorElement;
+                var boundaryElement = location.Matches[boundaryDepth].Route?.ErrorElement;
 
                 if (depth == boundaryDepth)
                 {
@@ -914,6 +916,7 @@ namespace Velvet
                         // chain, the erroring subtree renders nothing.
                         routeElement = null;
                         routeDepth = 0;
+                        match = null!;
                         return false;
                     }
 
@@ -928,16 +931,18 @@ namespace Velvet
                     // Below the boundary: the ErrorElement subtree replaced everything here, so render nothing.
                     routeElement = null;
                     routeDepth = 0;
+                    match = null!;
                     return false;
                 }
 
                 // depth < boundaryDepth: an ancestor above the boundary renders normally below.
             }
 
-            routeElement = match.Route.Element;
+            routeElement = match.Route?.Element;
             if (routeElement == null)
             {
                 routeDepth = 0;
+                match = null!;
                 return false;
             }
 
@@ -982,7 +987,7 @@ namespace Velvet
 
             for (var i = deepestErrored; i >= 0; i--)
             {
-                if (matches[i].Route.ErrorElement != null)
+                if (matches[i].Route?.ErrorElement != null)
                 {
                     return i;
                 }
@@ -993,8 +998,9 @@ namespace Velvet
             return 0;
         }
 
-        internal void HandleComponentMount(VisualElement wrapper, ComponentNode componentNode)
+        internal void HandleComponentMount(VisualElement wrapper, ComponentNode? componentNode)
         {
+            if (componentNode == null) return;
             // The wrapper-mounted Component (an Outlet route Component) is mounted during the
             // reconcile walk's commit while its enclosing Providers — and, for an Outlet, the pushed
             // Depth+1 — are live on the ComponentContextStack. UseContext reads that live cursor, so no
@@ -1047,12 +1053,12 @@ namespace Velvet
                 return Array.Empty<string>();
             }
 
-            List<string> payloads = null;
+            List<string>? payloads = null;
             foreach (var cls in classNames)
             {
                 if (StyleVariantClass.TryParse(cls, out var k, out var payload) && k == kind)
                 {
-                    (payloads ??= new List<string>()).Add(payload);
+                    (payloads ??= new List<string>()).Add(payload ?? string.Empty);
                 }
             }
 
@@ -1131,7 +1137,7 @@ namespace Velvet
         // group/peer and every distinct named source (group-hover/sidebar:, peer-checked/email:, …) become
         // separate bindings the manipulator resolves independently. Returns null when no relational token is
         // present (the common case), so a non-relational element pays nothing.
-        private static List<RelationalBindingConfig> BuildRelationalConfigs(string[] classNames)
+        private static List<RelationalBindingConfig>? BuildRelationalConfigs(string[] classNames)
         {
             if (classNames == null || classNames.Length == 0)
             {
@@ -1139,7 +1145,7 @@ namespace Velvet
             }
 
             // (isPeer, name) -> per-state payload lists, indexed by (int)RelationalState.
-            Dictionary<(bool IsPeer, string Name), List<string>[]> map = null;
+            Dictionary<(bool IsPeer, string Name), List<string>[]>? map = null;
             foreach (var cls in classNames)
             {
                 if (!StyleVariantClass.TryParse(cls, out var kind, out var name, out var payload)
@@ -1155,7 +1161,7 @@ namespace Velvet
                     map[key] = states;
                 }
                 var slot = (int)StyleVariantClass.RelationalStateOf(kind);
-                (states[slot] ??= new List<string>()).Add(payload);
+                (states[slot] ??= new List<string>()).Add(payload ?? string.Empty);
             }
 
             if (map == null)
@@ -1236,7 +1242,7 @@ namespace Velvet
                 return Array.Empty<string>();
             }
 
-            List<string> payloads = null;
+            List<string>? payloads = null;
             foreach (var cls in classNames)
             {
                 if (StyleHasVariantClass.TryParse(cls, out var k, out _, out var payload)
@@ -1246,7 +1252,7 @@ namespace Velvet
                     && !StyleAttributeVariantClass.IsAttribute(payload)
                     && !StyleSupportsVariantClass.IsSupports(payload))
                 {
-                    (payloads ??= new List<string>()).Add(payload);
+                    (payloads ??= new List<string>()).Add(payload ?? string.Empty);
                 }
             }
 
@@ -1269,7 +1275,7 @@ namespace Velvet
                 _ctx.HasClassVariants.Remove(element);
             }
 
-            List<(string ClassName, string[] Payloads)> rules = null;
+            List<(string? ClassName, string?[] Payloads)>? rules = null;
             if (classNames != null)
             {
                 foreach (var cls in classNames)
@@ -1285,7 +1291,7 @@ namespace Velvet
                         && !StyleAttributeVariantClass.IsAttribute(payload)
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
-                        (rules ??= new List<(string ClassName, string[] Payloads)>())
+                        (rules ??= new List<(string? ClassName, string?[] Payloads)>())
                             .Add((className, new[] { payload }));
                     }
                 }
@@ -1312,7 +1318,7 @@ namespace Velvet
         // named class. Stateless and idempotent. The scan iterates the direct children's subtrees (element.Q
         // is root-inclusive, so querying the element itself would self-match — :has() is descendant-only, and
         // a self-match would also latch when the payload class equals the queried class).
-        private static void EvaluateHasClass(VisualElement element, List<(string ClassName, string[] Payloads)> rules)
+        private static void EvaluateHasClass(VisualElement element, List<(string? ClassName, string?[] Payloads)> rules)
         {
             foreach (var rule in rules)
             {
@@ -1387,7 +1393,7 @@ namespace Velvet
         // a stale payload is never missed. Idempotent (each evaluation reads the current subtree); no has- map
         // is mutated by an evaluation (payloads resolve to USS classes / inline styles / stacked manipulators,
         // not has- registrations), so walking and re-deriving in place is safe.
-        internal static void RefreshHasVariants(ReconcilerContext ctx, VisualElement regionRoot)
+        internal static void RefreshHasVariants(ReconcilerContext? ctx, VisualElement? regionRoot)
         {
             if (ctx == null)
             {
@@ -1483,7 +1489,7 @@ namespace Velvet
                 _ctx.AttributeVariants.Remove(element);
             }
 
-            List<(StyleAttributeNamespace Ns, string Key, string ExpectedValue, string[] Payloads)> rules = null;
+            List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads)>? rules = null;
             if (classNames != null)
             {
                 foreach (var cls in classNames)
@@ -1499,8 +1505,9 @@ namespace Velvet
                         && !StyleAttributeVariantClass.IsAttribute(payload)
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
-                        (rules ??= new List<(StyleAttributeNamespace, string, string, string[])>())
-                            .Add((ns, key, value, new[] { payload }));
+                        if (payload == null) continue;
+                        (rules ??= new List<(StyleAttributeNamespace, string, string?, string[])>())
+                            .Add((ns, key ?? string.Empty, value, new[] { payload }));
                     }
                 }
             }
@@ -1519,7 +1526,7 @@ namespace Velvet
         // Called on mount (FiberNodeFactory) and on the props patch path (PatchBaseElement). When the element
         // carries no attribute variant rule this is a cheap early-out (no store is kept for it), so only an
         // element actually styled by data-/aria- pays the store-tracking cost.
-        internal void ApplyAttributes(VisualElement element, FiberElementProps props)
+        internal void ApplyAttributes(VisualElement element, FiberElementProps? props)
         {
             // Only an element with attribute-variant rules needs a store: the store exists solely to be
             // matched against those rules. An element that carries Data/Aria props but no data-/aria- variant
@@ -1544,13 +1551,13 @@ namespace Velvet
 
         // Folds props.Data and props.Aria into a single namespaced map (data:<key> / aria:<key>), or null
         // when neither is present. Static + allocation-free in the common (no-attribute) case.
-        private static Dictionary<string, string> BuildAttributeStore(FiberElementProps props)
+        private static Dictionary<string, string>? BuildAttributeStore(FiberElementProps? props)
         {
             if (props == null)
             {
                 return null;
             }
-            Dictionary<string, string> store = null;
+            Dictionary<string, string>? store = null;
             if (props.Data != null)
             {
                 foreach (var kv in props.Data)
@@ -1572,13 +1579,13 @@ namespace Velvet
         // store means the element carries no attributes, so every presence / equality rule is off. Stateless
         // and idempotent (StyleVariantPayload.Apply is a no-op when the layer is already in the target state).
         private static void EvaluateAttributes(
-            VisualElement element, Dictionary<string, string> store,
-            List<(StyleAttributeNamespace Ns, string Key, string ExpectedValue, string[] Payloads)> rules)
+            VisualElement element, Dictionary<string, string>? store,
+            List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads)> rules)
         {
             foreach (var rule in rules)
             {
                 var present = false;
-                string actual = null;
+                string? actual = null;
                 if (store != null)
                 {
                     present = store.TryGetValue(StorePrefix(rule.Ns) + rule.Key, out actual);
@@ -1607,7 +1614,7 @@ namespace Velvet
                 _ctx.SupportsVariants.Remove(element);
             }
 
-            List<string[]> rules = null;
+            List<string[]>? rules = null;
             if (classNames != null)
             {
                 foreach (var cls in classNames)
@@ -1623,7 +1630,7 @@ namespace Velvet
                         && !StyleAttributeVariantClass.IsAttribute(payload)
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
-                        (rules ??= new List<string[]>()).Add(new[] { payload });
+                        (rules ??= new List<string[]>()).Add(new string[] { payload ?? string.Empty });
                     }
                 }
             }
@@ -1657,7 +1664,7 @@ namespace Velvet
                 _ctx.StructuralVariants.Remove(element);
             }
 
-            List<(StyleStructuralKind Kind, int N, string[] Payloads)> rules = null;
+            List<(StyleStructuralKind Kind, int N, string[] Payloads)>? rules = null;
             if (classNames != null)
             {
                 foreach (var cls in classNames)
@@ -1674,7 +1681,7 @@ namespace Velvet
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
                         (rules ??= new List<(StyleStructuralKind Kind, int N, string[] Payloads)>())
-                            .Add((kind, n, new[] { payload }));
+                            .Add((kind, n, new string[] { payload ?? string.Empty }));
                     }
                 }
             }

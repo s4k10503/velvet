@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -13,9 +14,9 @@ namespace Velvet
 
     internal readonly struct IndexedReconcileState
     {
-        public readonly VisualElement Parent;
-        public readonly VNode[] OldNodes;
-        public readonly VNode[] NewNodes;
+        public readonly VisualElement? Parent;
+        public readonly VNode?[] OldNodes;
+        public readonly VNode?[] NewNodes;
         public readonly IndexedReconcilePhase ResumePhase;
         public readonly int ResumeIndex;
         public readonly int SlotStart;
@@ -24,9 +25,9 @@ namespace Velvet
         public readonly int SlotLimit;
 
         public IndexedReconcileState(
-            VisualElement parent,
-            VNode[] oldNodes,
-            VNode[] newNodes,
+            VisualElement? parent,
+            VNode?[] oldNodes,
+            VNode?[] newNodes,
             IndexedReconcilePhase resumePhase,
             int resumeIndex,
             int slotStart = 0,
@@ -75,11 +76,11 @@ namespace Velvet
         #region Inputs — fixed at construction
 
         // Parent VE the reconciled children are placed into.
-        public VisualElement Parent { get; init; }
+        public VisualElement? Parent { get; init; }
         // Child VNode array from the previous render (already FlattenAndFilter'd).
-        public VNode[] OldNodes { get; init; }
+        public VNode?[] OldNodes { get; init; } = null!;
         // Child VNode array requested by the current render (already FlattenAndFilter'd).
-        public VNode[] NewNodes { get; init; }
+        public VNode?[] NewNodes { get; init; } = null!;
         // Zero-based slot offset into Parent.children at which this keyed reconcile operates.
         // Default 0 (Reconcile owns the full children list). Non-zero for wrapper-less fibers that
         // share a parent VE with sibling slots. Settable so a sibling shift that re-bases this
@@ -108,17 +109,17 @@ namespace Velvet
         #region Pass 2 Buffers — rented from ReconcilerBufferPool, released by ReleaseKeyedBuffers
 
         // Map from key to (domIndex, VNode) for old nodes at indices ≥ linearEnd. Built by Pass2BuildMap.
-        public Dictionary<ChildKey, (int index, VNode node)> OldKeyMap;
+        public Dictionary<ChildKey, (int index, VNode? node)>? OldKeyMap;
         // Set of old keys consumed by new nodes during Pass2Process. Used to decide which unused keys to remove.
-        public HashSet<ChildKey> UsedKeys;
+        public HashSet<ChildKey>? UsedKeys;
         // Set of old keys replaced by type swap (CanPatch=false). Identifies elements to remove from the DOM during the removal phase.
-        public HashSet<ChildKey> ReplacedKeys;
+        public HashSet<ChildKey>? ReplacedKeys;
         // List of (element, isExisting) in the new placement order, built by Pass2Process. Input to the Reorder phase.
-        public List<(VisualElement element, bool isExisting)> NewElements;
+        public List<(VisualElement? element, bool isExisting)>? NewElements;
         // Set of DOM indices of old nodes orphaned by duplicate-key overwrites. Usually empty.
-        public HashSet<int> OrphanedOldIndices;
+        public HashSet<int>? OrphanedOldIndices;
         // Set of LIS anchor positions (in NewElements indices) computed by ComputeLis. Consulted in Reorder to skip anchors.
-        public HashSet<int> LisIndices;
+        public HashSet<int>? LisIndices;
 
         #endregion
     }
@@ -131,11 +132,11 @@ namespace Velvet
     // — cannot collide with an unkeyed sibling's slot.
     internal readonly struct ChildKey : IEquatable<ChildKey>
     {
-        private readonly string _key;
+        private readonly string? _key;
         private readonly int _index;
         private readonly bool _isPositional;
 
-        private ChildKey(string key, int index, bool isPositional)
+        private ChildKey(string? key, int index, bool isPositional)
         {
             _key = key;
             _index = index;

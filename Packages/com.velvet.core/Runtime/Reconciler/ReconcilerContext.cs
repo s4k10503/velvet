@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 
@@ -6,7 +7,7 @@ namespace Velvet
     // Slot range that a single Portal placeholder owns within its target's children list.
     // Multiple Portals targeting the same DOM node each carry one entry of this record so
     // PatchPortal / CleanupPortal can address only that range without disturbing siblings.
-    internal readonly record struct PortalSlotInfo(string TargetId, VNode[] Children, int SlotStart, int SlotLength);
+    internal readonly record struct PortalSlotInfo(string TargetId, VNode?[] Children, int SlotStart, int SlotLength);
 
     // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
     // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
@@ -23,12 +24,12 @@ namespace Velvet
     // of an isolated re-render after such a change.
     internal sealed class DetachedMountContext
     {
-        internal readonly List<KeyValuePair<object, object>> EnclosingSnapshot;
-        internal readonly VNode[] DescendantNodes;
+        internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;
+        internal readonly VNode?[]? DescendantNodes;
         internal readonly ComponentFiber Anchor;
 
         internal DetachedMountContext(
-            List<KeyValuePair<object, object>> enclosingSnapshot, VNode[] descendantNodes, ComponentFiber anchor)
+            List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor)
         {
             EnclosingSnapshot = enclosingSnapshot;
             DescendantNodes = descendantNodes;
@@ -51,10 +52,10 @@ namespace Velvet
             string targetId,
             int boundary,
             int delta,
-            VisualElement excludePlaceholder = null)
+            VisualElement? excludePlaceholder = null)
         {
             if (delta == 0) return;
-            List<VisualElement> placeholders = null;
+            List<VisualElement>? placeholders = null;
             foreach (var entry in portalState)
             {
                 if (ReferenceEquals(entry.Key, excludePlaceholder)) continue;
@@ -110,7 +111,7 @@ namespace Velvet
         // (ApplyHasClassVariants, the same hook ApplyStructuralVariants uses but with the element as subject)
         // re-derives every rule from a fresh descendant query, so a child added / removed re-derives it.
         // Cleared on element cleanup / reconciler dispose.
-        public Dictionary<VisualElement, List<(string ClassName, string[] Payloads)>> HasClassVariants { get; } = new();
+        public Dictionary<VisualElement, List<(string? ClassName, string?[] Payloads)>> HasClassVariants { get; } = new();
 
         // data-[key=value]: / data-[key]: / aria-[...]: — an element styled by its OWN carried attribute
         // values (UI Toolkit has no HTML attributes, so the element supplies them via the Data / Aria props).
@@ -124,7 +125,7 @@ namespace Velvet
         //     event), so the props path drives the re-evaluation, mirroring the has-[.class]: side-table.
         // Both cleared on element cleanup / reconciler dispose.
         public Dictionary<VisualElement, Dictionary<string, string>> DataAttributes { get; } = new();
-        public Dictionary<VisualElement, List<(StyleAttributeNamespace Ns, string Key, string ExpectedValue, string[] Payloads)>> AttributeVariants { get; } = new();
+        public Dictionary<VisualElement, List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads)>> AttributeVariants { get; } = new();
 
         // supports-[prop:value]: — an element styled by a CSS feature query. UI Toolkit targets one fixed
         // engine, so a feature query is STATIC: a well-formed token is always-applied (see
@@ -182,7 +183,7 @@ namespace Velvet
         // distinct. innerName is the relational name of a NAMED inner (dark:group-hover/sidebar:bg-on) — "" for
         // every other inner — so two stacked named relationals (dark:group-hover/a / dark:group-hover/b) get
         // separate manipulators resolving their own source.
-        public Dictionary<(VisualElement target, object owner, int outerPriority, StyleVariantKind inner, string innerName, string leaf), StyleStackedVariantManipulator> StackedVariantManipulators { get; } = new();
+        public Dictionary<(VisualElement target, object owner, int outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators { get; } = new();
 
         // Looks up/creates the stacked manipulator for this outer owner + inner variant + leaf and toggles its
         // outer gate. Called by StyleVariantPayload.Apply when a payload is itself a variant. A composed
@@ -205,7 +206,7 @@ namespace Velvet
                 {
                     var innerPriority = StyleLayerPriority.ForVariant(innerKind);
                     var priority = outerPriority > innerPriority ? outerPriority : innerPriority;
-                    m = new StyleStackedVariantManipulator(this, innerKind, innerName, new[] { leafPayload }, priority);
+                    m = new StyleStackedVariantManipulator(this, innerKind, innerName, new string?[] { leafPayload }, priority);
                     StackedVariantManipulators[key] = m;
                     target.AddManipulator(m);
                 }
@@ -253,7 +254,7 @@ namespace Velvet
         // StyleVariantPayload.Apply invokes it after toggling a clip-path payload on a state change
         // (hover:clip-path-[…] etc.) — a clip class toggle alone does nothing (UITK has no clip-path
         // property), so the clip wrapper's mask must be re-derived. Null until the patcher wires it.
-        public System.Action<VisualElement> ClipPathReResolve { get; set; }
+        public System.Action<VisualElement> ClipPathReResolve { get; set; } = null!;
 
         // Per-element ring-* / outline-* bookkeeping, keyed by the INNER (real) element. An entry means the
         // element is wrapped in a passthrough wrapper (also in WrapperToInnerMap) holding a native-border
@@ -371,7 +372,7 @@ namespace Velvet
         // top-level finally keeps the nodes alive for the whole pass (so the baseline stays intact and no
         // renter can alias them) while still pooling them for the next pass — no added GC pressure.
         // Drained and cleared at the end of every top-level Reconcile.
-        public List<VNode[]> DeferredInlineOldTreeReturns { get; } = new();
+        public List<VNode?[]> DeferredInlineOldTreeReturns { get; } = new();
 
         // Cleanup callback returned from a callback ref (BaseElementNode.RefCallback).
         // Fires when the element detaches from the DOM, releasing resources such as
@@ -381,7 +382,7 @@ namespace Velvet
         // Invokes a callback ref and stores the returned cleanup in RefCleanups.
         // If the same element already has a previously registered cleanup, fires it first and replaces
         // it (the case where re-patch changes callback identity).
-        internal void InvokeRefCallback(VisualElement element, System.Func<VisualElement, System.Action> refCallback)
+        internal void InvokeRefCallback(VisualElement element, System.Func<VisualElement, System.Action>? refCallback)
         {
             // Remove first: if a user-defined cleanup throws, leaving a stale entry would cause
             // a double-fire on the next reconcile. Remove → Invoke order preserves exception safety.
@@ -404,7 +405,7 @@ namespace Velvet
         // structural walk reads it to reproduce whichever subtree (children vs fallback) was committed
         // last render, so the diff's old leaves match the DOM. Entries are pruned when the boundary fiber
         // is disposed (registry teardown).
-        internal Dictionary<(ComponentFiber boundary, string positionKey), bool> SuspenseFallbackShown { get; } = new();
+        internal Dictionary<(ComponentFiber? boundary, string positionKey), bool> SuspenseFallbackShown { get; } = new();
 
         // Boundary fibers that currently have a wrapper-less Suspense showing its fallback. A dirty fiber
         // whose nearest Suspense boundary is in this set is "offscreen": its own lane flush is deferred to
@@ -422,7 +423,7 @@ namespace Velvet
         {
             SuspendedBoundaries.Remove(boundary);
             if (SuspenseFallbackShown.Count == 0) return;
-            List<(ComponentFiber boundary, string positionKey)> stale = null;
+            List<(ComponentFiber? boundary, string positionKey)>? stale = null;
             foreach (var key in SuspenseFallbackShown.Keys)
             {
                 if (key.boundary == boundary) (stale ??= new()).Add(key);
@@ -466,7 +467,7 @@ namespace Velvet
         // resets the fragment scope to null; without the parent, that inner AnimatePresence would collide
         // with an outer one at the same (null fiber, null scope, index 0). The parent is stable across the
         // AnimatePresence's renders (the host element is reused), and disambiguates inner from outer.
-        internal Dictionary<(ComponentFiber boundary, VisualElement parent, string presenceKey), PresenceBoundaryState> PresenceStates { get; } = new();
+        internal Dictionary<(ComponentFiber? boundary, VisualElement? parent, string presenceKey), PresenceBoundaryState> PresenceStates { get; } = new();
 
         // Removes all DOM-less AnimatePresence state keyed by boundary. Invoked from
         // ComponentRegistry when the boundary fiber is unregistered, so a boundary that
@@ -474,7 +475,7 @@ namespace Velvet
         internal void PrunePresenceBoundaryState(ComponentFiber boundary)
         {
             if (PresenceStates.Count == 0) return;
-            List<(ComponentFiber boundary, VisualElement parent, string presenceKey)> stale = null;
+            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)>? stale = null;
             foreach (var key in PresenceStates.Keys)
             {
                 if (key.boundary == boundary) (stale ??= new()).Add(key);
@@ -509,7 +510,7 @@ namespace Velvet
         // a drain — on mount or a synchronous whole-tree flush — there is no tier separation, so reads return
         // the live store.Current and nothing is pinned. Pinning is reference-keyed, so distinct stores
         // never collide and the map is empty in the steady state.
-        private readonly Dictionary<object, object> _pinnedStoreSnapshots = new();
+        private readonly Dictionary<object, object?> _pinnedStoreSnapshots = new();
         private bool _storeSnapshotWaveActive;
 
         // While a batch drain is in progress, fibers defer their effect commit (insertion / layout effects)
@@ -526,9 +527,9 @@ namespace Velvet
         internal TStore PinStoreSnapshot<TStore>(object store, TStore liveSnapshot)
         {
             if (!_storeSnapshotWaveActive) return liveSnapshot;
-            if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned))
+            if (_pinnedStoreSnapshots.TryGetValue(store, out var pinned) && pinned is TStore typed)
             {
-                return (TStore)pinned;
+                return typed;
             }
             _pinnedStoreSnapshots[store] = liveSnapshot;
             return liveSnapshot;
@@ -568,7 +569,7 @@ namespace Velvet
         // Using an instance-local depth would treat each fiber-owned Reconciler.Reconcile call as a
         // fresh top-level, clearing entries for sibling subtrees the surrounding pass has not yet consumed.
         internal int SharedReconcileDepth { get; set; }
-        public IReconcilerBridge ReconcilerBridge { get; private set; }
+        public IReconcilerBridge ReconcilerBridge { get; private set; } = null!;
         public bool IsDisposed { get; private set; }
 
         // Becomes true when an Error Boundary switches to its fallback.

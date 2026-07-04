@@ -89,7 +89,7 @@ namespace Velvet
                     }
                 }
 
-                result[slot] = StyleClassNames.Class(parts);
+                result[slot] = StyleClassNames.Class(parts) ?? "";
             }
 
             return new StyleSlotClasses(result);
