@@ -775,7 +775,7 @@ namespace Velvet
 
         private static void ApplyCombinedFilter(VisualElement element, LayerMap map)
         {
-            List<FilterFunction> functions = null;
+            List<FilterFunction>? functions = null;
             foreach (var prop in s_filterOrder)
             {
                 if (!map.TryGetValue(prop, out var layers) || layers.Count == 0)

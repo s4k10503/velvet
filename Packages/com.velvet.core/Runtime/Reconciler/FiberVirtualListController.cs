@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -18,9 +19,9 @@ namespace Velvet
         // a snapshot of that context's top values, refreshed on each Update (both ctor and Update run
         // mid-reconcile with a correct cursor). Both may be null when the controller is driven without a host
         // / context (e.g. a unit test) — then item renders fall back to the prior context-less behaviour.
-        private readonly ComponentFiber _hostFiber;
-        private readonly ComponentContextStack _contextStack;
-        private List<KeyValuePair<object, object>> _enclosingContext;
+        private readonly ComponentFiber? _hostFiber;
+        private readonly ComponentContextStack? _contextStack;
+        private List<KeyValuePair<object, object>>? _enclosingContext;
 
         private VirtualListNode _node;
         private VNode[] _renderedNodes;
@@ -37,8 +38,8 @@ namespace Velvet
             ScrollView scrollView,
             VirtualListNode node,
             IReconcilerBridge reconciler,
-            ComponentFiber hostFiber = null,
-            ComponentContextStack contextStack = null)
+            ComponentFiber? hostFiber = null,
+            ComponentContextStack? contextStack = null)
         {
             _scrollView = scrollView ?? throw new ArgumentNullException(nameof(scrollView));
             _node = node ?? throw new ArgumentNullException(nameof(node));

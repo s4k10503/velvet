@@ -7,7 +7,7 @@ namespace Velvet
     // Each method also handles resetting to null / default values.
     internal static class FiberPropApplier
     {
-        public static void ApplyText(VisualElement element, string text)
+        public static void ApplyText(VisualElement element, string? text)
         {
             var value = text ?? string.Empty;
             switch (element)
@@ -22,7 +22,7 @@ namespace Velvet
             }
         }
 
-        public static void ApplyTooltip(VisualElement element, string tooltip)
+        public static void ApplyTooltip(VisualElement element, string? tooltip)
             => element.tooltip = tooltip ?? string.Empty;
 
         public static void ApplyEnabled(VisualElement element, bool? enabled)
@@ -43,7 +43,7 @@ namespace Velvet
         public static void ApplyFocusable(VisualElement element, bool? focusable)
             => element.focusable = focusable ?? true;
 
-        public static void ApplyFieldValue(VisualElement element, object value)
+        public static void ApplyFieldValue(VisualElement element, object? value)
         {
             // A controlled field reflects its declared value, so clearing the value prop to null resets the
             // element to its type default (mirroring ApplyText's null -> empty coalescing) instead of stranding
@@ -58,7 +58,7 @@ namespace Velvet
             FiberElementFactory.ApplyFieldValue(element, value);
         }
 
-        public static void ApplySlider(VisualElement element, SliderSettings settings)
+        public static void ApplySlider(VisualElement element, SliderSettings? settings)
         {
             if (element is not Slider sliderEl)
             {
@@ -69,7 +69,7 @@ namespace Velvet
             sliderEl.highValue = Resolve(settings?.HighValue, 10f);
         }
 
-        public static void ApplyScrollView(VisualElement element, ScrollViewSettings settings)
+        public static void ApplyScrollView(VisualElement element, ScrollViewSettings? settings)
         {
             if (element is not ScrollView svEl)
             {
@@ -81,7 +81,7 @@ namespace Velvet
             svEl.touchScrollBehavior = Resolve(settings?.TouchScrollBehavior, ScrollView.TouchScrollBehavior.Clamped);
         }
 
-        public static void ApplyTextField(VisualElement element, TextFieldSettings settings)
+        public static void ApplyTextField(VisualElement element, TextFieldSettings? settings)
         {
             if (element is not TextField tfEl)
             {
@@ -92,7 +92,7 @@ namespace Velvet
         }
 
         // Applies choices to DropdownField / RadioButtonGroup.
-        public static void ApplyChoices(VisualElement element, ChoicesSettings settings)
+        public static void ApplyChoices(VisualElement element, ChoicesSettings? settings)
         {
             if (settings?.Choices == null)
             {

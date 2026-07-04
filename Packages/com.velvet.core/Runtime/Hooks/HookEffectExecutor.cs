@@ -20,7 +20,7 @@ namespace Velvet
         // Set only on the mount commit; update commits pass false. The diagnostic
         // doubles effects on mount only, so doubling on update would tear down and re-establish external
         // resources (subscriptions / sockets) of a deps-changed effect mid-frame.
-        internal static void RunPendingEffects(ComponentFiber fiber, List<HookEffectSlot> pending, bool mountDoubleInvoke = false)
+        internal static void RunPendingEffects(ComponentFiber fiber, List<HookEffectSlot>? pending, bool mountDoubleInvoke = false)
         {
             if (pending == null || pending.Count == 0) return;
 
@@ -33,7 +33,7 @@ namespace Velvet
         // across every fiber FIRST, then a tree-wide setup phase — without re-running the cleanups that
         // RunPendingEffects bundles in. Callers that want the single-fiber cleanup→setup
         // pair should call RunPendingEffects instead.
-        internal static void RunFactoriesAndClear(ComponentFiber fiber, List<HookEffectSlot> pending, bool mountDoubleInvoke = false)
+        internal static void RunFactoriesAndClear(ComponentFiber fiber, List<HookEffectSlot>? pending, bool mountDoubleInvoke = false)
         {
             if (pending == null || pending.Count == 0) return;
 
@@ -72,7 +72,7 @@ namespace Velvet
         }
 
         // Runs only the cleanups for every entry in the pending list. Factories are not invoked.
-        internal static void RunCleanups(ComponentFiber fiber, List<HookEffectSlot> entries)
+        internal static void RunCleanups(ComponentFiber fiber, List<HookEffectSlot>? entries)
         {
             if (entries == null) return;
 
@@ -99,7 +99,7 @@ namespace Velvet
         // Promotes each slot's staged HookEffectSlot.NextDeps to HookEffectSlot.LastDeps.
         // Called once after the render-phase loop settles so the committed comparison baseline reflects the final
         // (settled) attempt's deps rather than a discarded intermediate attempt.
-        internal static void CommitEffectDeps(List<HookEffectSlot> effects)
+        internal static void CommitEffectDeps(List<HookEffectSlot>? effects)
         {
             if (effects == null) return;
 
@@ -111,7 +111,7 @@ namespace Velvet
 
         // Full cleanup: runs the cleanup for every entry in all and clears both lists.
         // Usable for both UseLayoutEffect and UseEffect on Unmount.
-        internal static void CleanupAll(ComponentFiber fiber, List<HookEffectSlot> all, List<HookEffectSlot> pending)
+        internal static void CleanupAll(ComponentFiber fiber, List<HookEffectSlot>? all, List<HookEffectSlot>? pending)
         {
             if (all == null) return;
 

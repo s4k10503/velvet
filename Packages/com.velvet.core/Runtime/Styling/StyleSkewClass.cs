@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Globalization;
 
@@ -13,10 +14,10 @@ namespace Velvet
     {
         public readonly float XDeg;
         public readonly float YDeg;
-        public readonly string SourceX;
-        public readonly string SourceY;
+        public readonly string? SourceX;
+        public readonly string? SourceY;
 
-        public SkewSpec(float xDeg, float yDeg, string sourceX, string sourceY)
+        public SkewSpec(float xDeg, float yDeg, string? sourceX, string? sourceY)
         {
             XDeg = xDeg;
             YDeg = yDeg;
@@ -44,7 +45,7 @@ namespace Velvet
         private const string YPrefix = "skew-y-";
 
         // True when cls is a skew utility this layer owns (recognized or not-yet-valid).
-        public static bool IsSkewClass(string cls)
+        public static bool IsSkewClass(string? cls)
         {
             if (string.IsNullOrEmpty(cls))
             {
@@ -56,7 +57,7 @@ namespace Velvet
         }
 
         // Cheap early-out gate: true when ANY class is a skew utility.
-        public static bool HasSkewClass(string[] classNames)
+        public static bool HasSkewClass(string[]? classNames)
         {
             if (classNames == null)
             {
@@ -77,7 +78,7 @@ namespace Velvet
         // path compares these against the live binding's SourceX / SourceY to skip the parse in the steady
         // state — gating on the same TryParse predicate keeps the two probes from diverging on a trailing
         // unparseable token (e.g. ["skew-x-6", "skew-x-junk"]), which otherwise defeats the fast path.
-        public static bool TryGetWinningSkewClasses(string[] classNames, out string winnerX, out string winnerY)
+        public static bool TryGetWinningSkewClasses(string[]? classNames, out string? winnerX, out string? winnerY)
         {
             winnerX = null;
             winnerY = null;
@@ -106,7 +107,7 @@ namespace Velvet
         // Resolves the cascade (last recognized class per axis wins) into a SkewSpec. Returns true
         // only when the result is ACTIVE (a non-zero angle on at least one axis) — skew-x-0 resets
         // its axis, so a list ending in resets extracts to false.
-        public static bool TryExtract(string[] classNames, out SkewSpec spec)
+        public static bool TryExtract(string[]? classNames, out SkewSpec spec)
         {
             spec = default;
             if (classNames == null)
@@ -115,7 +116,7 @@ namespace Velvet
             }
 
             float x = 0f, y = 0f;
-            string sourceX = null, sourceY = null;
+            string? sourceX = null, sourceY = null;
             foreach (var cls in classNames)
             {
                 if (!TryParse(cls, out var isX, out var deg))
@@ -140,7 +141,7 @@ namespace Velvet
 
         // Parses one class: skew-x-<int> / -skew-x-<int> / skew-x-[<float>deg] (+ y variants).
         // Returns false for anything else (the cascade ignores unrecognized tokens).
-        internal static bool TryParse(string cls, out bool isX, out float deg)
+        internal static bool TryParse(string? cls, out bool isX, out float deg)
         {
             isX = false;
             deg = 0f;

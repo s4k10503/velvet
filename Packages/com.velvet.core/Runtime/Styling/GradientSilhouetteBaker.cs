@@ -23,8 +23,8 @@ namespace Velvet
         private const float AaHalfWidth = 1f;
         private const float Margin = 2f;
 
-        private static Shader s_shader;
-        private static Material s_material;
+        private static Shader? s_shader;
+        private static Material? s_material;
         private static bool s_warned;
 
         // Leak guard: every baked texture is HideAndDontSave and survives a play-mode exit without a Domain
@@ -86,7 +86,7 @@ namespace Velvet
 
         // Bakes the silhouette for one element. Returns null (caller paints nothing) when there is no
         // graphics device or the shader is unavailable. The caller owns the returned texture.
-        internal static Texture2D Bake(GradientSpec spec, float w, float h, float tanX, float tanY, Vector4 radii)
+        internal static Texture2D? Bake(GradientSpec spec, float w, float h, float tanX, float tanY, Vector4 radii)
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
             {
@@ -161,7 +161,7 @@ namespace Velvet
 
         // Destroys a baked texture and drops it from the leak-guard registry. Called by the owning binding
         // on teardown (SkewSilhouette.Detach), a re-bake, or a gradient clear.
-        internal static void Release(Texture2D tex)
+        internal static void Release(Texture2D? tex)
         {
             if (tex == null)
             {

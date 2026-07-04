@@ -16,7 +16,7 @@ namespace Velvet
         private static bool _isDark;
 
         /// <summary>Raised whenever <see cref="IsDark"/> changes.</summary>
-        public static event Action DarkModeChanged;
+        public static event Action? DarkModeChanged;
 
         /// <summary>Whether dark mode is active. Setting it notifies <see cref="DarkModeChanged"/>.</summary>
         public static bool IsDark

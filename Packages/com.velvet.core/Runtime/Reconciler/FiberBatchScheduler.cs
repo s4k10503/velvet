@@ -44,7 +44,7 @@ namespace Velvet
         // though a reconcile is on the stack. FlushImmediate also blocks on this probe so a discrete event
         // dispatched synchronously inside a slice cannot re-enter the reconciler. The hazard is the
         // reconcile-on-stack, not which path put it there.
-        private Func<bool> _reconcileActiveProbe;
+        private Func<bool>? _reconcileActiveProbe;
 
         // UseStore cross-tier tearing-guard hooks (ReconcilerContext.BeginStoreSnapshotWave /
         // EndStoreSnapshotWave). A "wave" spans the immediate drain and the delayed drain that follows it in
@@ -53,8 +53,8 @@ namespace Velvet
         // REUSES that pin, keeping an immediate-tier ancestor and a delayed-tier descendant on the same
         // snapshot. Pinning is active only inside a drain — renders outside a drain (mount, a synchronous
         // whole-tree flush) run in a single pass with no tier separation and read the live store snapshot.
-        private Action<bool> _onDrainBegin;
-        private Action _onDrainEnd;
+        private Action<bool>? _onDrainBegin;
+        private Action? _onDrainEnd;
 
         // True when an immediate drain has just established snapshot pins that a pending delayed drain should
         // reuse (the delayed drain continues the immediate drain's wave). Set by DrainImmediate, consumed by
@@ -65,7 +65,7 @@ namespace Velvet
         // descendant's MountPoint can detach from the panel before the next frame, which stops a
         // scheduled item registered on it and would strand still-mounted fibers that joined the same
         // batch; the root mount element outlives every descendant in the tree.
-        private VisualElement _anchor;
+        private VisualElement? _anchor;
 
         // Number of frame-boundary drain callbacks registered with the scheduler since construction.
         // In a fully batched flush this increments by exactly one per tier per batch regardless of how

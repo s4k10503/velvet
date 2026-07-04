@@ -21,11 +21,11 @@ namespace Velvet
         // list persists across a render-phase state-update re-run (it is cleared once per RenderAndReconcile,
         // not per re-run), so a slot whose deps change between attempts could otherwise be added twice.
         internal static void RegisterEffect(
-            ref List<HookEffectSlot> effects,
-            ref List<HookEffectSlot> pendingEffects,
+            ref List<HookEffectSlot>? effects,
+            ref List<HookEffectSlot>? pendingEffects,
             ref int hookIndex,
-            Func<Action> factory,
-            object?[] deps,
+            Func<Action?> factory,
+            object?[]? deps,
             bool deduplicatePending = false,
             bool diagnosticPass = false)
         {
@@ -67,11 +67,11 @@ namespace Velvet
         }
 
         internal static void RegisterLayoutEffect(
-            ref List<HookEffectSlot> effects,
-            ref List<HookEffectSlot> pendingEffects,
+            ref List<HookEffectSlot>? effects,
+            ref List<HookEffectSlot>? pendingEffects,
             ref int hookIndex,
-            Func<Action> factory,
-            object?[] deps,
+            Func<Action?> factory,
+            object?[]? deps,
             bool diagnosticPass = false)
             => RegisterEffect(ref effects, ref pendingEffects, ref hookIndex, factory, deps,
                 deduplicatePending: true, diagnosticPass: diagnosticPass);

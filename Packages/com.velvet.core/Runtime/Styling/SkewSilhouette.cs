@@ -13,9 +13,9 @@ namespace Velvet
     internal sealed class SkewBinding
     {
         public SkewSpec Spec;
-        public Action<MeshGenerationContext> OnGenerate;
-        public EventCallback<CustomStyleResolvedEvent> OnStyleResolved;
-        public EventCallback<GeometryChangedEvent> OnGeometryChanged;
+        public Action<MeshGenerationContext>? OnGenerate;
+        public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
+        public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
 
         // The native-face stash + sentinel suppression shared with the drop-shadow layer: the rectangular
         // background / border are suppressed with a sentinel color and re-painted sheared, so their effective
@@ -41,7 +41,7 @@ namespace Velvet
         // Velvet/GradientSilhouette shader at the element's sheared bounding-box size. Owned by this binding
         // — re-baked when the size / skew / spec change, destroyed on Detach. Draw samples it on a
         // bounding-box quad. Null until the first bake (pre-layout, or no graphics device / shader).
-        public Texture2D GradientTex;
+        public Texture2D? GradientTex;
         // Quantized (w, h, skewX·100, skewY·100, tl, tr, br, bl radii) the current GradientTex was baked at,
         // to skip a redundant re-bake; GradBaked gates it (SetGradient clears it so a spec change re-bakes).
         public (int w, int h, int sx, int sy, int tl, int tr, int br, int bl) GradKey;

@@ -7,7 +7,7 @@ namespace Velvet
         // Throws when a hook is invoked outside of a Render() context.
         // Called from the Hooks static class.
         // fiber == null means there is no Current on FiberAmbientStack, i.e. we are outside Render().
-        internal static void ThrowIfNotRendering(ComponentFiber fiber, string hookName)
+        internal static void ThrowIfNotRendering(ComponentFiber? fiber, string hookName)
         {
             if (fiber == null || !fiber.IsRendering)
             {

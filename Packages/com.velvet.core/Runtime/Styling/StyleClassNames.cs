@@ -7,7 +7,7 @@ namespace Velvet
     public static class StyleClassNames
     {
         /// <summary>Joins parts with spaces, skipping null/empty entries.</summary>
-        public static string Class(params string?[] parts)
+        public static string? Class(params string?[] parts)
         {
             switch (parts.Length)
             {

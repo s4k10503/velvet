@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -24,8 +25,8 @@ namespace Velvet
         // the reorder region start. They differ for the sync keyed path (regionStart = slotStart +
         // linearEnd) and coincide for the general path (regionStart = slotStart, linearEnd == 0).
         internal void ComputeAnchorsAndReorder(
-            VisualElement parent,
-            List<(VisualElement element, bool isExisting)> newElements,
+            VisualElement? parent,
+            List<(VisualElement? element, bool isExisting)> newElements,
             int slotStart,
             int regionStart,
             int oldLen,
@@ -68,8 +69,8 @@ namespace Velvet
         // critical; each path passes its own (newNodes.Length for the keyed paths, newElements.Count for
         // the general path, where linearEnd == 0) to preserve the original per-path clamp exactly.
         internal void ComputeLisAnchors(
-            VisualElement parent,
-            List<(VisualElement element, bool isExisting)> newElements,
+            VisualElement? parent,
+            List<(VisualElement? element, bool isExisting)> newElements,
             int slotStart,
             int scanStart,
             int oldLen,
@@ -85,12 +86,12 @@ namespace Velvet
             {
                 // The retained range never exceeds max(oldLen, logicalNewLen) entries; clamp by
                 // childCount as a safety net while staying within this fiber's slot range.
-                var rangeEndExclusive = Math.Min(parent.childCount, slotStart + Math.Max(oldLen, logicalNewLen));
+                var rangeEndExclusive = Math.Min(parent!.childCount, slotStart + Math.Max(oldLen, logicalNewLen));
                 // Slot-local DOM positions in O(N). parent.IndexOf per element would be
                 // O(childCount) x newElements.Count = O(N^2).
                 for (var idx = scanStart; idx < rangeEndExclusive; idx++)
                 {
-                    domPosMap[parent.ElementAt(idx)] = idx - slotStart;
+                    domPosMap[parent!.ElementAt(idx)] = idx - slotStart;
                 }
 
                 // Current position of each committed element, in new order.
@@ -99,7 +100,7 @@ namespace Velvet
                 for (var i = 0; i < newElements.Count; i++)
                 {
                     var (element, isExisting) = newElements[i];
-                    domIndices.Add(isExisting && domPosMap.TryGetValue(element, out var pos) ? pos : -1);
+                    domIndices.Add(isExisting && element != null && domPosMap.TryGetValue(element, out var pos) ? pos : -1);
                 }
 
                 // pileTop[k] is the index (into newElements) of the most recently placed element on
@@ -184,11 +185,12 @@ namespace Velvet
         // scan term is removed; the reorder still runs as one unyielded slice, so a huge single-frame rotation is
         // bounded by that structural cost, not by this lookup.
         internal void ReorderToNewElementOrder(
-            VisualElement parent,
-            System.Collections.Generic.List<(VisualElement element, bool isExisting)> newElements,
-            System.Collections.Generic.HashSet<int> lisIndices,
+            VisualElement? parent,
+            System.Collections.Generic.List<(VisualElement? element, bool isExisting)> newElements,
+            System.Collections.Generic.HashSet<int>? lisIndices,
             int slotStart)
         {
+            if (parent == null || lisIndices == null) return;
             // The element that follows this whole range in the LIVE tree — the anchor for the range's right-most
             // element. The range currently occupies a contiguous block of its still-parented elements starting at
             // slotStart (Pass 2 Remove compacted out the dropped ones; freshly created elements are NOT yet
@@ -202,7 +204,7 @@ namespace Velvet
             var liveCount = 0;
             foreach (var (element, _) in newElements)
             {
-                if (element.parent == parent) liveCount++;
+                if (element != null && element.parent == parent) liveCount++;
             }
             var afterIndex = slotStart + liveCount;
             var afterRangeAnchor = afterIndex < parent.childCount ? parent.ElementAt(afterIndex) : null;
@@ -218,6 +220,7 @@ namespace Velvet
                 if (lisIndices.Contains(i)) continue;
 
                 var (element, isExisting) = newElements[i];
+                if (element == null) continue;
                 if (isExisting && element.parent == parent)
                 {
                     // Equivalent to element.RemoveFromHierarchy() but skips its internal scan-from-zero by

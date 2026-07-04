@@ -80,7 +80,7 @@ namespace Velvet
 
         private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
 
-        private VisualElement ChildContainer
+        private VisualElement? ChildContainer
             => target == null ? null : FiberNodePatcher.GetChildContainer(target);
 
         // Writes the inter-child border for the current spec: the leading edge (left for x, top for y) on

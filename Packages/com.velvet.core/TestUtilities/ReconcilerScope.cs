@@ -34,8 +34,8 @@ namespace Velvet.TestUtilities
     /// </summary>
     public abstract class ReconcilerTestFixture
     {
-        internal Reconciler Reconciler { get; private set; }
-        protected VisualElement Root { get; private set; }
+        internal Reconciler? Reconciler { get; private set; }
+        protected VisualElement? Root { get; private set; }
 
         [SetUp]
         public virtual void SetUp()

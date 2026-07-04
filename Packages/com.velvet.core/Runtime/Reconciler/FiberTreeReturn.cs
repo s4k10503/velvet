@@ -9,7 +9,7 @@ namespace Velvet
     // reconcile boundary. ReturnPooledTreeRecursive (editor-only) recycles a never-reconciled tree.
     internal static class FiberTreeReturn
     {
-        internal static VNode[] NormalizeToArray(VNode node)
+        internal static VNode?[] NormalizeToArray(VNode node)
         {
             if (node == null)
             {
@@ -40,7 +40,7 @@ namespace Velvet
             queue.Clear();
         }
 
-        internal static void ReturnPooledObjects(VNode[] tree)
+        internal static void ReturnPooledObjects(VNode?[]? tree)
         {
             if (tree == null || tree.Length == 0) return;
 
@@ -69,7 +69,7 @@ namespace Velvet
         // children. The normal flow returns only the top level because the reconciler recycles descendants as
         // it walks the tree; a discarded tree that is never reconciled (the double-invoke diagnostic pass) has no
         // such walk, so its descendants must be returned explicitly to avoid draining the pool.
-        internal static void ReturnPooledTreeRecursive(VNode[] tree)
+        internal static void ReturnPooledTreeRecursive(VNode?[]? tree)
         {
             if (tree == null || tree.Length == 0) return;
 

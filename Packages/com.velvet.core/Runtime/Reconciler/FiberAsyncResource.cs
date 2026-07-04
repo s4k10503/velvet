@@ -35,10 +35,10 @@ namespace Velvet
 
         public object ResourceKey { get; }
         public FiberAsyncResourceStatus Status { get; private set; } = FiberAsyncResourceStatus.Pending;
-        public T Result { get; private set; }
-        public Exception Error { get; private set; }
+        public T Result { get; private set; } = default!;
+        public Exception? Error { get; private set; }
 
-        public Action OnCompleted { get; set; }
+        public Action? OnCompleted { get; set; }
 
         public FiberAsyncResource(object resourceKey)
         {

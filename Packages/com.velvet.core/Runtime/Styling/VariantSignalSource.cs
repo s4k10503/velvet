@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using UnityEngine.UIElements;
 
@@ -28,7 +29,7 @@ namespace Velvet
     internal sealed class ElementLocalVariantSignals
     {
         private readonly Action<VariantSignal, bool> _emit;
-        private VisualElement _target;    // non-null only while hooked
+        private VisualElement? _target;    // non-null only while hooked
         private bool _registerChecked;    // captured in Hook so Unhook stays symmetric
 
         // True when a PointerDown on this element was the immediate cause of the next FocusEvent — used to
@@ -172,14 +173,14 @@ namespace Velvet
     internal sealed class ResponsiveWidthSource
     {
         private readonly Action _onGeometryChanged;
-        private VisualElement _root;    // non-null only while hooked
+        private VisualElement? _root;    // non-null only while hooked
 
         public ResponsiveWidthSource(Action onGeometryChanged) => _onGeometryChanged = onGeometryChanged;
 
         // The tracked root's resolved width, or 0 when unhooked.
         public float Width => _root?.resolvedStyle.width ?? 0f;
 
-        public void Hook(VisualElement root)
+        public void Hook(VisualElement? root)
         {
             if (_root == root)
             {
@@ -225,7 +226,7 @@ namespace Velvet
     internal sealed class RelationalVariantSignals
     {
         private readonly Action<RelationalVariantSignal, bool> _emit;
-        private VisualElement _source;    // non-null only while hooked
+        private VisualElement? _source;    // non-null only while hooked
         private bool _registerChecked;    // captured in Hook so Unhook stays symmetric
 
         public RelationalVariantSignals(Action<RelationalVariantSignal, bool> emit) => _emit = emit;

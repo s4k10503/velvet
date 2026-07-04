@@ -1,3 +1,4 @@
+#nullable enable
 namespace Velvet
 {
     // The commit phase for a function-component fiber: applies the rendered
@@ -62,13 +63,13 @@ namespace Velvet
             if (fiber.IsInlineMounted)
             {
                 var beforeDrain = fiber.MountPoint?.childCount ?? 0;
-                fiber.Reconciler.ContinueReconcile(frameBudgetMs: 0);
+                fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
                 var afterDrain = fiber.MountPoint?.childCount ?? 0;
                 PropagateInlineSlotShift(fiber, afterDrain - beforeDrain);
             }
             else
             {
-                fiber.Reconciler.ContinueReconcile(frameBudgetMs: 0);
+                fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
             }
             FiberTreeReturn.ReturnPooledObjects(fiber.PendingOldTree);
             fiber.PendingOldTree = null;
@@ -87,7 +88,7 @@ namespace Velvet
         // into the parent at the fiber's slot range — so the FiberRenderer-side bookkeeping is skipped
         // here to avoid using the unexpanded VNode count.
         internal static void ReconcileIntoSlotRange(
-            ComponentFiber fiber, VNode[] oldTree, VNode[] newTree, double frameBudgetMs, bool deferReconcile)
+            ComponentFiber fiber, VNode?[] oldTree, VNode?[] newTree, double frameBudgetMs, bool deferReconcile)
         {
             var slotStart = fiber.IsInlineMounted ? fiber.MountSlotStart : 0;
             if (!deferReconcile)
@@ -106,20 +107,20 @@ namespace Velvet
                     // following sibling's committed rows — the next inline-mount sibling's MountSlotStart is
                     // where this fiber's rows end.
                     var slotLimit = NextInlineSiblingSlotStart(fiber);
-                    fiber.Reconciler.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs, slotStart, slotLimit);
+                    fiber.Reconciler!.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs, slotStart, slotLimit);
                     var afterChildCount = fiber.MountPoint?.childCount ?? 0;
                     PropagateInlineSlotShift(fiber, afterChildCount - beforeChildCount);
                 }
                 else
                 {
-                    fiber.Reconciler.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs, slotStart);
+                    fiber.Reconciler!.Reconcile(fiber.MountPoint, oldTree, newTree, frameBudgetMs, slotStart);
                 }
             }
         }
 
         // Returns the prior committed tree to the VNode pool after the reconcile, or parks / defers it.
         internal static void ReturnOldTreeAfterReconcile(
-            ComponentFiber fiber, Reconciler reconciler, VNode[] oldTree, VNode[] prevPendingOldTree, bool deferReconcile)
+            ComponentFiber fiber, Reconciler? reconciler, VNode?[] oldTree, VNode?[]? prevPendingOldTree, bool deferReconcile)
         {
             if (deferReconcile)
             {

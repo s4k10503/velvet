@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -16,13 +17,13 @@ namespace Velvet
         #region Internals: fields & event/cache helpers
 
         private static readonly string[] EmptyClassNames = Array.Empty<string>();
-        private static readonly VNode[] EmptyChildren = Array.Empty<VNode>();
+        private static readonly VNode?[] EmptyChildren = Array.Empty<VNode>();
         private static readonly FiberEventBinding[] EmptyEvents = Array.Empty<FiberEventBinding>();
 
         // Wraps a single event binding in a pooled one-element array (or the shared empty array when the
         // handler was null). Callers pass `onX != null ? new XxxBinding { Handler = onX } : null` so the
         // binding is allocated only when a handler is supplied — preserving the no-handler zero-alloc path.
-        private static FiberEventBinding[] SingleEvent(FiberEventBinding binding)
+        private static FiberEventBinding[] SingleEvent(FiberEventBinding? binding)
         {
             if (binding == null)
             {
@@ -71,16 +72,16 @@ namespace Velvet
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this element.</returns>
         public static ElementNode Div(
-            string className = null,
-            string key = null,
-            string name = null,
-            FiberElementProps props = null,
-            StyleOverrides styles = null,
-            Func<VisualElement, Action> refCallback = null,
-            VNode[] children = null,
-            string whileHoverClass = null,
-            string whileTapClass = null,
-            string whileFocusClass = null)
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            FiberElementProps? props = null,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            VNode?[]? children = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null)
         {
             return new ElementNode
             {
@@ -108,7 +109,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
-        public static ElementNode Div(string className, params VNode[] children) =>
+        public static ElementNode Div(string className, params VNode?[] children) =>
             new ElementNode
             {
                 ElementType = typeof(VisualElement),
@@ -131,11 +132,11 @@ namespace Velvet
         /// <param name="children">Child VNodes rendered inside this element.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this element.</returns>
         public static ElementNode Custom<T>(
-            string className = null,
-            string key = null,
-            string name = null,
-            Func<VisualElement, Action> refCallback = null,
-            VNode[] children = null) where T : VisualElement
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            Func<VisualElement, Action>? refCallback = null,
+            VNode?[]? children = null) where T : VisualElement
         {
             return new ElementNode
             {
@@ -159,7 +160,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
-        public static ElementNode Custom<T>(string className, params VNode[] children)
+        public static ElementNode Custom<T>(string className, params VNode?[] children)
             where T : VisualElement =>
             new ElementNode
             {
@@ -187,19 +188,19 @@ namespace Velvet
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing the ScrollView.</returns>
         public static ElementNode ScrollView(
-            string className = null,
-            string key = null,
-            string name = null,
+            string? className = null,
+            string? key = null,
+            string? name = null,
             ScrollerVisibility? verticalScrollerVisibility = null,
             ScrollerVisibility? horizontalScrollerVisibility = null,
             ScrollView.TouchScrollBehavior? touchScrollBehavior = null,
-            Action<VisualElement> onCreated = null,
-            Func<VisualElement, Action> refCallback = null,
-            VNode[] children = null,
-            IReadOnlyDictionary<string, string> data = null,
-            IReadOnlyDictionary<string, string> aria = null)
+            Action<VisualElement>? onCreated = null,
+            Func<VisualElement, Action>? refCallback = null,
+            VNode?[]? children = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (verticalScrollerVisibility.HasValue || horizontalScrollerVisibility.HasValue || touchScrollBehavior.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -231,7 +232,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
-        public static ElementNode ScrollView(string className, params VNode[] children) =>
+        public static ElementNode ScrollView(string className, params VNode?[] children) =>
             new ElementNode
             {
                 ElementType = typeof(ScrollView),
@@ -264,26 +265,26 @@ namespace Velvet
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this button.</returns>
         public static ElementNode Button(
-            string className = null,
-            string text = null,
-            Action onClick = null,
-            string key = null,
-            string name = null,
-            string tooltip = null,
+            string? className = null,
+            string? text = null,
+            Action? onClick = null,
+            string? key = null,
+            string? name = null,
+            string? tooltip = null,
             bool? enabled = null,
-            StyleOverrides styles = null,
-            Func<VisualElement, Action> refCallback = null,
-            Func<VisualElement, VisualElement> wrapElement = null,
-            string whileHoverClass = null,
-            string whileTapClass = null,
-            string whileFocusClass = null,
-            VNode[] children = null,
-            IReadOnlyDictionary<string, string> data = null,
-            IReadOnlyDictionary<string, string> aria = null)
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            Func<VisualElement, VisualElement>? wrapElement = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            VNode?[]? children = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             var events = SingleEvent(onClick != null ? new ClickedBinding { Handler = onClick } : null);
 
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (text != null || tooltip != null || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -320,7 +321,7 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="children">Child VNodes; pass zero or more positionals or expand an existing array.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
-        public static ElementNode Button(string className, params VNode[] children) =>
+        public static ElementNode Button(string className, params VNode?[] children) =>
             new ElementNode
             {
                 ElementType = typeof(Button),
@@ -344,18 +345,18 @@ namespace Velvet
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this label.</returns>
         public static ElementNode Label(
-            string className = null,
-            string text = null,
-            string key = null,
-            string name = null,
-            Func<VisualElement, Action> refCallback = null,
-            string whileHoverClass = null,
-            string whileTapClass = null,
-            string whileFocusClass = null,
-            IReadOnlyDictionary<string, string> data = null,
-            IReadOnlyDictionary<string, string> aria = null)
+            string? className = null,
+            string? text = null,
+            string? key = null,
+            string? name = null,
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (text != null)
             {
                 props = VNodePool.RentProps();
@@ -396,22 +397,22 @@ namespace Velvet
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this slider.</returns>
         public static ElementNode Slider(
-            string className = null,
+            string? className = null,
             float? value = null,
             float? lowValue = null,
             float? highValue = null,
-            Action<float> onValueChanged = null,
-            string key = null,
-            string name = null,
+            Action<float>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
             bool? enabled = null,
-            Func<VisualElement, Action> refCallback = null,
-            Action<VisualElement> onCreated = null,
-            IReadOnlyDictionary<string, string> data = null,
-            IReadOnlyDictionary<string, string> aria = null)
+            Func<VisualElement, Action>? refCallback = null,
+            Action<VisualElement>? onCreated = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<float> { Handler = onValueChanged } : null);
 
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (value.HasValue || lowValue.HasValue || highValue.HasValue || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -452,20 +453,20 @@ namespace Velvet
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this toggle.</returns>
         public static ElementNode Toggle(
-            string className = null,
+            string? className = null,
             bool? value = null,
-            Action<bool> onValueChanged = null,
-            string key = null,
-            string name = null,
-            string label = null,
+            Action<bool>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
+            string? label = null,
             bool? enabled = null,
-            Func<VisualElement, Action> refCallback = null,
-            IReadOnlyDictionary<string, string> data = null,
-            IReadOnlyDictionary<string, string> aria = null)
+            Func<VisualElement, Action>? refCallback = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<bool> { Handler = onValueChanged } : null);
 
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (value.HasValue || label != null || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -504,21 +505,21 @@ namespace Velvet
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
         public static ElementNode TextField(
-            string className = null,
-            string value = null,
-            Action<string> onValueChanged = null,
-            string key = null,
-            string name = null,
-            string label = null,
+            string? className = null,
+            string? value = null,
+            Action<string>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
+            string? label = null,
             bool? isPasswordField = null,
             bool? enabled = null,
-            Func<VisualElement, Action> refCallback = null,
-            IReadOnlyDictionary<string, string> data = null,
-            IReadOnlyDictionary<string, string> aria = null)
+            Func<VisualElement, Action>? refCallback = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (value != null || label != null || isPasswordField.HasValue || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -559,16 +560,16 @@ namespace Velvet
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this image.</returns>
         public static ElementNode Image(
-            string className = null,
-            string key = null,
-            string name = null,
-            StyleOverrides styles = null,
-            Func<VisualElement, Action> refCallback = null,
-            string whileHoverClass = null,
-            string whileTapClass = null,
-            string whileFocusClass = null,
-            IReadOnlyDictionary<string, string> data = null,
-            IReadOnlyDictionary<string, string> aria = null)
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             return new ElementNode
             {
@@ -603,21 +604,21 @@ namespace Velvet
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this dropdown.</returns>
         public static ElementNode DropdownField(
-            string className = null,
-            string value = null,
-            List<string> choices = null,
-            Action<string> onValueChanged = null,
-            string key = null,
-            string name = null,
-            string label = null,
+            string? className = null,
+            string? value = null,
+            List<string>? choices = null,
+            Action<string>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
+            string? label = null,
             bool? enabled = null,
-            Func<VisualElement, Action> refCallback = null,
-            IReadOnlyDictionary<string, string> data = null,
-            IReadOnlyDictionary<string, string> aria = null)
+            Func<VisualElement, Action>? refCallback = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (value != null || choices != null || label != null || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -652,14 +653,14 @@ namespace Velvet
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this list view.</returns>
         public static ElementNode ListView(
-            string className = null,
-            string key = null,
-            string name = null,
+            string? className = null,
+            string? key = null,
+            string? name = null,
             bool? enabled = null,
-            StyleOverrides styles = null,
-            Func<VisualElement, Action> refCallback = null)
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null)
         {
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (enabled.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -693,18 +694,18 @@ namespace Velvet
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this radio button.</returns>
         public static ElementNode RadioButton(
-            string className = null,
+            string? className = null,
             bool? value = null,
-            Action<bool> onValueChanged = null,
-            string key = null,
-            string name = null,
-            string label = null,
+            Action<bool>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
+            string? label = null,
             bool? enabled = null,
-            Func<VisualElement, Action> refCallback = null)
+            Func<VisualElement, Action>? refCallback = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<bool> { Handler = onValueChanged } : null);
 
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (value.HasValue || label != null || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -740,19 +741,19 @@ namespace Velvet
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this radio button group.</returns>
         public static ElementNode RadioButtonGroup(
-            string className = null,
+            string? className = null,
             int? value = null,
-            List<string> choices = null,
-            Action<int> onValueChanged = null,
-            string key = null,
-            string name = null,
-            string label = null,
+            List<string>? choices = null,
+            Action<int>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
+            string? label = null,
             bool? enabled = null,
-            Func<VisualElement, Action> refCallback = null)
+            Func<VisualElement, Action>? refCallback = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null);
 
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (value.HasValue || choices != null || label != null || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -788,18 +789,18 @@ namespace Velvet
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this integer field.</returns>
         public static ElementNode IntegerField(
-            string className = null,
+            string? className = null,
             int? value = null,
-            Action<int> onValueChanged = null,
-            string key = null,
-            string name = null,
-            string label = null,
+            Action<int>? onValueChanged = null,
+            string? key = null,
+            string? name = null,
+            string? label = null,
             bool? enabled = null,
-            Func<VisualElement, Action> refCallback = null)
+            Func<VisualElement, Action>? refCallback = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null);
 
-            FiberElementProps props = null;
+            FiberElementProps? props = null;
             if (value.HasValue || label != null || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
@@ -826,7 +827,7 @@ namespace Velvet
         /// </summary>
         /// <param name="text">Text content to display. Treated as empty when null.</param>
         /// <returns>The created <see cref="TextNode"/>.</returns>
-        public static TextNode Text(string text) => new() { Text = text ?? string.Empty };
+        public static TextNode Text(string? text) => new() { Text = text ?? string.Empty };
 
         #endregion
 
@@ -843,7 +844,7 @@ namespace Velvet
         /// <param name="keySelector">Selector that derives a stable per-item key.</param>
         /// <param name="renderer">Function that produces a VNode for each item.</param>
         /// <returns>Array of rendered VNodes (each carrying the selected key).</returns>
-        public static VNode[] List<T>(
+        public static VNode?[] List<T>(
             IReadOnlyList<T> items,
             Func<T, string> keySelector,
             Func<T, VNode> renderer)
@@ -878,7 +879,7 @@ namespace Velvet
         /// <param name="keySelector">Selector that derives a stable per-item key from the item and its index.</param>
         /// <param name="renderer">Function that produces a VNode from the item and its index.</param>
         /// <returns>Array of rendered VNodes (each carrying the selected key).</returns>
-        public static VNode[] List<T>(
+        public static VNode?[] List<T>(
             IReadOnlyList<T> items,
             Func<T, int, string> keySelector,
             Func<T, int, VNode> renderer)
@@ -920,7 +921,7 @@ namespace Velvet
             IReadOnlyList<T> items,
             Func<T, string> keySelector,
             Func<T, VNode> renderer,
-            string key = null) =>
+            string? key = null) =>
             Fragment(List(items, keySelector, renderer), key);
 
         /// <summary>
@@ -938,7 +939,7 @@ namespace Velvet
             IReadOnlyList<T> items,
             Func<T, int, string> keySelector,
             Func<T, int, VNode> renderer,
-            string key = null) =>
+            string? key = null) =>
             Fragment(List(items, keySelector, renderer), key);
 
         #endregion
@@ -952,7 +953,12 @@ namespace Velvet
         /// <param name="condition">When true, <paramref name="factory"/> is invoked and its result is returned.</param>
         /// <param name="factory">Factory invoked only when <paramref name="condition"/> is true.</param>
         /// <returns>The VNode produced by <paramref name="factory"/>, or null when <paramref name="condition"/> is false.</returns>
-        public static VNode When(bool condition, Func<VNode> factory) => condition ? factory() : null;
+        public static VNode? When(bool condition, Func<VNode>? factory)
+        {
+            if (!condition) return null;
+            if (factory == null) throw new ArgumentNullException(nameof(factory));
+            return factory();
+        }
 
         /// <summary>
         /// Embeds a function-style component (`[Component] static VNode Foo()`) into the VNode tree
@@ -962,7 +968,7 @@ namespace Velvet
         /// <param name="body">Delegate of a static method annotated with <c>[Component]</c> (e.g. <c>FooComp.Render</c>).</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <returns>The created <see cref="ComponentNode"/> embedding the function-style component.</returns>
-        public static ComponentNode Component(Func<VNode> body, string key = null)
+        public static ComponentNode Component(Func<VNode>? body, string? key = null)
             => CreateComponent(body, externalRef: null, key);
 
         /// <summary>
@@ -976,9 +982,9 @@ namespace Velvet
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <returns>The created <see cref="ComponentNode"/> with the parent-to-child ref wired through <paramref name="componentRef"/>.</returns>
         public static ComponentNode Component<TRef>(
-            Func<VNode> body,
+            Func<VNode>? body,
             Ref<TRef> componentRef,
-            string key = null) where TRef : class
+            string? key = null) where TRef : class
         {
             if (componentRef == null) throw new ArgumentNullException(nameof(componentRef));
             return CreateComponent(body, componentRef, key);
@@ -1009,7 +1015,7 @@ namespace Velvet
         public static ComponentNode Component<TProps>(
             Func<TProps, VNode> body,
             TProps props,
-            string key = null)
+            string? key = null)
         {
             if (body == null) throw new ArgumentNullException(nameof(body));
             Func<VNode> wrapped = () => body(props);
@@ -1042,14 +1048,14 @@ namespace Velvet
             Func<TProps, VNode> body,
             TProps props,
             Func<TProps, TProps, bool> areEqual,
-            string key = null)
+            string? key = null)
         {
             if (body == null) throw new ArgumentNullException(nameof(body));
             if (areEqual == null) throw new ArgumentNullException(nameof(areEqual));
             Func<VNode> wrapped = () => body(props);
             // Adapt the typed predicate to the object-based comparison the registry uses. Same-reference
             // and null cases short-circuit before the cast so areEqual only sees real TProps instances.
-            Func<object, object, bool> adapted = (prev, next) =>
+            Func<object?, object?, bool> adapted = (prev, next) =>
             {
                 if (ReferenceEquals(prev, next)) return true;
                 if (prev is null || next is null) return false;
@@ -1085,8 +1091,8 @@ namespace Velvet
         /// <returns>The created <see cref="ComponentNode"/> wrapping <paramref name="children"/> in an Error Boundary.</returns>
         public static ComponentNode ErrorBoundary(
             Func<Exception, VNode> fallback,
-            VNode[] children,
-            string key = null)
+            VNode?[] children,
+            string? key = null)
         {
             if (fallback == null) throw new ArgumentNullException(nameof(fallback));
             if (children == null) throw new ArgumentNullException(nameof(children));
@@ -1101,9 +1107,9 @@ namespace Velvet
         }
 
         private static ComponentNode CreateComponent(
-            Func<VNode> body,
-            IHookRefSetter externalRef,
-            string key,
+            Func<VNode>? body,
+            IHookRefSetter? externalRef,
+            string? key,
             bool forceErrorBoundary = false)
         {
             if (body == null) throw new ArgumentNullException(nameof(body));
@@ -1116,12 +1122,12 @@ namespace Velvet
         // underlying method, not body.Method). forceMemoize is set by V.Memo (an explicit comparator implies
         // memoization); otherwise Memoize / IsErrorBoundary derive from the method's [Component] attributes.
         private static ComponentNode CreateComponentNode(
-            Func<VNode> body,
-            MethodInfo identity,
-            object props,
-            Func<object, object, bool> areEqual,
-            IHookRefSetter externalRef,
-            string key,
+            Func<VNode>? body,
+            MethodInfo? identity,
+            object? props,
+            Func<object?, object?, bool>? areEqual,
+            IHookRefSetter? externalRef,
+            string? key,
             bool forceErrorBoundary = false,
             bool forceMemoize = false)
             => new ComponentNode
@@ -1146,7 +1152,7 @@ namespace Velvet
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
         /// <param name="deps">Dependency values. When deeply equal to the previous render, the cached VNode is reused.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
-        public static MemoNode Memoized(Func<VNode> factory, params object[] deps)
+        public static MemoNode Memoized(Func<VNode> factory, params object?[]? deps)
         {
             return new MemoNode
             {
@@ -1165,7 +1171,7 @@ namespace Velvet
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
         /// <param name="deps">Dependency values used to detect changes.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
-        public static MemoNode MemoizedWithKey(string key, Func<VNode> factory, params object[] deps)
+        public static MemoNode MemoizedWithKey(string? key, Func<VNode> factory, params object?[]? deps)
         {
             return new MemoNode
             {
@@ -1192,8 +1198,8 @@ namespace Velvet
         public static ContextProviderNode<T> Provider<T>(
             ComponentContext<T> context,
             T value,
-            VNode[] children = null,
-            string key = null)
+            VNode?[]? children = null,
+            string? key = null)
         {
             return new ContextProviderNode<T>
             {
@@ -1226,7 +1232,7 @@ namespace Velvet
         /// <param name="children">Descendant VNodes mounted into the resolved portal target.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <returns>The created <see cref="PortalNode"/>.</returns>
-        public static PortalNode Portal(string targetId, VNode[] children = null, string key = null)
+        public static PortalNode Portal(string targetId, VNode?[]? children = null, string? key = null)
         {
             return new PortalNode
             {
@@ -1244,7 +1250,7 @@ namespace Velvet
         /// </param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <returns>The created <see cref="OutletNode"/>.</returns>
-        public static OutletNode Outlet(object context = null, string key = null) =>
+        public static OutletNode Outlet(object? context = null, string? key = null) =>
             new() { Key = key, OutletContextValue = context };
 
         /// <summary>
@@ -1263,7 +1269,7 @@ namespace Velvet
         /// </param>
         /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> contains a NUL character.</exception>
         /// <returns>The created <see cref="FragmentNode"/>.</returns>
-        public static FragmentNode Fragment(VNode[] children, string key = null)
+        public static FragmentNode Fragment(VNode?[] children, string? key = null)
         {
             if (key != null && key.IndexOf('\0') >= 0)
             {
@@ -1303,14 +1309,14 @@ namespace Velvet
         /// <c>onExitComplete</c>) for users migrating from Framer Motion.
         /// </remarks>
         public static AnimatePresenceNode AnimatePresence(
-            VNode[] children = null,
-            string key = null,
+            VNode?[]? children = null,
+            string? key = null,
             bool initial = true,
             float staggerSec = 0f,
             float delayChildrenSec = 0f,
             int staggerDirection = 1,
             AnimatePresenceMode mode = AnimatePresenceMode.Sync,
-            Action onExitComplete = null)
+            Action? onExitComplete = null)
         {
             return new AnimatePresenceNode
             {
@@ -1378,26 +1384,26 @@ namespace Velvet
         /// users migrating from Framer Motion.
         /// </remarks>
         public static MotionNode Motion(
-            string className = null,
-            string key = null,
-            string name = null,
-            StyleTransitionConfig transition = null,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            StyleTransitionConfig? transition = null,
             float? duration = null,
             EasingMode? easing = null,
             float? delay = null,
-            Action onEnterComplete = null,
-            VNode[] children = null,
-            FiberElementProps props = null,
-            FiberEventBinding[] events = null,
-            Func<VisualElement, Action> refCallback = null,
-            string whileHoverClass = null,
-            string whileTapClass = null,
-            string whileFocusClass = null,
-            Type elementType = null,
-            IReadOnlyDictionary<string, string> variants = null,
-            string animate = null,
-            string initial = null,
-            string exit = null)
+            Action? onEnterComplete = null,
+            VNode?[]? children = null,
+            FiberElementProps? props = null,
+            FiberEventBinding[]? events = null,
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            Type? elementType = null,
+            IReadOnlyDictionary<string, string>? variants = null,
+            string? animate = null,
+            string? initial = null,
+            string? exit = null)
         {
             var resolvedTransition = transition ?? StyleTransition.Fade;
             if (duration != null || easing != null || delay != null)
@@ -1452,9 +1458,9 @@ namespace Velvet
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <returns>The created <see cref="SuspenseNode"/>.</returns>
         public static SuspenseNode Suspense(
-            VNode fallback,
-            VNode[] children,
-            string key = null)
+            VNode? fallback,
+            VNode?[] children,
+            string? key = null)
         {
             if (fallback == null)
             {
@@ -1494,9 +1500,9 @@ namespace Velvet
             float itemHeight,
             Func<T, VNode> renderer,
             int overscan = 3,
-            string key = null,
-            string className = null,
-            string name = null)
+            string? key = null,
+            string? className = null,
+            string? name = null)
         {
             if (items == null)
             {
@@ -1546,15 +1552,15 @@ namespace Velvet
         /// <param name="caseSensitive">When true, literal path segments match case-sensitively. Defaults to false (case-insensitive).</param>
         /// <returns>The created <see cref="RouteDefinition"/>.</returns>
         public static RouteDefinition Route(
-            string path,
-            ComponentNode element = null,
-            string scopeId = null,
-            Func<RouteLoaderContext, CancellationToken, UniTask<object>> loader = null,
+            string? path,
+            ComponentNode? element = null,
+            string? scopeId = null,
+            Func<RouteLoaderContext, CancellationToken, UniTask<object>>? loader = null,
             LoaderMode loaderMode = LoaderMode.Await,
-            ComponentNode errorElement = null,
-            RouteDefinition[] children = null,
-            string redirectTo = null,
-            Func<RouteLoaderContext, string> guard = null,
+            ComponentNode? errorElement = null,
+            RouteDefinition[]? children = null,
+            string? redirectTo = null,
+            Func<RouteLoaderContext, string>? guard = null,
             bool caseSensitive = false)
         {
             if (path == null)
@@ -1619,12 +1625,12 @@ namespace Velvet
         /// <returns>A <see cref="ComponentNode"/> rendering the link.</returns>
         public static ComponentNode Link(
             string to,
-            string text = null,
-            string className = null,
-            string name = null,
-            VNode[] children = null,
+            string? text = null,
+            string? className = null,
+            string? name = null,
+            VNode?[]? children = null,
             bool replace = false,
-            string key = null)
+            string? key = null)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
@@ -1645,7 +1651,7 @@ namespace Velvet
         public static ComponentNode Navigate(
             string to,
             bool replace = false,
-            string key = null)
+            string? key = null)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
@@ -1672,14 +1678,14 @@ namespace Velvet
         public static ComponentNode NavLink(
             string to,
             string activeClass,
-            string text = null,
-            string className = null,
-            string name = null,
-            VNode[] children = null,
+            string? text = null,
+            string? className = null,
+            string? name = null,
+            VNode?[]? children = null,
             bool end = false,
             bool replace = false,
             bool caseSensitive = false,
-            string key = null)
+            string? key = null)
         {
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
@@ -1697,8 +1703,8 @@ namespace Velvet
         // (Div / Span). Rents a bag only when the factory did not already build one AND an attribute map is
         // actually supplied; otherwise it returns the bag unchanged (often null). Keeps the VNode immutable:
         // the bag is finalized here, before the ElementNode is constructed.
-        private static FiberElementProps WithAttributes(
-            FiberElementProps props, IReadOnlyDictionary<string, string> data, IReadOnlyDictionary<string, string> aria)
+        private static FiberElementProps? WithAttributes(
+            FiberElementProps? props, IReadOnlyDictionary<string, string>? data, IReadOnlyDictionary<string, string>? aria)
         {
             if (data == null && aria == null)
             {
@@ -1716,7 +1722,7 @@ namespace Velvet
         /// Note: results are cached, so passing dynamically-built strings will grow the cache without bound.
         /// Pass only literal or constant strings.
         /// </summary>
-        internal static string[] ParseClassNames(string classNames)
+        internal static string[] ParseClassNames(string? classNames)
         {
             if (string.IsNullOrEmpty(classNames))
             {
@@ -1751,14 +1757,14 @@ namespace Velvet
 
             public CastReadOnlyList(IReadOnlyList<T> inner) => _inner = inner;
 
-            public object this[int index] => _inner[index];
+            public object? this[int index] => _inner[index];
             public int Count => _inner.Count;
 
             public IEnumerator<object> GetEnumerator()
             {
                 for (var i = 0; i < _inner.Count; i++)
                 {
-                    yield return _inner[i];
+                    yield return _inner[i]!;
                 }
             }
 

@@ -8,11 +8,11 @@ namespace Velvet
     public sealed class RouteMatch
     {
         /// <summary>The matched route definition.</summary>
-        public RouteDefinition Route { get; init; }
+        public RouteDefinition? Route { get; init; }
         /// <summary>Path parameters extracted from this route segment (for example <c>:id</c> -&gt; <c>id</c>).</summary>
-        public IReadOnlyDictionary<string, string> Params { get; init; }
+        public IReadOnlyDictionary<string, string> Params { get; init; } = null!;
         /// <summary>Matched path segment string (the route's own path, trimmed). Used for display / debug.</summary>
-        public string MatchedPath { get; init; }
+        public string? MatchedPath { get; init; }
         /// <summary>
         /// Resolved cumulative URL pathname from the root up to and including this route level (params
         /// substituted, always rooted with a leading <c>/</c>). Drives route-relative navigation: a
@@ -26,6 +26,6 @@ namespace Velvet
         /// disambiguated so sibling index routes do not collide). Used as the key for loader data and
         /// errors.
         /// </summary>
-        public string RouteId { get; init; }
+        public string? RouteId { get; init; }
     }
 }

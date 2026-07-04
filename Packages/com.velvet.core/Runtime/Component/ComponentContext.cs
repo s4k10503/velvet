@@ -1,3 +1,4 @@
+#nullable enable
 namespace Velvet
 {
     /// <summary>
@@ -9,15 +10,15 @@ namespace Velvet
     public sealed class ComponentContext<T>
     {
         /// <summary>Value returned by <c>UseContext</c> when no Provider for this context exists above the consumer.</summary>
-        public T DefaultValue { get; }
+        public T? DefaultValue { get; }
 
-        internal ComponentContext(T defaultValue) => DefaultValue = defaultValue;
+        internal ComponentContext(T? defaultValue) => DefaultValue = defaultValue;
 
         /// <summary>
         /// Creates a context with the given default value.
         /// </summary>
         /// <param name="defaultValue">Value returned by <c>UseContext</c> when no Provider is configured above the consumer.</param>
         /// <returns>The created <see cref="ComponentContext{T}"/>.</returns>
-        public static ComponentContext<T> Create(T defaultValue = default) => new(defaultValue);
+        public static ComponentContext<T> Create(T? defaultValue = default) => new(defaultValue);
     }
 }

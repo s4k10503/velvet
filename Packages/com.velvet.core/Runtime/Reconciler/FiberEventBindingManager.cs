@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
@@ -15,9 +16,9 @@ namespace Velvet
         // The owning context's batch scheduler. Used to flush the immediate batch synchronously at the end of a
         // discrete event handler so the UI updates before the next frame. Null when constructed without one (isolated unit
         // tests of binding registration): the discrete flag is still bracketed, but no synchronous flush runs.
-        private readonly FiberBatchScheduler _batchScheduler;
+        private readonly FiberBatchScheduler? _batchScheduler;
 
-        internal FiberEventBindingManager(FiberBatchScheduler batchScheduler = null)
+        internal FiberEventBindingManager(FiberBatchScheduler? batchScheduler = null)
         {
             _batchScheduler = batchScheduler;
         }
@@ -177,7 +178,7 @@ namespace Velvet
             _boundDelegates.Clear();
         }
 
-        private static void BindCallback<T>(List<Action> actions, VisualElement element, EventCallback<T> handler)
+        private static void BindCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)
             where T : EventBase<T>, new()
         {
             element.RegisterCallback(handler);
@@ -188,7 +189,7 @@ namespace Velvet
         // hook updates it triggers take the Urgent lane and flush synchronously at the handler's end.
         // Used for the discrete events (pointer down/up, key down/up, focus/blur); continuous events
         // (pointer move/enter/leave, wheel, geometry) keep the plain BindCallback<T>.
-        private void BindDiscreteCallback<T>(List<Action> actions, VisualElement element, EventCallback<T> handler)
+        private void BindDiscreteCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)
             where T : EventBase<T>, new()
         {
             EventCallback<T> wrapped = evt => RunDiscrete(() => handler?.Invoke(evt));
@@ -199,7 +200,7 @@ namespace Velvet
         // Registers a discrete value-changed callback (text / toggle / slider input counts as a discrete interaction),
         // bracketing the handler with RunDiscrete so the update takes the Urgent lane and flushes
         // synchronously at the handler's end. Collapses the per-T ChangeEventBinding<T> cases.
-        private void BindDiscreteValueChanged<T>(List<Action> actions, INotifyValueChanged<T> field, Action<T> handler)
+        private void BindDiscreteValueChanged<T>(List<Action> actions, INotifyValueChanged<T> field, Action<T>? handler)
         {
             var callback = new EventCallback<ChangeEvent<T>>(evt => RunDiscrete(() => handler?.Invoke(evt.newValue)));
             field.RegisterValueChangedCallback(callback);
@@ -217,7 +218,7 @@ namespace Velvet
         // shared-Store subscriber in a separately mounted tree) still commit on their own next-frame drain;
         // (2) layout-effect-scheduled updates during the synchronous flush take the Normal next-frame lane
         // rather than being re-flushed synchronously before paint.
-        private void RunDiscrete(Action handler)
+        private void RunDiscrete(Action? handler)
         {
             var wasInDiscreteEvent = FiberWorkLoop.IsInDiscreteEvent;
             FiberWorkLoop.IsInDiscreteEvent = true;
@@ -235,7 +236,7 @@ namespace Velvet
             }
         }
 
-        private static Delegate GetDelegate(FiberEventBinding binding)
+        private static Delegate? GetDelegate(FiberEventBinding binding)
         {
             return binding switch
             {

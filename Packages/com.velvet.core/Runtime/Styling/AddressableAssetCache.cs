@@ -16,7 +16,7 @@ namespace Velvet
         // Returns true and the loaded asset when key resolves to a T;
         // false (with a warning logged under warnTag) otherwise. The result is cached in
         // cache; a failed load is cached as null to avoid retrying every reconcile.
-        public static bool TryLoad<T>(string key, Dictionary<string, T> cache, string warnTag, out T asset)
+        public static bool TryLoad<T>(string key, Dictionary<string, T?> cache, string warnTag, out T? asset)
             where T : UnityEngine.Object
         {
             asset = null;

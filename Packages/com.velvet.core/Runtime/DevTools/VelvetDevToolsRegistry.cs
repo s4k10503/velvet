@@ -48,7 +48,7 @@ namespace Velvet.DevTools
         private static readonly List<ComponentEntry> s_entries = new();
 
         /// <summary>Event raised when a fiber is registered or unregistered.</summary>
-        public static event Action RegistryChanged;
+        public static event Action? RegistryChanged;
 
         /// <summary>Read-only list of currently registered fiber entries.</summary>
         public static IReadOnlyList<ComponentEntry> Entries => s_entries;
@@ -60,7 +60,7 @@ namespace Velvet.DevTools
         /// </summary>
         /// <param name="fiber">The fiber to observe.</param>
         /// <param name="label">Display name in the EditorWindow. Defaults to Body's function name when omitted.</param>
-        public static void Register(ComponentFiber fiber, string label = null)
+        public static void Register(ComponentFiber fiber, string? label = null)
         {
             if (fiber == null)
             {

@@ -37,7 +37,7 @@ namespace Velvet
                 // otherwise a dynamically-built but content-equal string (interpolation / concat / Format) would
                 // never bail and a UseState / UseStore / Provider holding it would re-render every time. This
                 // matches the boxed AreEqualObjects path. Handles nulls (string.Equals(null, null) is true).
-                return string.Equals((string)(object)a, (string)(object)b, System.StringComparison.Ordinal);
+                return string.Equals((string?)(object?)a, (string?)(object?)b, System.StringComparison.Ordinal);
             }
 
             if (default(T) == null)
@@ -56,7 +56,7 @@ namespace Velvet
         // not equal -0). Other value types compare by their boxed object.Equals,
         // which for primitives and record members yields the same result as
         // EqualityComparer<T>.Default without per-call delegate allocation.
-        public static bool AreEqualObjects(object a, object b)
+        public static bool AreEqualObjects(object? a, object? b)
         {
             if (ReferenceEquals(a, b))
             {
@@ -112,7 +112,7 @@ namespace Velvet
         // the reconciler and Provider apply when deciding to re-render. This is the comparer the inner
         // component memo keys on, so a cached VNode is reused only when every captured input is identity-equal
         // to the committed one.
-        public static bool AreEqualDeps(object[] a, object[] b)
+        public static bool AreEqualDeps(object?[]? a, object?[]? b)
         {
             if (ReferenceEquals(a, b))
             {

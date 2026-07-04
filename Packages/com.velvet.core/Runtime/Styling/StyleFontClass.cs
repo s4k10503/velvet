@@ -13,14 +13,14 @@ namespace Velvet
     /// </summary>
     public readonly struct FontIntent
     {
-        public readonly string Family;       // null when no font-<name> / font-[name] class was present.
+        public readonly string? Family;       // null when no font-<name> / font-[name] class was present.
         public readonly bool HasFamily;
         public readonly VelvetFontWeight Weight;
         public readonly bool HasWeight;
         public readonly bool Italic;
         public readonly bool HasItalic;
 
-        public FontIntent(string family, bool hasFamily, VelvetFontWeight weight, bool hasWeight, bool italic, bool hasItalic)
+        public FontIntent(string? family, bool hasFamily, VelvetFontWeight weight, bool hasWeight, bool italic, bool hasItalic)
         {
             Family = family;
             HasFamily = hasFamily;
@@ -113,7 +113,7 @@ namespace Velvet
                 return false;
             }
 
-            string family = null;
+            string? family = null;
             var hasFamily = false;
             var weight = VelvetFontWeight.Normal;
             var hasWeight = false;
@@ -143,7 +143,7 @@ namespace Velvet
         // Returns true when cls was recognized as a font utility (and mutated the facets accordingly).
         private static bool ParseClass(
             string cls,
-            ref string family, ref bool hasFamily,
+            ref string? family, ref bool hasFamily,
             ref VelvetFontWeight weight, ref bool hasWeight,
             ref bool italic, ref bool hasItalic)
         {
@@ -213,7 +213,7 @@ namespace Velvet
         // font-[weight:550] / font-[550] → weight; font-[addr:key] / font-[Inter] → family.
         private static bool ParseArbitrary(
             string value,
-            ref string family, ref bool hasFamily,
+            ref string? family, ref bool hasFamily,
             ref VelvetFontWeight weight, ref bool hasWeight)
         {
             if (value.Length == 0)

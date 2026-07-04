@@ -30,12 +30,12 @@ namespace Velvet
         }
 
         /// <summary>Expands by named variant axes. Unspecified axes fall back to defaultVariants.</summary>
-        public string Apply(params (string axis, string value)[] selections) => ApplyInternal(selections, null);
+        public string? Apply(params (string axis, string value)[] selections) => ApplyInternal(selections, null);
 
         /// <summary>Named variant axes plus an extra class appended at the end.</summary>
-        public string Apply(string extra, params (string axis, string value)[] selections) => ApplyInternal(selections, extra);
+        public string? Apply(string extra, params (string axis, string value)[] selections) => ApplyInternal(selections, extra);
 
-        private string ApplyInternal((string axis, string value)[] selections, string? extra)
+        private string? ApplyInternal((string axis, string value)[] selections, string? extra)
         {
             // Build an effective array: selections deduped to last-wins per axis, then defaultVariants for
             // any axis still unspecified. A repeated axis keeps only the last value

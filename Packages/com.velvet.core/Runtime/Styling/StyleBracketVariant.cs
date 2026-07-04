@@ -1,3 +1,4 @@
+#nullable enable
 namespace Velvet
 {
     // Shared split prologue for the bracketed variant parsers (data-/aria-[..]:, has-[..]:, supports-[..]:,
@@ -13,8 +14,8 @@ namespace Velvet
             var close = token.IndexOf(']');
             if (close < 0 || close + 1 >= token.Length || token[close + 1] != ':')
             {
-                inner = null;
-                payload = null;
+                inner = "";
+                payload = "";
                 return false;
             }
 
@@ -22,8 +23,8 @@ namespace Velvet
             payload = token.Substring(close + 2);
             if (inner.Length == 0 || payload.Length == 0)
             {
-                inner = null;
-                payload = null;
+                inner = "";
+                payload = "";
                 return false;
             }
             return true;

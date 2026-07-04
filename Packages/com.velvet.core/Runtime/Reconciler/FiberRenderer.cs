@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using Unity.Profiling;
 using UnityEngine.UIElements;
@@ -59,7 +60,7 @@ namespace Velvet
         // Attaches the fiber to mountPoint and runs the initial render + layout effects.
         // fiber: Fiber to mount. Must not already be mounted.
         // mountPoint: VisualElement that hosts the rendered tree. Must not be null.
-        public static void Mount(ComponentFiber fiber, VisualElement mountPoint)
+        public static void Mount(ComponentFiber fiber, VisualElement? mountPoint)
         {
             SetupMount(fiber, mountPoint);
             RenderAndReconcile(fiber);
@@ -73,7 +74,7 @@ namespace Velvet
         // output VEs into parent.children at slotStart.
         // Subsequent setState-triggered re-renders use the fiber's own Reconciler with slot-range
         // addressing (the deferReconcile flag is only honored on this initial mount path).
-        public static void MountInline(ComponentFiber fiber, VisualElement parent, int slotStart)
+        public static void MountInline(ComponentFiber fiber, VisualElement? parent, int slotStart)
         {
             SetupMount(fiber, parent);
             fiber.IsInlineMounted = true;
@@ -86,7 +87,7 @@ namespace Velvet
             // stale (null) refs. Push the fiber onto the deferred stack and let the top-level
             // reconcile entry drain it (LIFO = bottom-up) before its own RunLayoutEffects so the
             // root commits last.
-            fiber.Reconciler.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: true));
+            fiber.Reconciler!.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: true));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: true);
         }
 
@@ -108,7 +109,7 @@ namespace Velvet
             // Update commit: drain side runs prior cleanup + new setup (deps-comparing) without
             // the Editor-only mount double-invoke. ScheduleRunEffects forwards the same flag so the
             // passive (UseEffect) cleanup+setup pair fires at the next paint-tick.
-            fiber.Reconciler.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false));
+            fiber.Reconciler!.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: false);
         }
 
@@ -128,7 +129,7 @@ namespace Velvet
             fiber.Reconciler?.Context.BatchScheduler.Remove(fiber);
         }
 
-        private static void SetupMount(ComponentFiber fiber, VisualElement mountPoint)
+        private static void SetupMount(ComponentFiber fiber, VisualElement? mountPoint)
         {
             if (fiber.IsMounted)
             {
@@ -200,7 +201,7 @@ namespace Velvet
                 var unmountPushed = PushFiber(fiber);
                 try
                 {
-                    fiber.Reconciler.Reconcile(fiber.MountPoint, fiber.PreviousTree, Array.Empty<VNode>());
+                    fiber.Reconciler!.Reconcile(fiber.MountPoint, fiber.PreviousTree, Array.Empty<VNode>());
                 }
                 finally
                 {
@@ -303,10 +304,10 @@ namespace Velvet
             // Body output committed by this render, captured for the post-commit double-invoke diagnostic pass.
             // Set only on the success path where the reconciler retained the tree, so the diagnostic never
             // runs against an aborted / discarded output.
-            VNode[] diagnosticCommittedTree = null;
+            VNode?[]? diagnosticCommittedTree = null;
 #endif
-            VNode[] prevPendingOldTree = null;
-            VNode[] oldTree = null;
+            VNode?[]? prevPendingOldTree = null;
+            VNode?[]? oldTree = null;
             var fiberPushed = PushFiber(fiber);
             // Spine-rewalk-with-bailout: an isolated re-render (a standalone entry, not a
             // nested expansion render) starts with an empty live context cursor, so reconstruct the
@@ -479,7 +480,7 @@ namespace Velvet
         // The hook-count sentinel and its baselines are not touched by this pass.
         // A render-phase setState observed during the diagnostic is logged as impure and
         // ComponentFiber.HasRenderPhaseUpdate is cleared so it cannot leak into the next render.
-        private static void DoubleInvokeRenderForStrictMode(ComponentFiber fiber, VNode[] committedTree)
+        private static void DoubleInvokeRenderForStrictMode(ComponentFiber fiber, VNode?[] committedTree)
         {
             if (!FiberStrictMode.Enabled || fiber.IsDisposed || fiber.Reconciler == null) return;
 
@@ -496,7 +497,7 @@ namespace Velvet
             var reconstructSpine = fiber.Parent != null
                 && (fiber.Reconciler?.Context.SharedReconcileDepth ?? 1) == 0;
             var contextSpine = reconstructSpine ? FiberContextSpine.Push(fiber) : default;
-            VNode[] diagnosticTree = null;
+            VNode?[]? diagnosticTree = null;
             try
             {
                 FiberBeginWork.ResetHookIndex(fiber);
@@ -601,7 +602,7 @@ namespace Velvet
             {
                 // Invalidate the (possibly memoized) boundary so its re-render re-walks the now-resolved
                 // children instead of bailing out, then schedule it on the Normal lane to commit the reveal.
-                boundary.InvalidateMemoCache();
+                boundary!.InvalidateMemoCache();
                 FiberWorkLoop.RequestRenderFromHook(boundary);
             }
         }

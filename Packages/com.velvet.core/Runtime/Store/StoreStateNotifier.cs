@@ -20,7 +20,7 @@ namespace Velvet
     internal sealed class StoreStateNotifier<T> : IDisposable
     {
         private readonly List<Action<T>> _listeners = new();
-        private Action<T>[] _snapshot;
+        private Action<T>[]? _snapshot;
         private bool _disposed;
 
         public StoreStateNotifier(T initial)
@@ -64,8 +64,8 @@ namespace Velvet
 
         private sealed class Subscription : IDisposable
         {
-            private StoreStateNotifier<T> _owner;
-            private Action<T> _listener;
+            private StoreStateNotifier<T>? _owner;
+            private Action<T>? _listener;
 
             public Subscription(StoreStateNotifier<T> owner, Action<T> listener)
             {
@@ -76,7 +76,7 @@ namespace Velvet
             public void Dispose()
             {
                 if (_owner == null) return;
-                _owner._listeners.Remove(_listener);
+                _owner._listeners.Remove(_listener!);
                 _owner._snapshot = null;
                 _owner = null;
                 _listener = null;

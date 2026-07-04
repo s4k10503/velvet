@@ -10,22 +10,22 @@ namespace Velvet
     // LoaderMode.Suspend loaders run asynchronously in the background.
     internal sealed class RouteLoaderRunner : IDisposable
     {
-        private CancellationTokenSource _cts;
+        private CancellationTokenSource? _cts;
 
         // Per-route errors (keyed by RouteId) raised by the most recent RunLoadersSync call.
-        public IReadOnlyDictionary<string, Exception> Errors => _errors;
-        private readonly Dictionary<string, Exception> _errors = new();
+        public IReadOnlyDictionary<string?, Exception> Errors => _errors;
+        private readonly Dictionary<string?, Exception> _errors = new();
 
         // Notification event fired with (routeId, result) when a Suspend loader of the CURRENT round
         // succeeds. A loader that ignores the CancellationToken and resolves after a newer RunLoadersSync
         // (or after disposal) belongs to a superseded round; its result is stale and is dropped without
         // firing this event or touching Errors, so a navigated-away route cannot pollute the live state.
-        public event Action<string, object> OnSuspendLoaderCompleted;
+        public event Action<string?, object>? OnSuspendLoaderCompleted;
 
         // Notification event fired with (routeId, exception) when a Suspend loader of the current round
         // fails. The failure is also recorded in Errors. A superseded round's late failure is dropped
         // (no event, no Errors write) for the same reason as OnSuspendLoaderCompleted.
-        public event Action<string, Exception> OnSuspendLoaderFailed;
+        public event Action<string?, Exception>? OnSuspendLoaderFailed;
 
         private int _activeSuspendTaskCount;
 
@@ -40,7 +40,7 @@ namespace Velvet
         // Runs loaders for the given matches. Await loaders must complete synchronously; Suspend loaders
         // are started in the background. On error, the error is recorded per-route in Errors; the caller
         // is expected to inspect Errors.
-        public (Dictionary<string, object> results, bool allCompleted) RunLoadersSync(
+        public (Dictionary<string?, object> results, bool allCompleted) RunLoadersSync(
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken)
         {
@@ -48,16 +48,18 @@ namespace Velvet
             _errors.Clear();
             _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
 
-            var results = new Dictionary<string, object>();
-            var awaitTasks = new List<(string routeId, UniTask<object> task)>();
+            var results = new Dictionary<string?, object>();
+            var awaitTasks = new List<(string? routeId, UniTask<object> task)>();
             var allCompleted = true;
 
             foreach (var match in matches)
             {
-                if (match.Route.Loader == null)
+                if (match.Route?.Loader == null)
                 {
                     continue;
                 }
+
+                var route = match.Route;
 
                 var loaderContext = new RouteLoaderContext
                 {
@@ -72,7 +74,7 @@ namespace Velvet
                 UniTask<object> task;
                 try
                 {
-                    task = match.Route.Loader(loaderContext, _cts.Token);
+                    task = route.Loader(loaderContext, _cts.Token);
                 }
                 catch (Exception ex)
                 {
@@ -81,7 +83,7 @@ namespace Velvet
                     continue;
                 }
 
-                if (match.Route.LoaderMode == LoaderMode.Await)
+                if (route.LoaderMode == LoaderMode.Await)
                 {
                     awaitTasks.Add((key, task));
                 }
@@ -119,7 +121,7 @@ namespace Velvet
             return (results, allCompleted);
         }
 
-        private async UniTask RunSuspendLoader(string routeId, UniTask<object> task, CancellationTokenSource ownCts)
+        private async UniTask RunSuspendLoader(string? routeId, UniTask<object> task, CancellationTokenSource ownCts)
         {
             try
             {

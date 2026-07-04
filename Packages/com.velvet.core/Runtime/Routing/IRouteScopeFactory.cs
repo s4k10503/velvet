@@ -11,6 +11,6 @@ namespace Velvet
         /// </summary>
         /// <param name="route">Route definition the scope is created for.</param>
         /// <param name="parent">Parent route's scope. null for the root route.</param>
-        IRouteScope CreateScope(RouteDefinition route, IRouteScope parent);
+        IRouteScope CreateScope(RouteDefinition? route, IRouteScope? parent);
     }
 }

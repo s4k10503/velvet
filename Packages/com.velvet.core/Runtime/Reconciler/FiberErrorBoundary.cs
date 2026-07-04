@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 
 namespace Velvet
@@ -22,7 +23,7 @@ namespace Velvet
         // component and returns the fallback VNode. Builds an ErrorInfo with the
         // throwing fiber's ComponentStack. Returns null if no factory is registered,
         // propagating to a higher boundary.
-        private static VNode RenderFallback(ComponentFiber fiber, ComponentFiber throwingFiber, Exception exception)
+        private static VNode? RenderFallback(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception)
         {
             if (fiber?.FallbackFactory == null) return null;
             var info = new ErrorInfo(BuildComponentStack(throwingFiber));
@@ -32,7 +33,7 @@ namespace Velvet
         // Walks the throwing fiber's Parent chain to produce a component stack
         // (one line per fiber, deepest first), honoring [Component(DisplayName)] overrides
         // via Hooks.ComponentName.
-        private static string BuildComponentStack(ComponentFiber throwingFiber)
+        private static string BuildComponentStack(ComponentFiber? throwingFiber)
         {
             if (throwingFiber == null) return string.Empty;
             var sb = new System.Text.StringBuilder();
@@ -44,10 +45,10 @@ namespace Velvet
             return sb.ToString();
         }
 
-        private static bool TryShowFallback(ComponentFiber fiber, ComponentFiber throwingFiber, Exception originalException)
+        private static bool TryShowFallback(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception originalException)
         {
             if (fiber.Reconciler == null) return false;
-            VNode fallback;
+            VNode? fallback;
             try
             {
                 fallback = RenderFallback(fiber, throwingFiber, originalException);
@@ -75,7 +76,7 @@ namespace Velvet
         // fiber: Candidate Error Boundary fiber.
         // exception: Exception thrown by a descendant render that should be caught.
         // True when the fallback was rendered successfully and the exception is consumed; false to continue propagation.
-        public static bool TryCatch(ComponentFiber fiber, ComponentFiber throwingFiber, Exception exception)
+        public static bool TryCatch(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception)
         {
             // Opt-in contract: even if a Fiber returning IsErrorBoundary=false has TryCatch invoked through some
             // path, it does not catch.

@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 
 namespace Velvet
@@ -34,14 +35,14 @@ namespace Velvet
         private const string Prefix = "supports-[";
 
         /// <summary>True if <paramref name="token"/> is a recognized <c>supports-[...]</c> variant token.</summary>
-        public static bool IsSupports(string token) => TryParse(token, out _, out _, out _);
+        public static bool IsSupports(string? token) => TryParse(token, out _, out _, out _);
 
         /// <summary>
         /// Splits a <c>supports-[&lt;property&gt;:&lt;value&gt;]:</c> token into its declared property, value,
         /// and payload. Returns false for any non-<c>supports-</c> token, a bracket missing the
         /// <c>property:value</c> colon, an empty property/value, or an empty payload.
         /// </summary>
-        public static bool TryParse(string token, out string property, out string value, out string payload)
+        public static bool TryParse(string? token, out string? property, out string? value, out string? payload)
         {
             property = null;
             value = null;

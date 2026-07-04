@@ -137,7 +137,7 @@ namespace Velvet
         /// outside this range untouched. Used by wrapper-less Component / Provider / Outlet fibers
         /// that share a parent VE with sibling slots.
         /// </param>
-        public void Reconcile(VisualElement parent, VNode[] oldChildren, VNode[] newChildren,
+        public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
             double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
         {
             if (_ctx.IsDisposed) { return; }
@@ -286,8 +286,8 @@ namespace Velvet
             return _patcher.ResolveOuter(inner);
         }
 
-        object IReconcilerBridge.BeginDetachedItemScope(
-            ComponentFiber host, List<KeyValuePair<object, object>> enclosingContext)
+        object? IReconcilerBridge.BeginDetachedItemScope(
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext)
         {
             var stack = _ctx.ComponentContextStack;
             if (enclosingContext != null)
@@ -313,14 +313,14 @@ namespace Velvet
         }
 
         void IReconcilerBridge.StampDetachedItemFibers(
-            ComponentFiber host, List<KeyValuePair<object, object>> enclosingContext, VNode itemVnode, object scopeToken)
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, VNode itemVnode, object? scopeToken)
         {
             if (host == null || scopeToken is not HashSet<ComponentFiber> seen) return;
             // Stamp each fiber newly added under host since the prior call (set diff via Add). DescendantNodes is
             // THIS item's rendered vnode so the spine can re-push a Provider the renderer placed above the item's
             // consumer; anchor is the host the item fibers parent under (the registry-lookup parent the walk
             // matches the consumer against). seen also marks them so End's fallback does not re-stamp them.
-            DetachedMountContext detached = null;
+            DetachedMountContext? detached = null;
             for (var f = host.Child; f != null; f = f.Sibling)
             {
                 if (!seen.Add(f)) continue;
@@ -331,7 +331,7 @@ namespace Velvet
         }
 
         void IReconcilerBridge.EndDetachedItemScope(
-            ComponentFiber host, List<KeyValuePair<object, object>> enclosingContext, object scopeToken)
+            ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, object? scopeToken)
         {
             if (host != null)
             {
@@ -340,7 +340,7 @@ namespace Velvet
                 {
                     // Fallback for any item fiber not stamped per-item (StampDetachedItemFibers marks the ones it
                     // handled in `before`): only the enclosing snapshot is replayed, with no item-vnode walk.
-                    DetachedMountContext detached = null;
+                    DetachedMountContext? detached = null;
                     for (var f = host.Child; f != null; f = f.Sibling)
                     {
                         if (before.Contains(f)) continue;
@@ -365,13 +365,13 @@ namespace Velvet
 
         VisualElement IReconcilerHost.CreateElement(VNode node) => _factory.CreateElement(node);
 
-        List<(string key, VNode node)> IReconcilerHost.BuildKeyedMapCopy(VNode[] children) => _factory.BuildKeyedMapCopy(children);
+        List<(string key, VNode node)> IReconcilerHost.BuildKeyedMapCopy(VNode?[] children) => _factory.BuildKeyedMapCopy(children);
 
         void IReconcilerHost.RemoveElement(VisualElement parent, int index) => _cleaner.RemoveElement(parent, index);
 
         void IReconcilerHost.RemoveElementDirect(VisualElement parent, VisualElement element) => _cleaner.RemoveElementDirect(parent, element);
 
-        void IReconcilerHost.ReconcileChildren(VisualElement parent, VNode[] oldChildren, VNode[] newChildren, int slotStart)
+        void IReconcilerHost.ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart)
             => _childReconciler.Reconcile(parent, oldChildren, newChildren, slotStart: slotStart);
 
         void IReconcilerHost.NotifyContextValueChange(ContextProviderNode newProvider)

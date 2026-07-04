@@ -18,7 +18,7 @@ namespace Velvet
         public ShadowSpec Spec;
         // The class list this element carries, kept current so the geometry callback can re-resolve the
         // rounded-* corner radius after a class change.
-        public string[] ClassNames;
+        public string[]? ClassNames;
         // The caster's skew-x angle (degrees; 0 = upright). A skewed caster's shadow follows the slant.
         public float SkewXDeg;
         // Whether the caster is skewed on ANY axis (skew-x or skew-y). A skewed caster already has a
@@ -32,9 +32,9 @@ namespace Velvet
         // resolvedStyle.borderTopLeftRadius once on a panel — the same precedence the wrapper path used.
         public float CornerRadius;
 
-        public Action<MeshGenerationContext> OnGenerate;
-        public EventCallback<GeometryChangedEvent> OnGeometryChanged;
-        public EventCallback<CustomStyleResolvedEvent> OnStyleResolved;
+        public Action<MeshGenerationContext>? OnGenerate;
+        public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
+        public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
 
         // The native-face stash + sentinel suppression (UPRIGHT casters only). Shared with the skew layer; a
         // skewed caster leaves this untouched (HasStash false) because its SkewSilhouette owns the face.
@@ -51,9 +51,9 @@ namespace Velvet
         // list-item fade that both cover this shadow) compose multiplicatively, matching how UI Toolkit
         // composites ancestor opacity down the tree. The common case is zero or one driver, so the first slot
         // is inline; a dictionary is allocated only when a second overlapping animation appears.
-        private object _driver0;
+        private object? _driver0;
         private float _factor0 = 1f;
-        private Dictionary<object, float> _extraDrivers;
+        private Dictionary<object, float>? _extraDrivers;
 
         // Registers or updates this driver's factor, recomputing ShadowOpacity. A driver not seen before is
         // added; the same driver re-setting its factor each tick is updated in place.
@@ -82,13 +82,18 @@ namespace Velvet
                 _factor0 = 1f;
                 if (_extraDrivers != null && _extraDrivers.Count > 0)
                 {
+                    object? promotedKey = null;
                     foreach (var kv in _extraDrivers)
                     {
                         _driver0 = kv.Key;
                         _factor0 = kv.Value;
+                        promotedKey = kv.Key;
                         break;
                     }
-                    _extraDrivers.Remove(_driver0);
+                    if (promotedKey != null)
+                    {
+                        _extraDrivers.Remove(promotedKey);
+                    }
                 }
             }
             else
@@ -285,7 +290,7 @@ namespace Velvet
 
         // Returns the live binding for an element, or null. Used by the animation scheduler to collect the
         // shadow paints under an animating subtree.
-        public static DropShadowBinding TryGet(VisualElement element)
+        public static DropShadowBinding? TryGet(VisualElement element)
             => s_byElement.TryGetValue(element, out var binding) ? binding : null;
 
         // Registers / updates an enter or exit animation's co-fade factor on this shadow and repaints. The

@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -14,24 +15,24 @@ namespace Velvet
     {
         private readonly RouteTree _routeTree;
         private readonly RouteLoaderRunner _loaderRunner;
-        private readonly List<(string path, IReadOnlyList<RouteMatch> matches, Dictionary<string, object> loaderData, Dictionary<string, Exception> loaderErrors)> _history = new();
+        private readonly List<(string path, IReadOnlyList<RouteMatch> matches, Dictionary<string?, object>? loaderData, Dictionary<string?, Exception>? loaderErrors)> _history = new();
         private readonly RouteBlockerManager _blockerManager = new();
         private int _historyIndex = -1;
-        private Dictionary<string, object> _loaderData = new();
-        private Dictionary<string, Exception> _loaderErrors = new();
+        private Dictionary<string?, object> _loaderData = new();
+        private Dictionary<string?, Exception> _loaderErrors = new();
         private const int MaxRedirects = 5;
         private const int MaxHistoryEntries = 50;
         // Cancellation token for the currently in-flight navigation (null when idle). When a new
         // navigation arrives during an async Blocker await, we cancel the previous CTS so the prior
         // nav unwinds (NavigationResult.Cancelled) and the latest nav takes over, so concurrent
         // navigations during the blocker window resolve to the most recent one.
-        private CancellationTokenSource _activeNavigationCts;
+        private CancellationTokenSource? _activeNavigationCts;
 
         /// <summary>
         /// The currently active <see cref="Router"/> instance, or null when none is mounted. Set when a
         /// router is constructed and cleared on <see cref="Dispose"/>.
         /// </summary>
-        public static Router Current { get; private set; }
+        public static Router? Current { get; private set; }
 
         private RouterStatus _status = RouterStatus.Idle;
 
@@ -50,7 +51,7 @@ namespace Velvet
             }
         }
         /// <summary>Location information for the most recently successful navigation. null before the first navigation.</summary>
-        public RouterLocation CurrentLocation { get; private set; }
+        public RouterLocation? CurrentLocation { get; private set; }
         /// <summary>True when the history stack can be moved backward.</summary>
         public bool CanGoBack => _historyIndex > 0;
         /// <summary>True when the history stack can be moved forward.</summary>
@@ -58,28 +59,28 @@ namespace Velvet
         /// <summary>Blocker manager attached to this router. Referenced from the UseBlocker hook.</summary>
         public RouteBlockerManager RouteBlockerManager => _blockerManager;
         internal int HistoryIndex => _historyIndex;
-        internal IRouteScopeFactory ScopeFactory => _scopeFactory;
+        internal IRouteScopeFactory? ScopeFactory => _scopeFactory;
 
         /// <summary>
         /// Raised after each successful navigation with the new location. Also re-emitted (with a fresh
         /// location identity) when a Suspend-mode loader resolves within the current location.
         /// </summary>
-        public event Action<RouterLocation> OnLocationChanged;
+        public event Action<RouterLocation> OnLocationChanged = null!;
 
         /// <summary>
         /// Raised whenever <see cref="Status"/> transitions (idle/matching/loading/etc.), letting hooks
         /// such as <c>UseNavigation</c> observe an in-flight navigation.
         /// </summary>
-        public event Action<RouterStatus> OnStatusChanged;
+        public event Action<RouterStatus> OnStatusChanged = null!;
 
-        private readonly IRouteScopeFactory _scopeFactory;
+        private readonly IRouteScopeFactory? _scopeFactory;
 
         /// <summary>
         /// Builds a router over the given <paramref name="routes"/> and sets it as <see cref="Current"/>.
         /// </summary>
         /// <param name="routes">Root route definitions (may contain nested <see cref="RouteDefinition.Children"/>).</param>
         /// <param name="scopeFactory">Optional factory for per-route DI scopes; null disables route scoping.</param>
-        public Router(RouteDefinition[] routes, IRouteScopeFactory scopeFactory = null)
+        public Router(RouteDefinition[] routes, IRouteScopeFactory? scopeFactory = null)
         {
             _routeTree = new RouteTree(routes ?? throw new ArgumentNullException(nameof(routes)));
             _loaderRunner = new RouteLoaderRunner();
@@ -88,7 +89,7 @@ namespace Velvet
                 UnityEngine.Debug.LogException(ex);
                 // Suspend-mode loader failed: record the error keyed by RouteId and re-emit so the nearest
                 // ErrorElement renders, mirroring the synchronous Await-mode error commit.
-                _loaderErrors = new Dictionary<string, Exception>(_loaderErrors) { [routeId] = ex };
+                _loaderErrors = new Dictionary<string?, Exception>(_loaderErrors) { [routeId] = ex };
                 SyncCurrentHistorySnapshot();
                 RepublishCurrentLocation(routeId);
             };
@@ -97,7 +98,7 @@ namespace Velvet
                 // Suspend-mode loader completed: replace _loaderData with a new instance so a re-render
                 // re-reads the resolved data. The location content is unchanged, so RepublishCurrentLocation
                 // re-emits OnLocationChanged with a fresh identity to force that re-render.
-                var updated = new Dictionary<string, object>(_loaderData) { [routeId] = result };
+                var updated = new Dictionary<string?, object>(_loaderData) { [routeId] = result };
                 _loaderData = updated;
                 SyncCurrentHistorySnapshot();
                 RepublishCurrentLocation(routeId);
@@ -161,7 +162,7 @@ namespace Velvet
         /// resolved base. When no route matches are available yet (e.g. the very first navigation), it
         /// falls back to URL-segment-relative resolution against the current path.
         /// </summary>
-        internal string ResolvePath(string path, int baseRouteIndex = -1)
+        internal string? ResolvePath(string path, int baseRouteIndex = -1)
         {
             if (path == null)
             {
@@ -260,14 +261,14 @@ namespace Velvet
         }
 
         private async UniTask<NavigationResult> NavigateInternalAsync(
-            string path,
+            string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
             int redirectCount)
         {
             // Concurrent-navigation handling. Recursive redirect calls (redirectCount > 0) reuse the
             // outer navigation's CTS so a redirect doesn't cancel its own initiator.
-            CancellationTokenSource myCts = null;
+            CancellationTokenSource? myCts = null;
             CancellationToken navToken = cancellationToken;
             if (redirectCount == 0)
             {
@@ -307,7 +308,7 @@ namespace Velvet
         }
 
         private async UniTask<NavigationResult> NavigateCore(
-            string path,
+            string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
             int redirectCount)
@@ -316,6 +317,12 @@ namespace Velvet
             {
                 Status = RouterStatus.Error;
                 return NavigationResult.Error;
+            }
+
+            if (path == null)
+            {
+                Status = RouterStatus.NotFound;
+                return NavigationResult.NotFound;
             }
 
             Status = RouterStatus.Matching;
@@ -354,13 +361,15 @@ namespace Velvet
             // the UX requirement of "do not show a leave-confirmation to unauthenticated users".
             foreach (var match in matches)
             {
+                if (match.Route == null) continue;
+
                 if (match.Route.RedirectTo != null && match.Route.Guard != null)
                 {
                     throw new InvalidOperationException(
                         $"RouteDefinition '{match.Route.Path}' has both RedirectTo and Guard set. These are mutually exclusive.");
                 }
 
-                string redirectTarget = null;
+                string? redirectTarget = null;
                 if (match.Route.RedirectTo != null)
                 {
                     redirectTarget = match.Route.RedirectTo;
@@ -447,8 +456,8 @@ namespace Velvet
                 // on its first load (UseRouteError / ErrorElement), symmetrically with loaderData.
                 var cachedErrors = _history[_historyIndex].loaderErrors;
                 _loaderErrors = cachedErrors != null
-                    ? new Dictionary<string, Exception>(cachedErrors)
-                    : new Dictionary<string, Exception>();
+                    ? new Dictionary<string?, Exception>(cachedErrors)
+                    : new Dictionary<string?, Exception>();
                 Status = RouterStatus.Loading; // for status-transition consistency
             }
             else
@@ -459,8 +468,8 @@ namespace Velvet
 
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    _loaderData = new Dictionary<string, object>();
-                    _loaderErrors = new Dictionary<string, Exception>();
+                    _loaderData = new Dictionary<string?, object>();
+                    _loaderErrors = new Dictionary<string?, Exception>();
                     Status = RouterStatus.Idle;
                     return NavigationResult.Cancelled;
                 }
@@ -470,7 +479,7 @@ namespace Velvet
                 // A loader error does not abort navigation. The location commits and
                 // the nearest RouteDefinition.ErrorElement renders in place of the route's Element. Errors
                 // are surfaced through RouterContext.Errors (keyed by RouteId) for UseRouteError.
-                _loaderErrors = new Dictionary<string, Exception>(_loaderRunner.Errors);
+                _loaderErrors = new Dictionary<string?, Exception>(_loaderRunner.Errors);
             }
             #endregion
 
@@ -494,13 +503,13 @@ namespace Velvet
             switch (mode)
             {
                 case NavigationMode.Push:
-                    PushHistoryEntry(path, matches, new Dictionary<string, object>(_loaderData),
-                        new Dictionary<string, Exception>(_loaderErrors));
+                    PushHistoryEntry(path, matches, new Dictionary<string?, object>(_loaderData),
+                        new Dictionary<string?, Exception>(_loaderErrors));
                     break;
                 case NavigationMode.Replace:
                 {
-                    var loaderDataSnapshot = new Dictionary<string, object>(_loaderData);
-                    var loaderErrorsSnapshot = new Dictionary<string, Exception>(_loaderErrors);
+                    var loaderDataSnapshot = new Dictionary<string?, object>(_loaderData);
+                    var loaderErrorsSnapshot = new Dictionary<string?, Exception>(_loaderErrors);
                     if (_historyIndex >= 0)
                     {
                         _history[_historyIndex] = (path, matches, loaderDataSnapshot, loaderErrorsSnapshot);
@@ -542,7 +551,7 @@ namespace Velvet
         /// location's matches: the user navigated away before the loader resolved, so the result is stale and
         /// must not churn the unrelated current location (a navigated-away loader's result is discarded).
         /// </summary>
-        private void RepublishCurrentLocation(string resolvedRouteId)
+        private void RepublishCurrentLocation(string? resolvedRouteId)
         {
             if (CurrentLocation?.Matches == null)
             {
@@ -607,12 +616,12 @@ namespace Velvet
             _history[_historyIndex] = (
                 entry.path,
                 entry.matches,
-                new Dictionary<string, object>(_loaderData),
-                new Dictionary<string, Exception>(_loaderErrors));
+                new Dictionary<string?, object>(_loaderData),
+                new Dictionary<string?, Exception>(_loaderErrors));
         }
 
         private void PushHistoryEntry(string path, IReadOnlyList<RouteMatch> matches,
-            Dictionary<string, object> loaderData = null, Dictionary<string, Exception> loaderErrors = null)
+            Dictionary<string?, object>? loaderData = null, Dictionary<string?, Exception>? loaderErrors = null)
         {
             if (CanGoForward)
             {
@@ -675,14 +684,14 @@ namespace Velvet
         /// root Provider exposes this through <see cref="RouterContext.LoaderData"/> for the
         /// <c>UseLoaderData</c> hook.
         /// </summary>
-        public IReadOnlyDictionary<string, object> CurrentLoaderData => _loaderData;
+        public IReadOnlyDictionary<string?, object> CurrentLoaderData => _loaderData;
 
         /// <summary>
         /// Snapshot of the current loader errors, keyed by <see cref="RouteMatch.RouteId"/>. The router's
         /// root Provider exposes this through <see cref="RouterContext.Errors"/> for the
         /// <c>UseRouteError</c> hook and for <c>ErrorElement</c> rendering.
         /// </summary>
-        public IReadOnlyDictionary<string, Exception> CurrentLoaderErrors => _loaderErrors;
+        public IReadOnlyDictionary<string?, Exception> CurrentLoaderErrors => _loaderErrors;
 
         public void Dispose()
         {

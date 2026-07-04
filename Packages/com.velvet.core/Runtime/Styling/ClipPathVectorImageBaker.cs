@@ -1,3 +1,4 @@
+#nullable enable
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -34,7 +35,7 @@ namespace Velvet
         // bounds is the analytic bounding box of the path in element-local px: SaveToVectorImage
         // stores TIGHT bounds (vertices offset by the bbox min, size = bbox size), so the caller
         // must position/size the background by this rect for the shape to land where the CSS says.
-        public static VectorImage Bake(ClipPathSpec spec, float width, float height, out Rect bounds)
+        public static VectorImage? Bake(ClipPathSpec? spec, float width, float height, out Rect bounds)
         {
             bounds = default;
             if (spec == null || width <= 0f || height <= 0f || !TryComputeBounds(spec, width, height, out bounds))
@@ -85,7 +86,7 @@ namespace Velvet
         // False for a degenerate (empty) shape — the same validity rule Bake applies, so the
         // stretch-invariant fast path in the geometry sync agrees with the full bake about when a
         // shape collapses. Cheap enough to run per geometry change.
-        internal static bool TryComputeBounds(ClipPathSpec spec, float width, float height, out Rect bounds)
+        internal static bool TryComputeBounds(ClipPathSpec? spec, float width, float height, out Rect bounds)
         {
             bounds = default;
             if (spec == null || width <= 0f || height <= 0f)
@@ -98,6 +99,10 @@ namespace Velvet
                 case ClipPathKind.Polygon:
                 {
                     var points = spec.PolygonPoints;
+                    if (points == null)
+                    {
+                        return false;
+                    }
                     var count = points.Length / 2;
                     if (count < 3)
                     {
@@ -204,6 +209,10 @@ namespace Velvet
         private static void BuildPolygonPath(Painter2D painter, ClipPathSpec spec, float width, float height)
         {
             var points = spec.PolygonPoints;
+            if (points == null)
+            {
+                return;
+            }
             var count = points.Length / 2;
             for (var i = 0; i < count; i++)
             {
@@ -313,9 +322,9 @@ namespace Velvet
     internal sealed class ClipPathBinding
     {
         public readonly VisualElement Wrapper;
-        public ClipPathSpec Spec;
-        public EventCallback<GeometryChangedEvent> OnGeometry;
-        public VectorImage Image;
+        public ClipPathSpec? Spec;
+        public EventCallback<GeometryChangedEvent> OnGeometry = null!;
+        public VectorImage? Image;
 
         // Analytic path bounds of the live bake (element-local px). The geometry sync re-anchors the
         // background by these when only the inner's origin moved (no re-bake), and rescales them for
@@ -334,7 +343,7 @@ namespace Velvet
         // cache to the element's few distinct shapes: a size animation of a non-stretch-invariant shape re-bakes
         // the SAME source and destroys the stale-size image rather than accumulating one per size. Owned by THIS
         // binding (no cross-element sharing / refcounting): destroyed wholesale on unwrap / teardown.
-        private System.Collections.Generic.Dictionary<string, (int W, int H, VectorImage Image, Rect Bounds)> _bakeCache;
+        private System.Collections.Generic.Dictionary<string, (int W, int H, VectorImage Image, Rect Bounds)>? _bakeCache;
 
         public ClipPathBinding(VisualElement wrapper)
         {
@@ -345,12 +354,12 @@ namespace Velvet
         // whole px (matching the geometry sync's 0.5px skip tolerance) so sub-pixel jitter does not re-bake. A
         // size change for the same shape destroys the stale-size image (cache stays one-per-shape). Returns
         // false only when the bake itself fails (degenerate/empty shape — the caller hides the subtree).
-        internal bool GetOrBake(ClipPathSpec spec, float width, float height, out VectorImage image, out Rect bounds)
+        internal bool GetOrBake(ClipPathSpec spec, float width, float height, out VectorImage? image, out Rect bounds)
         {
             var w = Mathf.RoundToInt(width);
             var h = Mathf.RoundToInt(height);
             _bakeCache ??= new System.Collections.Generic.Dictionary<string, (int, int, VectorImage, Rect)>();
-            if (_bakeCache.TryGetValue(spec.Source, out var hit) && hit.Image != null)
+            if (_bakeCache.TryGetValue(spec.Source!, out var hit) && hit.Image != null)
             {
                 if (hit.W == w && hit.H == h)
                 {
@@ -365,10 +374,10 @@ namespace Velvet
             image = ClipPathVectorImageBaker.Bake(spec, width, height, out bounds);
             if (image == null)
             {
-                _bakeCache.Remove(spec.Source);
+                _bakeCache.Remove(spec.Source!);
                 return false;
             }
-            _bakeCache[spec.Source] = (w, h, image, bounds);
+            _bakeCache[spec.Source!] = (w, h, image, bounds);
             return true;
         }
 

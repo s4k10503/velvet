@@ -71,7 +71,7 @@ namespace Velvet
         /// Returns the <c>[Component(DisplayName = ...)]</c> override registered for <paramref name="method"/>,
         /// or <c>null</c> when no override was registered.
         /// </summary>
-        internal static string TryGetDisplayName(MethodInfo method)
+        internal static string? TryGetDisplayName(MethodInfo method)
         {
             if (method is null) return null;
             return TryLookupByMethod(method, s_displayNames, out var name) ? name : null;
@@ -83,9 +83,12 @@ namespace Velvet
         // MethodInfo-keyed cache layered on top of the string-keyed registry: the string form is required
         // because the SG cannot reference MethodInfo at compile time, but per-render lookups against MethodInfo
         // identity are O(1) on a RuntimeMethodHandle compare and avoid two ordinal string-equals on every hit.
-        internal static bool IsErrorBoundary(MethodInfo method)
-            => s_methodCache.GetOrAdd(method, static m =>
+        internal static bool IsErrorBoundary(MethodInfo? method)
+        {
+            if (method is null) return false;
+            return s_methodCache.GetOrAdd(method, static m =>
                 TryLookupByMethod(m, s_errorBoundaries, out var flag) && flag);
+        }
 
         /// <summary>
         /// Returns <c>true</c> if <paramref name="method"/> carries <c>[Component(Memoize = true)]</c>
@@ -95,7 +98,7 @@ namespace Velvet
         /// no entry (e.g. before the generator has been rebuilt to emit Memoize registrations). The result is
         /// cached per <see cref="MethodInfo"/> so the lookup cost is paid once per component method, not per render.
         /// </summary>
-        internal static bool IsMemoized(MethodInfo method)
+        internal static bool IsMemoized(MethodInfo? method)
         {
             if (method is null) return false;
             return s_memoizeCache.GetOrAdd(method, static m =>
@@ -114,7 +117,7 @@ namespace Velvet
         private static bool TryLookupByMethod<TValue>(
             MethodInfo method,
             ConcurrentDictionary<(string TypeName, string MethodName), TValue> registry,
-            out TValue value)
+            out TValue? value)
         {
             var declaringType = method.DeclaringType;
             if (declaringType is null)

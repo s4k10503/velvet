@@ -24,7 +24,7 @@ namespace Velvet
         // internal refcount; without an explicit Release, repeated calls accumulate refcounts
         // and stall reconcile on every re-render. Caching pins the asset for the panel lifetime
         // (typical for icon-class assets) and amortizes the WaitForCompletion to once per key.
-        private static readonly Dictionary<string, Texture2D> _cache = new();
+        private static readonly Dictionary<string, Texture2D?> _cache = new();
 
         /// <summary>
         /// True when any class is a <c>bg-[addr:&lt;key&gt;]</c> background-image utility (a cheap prefix
@@ -51,7 +51,7 @@ namespace Velvet
         /// Returns true when <paramref name="className"/> matches <c>bg-[addr:&lt;key&gt;]</c> and
         /// the Addressable key successfully resolved to a Texture2D.
         /// </summary>
-        public static bool TryParse(string className, out Texture2D texture)
+        public static bool TryParse(string className, out Texture2D? texture)
         {
             texture = null;
             if (className == null) return false;
@@ -69,7 +69,7 @@ namespace Velvet
         /// <summary>
         /// Sets the element's inline <c>backgroundImage</c> from the given Texture2D.
         /// </summary>
-        public static void Apply(VisualElement element, Texture2D texture)
+        public static void Apply(VisualElement element, Texture2D? texture)
         {
             element.style.backgroundImage = new StyleBackground(texture);
         }
