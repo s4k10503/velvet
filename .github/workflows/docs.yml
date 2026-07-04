@@ -12,6 +12,17 @@ name: Docs
 # (Settings ▸ Pages ▸ Source: GitHub Actions).
 
 on:
+  push:
+    branches: [main]
+    # Only rebuild the API site when something it actually renders changes.
+    # DocFX reads XML-doc comments from the package's Runtime sources plus the
+    # hand-authored docs/ project, so unrelated commits skip the ~8-minute Unity
+    # compile. Test sources are colocated under Runtime/ but never documented.
+    paths:
+      - 'Packages/com.velvet.core/Runtime/**/*.cs'
+      - '!Packages/com.velvet.core/Runtime/**/Tests/**'
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
   release:
     types: [published]
   workflow_dispatch:
