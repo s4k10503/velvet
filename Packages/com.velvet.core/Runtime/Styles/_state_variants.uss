@@ -1,0 +1,143 @@
+/*
+ * State Variant Utilities - hover-*, active-*, disabled-*, focus-* prefix utilities
+ *
+ * State variants for Unity USS. Because Unity USS does not
+ * support `\:` escape in class selectors (CSSSpec regex `\.[\w-]+` only allows
+ * `[A-Za-z0-9_-]`), we use hyphen-separated names instead of a colon-prefixed
+ * syntax. So a `hover:` colon prefix becomes the `hover-` token (e.g. `hover-scale-105`).
+ *
+ * The selector form is `.hover-{name}:hover { ... }` so the pseudo-class trigger
+ * is the standard Unity UI Toolkit `:hover` / `:active` / `:disabled` / `:focus`,
+ * and the class name itself is a regular hyphen-separated token.
+ */
+
+/* ============================= */
+/* Hover - Scale                 */
+/* ============================= */
+
+.hover-scale-hover:hover { scale: var(--scale-hover); }
+.hover-scale-hover-subtle:hover { scale: var(--scale-hover-subtle); }
+.hover-scale-105:hover { scale: 1.05; }
+.hover-scale-110:hover { scale: 1.10; }
+
+/* ============================= */
+/* Active - Scale                */
+/* ============================= */
+
+.active-scale-active:active { scale: var(--scale-active); }
+.active-scale-active-subtle:active { scale: var(--scale-active-subtle); }
+.active-scale-95:active { scale: 0.95; }
+.active-scale-97:active { scale: 0.97; }
+
+/* ============================= */
+/* Disabled - Opacity / Cursor   */
+/* ============================= */
+
+.disabled-opacity-50:disabled { opacity: 0.5; }
+/* No `disabled-cursor-arrow`: USS cursor keywords are Editor-only and inert at runtime. See _effects.uss. */
+
+/* ============================= */
+/* Hover - Border Color          */
+/* ============================= */
+
+.hover-border-strong:hover { border-color: var(--color-border-strong); }
+.hover-border-default:hover { border-color: var(--color-border); }
+.hover-border-highlight:hover { border-color: var(--color-highlight); }
+.hover-border-hover:hover { border-color: var(--color-border-hover); }
+
+/* ============================= */
+/* Active - Border Color         */
+/* ============================= */
+
+.active-border-strong:active { border-color: var(--color-border-strong); }
+.active-border-active:active { border-color: var(--color-border-active); }
+
+/* ============================= */
+/* Hover - Background Color      */
+/* ============================= */
+
+.hover-bg-surface:hover { background-color: var(--color-surface); }
+.hover-bg-surface-strong:hover { background-color: var(--color-surface-strong); }
+.hover-bg-surface-hover:hover { background-color: var(--color-surface-hover); }
+.hover-bg-primary:hover { background-color: var(--color-primary); }
+.hover-bg-primary-hover:hover { background-color: var(--color-primary-hover); }
+.hover-bg-danger-hover:hover { background-color: var(--color-danger-hover); }
+.hover-bg-success-hover:hover { background-color: var(--color-success-hover); }
+.hover-bg-overlay-hover:hover { background-color: var(--color-overlay-hover); }
+.hover-bg-white-strong:hover { background-color: var(--color-white-strong); }
+
+/* ============================= */
+/* Active - Background Color     */
+/* ============================= */
+
+.active-bg-surface:active { background-color: var(--color-surface); }
+.active-bg-surface-active:active { background-color: var(--color-surface-active); }
+.active-bg-primary-active:active { background-color: var(--color-primary-active); }
+.active-bg-danger-active:active { background-color: var(--color-danger-active); }
+.active-bg-success-active:active { background-color: var(--color-success-active); }
+.active-bg-white-full:active { background-color: var(--color-white-full); }
+
+/* ============================= */
+/* Focus - Border / Background   */
+/* ============================= */
+
+.focus-border-accent:focus { border-color: var(--color-accent-strong); }
+.focus-bg-primary-faint:focus { background-color: var(--color-primary-faint); }
+
+/* ============================= */
+/* Selected (.is-selected combo) */
+/* ============================= */
+
+/*
+ * `.is-selected` is a state class toggled via `EnableInClassList`. Variants below
+ * compose `.<utility>.is-selected` so the rule activates when both classes are
+ * present, mirroring an `aria-selected:`-style family but using the existing
+ * state class.
+ */
+
+.selected-bg-primary-soft.is-selected { background-color: var(--color-primary-soft); }
+.selected-border-strong.is-selected { border-color: var(--color-border-strong); }
+.selected-text-strong.is-selected { color: var(--color-text); }
+
+/* ============================= */
+/* Transition                    */
+/* ============================= */
+
+.transition-all { transition-property: all; }
+.transition-none { transition-property: none; }
+.transition-opacity { transition-property: opacity; }
+.transition-colors {
+    transition-property: background-color, border-color, color;
+}
+.transition-colors-scale {
+    transition-property: background-color, border-color, color, scale;
+}
+.transition-colors-scale-opacity {
+    transition-property: background-color, border-color, color, scale, opacity;
+}
+.duration-fast { transition-duration: var(--duration-fast); }
+.duration-normal { transition-duration: var(--duration-normal); }
+.duration-slow { transition-duration: var(--duration-slow); }
+/* Numeric scale (Tailwind ms steps; UI Toolkit transition-duration is in seconds). */
+.duration-0 { transition-duration: 0s; }
+.duration-75 { transition-duration: 0.075s; }
+.duration-100 { transition-duration: 0.1s; }
+.duration-150 { transition-duration: 0.15s; }
+.duration-200 { transition-duration: 0.2s; }
+.duration-300 { transition-duration: 0.3s; }
+.duration-500 { transition-duration: 0.5s; }
+.duration-700 { transition-duration: 0.7s; }
+.duration-1000 { transition-duration: 1s; }
+.ease { transition-timing-function: ease; }
+.ease-in { transition-timing-function: ease-in; }
+.ease-out { transition-timing-function: ease-out; }
+.ease-in-out { transition-timing-function: ease-in-out; }
+.ease-linear { transition-timing-function: linear; }
+
+/* ============================= */
+/* Aspect ratio                  */
+/* ============================= */
+
+.aspect-square { aspect-ratio: 1; }
+.aspect-video { aspect-ratio: 1.7778; } /* 16 / 9 */
+.aspect-auto { aspect-ratio: auto; }

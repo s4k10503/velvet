@@ -1,0 +1,137 @@
+name: Docs
+
+# Builds the DocFX API reference (from the Velvet runtime XML docs) and publishes it to GitHub Pages.
+#
+# Two stages, because a raw `unity-editor -manualLicenseFile` fails on CI ("Machine bindings don't
+# match"): a Personal .ulf is machine-bound and offline activation checks that binding. game-ci
+# activates online and re-binds to the runner, so we let it do the compile.
+#   1. compile — game-ci compiles the project (activating the license) and uploads Library/ScriptAssemblies.
+#   2. build   — DocFX runs inside the Unity editor image (for the engine reference DLLs) against those
+#                assemblies, then the site is published to Pages.
+# Requires UNITY_LICENSE / UNITY_EMAIL / UNITY_PASSWORD (skipped when absent) and GitHub Pages enabled
+# (Settings ▸ Pages ▸ Source: GitHub Actions).
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  checks: write
+
+concurrency:
+  group: docs
+  cancel-in-progress: true
+
+jobs:
+  license-check:
+    name: Check Unity license secret
+    runs-on: ubuntu-latest
+    outputs:
+      has_license: ${{ steps.check.outputs.has_license }}
+    steps:
+      - id: check
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "has_license=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_license=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::UNITY_LICENSE not set — skipping API docs (Unity is needed to compile the reference assemblies)."
+          fi
+
+  compile:
+    name: Compile assemblies (game-ci)
+    needs: license-check
+    if: needs.license-check.outputs.has_license == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          lfs: true
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: Library
+          key: Library-docs-${{ hashFiles('Packages/**', 'ProjectSettings/**') }}
+          restore-keys: Library-docs-
+
+      # game-ci activates the license (online, re-binding to the runner) and compiles the project on
+      # the way to running tests, which populates Library/ScriptAssemblies with the Velvet + package
+      # DLLs (UniTask, Addressables, …) that DocFX needs to resolve types.
+      - name: Compile via game-ci
+        uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.3.11f1
+          testMode: EditMode
+          projectPath: .
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload compiled assemblies
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: script-assemblies
+          path: Library/ScriptAssemblies
+          retention-days: 1
+
+  build:
+    name: Build API site
+    needs: compile
+    runs-on: ubuntu-latest
+    # The Unity editor image ships the engine managed DLLs DocFX resolves types against.
+    container:
+      image: unityci/editor:ubuntu-6000.3.11f1-base-3
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Restore compiled assemblies
+        uses: actions/download-artifact@v4
+        with:
+          name: script-assemblies
+          path: Library/ScriptAssemblies
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install DocFX
+        run: |
+          dotnet tool install -g docfx
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Build docs
+        env:
+          # Linux editor image: engine managed assemblies live under <Editor>/Data.
+          UnityEditorContents: /opt/unity/Editor/Data
+        run: |
+          test -f Library/ScriptAssemblies/UniTask.dll || {
+            echo "::error::Compiled assemblies were not restored — the compile job did not produce Library/ScriptAssemblies."
+            exit 1
+          }
+          cd docs
+          docfx metadata docfx.json
+          docfx build docfx.json
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/_site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

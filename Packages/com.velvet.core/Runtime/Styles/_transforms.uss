@@ -1,0 +1,65 @@
+/* ============================================ */
+/* Transform Utilities - scale / translate / rotate */
+/*                                              */
+/* Tailwind-style plain (non-pseudo) transform utilities. UITK 6.x exposes the  */
+/* animatable transform as the independent `scale` / `translate` / `rotate`     */
+/* properties (it cannot transition the combined `transform`), so these map     */
+/* directly onto them and compose with `.transition-transform`.                 */
+/*                                                                              */
+/* Note on translate: USS `translate` is a single shorthand for both axes, so a per-axis `.translate-x-N` */
+/* USS rule would write `<x> 0` and clobber any `.translate-y-N` on the same element (last one wins).     */
+/* So translate-x-* / translate-y-* (every sign and form: presets, -translate-x-N, translate-x-1/2,       */
+/* translate-x-full) have NO USS class — StyleArbitraryValueResolver routes them to the TranslateX/Y      */
+/* merge path (like scale-x/y) so an x and a y compose onto one inline `translate`. Do not re-add static  */
+/* translate-* rules here; they would re-introduce the clobber.                                            */
+/* ============================================ */
+
+/* === Scale === */
+.scale-0 { scale: 0 0; }
+.scale-50 { scale: 0.5 0.5; }
+.scale-75 { scale: 0.75 0.75; }
+.scale-90 { scale: 0.9 0.9; }
+.scale-95 { scale: 0.95 0.95; }
+.scale-100 { scale: 1 1; }
+.scale-105 { scale: 1.05 1.05; }
+.scale-110 { scale: 1.1 1.1; }
+.scale-125 { scale: 1.25 1.25; }
+.scale-150 { scale: 1.5 1.5; }
+
+/* === Rotate (positive) === */
+.rotate-0 { rotate: 0deg; }
+.rotate-1 { rotate: 1deg; }
+.rotate-2 { rotate: 2deg; }
+.rotate-3 { rotate: 3deg; }
+.rotate-6 { rotate: 6deg; }
+.rotate-12 { rotate: 12deg; }
+.rotate-45 { rotate: 45deg; }
+.rotate-90 { rotate: 90deg; }
+.rotate-180 { rotate: 180deg; }
+
+/* === Rotate (negative) === */
+.rotate-n1 { rotate: -1deg; }
+.rotate-n2 { rotate: -2deg; }
+.rotate-n3 { rotate: -3deg; }
+.rotate-n6 { rotate: -6deg; }
+.rotate-n12 { rotate: -12deg; }
+.rotate-n45 { rotate: -45deg; }
+.rotate-n90 { rotate: -90deg; }
+.rotate-n180 { rotate: -180deg; }
+
+/* === Transform Origin (Tailwind origin-) === */
+/* UITK transform-origin takes an x y pair; Tailwind's single keyword (e.g. top) means the
+   horizontal-center variant, so origin-top maps to `center top`. Affects the native scale /
+   rotate / translate composition only (it does NOT move the painted skew silhouette pivot,
+   which is the box center). skew-x and skew-y are deliberately NOT given static USS presets
+   here: StyleSkewClass is the sole parser for those (a static rule would double-dispatch
+   against the silhouette manipulator). */
+.origin-center { transform-origin: center center; }
+.origin-top { transform-origin: center top; }
+.origin-top-right { transform-origin: right top; }
+.origin-right { transform-origin: right center; }
+.origin-bottom-right { transform-origin: right bottom; }
+.origin-bottom { transform-origin: center bottom; }
+.origin-bottom-left { transform-origin: left bottom; }
+.origin-left { transform-origin: left center; }
+.origin-top-left { transform-origin: left top; }

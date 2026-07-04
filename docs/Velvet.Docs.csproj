@@ -1,0 +1,46 @@
+<!--
+  DocFX-only project. NOT part of the Unity build and never shipped. It compiles the Velvet
+  runtime sources purely so DocFX/Roslyn can bind the public API and read the XML doc comments.
+  Unity assembly references are resolved from the local editor install and Library/ScriptAssemblies,
+  so it requires a prior Unity compile. Override UnityEditorContents for a different install path.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- This is not a real build; suppress noise so DocFX can extract metadata. -->
+    <NoWarn>$(NoWarn);CS1591;CS0436;CS8669;CS0626;CS0824</NoWarn>
+    <RestoreSources></RestoreSources>
+
+    <UnityEditorContents Condition="'$(UnityEditorContents)' == ''">/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents</UnityEditorContents>
+    <!-- macOS install: <Contents>/Resources/Scripting/Managed ; Linux/Windows: <Data>/Managed -->
+    <UnityManaged Condition="Exists('$(UnityEditorContents)/Resources/Scripting/Managed')">$(UnityEditorContents)/Resources/Scripting/Managed</UnityManaged>
+    <UnityManaged Condition="'$(UnityManaged)' == '' and Exists('$(UnityEditorContents)/Managed')">$(UnityEditorContents)/Managed</UnityManaged>
+    <ScriptAssemblies>$(MSBuildThisFileDirectory)../Library/ScriptAssemblies</ScriptAssemblies>
+    <VelvetPackage>$(MSBuildThisFileDirectory)../Packages/com.velvet.core</VelvetPackage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(VelvetPackage)/Runtime/**/*.cs"
+             Exclude="$(VelvetPackage)/Runtime/**/Tests/**/*.cs" />
+  </ItemGroup>
+
+  <!-- Unity engine + package references (resolved from the local editor + a prior Unity compile). -->
+  <ItemGroup>
+    <Reference Include="$(UnityManaged)/UnityEngine/*.dll" Private="false" />
+    <Reference Include="$(ScriptAssemblies)/UniTask.dll" Private="false" />
+    <Reference Include="$(ScriptAssemblies)/Unity.Addressables.dll" Private="false" />
+    <Reference Include="$(ScriptAssemblies)/Unity.ResourceManager.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- The Velvet source generator expands [Memoize] partial methods so the source binds cleanly. -->
+  <ItemGroup>
+    <Analyzer Include="$(VelvetPackage)/Runtime/Plugins/Generators/Velvet.SourceGenerators.dll" />
+  </ItemGroup>
+
+</Project>

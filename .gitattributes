@@ -1,0 +1,25 @@
+# Normalize line endings across platforms; check out text files with the
+# repository's stored LF endings so cross-OS clones don't produce noisy diffs.
+* text=auto eol=lf
+
+# Shell scripts must stay LF so they remain executable when cloned on Windows.
+*.sh text eol=lf
+
+# Unity YAML assets are text; keep them mergeable and LF-normalized.
+*.cs        text eol=lf
+*.uss       text eol=lf
+*.uxml      text eol=lf
+*.json      text eol=lf
+*.asmdef    text eol=lf
+*.meta      text eol=lf
+*.asset     text eol=lf merge=unityyamlmerge
+*.prefab    text eol=lf merge=unityyamlmerge
+*.unity     text eol=lf merge=unityyamlmerge
+
+# Binary assets — never normalize or diff as text.
+*.ttf       binary
+*.otf       binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.dll       binary

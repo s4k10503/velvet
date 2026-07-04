@@ -1,0 +1,20 @@
+# Restrict the generated API reference to Velvet's own public surface.
+apiRules:
+  - exclude:
+      uidRegex: ^System\.
+  - exclude:
+      uidRegex: ^Cysharp\.
+  - exclude:
+      uidRegex: ^Unity\.
+  - exclude:
+      uidRegex: ^UnityEngine\.
+  - exclude:
+      uidRegex: ^UnityEditor\.
+  # Exclude members that are public only so source-generator-emitted code can call them
+  # (marked [EditorBrowsable(Never)] and hidden from IntelliSense) — they are not part of the
+  # consumer-facing API and should not appear in the reference.
+  - exclude:
+      hasAttribute:
+        uid: System.ComponentModel.EditorBrowsableAttribute
+        ctorArguments:
+          - System.ComponentModel.EditorBrowsableState.Never
