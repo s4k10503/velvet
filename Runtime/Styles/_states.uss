@@ -1,0 +1,2 @@
+/* State Utilities - is-selected, is-active */
+/* Marker classes only - no style rules. Presets use .is-selected / .is-active for compound selectors. */

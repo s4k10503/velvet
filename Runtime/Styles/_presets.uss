@@ -1,0 +1,10 @@
+/*
+ * Presets - empty.
+ *
+ * Velvet core provides utility classes and state variant prefix utilities only.
+ * Interactive styling is composed at the call site via utility chains (or via
+ * StyleRecipe / StyleSlotRecipe recipes in the consuming app). See `_state_variants.uss`
+ * for the supported state variant prefixes.
+ *
+ * This file is retained as a no-op stub so `StyleUtilities.uss` @import resolves.
+ */

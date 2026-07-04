@@ -1,0 +1,16 @@
+/* Background Utilities - background-color */
+
+.bg-transparent { background-color: transparent; }
+.bg-surface { background-color: var(--color-surface); }
+.bg-surface-strong { background-color: var(--color-surface-strong); }
+.bg-highlight { background-color: var(--color-highlight); }
+.bg-primary { background-color: var(--color-primary); }
+.bg-primary-soft { background-color: var(--color-primary-soft); }
+.bg-primary-faint { background-color: var(--color-primary-faint); }
+.bg-danger { background-color: var(--color-danger); }
+.bg-success { background-color: var(--color-success); }
+.bg-neutral { background-color: var(--color-neutral); }
+.bg-overlay { background-color: var(--color-overlay); }
+.bg-white { background-color: rgb(255, 255, 255); }
+.bg-white-soft { background-color: var(--color-white-soft); }
+.bg-black { background-color: rgb(0, 0, 0); }
