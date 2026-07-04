@@ -7,11 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-05
+
 ### Changed
 
 - **Minimum supported Unity raised to 6000.3 (Unity 6.3 LTS).** The bundled USS uses properties
   added in Unity 6.3 (e.g. `aspect-ratio`), so the declared minimum now matches actual usage
   (`package.json`, READMEs, `_animations.uss`).
+- Align nullable reference type contracts across Runtime (`#nullable enable`); eliminate CS86xx
+  compile warnings. Tests, Editor, and CodeGen use `-nullable:annotations`.
 
 ### Removed
 
@@ -21,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     use sibling order or `VisualElement.BringToFront()` / `SendToBack()` instead.
   - `cursor-link` / `cursor-arrow` / `disabled-cursor-arrow` — USS cursor keywords are Editor-only
     and inert at runtime; use a cursor texture or `UnityEngine.Cursor.SetCursor`.
+
+### Fixed
+
+- Preserve `StyleAttributeVariantClass` presence matching for `data-[key]:` variants (do not coerce
+  to empty-string equality).
+- `V.When` throws `ArgumentNullException` when the condition is true but the factory is null.
 
 ### Added
 
