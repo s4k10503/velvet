@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 
 namespace Velvet
@@ -12,7 +13,7 @@ namespace Velvet
     {
         private readonly Dictionary<object, Stack<object>> _stacks = new();
 
-        public void Push<T>(ComponentContext<T> context, T value) => PushRaw(context, value);
+        public void Push<T>(ComponentContext<T> context, T? value) => PushRaw(context, value);
 
         public void Pop<T>(ComponentContext<T> context) => PopRaw(context);
 
@@ -24,7 +25,7 @@ namespace Velvet
                 return (T)stack.Peek();
             }
 
-            return context.DefaultValue;
+            return context.DefaultValue!;
         }
 
         // Captures the current top value of every active context as an untyped snapshot. Used to carry the
@@ -47,14 +48,14 @@ namespace Velvet
         // Untyped push/pop over the per-context stacks. Backs both the typed Push/Pop (which simply box the
         // context key and value) and the restore of a SnapshotTops capture (a snapshot has erased the generic
         // context type). Reads (Get) peek the top, so a raw-pushed value is observed exactly like a typed one.
-        internal void PushRaw(object key, object value)
+        internal void PushRaw(object key, object? value)
         {
             if (!_stacks.TryGetValue(key, out var stack))
             {
                 stack = new Stack<object>();
                 _stacks[key] = stack;
             }
-            stack.Push(value);
+            stack.Push(value!);
         }
 
         internal void PopRaw(object key)

@@ -1,3 +1,4 @@
+#nullable enable
 namespace Velvet
 {
     /// <summary>
@@ -58,7 +59,7 @@ namespace Velvet
     public static class StyleVariantClass
     {
         /// <summary>Returns true if <paramref name="token"/> is a recognized state-variant token.</summary>
-        public static bool IsVariant(string token) => TryParse(token, out _, out _, out _);
+        public static bool IsVariant(string? token) => TryParse(token, out _, out _, out _);
 
         /// <summary>
         /// Splits <paramref name="token"/> into its variant kind and payload. Returns false for a null/empty
@@ -67,7 +68,7 @@ namespace Velvet
         /// token (<c>group-hover/sidebar:</c>) parses to its kind with the name discarded; use the
         /// <see cref="TryParse(string, out StyleVariantKind, out string, out string)"/> overload to recover it.
         /// </summary>
-        public static bool TryParse(string token, out StyleVariantKind kind, out string payload)
+        public static bool TryParse(string? token, out StyleVariantKind kind, out string? payload)
             => TryParse(token, out kind, out _, out payload);
 
         /// <summary>
@@ -84,7 +85,7 @@ namespace Velvet
         /// stays the supported entry point, matching the other (internal) variant parsers; the reconciler reads
         /// the name through this overload.
         /// </summary>
-        internal static bool TryParse(string token, out StyleVariantKind kind, out string name, out string payload)
+        internal static bool TryParse(string? token, out StyleVariantKind kind, out string? name, out string? payload)
         {
             kind = default;
             name = null;

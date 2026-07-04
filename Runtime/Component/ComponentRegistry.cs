@@ -23,9 +23,9 @@ namespace Velvet
         // parent ComponentFiber by tree position. The host VE does not exist when the fiber is matched
         // during begin-work, so identity is (parent fiber, position key, component identity) — never a
         // VisualElement. positionKey is the tree-position scope key, identity is ComponentNode.ResolvedIdentity.
-        private readonly Dictionary<(ComponentFiber parentFiber, object positionKey, object identity), ComponentFiber> _inlineInstances = new();
+        private readonly Dictionary<(ComponentFiber? parentFiber, object? positionKey, object identity), ComponentFiber> _inlineInstances = new();
         // O(1) reverse index inline fiber → its key, so disposal removes the entry without scanning.
-        private readonly Dictionary<ComponentFiber, (ComponentFiber parentFiber, object positionKey, object identity)> _inlineFiberToKey = new();
+        private readonly Dictionary<ComponentFiber, (ComponentFiber? parentFiber, object? positionKey, object identity)> _inlineFiberToKey = new();
         // O(1) forward index parent fiber → its inline child fibers, so subtree disposal locates them
         // without scanning _inlineInstances (and without the re-entrant dictionary-mutation hazard when
         // FiberRenderer.Dispose recursively triggers disposal during descendant cleanup).
@@ -70,9 +70,9 @@ namespace Velvet
         // bailout path).
         public ComponentFiber GetOrCreateInline(
             ComponentNode node,
-            ComponentFiber parentFiber,
+            ComponentFiber? parentFiber,
             object positionKey,
-            VisualElement mountPoint,
+            VisualElement? mountPoint,
             int slotStart)
         {
             if (positionKey == null) throw new ArgumentNullException(nameof(positionKey));
@@ -81,9 +81,9 @@ namespace Velvet
 
         private ComponentFiber GetOrCreateCore(
             ComponentNode node,
-            object anchor,
-            object positionKey,
-            VisualElement mountPoint,
+            object? anchor,
+            object? positionKey,
+            VisualElement? mountPoint,
             int slotStart,
             bool isInline)
         {
@@ -92,8 +92,8 @@ namespace Velvet
             var identity = node.ResolvedIdentity;
 
             var existingFiber = isInline
-                ? LookupInline((ComponentFiber)anchor, positionKey, identity)
-                : LookupWrapper((VisualElement)anchor, identity);
+                ? LookupInline((ComponentFiber)anchor!, positionKey, identity)
+                : LookupWrapper((VisualElement)anchor!, identity);
 
             if (existingFiber != null)
             {
@@ -193,7 +193,7 @@ namespace Velvet
         // otherwise props are compared by shallow per-property identity. Both-null props (a memoized props-less
         // overload) are trivially equal, so such a component bails unless dirty. Non-memo components never reach
         // here: their props are unconditionally treated as changed so a parent re-render re-renders the child.
-        private static bool PropsEqual(object prev, object next, Func<object, object, bool> areEqual)
+        private static bool PropsEqual(object? prev, object? next, Func<object?, object?, bool>? areEqual)
         {
             if (areEqual != null)
             {
@@ -202,22 +202,23 @@ namespace Velvet
             return ComponentPropsComparer.ShallowEquals(prev, next);
         }
 
-        private ComponentFiber LookupInline(ComponentFiber parentFiber, object positionKey, object identity)
+        private ComponentFiber? LookupInline(ComponentFiber? parentFiber, object? positionKey, object identity)
             => _inlineInstances.TryGetValue((parentFiber, positionKey, identity), out var fiber) ? fiber : null;
 
-        private ComponentFiber LookupWrapper(VisualElement wrapper, object identity)
+        private ComponentFiber? LookupWrapper(VisualElement? wrapper, object identity)
         {
+            if (wrapper == null) return null;
             if (!_wrapperIndex.TryGetValue(wrapper, out var fiber)) return null;
             return _wrapperFiberInfo.TryGetValue(fiber, out var info) && Equals(info.identity, identity) ? fiber : null;
         }
 
         private void RegisterFiber(
-            object anchor, object positionKey, object identity,
+            object? anchor, object? positionKey, object identity,
             ComponentFiber fiber, bool isInline)
         {
             if (isInline)
             {
-                var parentFiber = (ComponentFiber)anchor;
+                var parentFiber = (ComponentFiber)anchor!;
                 var key = (parentFiber, positionKey, identity);
                 _inlineInstances[key] = fiber;
                 _inlineFiberToKey[fiber] = key;
@@ -237,7 +238,7 @@ namespace Velvet
             }
             else
             {
-                var wrapper = (VisualElement)anchor;
+                var wrapper = (VisualElement)anchor!;
                 _wrapperIndex[wrapper] = fiber;
                 _wrapperFiberInfo[fiber] = (wrapper, identity);
             }
@@ -302,13 +303,13 @@ namespace Velvet
 
         // Returns the fiber bound to the given wrapper in O(1). Returns null if the wrapper
         // is not registered (e.g. the parent VE of inline-mounted fibers).
-        internal ComponentFiber TryGetFiberForWrapper(VisualElement wrapper)
+        internal ComponentFiber? TryGetFiberForWrapper(VisualElement wrapper)
             => _wrapperIndex.TryGetValue(wrapper, out var fiber) ? fiber : null;
 
         // Inline-mounted lookup by tree-position key (parent fiber, position key, identity). Used by
         // the old-side walk in ChildReconciler to read the previously rendered
         // ComponentFiber.PreviousTree without triggering a re-render.
-        internal ComponentFiber TryGetFiberForInlineKey(ComponentFiber parentFiber, object positionKey, object identity)
+        internal ComponentFiber? TryGetFiberForInlineKey(ComponentFiber? parentFiber, object positionKey, object identity)
         {
             return _inlineInstances.TryGetValue((parentFiber, positionKey, identity), out var fiber) ? fiber : null;
         }
@@ -318,7 +319,7 @@ namespace Velvet
         // fiber (root / wrapper-mounted). Used by FiberContextSpine to recognize a spine
         // child while structurally walking an ancestor's committed tree, so the Providers that enclose
         // that child can be re-pushed onto the live cursor for an isolated re-render.
-        internal bool TryGetInlineKey(ComponentFiber fiber, out object positionKey, out object identity)
+        internal bool TryGetInlineKey(ComponentFiber fiber, out object? positionKey, out object? identity)
         {
             if (fiber != null && _inlineFiberToKey.TryGetValue(fiber, out var key))
             {
@@ -348,7 +349,7 @@ namespace Velvet
         {
             if (orphanRoots == null || orphanRoots.Count == 0) return;
             if (_inlineFiberToKey.Count == 0 && _wrapperFiberInfo.Count == 0) return;
-            ComponentFiber[] snapshot = null;
+            ComponentFiber[]? snapshot = null;
             var snapshotCount = 0;
             var capacity = _inlineFiberToKey.Count + _wrapperFiberInfo.Count;
             foreach (var entry in _inlineFiberToKey)
@@ -391,7 +392,7 @@ namespace Velvet
             DisposeFibersUnder(new HashSet<VisualElement> { root });
         }
 
-        private static bool IsInsideAny(VisualElement mountPoint, HashSet<VisualElement> roots)
+        private static bool IsInsideAny(VisualElement? mountPoint, HashSet<VisualElement> roots)
         {
             for (var ve = mountPoint; ve != null; ve = ve.parent)
             {

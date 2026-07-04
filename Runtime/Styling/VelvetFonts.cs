@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using UnityEngine.TextCore.Text;
@@ -13,12 +14,12 @@ namespace Velvet
     /// </summary>
     public readonly struct ResolvedFont
     {
-        public readonly FontAsset Asset;
+        public readonly FontAsset? Asset;
         public readonly bool HasAsset;
         public readonly bool ResidualBold;
         public readonly bool ResidualItalic;
 
-        public ResolvedFont(FontAsset asset, bool residualBold, bool residualItalic)
+        public ResolvedFont(FontAsset? asset, bool residualBold, bool residualItalic)
         {
             Asset = asset;
             HasAsset = asset != null;
@@ -51,18 +52,18 @@ namespace Velvet
 
         // Addressable key → FontAsset. Pins resolved assets for the registry's lifetime so repeated
         // reconciles do not re-issue (and re-refcount) the load, matching StyleBackgroundImageResolver.
-        private static readonly Dictionary<string, FontAsset> _addrCache = new(StringComparer.Ordinal);
+        private static readonly Dictionary<string, FontAsset?> _addrCache = new(StringComparer.Ordinal);
 
-        private static string _defaultFamily;
+        private static string? _defaultFamily;
 
         /// <summary>Raised whenever the registry changes (register / unregister / config swap / default).</summary>
-        public static event Action FontsChanged;
+        public static event Action? FontsChanged;
 
         /// <summary>
         /// Family applied to elements that specify a weight/style but no explicit <c>font-&lt;name&gt;</c>.
         /// Null or empty means "inherit the panel's default font".
         /// </summary>
-        public static string DefaultFamily
+        public static string? DefaultFamily
         {
             get => _defaultFamily;
             set
@@ -78,7 +79,7 @@ namespace Velvet
         }
 
         /// <summary>Registers (or replaces) a single family by its <see cref="VelvetFontFamily.name"/>.</summary>
-        public static void Register(VelvetFontFamily family)
+        public static void Register(VelvetFontFamily? family)
         {
             if (family == null || string.IsNullOrEmpty(family.name))
             {
@@ -96,7 +97,7 @@ namespace Velvet
         /// CSV importer, MasterMemory, a ScriptableObject, etc. The registry itself has no knowledge of
         /// how the master data is stored.
         /// </summary>
-        public static void Register(IEnumerable<VelvetFontFamily> families, string defaultFamily = null)
+        public static void Register(IEnumerable<VelvetFontFamily>? families, string? defaultFamily = null)
         {
             if (families == null && string.IsNullOrEmpty(defaultFamily))
             {
@@ -123,7 +124,7 @@ namespace Velvet
         }
 
         /// <summary>Removes a family by name. No-op when it is not registered.</summary>
-        public static void Unregister(string familyName)
+        public static void Unregister(string? familyName)
         {
             if (string.IsNullOrEmpty(familyName) || !_families.Remove(familyName))
             {
@@ -147,7 +148,7 @@ namespace Velvet
         }
 
         /// <summary>True when a family with the given name is registered.</summary>
-        public static bool IsRegistered(string familyName) =>
+        public static bool IsRegistered(string? familyName) =>
             !string.IsNullOrEmpty(familyName) && _families.ContainsKey(familyName);
 
         /// <summary>
@@ -156,7 +157,7 @@ namespace Velvet
         /// false (but meaningful residual flags) when no asset is registered for the request — the caller
         /// then falls back to the binary <c>-unity-font-style</c> threshold.
         /// </summary>
-        public static ResolvedFont Resolve(string family, VelvetFontWeight weight, bool italic)
+        public static ResolvedFont Resolve(string? family, VelvetFontWeight weight, bool italic)
         {
             var familyName = string.IsNullOrEmpty(family) ? _defaultFamily : family;
 
@@ -174,7 +175,7 @@ namespace Velvet
                 return fallback;
             }
 
-            FontAsset asset = null;
+            FontAsset? asset = null;
             var bakedItalic = false;
 
             if (italic && TryGetAsset(entry.italic, entry.italicAddress, out var italicAsset))
@@ -203,11 +204,19 @@ namespace Velvet
         /// Loads a Font Asset by Addressables key (for the <c>font-[addr:&lt;key&gt;]</c> arbitrary form),
         /// caching the result. Returns false and logs a warning when the key does not resolve.
         /// </summary>
-        public static bool TryLoadAddressableFont(string key, out FontAsset asset) =>
-            AddressableAssetCache.TryLoad(key, _addrCache, "VelvetFonts", out asset);
+        public static bool TryLoadAddressableFont(string? key, out FontAsset? asset)
+        {
+            if (string.IsNullOrEmpty(key))
+            {
+                asset = null;
+                return false;
+            }
+
+            return AddressableAssetCache.TryLoad(key, _addrCache, "VelvetFonts", out asset);
+        }
 
         // A direct asset reference wins; otherwise fall back to the addressable key.
-        private static bool TryGetAsset(FontAsset direct, string address, out FontAsset asset)
+        private static bool TryGetAsset(FontAsset? direct, string? address, out FontAsset? asset)
         {
             if (direct != null)
             {

@@ -110,7 +110,7 @@ namespace Velvet
         public bool Has(string key) => key != null && _values.ContainsKey(key);
 
         /// <inheritdoc />
-        public string Get(string key)
+        public string? Get(string key)
             => key != null && _values.TryGetValue(key, out var list) && list.Count > 0 ? list[0] : null;
 
         /// <inheritdoc />

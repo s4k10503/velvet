@@ -22,17 +22,19 @@ namespace Velvet
         private bool _outerOn;
         private bool _innerOn;
         private bool _applied;
-        private ElementLocalVariantSignals _elementSignals;
-        private ResponsiveWidthSource _widthSource;
-        private RelationalVariantSignals _relSignals; // group / peer signal detection
+        private ElementLocalVariantSignals _elementSignals = null!;
+        private ResponsiveWidthSource _widthSource = null!;
+        private RelationalVariantSignals _relSignals = null!;
 
         public StyleStackedVariantManipulator(
-            ReconcilerContext ctx, StyleVariantKind innerKind, string innerName, string[] leaf, int priority)
+            ReconcilerContext ctx, StyleVariantKind innerKind, string? innerName, string?[] leaf, int priority)
         {
             _ctx = ctx;
             _innerKind = innerKind;
             _innerName = innerName ?? string.Empty;
-            _leaf = leaf ?? Array.Empty<string>();
+            _leaf = leaf != null
+                ? Array.ConvertAll(leaf, static x => x ?? string.Empty)
+                : Array.Empty<string>();
             _priority = priority;
         }
 

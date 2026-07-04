@@ -26,7 +26,7 @@ namespace Velvet
             return s_propsPool.Count > 0 ? s_propsPool.Pop() : new FiberElementProps();
         }
 
-        public static void ReturnProps(FiberElementProps props)
+        public static void ReturnProps(FiberElementProps? props)
         {
             if (props == null || ReferenceEquals(props, FiberElementProps.Empty)) return;
             if (s_propsPool.Count >= MaxPoolSize) return;
@@ -64,7 +64,7 @@ namespace Velvet
             if (array.Length != 1) return;
             if (s_singleEventPool.Count >= MaxPoolSize) return;
 
-            array[0] = null;
+            array[0] = null!;
             s_singleEventPool.Push(array);
         }
 
@@ -72,15 +72,15 @@ namespace Velvet
 
         #region VNode[] (List results)
 
-        private static readonly Dictionary<int, Stack<VNode[]>> s_nodeArrayPools = new();
+        private static readonly Dictionary<int, Stack<VNode?[]>> s_nodeArrayPools = new();
 
         // Identity set of arrays this pool created (via RentNodeArray). ReturnNodeArray clears + recycles ONLY
         // these — never an array the caller owns. The recycle path returns every elem.Children / motion.Children,
         // and a consumer may pass a cached / reused array there (e.g. `V.Div(children: s_static)`); clearing it
         // would wipe the consumer's children on the next render. Reference equality (default for VNode[]).
-        private static readonly HashSet<VNode[]> s_ownedNodeArrays = new();
+        private static readonly HashSet<VNode?[]> s_ownedNodeArrays = new();
 
-        public static VNode[] RentNodeArray(int length)
+        public static VNode?[] RentNodeArray(int length)
         {
             if (s_nodeArrayPools.TryGetValue(length, out var pool) && pool.Count > 0)
             {
@@ -88,12 +88,12 @@ namespace Velvet
                 return pool.Pop();
             }
 
-            var created = new VNode[length];
+            var created = new VNode?[length];
             s_ownedNodeArrays.Add(created);
             return created;
         }
 
-        public static void ReturnNodeArray(VNode[] array)
+        public static void ReturnNodeArray(VNode?[] array)
         {
             if (array == null || array.Length == 0) return;
             // Only recycle arrays the pool owns; a caller-owned array is left untouched (not cleared, not pooled).
@@ -101,7 +101,7 @@ namespace Velvet
 
             if (!s_nodeArrayPools.TryGetValue(array.Length, out var pool))
             {
-                pool = new Stack<VNode[]>();
+                pool = new Stack<VNode?[]>();
                 s_nodeArrayPools[array.Length] = pool;
             }
 

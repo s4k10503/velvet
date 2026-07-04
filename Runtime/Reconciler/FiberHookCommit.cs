@@ -30,7 +30,7 @@ namespace Velvet
             TruncateTo(fiber.PendingEffects, committedPendingEffectCount);
         }
 
-        private static void TruncateTo(List<HookEffectSlot> list, int count)
+        private static void TruncateTo(List<HookEffectSlot>? list, int count)
         {
             if (list != null && list.Count > count)
             {
@@ -38,7 +38,7 @@ namespace Velvet
             }
         }
 
-        internal static void CommitCallbackSlots(List<HookCallbackSlot> slots)
+        internal static void CommitCallbackSlots(List<HookCallbackSlot>? slots)
         {
             if (slots == null) return;
             for (var i = 0; i < slots.Count; i++)
@@ -48,7 +48,7 @@ namespace Velvet
             }
         }
 
-        internal static void CommitMemoSlots(List<HookMemoSlot> slots)
+        internal static void CommitMemoSlots(List<HookMemoSlot>? slots)
         {
             if (slots == null) return;
             for (var i = 0; i < slots.Count; i++)
@@ -58,7 +58,7 @@ namespace Velvet
             }
         }
 
-        internal static void CommitMemoValueSlots(List<HookMemoValueSlot> slots)
+        internal static void CommitMemoValueSlots(List<HookMemoValueSlot>? slots)
         {
             if (slots == null) return;
             for (var i = 0; i < slots.Count; i++)
@@ -100,7 +100,7 @@ namespace Velvet
             }
         }
 
-        internal static void CommitBlockerSlots(List<HookBlockerSlot> slots)
+        internal static void CommitBlockerSlots(List<HookBlockerSlot>? slots)
         {
             if (slots == null) return;
             for (var i = 0; i < slots.Count; i++)

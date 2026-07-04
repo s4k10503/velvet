@@ -24,7 +24,7 @@ namespace Velvet
         private static void ResetCache() => s_memberCache.Clear();
 #endif
 
-        public static bool ShallowEquals(object prev, object next)
+        public static bool ShallowEquals(object? prev, object? next)
         {
             if (ReferenceEquals(prev, next))
             {
@@ -93,7 +93,7 @@ namespace Velvet
             return result;
         }
 
-        private static object ReadMember(MemberInfo member, object instance) => member switch
+        private static object? ReadMember(MemberInfo member, object instance) => member switch
         {
             PropertyInfo p => p.GetValue(instance),
             FieldInfo f => f.GetValue(instance),

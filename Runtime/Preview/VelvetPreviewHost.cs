@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+#nullable enable
 using System;
 using UnityEngine.UIElements;
 
@@ -13,20 +14,20 @@ namespace Velvet
     public sealed class VelvetPreviewHost : IDisposable
     {
         private readonly VisualElement _target;
-        private IDisposable _environment;
-        private MountedTree _mounted;
-        private StyleSheet _appliedStyleSheet;
+        private IDisposable? _environment;
+        private MountedTree? _mounted;
+        private StyleSheet? _appliedStyleSheet;
         private bool _disposed;
 
         /// <summary>The story currently mounted by this host, or <c>null</c> before the first mount and after a
         /// failed mount — so a caller polling this never repaints / re-mounts a broken story.</summary>
-        public VelvetPreviewStory Story { get; private set; }
+        public VelvetPreviewStory? Story { get; private set; }
 
         /// <summary>
         /// The exception the last mount attempt raised (story build or initial render), or <c>null</c> when the
         /// last mount succeeded. Lets a window surface a failing story without throwing out of its layout pass.
         /// </summary>
-        public Exception MountError { get; private set; }
+        public Exception? MountError { get; private set; }
 
         public VelvetPreviewHost(VisualElement target)
         {
@@ -89,7 +90,7 @@ namespace Velvet
             return true;
         }
 
-        private void Mount(VelvetPreviewStory story, bool useArgs, object args)
+        private void Mount(VelvetPreviewStory story, bool useArgs, object? args)
         {
             if (_disposed) throw new ObjectDisposedException(nameof(VelvetPreviewHost));
 

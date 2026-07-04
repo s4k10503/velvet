@@ -17,7 +17,7 @@ namespace Velvet
 
         // Reads state via hooks and invokes the function body that declares the VNode tree.
         // The body is stored in ComponentFiber.Body.
-        internal static VNode Render(ComponentFiber fiber) => fiber.Body();
+        internal static VNode Render(ComponentFiber fiber) => fiber.Body!();
 
         internal static void ResetHookIndex(ComponentFiber fiber)
         {

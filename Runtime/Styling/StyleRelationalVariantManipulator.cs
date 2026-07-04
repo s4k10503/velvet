@@ -61,13 +61,13 @@ namespace Velvet
         private readonly ReconcilerContext _ctx;
         private readonly List<Binding> _bindings = new();
 
-        public StyleRelationalVariantManipulator(ReconcilerContext ctx, List<RelationalBindingConfig> configs)
+        public StyleRelationalVariantManipulator(ReconcilerContext ctx, List<RelationalBindingConfig>? configs)
         {
             _ctx = ctx;
             BuildBindings(configs);
         }
 
-        public void UpdatePayloads(List<RelationalBindingConfig> configs)
+        public void UpdatePayloads(List<RelationalBindingConfig>? configs)
         {
             // Tear the old bindings fully down (clear applied payloads + unhook sources), rebuild from the new
             // config set, then re-resolve against the live tree if already attached. A full rebuild keeps the
@@ -82,7 +82,7 @@ namespace Velvet
             }
         }
 
-        private void BuildBindings(List<RelationalBindingConfig> configs)
+        private void BuildBindings(List<RelationalBindingConfig>? configs)
         {
             if (configs == null)
             {
@@ -157,7 +157,7 @@ namespace Velvet
         private void ApplyPayloads(object owner, string[] payloads, bool on, int priority)
             => StyleVariantPayload.Apply(target, payloads, on, priority, _ctx, owner);
 
-        internal static VisualElement FindAncestorWithClass(VisualElement element, string cls)
+        internal static VisualElement? FindAncestorWithClass(VisualElement element, string cls)
         {
             var p = element.parent;
             while (p != null)
@@ -171,7 +171,7 @@ namespace Velvet
             return null;
         }
 
-        internal static VisualElement FindPrevSiblingWithClass(VisualElement element, string cls)
+        internal static VisualElement? FindPrevSiblingWithClass(VisualElement element, string cls)
         {
             var parent = element.parent;
             if (parent == null)
@@ -206,7 +206,7 @@ namespace Velvet
             private readonly string[] _active;
             private readonly string[] _checked;
 
-            private RelationalVariantSignals _signals;
+            private RelationalVariantSignals _signals = null!;
             private bool _aHover, _aFocus, _aFocusWithin, _aActive, _aChecked;
 
             public Binding(StyleRelationalVariantManipulator owner, RelationalBindingConfig config)

@@ -303,6 +303,8 @@ namespace Velvet
         {
             if (!fiber.IsMounted) return;
             if (fiber.Reconciler == null) return;
+            var mountPoint = fiber.MountPoint;
+            if (mountPoint == null) return;
             if (!fiber.Reconciler.HasPendingWork) return;
 
             var fiberPushed = FiberRenderer.PushFiber(fiber);
@@ -327,7 +329,7 @@ namespace Velvet
 
                 if (fiber.Reconciler.HasPendingWork)
                 {
-                    fiber.MountPoint.schedule.Execute(() => ContinueReconcile(fiber));
+                    mountPoint.schedule.Execute(() => ContinueReconcile(fiber));
                 }
                 else
                 {

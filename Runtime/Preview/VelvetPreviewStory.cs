@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+#nullable enable
 using System;
 using System.Reflection;
 
@@ -31,10 +32,10 @@ namespace Velvet
         public int Height { get; }
 
         /// <summary>The assembly the story method lives in — used to resolve its preview-setup environment.</summary>
-        public Assembly Assembly { get; }
+        public Assembly? Assembly { get; }
 
         /// <summary>The story's single args-parameter type, or <c>null</c> when the story is parameterless.</summary>
-        public Type ArgsType { get; }
+        public Type? ArgsType { get; }
 
         private readonly MethodInfo _method;
 
@@ -58,7 +59,7 @@ namespace Velvet
         /// mount show the story at its declared default values). Use <see cref="CreateDefaultArgs"/> +
         /// <see cref="Build(object)"/> to drive it with edited args.
         /// </summary>
-        public VNode Build() => Build(ArgsType == null ? null : CreateDefaultArgs());
+        public VNode? Build() => Build(ArgsType == null ? null : CreateDefaultArgs());
 
         /// <summary>
         /// Builds a fresh VNode tree, passing <paramref name="args"/> to an args-story (or no argument to a
@@ -66,7 +67,7 @@ namespace Velvet
         /// (unwrapped from the reflection <see cref="TargetInvocationException"/>) so a caller surfaces a clean
         /// message.
         /// </summary>
-        public VNode Build(object args)
+        public VNode? Build(object? args)
         {
             var invokeArgs = ArgsType == null ? null : new[] { args };
             try
@@ -84,7 +85,7 @@ namespace Velvet
         /// or returns <c>null</c> for a parameterless story. The preview window seeds its live control state from
         /// this.
         /// </summary>
-        public object CreateDefaultArgs() => ArgsType == null ? null : Activator.CreateInstance(ArgsType);
+        public object? CreateDefaultArgs() => ArgsType == null ? null : Activator.CreateInstance(ArgsType);
     }
 }
 #endif

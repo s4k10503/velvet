@@ -13,8 +13,9 @@ namespace Velvet
             }
         }
 
-        internal static void RemoveClasses(VisualElement element, string[] classes)
+        internal static void RemoveClasses(VisualElement element, string[]? classes)
         {
+            if (classes == null) return;
             foreach (var cls in classes)
             {
                 element.RemoveFromClassList(cls);

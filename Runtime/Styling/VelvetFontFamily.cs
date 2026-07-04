@@ -18,16 +18,16 @@ namespace Velvet
         public VelvetFontWeight weight = VelvetFontWeight.Normal;
 
         [Tooltip("Upright Font Asset for this weight. Takes precedence over Upright Address.")]
-        public FontAsset upright;
+        public FontAsset? upright;
 
         [Tooltip("Italic Font Asset for this weight. Takes precedence over Italic Address.")]
-        public FontAsset italic;
+        public FontAsset? italic;
 
         [Tooltip("Addressables key for the upright Font Asset (used when Upright is unset).")]
-        public string uprightAddress;
+        public string? uprightAddress;
 
         [Tooltip("Addressables key for the italic Font Asset (used when Italic is unset).")]
-        public string italicAddress;
+        public string? italicAddress;
     }
 
     /// <summary>
@@ -45,7 +45,7 @@ namespace Velvet
     public sealed class VelvetFontFamily
     {
         [Tooltip("Family name targeted by the font-<name> utility class (e.g. \"sans\", \"serif\", \"mono\").")]
-        public string name;
+        public string name = null!;
 
         [Tooltip("Per-weight Font Assets. A family needs at least one entry.")]
         public List<VelvetFontWeightEntry> weights = new();
@@ -63,14 +63,14 @@ namespace Velvet
         /// <paramref name="requested"/>. Ties resolve to the heavier entry (matching CSS, which rounds a
         /// midpoint up). Returns null only when the family has no entries.
         /// </summary>
-        public VelvetFontWeightEntry FindClosestWeight(VelvetFontWeight requested)
+        public VelvetFontWeightEntry? FindClosestWeight(VelvetFontWeight requested)
         {
             if (weights == null || weights.Count == 0)
             {
                 return null;
             }
 
-            VelvetFontWeightEntry best = null;
+            VelvetFontWeightEntry? best = null;
             var bestDistance = int.MaxValue;
             foreach (var entry in weights)
             {

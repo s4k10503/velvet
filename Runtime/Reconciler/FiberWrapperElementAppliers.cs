@@ -691,7 +691,7 @@ namespace Velvet
         // styling as the ring wrapper) that additionally hides overflow and carries the baked
         // vector shape as its background — the combination UIR stencil-clips descendants to.
         // Does NOT touch any parent — the caller inserts the returned wrapper.
-        private VisualElement BuildClipPathWrapper(VisualElement element, ClipPathSpec spec)
+        private VisualElement BuildClipPathWrapper(VisualElement element, ClipPathSpec? spec)
         {
             var wrapper = WrapperInfrastructure.CreatePassthroughWrapper(ClipPathWrapperClass);
             // overflow:hidden + vector background-image = UIR stencil mask of the subtree. A variant-only clip
@@ -717,7 +717,7 @@ namespace Velvet
         }
 
         // Wraps an already-mounted element in place, inserting the wrapper at the element's slot.
-        private void WrapClipPathInPlace(VisualElement element, ClipPathSpec spec)
+        private void WrapClipPathInPlace(VisualElement element, ClipPathSpec? spec)
         {
             var parent = element.parent;
             if (parent == null)
@@ -859,7 +859,7 @@ namespace Velvet
         // whileHover/whileTap/whileFocus class strings. Creates one when gesture classes are present and none
         // exists, updates the existing one's classes when present, and removes it (clearing the tracking entry)
         // once all three class strings are empty.
-        internal void ApplyGestureManipulator(VisualElement element, string whileHoverClass, string whileTapClass, string whileFocusClass)
+        internal void ApplyGestureManipulator(VisualElement element, string? whileHoverClass, string? whileTapClass, string? whileFocusClass)
         {
             var hoverClasses = V.ParseClassNames(whileHoverClass);
             var tapClasses = V.ParseClassNames(whileTapClass);

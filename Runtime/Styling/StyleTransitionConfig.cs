@@ -18,19 +18,19 @@ namespace Velvet
         public static readonly StyleTransitionConfig None = new() { DurationSec = 0f };
 
         /// <summary>USS class string for the initial enter state. Use the parsed array <see cref="EnterFromClasses"/> at runtime.</summary>
-        internal string EnterFromClass { get; init; }
+        internal string? EnterFromClass { get; init; }
 
         /// <summary>
         /// USS class string for the final enter state. Use the parsed array <see cref="EnterToClasses"/> at runtime.
         /// Note: removed when the transition completes, so do not define persistent styles in it.
         /// </summary>
-        internal string EnterToClass { get; init; }
+        internal string? EnterToClass { get; init; }
 
         /// <summary>USS class string for the initial exit state. Use the parsed array <see cref="ExitFromClasses"/> at runtime.</summary>
-        internal string ExitFromClass { get; init; }
+        internal string? ExitFromClass { get; init; }
 
         /// <summary>USS class string for the final exit state. Use the parsed array <see cref="ExitToClasses"/> at runtime.</summary>
-        internal string ExitToClass { get; init; }
+        internal string? ExitToClass { get; init; }
 
         /// <summary>
         /// Animation duration (seconds). Applied as the inline transition-duration style.
@@ -59,10 +59,10 @@ namespace Velvet
         public float DelaySec { get; init; }
 
         // Parsed class-name array caches (lazily initialized).
-        private string[] _enterFromClasses;
-        private string[] _enterToClasses;
-        private string[] _exitFromClasses;
-        private string[] _exitToClasses;
+        private string[]? _enterFromClasses;
+        private string[]? _enterToClasses;
+        private string[]? _exitFromClasses;
+        private string[]? _exitToClasses;
 
         /// <summary>Parsed array of EnterFromClass. Parsed and cached on first access.</summary>
         internal string[] EnterFromClasses => _enterFromClasses ??= ParseClasses(EnterFromClass);
@@ -107,6 +107,6 @@ namespace Velvet
             };
         }
 
-        private static string[] ParseClasses(string classNames) => Velvet.V.ParseClassNames(classNames);
+        private static string[] ParseClasses(string? classNames) => Velvet.V.ParseClassNames(classNames);
     }
 }

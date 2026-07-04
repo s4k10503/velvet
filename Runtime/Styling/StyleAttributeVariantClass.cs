@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 
 namespace Velvet
@@ -46,7 +47,7 @@ namespace Velvet
         private const string AriaPrefix = "aria-[";
 
         /// <summary>True if <paramref name="token"/> is a recognized attribute variant token.</summary>
-        public static bool IsAttribute(string token) => TryParse(token, out _, out _, out _, out _);
+        public static bool IsAttribute(string? token) => TryParse(token, out _, out _, out _, out _);
 
         /// <summary>
         /// Splits an attribute variant token into its namespace, the attribute key, the expected value
@@ -54,7 +55,7 @@ namespace Velvet
         /// an empty key, or an empty payload.
         /// </summary>
         public static bool TryParse(
-            string token, out StyleAttributeNamespace ns, out string key, out string value, out string payload)
+            string? token, out StyleAttributeNamespace ns, out string? key, out string? value, out string? payload)
         {
             ns = default;
             key = null;
@@ -121,7 +122,7 @@ namespace Velvet
         /// <paramref name="expected"/> the <c>?? string.Empty</c> changes nothing (a null value already fails
         /// the exact match), so this only resolves the empty-value edge.
         /// </summary>
-        public static bool Matches(string expected, bool present, string actual)
+        public static bool Matches(string? expected, bool present, string? actual)
             => expected == null ? present : present && string.Equals(actual ?? string.Empty, expected, StringComparison.Ordinal);
     }
 }

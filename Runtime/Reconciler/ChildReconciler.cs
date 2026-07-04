@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -62,7 +63,7 @@ namespace Velvet
             _general = new GeneralPathReconciler(ctx, patcher, factory, cleaner, _placement, _keying);
         }
 
-        public void Reconcile(VisualElement parent, VNode[] oldChildren, VNode[] newChildren,
+        public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
             double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
         {
             if (_ctx.IsAborted) return;
@@ -93,7 +94,7 @@ namespace Velvet
             var oldProviders = _ctx.BufferPool.RentProviderList();
             var oldFibers = _ctx.BufferPool.RentFiberList();
             var newFibers = _ctx.BufferPool.RentFiberSet();
-            VNode[] oldNodes;
+            VNode?[] oldNodes;
             try
             {
                 // Old side is always expanded structurally into the flat leaf array used for matching.
@@ -144,7 +145,7 @@ namespace Velvet
         // single-top-level-loop invariant holds across nested PatchPortal recursion.
         internal void DrainPendingPortalMounts()
         {
-            HashSet<ComponentFiber> childFibersBefore = null;
+            HashSet<ComponentFiber>? childFibersBefore = null;
             while (_ctx.PendingPortalMounts.Count > 0)
             {
                 var (placeholder, portalNode, target, contextSnapshot) = _ctx.PendingPortalMounts.Dequeue();
@@ -192,10 +193,10 @@ namespace Velvet
                 }
                 if (drainAnchor != null)
                 {
-                    DetachedMountContext detachedContext = null;
+                    DetachedMountContext? detachedContext = null;
                     for (var f = drainAnchor.Child; f != null; f = f.Sibling)
                     {
-                        if (childFibersBefore.Contains(f)) continue;
+                        if (childFibersBefore!.Contains(f)) continue;
                         detachedContext ??= new DetachedMountContext(contextSnapshot, children, drainAnchor);
                         f.DetachedMountContext = detachedContext;
                     }
@@ -277,7 +278,7 @@ namespace Velvet
         // entry visible.
         // Index-based reconciliation. Used when no keys are present.
         // When frameBudgetMs > 0, frame-budget control is enabled and the work suspends on overrun.
-        private void ReconcileIndexed(VisualElement parent, VNode[] oldNodes, VNode[] newNodes,
+        private void ReconcileIndexed(VisualElement? parent, VNode?[] oldNodes, VNode?[] newNodes,
             double frameBudgetMs, int slotStart = 0, int slotLimit = int.MaxValue)
         {
             ReconcileIndexedFrom(parent, oldNodes, newNodes,
@@ -300,8 +301,9 @@ namespace Velvet
         // parent.ElementAt past slotLimit, into a sibling), even when trailing siblings would otherwise pad the
         // raw childCount past the baseline.
         private bool TryRebuildDesyncedSlotRange(
-            VisualElement parent, VNode[] oldNodes, VNode[] newNodes, int slotStart, int slotLimit)
+            VisualElement? parent, VNode?[]? oldNodes, VNode?[]? newNodes, int slotStart, int slotLimit)
         {
+            if (parent == null || oldNodes == null || newNodes == null) return false;
             var rangeEnd = Math.Min(parent.childCount, slotLimit);
             var available = rangeEnd - slotStart;
             if (available < 0) available = 0;
@@ -324,9 +326,9 @@ namespace Velvet
         #region Indexed Pass
 
         private void ReconcileIndexedFrom(
-            VisualElement parent,
-            VNode[] oldNodes,
-            VNode[] newNodes,
+            VisualElement? parent,
+            VNode?[] oldNodes,
+            VNode?[] newNodes,
             IndexedReconcilePhase startPhase,
             int startIndex,
             double frameBudgetMs,
@@ -342,6 +344,8 @@ namespace Velvet
                 PendingIndexedState = null;
                 DiscardPendingKeyedState();
             }
+
+            if (parent == null) return;
 
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
             var budgeted = frameBudgetMs > 0;
@@ -365,7 +369,7 @@ namespace Velvet
                     // no-change path.
                     if (ReferenceEquals(oldNodes[i], newNodes[i]))
                     {
-                        if (budgeted && _stopwatch.Elapsed.TotalMilliseconds > frameBudgetMs)
+                        if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                         {
                             PendingIndexedState = new IndexedReconcileState(
                                 parent, oldNodes, newNodes,
@@ -403,7 +407,7 @@ namespace Velvet
                         parent.Insert(Math.Min(slotStart + i, parent.childCount), newElement);
                     }
 
-                    if (budgeted && _stopwatch.Elapsed.TotalMilliseconds > frameBudgetMs)
+                    if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                     {
                         PendingIndexedState = new IndexedReconcileState(
                             parent, oldNodes, newNodes,
@@ -438,7 +442,7 @@ namespace Velvet
                     }
                     _cleaner.RemoveElement(parent, slotStart + i);
 
-                    if (budgeted && _stopwatch.Elapsed.TotalMilliseconds > frameBudgetMs)
+                    if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                     {
                         var nextRemoveIndex = i - 1;
                         if (nextRemoveIndex >= commonLength)
@@ -481,7 +485,7 @@ namespace Velvet
                 // appends rather than over-indexing — symmetric with the Common-phase create-on-missing guard.
                 parent.Insert(Math.Min(slotStart + i, parent.childCount), newElement);
 
-                if (budgeted && _stopwatch.Elapsed.TotalMilliseconds > frameBudgetMs)
+                if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {
                     var nextAddIndex = i + 1;
                     if (nextAddIndex < newNodes.Length)
@@ -511,7 +515,7 @@ namespace Velvet
         // at the ChildReconciler layer, every VNode within each phase can suspend on a budget check.
         // When frameBudgetMs > 0, the suspendable state-machine path is taken.
         // When 0 or below, execution is fully synchronous as before (no state object allocation).
-        private void ReconcileKeyed(VisualElement parent, VNode[] oldNodes, VNode[] newNodes,
+        private void ReconcileKeyed(VisualElement? parent, VNode?[] oldNodes, VNode?[] newNodes,
             double frameBudgetMs, int slotStart = 0, int slotLimit = int.MaxValue)
         {
             if (frameBudgetMs <= 0)
@@ -538,7 +542,7 @@ namespace Velvet
 
         // Fully synchronous version of keyed reconciliation. Used when frameBudgetMs == 0.
         // Preserves the original implementation to avoid state allocation.
-        private void ReconcileKeyedSync(VisualElement parent, VNode[] oldNodes, VNode[] newNodes,
+        private void ReconcileKeyedSync(VisualElement? parent, VNode?[] oldNodes, VNode?[] newNodes,
             int slotStart = 0, int slotLimit = int.MaxValue)
         {
             // DOM-desync recovery: the keyed diff relies on "oldNodes index == live DOM index" (Pass 1 scans
@@ -548,6 +552,7 @@ namespace Velvet
             // authoritative new tree (crash-free, immediately convergent; the next clean reconcile runs the normal
             // keyed diff). See ReconcilerDesyncRecoveryTests for the deterministic guard-contract regression.
             if (TryRebuildDesyncedSlotRange(parent, oldNodes, newNodes, slotStart, slotLimit)) return;
+            if (parent == null) return;
 
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
 
@@ -758,7 +763,7 @@ namespace Velvet
         // de-duplicates it; the prepass therefore defers a duplicate-key list to Pass 2. Unkeyed nodes carry
         // Positional(index) keys, which are inherently distinct, so an unkeyed list always passes. Uses a pooled
         // key set (no allocation after warmup) and is only reached on the collapse-to-insert/remove shapes.
-        private bool AllReconcileKeysUnique(VNode[] nodes)
+        private bool AllReconcileKeysUnique(VNode?[] nodes)
         {
             if (nodes.Length < 2) return true;
             var seen = _ctx.BufferPool.RentKeySet();
@@ -833,9 +838,9 @@ namespace Velvet
         // Pass 1 linear scan. In-place patches the prefix where keys match.
         private bool Pass1Linear(KeyedReconcileState state, double frameBudgetMs)
         {
-            var parent = state.Parent;
-            var oldNodes = state.OldNodes;
-            var newNodes = state.NewNodes;
+            var parent = state.Parent!;
+            var oldNodes = state.OldNodes!;
+            var newNodes = state.NewNodes!;
             var slotStart = state.SlotStart;
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
 
@@ -898,8 +903,8 @@ namespace Velvet
         // Pass 1 tail-add: only tail appends remain.
         private bool Pass1TailAdd(KeyedReconcileState state, double frameBudgetMs)
         {
-            var parent = state.Parent;
-            var newNodes = state.NewNodes;
+            var parent = state.Parent!;
+            var newNodes = state.NewNodes!;
             var slotStart = state.SlotStart;
 
             for (var i = state.ResumeIndex; i < newNodes.Length; i++)
@@ -920,7 +925,7 @@ namespace Velvet
         // Pass 1 tail-remove: only tail removals remain.
         private bool Pass1TailRemove(KeyedReconcileState state, double frameBudgetMs)
         {
-            var parent = state.Parent;
+            var parent = state.Parent!;
             var slotStart = state.SlotStart;
 
             for (var i = state.ResumeIndex; i >= state.LinearEnd; i--)
@@ -943,9 +948,9 @@ namespace Velvet
         // Pass 2 BuildMap: builds the oldKeyMap.
         private bool Pass2BuildMap(KeyedReconcileState state, double frameBudgetMs)
         {
-            var oldNodes = state.OldNodes;
-            var oldKeyMap = state.OldKeyMap;
-            var orphanedOldIndices = state.OrphanedOldIndices;
+            var oldNodes = state.OldNodes!;
+            var oldKeyMap = state.OldKeyMap!;
+            var orphanedOldIndices = state.OrphanedOldIndices!;
 
             for (var i = state.ResumeIndex; i < oldNodes.Length; i++)
             {
@@ -965,12 +970,12 @@ namespace Velvet
         // Pass 2 Process: walks newNodes and builds newElements.
         private bool Pass2Process(KeyedReconcileState state, double frameBudgetMs)
         {
-            var parent = state.Parent;
-            var newNodes = state.NewNodes;
-            var oldKeyMap = state.OldKeyMap;
-            var usedKeys = state.UsedKeys;
-            var replacedKeys = state.ReplacedKeys;
-            var newElements = state.NewElements;
+            var parent = state.Parent!;
+            var newNodes = state.NewNodes!;
+            var oldKeyMap = state.OldKeyMap!;
+            var usedKeys = state.UsedKeys!;
+            var replacedKeys = state.ReplacedKeys!;
+            var newElements = state.NewElements!;
             var slotStart = state.SlotStart;
 
             for (var i = state.ResumeIndex; i < newNodes.Length; i++)
@@ -992,18 +997,18 @@ namespace Velvet
             }
 
             state.Phase = KeyedReconcilePhase.Pass2Remove;
-            state.ResumeIndex = state.OldNodes.Length - 1;
+            state.ResumeIndex = state.OldNodes!.Length - 1;
             return true;
         }
 
         // Pass 2 Remove: removes unused old entries; runs LIS computation synchronously on completion.
         private bool Pass2Remove(KeyedReconcileState state, double frameBudgetMs)
         {
-            var parent = state.Parent;
-            var oldNodes = state.OldNodes;
-            var orphanedOldIndices = state.OrphanedOldIndices;
-            var usedKeys = state.UsedKeys;
-            var replacedKeys = state.ReplacedKeys;
+            var parent = state.Parent!;
+            var oldNodes = state.OldNodes!;
+            var orphanedOldIndices = state.OrphanedOldIndices!;
+            var usedKeys = state.UsedKeys!;
+            var replacedKeys = state.ReplacedKeys!;
             var slotStart = state.SlotStart;
 
             for (var i = state.ResumeIndex; i >= state.LinearEnd; i--)
@@ -1051,7 +1056,7 @@ namespace Velvet
             if (AbortIfCanceled(state)) return true;
 
             var regionStart = state.SlotStart + state.LinearEnd;
-            _placement.ReorderToNewElementOrder(state.Parent, state.NewElements, state.LisIndices, regionStart);
+            _placement.ReorderToNewElementOrder(state.Parent, state.NewElements!, state.LisIndices!, regionStart);
 
             state.Phase = KeyedReconcilePhase.Done;
             return true;
@@ -1075,8 +1080,8 @@ namespace Velvet
             var lisIndices = _ctx.BufferPool.RentIntSet();
             state.LisIndices = lisIndices;
 
-            _placement.ComputeLisAnchors(parent, state.NewElements, slotStart, slotStart + state.LinearEnd,
-                state.OldNodes.Length, state.NewNodes.Length, lisIndices);
+            _placement.ComputeLisAnchors(parent!, state.NewElements!, slotStart, slotStart + state.LinearEnd,
+                state.OldNodes!.Length, state.NewNodes!.Length, lisIndices);
         }
 
 
@@ -1144,7 +1149,7 @@ namespace Velvet
         #region Helpers
 
         // Filters nulls and recursively expands FragmentNodes.
-        internal static VNode[] FlattenAndFilter(VNode[] nodes, ReconcilerBufferPool pool)
+        internal static VNode?[] FlattenAndFilter(VNode?[] nodes, ReconcilerBufferPool pool)
         {
             if (nodes == null || nodes.Length == 0)
             {
@@ -1167,7 +1172,7 @@ namespace Velvet
             {
                 FlattenAndFilterRecursive(nodes, buffer);
                 // ToArray() incurs a heap allocation, but callers (ReconcileIndexed / ReconcileKeyed /
-                // CreateElement) require VNode[], so changing the API to List<VNode> would be far-reaching.
+                // CreateElement) require VNode?[], so changing the API to List<VNode> would be far-reaching.
                 // The vast majority of cases without Fragment / null hit the early-exit above (zero allocation).
                 return buffer.Count == 0 ? Array.Empty<VNode>() : buffer.ToArray();
             }
@@ -1199,7 +1204,7 @@ namespace Velvet
                 "Pass 1 may have modified parent's child order.");
         }
 
-        private static void FlattenAndFilterRecursive(VNode[] nodes, System.Collections.Generic.List<VNode> result)
+        private static void FlattenAndFilterRecursive(VNode?[] nodes, System.Collections.Generic.List<VNode> result)
         {
             foreach (var node in nodes)
             {
@@ -1229,10 +1234,10 @@ namespace Velvet
         // keyed Pass-2 loops so their per-node match/patch/create semantics cannot drift; each loop keeps only
         // its own abort-handling and TryYield scaffolding around this call.
         private bool ProcessKeyedNode(
-            VisualElement parent, int slotStart, VNode newNode, int i,
-            Dictionary<ChildKey, (int index, VNode node)> oldKeyMap,
+            VisualElement parent, int slotStart, VNode? newNode, int i,
+            Dictionary<ChildKey, (int index, VNode? node)> oldKeyMap,
             HashSet<ChildKey> usedKeys, HashSet<ChildKey> replacedKeys,
-            List<(VisualElement element, bool isExisting)> newElements)
+            List<(VisualElement? element, bool isExisting)> newElements)
         {
             var key = _keying.ReconcileKey(newNode, i);
 
@@ -1283,7 +1288,7 @@ namespace Velvet
         // orphaned by a duplicate key, its key was consumed by no new node, or its key was consumed but
         // replaced because CanPatch returned false. Shared by both keyed Pass-2 reverse-removal loops.
         private bool ShouldRemoveOldKeyedEntry(
-            VNode oldNode, int i, HashSet<ChildKey> usedKeys, HashSet<ChildKey> replacedKeys,
+            VNode? oldNode, int i, HashSet<ChildKey> usedKeys, HashSet<ChildKey> replacedKeys,
             HashSet<int> orphanedOldIndices)
         {
             var key = _keying.ReconcileKey(oldNode, i);

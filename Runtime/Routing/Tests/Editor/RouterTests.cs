@@ -947,7 +947,7 @@ namespace Velvet.Tests
         {
             public int CreateScopeCount { get; private set; }
 
-            public IRouteScope CreateScope(RouteDefinition route, IRouteScope parent)
+            public IRouteScope CreateScope(RouteDefinition? route, IRouteScope? parent)
             {
                 CreateScopeCount++;
                 return new TestRouteScope();

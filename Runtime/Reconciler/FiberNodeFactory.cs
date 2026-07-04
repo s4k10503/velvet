@@ -9,7 +9,7 @@ namespace Velvet
     {
         private readonly ReconcilerContext _ctx;
         private readonly FiberNodePatcher _patcher;
-        private IReconcilerHost _host;
+        private IReconcilerHost _host = null!;
 
         // The reserved key prefix for unkeyed AnimatePresence children (BuildKeyedMapCopy). Internal so
         // FiberContextSpine can replicate the same keying when descending into a DOM-less AnimatePresence
@@ -29,7 +29,7 @@ namespace Velvet
         // the layout-passthrough class keeps it transparent to layout.
         internal const string ContextProviderClassName = "velvet-context-provider";
 
-        private void InvokeRefCallback(Func<VisualElement, Action> refCallback, VisualElement element)
+        private void InvokeRefCallback(Func<VisualElement, Action>? refCallback, VisualElement element)
             => _ctx.InvokeRefCallback(element, refCallback);
 
         public FiberNodeFactory(ReconcilerContext ctx, FiberNodePatcher patcher)
@@ -47,8 +47,13 @@ namespace Velvet
             _host = host;
         }
 
-        public VisualElement CreateElement(VNode node)
+        public VisualElement CreateElement(VNode? node)
         {
+            if (node == null)
+            {
+                throw new ArgumentNullException(nameof(node));
+            }
+
             switch (node)
             {
                 case ElementNode elementNode:
@@ -384,7 +389,7 @@ namespace Velvet
         // The returned list must be returned via
         // ReconcilerBufferPool.Return after use.
         // Nested AnimatePresence does not corrupt this list because BufferPool provides recursion safety.
-        internal List<(string key, VNode node)> BuildKeyedMapCopy(VNode[] children)
+        internal List<(string key, VNode node)> BuildKeyedMapCopy(VNode?[] children)
         {
             var result = _ctx.BufferPool.RentKeyedList();
             if (children == null)
@@ -467,7 +472,7 @@ namespace Velvet
         // paths read both Transition and OnEnterComplete from the same resolved
         // Motion, so this helper exists to fold the walk + warning into a single pass — callsites
         // that read both fields would otherwise traverse the transparent-wrapper chain twice.
-        internal static MotionNode ResolveAnimatePresenceMotion(VNode node)
+        internal static MotionNode? ResolveAnimatePresenceMotion(VNode node)
         {
             var motion = FindFirstMotionDescendant(node);
             if (motion == null && node != null && node is not TextNode)
@@ -486,8 +491,9 @@ namespace Velvet
         // (Initial=false) where no warning should be emitted — so a Provider-wrapped Motion
         // contributes its transition / OnEnterComplete to the keyed entry: AnimatePresence tracks
         // the outer wrapper element while transitions remain on the inner motion components.
-        internal static MotionNode FindFirstMotionDescendant(VNode node)
+        internal static MotionNode? FindFirstMotionDescendant(VNode? node)
         {
+            if (node == null) return null;
             if (node is MotionNode motion)
             {
                 return motion;

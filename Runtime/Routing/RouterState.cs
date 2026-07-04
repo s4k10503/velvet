@@ -60,11 +60,11 @@ namespace Velvet
     public sealed class RouterLocation
     {
         /// <summary>Matched path string.</summary>
-        public string Path { get; init; }
+        public string? Path { get; init; }
         /// <summary>Path parameters collected from every matched route.</summary>
-        public IReadOnlyDictionary<string, string> Params { get; init; }
+        public IReadOnlyDictionary<string, string> Params { get; init; } = null!;
         /// <summary>Hierarchical list of matched routes (parent first).</summary>
-        public IReadOnlyList<RouteMatch> Matches { get; init; }
+        public IReadOnlyList<RouteMatch>? Matches { get; init; }
     }
 
     /// <summary>
@@ -91,6 +91,6 @@ namespace Velvet
         /// <summary>The current navigation lifecycle (idle / loading).</summary>
         public NavigationLifecycle State { get; init; }
         /// <summary>The current router location (or null before the first navigation).</summary>
-        public RouterLocation Location { get; init; }
+        public RouterLocation? Location { get; init; }
     }
 }

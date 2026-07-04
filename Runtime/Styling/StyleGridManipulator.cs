@@ -92,7 +92,7 @@ namespace Velvet
 
         private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
 
-        private VisualElement ChildContainer
+        private VisualElement? ChildContainer
             => target == null ? null : FiberNodePatcher.GetChildContainer(target);
 
         // Sizes the children into N equal columns and writes the row / column gap margins. Early-returns when

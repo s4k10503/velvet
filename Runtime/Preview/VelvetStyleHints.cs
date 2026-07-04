@@ -28,7 +28,7 @@ namespace Velvet
         /// sheet (so its later source order lets equal-specificity <c>:root</c> overrides win). The host clears
         /// this to <c>null</c> as it consumes it; a setup that needs no extra sheet simply leaves it <c>null</c>.
         /// </summary>
-        public static StyleSheet PreviewStyleSheet { get; set; }
+        public static StyleSheet? PreviewStyleSheet { get; set; }
     }
 }
 #endif

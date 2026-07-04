@@ -25,13 +25,13 @@ namespace Velvet
         /// Display name shown in the preview window's story list. When <c>null</c> or empty, the method name is
         /// used.
         /// </summary>
-        public string Name { get; init; }
+        public string? Name { get; init; }
 
         /// <summary>
         /// Optional grouping label so related stories collapse under one heading in the list (the Storybook
         /// "title" segment). When <c>null</c> or empty, the declaring type's name is used.
         /// </summary>
-        public string Group { get; init; }
+        public string? Group { get; init; }
 
         /// <summary>
         /// Preferred mount width in reference pixels. <c>0</c> (the default) means "fill the window".

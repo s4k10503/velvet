@@ -11,9 +11,9 @@ namespace Velvet
     internal static class FiberAmbientStack
     {
         [ThreadStatic]
-        private static Stack<ComponentFiber> t_stack;
+        private static Stack<ComponentFiber>? t_stack;
 
-        public static ComponentFiber Current
+        public static ComponentFiber? Current
         {
             get
             {

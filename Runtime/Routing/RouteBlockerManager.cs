@@ -109,9 +109,9 @@ namespace Velvet
         // Not referenced externally, so promoting them to properties would just add noise.
         private sealed class BlockerEntry
         {
-            public Func<NavigationAttempt, bool> SyncCheck;
-            public Func<NavigationAttempt, CancellationToken, UniTask<bool>> AsyncCheck;
-            public RouteBlockerState State;
+            public Func<NavigationAttempt, bool>? SyncCheck;
+            public Func<NavigationAttempt, CancellationToken, UniTask<bool>>? AsyncCheck;
+            public RouteBlockerState State = null!;
         }
 
         private sealed class BlockerRegistration : IDisposable

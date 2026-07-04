@@ -49,7 +49,7 @@ namespace Velvet
         private static string DecodeQueryComponent(string component) =>
             Uri.UnescapeDataString(component.Replace('+', ' '));
 
-        internal static string StripQuery(string path)
+        internal static string? StripQuery(string? path)
         {
             if (path == null)
             {

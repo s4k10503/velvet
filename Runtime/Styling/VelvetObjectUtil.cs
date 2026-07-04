@@ -9,7 +9,7 @@ namespace Velvet
     // (asset-vs-instance guards, validation-context checks) lands in one place.
     internal static class VelvetObjectUtil
     {
-        internal static void Destroy(Object obj)
+        internal static void Destroy(Object? obj)
         {
             if (obj == null)
             {

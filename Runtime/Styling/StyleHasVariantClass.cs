@@ -50,14 +50,14 @@ namespace Velvet
         private const string Prefix = "has-[";
 
         /// <summary>True if <paramref name="token"/> is a recognized <c>has-[...]</c> variant token.</summary>
-        public static bool IsHas(string token) => TryParse(token, out _, out _, out _);
+        public static bool IsHas(string? token) => token != null && TryParse(token, out _, out _, out _);
 
         /// <summary>
         /// Splits a <c>has-[...]</c> token into its kind, the target class name (only for
         /// <see cref="StyleHasKind.Class"/>; null otherwise), and the payload. Returns false for any
         /// non-<c>has-</c> token, an empty selector, an unrecognized inner selector, or an empty payload.
         /// </summary>
-        public static bool TryParse(string token, out StyleHasKind kind, out string className, out string payload)
+        public static bool TryParse(string token, out StyleHasKind kind, out string? className, out string? payload)
         {
             kind = default;
             className = null;

@@ -1,3 +1,4 @@
+#nullable enable
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -46,52 +47,52 @@ namespace Velvet
         // V.Fragment rejects keys containing NUL at the factory so scope segments cannot collide
         // with user-supplied key contents. A null parentScope means the outermost
         // keyed boundary — the contribution becomes the entire scope.
-        internal static string ComposeFragmentScope(string parentScope, string contribution)
+        internal static string ComposeFragmentScope(string? parentScope, string contribution)
             => parentScope == null ? contribution : parentScope + "\0" + contribution;
 
         // The scope a FragmentNode opens for its children. A keyed Fragment establishes (or extends)
         // the scope chain. An unkeyed Fragment contributes its positional index only when an enclosing
         // keyed Fragment already established a scope; otherwise it stays scope-less and its children
         // participate in the parent's keyed/indexed list under their own keys.
-        internal static string FragmentChildScope(string parentScope, string fragmentKey, int nodeIndex)
+        internal static string? FragmentChildScope(string? parentScope, string? fragmentKey, int nodeIndex)
             => fragmentKey != null
                 ? ComposeFragmentScope(parentScope, fragmentKey)
                 : (parentScope == null ? null : ComposeFragmentScope(parentScope, Index(nodeIndex)));
 
         // The scope a ContextProviderNode opens for its children: null while scope-less, otherwise the
         // parent scope extended by the Provider's own key (or its positional index when unkeyed).
-        internal static string ProviderChildScope(string parentScope, string providerKey, int nodeIndex)
+        internal static string? ProviderChildScope(string? parentScope, string? providerKey, int nodeIndex)
             => parentScope == null
                 ? null
                 : ComposeFragmentScope(parentScope, providerKey ?? Index(nodeIndex));
 
         // The scope a MemoNode opens for its resolved inner. Distinct "m"-prefixed index so a
         // nested Memo's position key cannot collide with an unkeyed Component at the same node index.
-        internal static string MemoScope(string parentScope, int nodeIndex)
+        internal static string MemoScope(string? parentScope, int nodeIndex)
             => ComposeFragmentScope(parentScope, "m" + Index(nodeIndex));
 
         // The dep-cache key for a MemoNode: its explicit key when present, otherwise its
         // MemoScope (a stable position scope, not a per-pass counter).
-        internal static string MemoCacheKey(string memoKey, string memoScope)
+        internal static string MemoCacheKey(string? memoKey, string memoScope)
             => memoKey ?? memoScope;
 
         // The boundary key for a SuspenseNode (also the ReconcilerContext.SuspenseFallbackShown
         // state key suffix): the parent scope extended by the Suspense's own key (or its positional
         // index when unkeyed).
-        internal static string SuspenseKey(string parentScope, string suspenseKey, int nodeIndex)
+        internal static string SuspenseKey(string? parentScope, string? suspenseKey, int nodeIndex)
             => ComposeFragmentScope(parentScope, suspenseKey ?? Index(nodeIndex));
 
         // The scoped position key for a DOM-less AnimatePresence: its parent scope extended by the
         // AnimatePresence's own key (or its positional index when unkeyed). Used with the boundary fiber
         // to key its PresenceBoundaryState, mirroring SuspenseKey.
-        internal static string PresenceKey(string parentScope, string presenceKey, int nodeIndex)
+        internal static string PresenceKey(string? parentScope, string? presenceKey, int nodeIndex)
             => ComposeFragmentScope(parentScope, presenceKey ?? Index(nodeIndex));
 
         // The scope a single keyed AnimatePresence child renders under: the AnimatePresence's own scoped
         // key extended by the child's key, so each keyed child's descendant fibers stay in a disjoint,
         // render-stable scope (the child key is stable across renders, unlike a visitation index).
-        internal static string PresenceChildScope(string presenceScope, string childKey)
-            => ComposeFragmentScope(presenceScope, childKey);
+        internal static string PresenceChildScope(string? presenceScope, string? childKey)
+            => ComposeFragmentScope(presenceScope, childKey ?? string.Empty);
 
         // The scope a Suspense's committed subtree renders under: its boundary key extended by
         // "p" for the primary children or "f" for the fallback, keeping primary and
@@ -102,7 +103,7 @@ namespace Velvet
         // The scope an inline ComponentNode opens when its committed PreviousTree is descended:
         // null while scope-less, otherwise the parent scope extended by the Component's own key (or its
         // positional index when unkeyed).
-        internal static string ComponentChildScope(string parentScope, string componentKey, int nodeIndex)
+        internal static string? ComponentChildScope(string? parentScope, string? componentKey, int nodeIndex)
             => parentScope == null
                 ? null
                 : ComposeFragmentScope(parentScope, componentKey ?? Index(nodeIndex));

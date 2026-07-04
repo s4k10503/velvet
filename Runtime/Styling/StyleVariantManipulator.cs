@@ -40,7 +40,7 @@ namespace Velvet
 
         // Owns the element-local signal detection (pointer/focus/checked edges, focus-visible heuristic,
         // worldBound bubbling); this manipulator keeps the per-state payload bookkeeping below.
-        private ElementLocalVariantSignals _signals;
+        private ElementLocalVariantSignals _signals = null!;
 
         private readonly ReconcilerContext _ctx;
 
