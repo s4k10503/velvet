@@ -57,13 +57,15 @@ jobs:
         run: |
           SPLIT=$(git subtree split --prefix="$PREFIX")
           git checkout --quiet "$SPLIT"
-          # Strip developer-only sources from the published artifact. None of these are used by a
-          # consumer's build: test asmdefs are gated by UNITY_INCLUDE_TESTS (off for installed
-          # packages), and the source generators ship as prebuilt DLLs under Runtime/Plugins — their
-          # Roslyn source in Generators~ (a Unity-ignored '~' folder) is needed only to rebuild them.
-          # So this removes pure disk noise, not anything a consumer compiles. Matches every Tests/
-          # folder (+ sibling Tests.meta), the test-only TestUtilities assembly, and Generators~.
-          REMOVE=$(git ls-files | grep -E '(^|/)Tests(/|\.meta$)|(^|/)TestUtilities(/|\.meta$)|(^|/)Generators~(/|\.meta$)' || true)
+          # Strip developer-only sources from the published artifact. Test asmdefs are gated by
+          # UNITY_INCLUDE_TESTS (off for installed packages); the source generators ship as prebuilt
+          # DLLs under Runtime/Plugins, so their Roslyn source in Generators~ (a Unity-ignored '~'
+          # folder) is needed only to rebuild them; and the Preview example stories are this repo's own
+          # verification fixtures — shipping them would inject "Examples/*" entries into every consumer's
+          # Preview window, so they stay in the dev project but not the package. Matches every Tests/
+          # folder (+ sibling Tests.meta), the test-only TestUtilities assembly, Generators~, and
+          # Editor/Preview/Examples (+ sibling Examples.meta).
+          REMOVE=$(git ls-files | grep -E '(^|/)Tests(/|\.meta$)|(^|/)TestUtilities(/|\.meta$)|(^|/)Generators~(/|\.meta$)|(^|/)Preview/Examples(/|\.meta$)' || true)
           if [ -n "$REMOVE" ]; then
             printf '%s\n' "$REMOVE" | tr '\n' '\0' | xargs -0 git rm --quiet
             git commit --quiet --amend --no-edit
