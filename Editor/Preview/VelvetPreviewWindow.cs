@@ -36,11 +36,32 @@ namespace Velvet.Editor.Preview
         private const string OutlineKey = "Velvet.Preview.Outline";
         private const string MeasureKey = "Velvet.Preview.Measure";
         private const string ViewportKey = "Velvet.Preview.Viewport";
+        private const string ViewportWidthKey = "Velvet.Preview.ViewportW";
+        private const string ViewportHeightKey = "Velvet.Preview.ViewportH";
+
+        // Custom viewport W/H fields are clamped to this range — 1 keeps a story from collapsing to nothing, 8192
+        // is generously above any real device or monitor so it never blocks an intentionally huge reference size.
+        private const int MinCustomViewportSize = 1;
+        private const int MaxCustomViewportSize = 8192;
+
+        // Default custom W/H shown the first time the window opens (no remembered custom size yet) — full HD
+        // landscape, just a starting point for the free-form fields.
+        private const int DefaultCustomViewportWidth = 1920;
+        private const int DefaultCustomViewportHeight = 1080;
 
         // Stage backdrops. Dark is the default — a near-black so light UI stays legible
         // and the mounted tree's own bounds read against it; Light is a neutral gray for dark UI.
         private static readonly Color DarkBackdrop = new(0.09f, 0.10f, 0.13f, 1f);
         private static readonly Color LightBackdrop = new(0.92f, 0.92f, 0.92f, 1f);
+
+        // A thin frame drawn around the simulated viewport so its rectangle — and therefore the active resolution
+        // and aspect ratio — is always visible against the stage, even when the story is transparent or smaller
+        // than its canvas. The color adapts to the active backdrop (set from ApplyBackground) rather than being a
+        // single fixed color — a light frame that reads on Dark is nearly invisible against Light, and vice versa.
+        // Kept subtle so it reads as a bezel, not part of the story.
+        private static readonly Color DarkBgViewportFrame = new(1f, 1f, 1f, 0.35f);
+        private static readonly Color LightBgViewportFrame = new(0f, 0f, 0f, 0.35f);
+        private static readonly Color CheckerboardViewportFrame = new(0.5f, 0.5f, 0.5f, 0.6f);
 
         private const string BgDark = "Dark";
         private const string BgLight = "Light";
@@ -53,13 +74,16 @@ namespace Velvet.Editor.Preview
             (ZoomFit, 0f), ("50%", 0.5f), ("100%", 1f), ("200%", 2f),
         };
 
-        // Simulated viewports. "Full" lets the canvas fill the stage (no scope); a fixed
-        // preset sizes the canvas to that reference width and makes it a responsive scope so the mounted story's
-        // sm:/md:/... evaluate against the simulated width. Reference px mirror common device breakpoints.
+        // Simulated viewports. "Full" lets the canvas fill the stage (no scope) and is the menu's only entry —
+        // the fixed device presets (Mobile/Tablet/Desktop) were removed in favor of free-form entry: any reference
+        // size, including the old preset sizes, is reachable by typing into the W/H fields below. "Custom" is not
+        // in this list — it is entered via those fields and stores its size under
+        // ViewportWidthKey/ViewportHeightKey instead of a table entry.
         private const string ViewportFull = "Full";
-        private static readonly (string Label, float Width)[] Viewports =
+        private const string ViewportCustom = "Custom";
+        private static readonly (string Label, float Width, float Height)[] Viewports =
         {
-            (ViewportFull, 0f), ("Mobile (375)", 375f), ("Tablet (768)", 768f), ("Desktop (1280)", 1280f),
+            (ViewportFull, 0f, 0f),
         };
 
         private readonly List<VelvetPreviewStory> _stories = new();
@@ -67,7 +91,9 @@ namespace Velvet.Editor.Preview
         private VelvetPreviewHost _host;
 
         private ListView _list;
-        private VisualElement _stage;     // fixed backdrop the canvas centers within
+        private VisualElement _stage;     // fixed backdrop the scroll view / zoom box center within
+        private ScrollView _stageScroll;  // pans/scrolls when the zoom box exceeds the stage viewport
+        private VisualElement _zoomBox;   // layout-sized box (reference * zoom) that makes zoom affect layout, not just paint
         private VisualElement _canvas;    // the element the story actually mounts onto
         private CheckerboardBackground _checkerboard;
         private PreviewInspectOverlay _overlay;
@@ -76,6 +102,8 @@ namespace Velvet.Editor.Preview
         private ToolbarMenu _backgroundMenu;
         private ToolbarMenu _zoomMenu;
         private ToolbarMenu _viewportMenu;
+        private IntegerField _viewportWidthField;
+        private IntegerField _viewportHeightField;
 
         // View-addon state, persisted in EditorPrefs so it survives remounts / domain reloads.
         private bool _dark;
@@ -84,6 +112,8 @@ namespace Velvet.Editor.Preview
         private bool _outline;
         private bool _measure;
         private string _viewport = ViewportFull;
+        private int _viewportWidth;
+        private int _viewportHeight;
 
         // The IsDark value the editor (or a running game) had before this window first applied its own, captured
         // once and restored on close so toggling Dark in preview never leaks to whatever else uses the theme.
@@ -134,6 +164,29 @@ namespace Velvet.Editor.Preview
             _outline = EditorPrefs.GetBool(OutlineKey, false);
             _measure = EditorPrefs.GetBool(MeasureKey, false);
             _viewport = EditorPrefs.GetString(ViewportKey, ViewportFull);
+            _viewportWidth = ClampCustomViewportSize(EditorPrefs.GetInt(ViewportWidthKey, DefaultCustomViewportWidth));
+            _viewportHeight = ClampCustomViewportSize(EditorPrefs.GetInt(ViewportHeightKey, DefaultCustomViewportHeight));
+
+            if (!IsKnownViewportLabel(_viewport))
+            {
+                // A label persisted by a pre-rework session (e.g. an old preset that no longer exists) matches
+                // neither the current Viewports table nor Custom. Left as-is, ViewportSize() would silently fall
+                // back to (0, 0) while the toolbar kept showing the stale label — reset to Full so the label and
+                // the actual reference size agree again.
+                _viewport = ViewportFull;
+                EditorPrefs.SetString(ViewportKey, _viewport);
+            }
+        }
+
+        private static bool IsKnownViewportLabel(string label)
+        {
+            if (label == ViewportCustom) return true;
+            foreach (var (presetLabel, _, _) in Viewports)
+            {
+                if (presetLabel == label) return true;
+            }
+
+            return false;
         }
 
         #region Sidebar
@@ -194,18 +247,18 @@ namespace Velvet.Editor.Preview
             var vertical = new TwoPaneSplitView(1, 160f, TwoPaneSplitViewOrientation.Vertical) { style = { flexGrow = 1f } };
             column.Add(vertical);
 
+            // The stage is the fixed backdrop; it never shrinks or grows to match the canvas — instead a
+            // ScrollView inside it pans/scrolls to reach a zoom box larger than the stage. overflow: Hidden here
+            // only clips the checkerboard/overlay to the stage bounds; the scroll view supplies the real clip +
+            // scroll behavior for the zoomed content.
             _stage = new VisualElement
             {
                 style =
                 {
                     flexGrow = 1f,
-                    alignItems = Align.Center,
-                    justifyContent = Justify.Center,
                     overflow = Overflow.Hidden,
                 },
             };
-            // Fit recomputes against the stage's measured size, so it must re-run whenever the stage resizes.
-            _stage.RegisterCallback<GeometryChangedEvent>(_ => ApplyZoom());
             vertical.Add(_stage);
 
             _controls = new PreviewControlsPanel();
@@ -216,20 +269,73 @@ namespace Velvet.Editor.Preview
             _checkerboard = new CheckerboardBackground { style = { display = DisplayStyle.None } };
             _stage.Add(_checkerboard);
 
+            // Both scrollers are Auto: a zoom box that fits the stage shows no scroller (the common case), and one
+            // larger than the stage in either axis becomes pannable in that axis instead of clipping silently.
+            _stageScroll = new ScrollView(ScrollViewMode.VerticalAndHorizontal)
+            {
+                style = { flexGrow = 1f },
+                horizontalScrollerVisibility = ScrollerVisibility.Auto,
+                verticalScrollerVisibility = ScrollerVisibility.Auto,
+            };
+            _stage.Add(_stageScroll);
+
+            // Center the zoom box inside the scroll view's content container. A ScrollView's content container
+            // does not center by default (it is sized to its content, like a normal document flow), so this
+            // wrapper opts in explicitly: flexGrow fills the viewport when the zoom box is smaller than it, and
+            // alignItems/justifyContent center the box within that filled space. When the zoom box is larger than
+            // the viewport in an axis, centering has no visible effect there (there is no extra space to center
+            // within) and the ScrollView's scrollers take over for that axis instead.
+            _stageScroll.contentContainer.style.flexGrow = 1f;
+            _stageScroll.contentContainer.style.alignItems = Align.Center;
+            _stageScroll.contentContainer.style.justifyContent = Justify.Center;
+            // Unity's default USS gives a VerticalAndHorizontal ScrollView's content container align-self:
+            // flex-start, which overrides flexGrow along the cross axis and lets it shrink-wrap vertically — so
+            // justifyContent: Center above had no vertical space to center within and a small story pinned to the
+            // top. A percentage min-size (not a fixed size, so the container still grows past 100% when the zoom
+            // box is larger than the stage) forces it to fill the viewport in both axes while still growing to fit.
+            _stageScroll.contentContainer.style.minHeight = Length.Percent(100);
+            _stageScroll.contentContainer.style.minWidth = Length.Percent(100);
+
+            // The zoom box: its LAYOUT size is the reference size times the zoom factor, so the scroll view's
+            // scrollable extent matches what is actually painted. flexShrink 0 keeps it from being compressed by
+            // the flex column above it (the original squeeze bug for a fixed-size story taller than the stage).
+            // The frame hugs the painted story at any zoom because the zoom box carries the post-zoom layout size
+            // (reference * factor) in unscaled px, so its border is a crisp 1px bezel around the simulated viewport.
+            // Border colors are left at their default here and set by ApplyBackground (called once from CreateGUI
+            // right after this element tree is built, and again on every background change) so the frame always
+            // matches the active backdrop.
+            _zoomBox = new VisualElement
+            {
+                style =
+                {
+                    flexShrink = 0f,
+                    borderTopWidth = 1f, borderRightWidth = 1f, borderBottomWidth = 1f, borderLeftWidth = 1f,
+                },
+            };
+            _stageScroll.Add(_zoomBox);
+
             _canvas = new VisualElement
             {
                 style =
                 {
-                    flexGrow = 1f, width = Length.Percent(100f), height = Length.Percent(100f),
-                    // Scale about the top-center so zooming grows the canvas downward from a stable anchor.
-                    transformOrigin = new TransformOrigin(Length.Percent(50f), Length.Percent(0f)),
+                    // flexGrow 0 + flexShrink 0: the canvas is never stretched or compressed by the flex
+                    // containers around it, so its declared reference size (written by ApplyCanvasSize) is always
+                    // what actually lays out — the fix for a fixed-size story taller than the stage getting
+                    // silently squeezed. Constant for the canvas's lifetime, so set once here rather than rewritten
+                    // on every ApplyCanvasSize call.
+                    flexGrow = 0f,
+                    flexShrink = 0f,
+                    // Scale about the top-left: the zoom box already carries the post-zoom layout size, so the
+                    // canvas's own paint transform must grow from the box's origin, not re-center over it (top-center
+                    // origin was the old fill-canvas convention and only made sense when zoom was paint-only).
+                    transformOrigin = new TransformOrigin(0f, 0f),
                 },
             };
             var utilities = AssetDatabase.LoadAssetAtPath<StyleSheet>(UtilitiesUssPath);
             if (utilities != null) _canvas.styleSheets.Add(utilities);
-            _stage.Add(_canvas);
+            _zoomBox.Add(_canvas);
 
-            // Inspection overlay (outline / measure) drawn above the canvas; non-interactive so it never steals
+            // Inspection overlay (outline / measure) drawn above everything; non-interactive so it never steals
             // the story's pointer events. It tracks the canvas subtree and re-draws when the stage resizes.
             _overlay = new PreviewInspectOverlay(_canvas)
             {
@@ -237,16 +343,28 @@ namespace Velvet.Editor.Preview
                 MeasureEnabled = _measure,
             };
             _stage.Add(_overlay);
-            // Re-draw the overlay when the stage resizes OR the canvas relayouts (a story laying out after mount,
-            // or a zoom change altering the canvas transform) so outlines track the current geometry. The canvas
-            // also re-runs Fit: a viewport-driven canvas WIDTH change (not a stage resize) must recompute the fit
-            // scale, which only the canvas's own geometry change reports.
-            _stage.RegisterCallback<GeometryChangedEvent>(_ => _overlay?.Refresh());
-            _canvas.RegisterCallback<GeometryChangedEvent>(_ =>
+            // The scroll view pans by writing contentContainer.style.translate directly (a paint-time transform),
+            // which fires no GeometryChangedEvent — so without this, scrolling a zoomed-in story left the outline
+            // / measure overlay frozen at its pre-scroll position until some unrelated geometry event happened to
+            // fire. Subscribing to the scrollers' own valueChanged covers both drag-scrolling and programmatic
+            // scrolling.
+            _stageScroll.horizontalScroller.valueChanged += _ => _overlay?.Refresh();
+            _stageScroll.verticalScroller.valueChanged += _ => _overlay?.Refresh();
+            // The stage resize is the only geometry source that can change a Full/fill story's reference size (the
+            // measured stage size); re-derive the reference and zoom box from it. ApplyCanvasSize now early-outs
+            // whenever the reference size is not yet resolved (NaN before the first layout pass, or a collapsed
+            // stage), so a resize tick that does not actually make the reference size resolvable simply writes
+            // nothing and cannot retrigger this handler in a loop.
+            _stage.RegisterCallback<GeometryChangedEvent>(_ =>
             {
+                ApplyCanvasSize(_selected);
                 ApplyZoom();
                 _overlay?.Refresh();
             });
+            // The canvas's own geometry change (a story laying out after mount) does not affect sizing decisions
+            // here — the reference size is derived from the story metadata / viewport / stage, never from the
+            // canvas's own resolved size — but the overlay still needs to redraw to track it.
+            _canvas.RegisterCallback<GeometryChangedEvent>(_ => _overlay?.Refresh());
 
             return column;
         }
@@ -287,15 +405,30 @@ namespace Velvet.Editor.Preview
             toolbar.Add(_zoomMenu);
 
             _viewportMenu = new ToolbarMenu { text = ViewportLabel() };
-            foreach (var (label, _) in Viewports)
+            foreach (var (label, width, height) in Viewports)
             {
                 var captured = label;
+                var capturedWidth = width;
+                var capturedHeight = height;
                 _viewportMenu.menu.AppendAction(
                     captured,
-                    _ => SetViewport(captured),
+                    _ => SetViewportPreset(captured, capturedWidth, capturedHeight),
                     _ => _viewport == captured ? DropdownMenuAction.Status.Checked : DropdownMenuAction.Status.Normal);
             }
             toolbar.Add(_viewportMenu);
+
+            // Free-form W/H entry: picking a preset above writes its values in here (read-only feedback), and
+            // editing either field switches the viewport to Custom using both fields' current values — so the
+            // fields are always "what the viewport reference size currently is," regardless of how it was set.
+            // isDelayed: the change event (and the remount it triggers) commits once on Enter/blur instead of
+            // firing — and remounting — on every keystroke while typing a multi-digit value.
+            _viewportWidthField = new IntegerField { value = _viewportWidth, style = { width = 50f }, isDelayed = true };
+            _viewportWidthField.RegisterValueChangedCallback(_ => OnViewportFieldChanged());
+            toolbar.Add(_viewportWidthField);
+
+            _viewportHeightField = new IntegerField { value = _viewportHeight, style = { width = 50f }, isDelayed = true };
+            _viewportHeightField.RegisterValueChangedCallback(_ => OnViewportFieldChanged());
+            toolbar.Add(_viewportHeightField);
 
             var outlineToggle = new ToolbarToggle { text = "Outline", value = _outline };
             outlineToggle.RegisterValueChangedCallback(evt =>
@@ -363,6 +496,23 @@ namespace Velvet.Editor.Preview
                 BgCheckerboard => new StyleColor(StyleKeyword.Initial),
                 _ => DarkBackdrop,
             };
+
+            // The frame's color must track the backdrop it is drawn over, or a fixed color reads on one background
+            // and nearly vanishes on another (the bug this addresses: a single white@0.28 frame was invisible over
+            // the Light backdrop's near-white gray).
+            var frame = _background switch
+            {
+                BgLight => LightBgViewportFrame,
+                BgCheckerboard => CheckerboardViewportFrame,
+                _ => DarkBgViewportFrame,
+            };
+            if (_zoomBox != null)
+            {
+                _zoomBox.style.borderTopColor = frame;
+                _zoomBox.style.borderRightColor = frame;
+                _zoomBox.style.borderBottomColor = frame;
+                _zoomBox.style.borderLeftColor = frame;
+            }
         }
 
         private void SetZoom(string zoom)
@@ -373,28 +523,60 @@ namespace Velvet.Editor.Preview
             ApplyZoom();
         }
 
+        // Applies the current zoom factor to BOTH the zoom box's layout size and the canvas's paint scale. Scale
+        // alone (the pre-rework behavior) only repaints the canvas larger without changing the space it occupies,
+        // so the stage always centered the UNSCALED box: at 200% the painted content overflowed the stage's
+        // Hidden clip with nothing to scroll to, and at 50%/Fit the centered (but unscaled) box left dead space
+        // below a top-anchored paint. Driving the zoom box's layout size in step with the canvas's paint scale
+        // makes the two agree, so centering is correct at any factor and the ScrollView's scrollable extent
+        // matches what is actually painted.
         private void ApplyZoom()
         {
-            if (_canvas == null) return;
+            if (_canvas == null || _zoomBox == null) return;
             var factor = _zoom == ZoomFit ? ComputeFitFactor() : ZoomFactor(_zoom);
-            _canvas.style.scale = new Scale(new Vector3(factor, factor, 1f));
+            var (refW, refH, _) = ComputeReferenceSize(_selected);
+
+            if (IsResolved(refW) && IsResolved(refH))
+            {
+                _canvas.style.scale = new Scale(new Vector3(factor, factor, 1f));
+
+                var boxWidth = refW * factor;
+                var boxHeight = refH * factor;
+                // Only write when the value actually changed — this handler also runs from the stage's
+                // GeometryChangedEvent, so writing unconditionally could retrigger layout every resize tick even
+                // when nothing here actually moved.
+                if (!Mathf.Approximately(_zoomBox.style.width.value.value, boxWidth)) _zoomBox.style.width = boxWidth;
+                if (!Mathf.Approximately(_zoomBox.style.height.value.value, boxHeight)) _zoomBox.style.height = boxHeight;
+            }
+            // Else: the reference size is not yet resolved (NaN before the first layout pass, or a collapsed
+            // stage). Leave the canvas's scale and the zoom box's size untouched rather than writing a scale/size
+            // computed from NaN — that would paint the canvas at a NaN scale (effectively invisible) and, unlike a
+            // wrong-but-finite value, nothing would ever compare unequal to NaN to trigger a corrective rewrite
+            // once the size resolves. The stage's GeometryChangedEvent re-runs this once resolution is available.
+
+            _overlay?.Refresh();
+            // Keep the status line's resolution/zoom readout in step with the applied factor and stage size, so a
+            // zoom step or a Fit recompute (e.g. the window being resized) is reflected as text, not only as layout.
+            // Passes the factor/reference size already computed above instead of letting UpdateStatus recompute
+            // them a second time — this runs on every stage GeometryChangedEvent tick, so recomputation was pure
+            // waste.
+            UpdateStatus(factor, refW, refH);
         }
 
-        // Fit: the largest scale at which the canvas's reference size fits inside the stage. Uses the story's
-        // explicit Width/Height when set, else the canvas's measured layout; returns 1 until the stage and
-        // canvas have a resolved size (the GeometryChangedEvent re-runs this once they do).
+        // Fit: the largest scale at which the canvas's reference size fits inside the stage, capped at 1 so Fit
+        // never upscales a small story. Returns 1 until the stage has a resolved size or the reference size is not
+        // yet known (the stage's GeometryChangedEvent re-runs this once both are available).
         private float ComputeFitFactor()
         {
-            if (_stage == null || _canvas == null) return 1f;
+            if (_stage == null) return 1f;
             var stageW = _stage.resolvedStyle.width;
             var stageH = _stage.resolvedStyle.height;
-            if (stageW <= 0f || stageH <= 0f) return 1f;
+            if (!IsResolved(stageW) || !IsResolved(stageH)) return 1f;
 
-            var canvasW = _selected is { Width: > 0 } ? _selected.Width : _canvas.resolvedStyle.width;
-            var canvasH = _selected is { Height: > 0 } ? _selected.Height : _canvas.resolvedStyle.height;
-            if (canvasW <= 0f || canvasH <= 0f) return 1f;
+            var (refW, refH, _) = ComputeReferenceSize(_selected);
+            if (!IsResolved(refW) || !IsResolved(refH)) return 1f;
 
-            return Mathf.Min(1f, Mathf.Min(stageW / canvasW, stageH / canvasH));
+            return Mathf.Min(1f, Mathf.Min(stageW / refW, stageH / refH));
         }
 
         private static float ZoomFactor(string label)
@@ -405,6 +587,41 @@ namespace Velvet.Editor.Preview
             }
 
             return 1f;
+        }
+
+        // Selecting a preset from the dropdown: store its label (so ViewportLabel/menu-check reflect it) and, for
+        // a sized preset, its W/H as the "custom" numbers too, so the W/H fields immediately show the preset's
+        // values rather than stale custom ones from a previous session. Full is (0, 0) — it has no size of its
+        // own, so storing it would clamp to 1x1 and destroy whatever custom size was remembered; Full leaves the
+        // remembered custom size and fields untouched and only changes which viewport is active.
+        private void SetViewportPreset(string label, float width, float height)
+        {
+            if (width > 0f && height > 0f) StoreViewportSize((int)width, (int)height);
+
+            SetViewport(label);
+        }
+
+        // Editing either W/H field: the viewport becomes Custom using both fields' current (clamped) values. A
+        // non-positive or out-of-range entry is clamped rather than rejected, so the field never gets stuck showing
+        // a value that cannot produce a usable canvas.
+        private void OnViewportFieldChanged()
+        {
+            StoreViewportSize(_viewportWidthField?.value ?? _viewportWidth, _viewportHeightField?.value ?? _viewportHeight);
+
+            SetViewport(ViewportCustom);
+        }
+
+        // Clamps and persists a custom viewport size, then reflects it into both W/H fields without re-raising
+        // their change callback (which would recurse back into OnViewportFieldChanged). Shared by the preset
+        // handler (a sized preset also becomes the remembered custom size) and the field-change handler.
+        private void StoreViewportSize(int width, int height)
+        {
+            _viewportWidth = ClampCustomViewportSize(width);
+            _viewportHeight = ClampCustomViewportSize(height);
+            EditorPrefs.SetInt(ViewportWidthKey, _viewportWidth);
+            EditorPrefs.SetInt(ViewportHeightKey, _viewportHeight);
+            if (_viewportWidthField != null) _viewportWidthField.SetValueWithoutNotify(_viewportWidth);
+            if (_viewportHeightField != null) _viewportHeightField.SetValueWithoutNotify(_viewportHeight);
         }
 
         private void SetViewport(string viewport)
@@ -420,15 +637,20 @@ namespace Velvet.Editor.Preview
             MountWithCurrentArgs(_selected);
         }
 
-        // The fixed viewport width in reference px, or 0 for Full.
-        private float ViewportWidth()
+        private static int ClampCustomViewportSize(int value) =>
+            Mathf.Clamp(value, MinCustomViewportSize, MaxCustomViewportSize);
+
+        // The active viewport's reference W/H in px, or (0, 0) for Full. A known preset label returns its table
+        // entry; Custom (or any unrecognized persisted label — no migration of old labels, just fall back to
+        // Full-like zero) returns the W/H fields' current values only when actually in Custom mode.
+        private (float Width, float Height) ViewportSize()
         {
-            foreach (var (label, width) in Viewports)
+            foreach (var (label, width, height) in Viewports)
             {
-                if (label == _viewport) return width;
+                if (label == _viewport) return (width, height);
             }
 
-            return 0f;
+            return _viewport == ViewportCustom ? (_viewportWidth, _viewportHeight) : (0f, 0f);
         }
 
         private string BackgroundLabel() => "BG: " + _background;
@@ -504,53 +726,90 @@ namespace Velvet.Editor.Preview
         }
 
         // The single post-(re)mount step: re-apply the theme (so a remounted tree picks up dark:), recompute zoom
-        // (Fit depends on the current story / viewport size), refresh the overlay (track the new subtree), and
-        // refresh the status line. Called from every mount path so they cannot diverge.
+        // (Fit depends on the current story / viewport size), and refresh the overlay (track the new subtree).
+        // ApplyZoom already refreshes the status line itself at the end, so this does not call UpdateStatus again.
+        // Called from every mount path so they cannot diverge.
         private void ReapplyAfterMount()
         {
             ApplyTheme();
             ApplyZoom();
             _overlay?.Refresh();
-            UpdateStatus();
         }
 
-        // Sizes the mount canvas. A story's explicit Width/Height ALWAYS wins: an authored card footprint is
-        // shown at its real size and is NOT treated as a responsive container (the viewport simulation does not
-        // apply to a fixed-size story, so no @container marker). Only a fill-canvas story (no explicit size)
-        // honors a fixed viewport: the canvas takes the simulated width and becomes a responsive scope
-        // (@container) so the mounted story's sm:/md:/... evaluate against that width. With Full viewport and no
-        // explicit size, the canvas fills the stage (the original behavior).
-        private void ApplyCanvasSize(VelvetPreviewStory story)
+        // A stage/reference dimension is only usable once it is a positive, non-NaN number. resolvedStyle.width/
+        // height IS NaN before the panel's first layout pass, and NaN <= 0f is false — so a plain "<= 0" guard lets
+        // NaN slip through into a scale or an explicit size write, silently corrupting the canvas until the next
+        // resize happens to overwrite it. Every read of a stage/reference size below must go through this guard.
+        private static bool IsResolved(float v) => v > 0f && !float.IsNaN(v);
+
+        // Computes the canvas's reference size (pre-zoom, in px) purely from the story metadata / viewport /
+        // stage — no field is written here, so callers can probe "what would the reference size be" without
+        // mutating state. Matches the pre-rework rule exactly:
+        // <list type="bullet">
+        // <item>A story's explicit Width/Height ALWAYS wins: an authored card footprint is shown at its real size
+        // and is NOT treated as a responsive container. If only one axis is authored, the OTHER axis falls back to
+        // the measured stage size (so e.g. a Width-only story still gets a sensible height instead of 0).</item>
+        // <item>Else a fixed viewport (preset or custom) sizes the canvas to that reference W x H and marks it a
+        // responsive scope so the mounted story's sm:/md:/... evaluate against the simulated size.</item>
+        // <item>Else ("Full", no explicit size): the canvas fills the stage — its reference size IS the measured
+        // stage size, and it is not a responsive scope (matches the panel root instead).</item>
+        // </list>
+        private (float Width, float Height, bool IsResponsiveScope) ComputeReferenceSize(VelvetPreviewStory story)
         {
-            if (_canvas == null) return;
+            var stageW = _stage?.resolvedStyle.width ?? 0f;
+            var stageH = _stage?.resolvedStyle.height ?? 0f;
 
             var hasExplicitSize = story != null && (story.Width > 0 || story.Height > 0);
             if (hasExplicitSize)
             {
-                _canvas.EnableInClassList(VelvetResponsive.ContainerClass, false);
-                _canvas.style.width = story.Width > 0 ? (StyleLength)story.Width : Length.Percent(100f);
-                _canvas.style.height = story.Height > 0 ? (StyleLength)story.Height : Length.Percent(100f);
-                _canvas.style.flexGrow = 0f;
-                return;
+                var refW = story.Width > 0 ? story.Width : stageW;
+                var refH = story.Height > 0 ? story.Height : stageH;
+                return (refW, refH, false);
             }
 
-            var viewportWidth = ViewportWidth();
-            if (viewportWidth > 0f)
-            {
-                _canvas.style.width = viewportWidth;
-                _canvas.style.height = Length.Percent(100f);
-                _canvas.style.flexGrow = 0f;
-                _canvas.EnableInClassList(VelvetResponsive.ContainerClass, true);
-                return;
-            }
+            var (viewportW, viewportH) = ViewportSize();
+            if (viewportW > 0f && viewportH > 0f) return (viewportW, viewportH, true);
 
-            _canvas.EnableInClassList(VelvetResponsive.ContainerClass, false);
-            _canvas.style.width = Length.Percent(100f);
-            _canvas.style.height = Length.Percent(100f);
-            _canvas.style.flexGrow = 1f;
+            return (stageW, stageH, false);
         }
 
-        private void UpdateStatus()
+        // Writes the canvas's reference size (pre-zoom, in px) as an EXPLICIT pixel size — never a percentage. A
+        // percentage reference was the root of the old zoom-box-less design's problems: it made the canvas's
+        // layout size a function of its unscaled parent, so there was no stable "100%" to multiply by a zoom
+        // factor. Also toggles the @container responsive-scope marker per ComputeReferenceSize's rule.
+        private void ApplyCanvasSize(VelvetPreviewStory story)
+        {
+            if (_canvas == null || _zoomBox == null) return;
+
+            var (refW, refH, isResponsiveScope) = ComputeReferenceSize(story);
+            // The scope marker never depends on whether the stage has actually resolved a size — it only depends
+            // on story metadata / viewport mode, both known regardless of layout — so it is always safe to apply,
+            // unlike the pixel size below. Toggling it unconditionally also keeps a Full selection able to clear
+            // the marker even before the first layout pass.
+            _canvas.EnableInClassList(VelvetResponsive.ContainerClass, isResponsiveScope);
+
+            // Unresolved (NaN pre-layout, or a collapsed stage with no explicit/viewport size to fall back to):
+            // skip the size write rather than corrupt the canvas with a NaN or 0x0 size. The stage's
+            // GeometryChangedEvent re-runs this once the stage actually has a resolved size.
+            if (!IsResolved(refW) || !IsResolved(refH)) return;
+
+            _canvas.style.width = refW;
+            _canvas.style.height = refH;
+        }
+
+        private void UpdateStatus() => UpdateStatus(null);
+
+        // Overload for a caller (ApplyZoom) that already computed the zoom factor and reference size for its own
+        // purposes — passing them through lets DescribeViewport skip re-deriving both (ComputeFitFactor itself
+        // re-calls ComputeReferenceSize), which matters because ApplyZoom runs on every stage GeometryChangedEvent
+        // tick.
+        private void UpdateStatus(float factor, float refW, float refH)
+        {
+            (float Factor, float RefW, float RefH)? precomputed = (factor, refW, refH);
+            UpdateStatus(precomputed);
+        }
+
+        private void UpdateStatus((float Factor, float RefW, float RefH)? precomputed)
         {
             if (_statusLabel == null) return;
             if (_selected == null)
@@ -563,8 +822,38 @@ namespace Velvet.Editor.Preview
 
             var error = _host?.MountError;
             _statusLabel.text = error == null
-                ? $"{_selected.Group} / {_selected.Name}"
+                ? $"{_selected.Group} / {_selected.Name}      {DescribeViewport(precomputed)}"
                 : $"{_selected.Name} failed to mount: {error.Message}";
+        }
+
+        // A short human-readable summary of what actually drives the canvas size right now — shown in the status
+        // line so a resolution or zoom change is visible as text, not only as a (sometimes subtle) layout change.
+        // Mode is "Story" when the selected story's own Width/Height wins, else the viewport mode ("Full"/"Custom");
+        // in Full mode the reported size is the stage the canvas fills, which is why Full always looks window-wide.
+        // Accepts an optional precomputed (factor, refW, refH) so a caller that already derived these values (e.g.
+        // ApplyZoom) does not force a second computation here; a caller without them (the parameterless UpdateStatus
+        // path) falls back to deriving both itself.
+        private string DescribeViewport((float Factor, float RefW, float RefH)? precomputed)
+        {
+            float factor, refW, refH;
+            if (precomputed.HasValue)
+            {
+                (factor, refW, refH) = precomputed.Value;
+            }
+            else
+            {
+                (refW, refH, _) = ComputeReferenceSize(_selected);
+                factor = _zoom == ZoomFit ? ComputeFitFactor() : ZoomFactor(_zoom);
+            }
+
+            if (!IsResolved(refW) || !IsResolved(refH)) return "sizing…";
+
+            var pct = Mathf.RoundToInt(factor * 100f);
+            var size = $"{Mathf.RoundToInt(refW)}×{Mathf.RoundToInt(refH)}";
+
+            var hasExplicitSize = _selected != null && (_selected.Width > 0 || _selected.Height > 0);
+            var mode = hasExplicitSize ? "Story" : _viewport;
+            return $"{mode}  {size} · {pct}%";
         }
         #endregion
     }

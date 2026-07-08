@@ -1,4 +1,3 @@
-using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -81,21 +80,11 @@ namespace Velvet.Tests
 
         /// <summary>
         /// Forces the panel through a layout/styles pass via reflection so <c>resolvedStyle</c> is populated; the
-        /// EditMode batch player loop does not tick layout on its own. Invokes whichever of
-        /// <c>UpdateForRepaint</c>/<c>ValidateLayout</c>/<c>ApplyStyles</c> the panel exposes.
+        /// EditMode batch player loop does not tick layout on its own. Delegates to the shared TestUtilities
+        /// helper (kept as a protected member here so existing subclasses calling <c>ForcePanelUpdate(...)</c>
+        /// unqualified keep compiling).
         /// </summary>
-        protected static void ForcePanelUpdate(IPanel panel)
-        {
-            var t = panel.GetType();
-            foreach (var name in new[] { "UpdateForRepaint", "ValidateLayout", "ApplyStyles" })
-            {
-                var m = t.GetMethod(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (m != null && m.GetParameters().Length == 0)
-                {
-                    m.Invoke(panel, null);
-                }
-            }
-        }
+        protected static void ForcePanelUpdate(IPanel panel) => EditorPanelTestHelpers.ForcePanelUpdate(panel);
 
         /// <summary>
         /// Mounts a single named leaf, forces a layout pass, and returns it resolved. Convenience for USS

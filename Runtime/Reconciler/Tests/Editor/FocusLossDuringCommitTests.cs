@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -72,21 +71,8 @@ namespace Velvet.Tests
             var btn = _window.rootVisualElement.Q<Button>("focusable");
             _window.Focus();
             btn.Focus();
-            ForcePanelUpdate(btn.panel);
+            EditorPanelTestHelpers.ForcePanelUpdate(btn.panel);
             return btn;
-        }
-
-        private static void ForcePanelUpdate(IPanel panel)
-        {
-            var t = panel.GetType();
-            foreach (var name in new[] { "UpdateForRepaint", "ValidateLayout", "ApplyStyles" })
-            {
-                var m = t.GetMethod(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                if (m != null && m.GetParameters().Length == 0)
-                {
-                    m.Invoke(panel, null);
-                }
-            }
         }
 
         [Test]

@@ -1,3 +1,4 @@
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.UIElements;
@@ -24,6 +25,10 @@ namespace Velvet.Tests
             _originalIsDark = VelvetTheme.IsDark;
             // Start from a known editor-side default so the toggle's restore target is deterministic.
             EditorPrefs.SetBool("Velvet.Preview.Dark", false);
+            // Cleared before the window is created (in ShowWindowAndGetDarkToggle) so CreateGUI's RefreshStories
+            // cannot restore a persisted selection (e.g. a developer having clicked an example story in the live
+            // window).
+            EditorPrefs.DeleteKey("Velvet.Preview.LastStoryId");
         }
 
         [TearDown]
@@ -42,6 +47,11 @@ namespace Velvet.Tests
         {
             _window = EditorWindow.GetWindow<VelvetPreviewWindow>();
             _window.Show();
+            // The window instance can be reused across tests (GetWindow finds the existing one), so its own
+            // auto-selection from a previous run could still be sitting in _selected — null it explicitly. These
+            // tests only assert on VelvetTheme.IsDark, but a null selection keeps this fixture consistent with the
+            // other preview-window fixtures and out of the way of whatever the registry happens to discover.
+            ResetSelection();
             // CreateGUI builds the toolbar lazily; force the visual tree to exist before querying it.
             _window.rootVisualElement.Q<ToolbarToggle>();
             foreach (var toggle in _window.rootVisualElement.Query<ToolbarToggle>().ToList())
@@ -50,6 +60,13 @@ namespace Velvet.Tests
             }
 
             return null;
+        }
+
+        private void ResetSelection()
+        {
+            var select = typeof(VelvetPreviewWindow).GetMethod("Select", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assume.That(select, Is.Not.Null, "VelvetPreviewWindow.Select must exist");
+            select.Invoke(_window, new object[] { null });
         }
 
         [Test]
