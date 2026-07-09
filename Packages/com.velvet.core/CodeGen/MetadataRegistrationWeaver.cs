@@ -29,17 +29,29 @@ namespace Velvet.CodeGen
 
         public static bool Weave(ModuleDefinition module, List<DiagnosticMessage> diagnostics)
         {
-            _ = diagnostics;
-
             var entries = CollectEntries(module);
             if (entries.Count == 0)
             {
                 return false;
             }
 
-            var context = RegistryContext.TryResolve(module);
+            var context = RegistryContext.TryResolve(module, out var resolutionFailure);
             if (context == null)
             {
+                // The assembly carries [Component] metadata that must be registered (Error Boundary /
+                // props-bail / DisplayName all silently stop working without it), so a resolution failure
+                // must be visible rather than indistinguishable from "nothing to register".
+                diagnostics.Add(new DiagnosticMessage
+                {
+                    DiagnosticType = DiagnosticType.Warning,
+                    MessageData = WeaverDiagnostics.FormatResolutionFailureWarning(
+                        module,
+                        "component metadata registration",
+                        resolutionFailure,
+                        $"{entries.Count} [Component] method(s) declaring IsErrorBoundary / Memoize /"
+                        + " DisplayName are not registered, so those settings will not take effect at"
+                        + " runtime."),
+                });
                 return false;
             }
 
@@ -235,17 +247,28 @@ namespace Velvet.CodeGen
         public required MethodReference RegisterMemoize { get; init; }
         public required MethodReference RegisterDisplayName { get; init; }
 
-        public static RegistryContext? TryResolve(ModuleDefinition module)
+        // Resolves the registry members the weaver injects calls to. On failure, returns null and reports
+        // what could not be resolved through failure so the caller can emit a diagnostic instead of
+        // silently skipping the assembly.
+        public static RegistryContext? TryResolve(ModuleDefinition module, out string failure)
         {
+            failure = string.Empty;
+
             var registryType = module.GetType(RegistryTypeFullName)
-                ?? ResolveExternal(module, RegistryTypeFullName);
-            if (registryType == null) return null;
+                ?? WeaverDiagnostics.ResolveExternal(module, RegistryTypeFullName);
+            if (registryType == null)
+            {
+                failure = $"the type '{RegistryTypeFullName}' could not be resolved from the assembly's references.";
+                return null;
+            }
 
             var registerErrorBoundary = ResolveRegisterMethod(registryType, "RegisterErrorBoundary", 2);
             var registerMemoize = ResolveRegisterMethod(registryType, "RegisterMemoize", 2);
             var registerDisplayName = ResolveRegisterMethod(registryType, "RegisterComponentDisplayName", 3);
             if (registerErrorBoundary == null || registerMemoize == null || registerDisplayName == null)
             {
+                failure = $"the registration methods on '{RegistryTypeFullName}' could not be resolved on the"
+                    + " referenced Velvet assembly.";
                 return null;
             }
 
@@ -258,18 +281,6 @@ namespace Velvet.CodeGen
         }
 
         private const string RegistryTypeFullName = "Velvet.ComponentMethodRegistry";
-
-        private static TypeDefinition? ResolveExternal(ModuleDefinition module, string fullName)
-        {
-            foreach (var asmRef in module.AssemblyReferences)
-            {
-                var asm = module.AssemblyResolver.Resolve(asmRef);
-                if (asm == null) continue;
-                var t = asm.MainModule.GetType(fullName);
-                if (t != null) return t;
-            }
-            return null;
-        }
 
         private static MethodDefinition? ResolveRegisterMethod(TypeDefinition registry, string name, int parameterCount)
         {
