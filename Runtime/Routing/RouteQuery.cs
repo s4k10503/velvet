@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Velvet
 {
@@ -49,6 +50,7 @@ namespace Velvet
         private static string DecodeQueryComponent(string component) =>
             Uri.UnescapeDataString(component.Replace('+', ' '));
 
+        [return: NotNullIfNotNull(nameof(path))]
         internal static string? StripQuery(string? path)
         {
             if (path == null)

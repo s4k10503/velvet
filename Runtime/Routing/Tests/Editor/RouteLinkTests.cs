@@ -4,6 +4,7 @@ using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet;
+using Velvet.TestUtilities;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
@@ -17,11 +18,13 @@ namespace Velvet.Tests
     /// <item>Active matching is case-insensitive by default (including the non-end sub-path form);
     /// <c>caseSensitive: true</c> opts into ordinal comparison so a different-case target is inactive while the
     /// same-case target stays active.</item>
+    /// <item>Clicking a <c>V.Link</c> or <c>V.NavLink</c> navigates via the active router.</item>
     /// </list>
     /// </summary>
     /// <remarks>
-    /// Click dispatch through a real panel is unreliable in EditMode, so these assert on the rendered structure
-    /// (button text and applied classes derived from the current location) rather than on navigation.
+    /// Click dispatch through a real panel is unreliable in EditMode, so structure tests assert on the rendered
+    /// output (button text and applied classes derived from the current location), and click tests drive the
+    /// button's callback registry directly via the synthetic-event helper instead of a panel.
     /// </remarks>
     [TestFixture]
     internal sealed class RouteLinkTests
@@ -60,6 +63,43 @@ namespace Velvet.Tests
             var button = FindButton(_root);
             Assume.That(button, Is.Not.Null, "Precondition: the link rendered a button");
             Assert.That(button!.text, Is.EqualTo("About"));
+        }
+
+        [Test]
+        public void Given_Link_When_Clicked_Then_NavigatesToTarget()
+        {
+            // Arrange — SimulateClick drives the button's callback registry directly, so the click
+            // path is exercisable without a live panel.
+            using var mounted = MountAt("/home", V.Link(to: "/home", text: "Home"));
+            var button = FindButton(_root);
+            Assume.That(button, Is.Not.Null, "Precondition: the link rendered a button");
+            var navigated = false;
+            Router.Current!.OnLocationChanged += _ => navigated = true;
+
+            // Act
+            button!.SimulateClick();
+
+            // Assert
+            Assert.That(navigated, Is.True, "A Link click navigates via the active router");
+        }
+
+        [Test]
+        public void Given_NavLink_When_Clicked_Then_NavigatesToTarget()
+        {
+            // NavLink delegates its click/navigate wiring to Link; a click must still navigate.
+            // Arrange
+            using var mounted = MountAt("/home",
+                V.NavLink(to: "/home", activeClass: "is-active", text: "Home"));
+            var button = FindButton(_root);
+            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
+            var navigated = false;
+            Router.Current!.OnLocationChanged += _ => navigated = true;
+
+            // Act
+            button!.SimulateClick();
+
+            // Assert
+            Assert.That(navigated, Is.True, "A NavLink click navigates via the active router");
         }
 
         [Test]

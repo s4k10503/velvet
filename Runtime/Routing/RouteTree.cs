@@ -145,7 +145,7 @@ namespace Velvet
                 yield break;
             }
 
-            var trimmed = path.TrimStart('/').TrimEnd('/');
+            var trimmed = TrimSlashes(path);
             if (trimmed.Length == 0)
             {
                 yield break;
@@ -239,14 +239,20 @@ namespace Velvet
         private static bool TryMatchBranch(RouteBranch branch, string[] segments, out List<RouteMatch>? matches)
         {
             matches = null;
-            var captured = new Dictionary<string, string>();
 
-            if (!TryConsume(branch.Pattern, 0, segments, 0, captured))
+            // The params dictionary is created lazily on the first param/splat capture: Match() probes
+            // every ranked branch until one succeeds, and most probes fail on a static segment before
+            // capturing anything, so an eager allocation per attempted branch would be pure waste.
+            Dictionary<string, string>? captured = null;
+
+            if (!TryConsume(branch.Pattern, 0, segments, 0, ref captured))
             {
                 return false;
             }
 
-            matches = BuildMatches(branch.Chain, captured);
+            // A paramless successful match still exposes a (shared, empty) dictionary at every level,
+            // preserving the pre-lazy contract that RouteMatch.Params is never null.
+            matches = BuildMatches(branch.Chain, captured ?? new Dictionary<string, string>());
             return true;
         }
 
@@ -256,7 +262,7 @@ namespace Velvet
         /// the remaining path tail.
         /// </summary>
         private static bool TryConsume(
-            List<RouteSegment>? pattern, int pi, string[] segments, int si, Dictionary<string, string> captured)
+            List<RouteSegment>? pattern, int pi, string[] segments, int si, ref Dictionary<string, string>? captured)
         {
             if (pattern == null) return false;
             while (pi < pattern.Count)
@@ -269,6 +275,7 @@ namespace Velvet
                     var rest = si >= segments.Length
                         ? string.Empty
                         : string.Join("/", segments, si, segments.Length - si);
+                    captured ??= new Dictionary<string, string>();
                     captured["*"] = rest;
                     return true;
                 }
@@ -282,18 +289,20 @@ namespace Velvet
                     {
                         var keyExisted = false;
                         string snap = "";
-                        if (seg.IsParam)
+                        if (seg.IsParam && captured != null)
                         {
                             keyExisted = captured.TryGetValue(seg.Value, out snap);
                         }
 
-                        if (TryMatchSingle(seg, segments[si], captured) &&
-                            TryConsume(pattern, pi + 1, segments, si + 1, captured))
+                        if (TryMatchSingle(seg, segments[si], ref captured) &&
+                            TryConsume(pattern, pi + 1, segments, si + 1, ref captured))
                         {
                             return true;
                         }
 
-                        if (seg.IsParam)
+                        // The failed "present" attempt may have been what created the dictionary, so
+                        // it can be non-null here even when the snapshot above saw null.
+                        if (seg.IsParam && captured != null)
                         {
                             if (keyExisted)
                             {
@@ -307,10 +316,10 @@ namespace Velvet
                     }
 
                     // Skip the optional segment without consuming a path segment.
-                    return TryConsume(pattern, pi + 1, segments, si, captured);
+                    return TryConsume(pattern, pi + 1, segments, si, ref captured);
                 }
 
-                if (si >= segments.Length || !TryMatchSingle(seg, segments[si], captured))
+                if (si >= segments.Length || !TryMatchSingle(seg, segments[si], ref captured))
                 {
                     return false;
                 }
@@ -323,10 +332,11 @@ namespace Velvet
             return si == segments.Length;
         }
 
-        private static bool TryMatchSingle(RouteSegment seg, string pathSeg, Dictionary<string, string> captured)
+        private static bool TryMatchSingle(RouteSegment seg, string pathSeg, ref Dictionary<string, string>? captured)
         {
             if (seg.IsParam)
             {
+                captured ??= new Dictionary<string, string>();
                 captured[seg.Value] = pathSeg;
                 return true;
             }
@@ -385,7 +395,7 @@ namespace Velvet
                 return string.Empty;
             }
 
-            var pattern = route.Path.TrimStart('/').TrimEnd('/');
+            var pattern = TrimSlashes(route.Path);
             var parts = pattern.Split('/', StringSplitOptions.RemoveEmptyEntries);
             var resolved = new List<string>(parts.Length);
 
@@ -442,7 +452,7 @@ namespace Velvet
                 return "/";
             }
 
-            var segment = route.Path?.TrimStart('/').TrimEnd('/') ?? string.Empty;
+            var segment = TrimSlashes(route.Path ?? string.Empty);
             if (parentId.Length == 0 || parentId == "/")
             {
                 return "/" + segment;
@@ -463,7 +473,7 @@ namespace Velvet
                 return "";
             }
 
-            return route.Path?.TrimStart('/').TrimEnd('/') ?? string.Empty;
+            return TrimSlashes(route.Path ?? string.Empty);
         }
 
         #endregion
@@ -475,8 +485,14 @@ namespace Velvet
                 return Array.Empty<string>();
             }
 
-            var trimmed = path.TrimStart('/').TrimEnd('/');
+            var trimmed = TrimSlashes(path);
             return trimmed.Length == 0 ? Array.Empty<string>() : trimmed.Split('/');
         }
+
+        /// <summary>
+        /// Canonical leading/trailing slash normalization shared by every pattern/path consumer in
+        /// this class. Interior slashes are preserved; segment splitting stays with each caller.
+        /// </summary>
+        private static string TrimSlashes(string path) => path.TrimStart('/').TrimEnd('/');
     }
 }

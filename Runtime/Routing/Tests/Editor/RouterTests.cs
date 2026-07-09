@@ -1,10 +1,12 @@
 using System;
 using System.Collections;
+using System.Reflection;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 using Velvet;
+using Velvet.TestUtilities;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
@@ -18,6 +20,8 @@ namespace Velvet.Tests
     /// <see cref="RouteMatch.RouteId"/>.</item>
     /// <item>Each successful navigation pushes a history entry; GoBack/GoForward restore the previous/next
     /// location, and stepping past either end returns <see cref="NavigationResult.Cancelled"/>.</item>
+    /// <item>The history stack is FIFO-capped: pushing beyond the cap evicts the oldest entry while the
+    /// Back/Forward index keeps pointing at the same locations.</item>
     /// <item>GoBack/GoForward serve loader data and loader errors from the history cache without re-running the
     /// loader.</item>
     /// <item>A Suspend loader commits navigation immediately and resolves later; on resolution or failure the
@@ -252,6 +256,84 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(result, Is.EqualTo(NavigationResult.Cancelled));
+        }
+
+        #endregion
+
+        #region History FIFO cap
+
+        // The history cap is a private constant; read it via reflection so these tests stay in
+        // lockstep with the production value instead of hard-coding it.
+        private static int HistoryCap => (int)typeof(Router)
+            .GetField("MaxHistoryEntries", BindingFlags.NonPublic | BindingFlags.Static)
+            .GetRawConstantValue();
+
+        /// <summary>
+        /// Pushes one navigation more than the history cap ("/p1" .. "/p{cap+1}"), so the head
+        /// entry ("/p1") has been evicted and the router sits on the latest entry.
+        /// </summary>
+        private static Router BuildRouterAtCapOverflow(out string lastPath)
+        {
+            var router = new Router(new[] { Route(":page") });
+            var total = HistoryCap + 1;
+            for (var i = 1; i <= total; i++)
+            {
+                router.NavigateSync($"/p{i}");
+            }
+            lastPath = $"/p{total}";
+            return router;
+        }
+
+        [Test]
+        public void Given_PushesBeyondHistoryCap_When_GoBack_Then_LandsOnEntryBeforeLatest()
+        {
+            // Evicting the head shifts every entry down by one, so the history index must shift with
+            // it for a Back step to still land on the entry pushed immediately before the latest.
+            // Arrange
+            var router = BuildRouterAtCapOverflow(out var lastPath);
+            Assume.That(router.CurrentLocation.Path, Is.EqualTo(lastPath), "Precondition: the latest push committed");
+
+            // Act
+            router.GoBackSync();
+
+            // Assert
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo($"/p{HistoryCap}"));
+        }
+
+        [Test]
+        public void Given_PushesBeyondHistoryCap_When_WalkingBackToStart_Then_OldestEntryWasEvicted()
+        {
+            // Arrange
+            var router = BuildRouterAtCapOverflow(out _);
+
+            // Act: walk to the oldest reachable entry (bounded so a broken CanGoBack cannot hang).
+            var steps = 0;
+            while (router.CanGoBack && steps++ < HistoryCap * 2)
+            {
+                router.GoBackSync();
+            }
+
+            // Assert: "/p1" was dropped by the FIFO cap, so the walk bottoms out on "/p2".
+            Assert.That(router.CurrentLocation.Path, Is.EqualTo("/p2"));
+        }
+
+        [Test]
+        public void Given_PushesBeyondHistoryCap_When_WalkingBackToStart_Then_HistoryCountIsCapped()
+        {
+            // Arrange
+            var router = BuildRouterAtCapOverflow(out _);
+
+            // Act: the number of possible Back steps observably measures the history length
+            // (bounded so a broken CanGoBack cannot hang).
+            var backSteps = 0;
+            while (router.CanGoBack && backSteps < HistoryCap * 2)
+            {
+                router.GoBackSync();
+                backSteps++;
+            }
+
+            // Assert: a capped history holds exactly the cap's worth of entries.
+            Assert.That(backSteps, Is.EqualTo(HistoryCap - 1));
         }
 
         #endregion
@@ -942,25 +1024,5 @@ namespace Velvet.Tests
         }
 
         #endregion
-
-        private sealed class TestRouteScopeFactory : IRouteScopeFactory
-        {
-            public int CreateScopeCount { get; private set; }
-
-            public IRouteScope CreateScope(RouteDefinition? route, IRouteScope? parent)
-            {
-                CreateScopeCount++;
-                return new TestRouteScope();
-            }
-        }
-
-        private sealed class TestRouteScope : IRouteScope
-        {
-            public bool IsDisposed { get; private set; }
-
-            public T Resolve<T>() => throw new NotImplementedException();
-
-            public void Dispose() => IsDisposed = true;
-        }
     }
 }

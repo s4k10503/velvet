@@ -47,7 +47,6 @@ namespace Velvet
         [Component]
         public static VNode Render(Props p)
         {
-            var navigate = Hooks.UseNavigate(p.Replace);
             var location = Hooks.UseLocation();
             var currentPath = location?.Path ?? string.Empty;
             var isActive = IsActive(currentPath, p.To, p.End, p.CaseSensitive);
@@ -56,16 +55,12 @@ namespace Velvet
                 ? string.IsNullOrEmpty(p.ClassName) ? p.ActiveClass : p.ClassName + " " + p.ActiveClass
                 : p.ClassName;
 
-            var onClick = Hooks.UseCallback<Action>(
-                () => navigate(p.To).Forget(),
-                p.To, navigate);
-
-            return V.Button(
-                className: className,
-                text: p.Text,
-                onClick: onClick,
-                name: p.Name,
-                children: p.Children);
+            // NavLink is Link plus active-state styling: derive the effective class from the current
+            // location, then delegate the click/navigate wiring to the Link component so the two can
+            // never drift.
+            return V.Component(
+                RouteLink.Render,
+                new RouteLink.Props(p.To, p.Text, className, p.Name, p.Children, p.Replace));
         }
 
         private static bool IsActive(string currentPath, string to, bool end, bool caseSensitive)
@@ -95,8 +90,7 @@ namespace Velvet
             {
                 return "/";
             }
-            var qIndex = path.IndexOf('?');
-            var stripped = qIndex < 0 ? path : path.Substring(0, qIndex);
+            var stripped = RouteQuery.StripQuery(path);
             if (stripped.Length > 1)
             {
                 stripped = stripped.TrimEnd('/');
