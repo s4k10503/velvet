@@ -203,12 +203,17 @@ namespace Velvet
         // so the full set of class-driven mechanisms lives in one place and the two paths cannot drift.
         // Gap is intentionally excluded: it is re-applied separately by the per-node patch methods
         // (PatchElement / PatchMotion) AFTER children reconcile, so it sees the
-        // final child list. The variant/font work is gated on an actual class-list change; DiffClassList
-        // has its own ReferenceEquals/SequenceEqual early-outs.
+        // final child list. The variant/font work is gated on DiffClassList's own verdict of whether the
+        // class list actually changed CONTENT (not merely array identity) — every variant manipulator this
+        // derives from (ApplyVariantManipulators and its callees) reads ONLY the classNames array, so a
+        // freshly-allocated array with the same tokens carries no new information and re-deriving from it
+        // would just rebuild the same payloads. A component that rebuilds its VNode tree every render
+        // (no ILPP memoization, or a Motion resolving the same active variant label — MotionVariantResolver
+        // .ResolveApplied always concatenates a fresh array) hits this path on every patch.
         internal void SyncClassDrivenStyling(VisualElement element, string[] oldClasses, string[] newClasses)
         {
-            DiffClassList(element, oldClasses, newClasses);
-            if (!ReferenceEquals(oldClasses, newClasses))
+            var changed = DiffClassList(element, oldClasses, newClasses);
+            if (changed)
             {
                 ApplyVariantManipulators(element, newClasses);
                 // Font family / weight / italic are resolved together (so font-bold + italic compose)
@@ -221,35 +226,14 @@ namespace Velvet
         {
             PatchBaseElement(element, oldNode, newNode);
             DiffStyles(element, oldNode.Styles, newNode.Styles);
-            // Run gap LAST — after PatchCommon (which reconciles children) AND DiffStyles — so the
-            // manipulator's margin writes are the final word on the element. The wrap path writes the
-            // container's OWN margins (-gap/2); keeping gap after DiffStyles preserves the ordering
-            // invariant that the manipulator's container-margin writes are never clobbered by a later
-            // inline-style diff on the same element. (Today DiffStyles only touches color properties, but
-            // the invariant must hold if a margin-writing StyleOverride is ever added.) Running after
-            // PatchCommon also re-applies against the current child set so a child add / remove re-spaces
-            // even when the className did not change.
-            ApplyGapManipulator(element, newNode.ClassNames);
-            ApplyDivideManipulator(element, newNode.ClassNames);
-            ApplyGridManipulator(element, newNode.ClassNames);
-            ApplyStructuralVariants(element);
-            // has-[.class]: re-evaluated with the element AS subject (its descendants drive its own payload),
-            // at the same post-children timing — a child added / removed re-derives the match.
-            ApplyHasClassVariants(element);
-            // has-[:checked]: / has-[:focus]: re-scanned at the same timing — a checked / focused descendant
-            // added or removed fires no event, so the manipulator must re-derive from the live subtree.
-            ApplyHasVariantManipulators(element);
-            // text-transform / -decoration cascade (post-children so it reaches descendant text leaves).
-            StyleTextEffectResolver.Apply(_ctx, element, newNode.ClassNames);
-            // Gradient runs after DiffStyles (PatchCommon) so its background-image is the last word on
-            // this element — DiffStyles only writes background-image on an actual node-style change, which
-            // a gradient element never carries, so the two never fight.
-            _appliers.ApplyGradientOnPatch(element, newNode.ClassNames, skewable: true);
-            // animate-* motion runs after the gradient (a pan mode reads the live gradient) and reconciles
-            // its own restart/attach/detach against the new class list.
-            _appliers.ApplyAnimateOnPatch(element, newNode.ClassNames);
-            // After gap (and the child reconcile it follows): reconcile the paint + wrapper effect layers
-            // against the new class list. They run last so each is the final word on this element. Skew and
+            // The shared post-children passes run after PatchCommon (which reconciles children) AND
+            // DiffStyles — keeping gap after DiffStyles preserves the ordering invariant that the
+            // manipulator's container-margin writes are never clobbered by a later inline-style diff on
+            // the same element. (Today DiffStyles only touches color properties, but the invariant must
+            // hold if a margin-writing StyleOverride is ever added.)
+            ApplyPostChildrenClassPasses(element, newNode.ClassNames, gradientSkewable: true);
+            // After the shared passes: reconcile the paint + wrapper effect layers against the new class
+            // list. They run last so each is the final word on this element. Skew and
             // shadow are wrapper-less paints (the silhouette / shadow are the element's own
             // generateVisualContent); their stash / spec sync must observe this patch's freshly-applied class
             // styling. clip-path runs BEFORE shadow: a clip clips the box-shadow too (CSS), so the shadow
@@ -262,6 +246,42 @@ namespace Velvet
             // are mutually exclusive — one wrapper per element). The shadow is now a paint, so a ring composes
             // with it rather than competing for the wrapper.
             _appliers.ApplyRingOnPatch(element, newNode.ClassNames, suppress: clipActive, allowWrap: true);
+        }
+
+        // The ordered post-children effect-pass sequence shared by PatchElement and PatchMotion, kept in
+        // one place so the two patch paths cannot drift (a pass added here reaches both). The ORDER is
+        // load-bearing:
+        // - Gap runs first but still AFTER PatchCommon (which reconciles children) so the manipulator's
+        //   margin writes are the final word on the element — the wrap path writes the container's OWN
+        //   margins (-gap/2) — and so it re-applies against the current child set (a child add / remove
+        //   re-spaces even when the className did not change). Divide / grid follow at the same timing
+        //   for the same child-set reason.
+        // - Structural variants (first:/last:/nth) re-derive every child's position-based match from the
+        //   final sibling order.
+        // - has-[.class]: re-evaluated with the element AS subject (its descendants drive its own payload),
+        //   at the same post-children timing — a child added / removed re-derives the match.
+        // - has-[:checked]: / has-[:focus]: re-scanned at the same timing — a checked / focused descendant
+        //   added or removed fires no event, so the manipulator must re-derive from the live subtree.
+        // - text-transform / -decoration cascade (post-children so it reaches descendant text leaves).
+        // - Gradient runs after the node-style diff so its background-image is the last word on this
+        //   element — DiffStyles only writes background-image on an actual node-style change, which a
+        //   gradient element never carries, so the two never fight. gradientSkewable is the one per-path
+        //   knob: an ElementNode may render a sheared silhouette, a Motion never does (see PatchMotion).
+        // - animate-* motion runs after the gradient (a pan mode reads the live gradient) and reconciles
+        //   its own restart/attach/detach against the new class list.
+        // The element-only paint/wrapper tail (skew / clip-path / shadow, then ring) stays with the
+        // callers: PatchMotion intentionally omits the trio and passes different ring flags.
+        private void ApplyPostChildrenClassPasses(VisualElement element, string[] classNames, bool gradientSkewable)
+        {
+            ApplyGapManipulator(element, classNames);
+            ApplyDivideManipulator(element, classNames);
+            ApplyGridManipulator(element, classNames);
+            ApplyStructuralVariants(element);
+            ApplyHasClassVariants(element);
+            ApplyHasVariantManipulators(element);
+            StyleTextEffectResolver.Apply(_ctx, element, classNames);
+            _appliers.ApplyGradientOnPatch(element, classNames, skewable: gradientSkewable);
+            _appliers.ApplyAnimateOnPatch(element, classNames);
         }
 
         private void PatchText(Label label, TextNode oldNode, TextNode newNode)
@@ -359,19 +379,11 @@ namespace Velvet
                 PatchBaseElement(element, oldNode, newNode, appliedOld, appliedNew);
             }
 
-            // MotionNode has no Styles diff, but keep the gap / divide manipulators last (after PatchCommon
-            // reconciles children) for the same child-set re-spacing reason as PatchElement.
-            ApplyGapManipulator(element, appliedNew);
-            ApplyDivideManipulator(element, appliedNew);
-            ApplyGridManipulator(element, appliedNew);
-            ApplyStructuralVariants(element);
-            ApplyHasClassVariants(element);
-            ApplyHasVariantManipulators(element);
-            StyleTextEffectResolver.Apply(_ctx, element, appliedNew);
-            // A Motion never renders skew (the animation node never attaches a sheared silhouette), so its
-            // gradient always takes the straight background-image path even with skew classes present.
-            _appliers.ApplyGradientOnPatch(element, appliedNew, skewable: false);
-            _appliers.ApplyAnimateOnPatch(element, appliedNew);
+            // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
+            // children) directly. A Motion never renders skew (the animation node never attaches a sheared
+            // silhouette), so its gradient always takes the straight background-image path even with skew
+            // classes present (gradientSkewable: false).
+            ApplyPostChildrenClassPasses(element, appliedNew, gradientSkewable: false);
             // A Motion carries no shadow paint: the create path warns and skips a shadow-* on a Motion (the
             // animation node owns its transition; a shadow belongs on a wrapped Div), so there is never a
             // binding to update — and the patch must not start attaching one. Ring likewise never wraps a
@@ -459,18 +471,21 @@ namespace Velvet
 
         // ClassList diff. Skips work via fast paths using ReferenceEquals and SequenceEqual.
         // Uses linear comparison for sizes ≤ 8 and a HashSet otherwise.
-        internal void DiffClassList(VisualElement element, string[] oldClasses, string[] newClasses)
+        // Returns whether the class list changed content (false when either fast path hit), so the caller
+        // can gate variant/font re-derivation on real change rather than array identity — a
+        // content-identical but freshly-allocated array must not re-derive anything.
+        internal bool DiffClassList(VisualElement element, string[] oldClasses, string[] newClasses)
         {
             oldClasses ??= Array.Empty<string>();
             newClasses ??= Array.Empty<string>();
             if (ReferenceEquals(oldClasses, newClasses))
             {
-                return;
+                return false;
             }
 
             if (SequenceEqual(oldClasses, newClasses))
             {
-                return;
+                return false;
             }
 
             const int linearThreshold = 8;
@@ -485,6 +500,7 @@ namespace Velvet
             {
                 ReapplyArbitraryValues(element, newClasses);
             }
+            return true;
         }
 
         // Re-asserts the class list's inline-resolved (arbitrary / preset) values. Shared with the

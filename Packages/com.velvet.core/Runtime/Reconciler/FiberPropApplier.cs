@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -91,21 +92,19 @@ namespace Velvet
             tfEl.isPasswordField = settings?.IsPassword ?? false;
         }
 
-        // Applies choices to DropdownField / RadioButtonGroup.
+        // Applies choices to DropdownField / RadioButtonGroup. A null Choices prop (or no settings at
+        // all) resets the widget to an empty choice list instead of stranding a prior render's options,
+        // mirroring ApplyFieldValue's null-clears-to-default contract.
         public static void ApplyChoices(VisualElement element, ChoicesSettings? settings)
         {
-            if (settings?.Choices == null)
-            {
-                return;
-            }
-
+            var choices = settings?.Choices ?? new List<string>();
             switch (element)
             {
                 case DropdownField dd:
-                    dd.choices = settings.Choices;
+                    dd.choices = choices;
                     break;
                 case RadioButtonGroup rbg:
-                    rbg.choices = settings.Choices;
+                    rbg.choices = choices;
                     break;
             }
         }

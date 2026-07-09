@@ -133,72 +133,34 @@ namespace Velvet
                 }
                 deduped.Reverse();
 
-                // Group entries by their nearest pushed ancestor. Non-pushed intermediates are
-                // skipped so wrapper-mount subtrees whose middle ancestors did not defer collapse
-                // naturally.
-                Dictionary<ComponentFiber, List<(ComponentFiber Fiber, bool IsMount)>>? childrenByParent = null;
-                var roots = new List<(ComponentFiber Fiber, bool IsMount)>();
-                for (var i = 0; i < deduped.Count; i++)
-                {
-                    var entry = deduped[i];
-                    var ancestor = entry.Fiber.Parent;
-                    while (ancestor != null && !pushedSet.Contains(ancestor)) ancestor = ancestor.Parent;
-                    if (ancestor == null)
-                    {
-                        roots.Add(entry);
-                    }
-                    else
-                    {
-                        childrenByParent ??= new Dictionary<ComponentFiber, List<(ComponentFiber Fiber, bool IsMount)>>();
-                        if (!childrenByParent.TryGetValue(ancestor, out var list))
-                        {
-                            list = new List<(ComponentFiber Fiber, bool IsMount)>();
-                            childrenByParent[ancestor] = list;
-                        }
-                        list.Add(entry);
-                    }
-                }
-
-                for (var i = 0; i < roots.Count; i++) DrainPostOrderIterative(roots[i], childrenByParent);
-
+                // Reconstruct the post-order sequence over the deduped snapshot (nearest-staged-ancestor
+                // grouping — see OrderByNearestStagedAncestorPostOrder), then commit each fiber's deferred
+                // effects in that order. The traversal reads only the snapshot built above, so ordering
+                // first and running after is equivalent to running mid-walk; an effect that synchronously
+                // pushes MORE deferred fibers lands on the stack and is picked up by the outer re-drain
+                // loop, exactly as before.
+                var ordered = new List<(ComponentFiber Fiber, bool IsMount)>(deduped.Count);
+                OrderByNearestStagedAncestorPostOrder(deduped, pushedSet, static e => e.Fiber, ordered);
                 bufferPool.ReturnFiberSet(pushedSet);
-            }
-        }
 
-        // Iterative post-order DFS drain. Recursion-free to prevent .NET stack overflow on deep
-        // inline-mount chains (1k+ nested Provider / Memo subtrees); the same iterative pattern
-        // that FiberTreeTraversal.Visit documented away.
-        private static void DrainPostOrderIterative(
-            (ComponentFiber Fiber, bool IsMount) root,
-            Dictionary<ComponentFiber, List<(ComponentFiber Fiber, bool IsMount)>>? childrenByParent)
-        {
-            var workStack = new Stack<(int ChildIndex, (ComponentFiber Fiber, bool IsMount) Entry)>();
-            workStack.Push((0, root));
-            while (workStack.Count > 0)
-            {
-                var (childIndex, entry) = workStack.Pop();
-                if (childrenByParent != null && childrenByParent.TryGetValue(entry.Fiber, out var children) && childIndex < children.Count)
+                for (var i = 0; i < ordered.Count; i++)
                 {
-                    // Resume parent after this child completes, then descend into the next child.
-                    workStack.Push((childIndex + 1, entry));
-                    workStack.Push((0, children[childIndex]));
-                    continue;
+                    // Children already committed (post-order) — commit this fiber's deferred effects.
+                    // Mount commits run the Editor-only double-invoke; re-expansion commits (parent
+                    // re-render reaching an existing inline child) only run prior cleanup + new setup
+                    // for deps-changed slots. Insertion effects fire before layout effects.
+                    // UseImperativeHandle commits between insertion and layout effects so a
+                    // parent layout effect / handle factory observes the child's handle already
+                    // written into its parent ref (imperative handles are part of the
+                    // layout-effect phase). 2-phase separation (all-insertion → all-layout across the
+                    // subtree, splitting DOM mutation from layout-effect commit) is tracked
+                    // separately for the broader CommitSubtreeEffects refactor.
+                    var (deferred, isMount) = ordered[i];
+                    if (deferred == null || deferred.IsDisposed) continue;
+                    RunInsertionEffects(deferred, mountDoubleInvoke: isMount);
+                    FiberHookCommit.RunImperativeHandleSlots(deferred);
+                    RunLayoutEffects(deferred, mountDoubleInvoke: isMount);
                 }
-                // All children visited (or none) — commit this fiber's deferred effects.
-                // Mount commits run the Editor-only double-invoke; re-expansion commits (parent
-                // re-render reaching an existing inline child) only run prior cleanup + new setup
-                // for deps-changed slots. Insertion effects fire before layout effects.
-                // UseImperativeHandle commits between insertion and layout effects so a
-                // parent layout effect / handle factory observes the child's handle already
-                // written into its parent ref (imperative handles are part of the
-                // layout-effect phase). 2-phase separation (all-insertion → all-layout across the
-                // subtree, splitting DOM mutation from layout-effect commit) is tracked
-                // separately for the broader CommitSubtreeEffects refactor.
-                var deferred = entry.Fiber;
-                if (deferred == null || deferred.IsDisposed) continue;
-                RunInsertionEffects(deferred, mountDoubleInvoke: entry.IsMount);
-                FiberHookCommit.RunImperativeHandleSlots(deferred);
-                RunLayoutEffects(deferred, mountDoubleInvoke: entry.IsMount);
             }
         }
 
@@ -336,52 +298,64 @@ namespace Velvet
         private static List<ComponentFiber> OrderFibersPostOrder(List<ComponentFiber> staged)
         {
             var stagedSet = new HashSet<ComponentFiber>(staged);
-            Dictionary<ComponentFiber, List<ComponentFiber>>? childrenByParent = null;
-            var roots = new List<ComponentFiber>();
-            for (var i = 0; i < staged.Count; i++)
-            {
-                var fiber = staged[i];
-                var ancestor = fiber.Parent;
-                while (ancestor != null && !stagedSet.Contains(ancestor)) ancestor = ancestor.Parent;
-                if (ancestor == null)
-                {
-                    roots.Add(fiber);
-                }
-                else
-                {
-                    childrenByParent ??= new Dictionary<ComponentFiber, List<ComponentFiber>>();
-                    if (!childrenByParent.TryGetValue(ancestor, out var list))
-                    {
-                        list = new List<ComponentFiber>();
-                        childrenByParent[ancestor] = list;
-                    }
-                    list.Add(fiber);
-                }
-            }
-
             var result = new List<ComponentFiber>(staged.Count);
-            for (var i = 0; i < roots.Count; i++) EmitPostOrder(roots[i], childrenByParent, result);
+            OrderByNearestStagedAncestorPostOrder(staged, stagedSet, static f => f, result);
             return result;
         }
 
-        private static void EmitPostOrder(
-            ComponentFiber root,
-            Dictionary<ComponentFiber, List<ComponentFiber>>? childrenByParent,
-            List<ComponentFiber> result)
+        // The one post-order-by-nearest-staged-ancestor implementation shared by the layout-effect drain
+        // (entries carry an IsMount flag) and the passive-effect drain (plain fibers): each staged entry is
+        // grouped under its NEAREST staged ancestor — non-staged intermediates are skipped, so wrapper-mount
+        // subtrees whose middle ancestors did not stage collapse naturally — then an iterative post-order
+        // DFS over the resulting forest emits children before their parent into result, roots in their
+        // relative staging order. Iterative (stack-based, recursion-free) to prevent .NET stack overflow on
+        // deep inline-mount chains (1k+ nested Provider / Memo subtrees); the same iterative pattern that
+        // FiberTreeTraversal.Visit documented away. fiberOf must be a compiler-cached static lambda so this
+        // stays allocation-free per call beyond the grouping collections themselves.
+        private static void OrderByNearestStagedAncestorPostOrder<T>(
+            List<T> staged, HashSet<ComponentFiber> stagedSet, Func<T, ComponentFiber> fiberOf, List<T> result)
         {
-            // Iterative post-order DFS (recursion-free) to avoid .NET stack overflow on deep chains.
-            var workStack = new Stack<(int ChildIndex, ComponentFiber Fiber)>();
-            workStack.Push((0, root));
-            while (workStack.Count > 0)
+            Dictionary<ComponentFiber, List<T>>? childrenByParent = null;
+            var roots = new List<T>();
+            for (var i = 0; i < staged.Count; i++)
             {
-                var (childIndex, fiber) = workStack.Pop();
-                if (childrenByParent != null && childrenByParent.TryGetValue(fiber, out var children) && childIndex < children.Count)
+                var entry = staged[i];
+                var ancestor = fiberOf(entry).Parent;
+                while (ancestor != null && !stagedSet.Contains(ancestor)) ancestor = ancestor.Parent;
+                if (ancestor == null)
                 {
-                    workStack.Push((childIndex + 1, fiber));
-                    workStack.Push((0, children[childIndex]));
-                    continue;
+                    roots.Add(entry);
                 }
-                result.Add(fiber);
+                else
+                {
+                    childrenByParent ??= new Dictionary<ComponentFiber, List<T>>();
+                    if (!childrenByParent.TryGetValue(ancestor, out var list))
+                    {
+                        list = new List<T>();
+                        childrenByParent[ancestor] = list;
+                    }
+                    list.Add(entry);
+                }
+            }
+
+            var workStack = new Stack<(int ChildIndex, T Entry)>();
+            for (var r = 0; r < roots.Count; r++)
+            {
+                workStack.Push((0, roots[r]));
+                while (workStack.Count > 0)
+                {
+                    var (childIndex, entry) = workStack.Pop();
+                    if (childrenByParent != null
+                        && childrenByParent.TryGetValue(fiberOf(entry), out var children)
+                        && childIndex < children.Count)
+                    {
+                        // Resume the parent after this child's subtree completes, then descend.
+                        workStack.Push((childIndex + 1, entry));
+                        workStack.Push((0, children[childIndex]));
+                        continue;
+                    }
+                    result.Add(entry);
+                }
             }
         }
 
