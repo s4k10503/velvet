@@ -68,4 +68,5 @@ Tests are **colocated** with the code: `Runtime/<Area>/Tests/Editor/` and `.../T
 
 ## Conventions
 
-- Commits use Conventional Commits with the `velvet` scope, frequently written in Japanese (e.g. `fix(velvet): …`, `feat(velvet): …`, `refactor(velvet): …`).
+- Commits use Conventional Commits with the `velvet` scope (e.g. `fix(velvet): …`, `feat(velvet): …`, `refactor(velvet): …`).
+- Everything in this repo is written in English: code, comments, commit messages, and PR titles/bodies. PR descriptions state what changed and why — never the local workflow that produced the change (audit/review process, agent tooling, session details).
