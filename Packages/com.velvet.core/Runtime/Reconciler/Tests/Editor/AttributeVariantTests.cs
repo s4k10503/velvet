@@ -211,5 +211,21 @@ namespace Velvet.Tests
             // Assert
             Assert.IsTrue(El(scope).ClassListContains("bg-mark"));
         }
+
+        [Test]
+        public void Given_Div_When_DataSuppliedViaParam_Then_PayloadApplied()
+        {
+            // Arrange/Act — V.Div supplies a data-* attribute via its own data: convenience parameter
+            // (rather than an explicit props: bag) and matches its data-[...] variant.
+            using var scope = new ReconcilerScope();
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Div(className: "data-[state=open]:bg-mark", name: "el",
+                    data: new Dictionary<string, string> { ["state"] = "open" }),
+            });
+
+            // Assert — the data: parameter reaches Div, not just typed widget factories.
+            Assert.IsTrue(El(scope).ClassListContains("bg-mark"));
+        }
     }
 }

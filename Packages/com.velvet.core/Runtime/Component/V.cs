@@ -70,6 +70,8 @@ namespace Velvet
         /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
         /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
         /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this element.</returns>
         public static ElementNode Div(
             string? className = null,
@@ -81,7 +83,9 @@ namespace Velvet
             VNode?[]? children = null,
             string? whileHoverClass = null,
             string? whileTapClass = null,
-            string? whileFocusClass = null)
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             return new ElementNode
             {
@@ -89,7 +93,7 @@ namespace Velvet
                 ElementType = typeof(VisualElement),
                 Name = name,
                 ClassNames = ParseClassNames(className),
-                Props = props,
+                Props = WithAttributes(props, data, aria),
                 Styles = styles,
                 Children = children ?? EmptyChildren,
                 Events = EmptyEvents,
@@ -128,15 +132,27 @@ namespace Velvet
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="props">Optional FiberElementProps (text / tooltip / enabled / etc.) bag.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <param name="children">Child VNodes rendered inside this element.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this element.</returns>
         public static ElementNode Custom<T>(
             string? className = null,
             string? key = null,
             string? name = null,
+            FiberElementProps? props = null,
             Func<VisualElement, Action>? refCallback = null,
-            VNode?[]? children = null) where T : VisualElement
+            VNode?[]? children = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null) where T : VisualElement
         {
             return new ElementNode
             {
@@ -144,9 +160,13 @@ namespace Velvet
                 ElementType = typeof(T),
                 Name = name,
                 ClassNames = ParseClassNames(className),
+                Props = WithAttributes(props, data, aria),
                 Children = children ?? EmptyChildren,
                 Events = EmptyEvents,
                 RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
@@ -184,6 +204,9 @@ namespace Velvet
         /// <param name="onCreated">Callback invoked once when the ScrollView VisualElement is first created.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <param name="children">Child VNodes placed inside the scroll content container.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing the ScrollView.</returns>
@@ -197,6 +220,9 @@ namespace Velvet
             Action<VisualElement>? onCreated = null,
             Func<VisualElement, Action>? refCallback = null,
             VNode?[]? children = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
@@ -220,6 +246,9 @@ namespace Velvet
                 Events = EmptyEvents,
                 OnCreated = onCreated,
                 RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
@@ -393,6 +422,9 @@ namespace Velvet
         /// <param name="enabled">When false, disables the slider input.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <param name="onCreated">Callback invoked once when the Slider VisualElement is first created.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this slider.</returns>
@@ -407,6 +439,9 @@ namespace Velvet
             bool? enabled = null,
             Func<VisualElement, Action>? refCallback = null,
             Action<VisualElement>? onCreated = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
@@ -435,6 +470,9 @@ namespace Velvet
                 Events = events,
                 RefCallback = refCallback,
                 OnCreated = onCreated,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
@@ -449,6 +487,9 @@ namespace Velvet
         /// <param name="label">Label text shown next to the toggle.</param>
         /// <param name="enabled">When false, disables user interaction with the toggle.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this toggle.</returns>
@@ -461,6 +502,9 @@ namespace Velvet
             string? label = null,
             bool? enabled = null,
             Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
@@ -486,6 +530,9 @@ namespace Velvet
                 Children = EmptyChildren,
                 Events = events,
                 RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
@@ -501,6 +548,9 @@ namespace Velvet
         /// <param name="isPasswordField">When true, masks the input as a password field.</param>
         /// <param name="enabled">When false, disables user input.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this text field.</returns>
@@ -514,6 +564,9 @@ namespace Velvet
             bool? isPasswordField = null,
             bool? enabled = null,
             Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
@@ -542,6 +595,9 @@ namespace Velvet
                 Children = EmptyChildren,
                 Events = events,
                 RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
@@ -600,6 +656,9 @@ namespace Velvet
         /// <param name="label">Label text shown next to the dropdown.</param>
         /// <param name="enabled">When false, disables user interaction with the dropdown.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this dropdown.</returns>
@@ -613,6 +672,9 @@ namespace Velvet
             string? label = null,
             bool? enabled = null,
             Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
@@ -639,6 +701,9 @@ namespace Velvet
                 Children = EmptyChildren,
                 Events = events,
                 RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
@@ -651,6 +716,11 @@ namespace Velvet
         /// <param name="enabled">When false, disables user interaction with the list.</param>
         /// <param name="styles">Inline style overrides applied on top of USS classes.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this list view.</returns>
         public static ElementNode ListView(
             string? className = null,
@@ -658,7 +728,12 @@ namespace Velvet
             string? name = null,
             bool? enabled = null,
             StyleOverrides? styles = null,
-            Func<VisualElement, Action>? refCallback = null)
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             FiberElementProps? props = null;
             if (enabled.HasValue)
@@ -666,6 +741,7 @@ namespace Velvet
                 props = VNodePool.RentProps();
                 props.Enabled = enabled;
             }
+            props = WithAttributes(props, data, aria);
 
             return new ElementNode
             {
@@ -678,6 +754,9 @@ namespace Velvet
                 Children = EmptyChildren,
                 Events = EmptyEvents,
                 RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
@@ -692,6 +771,11 @@ namespace Velvet
         /// <param name="label">Label text shown next to the radio button.</param>
         /// <param name="enabled">When false, disables user interaction with the radio button.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this radio button.</returns>
         public static ElementNode RadioButton(
             string? className = null,
@@ -701,7 +785,12 @@ namespace Velvet
             string? name = null,
             string? label = null,
             bool? enabled = null,
-            Func<VisualElement, Action>? refCallback = null)
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<bool> { Handler = onValueChanged } : null);
 
@@ -713,6 +802,7 @@ namespace Velvet
                 props.Text = label;
                 props.Enabled = enabled;
             }
+            props = WithAttributes(props, data, aria);
 
             return new ElementNode
             {
@@ -724,6 +814,9 @@ namespace Velvet
                 Children = EmptyChildren,
                 Events = events,
                 RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
@@ -739,6 +832,11 @@ namespace Velvet
         /// <param name="label">Group-level label text.</param>
         /// <param name="enabled">When false, disables user interaction with the entire group.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this radio button group.</returns>
         public static ElementNode RadioButtonGroup(
             string? className = null,
@@ -749,7 +847,12 @@ namespace Velvet
             string? name = null,
             string? label = null,
             bool? enabled = null,
-            Func<VisualElement, Action>? refCallback = null)
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null);
 
@@ -762,6 +865,7 @@ namespace Velvet
                 props.Enabled = enabled;
                 props.Choices = choices != null ? new ChoicesSettings(choices) : null;
             }
+            props = WithAttributes(props, data, aria);
 
             return new ElementNode
             {
@@ -773,6 +877,9 @@ namespace Velvet
                 Children = EmptyChildren,
                 Events = events,
                 RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
@@ -787,6 +894,11 @@ namespace Velvet
         /// <param name="label">Label text shown next to the field.</param>
         /// <param name="enabled">When false, disables user input.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element.</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus.</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this integer field.</returns>
         public static ElementNode IntegerField(
             string? className = null,
@@ -796,7 +908,12 @@ namespace Velvet
             string? name = null,
             string? label = null,
             bool? enabled = null,
-            Func<VisualElement, Action>? refCallback = null)
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<int> { Handler = onValueChanged } : null);
 
@@ -808,6 +925,7 @@ namespace Velvet
                 props.Text = label;
                 props.Enabled = enabled;
             }
+            props = WithAttributes(props, data, aria);
 
             return new ElementNode
             {
@@ -819,6 +937,9 @@ namespace Velvet
                 Children = EmptyChildren,
                 Events = events,
                 RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
             };
         }
 
