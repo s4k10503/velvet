@@ -248,11 +248,7 @@ namespace Velvet
 
             // CurrentLocation.Path retains the query string; strip it before splitting so a "?..."
             // tail does not fold into a path segment and corrupt relative resolution.
-            var queryIndex = basePath.IndexOf('?');
-            if (queryIndex >= 0)
-            {
-                basePath = basePath.Substring(0, queryIndex);
-            }
+            basePath = RouteQuery.StripQuery(basePath);
 
             var baseSegments = new List<string>(
                 basePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries));
@@ -328,8 +324,7 @@ namespace Velvet
             Status = RouterStatus.Matching;
             // Match against the path only; the query string (?key=value) is not part of route matching but
             // is preserved on CurrentLocation.Path so UseSearchParams can read it.
-            var queryIndex = path.IndexOf('?');
-            var pathForMatch = queryIndex < 0 ? path : path.Substring(0, queryIndex);
+            var pathForMatch = RouteQuery.StripQuery(path);
             var matches = _routeTree.Match(pathForMatch);
 
             if (matches == null)
