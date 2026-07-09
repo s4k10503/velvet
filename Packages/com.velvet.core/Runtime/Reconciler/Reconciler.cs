@@ -503,6 +503,16 @@ namespace Velvet
             }
 
             _ctx.VirtualListControllers.Clear();
+            // Outlet route scopes are user-supplied DI scopes (IRouteScope extends IDisposable):
+            // dispose each so an Outlet still mounted at whole-reconciler teardown does not leak the
+            // scope's resources, mirroring FiberElementCleaner's per-element Outlet-scope-dispose.
+            foreach (var scope in _ctx.OutletScopes.Values)
+            {
+                scope.Dispose();
+            }
+
+            _ctx.OutletScopes.Clear();
+            _ctx.OutletContainers.Clear();
             _ctx.PresenceStates.Clear();
         }
     }

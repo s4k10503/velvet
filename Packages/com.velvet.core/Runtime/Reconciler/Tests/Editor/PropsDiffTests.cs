@@ -228,6 +228,36 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ChoicesClearedToNull_When_Patched_Then_DropdownChoicesEmptied()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.DropdownField(choices: new List<string> { "A", "B" }) };
+            var newTree = new VNode[] { V.DropdownField(choices: null) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(((DropdownField)Root.ElementAt(0)).choices, Is.Empty);
+        }
+
+        [Test]
+        public void Given_ChoicesClearedToNull_When_Patched_Then_RadioButtonGroupChoicesEmptied()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.RadioButtonGroup(choices: new List<string> { "A", "B" }) };
+            var newTree = new VNode[] { V.RadioButtonGroup(choices: null) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(((RadioButtonGroup)Root.ElementAt(0)).choices, Is.Empty);
+        }
+
+        [Test]
         public void Given_VerticalScrollerVisibilityChanged_When_Patched_Then_Applied()
         {
             // Arrange

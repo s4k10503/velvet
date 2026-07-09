@@ -148,8 +148,35 @@ namespace Velvet
         private const string ViaPrefix = "via-";
         private const string ToPrefix = "to-";
 
-        // Cheap early-out gate: true when ANY class is a gradient shape activator. No allocation — used to
-        // skip the full TryExtract on the ~99% of elements with no gradient.
+        // The one activator shape that accepts a leading '-' for a negative numeric angle
+        // (TryParseAngle strips it before matching LinearActivator; the -to- alias never accepts it).
+        private const string NegativeLinearActivator = "-" + LinearActivator;
+        private const string RadialArbitraryActivator = RadialActivator + "-[";
+        private const string ConicSuffixActivator = ConicActivator + "-";
+
+        // Cheap prefix/equality table for gradient shape activators, shared by the gate and the parser
+        // so the two can never drift apart: TryParseActivator consults this SAME table as its first
+        // check, which makes "parser-accepts implies gate-accepts" hold by construction rather than by
+        // the two being kept in sync by hand. Radial/conic must stay plain StartsWith: the bare
+        // activator may carry a trailing /interp modifier ("bg-radial/oklab"), which an equality check
+        // would miss.
+        private static bool MatchesActivatorPrefix(string cls)
+        {
+            return cls.StartsWith(DirActivator, StringComparison.Ordinal)
+                || cls.StartsWith(LinearActivator, StringComparison.Ordinal)
+                || cls.StartsWith(NegativeLinearActivator, StringComparison.Ordinal)
+                || cls.StartsWith(RadialActivator, StringComparison.Ordinal)
+                || cls.StartsWith(ConicActivator, StringComparison.Ordinal);
+        }
+
+        // Cheap early-out gate: true when ANY class LOOKS LIKE a gradient shape activator. A pure
+        // prefix scan — no substring allocation, no angle/position parsing — so it never
+        // duplicates TryExtract's parse cost. May false-positive on a malformed activator (e.g. an
+        // unrecognized /modifier or an out-of-range value), which TryExtract then correctly rejects.
+        // It never false-negatives on anything TryExtract can actually resolve BY CONSTRUCTION:
+        // TryParseActivator's first check is this same MatchesActivatorPrefix, so a class TryExtract
+        // can parse always already looked like an activator here. Used to skip the full TryExtract on
+        // the ~99% of elements with no gradient.
         public static bool HasGradientClass(string[] classNames)
         {
             if (classNames == null)
@@ -158,7 +185,11 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (!string.IsNullOrEmpty(cls) && TryParseActivator(cls, out _, out _, out _, out _, out _))
+                if (string.IsNullOrEmpty(cls))
+                {
+                    continue;
+                }
+                if (MatchesActivatorPrefix(cls))
                 {
                     return true;
                 }
@@ -247,6 +278,15 @@ namespace Velvet
             centerY = 0.5f;
             interp = GradientInterp.Srgb;
 
+            // Must pass the gate's own prefix table before any parsing: this is what makes the shapes
+            // this method accepts a structural SUBSET of what HasGradientClass matches, so a shape added
+            // here without also widening MatchesActivatorPrefix simply cannot parse (loud), instead of
+            // parsing while the gate silently skips it (the false-negative this guards against).
+            if (!MatchesActivatorPrefix(cls))
+            {
+                return false;
+            }
+
             // Split off a trailing /interp modifier (the gradient interpolation modifier).
             var baseTok = cls;
             var slash = cls.IndexOf('/');
@@ -267,7 +307,7 @@ namespace Velvet
                 type = GradientType.Radial;
                 return true;
             }
-            if (baseTok.StartsWith(RadialActivator + "-[", StringComparison.Ordinal) && baseTok[baseTok.Length - 1] == ']')
+            if (baseTok.StartsWith(RadialArbitraryActivator, StringComparison.Ordinal) && baseTok[baseTok.Length - 1] == ']')
             {
                 type = GradientType.Radial;
                 ParseRadialPosition(baseTok.Substring(RadialActivator.Length + 2, baseTok.Length - RadialActivator.Length - 3),
@@ -279,7 +319,7 @@ namespace Velvet
                 type = GradientType.Conic;
                 return true;
             }
-            if (baseTok.StartsWith(ConicActivator + "-", StringComparison.Ordinal))
+            if (baseTok.StartsWith(ConicSuffixActivator, StringComparison.Ordinal))
             {
                 type = GradientType.Conic;
                 return TryParseConicStart(baseTok.Substring(ConicActivator.Length + 1), out angle);

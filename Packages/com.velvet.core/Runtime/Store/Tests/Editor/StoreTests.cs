@@ -20,8 +20,6 @@ namespace Velvet.Tests.Editor
     /// <item><c>Subscribe</c> delivers each subsequent state, optionally firing immediately with the current value;
     /// its (current, previous) overload pairs each state with the one before it. A null listener is rejected.</item>
     /// <item>Disposing runs subclass dispose logic exactly once and cancels the store's cancellation token.</item>
-    /// <item>A keyed async operation under the Drop policy ignores a concurrent same-key call; under the Switch
-    /// policy it cancels the running same-key call. Distinct keys run independently.</item>
     /// <item><c>Reset</c> returns the state to its initial value.</item>
     /// </list>
     /// </summary>

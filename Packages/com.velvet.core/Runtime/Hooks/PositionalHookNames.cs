@@ -14,6 +14,7 @@ namespace Velvet
             nameof(Hooks.UseLayoutEffect),
             nameof(Hooks.UseInsertionEffect),
             nameof(Hooks.UseCallback),
+            nameof(Hooks.UseMemo),
             nameof(Hooks.UseBlocker),
             nameof(Hooks.UseState),
             nameof(Hooks.UseReducer),

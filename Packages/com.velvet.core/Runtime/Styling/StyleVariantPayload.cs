@@ -47,9 +47,7 @@ namespace Velvet
                 }
                 var effectivePriority = important ? StyleLayerPriority.Important : priority;
 
-                if ((core.IndexOf('[') >= 0
-                        || StyleColorValueParser.HasColorOpacityModifier(core)
-                        || StyleArbitraryValueResolver.MayBeStaticScale(core))
+                if (StyleArbitraryValueResolver.IsInlineResolved(core)
                     && StyleArbitraryValueResolver.TryParse(core, out var style))
                 {
                     if (on)
