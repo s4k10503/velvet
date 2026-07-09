@@ -37,7 +37,7 @@ dotnet test Velvet.SourceGenerators.sln -c Release   # generator unit tests (no 
 ./build.sh                                            # rebuild + redeploy DLLs to Runtime/Plugins, then commit them
 ```
 
-CI (`.github/workflows/test.yml`) runs `source-generators` (no license) and `unity-tests` (EditMode/PlayMode, **skipped unless a `UNITY_LICENSE` secret is set** — see CONTRIBUTING.md). Docs (`docs/`) are DocFX-generated from XML comments via `docs/build.sh`.
+CI is split by what a change can affect: `.github/workflows/generators.yml` runs `source-generators` (no license) only for `Generators~/**` changes, and `.github/workflows/test.yml` runs `unity-tests` (EditMode/PlayMode, **skipped unless a `UNITY_LICENSE` secret is set** — see CONTRIBUTING.md) only for package/project changes; docs and markdown trigger neither. Docs (`docs/`) are DocFX-generated from XML comments via `docs/build.sh`.
 
 ## Architecture (the parts that span many files)
 
