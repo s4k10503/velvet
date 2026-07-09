@@ -1,0 +1,47 @@
+name: Source generators
+
+# The Roslyn generators are a standalone dotnet solution: only changes under
+# Generators~ (or this workflow) can affect the result, so nothing else
+# triggers it. Generator changes reach the Unity side as committed DLLs under
+# Runtime/Plugins, which the Unity test workflow picks up on its own paths.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Packages/com.velvet.core/Generators~/**'
+      - '.github/workflows/generators.yml'
+      - '!**.md'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Packages/com.velvet.core/Generators~/**'
+      - '.github/workflows/generators.yml'
+      - '!**.md'
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: generators-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Source-generator tests (.NET / xUnit). No Unity license required.
+  # ---------------------------------------------------------------------------
+  source-generators:
+    name: Source generators (dotnet)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Setup .NET (pinned by Generators~/global.json)
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: Packages/com.velvet.core/Generators~/global.json
+
+      - name: Test
+        working-directory: Packages/com.velvet.core/Generators~
+        run: dotnet test Velvet.SourceGenerators.sln -c Release --nologo
