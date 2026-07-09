@@ -1,3 +1,4 @@
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -290,11 +291,60 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_UnknownInterpModifier_When_Gated_Then_NotAGradient()
+        public void Given_UnknownInterpModifier_When_GatedThenExtracted_Then_NotAGradient()
         {
-            // An unknown /modifier makes the activator unrecognized (no valid utility would emit it).
-            var has = StyleGradientClass.HasGradientClass(new[] { "bg-linear-to-r/bogus", "from-[#ff0000]" });
-            Assert.That(has, Is.False);
+            // An unknown /modifier makes the activator unrecognized (no valid utility would emit it). The
+            // cheap gate is a prefix scan and may false-positive on this (it does not parse the /modifier),
+            // so the real contract — mirroring every call site's `Has(...) && TryExtract(...)` — is that the
+            // combination still resolves to "not a gradient".
+            var classNames = new[] { "bg-linear-to-r/bogus", "from-[#ff0000]" };
+            var resolved = StyleGradientClass.HasGradientClass(classNames)
+                && StyleGradientClass.TryExtract(classNames, out _);
+            Assert.That(resolved, Is.False);
+        }
+
+        [Test]
+        public void Given_NegativeBgLinearArbitrary_When_Gated_Then_HasGradientIsTrue()
+        {
+            // -bg-linear-[30deg] is a valid negative-angle activator (TryExtract parses it, see the
+            // "TheAngleIsNegative" test above). The cheap gate must not false-negative on it just because
+            // the class starts with '-' rather than the plain "bg-linear-" prefix.
+            var has = StyleGradientClass.HasGradientClass(
+                new[] { "-bg-linear-[30deg]", "from-[#ff0000]", "to-[#0000ff]" });
+            Assert.That(has, Is.True);
+        }
+
+        [Test]
+        public void Given_BareRadialWithInterpModifier_When_Gated_Then_HasGradientIsTrue()
+        {
+            // bg-radial/oklab is a valid activator: the /interp modifier rides on the bare radial
+            // token, so a gate comparing the whole class for equality with "bg-radial" would
+            // false-negative and silently skip the gradient.
+            var has = StyleGradientClass.HasGradientClass(
+                new[] { "bg-radial/oklab", "from-[#ff0000]", "to-[#0000ff]" });
+            Assert.That(has, Is.True);
+        }
+
+        [Test]
+        public void Given_AClassRejectedByTheSharedPrefixTable_When_Extracted_Then_TryExtractAlsoRejectsIt()
+        {
+            // Arrange — reach the private shared prefix table by reflection (the repo's pattern for pinning
+            // a private internal). TryParseActivator's first line is a hard call to this exact predicate, so
+            // a class it rejects can never reach TryExtract as a shape axis — this is what keeps the gate
+            // (HasGradientClass) and the parser (TryParseActivator) from drifting into two independently
+            // maintained enumerations of accepted shapes.
+            var matchesActivatorPrefix = typeof(StyleGradientClass).GetMethod(
+                "MatchesActivatorPrefix", BindingFlags.NonPublic | BindingFlags.Static);
+            const string notAShapeActivator = "bg-not-a-real-shape";
+            Assume.That((bool)matchesActivatorPrefix.Invoke(null, new object[] { notAShapeActivator }), Is.False,
+                "Precondition: the crafted class fails the shared prefix table");
+
+            // Act — the same class, alongside a from/to stop, through the public extraction path.
+            var ok = StyleGradientClass.TryExtract(
+                new[] { notAShapeActivator, "from-[#ff0000]", "to-[#0000ff]" }, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
         }
 
         [Test]

@@ -247,5 +247,57 @@ namespace Velvet.Tests
             // Act + Assert
             Assert.That(s["anything"], Is.EqualTo(""));
         }
+
+        [Test]
+        public void Given_AnEarlierSlotWithMoreOverrides_When_ALaterSlotFillsFewer_Then_TheLaterSlotDoesNotInheritTheEarlierSlotsClasses()
+        {
+            // Arrange — the root slot is targeted by both axes while the title slot is targeted by neither,
+            // so a per-slot class buffer reused across slots would carry root's overrides into title unless
+            // its unused tail is scrubbed between slots.
+            var sut = new StyleSlotRecipe(
+                new Dictionary<string, string>
+                {
+                    ["root"] = "base-root",
+                    ["title"] = "base-title",
+                },
+                new Dictionary<string, Dictionary<string, Dictionary<string, string>>>
+                {
+                    ["size"] = new() { ["lg"] = new() { ["root"] = "p-8" } },
+                    ["color"] = new() { ["red"] = new() { ["root"] = "bg-red" } },
+                });
+
+            // Act
+            var s = sut.Apply(("size", "lg"), ("color", "red"));
+
+            // Assert — title resolves to its base class only, with no ghost of root's p-8 / bg-red.
+            Assert.That(s["title"], Is.EqualTo("base-title"));
+        }
+
+        [Test]
+        public void Given_ADefaultForASelectedAxis_When_Applied_Then_TheExplicitSelectionWinsOverTheDefault()
+        {
+            // Arrange — the theme axis is both explicitly selected AND carries a default, so the default
+            // must be skipped rather than appended as a second value for the same axis.
+            var sut = new StyleSlotRecipe(
+                new Dictionary<string, string>
+                {
+                    ["root"] = "base",
+                },
+                new Dictionary<string, Dictionary<string, Dictionary<string, string>>>
+                {
+                    ["theme"] = new()
+                    {
+                        ["dark"] = new() { ["root"] = "bg-black" },
+                        ["light"] = new() { ["root"] = "bg-white" },
+                    }
+                },
+                defaultVariants: new Dictionary<string, string> { ["theme"] = "dark" });
+
+            // Act
+            var s = sut.Apply(("theme", "light"));
+
+            // Assert — only the selected value's classes appear; the default's bg-black does not.
+            Assert.That(s["root"], Is.EqualTo("base bg-white"));
+        }
     }
 }
