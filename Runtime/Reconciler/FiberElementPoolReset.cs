@@ -150,6 +150,12 @@ namespace Velvet
             style.aspectRatio = StyleKeyword.Null;
             // blur-/grayscale-/etc. write inline filter (StyleArbitraryValueResolver); same pool-ghost reason.
             style.filter = StyleKeyword.Null;
+            // This editor's inline-filter setter clears the wrong internal has-inline flag on a Null
+            // assignment, so the stored filter list survives the line above and would still ghost onto the
+            // next consumer. Empty the surviving list in place: an empty inline filter computes to "no
+            // filter", a consumer's filter classes replace the list wholesale, and on editors where the
+            // Null assignment works the getter already reads back a null list, making this a no-op.
+            style.filter.value?.Clear();
             style.transformOrigin = StyleKeyword.Null;
             style.transitionDuration = StyleKeyword.Null;
             style.transitionDelay = StyleKeyword.Null;

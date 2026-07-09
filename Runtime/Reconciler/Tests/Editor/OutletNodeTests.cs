@@ -265,6 +265,35 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Root disposal
+
+        [Test]
+        public void Given_RoutedOutletWithScope_When_ReconcilerDisposed_Then_ScopeIsDisposed()
+        {
+            // A whole-Reconciler/root teardown (e.g. closing a mounted UI tree) never reconciles the
+            // Outlet away element-by-element, so the scope must be released by Dispose itself, not by
+            // FiberElementCleaner's per-element path.
+            // Arrange
+            var scopeFactory = new TestRouteScopeFactory();
+            var routes = V.Routes(V.Route(path: "/", element: V.Component(SimpleRender, key: "simple")));
+            var router = new Router(routes, scopeFactory);
+            router.NavigateAsync("/").GetAwaiter().GetResult();
+            var tree = OutletUnderRouter(router.CurrentLocation!, depth: 0);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            Assume.That(scopeFactory.LastScope, Is.Not.Null, "Precondition: the Outlet created a route scope");
+
+            // Act — dispose the whole Reconciler, not the individual Outlet element
+            _reconciler.Dispose();
+            _reconciler = new Reconciler();
+
+            // Assert
+            Assert.That(scopeFactory.LastScope!.IsDisposed, Is.True);
+
+            router.Dispose();
+        }
+
+        #endregion
+
         #region Helpers
 
         private static RouterLocation LocationWithSingleMatch(ComponentNode element)
