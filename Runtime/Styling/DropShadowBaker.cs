@@ -203,7 +203,7 @@ namespace Velvet
             {
                 if (existing != null && existing != tex)
                 {
-                    Object.DestroyImmediate(existing);
+                    VelvetObjectUtil.Destroy(existing);
                 }
                 s_silhouetteCache[key] = tex;
                 TouchSilhouette(key);
@@ -221,7 +221,7 @@ namespace Velvet
                     s_silhouetteCache.Remove(oldest);
                     if (evicted != null)
                     {
-                        Object.DestroyImmediate(evicted);
+                        VelvetObjectUtil.Destroy(evicted);
                     }
                 }
             }

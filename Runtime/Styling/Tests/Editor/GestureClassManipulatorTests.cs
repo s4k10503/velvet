@@ -233,6 +233,120 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Signal-Driven Edge Detection (ElementLocalVariantSignals wiring)
+
+        [Test]
+        public void Given_UnhoveredElement_When_PointerOverFires_Then_HoverClassIsApplied()
+        {
+            // Arrange
+            var manipulator = new StyleGestureClassManipulator(new[] { "hover-glow" }, Array.Empty<string>(), Array.Empty<string>());
+            _element.AddManipulator(manipulator);
+            Assume.That(_element.ClassListContains("hover-glow"), Is.False, "Precondition: hover class not yet applied");
+
+            // Act
+            using (var evt = PointerOverEvent.GetPooled()) _element.SimulateEvent(evt);
+
+            // Assert
+            Assert.That(_element.ClassListContains("hover-glow"), Is.True);
+        }
+
+        [Test]
+        public void Given_HoveredElement_When_PointerLeavesItsBounds_Then_HoverClassIsRemoved()
+        {
+            // Arrange — a detached element's worldBound is Rect.zero, so a default-position PointerOut never
+            // reads as "still inside" and is treated as a real leave.
+            var manipulator = new StyleGestureClassManipulator(new[] { "hover-glow" }, Array.Empty<string>(), Array.Empty<string>());
+            _element.AddManipulator(manipulator);
+            using (var over = PointerOverEvent.GetPooled()) _element.SimulateEvent(over);
+            Assume.That(_element.ClassListContains("hover-glow"), Is.True, "Precondition: hover class applied while hovered");
+
+            // Act
+            using (var evt = PointerOutEvent.GetPooled()) _element.SimulateEvent(evt);
+
+            // Assert
+            Assert.That(_element.ClassListContains("hover-glow"), Is.False);
+        }
+
+        [Test]
+        public void Given_UntappedElement_When_PointerDownFires_Then_TapClassIsApplied()
+        {
+            // Arrange
+            var manipulator = new StyleGestureClassManipulator(Array.Empty<string>(), new[] { "tap-shrink" }, Array.Empty<string>());
+            _element.AddManipulator(manipulator);
+            Assume.That(_element.ClassListContains("tap-shrink"), Is.False, "Precondition: tap class not yet applied");
+
+            // Act
+            using (var evt = PointerDownEvent.GetPooled()) _element.SimulateEvent(evt);
+
+            // Assert
+            Assert.That(_element.ClassListContains("tap-shrink"), Is.True);
+        }
+
+        [Test]
+        public void Given_TappedElement_When_PointerUpFires_Then_TapClassIsRemoved()
+        {
+            // Arrange
+            var manipulator = new StyleGestureClassManipulator(Array.Empty<string>(), new[] { "tap-shrink" }, Array.Empty<string>());
+            _element.AddManipulator(manipulator);
+            using (var down = PointerDownEvent.GetPooled()) _element.SimulateEvent(down);
+            Assume.That(_element.ClassListContains("tap-shrink"), Is.True, "Precondition: tap class applied while pressed");
+
+            // Act
+            using (var evt = PointerUpEvent.GetPooled()) _element.SimulateEvent(evt);
+
+            // Assert
+            Assert.That(_element.ClassListContains("tap-shrink"), Is.False);
+        }
+
+        [Test]
+        public void Given_TappedElement_When_PointerIsCancelled_Then_TapClassIsRemoved()
+        {
+            // Arrange — a cancelled gesture (e.g. an OS-level interruption) ends the tap state just like a release.
+            var manipulator = new StyleGestureClassManipulator(Array.Empty<string>(), new[] { "tap-shrink" }, Array.Empty<string>());
+            _element.AddManipulator(manipulator);
+            using (var down = PointerDownEvent.GetPooled()) _element.SimulateEvent(down);
+            Assume.That(_element.ClassListContains("tap-shrink"), Is.True, "Precondition: tap class applied while pressed");
+
+            // Act
+            using (var evt = PointerCancelEvent.GetPooled()) _element.SimulateEvent(evt);
+
+            // Assert
+            Assert.That(_element.ClassListContains("tap-shrink"), Is.False);
+        }
+
+        [Test]
+        public void Given_UnfocusedElement_When_FocusEventFires_Then_FocusClassIsApplied()
+        {
+            // Arrange
+            var manipulator = new StyleGestureClassManipulator(Array.Empty<string>(), Array.Empty<string>(), new[] { "focus-ring" });
+            _element.AddManipulator(manipulator);
+            Assume.That(_element.ClassListContains("focus-ring"), Is.False, "Precondition: focus class not yet applied");
+
+            // Act
+            using (var evt = FocusEvent.GetPooled()) _element.SimulateEvent(evt);
+
+            // Assert
+            Assert.That(_element.ClassListContains("focus-ring"), Is.True);
+        }
+
+        [Test]
+        public void Given_FocusedElement_When_BlurEventFires_Then_FocusClassIsRemoved()
+        {
+            // Arrange
+            var manipulator = new StyleGestureClassManipulator(Array.Empty<string>(), Array.Empty<string>(), new[] { "focus-ring" });
+            _element.AddManipulator(manipulator);
+            using (var focus = FocusEvent.GetPooled()) _element.SimulateEvent(focus);
+            Assume.That(_element.ClassListContains("focus-ring"), Is.True, "Precondition: focus class applied while focused");
+
+            // Act
+            using (var evt = BlurEvent.GetPooled()) _element.SimulateEvent(evt);
+
+            // Assert
+            Assert.That(_element.ClassListContains("focus-ring"), Is.False);
+        }
+
+        #endregion
+
         #region ParseClassNames
 
         [Test]

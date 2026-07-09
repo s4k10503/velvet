@@ -154,7 +154,7 @@ namespace Velvet
 
             /// <summary>Linear-scan matching against a deduped selections array (no per-call allocation).</summary>
             public bool Matches((string axis, string value)[] selections, int count)
-                => StyleCompoundVariantMatcher.MatchesArray(Conditions, selections, count);
+                => StyleCompoundVariantMatcher.Matches(Conditions, selections, count);
         }
     }
 }

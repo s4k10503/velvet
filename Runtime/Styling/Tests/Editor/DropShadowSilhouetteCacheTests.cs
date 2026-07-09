@@ -55,5 +55,37 @@ namespace Velvet.Tests
             Assert.That((CacheCount <= cap, CacheCount == LruCount, LruCount == NodesCount),
                 Is.EqualTo((true, true, true)));
         }
+
+        [Test]
+        public void Given_OverwritingAnExistingKey_When_Stored_Then_ThePreviousTextureIsDestroyed()
+        {
+            // Arrange — store a texture at a key, keeping the reference to check its lifetime.
+            var previous = new Texture2D(2, 2);
+            Store(0, previous);
+
+            // Act — re-store the same key with a different texture (StoreSilhouette's overwrite path).
+            Store(0, new Texture2D(2, 2));
+
+            // Assert — the overwritten texture was destroyed (Unity's fake-null on a destroyed Object).
+            Assert.That(previous == null, Is.True);
+        }
+
+        [Test]
+        public void Given_TheLeastRecentlyUsedEntry_When_EvictedPastTheCap_Then_ItsTextureIsDestroyed()
+        {
+            // Arrange — the first-stored key becomes least-recently-used and is the first evicted past the cap.
+            var cap = Cap;
+            var oldest = new Texture2D(2, 2);
+            Store(0, oldest);
+
+            // Act — store past the cap so the oldest entry is evicted (StoreSilhouette's LRU-eviction path).
+            for (var i = 1; i <= cap; i++)
+            {
+                Store(i, new Texture2D(2, 2));
+            }
+
+            // Assert — the evicted texture was destroyed (Unity's fake-null on a destroyed Object).
+            Assert.That(oldest == null, Is.True);
+        }
     }
 }
