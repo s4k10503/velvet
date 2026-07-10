@@ -9,19 +9,31 @@ namespace Velvet
     // the orchestrator (FiberRenderer.RenderAndReconcile) hands in after FiberBeginWork produced them.
     internal static class FiberCommitWork
     {
-        // The slot index at which this inline fiber's range ENDS within its shared MountPoint — the next
-        // inline-mount sibling's MountSlotStart, or int.MaxValue when this fiber is the last/only tenant. Used to
-        // bound the keyed desync-recovery rebuild so it cannot reach past this fiber's rows into a sibling's.
+        // The slot index at which this inline fiber's range ENDS within its shared MountPoint — the
+        // nearest co-located tenant's MountSlotStart beyond this fiber's own, or int.MaxValue when
+        // this fiber is the last/only tenant. Used to bound the keyed desync-recovery rebuild so it
+        // cannot reach past this fiber's rows into a sibling's. The sibling chain is fiber-CREATION
+        // order and a keyed reorder does not resync it, so the first co-located entry can sit
+        // visually BEFORE this fiber; bounding by it would make slotLimit < slotStart — every slot
+        // in this fiber's own range would look missing, and an independent re-render of the
+        // displaced fiber would insert a permanent duplicate instead of patching in place. Walk the
+        // parent's whole co-located chain instead and take the minimum start strictly beyond ours.
         private static int NextInlineSiblingSlotStart(ComponentFiber fiber)
         {
-            for (var sibling = fiber.Sibling; sibling != null; sibling = sibling.Sibling)
+            var limit = int.MaxValue;
+            var first = fiber.Parent?.Child ?? fiber.Sibling;
+            for (var sibling = first; sibling != null; sibling = sibling.Sibling)
             {
-                if (sibling.IsInlineMounted && sibling.MountPoint == fiber.MountPoint)
+                if (!ReferenceEquals(sibling, fiber)
+                    && sibling.IsInlineMounted
+                    && sibling.MountPoint == fiber.MountPoint
+                    && sibling.MountSlotStart > fiber.MountSlotStart
+                    && sibling.MountSlotStart < limit)
                 {
-                    return sibling.MountSlotStart;
+                    limit = sibling.MountSlotStart;
                 }
             }
-            return int.MaxValue;
+            return limit;
         }
 
         // Propagates an inline-mount fiber's committed child-count change to the siblings that share its
