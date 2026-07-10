@@ -136,9 +136,11 @@ namespace Velvet.Tests
             store.Set(1);
             scheduler.DrainImmediateForTest();
 
-            // Assert — the new-side warning was observed (LogAssert fails the test otherwise). The
-            // message is distinct from the old-side guard's, so a later unmount diff cannot satisfy it.
-            Assert.Pass("New-side duplicate-key warning observed");
+            // Assert — every row still committed; the new-side warning itself is enforced by
+            // LogAssert at test end (an Assert.Pass would bypass that unmatched-expectation check),
+            // and its message is distinct from the old-side guard's so a later unmount diff cannot
+            // satisfy it.
+            Assert.AreEqual(3, _root.Q<VisualElement>("list").childCount);
         }
 
         [Test]
