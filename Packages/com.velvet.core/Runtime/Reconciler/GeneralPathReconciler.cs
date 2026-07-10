@@ -545,6 +545,20 @@ namespace Velvet
                             // path accumulates them in result.
                             var emittedCount = commit != null ? commit.NewElements.Count : result!.Count;
                             var currentSlotStart = slotStart + emittedCount;
+                            // Two same-identity siblings sharing one explicit key resolve to the
+                            // SAME registry fiber; expanding it once per sibling would emit one
+                            // component's DOM twice while its slot bookkeeping tracks only the last
+                            // position (with hook state shared across both copies). Mirror the
+                            // leaf-level duplicate guard: warn and skip the repeat before
+                            // GetOrCreate can clobber the first occurrence's slot.
+                            var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity);
+                            if (priorFiber != null && newFibers.Contains(priorFiber))
+                            {
+                                FiberLogger.LogWarning("GeneralPathReconciler",
+                                    $"Duplicate component key detected among siblings: '{slotKey}'. " +
+                                    "The repeated sibling is skipped; give each sibling a unique key.");
+                                break;
+                            }
                             var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
                                 component, parentFiber, slotKey, parent, currentSlotStart);
                             newFibers.Add(fiber);
