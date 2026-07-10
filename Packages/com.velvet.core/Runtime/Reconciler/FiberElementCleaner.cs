@@ -32,9 +32,10 @@ namespace Velvet
             }
 
             var element = parent.ElementAt(index);
+            var poolable = PoolableOccupantOf(element);
             CleanupElement(element);
             parent.RemoveAt(index);
-            ReturnToPool(element);
+            ReturnOccupantToPool(element, poolable);
         }
 
         // Removes an element from its parent directly (by element reference, not index).
@@ -45,9 +46,28 @@ namespace Velvet
                 return;
             }
 
+            var poolable = PoolableOccupantOf(element);
             CleanupElement(element);
             element.RemoveFromHierarchy();
-            ReturnToPool(element);
+            ReturnOccupantToPool(element, poolable);
+        }
+
+        // Resolves the poolable occupant of a slot: a ring-*/clip-path-* leaf sits inside a
+        // structural wrapper, and the wrapper — not the widget — is the slot's element. Must run
+        // BEFORE CleanupElement, which consumes the wrapper map entry.
+        private VisualElement PoolableOccupantOf(VisualElement element)
+            => _ctx.WrapperToInnerMap.TryGetValue(element, out var inner) ? inner : element;
+
+        // Reclaims the slot's poolable occupant after cleanup. A wrapped inner is detached from its
+        // wrapper first so a pooled widget never carries the dead wrapper as its parent — mirroring
+        // the rollback-orphan path, which already unwraps before reclaiming.
+        private static void ReturnOccupantToPool(VisualElement removed, VisualElement poolable)
+        {
+            if (!ReferenceEquals(poolable, removed))
+            {
+                poolable.RemoveFromHierarchy();
+            }
+            ReturnToPool(poolable);
         }
 
         // Returns a created-but-never-placed orphan element to the pool. Used by the speculative
@@ -308,9 +328,10 @@ namespace Velvet
             for (var i = slotEnd - 1; i >= portalInfo.SlotStart; i--)
             {
                 var child = target.ElementAt(i);
+                var poolable = PoolableOccupantOf(child);
                 CleanupElement(child);
                 target.RemoveAt(i);
-                ReturnToPool(child);
+                ReturnOccupantToPool(child, poolable);
             }
 
             // Surviving Portals on the same target whose slot starts after the removed range
