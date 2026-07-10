@@ -597,6 +597,10 @@ namespace Velvet
                                         _ctx.BufferPool.ReturnPositionCounter(childCounters);
                                     }
                                 }
+                                // Post-order add: a directly-nested component must precede its
+                                // parent in oldFibers so the orphan sweep's forward walk tears the
+                                // subtree down bottom-up — a descendant's effect cleanups complete
+                                // before an ancestor's, matching the commit-phase deletion order.
                                 oldFibers.Add(fiber);
                             }
                         }
