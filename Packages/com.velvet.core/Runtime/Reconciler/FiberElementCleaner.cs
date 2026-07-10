@@ -81,47 +81,53 @@ namespace Velvet
                 return;
             }
 
-            switch (element)
+            var exactType = element.GetType();
+            if (exactType == typeof(Label) || exactType == typeof(Toggle)
+                || exactType == typeof(Slider) || exactType == typeof(TextField)
+                || (exactType == typeof(Button) && ((Button)element).childCount == 0))
             {
-                case Label or Toggle or Slider or TextField:
-                    CleanupElementResources(element);
-                    ReturnToPool(element);
-                    break;
-                case Button button when button.childCount == 0:
-                    CleanupElementResources(button);
-                    ReturnToPool(button);
-                    break;
-                default:
-                    // A plain container orphan (Div) or a Button declared with children. Release the
-                    // orphan subtree's element-keyed resources without disposing its fibers and
-                    // without pooling the non-poolable container.
-                    CleanupElementCore(element);
-                    break;
+                CleanupElementResources(element);
+                ReturnToPool(element);
+            }
+            else
+            {
+                // A plain container orphan (Div), a Button declared with children, or a user
+                // subclass of a poolable primitive (never pooled — see ReturnToPool). Release the
+                // orphan subtree's element-keyed resources without disposing its fibers and
+                // without pooling the non-poolable container.
+                CleanupElementCore(element);
             }
         }
 
         // Returns the element to the VNodePool when the type supports pooling.
         // Called after the element has been detached from the DOM hierarchy and Velvet-managed
-        // resources have been released.
+        // resources have been released. Dispatches on the EXACT runtime type, mirroring the
+        // factory's exact-type rent checks: a user subclass of a poolable primitive (mounted via
+        // V.Custom<T>) must never enter the shared pool — its own fields and constructor-registered
+        // callbacks survive the base-type reset, so a later plain rent would resurrect them on an
+        // unrelated mount.
         private static void ReturnToPool(VisualElement element)
         {
-            switch (element)
+            var type = element.GetType();
+            if (type == typeof(TextField))
             {
-                case TextField textField:
-                    VNodePool.ReturnTextField(textField);
-                    break;
-                case Toggle toggle:
-                    VNodePool.ReturnToggle(toggle);
-                    break;
-                case Slider slider:
-                    VNodePool.ReturnSlider(slider);
-                    break;
-                case Button button:
-                    VNodePool.ReturnButton(button);
-                    break;
-                case Label label:
-                    VNodePool.ReturnLabel(label);
-                    break;
+                VNodePool.ReturnTextField((TextField)element);
+            }
+            else if (type == typeof(Toggle))
+            {
+                VNodePool.ReturnToggle((Toggle)element);
+            }
+            else if (type == typeof(Slider))
+            {
+                VNodePool.ReturnSlider((Slider)element);
+            }
+            else if (type == typeof(Button))
+            {
+                VNodePool.ReturnButton((Button)element);
+            }
+            else if (type == typeof(Label))
+            {
+                VNodePool.ReturnLabel((Label)element);
             }
         }
 
