@@ -618,9 +618,20 @@ namespace Velvet
                         // into the parent's slot range (so the parent's flex / wrap / gap reach them), with
                         // enter / exit / stagger played on each keyed child's anchor element. Old/new sides
                         // are reproduced from the per-boundary presence state, mirroring ExpandSuspenseInline.
-                        ExpandAnimatePresenceInline(presence, result, isNewSide, parent, slotStart,
-                            oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex,
-                            fragmentKeyScope, nodeIndex, commit);
+                        // Depth marker: Motion nodes created while a presence expansion is on the
+                        // stack are presence-managed (initial/exit are live); a standalone Motion
+                        // mount sees depth 0 and warns that those props are inert.
+                        _ctx.PresenceExpansionDepth++;
+                        try
+                        {
+                            ExpandAnimatePresenceInline(presence, result, isNewSide, parent, slotStart,
+                                oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex,
+                                fragmentKeyScope, nodeIndex, commit);
+                        }
+                        finally
+                        {
+                            _ctx.PresenceExpansionDepth--;
+                        }
                         break;
                     case BaseElementNode:
                         // Regular element: CreateElement / PatchNode reconciles its children via the

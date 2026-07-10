@@ -469,6 +469,11 @@ namespace Velvet
         // AnimatePresence's renders (the host element is reused), and disambiguates inner from outer.
         internal Dictionary<(ComponentFiber? boundary, VisualElement? parent, string presenceKey), PresenceBoundaryState> PresenceStates { get; } = new();
 
+        // Non-zero while an AnimatePresence expansion is on the stack. Motion nodes created inside
+        // it are presence-managed (initial/exit tweens are scheduled by the expansion); a Motion
+        // created at depth 0 mounts standalone, where those props are inert and warn.
+        internal int PresenceExpansionDepth;
+
         // Removes all DOM-less AnimatePresence state keyed by boundary. Invoked from
         // ComponentRegistry when the boundary fiber is unregistered, so a boundary that
         // unmounts while a child is exiting leaves no dangling fiber reference in PresenceStates.
