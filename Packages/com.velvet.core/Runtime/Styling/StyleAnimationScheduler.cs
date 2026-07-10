@@ -316,8 +316,10 @@ namespace Velvet
             }
         }
 
-        // Cancels the exit animation on the given element and removes the applied CSS classes and inline styles.
-        public void CancelExit(VisualElement element) => CancelPending(_pendingExits, element);
+        // Cancels the exit animation on the given element and removes the applied CSS classes; the
+        // element reverses toward its resting classes with the transition kept alive (the inline
+        // transition styles are cleared only after the reversal has run its course).
+        public void CancelExit(VisualElement element) => CancelPending(_pendingExits, element, animateReversal: true);
 
         // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
         public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
@@ -389,7 +391,8 @@ namespace Velvet
 
         // If the timeout callback already ran, map.Remove returns false and the cancellation is skipped.
         // This is safe because the classes have already been cleaned up in that case.
-        private void CancelPending(Dictionary<VisualElement, PendingAnimation> map, VisualElement element)
+        private void CancelPending(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
+            bool animateReversal = false)
         {
             if (map.Remove(element, out var pending))
             {
@@ -415,10 +418,55 @@ namespace Velvet
                 // tween's co-fade and drop its driver — the shadow snaps back to full (product collapses to 1)
                 // unless an enclosing fade still drives it.
                 EndShadowCoFade(pending);
-                ClearTransitionStyles(element);
-                ReturnDurationList(pending.DurationList);
-                ReturnDelayList(pending.DelayList);
+                if (animateReversal && pending.DurationList is { Count: > 0 })
+                {
+                    // A cancelled exit retargets a still-attached element back to its resting
+                    // classes. Clearing the inline transition styles in this same call would make
+                    // the next style resolve snap straight to the resting values; keep the
+                    // transition alive instead so the panel interpolates from the currently
+                    // resolved value, and defer the clear (and list return) until the reversal has
+                    // run its course.
+                    ScheduleReversalCleanup(element, pending);
+                }
+                else
+                {
+                    ClearTransitionStyles(element);
+                    ReturnDurationList(pending.DurationList);
+                    ReturnDelayList(pending.DelayList);
+                }
             }
+        }
+
+        // Parks the cancelled animation's transition styles until the reversal tween completes,
+        // then clears them and reclaims the lists. The parked entry lives in the ENTER map — the
+        // reversal is a motion toward the resting state — so a follow-up enter/exit on the same
+        // element cancels it like any other pending animation instead of racing its deferred
+        // cleanup (the recursive CancelPending call takes the non-reversal branch: the parked entry
+        // carries only RestingClasses, which re-adding is idempotent).
+        private void ScheduleReversalCleanup(VisualElement element, PendingAnimation pending)
+        {
+            CancelPending(_pendingEnters, element);
+            var reversal = new PendingAnimation
+            {
+                RestingClasses = pending.RestingClasses,
+                DurationList = pending.DurationList,
+                DelayList = pending.DelayList,
+            };
+            var timeoutMs = 0f;
+            if (pending.DurationList is { Count: > 0 }) timeoutMs += pending.DurationList[0].value;
+            if (pending.DelayList is { Count: > 0 }) timeoutMs += pending.DelayList[0].value;
+            var timeout = element.schedule.Execute(() =>
+            {
+                if (_pendingEnters.Remove(element))
+                {
+                    ClearTransitionStyles(element);
+                    ReturnDurationList(reversal.DurationList);
+                    ReturnDelayList(reversal.DelayList);
+                }
+            });
+            timeout.ExecuteLater((long)timeoutMs);
+            reversal.TimeoutItem = timeout;
+            _pendingEnters[element] = reversal;
         }
 
         private void CancelAllInMap(Dictionary<VisualElement, PendingAnimation> map)

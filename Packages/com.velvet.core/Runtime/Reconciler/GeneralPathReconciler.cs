@@ -1151,7 +1151,13 @@ namespace Velvet
                                     // resting variant on every add / interrupt.
                                     var isVariantMotion = ReferenceEquals(node, motion)
                                         && motion.Variants != null && motion.Animate != null;
-                                    if (isVariantMotion
+                                    // A cancelled exit reproduces the SAME still-attached element —
+                                    // not a first mount — so `initial` does not reapply: CancelExit
+                                    // already reverses the element toward its resting variant with
+                                    // the transition kept alive, and replaying initial→animate here
+                                    // would re-seed the declared initial pose (a jump) and restart
+                                    // the full enter duration from it.
+                                    if (isVariantMotion && !wasExiting
                                         && TryResolveVariantInitial(motion, out var fromClasses, out var toClasses))
                                     {
                                         // `initial`: enter from variants[initial] to variants[animate]
