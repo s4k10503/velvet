@@ -418,14 +418,15 @@ namespace Velvet
                 // tween's co-fade and drop its driver — the shadow snaps back to full (product collapses to 1)
                 // unless an enclosing fade still drives it.
                 EndShadowCoFade(pending);
-                if (animateReversal && pending.DurationList is { Count: > 0 })
+                if (animateReversal && element.panel != null && pending.DurationList is { Count: > 0 })
                 {
                     // A cancelled exit retargets a still-attached element back to its resting
                     // classes. Clearing the inline transition styles in this same call would make
                     // the next style resolve snap straight to the resting values; keep the
                     // transition alive instead so the panel interpolates from the currently
                     // resolved value, and defer the clear (and list return) until the reversal has
-                    // run its course.
+                    // run its course. Off-panel there is nothing to interpolate (and scheduling
+                    // would plant a fresh deferred-attach callback), so clear immediately.
                     ScheduleReversalCleanup(element, pending);
                 }
                 else

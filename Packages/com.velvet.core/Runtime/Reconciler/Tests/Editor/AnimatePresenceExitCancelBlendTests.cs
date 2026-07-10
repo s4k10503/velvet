@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEditor;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -36,6 +38,7 @@ namespace Velvet.Tests
         private static bool s_withInitial;
 
         private VisualElement _root;
+        private EditorWindow _window;
 
         [SetUp]
         public void SetUp()
@@ -43,6 +46,17 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_store = null;
             s_withInitial = false;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            if (_window != null)
+            {
+                _window.Close();
+                Object.DestroyImmediate(_window);
+                _window = null;
+            }
         }
 
         [Component]
@@ -68,14 +82,18 @@ namespace Velvet.Tests
         [Test]
         public void Given_AVariantExitWasCancelled_When_TheElementReverts_Then_TheTransitionStaysAliveForTheReversal()
         {
-            // Arrange — a settled child whose exit has started, then the key is re-added mid-exit.
+            // Arrange — a real panel (the reversal is panel-interpolated; off-panel cancels clear
+            // immediately), a settled child whose exit has started, then the key re-added mid-exit.
+            TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
+            _window = ScriptableObject.CreateInstance<EditorWindow>();
+            _window.Show();
             using var store = new SetStore();
             s_store = store;
-            using var mounted = V.Mount(_root, V.Component(PresenceHost, key: "host"));
+            using var mounted = V.Mount(_window.rootVisualElement, V.Component(PresenceHost, key: "host"));
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             store.Set("");
             scheduler.DrainImmediateForTest();
-            var item = _root.Q<VisualElement>("item-a");
+            var item = _window.rootVisualElement.Q<VisualElement>("item-a");
             Assume.That(item, Is.Not.Null, "Precondition: the exiting ghost is still mounted");
 
             // Act — cancel the exit by re-adding the key.
@@ -84,7 +102,7 @@ namespace Velvet.Tests
 
             // Assert — the transition styles survive the cancel, so the panel interpolates from the
             // currently-resolved value back to the resting classes instead of snapping.
-            Assert.That(_root.Q<VisualElement>("item-a").style.transitionDuration.keyword,
+            Assert.That(_window.rootVisualElement.Q<VisualElement>("item-a").style.transitionDuration.keyword,
                 Is.Not.EqualTo(StyleKeyword.Null));
         }
 
