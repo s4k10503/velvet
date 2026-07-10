@@ -221,7 +221,10 @@ namespace Velvet
                 return false;
             }
             var open = s.IndexOf('(');
-            var parts = s.Substring(open + 1, s.Length - open - 2).Split(',');
+            // Underscores stand in for the spaces a class string cannot carry (the same
+            // arbitrary-value convention the shadow and clip-path grammars restore before parsing),
+            // so the underscore form of a copy-pasted "rgb(0, 0, 0)" parses like the spaced one.
+            var parts = s.Substring(open + 1, s.Length - open - 2).Replace('_', ' ').Split(',');
             if (parts.Length != (isRgba ? 4 : 3))
             {
                 return false;
