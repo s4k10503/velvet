@@ -40,7 +40,11 @@ namespace Velvet
                 return string.Equals((string?)(object?)a, (string?)(object?)b, System.StringComparison.Ordinal);
             }
 
-            if (default(T) == null)
+            // Route by IsValueType, not by a null-test: Nullable<T> satisfies a lifted
+            // `default(T) == null` (boxing an empty nullable yields a true null reference), which
+            // would send it to the reference branch — where boxing each operand afresh makes equal
+            // values never compare equal. Nullable<T> must fall through to the value comparison.
+            if (!typeof(T).IsValueType)
             {
                 return ReferenceEquals(a, b);
             }
