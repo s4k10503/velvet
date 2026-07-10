@@ -182,8 +182,20 @@ namespace Velvet
             // (e.g. after a prior aborted/suspended commit) to a fresh create instead of throwing
             // IndexOutOfRange — the time-sliced keyed path asserts this invariant; the general path
             // can be re-entered mid-suspend so it guards defensively.
-            if (commit.OldKeyMap.TryGetValue(key, out var old)
-                && slotStart + old.index < parent.childCount)
+            var oldMatched = commit.OldKeyMap.TryGetValue(key, out var old)
+                && slotStart + old.index < parent.childCount;
+            if (oldMatched && commit.UsedKeys.Contains(key))
+            {
+                // A second new-side sibling resolved the same old entry its first occurrence already
+                // claimed: re-matching would alias two rows onto one element or retroactively remove
+                // the patched one via ReplacedKeys. Mirror the old-side duplicate guard: warn and
+                // fall through to a fresh create so every declared row commits.
+                FiberLogger.LogWarning("GeneralPathReconciler",
+                    $"Duplicate key detected among new siblings: {key}. " +
+                    "The repeated sibling mounts a fresh element; give each sibling a unique key.");
+                oldMatched = false;
+            }
+            if (oldMatched)
             {
                 var existingDom = parent.ElementAt(slotStart + old.index);
                 if (ReconcileKeying.CanPatch(old.node, node))
@@ -569,7 +581,6 @@ namespace Velvet
                             var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity);
                             if (fiber != null)
                             {
-                                oldFibers.Add(fiber);
                                 if (fiber.PreviousTree != null && fiber.PreviousTree.Length > 0)
                                 {
                                     var childCounters = _ctx.BufferPool.RentPositionCounter();
@@ -586,6 +597,7 @@ namespace Velvet
                                         _ctx.BufferPool.ReturnPositionCounter(childCounters);
                                     }
                                 }
+                                oldFibers.Add(fiber);
                             }
                         }
                         break;

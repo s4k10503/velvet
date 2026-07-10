@@ -1243,7 +1243,23 @@ namespace Velvet
 
             if (oldKeyMap.TryGetValue(key, out var old))
             {
-                usedKeys.Add(key);
+                if (!usedKeys.Add(key))
+                {
+                    // A second new-side sibling resolved the same old entry. Re-matching would alias
+                    // two logical rows onto one element (the reorder pass then collapses them,
+                    // silently dropping a row) or, on a type swap, retroactively remove the element
+                    // the first occurrence patched. Mirror the old-side duplicate guard: warn and
+                    // mount a fresh element so every declared row commits.
+                    FiberLogger.LogWarning("ChildReconciler",
+                        $"Duplicate key detected among new siblings: {key}. " +
+                        "The repeated sibling mounts a fresh element; give each sibling a unique key.");
+                    var duplicateElement = _factory.CreateElement(newNode);
+                    if (_ctx.IsAborted) return true;
+                    UnityEngine.Debug.Assert(duplicateElement.parent == null,
+                        "[ChildReconciler] _factory.CreateElement must return an orphaned VisualElement (no parent).");
+                    newElements.Add((duplicateElement, false));
+                    return false;
+                }
                 AssertDomIndexInvariant(slotStart, old.index, parent);
                 var existingDomElement = parent.ElementAt(slotStart + old.index);
 
