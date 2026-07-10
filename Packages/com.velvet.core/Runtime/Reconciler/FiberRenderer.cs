@@ -497,6 +497,13 @@ namespace Velvet
         private static void DoubleInvokeRenderForStrictMode(ComponentFiber fiber, VNode?[] committedTree)
         {
             if (!FiberStrictMode.Enabled || fiber.IsDisposed || fiber.Reconciler == null) return;
+            // The mount root's Body is a constant passthrough closure over the caller-built tree
+            // (V.Mount wires `() => tree` — the only CreateRoot caller), so a second invocation
+            // returns the SAME node graph the commit owns: there is no render purity to validate,
+            // and recycling the diagnostic output would wipe the committed tree's props/events in
+            // place and alias them into the shared pools. Nested component fibers still run the
+            // diagnostic individually, which is where the real coverage lives.
+            if (fiber.Parent == null) return;
 
             var committedSignature = FiberStrictMode.ComputeSignature(committedTree);
 
