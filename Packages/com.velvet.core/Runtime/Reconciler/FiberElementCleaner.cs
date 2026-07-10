@@ -301,6 +301,10 @@ namespace Velvet
                 routeScope.Dispose();
                 _ctx.OutletScopes.Remove(element);
             }
+            // Identity-side registration added on every Outlet mount; without this per-element
+            // removal the set would pin every unmounted Outlet's dead container element until the
+            // whole reconciler disposes. No-op for non-Outlet elements.
+            _ctx.OutletContainers.Remove(element);
         }
 
         // Removes only this Portal's slot range from the target's children
