@@ -21,15 +21,36 @@ namespace Velvet
 
         private static readonly Stack<FiberElementProps> s_propsPool = new();
 
+        // Identity set of props bags this pool created (via RentProps). ReturnProps clears + recycles
+        // ONLY these — never a caller-supplied instance: the V.* factories accept a raw `props:`
+        // argument a consumer may cache and reuse across renders, and clearing it would wipe an object
+        // the caller still holds and alias it into the shared pool. Mirrors s_ownedNodeArrays.
+        private static readonly HashSet<FiberElementProps> s_ownedProps = new();
+
         public static FiberElementProps RentProps()
         {
-            return s_propsPool.Count > 0 ? s_propsPool.Pop() : new FiberElementProps();
+            if (s_propsPool.Count > 0)
+            {
+                // A pooled bag is already owned (recorded when first created); no set op on this hot path.
+                return s_propsPool.Pop();
+            }
+
+            var created = new FiberElementProps();
+            s_ownedProps.Add(created);
+            return created;
         }
 
         public static void ReturnProps(FiberElementProps? props)
         {
             if (props == null || ReferenceEquals(props, FiberElementProps.Empty)) return;
-            if (s_propsPool.Count >= MaxPoolSize) return;
+            // Only recycle bags the pool owns; a caller-owned bag is left untouched (not cleared, not pooled).
+            if (!s_ownedProps.Contains(props)) return;
+            if (s_propsPool.Count >= MaxPoolSize)
+            {
+                // Pool is full: drop this owned bag (let it be GC'd) and stop tracking it so the set does not leak.
+                s_ownedProps.Remove(props);
+                return;
+            }
 
             props.Text = null;
             props.Tooltip = null;
@@ -53,16 +74,33 @@ namespace Velvet
 
         private static readonly Stack<FiberEventBinding[]> s_singleEventPool = new();
 
+        // Identity set mirroring s_ownedProps: only arrays RentSingleEventArray created may be
+        // cleared and recycled — V.Motion accepts a raw `events:` array a consumer may cache and
+        // reuse across renders, and clearing slot 0 would sever the caller's handler in place.
+        private static readonly HashSet<FiberEventBinding[]> s_ownedSingleEventArrays = new();
+
         public static FiberEventBinding[] RentSingleEventArray()
         {
-            return s_singleEventPool.Count > 0 ? s_singleEventPool.Pop() : new FiberEventBinding[1];
+            if (s_singleEventPool.Count > 0)
+            {
+                return s_singleEventPool.Pop();
+            }
+
+            var created = new FiberEventBinding[1];
+            s_ownedSingleEventArrays.Add(created);
+            return created;
         }
 
         public static void ReturnEventArray(FiberEventBinding[] array)
         {
-            if (array == null || array.Length == 0) return;
-            if (array.Length != 1) return;
-            if (s_singleEventPool.Count >= MaxPoolSize) return;
+            if (array == null || array.Length != 1) return;
+            // Only recycle arrays the pool owns; a caller-owned array is left untouched.
+            if (!s_ownedSingleEventArrays.Contains(array)) return;
+            if (s_singleEventPool.Count >= MaxPoolSize)
+            {
+                s_ownedSingleEventArrays.Remove(array);
+                return;
+            }
 
             array[0] = null!;
             s_singleEventPool.Push(array);
