@@ -85,4 +85,18 @@ jobs:
           TAG="v${VERSION}"
           git tag "$TAG" "$SPLIT_SHA"
           git push origin "$TAG"
-          gh release create "$TAG" --title "$TAG" --generate-notes
+          # The split artifact is amended per release (test stripping), so vX.Y.Z tags are
+          # one-off snapshots with no ancestor relation between releases — they cannot anchor
+          # a "changes since the last release" compare link. Tag the main-side release point
+          # too (vX.Y.Z-main on the commit that triggered this dispatch) and link the release
+          # notes to the compare between consecutive -main tags instead.
+          MAIN_TAG="v${VERSION}-main"
+          git tag "$MAIN_TAG" "$GITHUB_SHA"
+          git push origin "$MAIN_TAG"
+          PREV_MAIN_TAG=$(git tag -l "v*-main" --sort=-v:refname | grep -vx "$MAIN_TAG" | head -1)
+          if [ -n "$PREV_MAIN_TAG" ]; then
+            gh release create "$TAG" --title "$TAG" \
+              --notes "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_MAIN_TAG}...${MAIN_TAG}"
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
