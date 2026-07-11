@@ -32,9 +32,10 @@ namespace Velvet
             }
 
             var element = parent.ElementAt(index);
+            var poolable = PoolableOccupantOf(element);
             CleanupElement(element);
             parent.RemoveAt(index);
-            ReturnToPool(element);
+            ReturnOccupantToPool(element, poolable);
         }
 
         // Removes an element from its parent directly (by element reference, not index).
@@ -45,9 +46,28 @@ namespace Velvet
                 return;
             }
 
+            var poolable = PoolableOccupantOf(element);
             CleanupElement(element);
             element.RemoveFromHierarchy();
-            ReturnToPool(element);
+            ReturnOccupantToPool(element, poolable);
+        }
+
+        // Resolves the poolable occupant of a slot: a ring-*/clip-path-* leaf sits inside a
+        // structural wrapper, and the wrapper — not the widget — is the slot's element. Must run
+        // BEFORE CleanupElement, which consumes the wrapper map entry.
+        private VisualElement PoolableOccupantOf(VisualElement element)
+            => _ctx.WrapperToInnerMap.TryGetValue(element, out var inner) ? inner : element;
+
+        // Reclaims the slot's poolable occupant after cleanup. A wrapped inner is detached from its
+        // wrapper first so a pooled widget never carries the dead wrapper as its parent — mirroring
+        // the rollback-orphan path, which already unwraps before reclaiming.
+        private static void ReturnOccupantToPool(VisualElement removed, VisualElement poolable)
+        {
+            if (!ReferenceEquals(poolable, removed))
+            {
+                poolable.RemoveFromHierarchy();
+            }
+            ReturnToPool(poolable);
         }
 
         // Returns a created-but-never-placed orphan element to the pool. Used by the speculative
@@ -81,47 +101,53 @@ namespace Velvet
                 return;
             }
 
-            switch (element)
+            var exactType = element.GetType();
+            if (exactType == typeof(Label) || exactType == typeof(Toggle)
+                || exactType == typeof(Slider) || exactType == typeof(TextField)
+                || (exactType == typeof(Button) && ((Button)element).childCount == 0))
             {
-                case Label or Toggle or Slider or TextField:
-                    CleanupElementResources(element);
-                    ReturnToPool(element);
-                    break;
-                case Button button when button.childCount == 0:
-                    CleanupElementResources(button);
-                    ReturnToPool(button);
-                    break;
-                default:
-                    // A plain container orphan (Div) or a Button declared with children. Release the
-                    // orphan subtree's element-keyed resources without disposing its fibers and
-                    // without pooling the non-poolable container.
-                    CleanupElementCore(element);
-                    break;
+                CleanupElementResources(element);
+                ReturnToPool(element);
+            }
+            else
+            {
+                // A plain container orphan (Div), a Button declared with children, or a user
+                // subclass of a poolable primitive (never pooled — see ReturnToPool). Release the
+                // orphan subtree's element-keyed resources without disposing its fibers and
+                // without pooling the non-poolable container.
+                CleanupElementCore(element);
             }
         }
 
         // Returns the element to the VNodePool when the type supports pooling.
         // Called after the element has been detached from the DOM hierarchy and Velvet-managed
-        // resources have been released.
+        // resources have been released. Dispatches on the EXACT runtime type, mirroring the
+        // factory's exact-type rent checks: a user subclass of a poolable primitive (mounted via
+        // V.Custom<T>) must never enter the shared pool — its own fields and constructor-registered
+        // callbacks survive the base-type reset, so a later plain rent would resurrect them on an
+        // unrelated mount.
         private static void ReturnToPool(VisualElement element)
         {
-            switch (element)
+            var type = element.GetType();
+            if (type == typeof(TextField))
             {
-                case TextField textField:
-                    VNodePool.ReturnTextField(textField);
-                    break;
-                case Toggle toggle:
-                    VNodePool.ReturnToggle(toggle);
-                    break;
-                case Slider slider:
-                    VNodePool.ReturnSlider(slider);
-                    break;
-                case Button button:
-                    VNodePool.ReturnButton(button);
-                    break;
-                case Label label:
-                    VNodePool.ReturnLabel(label);
-                    break;
+                VNodePool.ReturnTextField((TextField)element);
+            }
+            else if (type == typeof(Toggle))
+            {
+                VNodePool.ReturnToggle((Toggle)element);
+            }
+            else if (type == typeof(Slider))
+            {
+                VNodePool.ReturnSlider((Slider)element);
+            }
+            else if (type == typeof(Button))
+            {
+                VNodePool.ReturnButton((Button)element);
+            }
+            else if (type == typeof(Label))
+            {
+                VNodePool.ReturnLabel((Label)element);
             }
         }
 
@@ -275,6 +301,10 @@ namespace Velvet
                 routeScope.Dispose();
                 _ctx.OutletScopes.Remove(element);
             }
+            // Identity-side registration added on every Outlet mount; without this per-element
+            // removal the set would pin every unmounted Outlet's dead container element until the
+            // whole reconciler disposes. No-op for non-Outlet elements.
+            _ctx.OutletContainers.Remove(element);
         }
 
         // Removes only this Portal's slot range from the target's children
@@ -302,9 +332,10 @@ namespace Velvet
             for (var i = slotEnd - 1; i >= portalInfo.SlotStart; i--)
             {
                 var child = target.ElementAt(i);
+                var poolable = PoolableOccupantOf(child);
                 CleanupElement(child);
                 target.RemoveAt(i);
-                ReturnToPool(child);
+                ReturnOccupantToPool(child, poolable);
             }
 
             // Surviving Portals on the same target whose slot starts after the removed range
