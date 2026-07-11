@@ -1,6 +1,6 @@
 {
   "name": "com.velvet.core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "displayName": "Velvet",
   "description": "React-style declarative UI framework for Unity UI Toolkit. Provides virtual DOM, reconciliation engine, hooks, and component model.",
   "license": "MIT",
