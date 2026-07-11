@@ -213,6 +213,19 @@ namespace Velvet
                             "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit "
                             + "(same constraint as shadow-*). Wrap the Motion around a clipped Div instead.");
                     }
+                    // Enter/exit tweens are scheduled by the AnimatePresence expansion, so on a
+                    // standalone Motion these props are silently inert: the element mounts already
+                    // at its animate/resting classes and the declared initial never plays. Warn like
+                    // the shadow-*/clip-path-* gates above so a Framer-style initial/animate pair
+                    // does not just fail to animate without a trace.
+                    if (_ctx.PresenceExpansionDepth == 0
+                        && (motionNode.Initial != null || motionNode.Exit != null))
+                    {
+                        FiberLogger.LogWarning("Motion",
+                            "initial/exit on a Motion outside AnimatePresence is inert: enter/exit tweens are "
+                            + "driven by the AnimatePresence expansion. Wrap the Motion in V.AnimatePresence "
+                            + "(or drop initial/exit).");
+                    }
                     return element;
                 }
                 case AnimatePresenceNode:
