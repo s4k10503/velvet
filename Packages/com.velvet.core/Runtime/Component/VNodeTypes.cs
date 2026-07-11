@@ -298,6 +298,14 @@ namespace Velvet
         /// is in flight, a brand-new key is withheld; the exit-completion re-render then mounts and enters it.
         /// </summary>
         Wait,
+
+        /// <summary>
+        /// The instant a child starts exiting, it is pulled out of layout flow and pinned via absolute
+        /// positioning at the last rect it occupied, so still-present siblings reflow immediately into its
+        /// place while its exit animation finishes on top of them. Cancelling the exit (its key re-added
+        /// before the animation finishes) restores the child into flow.
+        /// </summary>
+        PopLayout,
     }
 
     /// <summary>
@@ -357,6 +365,8 @@ namespace Velvet
         /// <summary>
         /// Exit / enter sequencing. Defaults to <see cref="AnimatePresenceMode.Sync"/> (exit and enter overlap).
         /// <see cref="AnimatePresenceMode.Wait"/> holds a brand-new child back until in-flight exits finish.
+        /// <see cref="AnimatePresenceMode.PopLayout"/> pulls an exiting child out of flow so siblings reflow
+        /// around it immediately.
         /// </summary>
         public AnimatePresenceMode Mode { get; init; } = AnimatePresenceMode.Sync;
 

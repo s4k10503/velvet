@@ -1073,6 +1073,10 @@ namespace Velvet
                         if (commit != null && ghostAnchor != null && state.Exiting.Add(key))
                         {
                             _ctx.StyleAnimationScheduler.CancelEnter(ghostAnchor);
+                            if (presence.Mode == AnimatePresenceMode.PopLayout)
+                            {
+                                PinExitingChildOutOfFlow(ghostAnchor);
+                            }
                             var capturedKey = key;
                             var capturedState = state;
                             var capturedBoundary = boundaryFiber;
@@ -1161,7 +1165,14 @@ namespace Velvet
                         {
                             state.ExitAnchors.Remove(key!);
                         }
-                        if (wasExiting) _ctx.StyleAnimationScheduler.CancelExit(anchor);
+                        if (wasExiting)
+                        {
+                            _ctx.StyleAnimationScheduler.CancelExit(anchor);
+                            if (presence.Mode == AnimatePresenceMode.PopLayout)
+                            {
+                                RestorePopLayoutChildToFlow(anchor);
+                            }
+                        }
 
                         var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
                         if (isEnter)
@@ -1252,6 +1263,41 @@ namespace Velvet
                 if (list[i].key == key) return true;
             }
             return false;
+        }
+
+        // AnimatePresenceMode.PopLayout: the instant a child's exit starts, pull it out of layout flow and pin
+        // it via absolute positioning at the last rect Yoga resolved for it in-flow (anchor.layout is parent-
+        // relative), so still-present siblings reflow into its place immediately while the exit animation
+        // finishes on top. Skipped when any component is non-finite (an EditMode pass with no forced layout
+        // leaves `.layout` at NaN) — the child then degrades to a normal in-flow exit rather than being pinned
+        // to garbage coordinates.
+        private static void PinExitingChildOutOfFlow(VisualElement anchor)
+        {
+            var rect = anchor.layout;
+            if (!float.IsFinite(rect.x) || !float.IsFinite(rect.y)
+                || !float.IsFinite(rect.width) || !float.IsFinite(rect.height))
+            {
+                return;
+            }
+
+            anchor.style.position = Position.Absolute;
+            anchor.style.left = rect.x;
+            anchor.style.top = rect.y;
+            anchor.style.width = rect.width;
+            anchor.style.height = rect.height;
+        }
+
+        // Reverses PinExitingChildOutOfFlow when a PopLayout exit is cancelled (its key re-added before the
+        // exit finished): clears the same five inline styles back to StyleKeyword.Null so the child rejoins
+        // its parent's normal layout flow. A no-op (harmless) when the exit was never pinned (non-finite
+        // layout at exit-start), since clearing an already-null style is idempotent.
+        private static void RestorePopLayoutChildToFlow(VisualElement anchor)
+        {
+            anchor.style.position = StyleKeyword.Null;
+            anchor.style.left = StyleKeyword.Null;
+            anchor.style.top = StyleKeyword.Null;
+            anchor.style.width = StyleKeyword.Null;
+            anchor.style.height = StyleKeyword.Null;
         }
 
         // Disposes the inline/wrapper fibers mounted under an exit-completed ghost's anchor element. Needed
