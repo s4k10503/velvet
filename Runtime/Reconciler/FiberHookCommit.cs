@@ -30,7 +30,7 @@ namespace Velvet
             TruncateTo(fiber.PendingEffects, committedPendingEffectCount);
         }
 
-        private static void TruncateTo(List<HookEffectSlot>? list, int count)
+        internal static void TruncateTo(List<HookEffectSlot>? list, int count)
         {
             if (list != null && list.Count > count)
             {

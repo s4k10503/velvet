@@ -308,6 +308,10 @@ namespace Velvet
 #endif
             VNode?[]? prevPendingOldTree = null;
             VNode?[]? oldTree = null;
+            // Committed baseline of the passive-effect list: entries staged by EARLIER renders and
+            // not yet flushed (the flush is deferred to the frame boundary) must survive an
+            // exception thrown by THIS render — see the catch block.
+            var committedPendingEffectCount = fiber.PendingEffects?.Count ?? 0;
             var fiberPushed = PushFiber(fiber);
             // Spine-rewalk-with-bailout: an isolated re-render (a standalone entry, not a
             // nested expansion render) starts with an empty live context cursor, so reconstruct the
@@ -395,7 +399,13 @@ namespace Velvet
                 }
                 fiber.PendingLayoutEffects?.Clear();
                 fiber.PendingInsertionEffects?.Clear();
-                fiber.PendingEffects?.Clear();
+                // Unlike the two lists above (rebuilt every render and flushed synchronously),
+                // PendingEffects intentionally persists across renders until the deferred flush
+                // runs it — and the settled deps of an already-committed entry were promoted at its
+                // commit, so no later successful render would ever re-stage a wiped stable-deps
+                // mount effect. Truncate this render's additions only, mirroring the render-phase
+                // retry discipline, instead of discarding earlier commits' still-pending work.
+                FiberHookCommit.TruncateTo(fiber.PendingEffects, committedPendingEffectCount);
                 if (ex is FiberSuspendSignal)
                 {
                     if (fiber.Parent != null)
@@ -422,6 +432,10 @@ namespace Velvet
                 // Runs after Render + Reconcile (descendants re-rendered during the expansion needed the
                 // spine as their base) and is a no-op for nested / root renders (default handle).
                 contextSpine.Unwind();
+                // A throw/suspend exits with this render's context reads still staged; drop them so
+                // the committed dependency list stays exactly as the last successful render left it
+                // (no-op on the success path, where CommitSettledHookDeps already swapped).
+                fiber.DiscardStagedDependencies();
                 PopFiber(fiber, fiberPushed);
                 fiber.IsRendering = false;
                 // Any setState arriving after IsRendering clears belongs to the regular next-frame
@@ -483,6 +497,13 @@ namespace Velvet
         private static void DoubleInvokeRenderForStrictMode(ComponentFiber fiber, VNode?[] committedTree)
         {
             if (!FiberStrictMode.Enabled || fiber.IsDisposed || fiber.Reconciler == null) return;
+            // The mount root's Body is a constant passthrough closure over the caller-built tree
+            // (V.Mount wires `() => tree` — the only CreateRoot caller), so a second invocation
+            // returns the SAME node graph the commit owns: there is no render purity to validate,
+            // and recycling the diagnostic output would wipe the committed tree's props/events in
+            // place and alias them into the shared pools. Nested component fibers still run the
+            // diagnostic individually, which is where the real coverage lives.
+            if (fiber.Parent == null) return;
 
             var committedSignature = FiberStrictMode.ComputeSignature(committedTree);
 
@@ -501,7 +522,9 @@ namespace Velvet
             try
             {
                 FiberBeginWork.ResetHookIndex(fiber);
-                fiber.ClearDependencies();
+                // The diagnostic's context reads are staged and later discarded, so the committed
+                // dependency list (matching the real committed render) stays intact.
+                fiber.BeginDependencyStaging();
                 fiber.HasRenderPhaseUpdate = false;
                 diagnosticTree = FiberTreeReturn.NormalizeToArray(FiberBeginWork.Render(fiber));
 
@@ -543,6 +566,9 @@ namespace Velvet
                 // pool drain that the committed (owned) tree would not cause.
                 FiberTreeReturn.ReturnPooledTreeRecursive(diagnosticTree);
                 contextSpine.Unwind();
+                // Discard the diagnostic's staged context reads; the committed list stays as the
+                // real render left it.
+                fiber.DiscardStagedDependencies();
                 PopFiber(fiber, fiberPushed);
                 FiberAmbientStack.Pop();
                 fiber.IsRendering = false;
