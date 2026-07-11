@@ -49,10 +49,12 @@ namespace Velvet
             }
 
             // Classic transition enter: the to-classes are a TRANSIENT overlay (resting state = the element's
-            // base classes), so they are removed on completion (variantMode: false).
+            // base classes), so they are removed on completion (variantMode: false). Per-property overrides are
+            // wired only where a variant swap sets transition-property: all (see PlayVariantEnter / PlayExit); a
+            // preset's own USS-declared transition-property is untouched, so PropertyOverrides is not read here.
             PlayEnterInternal(element, config.EnterFromClasses, config.EnterToClasses,
                 config.DurationSec, config.Easing, config.DelaySec, onComplete, additionalDelaySec,
-                variantMode: false);
+                variantMode: false, propertyOverrides: null);
         }
 
         // Variant-driven enter (initial → animate). Unlike PlayEnter, the
@@ -63,7 +65,8 @@ namespace Velvet
         // (the animate target persists). A zero/invalid duration leaves the element at its
         // already-applied resting state (no strip, mounts directly at animate).
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
-            float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f)
+            float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f,
+            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null)
         {
             if (element == null)
             {
@@ -71,11 +74,12 @@ namespace Velvet
             }
 
             PlayEnterInternal(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
-                durationSec, easing, delaySec, onComplete, additionalDelaySec, variantMode: true);
+                durationSec, easing, delaySec, onComplete, additionalDelaySec, variantMode: true, propertyOverrides);
         }
 
         private void PlayEnterInternal(VisualElement element, string[] fromClasses, string[] toClasses,
-            float durationSec, EasingMode easing, float delaySec, Action? onComplete, float additionalDelaySec, bool variantMode)
+            float durationSec, EasingMode easing, float delaySec, Action? onComplete, float additionalDelaySec, bool variantMode,
+            IReadOnlyList<StylePropertyTransition>? propertyOverrides)
         {
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
@@ -92,7 +96,7 @@ namespace Velvet
             // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
             // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
             var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, delaySec,
-                allProperties: variantMode);
+                allProperties: variantMode, propertyOverrides: propertyOverrides);
             if (variantMode)
             {
                 StyleAnimationClassUtils.RemoveClasses(element, toClasses);
@@ -202,9 +206,12 @@ namespace Velvet
             var exitEasing = config.ExitEasing ?? config.Easing;
 
             // Step 1: add the exit initial-state class and set duration / easing as inline styles. A variant exit
-            // (restoreFromOnCancel) swaps variant utility classes, so it needs transition-property: all to tween.
+            // (restoreFromOnCancel) swaps variant utility classes, so it needs transition-property: all to tween
+            // — the same condition that gates reading PropertyOverrides (a preset exit's own USS-declared
+            // transition-property is untouched).
             var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing,
-                config.DelaySec, allProperties: restoreFromOnCancel);
+                config.DelaySec, allProperties: restoreFromOnCancel,
+                propertyOverrides: restoreFromOnCancel ? config.PropertyOverrides : null);
             StyleAnimationClassUtils.AddClasses(element, fromClasses);
 
             // Step 2: swap classes on the next frame.
@@ -361,8 +368,18 @@ namespace Velvet
             new() { new UnityEngine.UIElements.StylePropertyName("all") };
 
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
-            VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false)
+            VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false,
+            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null)
         {
+            // Per-property overrides replace the "all" catch-all with an explicit property list — reachable only
+            // where a variant swap would otherwise set transition-property: all (allProperties), matching the
+            // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
+            // overrides, or a preset transition that never sets allProperties) falls through unchanged below.
+            if (allProperties && propertyOverrides is { Count: > 0 })
+            {
+                return ApplyPropertyOverrideTransitionStyles(element, durationSec, easing, delaySec, propertyOverrides);
+            }
+
             var durationMs = (int)(durationSec * 1000);
             var durationList = RentDurationList(durationMs);
             element.style.transitionDuration = durationList;
@@ -382,6 +399,59 @@ namespace Velvet
             if (delaySec > 0f)
             {
                 var delayMs = (int)(delaySec * 1000);
+                delayList = RentDelayList(delayMs);
+                element.style.transitionDelay = delayList;
+            }
+
+            return (durationList, delayList);
+        }
+
+        // Per-property override path: transition-property becomes EXACTLY the overridden properties (in
+        // declaration order) instead of "all" — matching CSS semantics where an explicit transition-property list
+        // transitions only what it names. Duration / delay are positionally-matched n-entry lists rented from the
+        // SAME pools the single-entry path above uses (RentDurationList / RentDelayList n-entry overloads), so
+        // they are returned through the existing PendingAnimation.DurationList / DelayList bookkeeping unchanged.
+        // A null override field falls back to the value the caller already resolved for this direction
+        // (durationSec / easing / delaySec — for an exit, easing here is already ExitEasing ?? Easing, so the
+        // fallback stays direction-correct without this method needing to know enter from exit).
+        // The property-name and easing lists are rebuilt each call instead of pooled: PropertyOverrides is a
+        // handful of entries fixed at config-authoring time, so the allocation is bounded and one-shot per
+        // animation start (never per-frame) — but the per-mode EasingFunction INSTANCES are still reused via the
+        // existing static cache (GetOrCreateEasingList) rather than reallocated, mirroring its intent.
+        private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyPropertyOverrideTransitionStyles(
+            VisualElement element, float defaultDurationSec, EasingMode defaultEasing, float defaultDelaySec,
+            IReadOnlyList<StylePropertyTransition> overrides)
+        {
+            var count = overrides.Count;
+            var propertyNames = new List<StylePropertyName>(count);
+            var easingList = new List<EasingFunction>(count);
+            var durationMs = new int[count];
+            var delayMs = new int[count];
+            var hasDelay = false;
+            for (var i = 0; i < count; i++)
+            {
+                var o = overrides[i];
+                propertyNames.Add(new StylePropertyName(o.Property));
+                easingList.Add(GetOrCreateEasingList(o.Easing ?? defaultEasing)[0]);
+                durationMs[i] = (int)((o.DurationSec ?? defaultDurationSec) * 1000);
+                var delaySec = o.DelaySec ?? defaultDelaySec;
+                if (delaySec > 0f)
+                {
+                    hasDelay = true;
+                    delayMs[i] = (int)(delaySec * 1000);
+                }
+            }
+
+            var durationList = RentDurationList(durationMs);
+            element.style.transitionProperty = propertyNames;
+            element.style.transitionDuration = durationList;
+            element.style.transitionTimingFunction = easingList;
+
+            // Mirrors the single-entry path: transition-delay is set only when at least one property actually
+            // needs one (an all-zero delay list is behaviorally identical to leaving it unset).
+            List<TimeValue>? delayList = null;
+            if (hasDelay)
+            {
                 delayList = RentDelayList(delayMs);
                 element.style.transitionDelay = delayList;
             }
@@ -453,9 +523,7 @@ namespace Velvet
                 DurationList = pending.DurationList,
                 DelayList = pending.DelayList,
             };
-            var timeoutMs = 0f;
-            if (pending.DurationList is { Count: > 0 }) timeoutMs += pending.DurationList[0].value;
-            if (pending.DelayList is { Count: > 0 }) timeoutMs += pending.DelayList[0].value;
+            var timeoutMs = MaxReversalTimeoutMs(pending.DurationList, pending.DelayList);
             var timeout = element.schedule.Execute(() =>
             {
                 if (_pendingEnters.Remove(element))
@@ -468,6 +536,34 @@ namespace Velvet
             timeout.ExecuteLater((long)timeoutMs);
             reversal.TimeoutItem = timeout;
             _pendingEnters[element] = reversal;
+        }
+
+        // How long the reversal must stay alive before it is safe to clear the inline transition styles: the
+        // SLOWEST animating property's delay + duration. For the single-entry case (no PropertyOverrides) that
+        // is just duration[0] + delay[0], same as before; PropertyOverrides can give each property its own
+        // duration / delay, so an interrupted variant exit's reversal must wait for whichever one finishes
+        // last, not just the first, or a slower property's transition-duration would be cleared (snapping it to
+        // the resting value) while it is still mid-tween.
+        private static float MaxReversalTimeoutMs(List<TimeValue>? durationList, List<TimeValue>? delayList)
+        {
+            if (durationList is not { Count: > 0 })
+            {
+                return 0f;
+            }
+            var maxMs = 0f;
+            for (var i = 0; i < durationList.Count; i++)
+            {
+                var ms = durationList[i].value;
+                if (delayList is { Count: > 0 })
+                {
+                    ms += delayList[Math.Min(i, delayList.Count - 1)].value;
+                }
+                if (ms > maxMs)
+                {
+                    maxMs = ms;
+                }
+            }
+            return maxMs;
         }
 
         private void CancelAllInMap(Dictionary<VisualElement, PendingAnimation> map)
@@ -607,10 +703,14 @@ namespace Velvet
         }
 
         private List<TimeValue> RentDurationList(int ms) => RentTimeValueList(_durationPool, ms);
+        private List<TimeValue> RentDurationList(IReadOnlyList<int> msValues) => RentTimeValueList(_durationPool, msValues);
         private void ReturnDurationList(List<TimeValue>? list) => ReturnTimeValueList(_durationPool, list);
         private List<TimeValue> RentDelayList(int ms) => RentTimeValueList(_delayPool, ms);
+        private List<TimeValue> RentDelayList(IReadOnlyList<int> msValues) => RentTimeValueList(_delayPool, msValues);
         private void ReturnDelayList(List<TimeValue>? list) => ReturnTimeValueList(_delayPool, list);
 
+        // Single-entry hot path (unchanged): every enter / exit without PropertyOverrides rents exactly one of
+        // these per animation.
         private static List<TimeValue> RentTimeValueList(Stack<List<TimeValue>> pool, int ms)
         {
             if (!pool.TryPop(out var list))
@@ -622,6 +722,27 @@ namespace Velvet
                 list.Clear();
             }
             list.Add(new TimeValue(ms, TimeUnit.Millisecond));
+            return list;
+        }
+
+        // n-entry sibling for PropertyOverrides: builds a positionally-matched TimeValue per override, reusing
+        // the SAME pool as the single-entry path above (a rented list's capacity just grows to whatever size it
+        // was last asked for; Clear()+Add() reuse is agnostic to entry count) — so ReturnTimeValueList below
+        // already handles returning either shape without change.
+        private static List<TimeValue> RentTimeValueList(Stack<List<TimeValue>> pool, IReadOnlyList<int> msValues)
+        {
+            if (!pool.TryPop(out var list))
+            {
+                list = new List<TimeValue>(msValues.Count);
+            }
+            else
+            {
+                list.Clear();
+            }
+            for (var i = 0; i < msValues.Count; i++)
+            {
+                list.Add(new TimeValue(msValues[i], TimeUnit.Millisecond));
+            }
             return list;
         }
 

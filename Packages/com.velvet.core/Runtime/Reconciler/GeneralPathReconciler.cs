@@ -1206,7 +1206,8 @@ namespace Velvet
                                         var t = motion.Transition;
                                         _ctx.StyleAnimationScheduler.PlayVariantEnter(anchor, fromClasses, toClasses,
                                             t.DurationSec, t.Easing, t.DelaySec,
-                                            motion.OnEnterComplete, presence.StaggerDelaySec(visualIndex, newKeyed.Count));
+                                            motion.OnEnterComplete, presence.StaggerDelaySec(visualIndex, newKeyed.Count),
+                                            propertyOverrides: t.PropertyOverrides);
                                     }
                                     else if (isVariantMotion)
                                     {
@@ -1407,6 +1408,7 @@ namespace Velvet
                 Easing = timing.Easing,
                 ExitEasing = timing.ExitEasing,
                 DelaySec = timing.DelaySec,
+                PropertyOverrides = timing.PropertyOverrides,
             };
         }
 

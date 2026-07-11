@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -58,6 +59,20 @@ namespace Velvet
         /// </summary>
         public float DelaySec { get; init; }
 
+        /// <summary>
+        /// Optional per-property transition overrides layered on top of the top-level <see cref="DurationSec"/> /
+        /// <see cref="Easing"/> / <see cref="DelaySec"/> (e.g. opacity tweening in 0.15s while scale takes 0.5s).
+        /// When set, transition-property switches from the implicit "all" catch-all — used for a variant class
+        /// swap, which carries no transition-* of its own — to EXACTLY these properties, in declaration order:
+        /// overrides REPLACE transition-property: all rather than layering on top of it, matching CSS semantics
+        /// where an explicit transition-property list transitions only what it names. Name every property that
+        /// should animate. Currently wired only where a variant swap would otherwise set transition-property:
+        /// all (a variant-driven enter, or an exit driven by a <c>variants</c> + <c>exit</c> label) — a preset
+        /// transition's own USS-declared transition-property is untouched. Null (default) preserves today's
+        /// behavior unchanged.
+        /// </summary>
+        public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
+
         // Parsed class-name array caches (lazily initialized).
         private string[]? _enterFromClasses;
         private string[]? _enterToClasses;
@@ -99,6 +114,8 @@ namespace Velvet
                 Easing = easing ?? Easing,
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
+                // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides.
+                PropertyOverrides = PropertyOverrides,
                 // Class names are identical, so share the parsed arrays (avoids re-parsing).
                 _enterFromClasses = _enterFromClasses,
                 _enterToClasses = _enterToClasses,
@@ -108,5 +125,37 @@ namespace Velvet
         }
 
         private static string[] ParseClasses(string? classNames) => Velvet.V.ParseClassNames(classNames);
+    }
+
+    /// <summary>
+    /// A single property's transition override inside <see cref="StyleTransitionConfig.PropertyOverrides"/>.
+    /// Any null field falls back to the enclosing config's corresponding top-level value — <see cref="Easing"/>
+    /// falls back to the config's EFFECTIVE easing for the direction being played (<c>Easing</c> for an enter,
+    /// <c>ExitEasing ?? Easing</c> for an exit), matching how the top-level fields already resolve per direction.
+    /// </summary>
+    public readonly struct StylePropertyTransition
+    {
+        /// <summary>
+        /// The USS property name UI Toolkit animates, e.g. <c>"opacity"</c>, <c>"scale"</c>, <c>"translate"</c>,
+        /// <c>"rotate"</c>, <c>"background-color"</c> — spelled exactly as UI Toolkit's transition-property expects.
+        /// </summary>
+        public string Property { get; }
+
+        /// <summary>Duration override (seconds). Null falls back to <see cref="StyleTransitionConfig.DurationSec"/>.</summary>
+        public float? DurationSec { get; }
+
+        /// <summary>Easing override. Null falls back to the enclosing config's effective easing for the direction being played.</summary>
+        public EasingMode? Easing { get; }
+
+        /// <summary>Delay override (seconds). Null falls back to <see cref="StyleTransitionConfig.DelaySec"/>.</summary>
+        public float? DelaySec { get; }
+
+        public StylePropertyTransition(string property, float? durationSec = null, EasingMode? easing = null, float? delaySec = null)
+        {
+            Property = property;
+            DurationSec = durationSec;
+            Easing = easing;
+            DelaySec = delaySec;
+        }
     }
 }
