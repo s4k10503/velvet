@@ -61,6 +61,12 @@ namespace Velvet
             _innerKind is StyleVariantKind.GroupHover or StyleVariantKind.GroupFocus or StyleVariantKind.GroupActive
                 or StyleVariantKind.PeerHover or StyleVariantKind.PeerFocus or StyleVariantKind.PeerActive;
 
+        // Edge-based inners survive an outer-gate close (see ReconcilerContext.GateStackedVariant):
+        // their pointer/focus signals fire only on state edges, so a re-created manipulator could
+        // not re-seed a continuously-held hover/focus. Level-based inners (dark, responsive)
+        // re-derive their truth on attach and are detached on close to release their subscriptions.
+        internal bool RetainsAcrossOuterClose => IsElementLocal || IsRelational;
+
         protected override void RegisterCallbacksOnTarget()
         {
             if (IsElementLocal)

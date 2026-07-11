@@ -63,20 +63,24 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AStackedManipulator_When_TheOuterGateCloses_Then_ItIsDetachedNotJustGatedOff()
+        public void Given_AStackedDarkInner_When_TheOuterGateCloses_Then_ItIsDetachedNotJustGatedOff()
         {
-            // Arrange — dark:hover: with dark on creates + tracks the stacked (hover) manipulator.
-            using var mounted = MountHost(_ => V.Label(name: "leaf", className: "dark:hover:bg-red-500", text: "x"),
+            // Arrange — hover:dark: with hover held creates + tracks the stacked (dark) manipulator,
+            // whose inner holds the process-wide DarkModeChanged subscription.
+            using var mounted = MountHost(_ => V.Label(name: "leaf", className: "hover:dark:bg-red-500", text: "x"),
                 out _, out var ctx);
             var leaf = _root.Q<Label>("leaf");
-            VelvetTheme.IsDark = true;
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
             Assume.That(ctx.StackedVariantManipulators.Keys.Any(k => k.target == leaf), Is.True,
-                "Precondition: created while the outer (dark) gate is open");
+                "Precondition: created while the outer (hover) gate is open");
 
             // Act — the outer gate closes (the element stays mounted).
-            VelvetTheme.IsDark = false;
+            using (var evt = PointerOutEvent.GetPooled()) leaf.SimulateEvent(evt);
 
-            // Assert — the stacked manipulator is detached + dropped, not left lingering until unmount.
+            // Assert — a LEVEL-based inner (dark) is detached + dropped so its process-wide
+            // subscription releases immediately, not left lingering until unmount. Edge-based
+            // inners (hover/focus/active) instead stay attached with the gate closed — they cannot
+            // re-seed a continuously-held state on re-attach (see StackedVariantOuterReopenTests).
             Assert.IsFalse(ctx.StackedVariantManipulators.Keys.Any(k => k.target == leaf));
         }
     }

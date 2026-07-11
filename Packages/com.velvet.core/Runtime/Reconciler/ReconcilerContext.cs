@@ -214,11 +214,21 @@ namespace Velvet
             }
             else if (StackedVariantManipulators.TryGetValue(key, out var m))
             {
-                // Outer gate closed: clear the leaf, then detach + drop so the inner-variant subscription (a
-                // stacked dark:'s process-wide DarkModeChanged) is released immediately, not left until unmount.
+                // Outer gate closed: clear the leaf. Level-based inners (dark, responsive) are then
+                // detached + dropped so their subscription (a stacked dark:'s process-wide
+                // DarkModeChanged) is released immediately, not left until unmount — safe because a
+                // re-created manipulator re-derives that ambient truth on attach. An EDGE-based
+                // inner (hover/focus/active, element-local or relational) must stay attached with
+                // just the gate closed: its pointer/focus signals fire only on state edges, so a
+                // fresh instance cannot re-seed "pointer already over" and a continuously-held
+                // hover would be lost across an outer close/reopen until a physical re-hover. Its
+                // hooks are per-element (no process-wide leak) and unmount still sweeps it.
                 m.SetOuterGate(false);
-                target.RemoveManipulator(m);
-                StackedVariantManipulators.Remove(key);
+                if (!m.RetainsAcrossOuterClose)
+                {
+                    target.RemoveManipulator(m);
+                    StackedVariantManipulators.Remove(key);
+                }
             }
         }
 
