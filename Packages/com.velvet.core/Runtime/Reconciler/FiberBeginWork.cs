@@ -65,7 +65,10 @@ namespace Velvet
             while (true)
             {
                 ResetHookIndex(fiber);
-                fiber.ClearDependencies();
+                // Context reads are staged per attempt and swapped into the committed list only by
+                // CommitSettledHookDeps: a render that throws partway must not leave the committed
+                // list empty/partial, or the Provider-change walk would skip this fiber forever.
+                fiber.BeginDependencyStaging();
                 rendered = Render(fiber);
                 if (!fiber.HasRenderPhaseUpdate)
                 {
@@ -94,6 +97,8 @@ namespace Velvet
         // discarded attempt cannot break callback referential stability or force a memo rebuild.
         internal static void CommitSettledHookDeps(ComponentFiber fiber)
         {
+            // The settled attempt's context reads become the committed dependency list (list swap).
+            fiber.CommitStagedDependencies();
             HookEffectExecutor.CommitEffectDeps(fiber.LayoutEffects);
             HookEffectExecutor.CommitEffectDeps(fiber.InsertionEffects);
             HookEffectExecutor.CommitEffectDeps(fiber.Effects);

@@ -85,7 +85,14 @@ namespace Velvet
         /// </summary>
         internal bool IsOffscreen { get; set; }
 
-        internal List<ContextDependency> Dependencies { get; } = new();
+        internal List<ContextDependency> Dependencies { get; private set; } = new();
+
+        // Staging list for the render in progress: context reads land here and are swapped into
+        // Dependencies only when the render settles, so a render that throws partway cannot leave
+        // the committed list empty/partial (which would silently detach the fiber from future
+        // Provider-change notifications). Swapped by reference — no per-render allocation.
+        private List<ContextDependency> _stagedDependencies = new();
+        private bool _isStagingDependencies;
 
         internal List<IFiberAsyncResource> AsyncSlots { get; } = new();
         private int _asyncSlotCursor;
@@ -461,11 +468,12 @@ namespace Velvet
 
         internal void RegisterContextDependency(object context)
         {
-            for (var i = 0; i < Dependencies.Count; i++)
+            var target = _isStagingDependencies ? _stagedDependencies : Dependencies;
+            for (var i = 0; i < target.Count; i++)
             {
-                if (Dependencies[i].Context == context) return;
+                if (target[i].Context == context) return;
             }
-            Dependencies.Add(new ContextDependency { Context = context });
+            target.Add(new ContextDependency { Context = context });
         }
 
         internal bool HasDependencyOn(object context)
@@ -477,7 +485,30 @@ namespace Velvet
             return false;
         }
 
-        internal void ClearDependencies() => Dependencies.Clear();
+        // Starts collecting this render attempt's context reads into the staging list, leaving the
+        // committed Dependencies untouched until the attempt settles.
+        internal void BeginDependencyStaging()
+        {
+            _stagedDependencies.Clear();
+            _isStagingDependencies = true;
+        }
+
+        // Promotes the settled attempt's reads to the committed list by swapping the two lists.
+        internal void CommitStagedDependencies()
+        {
+            if (!_isStagingDependencies) return;
+            (Dependencies, _stagedDependencies) = (_stagedDependencies, Dependencies);
+            _isStagingDependencies = false;
+        }
+
+        // Drops an unsettled attempt's reads (throw / suspend / diagnostic pass), keeping the
+        // committed list exactly as the last successful render left it.
+        internal void DiscardStagedDependencies()
+        {
+            if (!_isStagingDependencies) return;
+            _isStagingDependencies = false;
+            _stagedDependencies.Clear();
+        }
 
         public object? Ref { get; set; }
 

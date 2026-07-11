@@ -182,8 +182,20 @@ namespace Velvet
             // (e.g. after a prior aborted/suspended commit) to a fresh create instead of throwing
             // IndexOutOfRange — the time-sliced keyed path asserts this invariant; the general path
             // can be re-entered mid-suspend so it guards defensively.
-            if (commit.OldKeyMap.TryGetValue(key, out var old)
-                && slotStart + old.index < parent.childCount)
+            var oldMatched = commit.OldKeyMap.TryGetValue(key, out var old)
+                && slotStart + old.index < parent.childCount;
+            if (oldMatched && commit.UsedKeys.Contains(key))
+            {
+                // A second new-side sibling resolved the same old entry its first occurrence already
+                // claimed: re-matching would alias two rows onto one element or retroactively remove
+                // the patched one via ReplacedKeys. Mirror the old-side duplicate guard: warn and
+                // fall through to a fresh create so every declared row commits.
+                FiberLogger.LogWarning("GeneralPathReconciler",
+                    $"Duplicate key detected among new siblings: {key}. " +
+                    "The repeated sibling mounts a fresh element; give each sibling a unique key.");
+                oldMatched = false;
+            }
+            if (oldMatched)
             {
                 var existingDom = parent.ElementAt(slotStart + old.index);
                 if (ReconcileKeying.CanPatch(old.node, node))
@@ -533,6 +545,20 @@ namespace Velvet
                             // path accumulates them in result.
                             var emittedCount = commit != null ? commit.NewElements.Count : result!.Count;
                             var currentSlotStart = slotStart + emittedCount;
+                            // Two same-identity siblings sharing one explicit key resolve to the
+                            // SAME registry fiber; expanding it once per sibling would emit one
+                            // component's DOM twice while its slot bookkeeping tracks only the last
+                            // position (with hook state shared across both copies). Mirror the
+                            // leaf-level duplicate guard: warn and skip the repeat before
+                            // GetOrCreate can clobber the first occurrence's slot.
+                            var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity);
+                            if (priorFiber != null && newFibers.Contains(priorFiber))
+                            {
+                                FiberLogger.LogWarning("GeneralPathReconciler",
+                                    $"Duplicate component key detected among siblings: '{slotKey}'. " +
+                                    "The repeated sibling is skipped; give each sibling a unique key.");
+                                break;
+                            }
                             var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
                                 component, parentFiber, slotKey, parent, currentSlotStart);
                             newFibers.Add(fiber);
@@ -569,7 +595,6 @@ namespace Velvet
                             var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity);
                             if (fiber != null)
                             {
-                                oldFibers.Add(fiber);
                                 if (fiber.PreviousTree != null && fiber.PreviousTree.Length > 0)
                                 {
                                     var childCounters = _ctx.BufferPool.RentPositionCounter();
@@ -586,6 +611,11 @@ namespace Velvet
                                         _ctx.BufferPool.ReturnPositionCounter(childCounters);
                                     }
                                 }
+                                // Post-order add: a directly-nested component must precede its
+                                // parent in oldFibers so the orphan sweep's forward walk tears the
+                                // subtree down bottom-up — a descendant's effect cleanups complete
+                                // before an ancestor's, matching the commit-phase deletion order.
+                                oldFibers.Add(fiber);
                             }
                         }
                         break;

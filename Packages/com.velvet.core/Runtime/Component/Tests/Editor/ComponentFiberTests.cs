@@ -350,18 +350,38 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FiberWithDependencies_When_Cleared_Then_DependencySetIsEmpty()
+        public void Given_AStagedRenderAttempt_When_Committed_Then_ItsReadsBecomeTheDependencies()
         {
-            // Arrange
+            // Arrange — a committed dependency from an earlier render, then a new staged attempt
+            // reading a different context.
             var fiber = new ComponentFiber();
             fiber.RegisterContextDependency(new object());
-            fiber.RegisterContextDependency(new object());
+            var next = new object();
+            fiber.BeginDependencyStaging();
+            fiber.RegisterContextDependency(next);
 
             // Act
-            fiber.ClearDependencies();
+            fiber.CommitStagedDependencies();
 
-            // Assert
-            Assert.That(fiber.Dependencies, Is.Empty, "Clearing removes every dependency entry");
+            // Assert — the settled attempt's reads replace the previous committed set.
+            Assert.That((fiber.Dependencies.Count, fiber.HasDependencyOn(next)), Is.EqualTo((1, true)));
+        }
+
+        [Test]
+        public void Given_AStagedRenderAttempt_When_Discarded_Then_TheCommittedDependenciesSurvive()
+        {
+            // Arrange — a committed dependency, then a staged attempt that would have dropped it
+            // (the shape of a render throwing before it reaches a UseContext call).
+            var committed = new object();
+            var fiber = new ComponentFiber();
+            fiber.RegisterContextDependency(committed);
+            fiber.BeginDependencyStaging();
+
+            // Act
+            fiber.DiscardStagedDependencies();
+
+            // Assert — the failed attempt leaves the committed set untouched.
+            Assert.That(fiber.HasDependencyOn(committed), Is.True);
         }
 
         #endregion
