@@ -152,13 +152,28 @@ namespace Velvet
                     {
                         _ctx.MotionAppliedClasses[element] = appliedClasses;
                     }
+                    // Record the label propagated to children now (regardless of whether this Motion currently
+                    // has any) so the FIRST patch on this element has an accurate baseline: PatchMotion diffs
+                    // against this stored value to detect an ACTUAL label change before it (re-)triggers
+                    // staggerChildren/delayChildren orchestration — without seeding it here, that first patch
+                    // would see no previous entry and could misfire even when the label held steady across
+                    // mount and the first re-render. Orchestration itself only ever starts from a PATCH-time
+                    // label change (see FiberNodePatcher.PatchMotion), never on mount.
+                    var childLabel = MotionVariantResolver.LabelForChildren(motionNode, motionAmbient);
+                    if (childLabel != null)
+                    {
+                        _ctx.MotionChildLabel[element] = childLabel;
+                    }
+                    else
+                    {
+                        _ctx.MotionChildLabel.Remove(element);
+                    }
                     if (motionNode.Children != null)
                     {
                         var childContainer = FiberNodePatcher.GetChildContainer(element);
                         // Provide this Motion's active label to its descendants while their subtree reconciles
                         // (same ComponentContextStack the Router/Outlet ambient values ride on). Skip the
                         // stack round-trip entirely when there is no label to propagate (the common case).
-                        var childLabel = MotionVariantResolver.LabelForChildren(motionNode, motionAmbient);
                         if (childLabel != null)
                         {
                             _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);

@@ -30,6 +30,12 @@ namespace Velvet
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingEnters = new();
+        // Plain class-diff variant swaps (parent→child label propagation, staggerChildren/delayChildren — see
+        // PlayDelayedVariantSwap) awaiting their deferred inline transition-delay clear. Separate from the
+        // enter/exit maps above: a delayed swap has no from/to class lifecycle of its own (the class diff
+        // already happened via SyncClassDrivenStyling before this is called), so PendingAnimation's
+        // enter/exit-only fields would all sit unused.
+        private readonly Dictionary<VisualElement, PendingDelayedSwap> _pendingDelayedSwaps = new();
         private readonly Stack<List<TimeValue>> _durationPool = new();
         private readonly Stack<List<TimeValue>> _delayPool = new();
 
@@ -334,11 +340,90 @@ namespace Velvet
         // Whether the given element is currently exiting.
         public bool IsExiting(VisualElement element) => _pendingExits.ContainsKey(element);
 
+        // Applies an ADDITIONAL inline transition-delay to a plain class-diff variant swap — the parent→child
+        // label-propagation path (FiberNodePatcher.PatchMotion's staggerChildren/delayChildren orchestration),
+        // which swaps classes directly with no enter/exit lifecycle of its own and no transition-property:all
+        // override, relying on the element's OWN utility classes (e.g. transition-opacity duration-300) to
+        // declare whatever is to be delayed. totalDelaySec is this swap's FULL transition-delay (the Motion's
+        // own configured DelaySec plus any staggerChildren/delayChildren orchestration offset — the caller
+        // already added them); durationSec is that swap's own transition duration, used only to size the
+        // deferred clear below. A non-positive totalDelaySec is a no-op.
+        // The delay is cleared once the swap's transition would have finished, so a LATER, unrelated patch on
+        // the same element does not inherit a stale delay. On a real panel the clear is deferred via
+        // schedule.Execute (mirrors PlayEnter/PlayExit's own completion timing); off-panel there is nothing to
+        // interpolate against, and schedule.Execute never fires for a detached element, so the delay is never
+        // applied in the first place instead of setting up a schedule that would never run — net-equivalent to
+        // CancelExit's reversal cleanup, which clears an already-applied delay immediately off-panel for the
+        // same reason.
+        public void PlayDelayedVariantSwap(VisualElement? element, float totalDelaySec, float durationSec)
+        {
+            if (element == null || totalDelaySec <= 0f)
+            {
+                return;
+            }
+
+            // Cancel any previous still-parked delay on this element first, so an interrupted stagger (a second
+            // label flip before the first swap's grace period elapsed) does not leave a stale timer racing
+            // this one's clear (also covers a rare case where an ON-panel schedule was parked and the element
+            // has since gone off-panel: schedule.Execute never fires for a detached element, so that stale
+            // entry would otherwise leak).
+            CancelDelayedVariantSwap(element);
+
+            if (element.panel == null)
+            {
+                // Nothing to interpolate without a panel, and schedule.Execute never fires for a detached
+                // element, so there is nothing worth setting in the first place — mirrors CancelExit's
+                // off-panel-immediate-clear rule for a reversal cleanup.
+                return;
+            }
+
+            var delayMs = (int)(totalDelaySec * 1000);
+            var delayList = RentDelayList(delayMs);
+            element.style.transitionDelay = delayList;
+            var pending = new PendingDelayedSwap { DelayList = delayList };
+            var timeoutMs = (long)(totalDelaySec * 1000) + (long)(durationSec * 1000) + AnimationGraceMs;
+            var timeout = element.schedule.Execute(() =>
+            {
+                if (_pendingDelayedSwaps.Remove(element, out var completed))
+                {
+                    element.style.transitionDelay = StyleKeyword.Null;
+                    ReturnDelayList(completed.DelayList);
+                }
+            });
+            timeout.ExecuteLater(timeoutMs);
+            pending.TimeoutItem = timeout;
+            _pendingDelayedSwaps[element] = pending;
+        }
+
+        // Cancels a still-parked delayed-swap clear (superseded by a follow-up swap, or the element being torn
+        // down) and clears the inline transition-delay immediately. Safe to call when none is pending (no-op).
+        public void CancelDelayedVariantSwap(VisualElement element)
+        {
+            if (_pendingDelayedSwaps.Remove(element, out var pending))
+            {
+                pending.TimeoutItem?.Pause();
+                element.style.transitionDelay = StyleKeyword.Null;
+                ReturnDelayList(pending.DelayList);
+            }
+        }
+
         // Cancels every animation and removes the applied CSS classes and inline styles.
         public void CancelAll()
         {
             CancelAllInMap(_pendingExits);
             CancelAllInMap(_pendingEnters);
+            CancelAllDelayedSwaps();
+        }
+
+        private void CancelAllDelayedSwaps()
+        {
+            foreach (var (element, pending) in _pendingDelayedSwaps)
+            {
+                pending.TimeoutItem?.Pause();
+                element.style.transitionDelay = StyleKeyword.Null;
+                ReturnDelayList(pending.DelayList);
+            }
+            _pendingDelayedSwaps.Clear();
         }
 
         private static bool ValidateDuration(float durationSec, Action? onComplete)
@@ -784,6 +869,16 @@ namespace Velvet
             // never fires it, so it must be unregistered on cancel — otherwise it (and the closure pinning this
             // PendingAnimation) lingers on the element, surviving even pool reuse. Null for on-panel exits.
             public EventCallback<AttachToPanelEvent>? PendingAttach;
+        }
+
+        // State for a delayed variant swap's pending inline transition-delay clear (see
+        // PlayDelayedVariantSwap). Deliberately separate from PendingAnimation, which carries enter/exit-only
+        // fields (FromClasses/ToClasses/Shadows/PendingAttach/…) that a plain class-diff swap — having no
+        // lifecycle of its own beyond "clear this one inline style later" — never needs.
+        private sealed class PendingDelayedSwap
+        {
+            public IVisualElementScheduledItem? TimeoutItem;
+            public List<TimeValue>? DelayList;
         }
     }
 }

@@ -194,6 +194,7 @@ namespace Velvet
             }
             _ctx.StyleAnimationScheduler.CancelEnter(element);
             _ctx.StyleAnimationScheduler.CancelExit(element);
+            _ctx.StyleAnimationScheduler.CancelDelayedVariantSwap(element);
             _ctx.EventManager.UnbindAll(element);
             _ctx.ComponentRegistry.Remove(element);
             DetachManipulator(element, _ctx.GestureManipulators);

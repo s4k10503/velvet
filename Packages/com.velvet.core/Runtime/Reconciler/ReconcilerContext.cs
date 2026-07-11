@@ -243,6 +243,17 @@ namespace Velvet
         // in _pureElementSideTables and cleared on element cleanup / reconciler dispose through that mechanism.
         public Dictionary<VisualElement, string[]> MotionAppliedClasses { get; } = new();
 
+        // Per-Motion-element bookkeeping of the label last propagated to CHILDREN (Animate ?? ambient) —
+        // independent of MotionAppliedClasses above, because a "coordinator" Motion may propagate a label to
+        // descendants (for staggerChildren/delayChildren orchestration) while carrying no Variants of its own,
+        // and so never gets a MotionAppliedClasses entry at all. FiberNodePatcher.PatchMotion compares the
+        // freshly-resolved child label against this stored one to detect an ACTUAL change (not merely an
+        // unrelated re-render that happens to re-propagate the same label) before establishing a fresh
+        // MotionOrchestrationFrame — a re-render that keeps the same label must not re-trigger the stagger.
+        // A pure side-table (bare Remove on teardown), so it is enrolled in _pureElementSideTables and cleared
+        // on element cleanup / reconciler dispose through that mechanism.
+        public Dictionary<VisualElement, string> MotionChildLabel { get; } = new();
+
         // Per-element drop-shadow bookkeeping for the shadow-* className layer, keyed by the element
         // itself — the shadow needs NO structural wrapper. Like skew and gradient, the shadow is painted
         // by the element's own generateVisualContent (DropShadowSilhouette draws the baked shadow texture
@@ -624,6 +635,7 @@ namespace Velvet
                 DataAttributes,
                 SupportsVariants,
                 MotionAppliedClasses,
+                MotionChildLabel,
                 TextEffects,
                 TextRawText,
             };
