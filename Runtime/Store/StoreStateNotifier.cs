@@ -10,9 +10,11 @@ namespace Velvet
     // immediate delivery invoke their listener themselves before subscribing.
     // Notification iterates an immutable snapshot of the listener set, rebuilt only when the set
     // changes (copy-on-write), so Notify allocates nothing in the steady state. A
-    // listener that subscribes, unsubscribes, or pushes re-entrantly during a notification does not
-    // affect the in-flight pass: it observes the snapshot captured when that pass began, and a
-    // listener removed mid-pass still receives the value already being delivered.
+    // listener that subscribes or unsubscribes re-entrantly during a notification does not
+    // affect the in-flight pass: it observes the listener set captured when that pass began, and a
+    // listener removed mid-pass still receives the delivery already in flight. Each delivery reads
+    // the value that is current at call time, so a listener that re-entrantly pushes a newer value
+    // supersedes the in-flight value for the listeners that follow it.
     // Single-threaded: no internal locking. All calls (Notify / Subscribe /
     // Dispose) must occur on the owning Store<TState>'s thread (the Unity
     // main thread).
@@ -39,7 +41,10 @@ namespace Velvet
             var snapshot = _snapshot ??= _listeners.ToArray();
             foreach (var listener in snapshot)
             {
-                listener(value);
+                // Deliver the live field, not the captured parameter: a listener that re-entrantly
+                // pushes a newer value must not leave the listeners after it holding the superseded
+                // one as their final observation.
+                listener(Value);
             }
         }
 

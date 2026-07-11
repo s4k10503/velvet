@@ -71,7 +71,19 @@ namespace Velvet
                     continue;
                 }
 
-                if (blocked)
+                // A superseded attempt must not flip any state: the token is the navigation's own,
+                // cancelled when a newer navigation takes over, and the caller is about to discard
+                // this result as Cancelled — a Blocked state would strand a confirm-UI until some
+                // unrelated future navigation resets it.
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return anyBlocked;
+                }
+
+                // Skip entries whose registration died during this pass (the snapshot keeps them
+                // iterable, but their owner unmounted or an earlier blocker's decision tore them
+                // down): nothing live is waiting on their state.
+                if (blocked && _blockers.Contains(entry))
                 {
                     entry.State.Block(attempt);
                     anyBlocked = true;
