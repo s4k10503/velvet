@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -17,6 +18,8 @@ namespace Velvet
         private const long AnimationGraceMs = 50;
         private const float MaxDurationSec = 10f;
         private const int MaxPoolSize = 16;
+        // Spring tick interval (~60fps), matching the shadow co-fade tick and StyleAnimateDriver's own cadence.
+        private const long SpringTickMs = 16;
 
         // Static cache from EasingMode to List<EasingFunction>. EasingMode values are finite, so caching is safe.
         private static readonly Dictionary<EasingMode, List<EasingFunction>> s_easingCache = new();
@@ -54,6 +57,18 @@ namespace Velvet
                 return;
             }
 
+            if (config.Type == TransitionType.Spring)
+            {
+                // Reachable only in principle: a classic (non-variant) transition's EnterFromClass/EnterToClass
+                // are internal-setter-only, so a caller-authored spring config passed here has none set and this
+                // no-ops to an immediate complete (see StartSpringVariant) — kept for completeness/symmetry with
+                // PlayVariantEnter / PlayExit rather than silently ignoring Type on this call path.
+                StartSpringVariant(element, config.EnterFromClasses, config.EnterToClasses, config.DelaySec,
+                    config.Stiffness, config.Damping, config.Mass, onComplete, additionalDelaySec,
+                    _pendingEnters, restingClasses: null, isExit: false);
+                return;
+            }
+
             // Classic transition enter: the to-classes are a TRANSIENT overlay (resting state = the element's
             // base classes), so they are removed on completion (variantMode: false). Per-property overrides are
             // wired only where a variant swap sets transition-property: all (see PlayVariantEnter / PlayExit); a
@@ -70,12 +85,24 @@ namespace Velvet
         // difference — the to-classes are KEPT after completion, since they ARE the persistent resting state
         // (the animate target persists). A zero/invalid duration leaves the element at its
         // already-applied resting state (no strip, mounts directly at animate).
+        // type/stiffness/damping/mass: the enclosing StyleTransitionConfig's spring knobs (Tween/100/10/1 by
+        // default — the caller passes the config's own values through, since this overload takes the
+        // already-unpacked timing primitives rather than the config itself).
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f,
-            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null)
+            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
+            TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f)
         {
             if (element == null)
             {
+                return;
+            }
+
+            if (type == TransitionType.Spring)
+            {
+                StartSpringVariant(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
+                    delaySec, stiffness, damping, mass, onComplete, additionalDelaySec,
+                    _pendingEnters, restingClasses: null, isExit: false);
                 return;
             }
 
@@ -195,6 +222,18 @@ namespace Velvet
             if (element == null || config == null)
             {
                 onComplete?.Invoke();
+                return;
+            }
+
+            if (config.Type == TransitionType.Spring)
+            {
+                // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
+                // detached by a keyed reorder (see the tween exit's own ScheduleOnHost below) and this exit must
+                // still eventually complete so the reconciler's ghost-removal re-render fires.
+                StartSpringVariant(element, config.ExitFromClasses, config.ExitToClasses, config.DelaySec,
+                    config.Stiffness, config.Damping, config.Mass, onComplete, additionalDelaySec,
+                    _pendingExits, restingClasses: restoreFromOnCancel ? config.ExitFromClasses : null,
+                    isExit: true);
                 return;
             }
 
@@ -327,6 +366,145 @@ namespace Velvet
                 // Track it on the pending so a cancel-before-attach can remove the dangling callback.
                 pending.PendingAttach = onAttach;
             }
+        }
+
+        // Starts a spring-driven variant enter/exit (StyleTransitionConfig.Type == Spring). Unlike the tween
+        // path, a spring needs no CSS-transition-triggering frame boundary, so the from→to class swap lands
+        // IMMEDIATELY at rest; MotionSpringClassParser then resolves whatever numeric channels that swap
+        // touches (opacity / translate / scale / rotate) into a from/to pair each, and a per-frame physics tick
+        // (StartSpringTick) drives them via inline styles until they settle — replacing the tween's fixed-
+        // duration completion timeout with a dynamic settle check.
+        // map: the caller's own map (_pendingEnters for an enter, _pendingExits for an exit) so a later
+        // CancelEnter/CancelExit/CancelAll finds this entry exactly like a tween one.
+        // restingClasses: non-null only for a variant exit (restoreFromOnCancel) — see PendingAnimation.RestingClasses.
+        // isExit: selects the exit-shaped behavior — self-cancel-with-reversal (mirrors calling the PUBLIC
+        // CancelExit rather than CancelEnter for the self-cancel below) and deferring the tick start until
+        // attach when off-panel (a presence exit can start mid-reorder while its subtree is transiently
+        // detached — see PlayExit's own ScheduleOnHost/AttachToPanelEvent for why). False for an enter: an
+        // entering element is freshly created/reused and inserted as part of the SAME reconcile, so it is
+        // already on-panel by the time this runs (PlayEnterInternal has no off-panel handling either).
+        private void StartSpringVariant(VisualElement element, string[] fromClasses, string[] toClasses,
+            float delaySec, float stiffness, float damping, float mass, Action? onComplete, float additionalDelaySec,
+            Dictionary<VisualElement, PendingAnimation> map, string[]? restingClasses, bool isExit)
+        {
+            var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses);
+            var state = MotionSpringDriver.Create(plan, stiffness, damping, mass);
+
+            // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
+            // CancelEnter(element) / PlayExit's CancelExit(element) self-cancel).
+            CancelPending(map, element, animateReversal: isExit);
+
+            // Land the classes at rest either way — nothing recognized to animate degrades to a plain,
+            // instantaneous class swap (the spring equivalent of a zero-duration tween).
+            StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+            StyleAnimationClassUtils.AddClasses(element, toClasses);
+
+            if (state == null)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            MotionSpringDriver.ApplyCurrentValues(element, state);
+
+            var pending = new PendingAnimation
+            {
+                FromClasses = fromClasses,
+                ToClasses = toClasses,
+                RestingClasses = restingClasses,
+                AnimatingElement = element,
+                Spring = state,
+            };
+            state.OnSettled = onComplete;
+            map[element] = pending;
+            pending.OwningMap = map;
+
+            void ScheduleStart()
+            {
+                // Superseded before it ever got to start (a cancel-before-attach removed this exact pending).
+                if (!map.TryGetValue(element, out var current) || !ReferenceEquals(current, pending))
+                {
+                    return;
+                }
+                var totalDelayMs = (long)((delaySec + additionalDelaySec) * 1000);
+                if (totalDelayMs > 0)
+                {
+                    var scheduled = element.schedule.Execute(() => StartSpringTick(element, pending));
+                    scheduled.ExecuteLater(totalDelayMs);
+                    pending.ScheduledItem = scheduled;
+                }
+                else
+                {
+                    StartSpringTick(element, pending);
+                }
+            }
+
+            if (!isExit || element.panel != null)
+            {
+                ScheduleStart();
+            }
+            else
+            {
+                EventCallback<AttachToPanelEvent>? onAttach = null;
+                onAttach = _ =>
+                {
+                    element.UnregisterCallback(onAttach);
+                    pending.PendingAttach = null;
+                    ScheduleStart();
+                };
+                element.RegisterCallback(onAttach);
+                pending.PendingAttach = onAttach;
+            }
+        }
+
+        // Starts the recurring spring tick on the panel root — the stable host, mirroring the shadow co-fade
+        // tick's own rationale: a keyed reorder can transiently detach the animating element, and UI Toolkit
+        // silently drops a DETACHED element's own scheduled items, but the panel root never detaches during the
+        // tree's life. Each tick measures its OWN real elapsed time (Time.realtimeSinceStartupAsDouble) rather
+        // than assuming the nominal 16ms cadence, so a hitch is absorbed by SpringIntegrator's internal dt clamp
+        // instead of silently under-integrating. No-op if there is no host (should not happen for the on-panel /
+        // already-deferred-to-attach cases this is called from, but this guards rather than throws).
+        private void StartSpringTick(VisualElement element, PendingAnimation pending)
+        {
+            var state = pending.Spring;
+            if (state == null)
+            {
+                return;
+            }
+            var host = element.panel?.visualTree;
+            if (host == null)
+            {
+                return;
+            }
+
+            state.LastTickTime = Time.realtimeSinceStartupAsDouble;
+            state.Tick = host.schedule.Execute(() =>
+            {
+                var now = Time.realtimeSinceStartupAsDouble;
+                var dt = (float)(now - state.LastTickTime);
+                state.LastTickTime = now;
+                if (dt <= 0f)
+                {
+                    return;
+                }
+
+                var settled = MotionSpringDriver.Step(element, state, dt);
+                if (!settled)
+                {
+                    return;
+                }
+
+                state.Tick?.Pause();
+                state.Tick = null;
+                if (pending.OwningMap != null && pending.OwningMap.TryGetValue(element, out var current)
+                    && ReferenceEquals(current, pending))
+                {
+                    pending.OwningMap.Remove(element);
+                }
+                EndShadowCoFade(pending); // No-op: a spring-driven entry never registers a shadow co-fade driver.
+                MotionSpringDriver.ClearInlineOverrides(element, state);
+                state.OnSettled?.Invoke();
+            }).Every(SpringTickMs);
         }
 
         // Cancels the exit animation on the given element and removes the applied CSS classes; the
@@ -573,6 +751,36 @@ namespace Velvet
                 // tween's co-fade and drop its driver — the shadow snaps back to full (product collapses to 1)
                 // unless an enclosing fade still drives it.
                 EndShadowCoFade(pending);
+
+                if (pending.Spring != null)
+                {
+                    var spring = pending.Spring;
+                    if (animateReversal && element.panel != null)
+                    {
+                        // Hand off to a reversal spring: retarget every channel toward the value it STARTED
+                        // from (continuity — each channel's SpringIntegrator instance, and therefore its
+                        // current value/velocity, is untouched by this), drop the original completion (a
+                        // reversal settling is not "finishing" anything the original caller asked for), and
+                        // move ownership into the enter map — mirroring the tween reversal's own move into
+                        // _pendingEnters below. The recurring tick keeps running uninterrupted throughout;
+                        // only its targets and its eventual finalize action change.
+                        MotionSpringDriver.Retarget(spring);
+                        spring.OnSettled = null;
+                        CancelPending(_pendingEnters, element);
+                        _pendingEnters[element] = pending;
+                        pending.OwningMap = _pendingEnters;
+                    }
+                    else
+                    {
+                        // No reversal (a plain CancelEnter, or an off-panel exit with nothing left to
+                        // interpolate against): stop the tick now and drop the inline overrides immediately.
+                        spring.Tick?.Pause();
+                        spring.Tick = null;
+                        MotionSpringDriver.ClearInlineOverrides(element, spring);
+                    }
+                    return;
+                }
+
                 if (animateReversal && element.panel != null && pending.DurationList is { Count: > 0 })
                 {
                     // A cancelled exit retargets a still-attached element back to its resting
@@ -661,6 +869,14 @@ namespace Velvet
                 StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
                 StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
                 EndShadowCoFade(pending);
+                if (pending.Spring != null)
+                {
+                    // A hard stop, no reversal: pause the tick and drop the inline overrides it owns (the
+                    // tween-only ClearTransitionStyles/ReturnDurationList/ReturnDelayList below are no-ops for
+                    // a spring entry, which never touches transition-* styles or rents a TimeValue list).
+                    pending.Spring.Tick?.Pause();
+                    MotionSpringDriver.ClearInlineOverrides(element, pending.Spring);
+                }
                 ClearTransitionStyles(element);
                 ReturnDurationList(pending.DurationList);
                 ReturnDelayList(pending.DelayList);
@@ -869,6 +1085,16 @@ namespace Velvet
             // never fires it, so it must be unregistered on cancel — otherwise it (and the closure pinning this
             // PendingAnimation) lingers on the element, surviving even pool reuse. Null for on-panel exits.
             public EventCallback<AttachToPanelEvent>? PendingAttach;
+            // Non-null for a spring-driven entry (StyleAnimationScheduler.StartSpringVariant) — the per-channel
+            // integrators/targets and the recurring tick. Null for a tween entry, which never touches this
+            // (DurationList/DelayList/ScheduledItem/TimeoutItem are the tween's own equivalents).
+            public MotionSpringState? Spring;
+            // The map this entry currently lives in (_pendingEnters or _pendingExits) — kept in sync on a
+            // spring's exit-cancel hand-off (which MOVES the entry from _pendingExits into _pendingEnters so the
+            // reversal keeps ticking uninterrupted). Only the spring tick reads this (to remove itself from
+            // whichever map currently owns it once it settles); a tween entry's own completion timeout already
+            // closes over its own map directly and never needs this.
+            public Dictionary<VisualElement, PendingAnimation>? OwningMap;
         }
 
         // State for a delayed variant swap's pending inline transition-delay clear (see

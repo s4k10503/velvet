@@ -255,7 +255,8 @@ namespace Velvet
                         var t = motionNode.Transition;
                         _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
                             t.DurationSec, t.Easing, t.DelaySec, motionNode.OnEnterComplete,
-                            propertyOverrides: t.PropertyOverrides);
+                            propertyOverrides: t.PropertyOverrides,
+                            type: t.Type, stiffness: t.Stiffness, damping: t.Damping, mass: t.Mass);
                     }
                     return element;
                 }

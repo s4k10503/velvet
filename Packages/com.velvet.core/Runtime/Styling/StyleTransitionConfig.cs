@@ -34,13 +34,46 @@ namespace Velvet
         internal string? ExitToClass { get; init; }
 
         /// <summary>
+        /// Selects the animation model: a USS <c>transition-*</c> class swap (<see cref="TransitionType.Tween"/>,
+        /// the default) or a physics-integrated spring (<see cref="TransitionType.Spring"/>). See
+        /// <see cref="TransitionType"/> for the full contract, including what a spring does and does not animate.
+        /// </summary>
+        /// <remarks>Equivalent to setting Framer Motion's <c>transition.type</c> to <c>"tween"</c> / <c>"spring"</c>
+        /// for users migrating from Framer Motion — except Velvet defaults to <c>Tween</c> where Framer defaults
+        /// transform-like values to a spring; spring is opt-in here.</remarks>
+        public TransitionType Type { get; init; } = TransitionType.Tween;
+
+        /// <summary>
+        /// Spring stiffness (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
+        /// Higher values snap toward the target faster. Framer Motion's default (100).
+        /// </summary>
+        public float Stiffness { get; init; } = 100f;
+
+        /// <summary>
+        /// Spring damping (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
+        /// Higher values settle with less oscillation. Framer Motion's default (10).
+        /// </summary>
+        public float Damping { get; init; } = 10f;
+
+        /// <summary>
+        /// Spring mass (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
+        /// Higher values feel heavier / slower to accelerate. Framer Motion's default (1).
+        /// </summary>
+        public float Mass { get; init; } = 1f;
+
+        /// <summary>
         /// Animation duration (seconds). Applied as the inline transition-duration style.
+        /// Ignored when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: a spring's settle time is
+        /// decided entirely by <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/>, not a fixed
+        /// duration.
         /// </summary>
         public float DurationSec { get; init; }
 
         /// <summary>
         /// Easing mode. Applied as the inline transition-timing-function style.
         /// Defaults to EaseOut (for enter). Presets in StyleTransition.cs configure enter/exit easing separately.
+        /// Ignored when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: the physics integration IS the
+        /// curve.
         /// </summary>
         public EasingMode Easing { get; init; } = EasingMode.EaseOut;
 
@@ -70,6 +103,10 @@ namespace Velvet
         /// all (a variant-driven enter, or an exit driven by a <c>variants</c> + <c>exit</c> label) — a preset
         /// transition's own USS-declared transition-property is untouched. Null (default) preserves today's
         /// behavior unchanged.
+        /// Not read when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: a spring drives every animated
+        /// channel with the SAME <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/> — there is no
+        /// per-property override of the spring model itself (only <see cref="TransitionType.Tween"/>'s per-property
+        /// duration/easing/delay can be overridden this way).
         /// </summary>
         public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
 
@@ -147,12 +184,16 @@ namespace Velvet
                 Easing = easing ?? Easing,
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
-                // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides
-                // or the child-orchestration knobs.
+                // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
+                // the child-orchestration knobs, or the spring model.
                 PropertyOverrides = PropertyOverrides,
                 StaggerChildrenSec = StaggerChildrenSec,
                 DelayChildrenSec = DelayChildrenSec,
                 When = When,
+                Type = Type,
+                Stiffness = Stiffness,
+                Damping = Damping,
+                Mass = Mass,
                 // Class names are identical, so share the parsed arrays (avoids re-parsing).
                 _enterFromClasses = _enterFromClasses,
                 _enterToClasses = _enterToClasses,
@@ -194,6 +235,37 @@ namespace Velvet
             Easing = easing;
             DelaySec = delaySec;
         }
+    }
+
+    /// <summary>
+    /// Selects the animation model a <see cref="StyleTransitionConfig"/> plays with — see
+    /// <see cref="StyleTransitionConfig.Type"/>.
+    /// </summary>
+    public enum TransitionType
+    {
+        /// <summary>
+        /// A USS <c>transition-*</c> class swap: <see cref="StyleTransitionConfig.DurationSec"/> /
+        /// <see cref="StyleTransitionConfig.Easing"/> drive a fixed-duration tween between the from/to classes.
+        /// The default.
+        /// </summary>
+        Tween,
+
+        /// <summary>
+        /// A physics-integrated spring (see the internal SpringIntegrator): <see cref="StyleTransitionConfig.Stiffness"/>
+        /// / <see cref="StyleTransitionConfig.Damping"/> / <see cref="StyleTransitionConfig.Mass"/> decide the
+        /// curve and settle time instead of a fixed duration — CSS/USS transitions cannot express a spring, so
+        /// this is driven by a per-frame tick that writes inline styles directly (like the drop-shadow co-fade
+        /// tick), not <c>transition-duration</c>/<c>transition-timing-function</c>.
+        /// Only <see cref="Velvet.MotionNode"/>'s variant enter/exit (<c>variants</c> + <c>initial</c>/<c>animate</c>/
+        /// <c>exit</c>) plays a spring — the classic preset transitions (<see cref="StyleTransition"/>) are always
+        /// tweens, since their enter/exit classes are internal to the package.
+        /// Only OPACITY and the transform trio — translate x/y (pixels only; percentage-based translate such as
+        /// <c>translate-x-1/2</c> or <c>translate-x-full</c> is out of scope), uniform scale, and rotate (degrees)
+        /// — are spring-animated; colors, arbitrary lengths (width/height/margin/…), and per-axis
+        /// <c>scale-x-</c>/<c>scale-y-</c> are out of scope and are NOT animated by a spring (they still apply as
+        /// plain classes, just without a tween/spring transition on them).
+        /// </summary>
+        Spring,
     }
 
     /// <summary>
