@@ -80,7 +80,9 @@ namespace Velvet
 
     /// <summary>
     /// Element node that participates in animations.
-    /// Used inside AnimatePresence; switches CSS classes on mount / unmount based on the transition definition.
+    /// A variant <see cref="Initial"/>/<see cref="Animate"/> pair plays its mount enter on ANY Motion, standalone
+    /// or under AnimatePresence; <see cref="Exit"/> requires AnimatePresence (something must defer the unmount
+    /// for the removal to animate against) and switches CSS classes on unmount based on the transition definition.
     /// Inline styles (StyleOverrides) are intentionally not supported. Apply styles via USS classes.
     /// </summary>
     public sealed class MotionNode : BaseElementNode
@@ -90,7 +92,8 @@ namespace Velvet
 
         /// <summary>
         /// Callback invoked when the enter animation completes.
-        /// Effective only inside AnimatePresence. Invoked immediately when StyleTransitionConfig.None.
+        /// Fires for a variant <see cref="Initial"/>/<see cref="Animate"/> enter whether this Motion sits under
+        /// AnimatePresence or mounts standalone. Invoked immediately when StyleTransitionConfig.None.
         /// When initial=false, fires synchronously inside CreateElement.
         /// On asynchronous animation completion via schedule.Execute, called outside of Reconcile, so SetState()
         /// is safe.
@@ -110,10 +113,12 @@ namespace Velvet
         public string? Animate { get; init; }
 
         /// <summary>
-        /// Mount-time starting variant label. When this Motion is the direct child of an
-        /// AnimatePresence and sets <see cref="Initial"/> + <see cref="Animate"/> + <see cref="Variants"/>, the
-        /// enter starts the element at <c>variants[Initial]</c> and transitions to <c>variants[Animate]</c> (which
-        /// it then rests at, persistently) using the <see cref="Transition"/> timing. Null = no variant initial state.
+        /// Mount-time starting variant label. When this Motion sets <see cref="Initial"/> + <see cref="Animate"/> +
+        /// <see cref="Variants"/>, the enter starts the element at <c>variants[Initial]</c> and transitions to
+        /// <c>variants[Animate]</c> (which it then rests at, persistently) using the <see cref="Transition"/>
+        /// timing. Works the same whether this Motion is the direct child of an AnimatePresence or mounts
+        /// standalone — Framer parity: <c>initial</c>/<c>animate</c> apply to any motion.* component; AnimatePresence
+        /// is only required for <see cref="Exit"/>. Null = no variant initial state.
         /// </summary>
         public string? Initial { get; init; }
 
@@ -121,7 +126,9 @@ namespace Velvet
         /// Exit variant label. When this Motion is the direct child of an AnimatePresence and
         /// sets <see cref="Exit"/> + <see cref="Animate"/> + <see cref="Variants"/>, removal animates from the resting
         /// <c>variants[Animate]</c> to <c>variants[Exit]</c> (using the <see cref="Transition"/> timing) before the
-        /// element unmounts. Null = use the transition's own ExitFrom/ExitTo classes.
+        /// element unmounts. Unlike <see cref="Initial"/>, this genuinely needs AnimatePresence — something must
+        /// defer the unmount for the removal to animate against — so it is inert (and logs a warning) outside one.
+        /// Null = use the transition's own ExitFrom/ExitTo classes.
         /// </summary>
         public string? Exit { get; init; }
     }

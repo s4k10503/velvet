@@ -1455,6 +1455,8 @@ namespace Velvet
         /// <summary>
         /// Element targeted by an animation.
         /// Used inside AnimatePresence; toggles CSS classes on mount / unmount according to <paramref name="transition"/>.
+        /// The one exception is a variant <paramref name="initial"/>/<paramref name="animate"/> pair (see
+        /// <paramref name="initial"/>), which plays its mount enter on any Motion, standalone or not.
         /// When <paramref name="transition"/> is null, <c>StyleTransition.Fade</c> is applied as the default.
         /// <paramref name="duration"/> / <paramref name="easing"/> can override individual fields of the
         /// transition preset (e.g. setting only the duration while keeping the preset's other fields).
@@ -1490,14 +1492,16 @@ namespace Velvet
         /// on a parent drives the whole subtree.</param>
         /// <param name="animate">The active variant label (a key of <paramref name="variants"/>). When null, the
         /// nearest ancestor Motion's active label is inherited; when set, it overrides any inherited label.</param>
-        /// <param name="initial">Mount-time starting variant label. When this Motion is the
-        /// DIRECT child of an AnimatePresence and also sets <paramref name="animate"/> + <paramref name="variants"/>,
-        /// the enter starts at <c>variants[initial]</c> and transitions to <c>variants[animate]</c> (its persistent
-        /// resting state) using this Motion's transition timing.</param>
+        /// <param name="initial">Mount-time starting variant label. When this Motion also sets
+        /// <paramref name="animate"/> + <paramref name="variants"/>, the enter starts at <c>variants[initial]</c>
+        /// and transitions to <c>variants[animate]</c> (its persistent resting state) using this Motion's
+        /// transition timing — whether this Motion is the DIRECT child of an AnimatePresence or mounts standalone
+        /// (Framer parity: <c>initial</c>/<c>animate</c> apply to any motion.* component).</param>
         /// <param name="exit">Exit variant label. When this Motion is the DIRECT child of an
         /// AnimatePresence and also sets <paramref name="animate"/> + <paramref name="variants"/>, removal animates
         /// from <c>variants[animate]</c> to <c>variants[exit]</c> (using this Motion's transition timing) before the
-        /// element unmounts.</param>
+        /// element unmounts. Unlike <paramref name="initial"/>, this needs AnimatePresence to defer the unmount —
+        /// set outside one, it is inert and logs a warning.</param>
         /// <returns>The created <see cref="MotionNode"/>.</returns>
         /// <remarks>
         /// Equivalent to Framer Motion's <c>motion.&lt;tag&gt;</c> component (with its <c>variants</c>,

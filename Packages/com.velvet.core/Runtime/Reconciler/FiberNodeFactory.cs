@@ -213,18 +213,33 @@ namespace Velvet
                             "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit "
                             + "(same constraint as shadow-*). Wrap the Motion around a clipped Div instead.");
                     }
-                    // Enter/exit tweens are scheduled by the AnimatePresence expansion, so on a
-                    // standalone Motion these props are silently inert: the element mounts already
-                    // at its animate/resting classes and the declared initial never plays. Warn like
-                    // the shadow-*/clip-path-* gates above so a Framer-style initial/animate pair
-                    // does not just fail to animate without a trace.
-                    if (_ctx.PresenceExpansionDepth == 0
-                        && (motionNode.Initial != null || motionNode.Exit != null))
+                    // Exit tweens are scheduled only by the AnimatePresence expansion — something has to defer
+                    // the unmount for a removal to animate against, and AnimatePresence is what does that — so
+                    // exit outside one is genuinely inert. Warn like the shadow-*/clip-path-* gates above. Initial
+                    // is NOT warned here (see the standalone enter below): unlike exit, a mount-time enter needs
+                    // no deferred unmount to play against, so it works on any Motion, matching Framer parity
+                    // (initial/animate apply to any motion.* component; only AnimatePresence is exit-only).
+                    if (_ctx.PresenceExpansionDepth == 0 && motionNode.Exit != null)
                     {
                         FiberLogger.LogWarning("Motion",
-                            "initial/exit on a Motion outside AnimatePresence is inert: enter/exit tweens are "
-                            + "driven by the AnimatePresence expansion. Wrap the Motion in V.AnimatePresence "
-                            + "(or drop initial/exit).");
+                            "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "
+                            + "AnimatePresence expansion. Wrap the Motion in V.AnimatePresence (or drop exit).");
+                    }
+                    // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
+                    // mount animation, the same variant enter the presence expansion drives
+                    // (GeneralPathReconciler.ExpandAnimatePresenceInline) — just with no stagger (there is no
+                    // AnimatePresence boundary to stagger against). The element above was created carrying the
+                    // resting variants[animate] classes (appliedClasses), with MotionAppliedClasses already
+                    // recorded against that resting state, so PlayVariantEnter's synchronous strip-to-`initial` is
+                    // purely a transient visual state: a later patch (PatchMotion) always diffs against the
+                    // resting baseline and never replays this entrance.
+                    if (_ctx.PresenceExpansionDepth == 0 && motionNode.Initial != null && motionNode.Transition != null
+                        && GeneralPathReconciler.TryResolveVariantInitial(
+                            motionNode, out var standaloneFromClasses, out var standaloneToClasses))
+                    {
+                        var t = motionNode.Transition;
+                        _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
+                            t.DurationSec, t.Easing, t.DelaySec, motionNode.OnEnterComplete);
                     }
                     return element;
                 }

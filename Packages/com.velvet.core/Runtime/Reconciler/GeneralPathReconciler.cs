@@ -1319,8 +1319,10 @@ namespace Velvet
         // Resolves the from/to class arrays for an `initial` variant enter: fromClasses =
         // variants[Initial], toClasses = variants[Animate]. Returns false (no
         // variant-initial enter; caller falls back to the classic transition) unless the Motion sets its own
-        // Initial + Animate + Variants and the initial label maps to a non-empty class string.
-        private static bool TryResolveVariantInitial(MotionNode? motion, out string[]? fromClasses, out string[]? toClasses)
+        // Initial + Animate + Variants and the initial label maps to a non-empty class string. Internal (not
+        // private): FiberNodeFactory calls this too, to play the same variant enter on a standalone Motion
+        // (outside any AnimatePresence) at element-creation time.
+        internal static bool TryResolveVariantInitial(MotionNode? motion, out string[]? fromClasses, out string[]? toClasses)
         {
             fromClasses = null;
             toClasses = null;
