@@ -40,11 +40,6 @@ namespace Velvet
         public float Damping;
         public float Mass;
 
-        // Wall-clock time (Time.realtimeSinceStartupAsDouble) as of the previous tick, so each Step call gets
-        // the REAL elapsed interval rather than the scheduler's nominal cadence (see StyleAnimationScheduler's
-        // tick, which mirrors StyleAnimateDriver's own elapsed-time approach).
-        public double LastTickTime;
-
         // The recurring tick, scheduled on the panel root. Paused (and nulled) once every channel has settled,
         // or on cancel.
         public IVisualElementScheduledItem? Tick;

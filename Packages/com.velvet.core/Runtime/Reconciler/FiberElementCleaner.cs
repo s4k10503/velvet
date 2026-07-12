@@ -193,7 +193,11 @@ namespace Velvet
                 refCleanup?.Invoke();
             }
             _ctx.StyleAnimationScheduler.CancelEnter(element);
-            _ctx.StyleAnimationScheduler.CancelExit(element);
+            // Teardown-flavored: this element is being released for good (pool return / disposal), not merely
+            // interrupted, so an ordinary CancelExit's reversal hand-off (which assumes the element keeps
+            // living) must not run even though it can still be attached at this point — DOM detachment is the
+            // caller's own job, performed after this cleanup.
+            _ctx.StyleAnimationScheduler.CancelExitForTeardown(element);
             _ctx.StyleAnimationScheduler.CancelDelayedVariantSwap(element);
             _ctx.EventManager.UnbindAll(element);
             _ctx.ComponentRegistry.Remove(element);

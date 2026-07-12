@@ -1,7 +1,6 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -355,17 +354,27 @@ namespace Velvet
             }
             else
             {
-                EventCallback<AttachToPanelEvent>? onAttach = null;
-                onAttach = _ =>
-                {
-                    element.UnregisterCallback(onAttach);
-                    pending.PendingAttach = null;
-                    ScheduleOnHost();
-                };
-                element.RegisterCallback(onAttach);
-                // Track it on the pending so a cancel-before-attach can remove the dangling callback.
-                pending.PendingAttach = onAttach;
+                DeferUntilAttached(element, pending, ScheduleOnHost);
             }
+        }
+
+        // Defers an action until the element attaches to a panel — shared by any animation that can start
+        // while its element is off-panel (freshly created but not yet inserted, or transiently detached by a
+        // keyed reorder) and therefore has no working schedule / panel-root host to run on yet. The callback
+        // unregisters itself once it fires; pending.PendingAttach is tracked so a cancel-before-attach (see
+        // CancelPending) can remove the still-dangling registration instead of leaking it — and the closure
+        // pinning the caller's PendingAnimation — on the element across pool reuse.
+        private static void DeferUntilAttached(VisualElement element, PendingAnimation pending, Action onAttach)
+        {
+            EventCallback<AttachToPanelEvent>? handler = null;
+            handler = _ =>
+            {
+                element.UnregisterCallback(handler);
+                pending.PendingAttach = null;
+                onAttach();
+            };
+            element.RegisterCallback(handler);
+            pending.PendingAttach = handler;
         }
 
         // Starts a spring-driven variant enter/exit (StyleTransitionConfig.Type == Spring). Unlike the tween
@@ -377,25 +386,31 @@ namespace Velvet
         // map: the caller's own map (_pendingEnters for an enter, _pendingExits for an exit) so a later
         // CancelEnter/CancelExit/CancelAll finds this entry exactly like a tween one.
         // restingClasses: non-null only for a variant exit (restoreFromOnCancel) — see PendingAnimation.RestingClasses.
-        // isExit: selects the exit-shaped behavior — self-cancel-with-reversal (mirrors calling the PUBLIC
-        // CancelExit rather than CancelEnter for the self-cancel below) and deferring the tick start until
-        // attach when off-panel (a presence exit can start mid-reorder while its subtree is transiently
-        // detached — see PlayExit's own ScheduleOnHost/AttachToPanelEvent for why). False for an enter: an
-        // entering element is freshly created/reused and inserted as part of the SAME reconcile, so it is
-        // already on-panel by the time this runs (PlayEnterInternal has no off-panel handling either).
+        // isExit: selects the exit-shaped self-cancel (mirrors calling the PUBLIC CancelExit rather than
+        // CancelEnter below). Both directions defer the tick start until attach when off-panel: a standalone
+        // Motion's enter plays during element creation (FiberNodeFactory), and a presence enter plays before
+        // the entering element is placed into the tree (GeneralPathReconciler) — so BOTH, like a presence
+        // exit, can start while still detached (see PlayExit's own ScheduleOnHost/AttachToPanelEvent for the
+        // same rationale on the exit side).
         private void StartSpringVariant(VisualElement element, string[] fromClasses, string[] toClasses,
             float delaySec, float stiffness, float damping, float mass, Action? onComplete, float additionalDelaySec,
             Dictionary<VisualElement, PendingAnimation> map, string[]? restingClasses, bool isExit)
         {
             var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses);
-            var state = MotionSpringDriver.Create(plan, stiffness, damping, mass);
+            // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
+            // below: no state is built, so the shared "land the classes, complete immediately" branch handles
+            // it without a separate code path.
+            var state = ValidateSpringParameters(stiffness, damping, mass)
+                ? MotionSpringDriver.Create(plan, stiffness, damping, mass)
+                : null;
 
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
             // CancelEnter(element) / PlayExit's CancelExit(element) self-cancel).
             CancelPending(map, element, animateReversal: isExit);
 
-            // Land the classes at rest either way — nothing recognized to animate degrades to a plain,
-            // instantaneous class swap (the spring equivalent of a zero-duration tween).
+            // Land the classes at rest either way — nothing recognized to animate (or invalid spring
+            // parameters) degrades to a plain, instantaneous class swap (the spring equivalent of a
+            // zero-duration tween).
             StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
 
@@ -427,42 +442,56 @@ namespace Velvet
                     return;
                 }
                 var totalDelayMs = (long)((delaySec + additionalDelaySec) * 1000);
-                if (totalDelayMs > 0)
-                {
-                    var scheduled = element.schedule.Execute(() => StartSpringTick(element, pending));
-                    scheduled.ExecuteLater(totalDelayMs);
-                    pending.ScheduledItem = scheduled;
-                }
-                else
+                if (totalDelayMs <= 0)
                 {
                     StartSpringTick(element, pending);
+                    return;
                 }
+
+                // A delayed start is parked on the panel-root host, not element.schedule: ScheduleStart only
+                // ever runs once attached (called directly below, or from DeferUntilAttached's onAttach), but
+                // a keyed reorder can transiently detach the element again during the delay window itself,
+                // and UI Toolkit silently drops a detached element's own scheduled items (mirrors PlayExit's
+                // ScheduleOnHost rationale). The host should therefore always be available here; the null
+                // guard is defensive (mirrors StartSpringTick's own should-not-happen bail) rather than an
+                // expected path.
+                var host = element.panel?.visualTree;
+                if (host == null)
+                {
+                    return;
+                }
+                var scheduled = host.schedule.Execute(() =>
+                {
+                    // Re-check on fire, not just on schedule: the host outlives a transient detach, so this
+                    // closure can still run after a later cancel/supersede replaced this exact pending.
+                    if (map.TryGetValue(element, out var stillCurrent) && ReferenceEquals(stillCurrent, pending))
+                    {
+                        StartSpringTick(element, pending);
+                    }
+                });
+                scheduled.ExecuteLater(totalDelayMs);
+                pending.ScheduledItem = scheduled;
             }
 
-            if (!isExit || element.panel != null)
+            if (element.panel != null)
             {
                 ScheduleStart();
             }
             else
             {
-                EventCallback<AttachToPanelEvent>? onAttach = null;
-                onAttach = _ =>
-                {
-                    element.UnregisterCallback(onAttach);
-                    pending.PendingAttach = null;
-                    ScheduleStart();
-                };
-                element.RegisterCallback(onAttach);
-                pending.PendingAttach = onAttach;
+                DeferUntilAttached(element, pending, ScheduleStart);
             }
         }
 
         // Starts the recurring spring tick on the panel root — the stable host, mirroring the shadow co-fade
         // tick's own rationale: a keyed reorder can transiently detach the animating element, and UI Toolkit
         // silently drops a DETACHED element's own scheduled items, but the panel root never detaches during the
-        // tree's life. Each tick measures its OWN real elapsed time (Time.realtimeSinceStartupAsDouble) rather
-        // than assuming the nominal 16ms cadence, so a hitch is absorbed by SpringIntegrator's internal dt clamp
-        // instead of silently under-integrating. No-op if there is no host (should not happen for the on-panel /
+        // tree's life. Each tick reads the elapsed time from the SAME clock the scheduler itself used to decide
+        // when to fire this callback (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
+        // own time source, which a test's simulated panel overrides) rather than sampling a different clock
+        // (e.g. Time.realtimeSinceStartupAsDouble) that could disagree with it: a hitch is still absorbed by
+        // SpringIntegrator's own dt clamp, but the elapsed time now always matches what actually elapsed on the
+        // clock this tick is scheduled against. No-op if there is no host (should not happen for the on-panel /
         // already-deferred-to-attach cases this is called from, but this guards rather than throws).
         private void StartSpringTick(VisualElement element, PendingAnimation pending)
         {
@@ -477,12 +506,12 @@ namespace Velvet
                 return;
             }
 
-            state.LastTickTime = Time.realtimeSinceStartupAsDouble;
-            state.Tick = host.schedule.Execute(() =>
+            state.Tick = host.schedule.Execute((TimerState ts) =>
             {
-                var now = Time.realtimeSinceStartupAsDouble;
-                var dt = (float)(now - state.LastTickTime);
-                state.LastTickTime = now;
+                // TimerState.start is the previous callback's time for a repeating item (or the schedule time
+                // for the first firing), so deltaTime is already exactly the elapsed interval this tick needs
+                // — no separate "last tick" bookkeeping to maintain.
+                var dt = ts.deltaTime / 1000f;
                 if (dt <= 0f)
                 {
                     return;
@@ -511,6 +540,18 @@ namespace Velvet
         // element reverses toward its resting classes with the transition kept alive (the inline
         // transition styles are cleared only after the reversal has run its course).
         public void CancelExit(VisualElement element) => CancelPending(_pendingExits, element, animateReversal: true);
+
+        // Cancels the exit animation on an element being torn down for good (pool return / disposal) — never
+        // hands off to a reversal, regardless of whether the element is still attached at the moment this
+        // runs. FiberElementCleaner releases scheduler resources BEFORE the caller physically detaches the
+        // element (DOM operations are the caller's own job), so element.panel can still be non-null here even
+        // though the element is on its way to the pool. An ordinary CancelExit's reversal hand-off assumes the
+        // element keeps living: for a spring, it re-adds a live entry into the enter map whose recurring,
+        // panel-root-scheduled tick keeps calling MotionSpringDriver.Step and writing inline styles — nothing
+        // ever calls CancelEnter on this element again to catch that re-added entry, so it would otherwise
+        // keep corrupting whatever the pooled element is reused for next.
+        public void CancelExitForTeardown(VisualElement element) =>
+            CancelPending(_pendingExits, element, animateReversal: true, forTeardown: true);
 
         // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
         public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
@@ -621,6 +662,30 @@ namespace Velvet
             return true;
         }
 
+        // Mirrors ValidateDuration's guard, for the spring path: a non-finite or non-positive stiffness/damping
+        // makes SpringIntegrator.Step's settle predicate unsatisfiable forever — zero/negative stiffness never
+        // pulls the value toward its target, zero/negative damping never dissipates velocity, and NaN
+        // propagates into every inline style write and never compares equal to anything (including itself), so
+        // IsSettled never returns true. Left unvalidated, the panel-root tick this drives would run
+        // indefinitely and its completion callback — the ONLY thing that removes a presence exit's ghost —
+        // would never fire. Mass gets its own numeric safety clamp inside SpringIntegrator.Step (a non-positive
+        // mass would otherwise divide by zero or flip the restoring force's sign), but that clamp has no way to
+        // warn the caller, so it is still validated here for the same failure modes.
+        private static bool ValidateSpringParameters(float stiffness, float damping, float mass)
+        {
+            if (float.IsFinite(stiffness) && stiffness > 0f
+                && float.IsFinite(damping) && damping > 0f
+                && float.IsFinite(mass) && mass > 0f)
+            {
+                return true;
+            }
+
+            FiberLogger.LogWarning("Spring",
+                $"Invalid spring parameters (stiffness={stiffness}, damping={damping}, mass={mass}). " +
+                "Expected finite, positive values for all three. Completing immediately instead of ticking forever.");
+            return false;
+        }
+
         // Sets transition-duration and transition-timing-function as inline styles.
         // C# becomes the Single Source of Truth, so they need not be defined in USS.
         // GC tuning: the EasingFunction list is cached statically per EasingMode; TimeValue lists are
@@ -724,8 +789,12 @@ namespace Velvet
 
         // If the timeout callback already ran, map.Remove returns false and the cancellation is skipped.
         // This is safe because the classes have already been cleaned up in that case.
+        // forTeardown: true only from CancelExitForTeardown — the element is being torn down for good (pool
+        // return / disposal), not merely interrupted, so a reversal (tween or spring) is never appropriate
+        // even when animateReversal is requested and the element still happens to be attached: see
+        // CancelExitForTeardown for why handing off to one would corrupt the element after it is pooled.
         private void CancelPending(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
-            bool animateReversal = false)
+            bool animateReversal = false, bool forTeardown = false)
         {
             if (map.Remove(element, out var pending))
             {
@@ -755,7 +824,7 @@ namespace Velvet
                 if (pending.Spring != null)
                 {
                     var spring = pending.Spring;
-                    if (animateReversal && element.panel != null)
+                    if (!forTeardown && animateReversal && element.panel != null && spring.Tick != null)
                     {
                         // Hand off to a reversal spring: retarget every channel toward the value it STARTED
                         // from (continuity — each channel's SpringIntegrator instance, and therefore its
@@ -763,7 +832,12 @@ namespace Velvet
                         // reversal settling is not "finishing" anything the original caller asked for), and
                         // move ownership into the enter map — mirroring the tween reversal's own move into
                         // _pendingEnters below. The recurring tick keeps running uninterrupted throughout;
-                        // only its targets and its eventual finalize action change.
+                        // only its targets and its eventual finalize action change. Requires a tick that has
+                        // actually started (spring.Tick != null): a cancel that lands before then — still
+                        // parked behind its delay — has no running tick to keep alive, and nothing would ever
+                        // start one for it (its ScheduledItem was already paused above, and a still-off-panel
+                        // PendingAttach was already unregistered), so handing off here would just park a dead
+                        // entry in _pendingEnters forever instead of finalizing below.
                         MotionSpringDriver.Retarget(spring);
                         spring.OnSettled = null;
                         CancelPending(_pendingEnters, element);
@@ -772,8 +846,9 @@ namespace Velvet
                     }
                     else
                     {
-                        // No reversal (a plain CancelEnter, or an off-panel exit with nothing left to
-                        // interpolate against): stop the tick now and drop the inline overrides immediately.
+                        // No reversal (a plain CancelEnter, an off-panel exit with nothing left to interpolate
+                        // against, a cancel before the tick ever started, or a teardown cancel that must never
+                        // hand off regardless): stop the tick now and drop the inline overrides immediately.
                         spring.Tick?.Pause();
                         spring.Tick = null;
                         MotionSpringDriver.ClearInlineOverrides(element, spring);
@@ -781,7 +856,7 @@ namespace Velvet
                     return;
                 }
 
-                if (animateReversal && element.panel != null && pending.DurationList is { Count: > 0 })
+                if (!forTeardown && animateReversal && element.panel != null && pending.DurationList is { Count: > 0 })
                 {
                     // A cancelled exit retargets a still-attached element back to its resting
                     // classes. Clearing the inline transition styles in this same call would make
