@@ -214,7 +214,6 @@ See [package.json](./package.json) for dependent packages. Velvet is a self-cont
 - [Documentation~/README.md](./Documentation~/README.md) — Velvet documentation index and quick reference
 - [Documentation~/react-migration.md](./Documentation~/react-migration.md) — In-depth guide for developers coming from React
 - [Documentation~/memoization.md](./Documentation~/memoization.md) — `[Memoize]` and component-level caching
-- [Documentation~/deep-nest-mitigation.md](./Documentation~/deep-nest-mitigation.md) — DX patterns for deeply nested `V.*` trees
 
 ---
 
