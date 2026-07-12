@@ -438,6 +438,14 @@ namespace Velvet
                 StyleAnimateDriver.Detach(element, binding);
             }
             _ctx.AnimationBindings.Clear();
+            // SceneView bindings own a live RenderTexture with a camera rendering into it: release both
+            // ends so a still-mounted scene view at root disposal leaves no orphaned texture and no
+            // camera left targeting one.
+            foreach (var (element, binding) in _ctx.SceneViewBindings)
+            {
+                SceneViewDriver.Detach(element, binding);
+            }
+            _ctx.SceneViewBindings.Clear();
             foreach (var (element, manipulator) in _ctx.GestureManipulators)
             {
                 element.RemoveManipulator(manipulator);

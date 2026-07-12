@@ -295,6 +295,14 @@ namespace Velvet
                 StyleAnimateDriver.Detach(element, animationBinding);
                 _ctx.AnimationBindings.Remove(element);
             }
+            if (_ctx.SceneViewBindings.TryGetValue(element, out var sceneViewBinding))
+            {
+                // Release both ends of the camera-output pair: the geometry callback, the camera's target
+                // (only when it still points at the framework texture — a user reassignment after mount is
+                // left intact), the texture itself, and the background image showing it.
+                SceneViewDriver.Detach(element, sceneViewBinding);
+                _ctx.SceneViewBindings.Remove(element);
+            }
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
             {
                 virtualListController.Dispose();

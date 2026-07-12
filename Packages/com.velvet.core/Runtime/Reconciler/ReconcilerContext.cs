@@ -305,6 +305,13 @@ namespace Velvet
         // side-tables); FiberElementCleaner / Reconciler.Dispose call StyleAnimateDriver.Detach.
         public Dictionary<VisualElement, StyleAnimateBinding> AnimationBindings { get; } = new();
 
+        // Per-SceneView-element bookkeeping (V.SceneView), keyed by the element itself. The binding
+        // owns a live resource pair — the framework-created RenderTexture and the camera targeting it —
+        // so it is NOT a pure side-table: FiberElementCleaner releases both ends on element teardown
+        // (geometry callback unregistered, camera politely untargeted, texture destroyed) and
+        // Reconciler.Dispose sweeps any binding still live at root disposal.
+        public Dictionary<VisualElement, SceneViewBinding> SceneViewBindings { get; } = new();
+
         // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
         // range of FiberPortalRegistry.Get(TargetId).Children owned by this Portal — the
         // invariant that lets multiple Portals coexist on the same target without overwriting each
