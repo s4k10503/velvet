@@ -295,7 +295,10 @@ namespace Velvet
 
         /// <summary>
         /// Inheriting descendants wait for this Motion's OWN transition to finish before starting: every
-        /// descendant's computed delay additionally includes this Motion's <see cref="StyleTransitionConfig.DurationSec"/>.
+        /// descendant's computed delay additionally includes this Motion's own
+        /// <see cref="StyleTransitionConfig.DelaySec"/> + <see cref="StyleTransitionConfig.DurationSec"/> — the
+        /// full span of its swap, not just the duration, since the swap does not even START until DelaySec has
+        /// elapsed.
         /// </summary>
         BeforeChildren,
 

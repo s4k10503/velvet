@@ -159,6 +159,62 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_BeforeChildrenWithAParentDelay_When_TheLabelFlips_Then_ChildrenWaitForTheDelayAndTheDuration()
+        {
+            // Arrange — the parent's own swap spans [DelaySec, DelaySec + DurationSec]; BeforeChildren
+            // means children start after it ENDS, so the parent's DelaySec must be part of the wait.
+            var transition = new StyleTransitionConfig
+            {
+                DurationSec = 0.4f,
+                DelaySec = 0.2f,
+                When = TransitionWhen.BeforeChildren,
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), Tree("hidden", transition));
+
+            // Act
+            _reconciler.Reconcile(Root, Tree("hidden", transition), Tree("visible", transition));
+
+            // Assert — 600ms = the parent's DelaySec (200) plus its DurationSec (400).
+            Assert.That(InlineDelayMs(Root.Q<VisualElement>("c0")), Is.EqualTo(600f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_AnInheritingOrchestratorWithItsOwnChildStagger_When_TheAncestorLabelFlips_Then_TheGrandchildWaitsForBothDelays()
+        {
+            // Arrange — "mid" both CLAIMS a delay from "gp"'s orchestration (it inherits gp's label and
+            // declares its own Variants, so it actually claims a stagger slot) and ESTABLISHES a fresh
+            // orchestration frame for "gc" (its own Transition declares DelayChildrenSec). "gc"'s total delay
+            // must be measured from render-commit time, not from when "mid"'s own already-delayed swap starts,
+            // or the grandchild would start animating before its own parent's swap even begins.
+            var midVariants = new Dictionary<string, string> { ["hidden"] = "translate-x-0", ["visible"] = "translate-x-4" };
+            VNode[] NestedTree(string label) => new VNode[]
+            {
+                V.Motion(key: "gp", name: "gp", animate: label,
+                    transition: new StyleTransitionConfig { DurationSec = 0.1f, DelayChildrenSec = 0.5f },
+                    children: new VNode[]
+                    {
+                        V.Motion(key: "mid", name: "mid", variants: midVariants,
+                            transition: new StyleTransitionConfig { DurationSec = 0.1f, DelayChildrenSec = 0.25f },
+                            children: new VNode[]
+                            {
+                                V.Motion(key: "gc", name: "gc", variants: s_fade,
+                                    transition: new StyleTransitionConfig { DurationSec = 0.05f }),
+                            }),
+                    }),
+            };
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), NestedTree("hidden"));
+            Assume.That(InlineDelayMs(Root.Q<VisualElement>("mid")), Is.EqualTo(0f),
+                "Precondition: no orchestrated delay is applied on mount");
+
+            // Act — flip the top ancestor's label.
+            _reconciler.Reconcile(Root, NestedTree("hidden"), NestedTree("visible"));
+
+            // Assert — 750ms = gp's delayChildren (500ms, claimed by "mid") + mid's OWN delayChildren (250ms),
+            // folded together rather than measuring mid's fresh frame from zero.
+            Assert.That(InlineDelayMs(Root.Q<VisualElement>("gc")), Is.EqualTo(750f).Within(1e-3f));
+        }
+
+        [Test]
         public void Given_AChildWithItsOwnExplicitAnimate_When_TheParentLabelFlips_Then_ItIsNotDelayedButItsSiblingIs()
         {
             // Arrange — c0 declares its OWN explicit animate ("visible", fixed across both trees below),

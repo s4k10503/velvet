@@ -40,25 +40,30 @@ namespace Velvet
     {
         private readonly float _delayChildrenSec;
         private readonly float _staggerChildrenSec;
-        // This Motion's own DurationSec when When == BeforeChildren (inheriting descendants wait for the
-        // parent's own swap to finish first), else 0.
-        private readonly float _extraBeforeChildrenSec;
+        // Extra delay (seconds) folded into EVERY claim from this frame, on top of delayChildren +
+        // index*staggerChildren — see FiberNodePatcher.ResolveChildOrchestration for the two contributions:
+        // this Motion's own [DelaySec, DelaySec + DurationSec] span when When == BeforeChildren (inheriting
+        // descendants wait for the parent's own swap to finish, not just start), PLUS — when this Motion is
+        // itself an inheriting descendant claiming a delay from a FURTHER-OUT orchestration — that claimed
+        // delay, so a claim from this frame is measured from render-commit time (when the whole chain actually
+        // started), not from when this Motion's own already-delayed swap begins.
+        private readonly float _baseDelaySec;
         private int _nextChildIndex;
 
-        public MotionOrchestrationFrame(float delayChildrenSec, float staggerChildrenSec, float extraBeforeChildrenSec)
+        public MotionOrchestrationFrame(float delayChildrenSec, float staggerChildrenSec, float baseDelaySec)
         {
             _delayChildrenSec = delayChildrenSec;
             _staggerChildrenSec = staggerChildrenSec;
-            _extraBeforeChildrenSec = extraBeforeChildrenSec;
+            _baseDelaySec = baseDelaySec;
         }
 
         // Claims the next sequential slot (document order) and returns the claiming descendant's total extra
-        // delay (seconds): delayChildren + index * staggerChildren, plus the parent's own duration when
-        // When == BeforeChildren.
+        // delay (seconds): delayChildren + index * staggerChildren, plus this frame's base delay (see
+        // _baseDelaySec).
         public float ClaimNextChildDelaySec()
         {
             var index = _nextChildIndex++;
-            return _delayChildrenSec + index * _staggerChildrenSec + _extraBeforeChildrenSec;
+            return _delayChildrenSec + index * _staggerChildrenSec + _baseDelaySec;
         }
     }
 }

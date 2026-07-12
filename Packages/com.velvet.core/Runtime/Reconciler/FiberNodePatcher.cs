@@ -368,10 +368,15 @@ namespace Velvet
             // Transition declared the knobs) — claim the next sequential slot and delay this element's class
             // swap by it, on top of whatever this node's own Transition.DelaySec already declares. Applied
             // BEFORE PatchBaseElement performs the actual class diff below, so the inline transition-delay is
-            // already in place when the swapped classes change the resolved style.
+            // already in place when the swapped classes change the resolved style. Declared OUTSIDE the `if`
+            // (0f when this node claims nothing) so it can be folded into a fresh orchestration frame THIS node
+            // establishes below for its OWN children (see ResolveChildOrchestration): this node's own swap does
+            // not start until extraDelaySec has elapsed, so a child frame it establishes must measure its
+            // claims from that same origin, not from render-commit time as if this node's swap were immediate.
+            var extraDelaySec = 0f;
             if (newNode.Animate == null && variantApplied && ambientOrchestration != null)
             {
-                var extraDelaySec = ambientOrchestration.ClaimNextChildDelaySec();
+                extraDelaySec = ambientOrchestration.ClaimNextChildDelaySec();
                 ApplyOrchestratedDelay(element, newNode.Transition, extraDelaySec);
             }
 
@@ -393,7 +398,7 @@ namespace Velvet
 
             if (childLabel != null)
             {
-                var childOrchestration = ResolveChildOrchestration(newNode, childLabelChanged, ambientOrchestration);
+                var childOrchestration = ResolveChildOrchestration(newNode, childLabelChanged, ambientOrchestration, extraDelaySec);
                 _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
                 _ctx.ComponentContextStack.Push(MotionContext.Orchestration, childOrchestration);
                 try
@@ -428,7 +433,14 @@ namespace Velvet
         // - A FRESH frame when this node's propagated label just changed AND its own Transition declares
         //   StaggerChildrenSec / DelayChildrenSec / a non-Together When — establishing a new stagger sequence
         //   (When == AfterChildren is not orchestrated; it warns once here and falls back to Together's
-        //   no-extra-delay semantics for the parent's own swap — see TransitionWhen.AfterChildren).
+        //   no-extra-delay semantics for the parent's own swap — see TransitionWhen.AfterChildren). The frame's
+        //   base offset is this node's own [DelaySec, DelaySec + DurationSec] span when When == BeforeChildren
+        //   (children wait for the delay AND the swap, not just the swap), PLUS extraDelaySec — the delay THIS
+        //   node itself claimed a moment ago in PatchMotion when it is, itself, an inheriting descendant of a
+        //   FURTHER-OUT orchestration. Folding extraDelaySec in regardless of When matters because this node's
+        //   own swap does not start at render-commit time when extraDelaySec > 0 — without it, a claim from the
+        //   fresh frame below would be measured as if this node's (already-delayed) swap started immediately,
+        //   letting a grandchild start animating before its own parent does.
         // - null when this node drives its children via its OWN explicit Animate: an ambient orchestration
         //   meant for a sibling branch must not leak through a node that is no longer inheriting (it computes
         //   its own child label independently of the ambient one, so it is a natural cut point).
@@ -436,7 +448,7 @@ namespace Velvet
         //   passed through UNCHANGED, so a non-orchestrating intermediate layer does not interrupt an outer
         //   ancestor's stagger sequence reaching its own grandchildren.
         private static MotionOrchestrationFrame? ResolveChildOrchestration(
-            MotionNode newNode, bool childLabelChanged, MotionOrchestrationFrame? ambientOrchestration)
+            MotionNode newNode, bool childLabelChanged, MotionOrchestrationFrame? ambientOrchestration, float extraDelaySec)
         {
             var transition = newNode.Transition;
             var hasOwnOrchestration = transition != null
@@ -450,8 +462,11 @@ namespace Velvet
                         "transition.When = AfterChildren is not yet orchestrated for label propagation; "
                         + "children animate as if When = Together (no wait for the parent's own transition).");
                 }
-                var extraBeforeChildrenSec = transition.When == TransitionWhen.BeforeChildren ? transition.DurationSec : 0f;
-                return new MotionOrchestrationFrame(transition.DelayChildrenSec, transition.StaggerChildrenSec, extraBeforeChildrenSec);
+                var extraBeforeChildrenSec = transition.When == TransitionWhen.BeforeChildren
+                    ? transition.DelaySec + transition.DurationSec
+                    : 0f;
+                return new MotionOrchestrationFrame(transition.DelayChildrenSec, transition.StaggerChildrenSec,
+                    extraBeforeChildrenSec + extraDelaySec);
             }
             return newNode.Animate != null ? null : ambientOrchestration;
         }
