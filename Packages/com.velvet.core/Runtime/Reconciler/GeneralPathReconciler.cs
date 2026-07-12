@@ -1187,19 +1187,22 @@ namespace Velvet
                         {
                             state.ExitAnchors.Remove(key!);
                         }
+                        // Resolved once and shared by the PopLayout restore below (it needs the re-added
+                        // node's OWN class list, not the ghost's pre-pin one) and the enter dispatch further
+                        // down, which already read the same descendant on every render before this change.
+                        var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
                         if (wasExiting)
                         {
                             _ctx.StyleAnimationScheduler.CancelExit(anchor);
                             if (presence.Mode == AnimatePresenceMode.PopLayout)
                             {
-                                RestorePopLayoutChildToFlow(anchor);
+                                RestorePopLayoutChildToFlow(anchor, motion?.ClassNames);
                             }
                         }
 
                         var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
                         if (isEnter)
                         {
-                            var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
                             if (motion?.Transition != null)
                             {
                                 // The Initial flag only suppresses the enter animation on the AnimatePresence's
@@ -1304,6 +1307,14 @@ namespace Velvet
         // finishes on top. Skipped when any component is non-finite (an EditMode pass with no forced layout
         // leaves `.layout` at NaN) — the child then degrades to a normal in-flow exit rather than being pinned
         // to garbage coordinates.
+        //
+        // layout.x/y is a flow-resolved position that already bakes in the child's own leading margin (an
+        // explicit m-* utility, or the inter-child margin StyleGapManipulator writes for gap-*) — the box
+        // simply renders shifted by that margin. Absolute positioning keeps the margin active too (UI Toolkit
+        // offsets the border box by left/top AND the still-set margin, matching CSS), so pinning at the raw
+        // layout rect would apply the same margin twice and jump the child by it the instant the exit starts.
+        // Subtracting the resolved margin back out of left/top cancels exactly that double count, so the
+        // pinned rect reproduces the in-flow position pixel for pixel.
         private static void PinExitingChildOutOfFlow(VisualElement anchor)
         {
             var rect = anchor.layout;
@@ -1313,9 +1324,13 @@ namespace Velvet
                 return;
             }
 
+            var resolved = anchor.resolvedStyle;
+            var marginLeft = resolved.marginLeft;
+            var marginTop = resolved.marginTop;
+
             anchor.style.position = Position.Absolute;
-            anchor.style.left = rect.x;
-            anchor.style.top = rect.y;
+            anchor.style.left = rect.x - marginLeft;
+            anchor.style.top = rect.y - marginTop;
             anchor.style.width = rect.width;
             anchor.style.height = rect.height;
         }
@@ -1324,13 +1339,50 @@ namespace Velvet
         // exit finished): clears the same five inline styles back to StyleKeyword.Null so the child rejoins
         // its parent's normal layout flow. A no-op (harmless) when the exit was never pinned (non-finite
         // layout at exit-start), since clearing an already-null style is idempotent.
-        private static void RestorePopLayoutChildToFlow(VisualElement anchor)
+        //
+        // Nulling width/height erases whatever geometry a resolver-applied arbitrary-value class (w-[..],
+        // h-[..]) owns — those live in the SAME inline slots this method clears and have no USS rule to fall
+        // back to, unlike a named utility (w-full) whose class rule keeps applying underneath. classNames is
+        // the re-added Motion's OWN class array (not anchor.GetClasses(): arbitrary-value tokens resolve
+        // straight to inline style and are deliberately never added to the USS class list, so the element's
+        // class list itself never contains them). The caller resolves it from the CURRENT node — already
+        // patched by EmitPresenceChild, which runs before this restore — so a re-add that also changed props
+        // re-applies the new value rather than a stale pre-pin one.
+        //
+        // CancelExit (the caller's previous statement) deliberately leaves transition-property: all /
+        // transition-duration active on this exact element so the variant's OWN reversal (e.g. opacity
+        // fading back toward its resting value) keeps interpolating instead of popping. This geometry fixup
+        // is bookkeeping, not an animated property, but with that transition still live any value it passes
+        // through — including the Null this method itself writes before re-asserting the resting one — is
+        // just as eligible to animate, so the position/left/top/width/height correction would visibly tween
+        // in on top of the resting geometry instead of landing on it immediately. Suspending the transition
+        // for exactly this method's writes and restoring it immediately after keeps the reversal (which never
+        // touches these five properties) running untouched while the geometry itself snaps.
+        private static void RestorePopLayoutChildToFlow(VisualElement anchor, string[]? classNames)
         {
+            var savedProperty = anchor.style.transitionProperty;
+            var savedDuration = anchor.style.transitionDuration;
+            var savedTimingFunction = anchor.style.transitionTimingFunction;
+            var savedDelay = anchor.style.transitionDelay;
+            anchor.style.transitionProperty = StyleKeyword.Null;
+            anchor.style.transitionDuration = StyleKeyword.Null;
+            anchor.style.transitionTimingFunction = StyleKeyword.Null;
+            anchor.style.transitionDelay = StyleKeyword.Null;
+
             anchor.style.position = StyleKeyword.Null;
             anchor.style.left = StyleKeyword.Null;
             anchor.style.top = StyleKeyword.Null;
             anchor.style.width = StyleKeyword.Null;
             anchor.style.height = StyleKeyword.Null;
+            if (classNames != null)
+            {
+                FiberNodePatcher.ReapplyArbitraryValues(anchor, classNames);
+            }
+
+            anchor.style.transitionProperty = savedProperty;
+            anchor.style.transitionDuration = savedDuration;
+            anchor.style.transitionTimingFunction = savedTimingFunction;
+            anchor.style.transitionDelay = savedDelay;
         }
 
         // Disposes the inline/wrapper fibers mounted under an exit-completed ghost's anchor element. Needed
