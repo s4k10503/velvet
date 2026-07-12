@@ -42,6 +42,11 @@ namespace Velvet
     // UnregisterCallbacksFromTarget clears the widths + margins it wrote so removing the grid class (or
     // unmounting) leaves no residue. Like the gap manipulator it iterates FiberNodePatcher.GetChildContainer,
     // so the sizing lands on the reconciled content and never on a ScrollView's internal hierarchy.
+    //
+    // Out-of-flow children (position: absolute) are excluded from the column/row walk — see
+    // StyleOutOfFlowChild — matching CSS Grid, whose auto-placement never assigns a cell to an
+    // out-of-flow item. This also keeps a PopLayout-pinned ghost's frozen geometry untouched instead of
+    // being reassigned a column width and margin as if it still occupied a cell.
     internal sealed class StyleGridManipulator : Manipulator
     {
         // A sub-pixel shave off each column so that N*colWidth + (N-1)*gap never exceeds the row width through
@@ -124,11 +129,18 @@ namespace Velvet
                 : 0f;
 
             var count = container.childCount;
+            var logicalIndex = 0;
             for (var i = 0; i < count; i++)
             {
                 var child = container[i];
-                var col = i % n;
-                var row = i / n;
+                // An out-of-flow child (a PopLayout-pinned ghost, or an app-authored .absolute child)
+                // takes no grid cell, so it is skipped rather than assigned a column/row and sized.
+                if (StyleOutOfFlowChild.IsOutOfFlow(child))
+                {
+                    continue;
+                }
+                var col = logicalIndex % n;
+                var row = logicalIndex / n;
                 // The column owns the box: width + all four margins. Width is deferred (Null) until a real
                 // row width resolves on panel.
                 child.style.width = hasWidth ? new StyleLength(colWidth) : new StyleLength(StyleKeyword.Null);
@@ -137,6 +149,7 @@ namespace Velvet
                 child.style.marginRight = new StyleLength(0f);
                 child.style.marginBottom = new StyleLength(0f);
                 _sized.Add(child);
+                logicalIndex++;
             }
 
             // Only lock the signature once a real width resolved, so the deferred (off-panel) pass re-runs
@@ -213,7 +226,11 @@ namespace Velvet
                 hash = hash * 31 + count;
                 for (var i = 0; i < count; i++)
                 {
-                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(container[i]);
+                    var child = container[i];
+                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(child);
+                    // A child's in-flow / out-of-flow transition changes which children the column/row
+                    // walk counts even though neither its identity nor the container's total count changed.
+                    hash = hash * 31 + (StyleOutOfFlowChild.IsOutOfFlow(child) ? 1 : 0);
                 }
                 return hash;
             }
