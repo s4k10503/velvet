@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Hooks.UseFrame(dt => …)`: a per-frame callback (elapsed seconds) that runs while the
+  component stays mounted and stops on unmount. The latest render's closure is always the one
+  invoked — re-renders swap the callback without re-subscribing — so per-frame data flows
+  without touching component state.
+- `V.Particles(effect)`: a ParticleSystem's live simulation drawn as textured quads inside the
+  element — no camera, no RenderTexture, no render-pipeline coupling. The framework clones the
+  effect into a hidden host (renderer disabled, source untouched), plays it per
+  `playOn: PlayTrigger.Mount | Manual`, maps world units to element pixels via
+  `pixelsPerUnit`, and destroys the host on unmount or effect swap. Simulation-module features
+  only (one texture per system, local space, up to 2048 particles); VFX Graph and
+  renderer-module features route through `V.SceneView` composition — a guide
+  (`Documentation~/particles.md`) documents both paths and the decision matrix.
+
 - `V.SceneView(camera)`: a Camera's output as an element (`<canvas>` parity). The framework
   owns the RenderTexture — created at the element's laid-out size (times `resolutionScale`),
   resized with the element, assigned to `camera.targetTexture` while mounted, and released on
