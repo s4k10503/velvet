@@ -11,8 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Custom filter registry: `VelvetFilters.Register("dissolve", definition)` exposes a Unity 6.3
   `FilterFunctionDefinition` (custom filter shader) to class strings as `filter-[dissolve:0.4]` —
-  colon-separated float / hex-color arguments, composed into the one inline `filter` list after
-  the built-in filter utilities, with per-name variant layering
+  colon-separated arguments parsed by the declaration's parameter types (floats / colors) and
+  padded from the declaration defaults, composed into the one inline `filter` list after the
+  built-in filter utilities, with per-name variant layering
   (`hover:filter-[dissolve:0.9]` restores the base arguments on hover-off) and the same
   transition behavior as any other filter change. A filters guide
   (`Documentation~/styling-filters.md`) documents the built-in utilities and the registry.

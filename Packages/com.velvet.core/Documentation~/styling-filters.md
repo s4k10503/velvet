@@ -63,14 +63,18 @@ V.Div(className: "filter-[glow:#ff0000:2] hover:filter-[glow:#ff0000:4]");
 
 ### Token grammar
 
-`filter-[name]` or `filter-[name:arg(:arg)*]`, where each argument is either a **float**
-(sign allowed: `filter-[wave:-0.5]`) or a **hex color** (`#rgb` / `#rrggbb`). Arguments fill
-the filter function's parameters in token order, up to UI Toolkit's cap of **4 parameters per
-filter function**; a bare `filter-[name]` applies the filter with no explicit parameters, so
-the definition's declared defaults take effect.
+`filter-[name]` or `filter-[name:arg(:arg)*]`. Arguments fill the definition's **declared
+parameters** in order, and each one is parsed by its slot's declared type: a float slot takes
+a signed float (`filter-[wave:-0.5]`), a color slot takes Velvet's color grammar (`#rgb` /
+`#rrggbb` / `rgb(…)` / a named color). A missing tail is padded from the declaration's
+defaults — the same values the USS parser pads with — so a bare `filter-[name]` applies the
+declared defaults outright. Supplying more arguments than the declaration, or an argument that
+fails its slot's grammar, rejects the whole token. (A filter function carries at most 4
+parameters, so a definition declaring more is rejected at registration.)
 
-A token that cannot resolve — an unregistered name (warned once) or an unparseable
-argument — is not claimed and stays an inert class, like any unrecognized utility.
+A token that cannot resolve — an unregistered name (warned once), an extra argument, or an
+argument that fails its slot's grammar — is not claimed and stays an inert class, like any
+unrecognized utility.
 
 ### Composition and layering
 
@@ -81,6 +85,9 @@ argument — is not claimed and stays an inert class, like any unrecognized util
   name's base arguments on hover-off without touching the others.
 - Repeating a name in one class string replaces its arguments (last wins) instead of stacking
   a duplicate function.
+- A name keeps its compose slot for the element's lifetime: changing a filter's arguments
+  (which the class diff performs as a clear-then-apply) does not re-slot it behind its
+  neighbors.
 
 ### Transitions
 
@@ -98,9 +105,12 @@ guarantees for a same-name argument change. So `transition-all duration-300` twe
 - The built-in family names (`blur`, `brightness`, `contrast`, `grayscale`, `hue-rotate`,
   `invert`, `saturate`, `sepia`) are **reserved** and cannot be registered.
 - A name must be free of whitespace, `:`, `[` and `]` (they would break the token grammar).
-- Re-registering a name warns and overwrites; `Unregister` removes it. Unregister only after
-  the consuming trees unmount — a mounted element keeps its already-resolved filter until its
-  classes change.
+- Re-registering a name warns and overwrites; `Unregister` removes it. Removing a class (or a
+  variant turning off) still clears its layer after an unregister — the clear resolves the
+  name syntactically, not through the registry — but an element that keeps the class keeps its
+  already-resolved filter, so unregister after the consuming trees unmount.
+- A definition destroyed after registration stops rendering: the compose skips dead
+  definitions instead of throwing.
 
 ### Authoring the definition
 
