@@ -263,9 +263,9 @@ information and code generation — on the practical axis of performance. See
 
 **A known trade-off, stated honestly.** Reproducing React faithfully *without* JSX means the
 `new VNode[] { ... }` scaffolding can take up roughly 15–30% of a file as structural noise — the
-necessary friction of "React-faithful × C# constraints." Rather than hide it, the
-[deep-nest mitigation guide](Packages/com.velvet.core/Documentation~/deep-nest-mitigation.md)
-documents the DX patterns that keep it in check.
+necessary friction of "React-faithful × C# constraints." The practical mitigation is the same as
+in React: split by component — extract each section into its own `[Component]` (or a private
+`static VNode` helper) so the entry render lists sections instead of nesting them.
 
 Velvet also intentionally **does not** introduce new UXML or USS authoring, and does not control
 runtime objects (avatars, camera, physics, input) — it is dedicated to the UI layer. See the
@@ -281,7 +281,6 @@ Framework documentation ships with the package under
 - [Styling variants & container queries](Packages/com.velvet.core/Documentation~/styling-variants.md) — the variant set (state / `dark:` / responsive / `group-`·`peer-` / stacked) and `@container`
 - [Preview tooling](Packages/com.velvet.core/Documentation~/preview-tooling.md) — the Storybook-equivalent preview window, its addons, and screenshot capture
 - [Memoization](Packages/com.velvet.core/Documentation~/memoization.md) — `[Memoize]` and component-level caching
-- [Deep-nest mitigation](Packages/com.velvet.core/Documentation~/deep-nest-mitigation.md) — DX patterns for deeply nested `V.*` trees
 
 ## Repository layout
 
