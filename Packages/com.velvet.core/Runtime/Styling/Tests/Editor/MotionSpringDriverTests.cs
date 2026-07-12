@@ -15,11 +15,10 @@ namespace Velvet.Tests
     /// numeric from/to values come from <see cref="MotionSpringClassParser"/>'s class-name parsing, not a style
     /// resolution pass), and the recurring tick this scheduler registers (<c>schedule.Execute(...).Every(16)</c>)
     /// needs a live panel clock to FIRE automatically, which the EditMode batchmode PlayerLoop never drives. So,
-    /// mirroring <c>ShadowAnimationVisibilityTests</c>' own panel-free approach and the assignment's documented
-    /// fallback: the scheduler's synchronous setup is asserted directly (no tick needed to observe it), and the
-    /// recurring tick's own math is exercised by calling <see cref="MotionSpringDriver.Step"/> directly in a loop
-    /// instead of trying to pump a real/simulated scheduler clock. GWT, one assert per case (Assume for
-    /// preconditions).
+    /// mirroring <c>ShadowAnimationVisibilityTests</c>' own panel-free approach: the scheduler's synchronous
+    /// setup is asserted directly (no tick needed to observe it), and the recurring tick's own math is exercised
+    /// by calling <see cref="MotionSpringDriver.Step"/> directly in a loop instead of trying to pump a
+    /// real/simulated scheduler clock. GWT, one assert per case (Assume for preconditions).
     /// </remarks>
     [TestFixture]
     internal sealed class MotionSpringDriverTests

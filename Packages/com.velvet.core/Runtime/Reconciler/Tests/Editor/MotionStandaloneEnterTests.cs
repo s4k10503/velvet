@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
-using UnityEngine;
 using UnityEngine.UIElements;
-using UnityEngine.UIElements.TestFramework;
-using UnityEditor.UIElements.TestFramework;
 
 namespace Velvet.Tests
 {
@@ -19,16 +16,12 @@ namespace Velvet.Tests
     /// state — fires on the next tick and stays afterwards.
     /// </summary>
     /// <remarks>
-    /// Needs a REAL (simulated) panel: the swap-to-animate is driven by
-    /// <c>schedule.Execute().ExecuteLater(ms)</c>, which only fires once a panel ticks its scheduler against its
-    /// clock, and the batchmode EditMode PlayerLoop never does. <see cref="EditorPanelSimulator"/> ticks it
-    /// deterministically instead (see <see cref="Tick"/> / <see cref="AdvancePast"/>). This duplicates the small
-    /// setup Component.Editor's own simulated-panel base wraps, rather than sharing it, because that base is
-    /// internal to a sibling test assembly this fixture's asmdef has no visibility into (Motion enter is a
-    /// Reconciler-owned concern, so this fixture lives alongside the Reconciler test suite instead).
+    /// Needs a REAL (simulated) panel — see <see cref="MotionSimulatedPanelTestsBase"/> — for the scheduled
+    /// swap-to-animate, which only fires once a panel ticks its scheduler against its clock (the batchmode
+    /// EditMode PlayerLoop never does).
     /// </remarks>
     [TestFixture]
-    internal sealed class MotionStandaloneEnterTests
+    internal sealed class MotionStandaloneEnterTests : MotionSimulatedPanelTestsBase
     {
         private const float DurationSec = 0.1f;
 
@@ -38,41 +31,11 @@ namespace Velvet.Tests
             ["visible"] = "opacity-100",
         };
 
-        private EditorPanelSimulator _sim;
-        private Reconciler _reconciler;
-
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
-            // Simulated time (and the per-frame step) are process-static and not auto-reset between tests;
-            // reset both so this fixture's frame accounting starts from a known clock regardless of what a
-            // sibling simulator-based fixture left behind.
-            PanelSimulator.ResetCurrentTime();
-            _sim = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
-            _sim.ResetTimePerSimulatedFrameToDefault();
-            _reconciler = new Reconciler();
+            base.SetUp();
             s_bump = null;
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            _reconciler?.Dispose();
-            _sim?.Dispose();
-            _sim = null;
-        }
-
-        private VisualElement Root => _sim.rootVisualElement;
-
-        // One frame (a real-frame-sized scheduler tick).
-        private void Tick() => _sim.FrameUpdateMs(16);
-
-        // Advances well past the given duration so the scheduled swap-to-animate and its completion timer both
-        // fire; the +0.2s margin absorbs the scheduler's internal grace period without coupling to its exact value.
-        private void AdvancePast(float seconds)
-        {
-            var steps = (int)((seconds + 0.2f) * 1000f / 16f) + 1;
-            for (var i = 0; i < steps; i++) Tick();
         }
 
         [Test]

@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
-using UnityEngine;
 using UnityEngine.UIElements;
-using UnityEngine.UIElements.TestFramework;
-using UnityEditor.UIElements.TestFramework;
 
 namespace Velvet.Tests
 {
@@ -23,57 +20,18 @@ namespace Velvet.Tests
     /// later, unrelated patch on the same element does not inherit a stale delay.
     /// </summary>
     /// <remarks>
-    /// Needs a REAL (simulated) panel: the orchestrated delay clears via <c>schedule.Execute().ExecuteLater(ms)</c>,
-    /// which only fires once a panel ticks its scheduler against its clock (the batchmode EditMode PlayerLoop
-    /// never does) — off-panel, the same clear fires IMMEDIATELY instead (mirroring
-    /// <c>StyleAnimationScheduler.CancelExit</c>'s own off-panel-immediate-clear contract for a reversal
-    /// cleanup), which would make the delay unobservable synchronously. <see cref="EditorPanelSimulator"/> ticks
-    /// the panel deterministically instead (see <see cref="Tick"/> / <see cref="AdvancePast"/>).
+    /// Needs a REAL (simulated) panel — see <see cref="MotionSimulatedPanelTestsBase"/> — for the orchestrated
+    /// delay's clear, which only fires once a panel ticks its scheduler against its clock (the batchmode
+    /// EditMode PlayerLoop never does).
     /// </remarks>
     [TestFixture]
-    internal sealed class MotionOrchestrationTests
+    internal sealed class MotionOrchestrationTests : MotionSimulatedPanelTestsBase
     {
         private static readonly Dictionary<string, string> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",
         };
-
-        private EditorPanelSimulator _sim;
-        private Reconciler _reconciler;
-
-        [SetUp]
-        public void SetUp()
-        {
-            // Simulated time (and the per-frame step) are process-static and not auto-reset between tests;
-            // reset both so this fixture's frame accounting starts from a known clock regardless of what a
-            // sibling simulator-based fixture left behind.
-            PanelSimulator.ResetCurrentTime();
-            _sim = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
-            _sim.ResetTimePerSimulatedFrameToDefault();
-            _reconciler = new Reconciler();
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            _reconciler?.Dispose();
-            _sim?.Dispose();
-            _sim = null;
-        }
-
-        private VisualElement Root => _sim.rootVisualElement;
-
-        // One frame (a real-frame-sized scheduler tick).
-        private void Tick() => _sim.FrameUpdateMs(16);
-
-        // Advances well past the given duration so any scheduled callback due by then fires; the +0.2s margin
-        // absorbs the scheduler's internal grace period without coupling to its exact value.
-        private void AdvancePast(float seconds)
-        {
-            var steps = (int)((seconds + 0.2f) * 1000f / 16f) + 1;
-            for (var i = 0; i < steps; i++) Tick();
-        }
 
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +
         // `transition` — the orchestration must key off the label it PROPAGATES, not off its own resolved
