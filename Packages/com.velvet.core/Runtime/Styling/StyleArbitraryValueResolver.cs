@@ -597,15 +597,19 @@ namespace Velvet
         // explicitly via ClearAll so no layer ghosts across reuse.
         private sealed class LayerMap : Dictionary<ArbitraryProperty, SortedList<int, ArbitraryStyle>>
         {
-            // Per-NAME priority stacks for filter-[name:args] custom filters. Unlike every other
-            // arbitrary property, a custom filter cannot share the single FilterCustom slot in the base
-            // dictionary above — "dissolve" and "glow" (or a base and a hover layer of the SAME name)
-            // would clobber each other. Lazily allocated: most elements never apply a custom filter.
-            public Dictionary<string, SortedList<int, ArbitraryStyle>> Customs;
-            // Stable first-application order for the keys in Customs (Dictionary enumeration order is
-            // unspecified). ApplyCombinedFilter appends one function per name in this order, after the
-            // built-ins, so two custom filters compose in the order their classes were applied.
-            public List<string> CustomOrder;
+            // Per-NAME priority stacks for filter-[name:args] custom filters, in first-application
+            // order. Unlike every other arbitrary property, a custom filter cannot share the single
+            // FilterCustom slot in the base dictionary above — "dissolve" and "glow" (or a base and a
+            // hover layer of the SAME name) would clobber each other. A LIST of (name, stack) entries
+            // rather than a dictionary: the entry index IS the compose slot, and lookups are linear (an
+            // element realistically carries a handful of names). An entry whose stack has EMPTIED is
+            // kept as a tombstone rather than removed — the class-diff path updates a changed token by
+            // clearing the old value and applying the new one, and dropping the entry in between would
+            // re-slot the name to the end, visibly reordering two co-applied custom filters on the first
+            // argument change. Compose skips empty stacks; ClearAll drops the whole map, so tombstones
+            // die with the rest of the element's layer state. Lazily allocated: most elements never
+            // apply a custom filter.
+            public List<(string Name, SortedList<int, ArbitraryStyle> Stack)>? Customs;
         }
 
         private static readonly ConditionalWeakTable<VisualElement, LayerMap> s_layers = new();
@@ -633,28 +637,48 @@ namespace Velvet
         }
 
         // Registers a filter-[name:args] layer at priority under its own per-name stack (LayerMap.Customs),
-        // appending the name to CustomOrder on its first application so the compose order in
-        // ApplyCombinedFilter is stable application order rather than Dictionary's unspecified enumeration
-        // order. Re-applying the same name again (a repeated class, or a higher-priority variant layer)
-        // reuses the existing stack instead of appending a duplicate CustomOrder entry.
+        // appending a new entry on the name's first application so the compose order in
+        // ApplyCombinedFilter is stable first-application order. A later re-apply — including one after
+        // the stack emptied (its tombstone keeps the entry) — reuses the existing entry, preserving the
+        // name's original compose slot.
         private static void ApplyCustomFilterLayer(LayerMap map, in ArbitraryStyle style, int priority)
         {
-            var name = style.Custom.Name;
-            map.Customs ??= new Dictionary<string, SortedList<int, ArbitraryStyle>>();
-            map.CustomOrder ??= new List<string>();
-            if (!map.Customs.TryGetValue(name, out var layers))
+            var name = style.Custom!.Name;
+            var stack = FindCustomStack(map, name);
+            if (stack == null)
             {
-                layers = new SortedList<int, ArbitraryStyle>();
-                map.Customs[name] = layers;
-                map.CustomOrder.Add(name);
+                stack = new SortedList<int, ArbitraryStyle>();
+                (map.Customs ??= new List<(string, SortedList<int, ArbitraryStyle>)>()).Add((name, stack));
             }
-            layers[priority] = style;
+            stack[priority] = style;
+        }
+
+        // The custom filter layer stack registered under name, or null when the name has never been
+        // applied to this element. Linear scan by design: see LayerMap.Customs.
+        private static SortedList<int, ArbitraryStyle>? FindCustomStack(LayerMap map, string name)
+        {
+            var customs = map.Customs;
+            if (customs == null)
+            {
+                return null;
+            }
+            for (var i = 0; i < customs.Count; i++)
+            {
+                if (customs[i].Name == name)
+                {
+                    return customs[i].Stack;
+                }
+            }
+            return null;
         }
 
         // Removes the layer at priority for property and re-applies the
         // next-highest surviving layer (or clears the inline style when none remain). This is what makes a
         // variant turning off fall back to a still-active variant or the base value instead of wiping the
         // property — and what keeps the two translate axes independent.
+        // NB FilterCustom layers are name-keyed (LayerMap.Customs) and only clearable through the
+        // ArbitraryStyle-aware overload below, which carries the name; the property dictionary this
+        // overload operates on never holds them.
         public static void Clear(VisualElement element, ArbitraryProperty property, int priority = StyleLayerPriority.Base)
         {
             if (!s_layers.TryGetValue(element, out var map))
@@ -662,15 +686,7 @@ namespace Velvet
                 ClearInline(element, property);
                 return;
             }
-            if (property == ArbitraryProperty.FilterCustom)
-            {
-                // A bare property carries no NAME, so this overload cannot target one custom filter's
-                // stack — it clears every custom filter's layer at priority. A caller that holds the
-                // parsed ArbitraryStyle (ClearClassToken, StyleVariantPayload) uses the ArbitraryStyle-aware
-                // Clear overload below instead, which clears precisely the one name's layer.
-                ClearAllCustomFilterLayers(map, priority);
-            }
-            else if (map.TryGetValue(property, out var layers))
+            if (map.TryGetValue(property, out var layers))
             {
                 layers.Remove(priority);
                 if (layers.Count == 0) map.Remove(property);
@@ -679,10 +695,10 @@ namespace Velvet
         }
 
         // Clears the layer an ArbitraryStyle applied, using the parsed value itself rather than just its
-        // property. The only case this matters today is FilterCustom, whose value carries the registered
-        // NAME needed to remove precisely that name's layer (LayerMap.Customs) without disturbing another
-        // custom filter stacked on the same element; every other property clears exactly like the
-        // (property, priority) overload.
+        // property. The only case this matters today is FilterCustom, whose value carries the NAME that
+        // keys the layer stack to remove — and the name is ALL it reads (never the definition or the
+        // arguments), which is what lets the unregistered-name clear fallback synthesize a name-only
+        // style; every other property clears exactly like the (property, priority) overload.
         public static void Clear(VisualElement element, in ArbitraryStyle style, int priority = StyleLayerPriority.Base)
         {
             if (style.Property != ArbitraryProperty.FilterCustom)
@@ -695,42 +711,10 @@ namespace Velvet
                 ClearInline(element, style.Property);
                 return;
             }
-            var name = style.Custom.Name;
-            if (map.Customs != null && map.Customs.TryGetValue(name, out var layers))
-            {
-                layers.Remove(priority);
-                if (layers.Count == 0)
-                {
-                    map.Customs.Remove(name);
-                    map.CustomOrder.Remove(name);
-                }
-            }
+            // The entry is intentionally KEPT when its stack empties (a tombstone holding the name's
+            // compose slot): see LayerMap.Customs.
+            FindCustomStack(map, style.Custom!.Name)?.Remove(priority);
             ResolveAndApply(element, ArbitraryProperty.FilterCustom, map);
-        }
-
-        // Fallback for the bare (property, priority) Clear overload: removes priority from EVERY custom
-        // filter's stack, since that overload has no name to target one specifically.
-        private static void ClearAllCustomFilterLayers(LayerMap map, int priority)
-        {
-            if (map.CustomOrder == null)
-            {
-                return;
-            }
-            // Snapshot names first: removing a now-empty name from CustomOrder while foreach-ing it would
-            // throw (collection modified during enumeration).
-            foreach (var name in map.CustomOrder.ToArray())
-            {
-                if (!map.Customs.TryGetValue(name, out var layers))
-                {
-                    continue;
-                }
-                layers.Remove(priority);
-                if (layers.Count == 0)
-                {
-                    map.Customs.Remove(name);
-                    map.CustomOrder.Remove(name);
-                }
-            }
         }
 
         // Drops all arbitrary-value layers tracked for element. Called when the element is
@@ -770,6 +754,16 @@ namespace Velvet
             {
                 Clear(element, in style, priority);
             }
+            else if (TryResolveUnregisteredFilterClear(core, out style))
+            {
+                // A filter-[name:args] token whose name is not (or no longer) registered: the
+                // registry-gated parse above does not claim it, but a layer applied while the name WAS
+                // registered is still composed and must leave. The class removal mirrors the
+                // never-registered apply, which fell through to the class list; each action is a no-op
+                // in the other's scenario.
+                Clear(element, in style, priority);
+                element.RemoveFromClassList(core);
+            }
             else if (StyleBackgroundImageResolver.TryParse(core, out _))
             {
                 StyleBackgroundImageResolver.Clear(element);
@@ -778,6 +772,24 @@ namespace Velvet
             {
                 element.RemoveFromClassList(core);
             }
+        }
+
+        // Fallback clear resolution for a filter-[name:args] token whose name is NOT (or no longer)
+        // registered. Apply-side resolution (TryParse) is registry-gated — an unregistered name is not
+        // claimed — but the layer a previous apply registered must stay clearable after an unregister,
+        // or it would ghost in the composed filter forever. The token's shape alone carries everything a
+        // clear needs: the ArbitraryStyle-aware Clear reads only the NAME, so a name-only synthetic style
+        // (null definition, no arguments) suffices. Purely syntactic — no registry lookup, no warning.
+        internal static bool TryResolveUnregisteredFilterClear(string core, out ArbitraryStyle style)
+        {
+            if (StyleFilterValueParser.TryExtractCustomFilterName(core, out var name))
+            {
+                style = new ArbitraryStyle(ArbitraryProperty.FilterCustom,
+                    new CustomFilterValue(name, null!, Array.Empty<FilterParameter>()));
+                return true;
+            }
+            style = default;
+            return false;
         }
 
         // Applies the winning layer for a property. Translate and scale are special: their axis layers share
@@ -904,21 +916,28 @@ namespace Velvet
                 (functions ??= new List<FilterFunction>()).Add(
                     BuildFilter(prop, layers.Values[layers.Count - 1].Value));
             }
-            // Customs compose AFTER every built-in, in first-application order (CustomOrder) — each
-            // contributing its own highest-priority (winning) layer, the same "last entry in the
-            // ascending-by-priority SortedList wins" rule the built-ins use above, just keyed by name
-            // instead of by ArbitraryProperty.
-            if (map.CustomOrder != null)
+            // Customs compose AFTER every built-in, in first-application order — each entry contributing
+            // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
+            // SortedList wins" rule the built-ins use above, just keyed by name instead of by
+            // ArbitraryProperty. An empty stack is a tombstone holding its name's compose slot (see
+            // LayerMap.Customs). A winning layer whose definition has been DESTROYED since it was applied
+            // compares equal to null (a dead asset) and is skipped: the engine's FilterFunction
+            // constructor throws on a dead definition, and a function bound to one could not render
+            // anything anyway.
+            if (map.Customs != null)
             {
-                foreach (var name in map.CustomOrder)
+                foreach (var (_, stack) in map.Customs)
                 {
-                    var layers = map.Customs[name];
-                    if (layers.Count == 0)
+                    if (stack.Count == 0)
                     {
                         continue;
                     }
-                    (functions ??= new List<FilterFunction>()).Add(
-                        BuildCustomFilter(layers.Values[layers.Count - 1].Custom));
+                    var custom = stack.Values[stack.Count - 1].Custom!;
+                    if (custom.Definition == null)
+                    {
+                        continue;
+                    }
+                    (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
                 }
             }
             if (functions == null)
@@ -930,10 +949,12 @@ namespace Velvet
         }
 
         // Builds the FilterFunction for a filter-[name:args] custom filter. The public
-        // FilterFunctionDefinition ctor sets type = Custom and customDefinition in one step; AddParameter
-        // fills only the EXPLICITLY parsed arguments (an omitted one is left off entirely, not defaulted
-        // here), so the definition's own declared parameter defaults take effect at render time — the
-        // same outcome a bare filter-[name] token (no arguments at all) produces.
+        // FilterFunctionDefinition ctor sets type = Custom and customDefinition in one step. Args always
+        // carries the FULL declared parameter count — the explicit segments plus a tail padded from the
+        // declaration's defaults at parse time — because this public construction path performs none of
+        // the padding the engine's USS parser does: an under-filled function stops binding at its
+        // parameterCount at render time, leaving whatever value the shared material-property state still
+        // holds from a previous draw where the declared default should be.
         private static FilterFunction BuildCustomFilter(CustomFilterValue custom)
         {
             var fn = new FilterFunction(custom.Definition);

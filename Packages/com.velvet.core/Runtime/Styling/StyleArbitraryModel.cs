@@ -232,9 +232,9 @@ namespace Velvet
         public LengthUnit Unit { get; }
         // Color payload for color properties; default for length/angle/custom properties.
         public Color Color { get; }
-        // Payload for FilterCustom (the registered name, its definition, and the parsed arguments);
+        // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
         // null for every other property.
-        public CustomFilterValue Custom { get; }
+        public CustomFilterValue? Custom { get; }
 
         // Creates a length/angle result.
         public ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit)
@@ -268,11 +268,12 @@ namespace Velvet
     }
 
     // The resolved payload for a filter-[name:args] custom filter token: the registered NAME (the
-    // LayerMap.Customs stack key, and what a Clear needs to remove precisely this name's layer without
-    // disturbing another custom filter stacked on the same element), the FilterFunctionDefinition
-    // VelvetFilters.Register stored under that name, and the colon-separated arguments in token order
-    // (empty when the token was a bare name, e.g. filter-[dissolve], so the definition's own declared
-    // parameter defaults take effect at render time).
+    // per-name layer-stack key, and the ONLY field the clear path reads — a clear synthesized for a
+    // no-longer-registered name carries a null Definition and empty Args), the FilterFunctionDefinition
+    // VelvetFilters.Register stored under that name, and the arguments in declaration order — the
+    // explicitly supplied segments followed by a tail padded from the declaration's defaults, so the
+    // composed function always carries the full declared parameter count (an under-filled function
+    // reads stale material-property state at render time instead of the declared defaults).
     internal sealed class CustomFilterValue
     {
         public readonly string Name;

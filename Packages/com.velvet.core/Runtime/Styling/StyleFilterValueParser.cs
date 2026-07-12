@@ -14,6 +14,14 @@ namespace Velvet
     // exclusive preset tables, never back into the dispatch or another parser.
     internal static class StyleFilterValueParser
     {
+        // The canonical built-in filter family names — the utility prefixes this parser owns. Single
+        // source for VelvetFilters' reserved-name check, so filter-[blur:..] can never be registered to
+        // mean something different from the blur-* utilities defined here.
+        internal static readonly string[] BuiltInFamilyNames =
+        {
+            "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia",
+        };
+
         // The named filter presets (the suffix after the filter prefix). These have no USS class — they
         // route to the same compose-and-apply filter path as the bracket forms (blur-[6px]). blur is px; the
         // bare grayscale/invert/sepia mean 100% and are handled inline (no key). hue-rotate is degrees and is
@@ -102,9 +110,10 @@ namespace Velvet
 
         // Warn-once bookkeeping for a filter-[name:...] token whose name was never registered with
         // VelvetFilters: logging once per NAME (not once per resolve) keeps a class re-resolved on every
-        // re-render (e.g. toggled by a hover variant) from spamming the console. Mirrors VelvetFilters'
-        // own reset-on-domain-reload pattern so stale entries never survive into the next Editor session
-        // or test run.
+        // re-render (e.g. toggled by a hover variant) from spamming the console. Reset on the same
+        // subsystem-registration hook that clears the registry itself, so the set starts empty whenever
+        // the registrations do (domain reload / play-mode entry); within one loaded domain an
+        // already-warned name stays silent, even if it is registered and unregistered in between.
         private static readonly HashSet<string> s_warnedUnregistered = new();
 
 #if UNITY_EDITOR
@@ -113,11 +122,14 @@ namespace Velvet
 #endif
 
         // filter-[name] / filter-[name:arg(:arg)*] resolves a name registered via VelvetFilters.Register.
-        // The name is everything up to the first ':' (a colon-free bracket body is a bare name — no
-        // explicit arguments, so the definition's own declared parameter defaults apply at render time).
-        // Each remaining colon-separated segment is one argument: a signed float, else a hex color (the
-        // same grammar bg-[#fff] uses), else the WHOLE token rejects — a registered name with a malformed
-        // argument must not half-apply. Never negated: "-filter-[..]" has no meaning for a named reference.
+        // The name is everything up to the first ':'; the definition's parameter DECLARATION drives the
+        // rest. Each colon-separated segment fills the next declared slot and is parsed by that slot's
+        // declared type — a float slot takes a signed float, a color slot the shared color grammar — and
+        // the missing tail is padded from the declared defaults, so the resolved argument list always
+        // carries the full declared parameter count. Rejects (the whole token falls through as an inert
+        // class): more segments than declared slots, a segment failing its slot's grammar, or an empty
+        // segment — a registered name must not half-apply. Never negated: "-filter-[..]" has no meaning
+        // for a named reference.
         internal static bool? TryParseCustomFilter(string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
@@ -143,61 +155,112 @@ namespace Velvet
                 return false;
             }
 
-            if (colon < 0)
-            {
-                result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, new CustomFilterValue(name, definition, Array.Empty<FilterParameter>()));
-                return true;
-            }
-
-            var args = new List<FilterParameter>();
-            var remaining = valueSpan.Slice(colon + 1);
-            while (true)
-            {
-                var next = remaining.IndexOf(':');
-                var segment = next < 0 ? remaining : remaining.Slice(0, next);
-                if (!TryParseFilterArg(segment, out var parameter))
-                {
-                    return false;
-                }
-                args.Add(parameter);
-                if (next < 0)
-                {
-                    break;
-                }
-                remaining = remaining.Slice(next + 1);
-            }
-            // FilterFunction.AddParameter hard-caps at 4 (a fixed 4-slot buffer); reject up front rather
-            // than let a 5th argument throw later when the layer composes into the inline filter.
-            if (args.Count > 4)
+            var declarations = definition.parameters;
+            var declaredCount = declarations?.Length ?? 0;
+            // Registration rejects a declaration of more than the 4 parameters a filter function can
+            // carry, but `parameters` is a mutable array property on a live ScriptableObject, so re-guard
+            // here: composing past the cap would throw during style resolution.
+            if (declaredCount > 4)
             {
                 return false;
             }
 
-            result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, new CustomFilterValue(name, definition, args.ToArray()));
+            // Count the supplied segments up front: over-supply rejects before any parsing (a segment
+            // with no declared slot has no type to parse against), and the count sizes the argument
+            // array exactly.
+            var suppliedCount = 0;
+            if (colon >= 0)
+            {
+                suppliedCount = 1;
+                for (var i = colon + 1; i < valueSpan.Length; i++)
+                {
+                    if (valueSpan[i] == ':') suppliedCount++;
+                }
+            }
+            if (suppliedCount > declaredCount)
+            {
+                return false;
+            }
+
+            var args = declaredCount == 0 ? Array.Empty<FilterParameter>() : new FilterParameter[declaredCount];
+            var remaining = colon < 0 ? ReadOnlySpan<char>.Empty : valueSpan.Slice(colon + 1);
+            for (var slot = 0; slot < suppliedCount; slot++)
+            {
+                var next = remaining.IndexOf(':');
+                var segment = next < 0 ? remaining : remaining.Slice(0, next);
+                if (!TryParseFilterArg(segment, declarations![slot].interpolationDefaultValue.type, out args[slot]))
+                {
+                    return false;
+                }
+                remaining = next < 0 ? ReadOnlySpan<char>.Empty : remaining.Slice(next + 1);
+            }
+            // Pad the unsupplied tail from the declared defaults — the same values the engine's USS
+            // parser pads with. The public FilterFunction construction path performs no padding of its
+            // own, and an under-filled function stops binding at its parameterCount at render time,
+            // leaving stale material-property state where the declared default should be.
+            for (var slot = suppliedCount; slot < declaredCount; slot++)
+            {
+                args[slot] = declarations![slot].interpolationDefaultValue;
+            }
+
+            result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, new CustomFilterValue(name, definition, args));
             return true;
         }
 
-        // A single filter-[name:...] argument segment: a signed float (invariant culture), else a hex
-        // color (#rgb/#rrggbb/..., reusing StyleColorValueParser's grammar so filter arguments and
-        // bg-[#fff] parse hex identically). An empty segment (a double colon, or a trailing colon) rejects.
-        private static bool TryParseFilterArg(ReadOnlySpan<char> segment, out FilterParameter parameter)
+        // A single filter-[name:...] argument segment, parsed against its declared slot type: a float
+        // slot takes a signed float (invariant culture), a color slot the shared color grammar (#hex /
+        // rgb() / named — the same grammar bg-[#fff] uses). A segment failing its slot's grammar (or an
+        // empty segment — a double colon or trailing colon) rejects: binding a float where the shader
+        // declared a color (or vice versa) would only make the engine reset the parameter to its default
+        // with a warning at render time.
+        private static bool TryParseFilterArg(ReadOnlySpan<char> segment, FilterParameterType slotType, out FilterParameter parameter)
         {
             parameter = default;
             if (segment.Length == 0)
             {
                 return false;
             }
-            if (StyleArbitraryValueResolver.TryParseFloat(segment, out var f))
+            if (slotType == FilterParameterType.Float)
             {
+                if (!StyleArbitraryValueResolver.TryParseFloat(segment, out var f))
+                {
+                    return false;
+                }
                 parameter = new FilterParameter(f);
                 return true;
             }
-            if (StyleColorValueParser.TryParseColor(segment, out var color))
+            if (!StyleColorValueParser.TryParseColor(segment, out var color))
             {
-                parameter = new FilterParameter(color);
-                return true;
+                return false;
             }
-            return false;
+            parameter = new FilterParameter(color);
+            return true;
+        }
+
+        // Extracts the NAME from a token of the filter-[name(:args)] shape — purely syntactic: no
+        // registry lookup, no warning, no argument validation. The CLEAR paths resolve names through
+        // this instead of TryParseCustomFilter: a layer applied while its name was registered must stay
+        // locatable (and removable) after the name is unregistered, and resolution-for-apply is
+        // registry-gated while resolution-for-clear must not be.
+        internal static bool TryExtractCustomFilterName(string cls, out string name)
+        {
+            name = null!;
+            const string shape = "filter-[";
+            if (cls == null || cls.Length < shape.Length + 2
+                || !cls.StartsWith(shape, StringComparison.Ordinal)
+                || cls[cls.Length - 1] != ']')
+            {
+                return false;
+            }
+            var body = cls.AsSpan(shape.Length, cls.Length - shape.Length - 1);
+            var colon = body.IndexOf(':');
+            var nameSpan = colon < 0 ? body : body.Slice(0, colon);
+            if (nameSpan.Length == 0)
+            {
+                return false;
+            }
+            name = nameSpan.ToString();
+            return true;
         }
 
         // Cheap dispatch gate (prefix-only): true when cls MIGHT be a named filter preset, so the reconciler

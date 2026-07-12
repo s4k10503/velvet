@@ -26,12 +26,11 @@ namespace Velvet
     /// </summary>
     public static class VelvetFilters
     {
-        // The built-in filter utility families; reserved so filter-[blur:..] can never mean something
-        // different from the blur-* utilities that already exist.
-        private static readonly HashSet<string> s_reserved = new(System.StringComparer.OrdinalIgnoreCase)
-        {
-            "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia",
-        };
+        // The built-in filter utility families (single-sourced from the parser that owns them); reserved
+        // so filter-[blur:..] can never mean something different from the blur-* utilities that already
+        // exist. Case-insensitive: the reservation is about the family name, not one spelling of it.
+        private static readonly HashSet<string> s_reserved =
+            new(StyleFilterValueParser.BuiltInFamilyNames, System.StringComparer.OrdinalIgnoreCase);
 
         private static readonly Dictionary<string, FilterFunctionDefinition> s_definitions = new();
 
