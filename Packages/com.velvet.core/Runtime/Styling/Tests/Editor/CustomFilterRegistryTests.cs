@@ -276,6 +276,17 @@ namespace Velvet.Tests
             Assert.That(ok, Is.False);
         }
 
+        [Test]
+        public void Given_MoreThanFourArguments_When_Parsed_Then_TheTokenIsNotClaimed()
+        {
+            // Act — FilterFunction holds at most 4 parameters (a fixed buffer that throws past its cap),
+            // so a fifth argument must reject the token at parse time instead of throwing at compose time.
+            var ok = StyleArbitraryValueResolver.TryParse("filter-[dissolve:1:2:3:4:5]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
         #endregion
 
         #region Tokenization and reapply
