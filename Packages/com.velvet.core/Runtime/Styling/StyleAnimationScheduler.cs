@@ -17,8 +17,6 @@ namespace Velvet
         private const long AnimationGraceMs = 50;
         private const float MaxDurationSec = 10f;
         private const int MaxPoolSize = 16;
-        // Spring tick interval (~60fps), matching the shadow co-fade tick and StyleAnimateDriver's own cadence.
-        private const long SpringTickMs = 16;
 
         // Static cache from EasingMode to List<EasingFunction>. EasingMode values are finite, so caching is safe.
         private static readonly Dictionary<EasingMode, List<EasingFunction>> s_easingCache = new();
@@ -64,7 +62,7 @@ namespace Velvet
                 // PlayVariantEnter / PlayExit rather than silently ignoring Type on this call path.
                 StartSpringVariant(element, config.EnterFromClasses, config.EnterToClasses, config.DelaySec,
                     config.Stiffness, config.Damping, config.Mass, onComplete, additionalDelaySec,
-                    _pendingEnters, restingClasses: null, isExit: false);
+                    restingClasses: null, isExit: false);
                 return;
             }
 
@@ -75,6 +73,18 @@ namespace Velvet
             PlayEnterInternal(element, config.EnterFromClasses, config.EnterToClasses,
                 config.DurationSec, config.Easing, config.DelaySec, onComplete, additionalDelaySec,
                 variantMode: false, propertyOverrides: null);
+        }
+
+        // Config-taking overload: every production call site (a standalone Motion's mount enter, and an
+        // AnimatePresence-driven variant enter) reads its timing/spring knobs straight off the enclosing
+        // Motion's OWN StyleTransitionConfig, so this unpacks it once here instead of each call site repeating
+        // the same eight-argument unpack of the same object.
+        public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
+            StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f)
+        {
+            PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
+                onComplete, additionalDelaySec, config.PropertyOverrides,
+                config.Type, config.Stiffness, config.Damping, config.Mass);
         }
 
         // Variant-driven enter (initial → animate). Unlike PlayEnter, the
@@ -101,7 +111,7 @@ namespace Velvet
             {
                 StartSpringVariant(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
                     delaySec, stiffness, damping, mass, onComplete, additionalDelaySec,
-                    _pendingEnters, restingClasses: null, isExit: false);
+                    restingClasses: null, isExit: false);
                 return;
             }
 
@@ -243,7 +253,7 @@ namespace Velvet
                 // still eventually complete so the reconciler's ghost-removal re-render fires.
                 StartSpringVariant(element, config.ExitFromClasses, config.ExitToClasses, config.DelaySec,
                     config.Stiffness, config.Damping, config.Mass, onComplete, additionalDelaySec,
-                    _pendingExits, restingClasses: restoreFromOnCancel ? config.ExitFromClasses : null,
+                    restingClasses: restoreFromOnCancel ? config.ExitFromClasses : null,
                     isExit: true);
                 return;
             }
@@ -406,19 +416,20 @@ namespace Velvet
         // touches (opacity / translate / scale / rotate) into a from/to pair each, and a per-frame physics tick
         // (StartSpringTick) drives them via inline styles until they settle — replacing the tween's fixed-
         // duration completion timeout with a dynamic settle check.
-        // map: the caller's own map (_pendingEnters for an enter, _pendingExits for an exit) so a later
-        // CancelEnter/CancelExit/CancelAll finds this entry exactly like a tween one.
         // restingClasses: non-null only for a variant exit (restoreFromOnCancel) — see PendingAnimation.RestingClasses.
-        // isExit: selects the exit-shaped self-cancel (mirrors calling the PUBLIC CancelExit rather than
-        // CancelEnter below). Both directions defer the tick start until attach when off-panel: a standalone
-        // Motion's enter plays during element creation (FiberNodeFactory), and a presence enter plays before
-        // the entering element is placed into the tree (GeneralPathReconciler) — so BOTH, like a presence
-        // exit, can start while still detached (see PlayExit's own ScheduleOnHost/AttachToPanelEvent for the
-        // same rationale on the exit side).
+        // isExit: selects both the exit-shaped self-cancel (mirrors calling the PUBLIC CancelExit rather than
+        // CancelEnter below) and which bookkeeping map (_pendingExits / _pendingEnters) this play registers
+        // into — a separate map parameter would only ever repeat that same choice, so isExit alone decides it.
+        // Both directions defer the tick start until attach when off-panel: a standalone Motion's enter plays
+        // during element creation (FiberNodeFactory), and a presence enter plays before the entering element is
+        // placed into the tree (GeneralPathReconciler) — so BOTH, like a presence exit, can start while still
+        // detached (see PlayExit's own ScheduleOnHost/AttachToPanelEvent for the same rationale on the exit side).
         private void StartSpringVariant(VisualElement element, string[] fromClasses, string[] toClasses,
             float delaySec, float stiffness, float damping, float mass, Action? onComplete, float additionalDelaySec,
-            Dictionary<VisualElement, PendingAnimation> map, string[]? restingClasses, bool isExit)
+            string[]? restingClasses, bool isExit)
         {
+            var map = isExit ? _pendingExits : _pendingEnters;
+
             // Read BEFORE the class swap below lands: the element's own current inline translate is whatever
             // its UNRELATED (non-swapped) classes rested it at — e.g. a base translate-y-8 alongside a
             // variant pair that only touches translate-x. Used as the resting value for a translate axis the
@@ -477,7 +488,6 @@ namespace Velvet
             pending.Shadows = CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
             state.OnSettled = onComplete;
             map[element] = pending;
-            pending.OwningMap = map;
 
             void ScheduleStart()
             {
@@ -575,10 +585,13 @@ namespace Velvet
 
                 state.Tick?.Pause();
                 state.Tick = null;
-                if (pending.OwningMap != null && pending.OwningMap.TryGetValue(element, out var current)
-                    && ReferenceEquals(current, pending))
+                // Removes this entry from whichever of the two bookkeeping maps currently owns it — ordinarily
+                // the map this play was started into, but an exit-cancel reversal hand-off (CancelPending) can
+                // have MOVED it into _pendingEnters since then, so both are probed rather than assuming the
+                // original one still holds it.
+                if (!RemoveIfCurrent(_pendingExits, element, pending))
                 {
-                    pending.OwningMap.Remove(element);
+                    RemoveIfCurrent(_pendingEnters, element, pending);
                 }
                 // Target is at rest now — stop the co-fade and restore the shadows to full strength (a no-op
                 // when this subtree carries none, the common case).
@@ -586,7 +599,21 @@ namespace Velvet
                 MotionSpringDriver.ClearInlineOverrides(element, state);
                 ReapplySpringOwnedInlineValues(element);
                 state.OnSettled?.Invoke();
-            }).Every(SpringTickMs);
+            }).Every(StyleAnimateDriver.TickMs);
+        }
+
+        // Removes element's entry from map, but only when it is STILL exactly pending (a later cancel/supersede
+        // may have already replaced or removed it) — the identity check a settled tick and a cancelled play both
+        // need before touching a map entry that might no longer be theirs. Returns whether it removed anything,
+        // so a caller checking more than one candidate map (see StartSpringTick) can stop at the first hit.
+        private static bool RemoveIfCurrent(Dictionary<VisualElement, PendingAnimation> map, VisualElement element, PendingAnimation pending)
+        {
+            if (map.TryGetValue(element, out var current) && ReferenceEquals(current, pending))
+            {
+                map.Remove(element);
+                return true;
+            }
+            return false;
         }
 
         // MotionSpringDriver.ClearInlineOverrides nulls whichever style slots the spring wrote (opacity /
@@ -924,7 +951,6 @@ namespace Velvet
                         spring.OnSettled = null;
                         CancelPending(_pendingEnters, element);
                         _pendingEnters[element] = pending;
-                        pending.OwningMap = _pendingEnters;
                     }
                     else
                     {
@@ -1122,7 +1148,7 @@ namespace Velvet
                 {
                     DropShadowSilhouette.SetCoFade(binding, el, pending, factor);
                 }
-            }).Every(16);
+            }).Every(StyleAnimateDriver.TickMs);
         }
 
         // Stops the co-fade tick and drops this animation's driver from each shadow (null-safe; balanced
@@ -1250,14 +1276,11 @@ namespace Velvet
             public EventCallback<AttachToPanelEvent>? PendingAttach;
             // Non-null for a spring-driven entry (StyleAnimationScheduler.StartSpringVariant) — the per-channel
             // integrators/targets and the recurring tick. Null for a tween entry, which never touches this
-            // (DurationList/DelayList/ScheduledItem/TimeoutItem are the tween's own equivalents).
+            // (DurationList/DelayList/ScheduledItem/TimeoutItem are the tween's own equivalents). Which of the
+            // two bookkeeping maps (_pendingEnters / _pendingExits) currently holds this entry is NOT tracked
+            // as a field here — a spring's exit-cancel hand-off can MOVE it from one to the other, and the
+            // settled tick just probes both (see RemoveIfCurrent) rather than keeping that choice in sync.
             public MotionSpringState? Spring;
-            // The map this entry currently lives in (_pendingEnters or _pendingExits) — kept in sync on a
-            // spring's exit-cancel hand-off (which MOVES the entry from _pendingExits into _pendingEnters so the
-            // reversal keeps ticking uninterrupted). Only the spring tick reads this (to remove itself from
-            // whichever map currently owns it once it settles); a tween entry's own completion timeout already
-            // closes over its own map directly and never needs this.
-            public Dictionary<VisualElement, PendingAnimation>? OwningMap;
         }
 
         // State for a delayed variant swap's pending inline transition-delay clear (see

@@ -1235,10 +1235,7 @@ namespace Velvet
                                         // (kept as the persistent resting state).
                                         var t = motion.Transition;
                                         _ctx.StyleAnimationScheduler.PlayVariantEnter(anchor, fromClasses, toClasses,
-                                            t.DurationSec, t.Easing, t.DelaySec,
-                                            motion.OnEnterComplete, presence.StaggerDelaySec(visualIndex, newKeyed.Count),
-                                            propertyOverrides: t.PropertyOverrides,
-                                            type: t.Type, stiffness: t.Stiffness, damping: t.Damping, mass: t.Mass);
+                                            t, motion.OnEnterComplete, presence.StaggerDelaySec(visualIndex, newKeyed.Count));
                                     }
                                     else if (isVariantMotion)
                                     {
@@ -1527,25 +1524,11 @@ namespace Velvet
             }
 
             motion.Variants.TryGetValue(motion.Animate, out var restingClass);
-            var timing = motion.Transition!;
-            return new StyleTransitionConfig
-            {
-                ExitFromClass = restingClass ?? string.Empty,
-                ExitToClass = exitClass,
-                DurationSec = timing.DurationSec,
-                Easing = timing.Easing,
-                ExitEasing = timing.ExitEasing,
-                DelaySec = timing.DelaySec,
-                PropertyOverrides = timing.PropertyOverrides,
-                // Carried through so a spring-configured Motion's variant EXIT is also spring-driven (and
-                // therefore hands off to a reversal spring on an exit-cancel) instead of silently falling back
-                // to a tween — this builds a FRESH config rather than reusing `timing`, so every knob timing
-                // carries has to be copied explicitly here.
-                Type = timing.Type,
-                Stiffness = timing.Stiffness,
-                Damping = timing.Damping,
-                Mass = timing.Mass,
-            };
+            // WithExitClasses copies every timing/spring/per-property-override knob (including Type/Stiffness/
+            // Damping/Mass, so a spring-configured Motion's variant EXIT is also spring-driven and hands off to
+            // a reversal spring on an exit-cancel instead of silently falling back to a tween) and replaces
+            // only the exit class pair — a single source for that knob list instead of hand-copying it here.
+            return motion.Transition!.WithExitClasses(restingClass ?? string.Empty, exitClass);
         }
 
         #endregion

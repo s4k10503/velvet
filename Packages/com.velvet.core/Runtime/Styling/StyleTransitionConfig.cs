@@ -213,6 +213,35 @@ namespace Velvet
             };
         }
 
+        /// <summary>
+        /// Builds a new StyleTransitionConfig for a variant `exit` (see
+        /// <see cref="Velvet.MotionNode.Exit"/>): copies every timing / spring / per-property-override knob
+        /// unchanged from this config — the enclosing Motion's own <c>transition</c> — but replaces the exit
+        /// class pair with the resolved variant classes. Sibling to <see cref="With"/> (which tunes a preset's
+        /// timing while keeping its class names): this keeps the timing/spring knobs fixed while replacing the
+        /// classes, so the two together cover both directions a caller needs to override without repeating the
+        /// growing knob list at each call site.
+        /// </summary>
+        /// <param name="exitFromClass">The resting variant's own class string (variants[Animate]).</param>
+        /// <param name="exitToClass">The exit variant's class string (variants[Exit]).</param>
+        internal StyleTransitionConfig WithExitClasses(string exitFromClass, string exitToClass)
+        {
+            return new StyleTransitionConfig
+            {
+                ExitFromClass = exitFromClass,
+                ExitToClass = exitToClass,
+                DurationSec = DurationSec,
+                Easing = Easing,
+                ExitEasing = ExitEasing,
+                DelaySec = DelaySec,
+                PropertyOverrides = PropertyOverrides,
+                Type = Type,
+                Stiffness = Stiffness,
+                Damping = Damping,
+                Mass = Mass,
+            };
+        }
+
         private static string[] ParseClasses(string? classNames) => Velvet.V.ParseClassNames(classNames);
     }
 
