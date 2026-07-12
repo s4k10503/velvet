@@ -236,12 +236,15 @@ namespace Velvet
         public Dictionary<VisualElement, StyleDivideManipulator> DivideManipulators { get; } = new();
         public Dictionary<VisualElement, StyleGridManipulator> GridManipulators { get; } = new();
 
-        // Per-Motion-element bookkeeping of the class array actually APPLIED (base ClassNames plus any
-        // variant classes propagated from an ancestor Motion's active label). The patch path diffs the new
-        // applied set against this stored one so a label change swaps the propagated classes even though the
-        // node's base ClassNames are unchanged. A pure side-table (bare Remove on teardown), so it is enrolled
-        // in _pureElementSideTables and cleared on element cleanup / reconciler dispose through that mechanism.
-        public Dictionary<VisualElement, string[]> MotionAppliedClasses { get; } = new();
+        // Per-Motion-element bookkeeping of the class set actually APPLIED (base ClassNames plus any
+        // variant classes propagated from an ancestor Motion's active label, PLUS the variant-only classes
+        // alone — see MotionAppliedClassSet). The patch path diffs the new applied set against this stored one
+        // so a label change swaps the propagated classes even though the node's base ClassNames are unchanged,
+        // and replays that swap as a runtime variant transition when the variant-only classes actually
+        // changed and the node declares a Transition (see FiberNodePatcher.PatchMotion). A pure side-table
+        // (bare Remove on teardown), so it is enrolled in _pureElementSideTables and cleared on element
+        // cleanup / reconciler dispose through that mechanism.
+        public Dictionary<VisualElement, MotionAppliedClassSet> MotionAppliedClasses { get; } = new();
 
         // Per-Motion-element bookkeeping of the label last propagated to CHILDREN (Animate ?? ambient) —
         // independent of MotionAppliedClasses above, because a "coordinator" Motion may propagate a label to

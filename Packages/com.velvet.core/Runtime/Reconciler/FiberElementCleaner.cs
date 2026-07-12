@@ -198,7 +198,6 @@ namespace Velvet
             // living) must not run even though it can still be attached at this point — DOM detachment is the
             // caller's own job, performed after this cleanup.
             _ctx.StyleAnimationScheduler.CancelExitForTeardown(element);
-            _ctx.StyleAnimationScheduler.CancelDelayedVariantSwap(element);
             _ctx.EventManager.UnbindAll(element);
             _ctx.ComponentRegistry.Remove(element);
             DetachManipulator(element, _ctx.GestureManipulators);

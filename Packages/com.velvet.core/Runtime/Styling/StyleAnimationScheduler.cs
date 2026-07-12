@@ -31,12 +31,6 @@ namespace Velvet
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingEnters = new();
-        // Plain class-diff variant swaps (parent→child label propagation, staggerChildren/delayChildren — see
-        // PlayDelayedVariantSwap) awaiting their deferred inline transition-delay clear. Separate from the
-        // enter/exit maps above: a delayed swap has no from/to class lifecycle of its own (the class diff
-        // already happened via SyncClassDrivenStyling before this is called), so PendingAnimation's
-        // enter/exit-only fields would all sit unused.
-        private readonly Dictionary<VisualElement, PendingDelayedSwap> _pendingDelayedSwaps = new();
         private readonly Stack<List<TimeValue>> _durationPool = new();
         private readonly Stack<List<TimeValue>> _delayPool = new();
 
@@ -133,13 +127,6 @@ namespace Velvet
 
             // Cancel any existing enter animation.
             CancelEnter(element);
-            // Take ownership of the inline transition-delay slot: a parked orchestration swap (plain
-            // parent→child staggerChildren/delayChildren propagation — see PlayDelayedVariantSwap) may have
-            // left a stale delay sitting on this SAME element. This enter is about to become the sole owner of
-            // that slot (ApplyTransitionStyles below only WRITES it when its own delaySec > 0, so a zero-delay
-            // enter would otherwise silently inherit the stale value instead of starting immediately), and the
-            // parked clear must not fire later and null a delay this enter itself goes on to set.
-            CancelDelayedVariantSwap(element);
 
             var staggerDelayMs = (long)(additionalDelaySec * 1000);
 
@@ -169,71 +156,105 @@ namespace Velvet
             pending.Shadows = CollectShadowsForCoFade(element, pending, 0f);
             _pendingEnters[element] = pending;
 
-            // schedule.Execute does not fire when the panel is disconnected, but CancelEnter is invoked
-            // via Reconciler.RemoveElement / CleanupDescendants, so the dictionary does not leak.
-            var startAction = new Action(() =>
+            // Schedules the deferred swap (and its own completion timeout) on the PANEL-ROOT host, not the
+            // entering element itself — mirrors PlayExit's identical ScheduleOnHost: a keyed reorder can
+            // transiently detach an already-attached element (RemoveFromHierarchy + re-Insert), and UI Toolkit
+            // silently drops a detached element's own scheduled items, which would stall the enter forever (or,
+            // for a stagger claimed from an ancestor's orchestration, drop the claimed delay's clear entirely).
+            // The element only needs to stay attached for its OWN CSS transition to keep tweening — it does, a
+            // reorder moves it, never removes it.
+            void ScheduleOnHost()
             {
-                if (!_pendingEnters.ContainsKey(element))
+                // Superseded before it ever got to schedule (a cancel-before-attach removed this exact pending).
+                if (!_pendingEnters.TryGetValue(element, out var cur) || !ReferenceEquals(cur, pending))
                 {
                     return;
                 }
 
-                StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
-                StyleAnimationClassUtils.AddClasses(element, toClasses);
-                // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so
-                // descendant shadows fade in lockstep with it.
-                StartShadowCoFadeTick(pending);
-
-                // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
-                // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
-                // SLOWEST animating property (SlowestPropertyTimeoutMs) rather than just the top-level
-                // durationSec/delaySec: PropertyOverrides can give one property a longer duration than the
-                // top-level value, and completing on the top-level timing alone would clear the inline
-                // transition-duration (snapping the still-mid-tween slower property to its resting value) before
-                // it actually finishes.
-                var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
-                var timeout = element.schedule.Execute(() =>
+                var panel = element.panel;
+                if (panel == null)
                 {
-                    if (_pendingEnters.Remove(element, out var completed))
-                    {
-                        if (!variantMode)
-                        {
-                            StyleAnimationClassUtils.RemoveClasses(element, toClasses);
-                        }
-                        // Target is opaque now — stop the co-fade and restore the shadows to full strength.
-                        EndShadowCoFade(completed);
-                        ClearTransitionStyles(element);
-                        ReturnDurationList(completed.DurationList);
-                        ReturnDelayList(completed.DelayList);
-                        onComplete?.Invoke();
-                    }
-                });
-                timeout.ExecuteLater(durationMs);
-                pending.TimeoutItem = timeout;
-            });
+                    return;
+                }
+                var host = panel.visualTree;
 
-            if (staggerDelayMs > 0)
+                var startAction = new Action(() =>
+                {
+                    if (!_pendingEnters.ContainsKey(element))
+                    {
+                        return;
+                    }
+
+                    StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+                    StyleAnimationClassUtils.AddClasses(element, toClasses);
+                    // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so
+                    // descendant shadows fade in lockstep with it.
+                    StartShadowCoFadeTick(pending);
+
+                    // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
+                    // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
+                    // SLOWEST animating property (SlowestPropertyTimeoutMs) rather than just the top-level
+                    // durationSec/delaySec: PropertyOverrides can give one property a longer duration than the
+                    // top-level value, and completing on the top-level timing alone would clear the inline
+                    // transition-duration (snapping the still-mid-tween slower property to its resting value) before
+                    // it actually finishes.
+                    var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
+                    var timeout = host.schedule.Execute(() =>
+                    {
+                        if (_pendingEnters.Remove(element, out var completed))
+                        {
+                            if (!variantMode)
+                            {
+                                StyleAnimationClassUtils.RemoveClasses(element, toClasses);
+                            }
+                            // Target is opaque now — stop the co-fade and restore the shadows to full strength.
+                            EndShadowCoFade(completed);
+                            ClearTransitionStyles(element);
+                            ReturnDurationList(completed.DurationList);
+                            ReturnDelayList(completed.DelayList);
+                            onComplete?.Invoke();
+                        }
+                    });
+                    timeout.ExecuteLater(durationMs);
+                    pending.TimeoutItem = timeout;
+                });
+
+                if (staggerDelayMs > 0)
+                {
+                    // With extra delay: start after staggerDelayMs.
+                    var scheduled = host.schedule.Execute(startAction);
+                    scheduled.ExecuteLater(staggerDelayMs);
+                    pending.ScheduledItem = scheduled;
+                }
+                else
+                {
+                    // No extra delay: still deferred by one nominal frame (StyleAnimateDriver.TickMs)
+                    // rather than a zero-delay schedule.Execute. This call runs from inside the same
+                    // timer tick that mounts the element (a standalone Motion's create, or an
+                    // AnimatePresence-driven enter), and a zero-delay item becomes runnable within that
+                    // very tick — before the panel has resolved the from-state's style even once. With
+                    // nothing to compare against, the CSS transition sees no property change and the
+                    // whole enter snaps straight to the end pose instead of tweening. A same-tick swap is
+                    // possible with any deferral shorter than roughly a frame, so a full nominal frame is
+                    // used instead of a token 1ms: it reliably survives the from-state's first style pass
+                    // at any practical frame rate while still landing on (about) the very next update.
+                    var scheduled = host.schedule.Execute(startAction);
+                    scheduled.ExecuteLater(StyleAnimateDriver.TickMs);
+                    pending.ScheduledItem = scheduled;
+                }
+            }
+
+            // A stable host only exists once the element is attached. Off-panel at call time is the COMMON
+            // case here — a standalone Motion's mount enter plays inside CreateElement, before the element is
+            // inserted into the tree — so defer scheduling until attach, exactly like PlayExit's own off-panel
+            // branch below.
+            if (element.panel != null)
             {
-                // With extra delay: start after staggerDelayMs.
-                var scheduled = element.schedule.Execute(startAction);
-                scheduled.ExecuteLater(staggerDelayMs);
-                pending.ScheduledItem = scheduled;
+                ScheduleOnHost();
             }
             else
             {
-                // No extra delay: still deferred by one nominal frame (StyleAnimateDriver.TickMs)
-                // rather than a zero-delay schedule.Execute. This call runs from inside the same
-                // timer tick that mounts the element (a standalone Motion's create, or an
-                // AnimatePresence-driven enter), and a zero-delay item becomes runnable within that
-                // very tick — before the panel has resolved the from-state's style even once. With
-                // nothing to compare against, the CSS transition sees no property change and the
-                // whole enter snaps straight to the end pose instead of tweening. A same-tick swap is
-                // possible with any deferral shorter than roughly a frame, so a full nominal frame is
-                // used instead of a token 1ms: it reliably survives the from-state's first style pass
-                // at any practical frame rate while still landing on (about) the very next update.
-                var scheduled = element.schedule.Execute(startAction);
-                scheduled.ExecuteLater(StyleAnimateDriver.TickMs);
-                pending.ScheduledItem = scheduled;
+                DeferUntilAttached(element, pending, ScheduleOnHost);
             }
         }
 
@@ -278,13 +299,6 @@ namespace Velvet
 
             // Cancel any existing exit animation.
             CancelExit(element);
-            // Take ownership of the inline transition-delay slot: see PlayEnterInternal's identical call
-            // above for the failure this prevents. Concretely, a DelaySec=0 variant exit racing a just-parked
-            // orchestration delay would otherwise inherit it invisibly (ApplyTransitionStyles below never
-            // WRITES transition-delay when this exit's own delaySec is <= 0, so the stale value would survive
-            // untouched) while the completion timeout below is sized from THIS exit's own (unaware) duration —
-            // dropping the ghost before the actually-delayed CSS transition ever visibly starts.
-            CancelDelayedVariantSwap(element);
 
             var fromClasses = config.ExitFromClasses;
             var toClasses = config.ExitToClasses;
@@ -459,12 +473,6 @@ namespace Velvet
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
             // CancelEnter(element) / PlayExit's CancelExit(element) self-cancel).
             CancelPending(map, element, animateReversal: isExit);
-            // Take ownership of the inline transition-delay slot exactly like the tween paths above: a spring
-            // never reads transition-delay itself (delaySec below only offsets ScheduleStart's own timer), but
-            // a stale parked swap sharing this element would otherwise clear out from under this play whenever
-            // its own timeout happens to fire, and the element should not carry a transition-delay left over
-            // from a class swap this new play has nothing to do with.
-            CancelDelayedVariantSwap(element);
 
             // Land the classes at rest either way — nothing recognized to animate (or invalid spring
             // parameters) degrades to a plain, instantaneous class swap (the spring equivalent of a
@@ -674,96 +682,11 @@ namespace Velvet
         // Whether the given element is currently exiting.
         public bool IsExiting(VisualElement element) => _pendingExits.ContainsKey(element);
 
-        // Applies an ADDITIONAL inline transition-delay to a plain class-diff variant swap — the parent→child
-        // label-propagation path (FiberNodePatcher.PatchMotion's staggerChildren/delayChildren orchestration),
-        // which swaps classes directly with no enter/exit lifecycle of its own and no transition-property:all
-        // override, relying on the element's OWN utility classes (e.g. transition-opacity duration-300) to
-        // declare whatever is to be delayed. totalDelaySec is this swap's FULL transition-delay (the Motion's
-        // own configured DelaySec plus any staggerChildren/delayChildren orchestration offset — the caller
-        // already added them); durationSec is that swap's own transition duration, used only to size the
-        // deferred clear below. A non-positive totalDelaySec is a no-op.
-        // The delay is cleared once the swap's transition would have finished, so a LATER, unrelated patch on
-        // the same element does not inherit a stale delay. On a real panel the clear is scheduled on the
-        // PANEL-ROOT host, not the element itself (mirrors PlayExit's own ScheduleOnHost rationale): a keyed
-        // reorder can transiently detach this element (RemoveFromHierarchy + re-Insert) while the delay is
-        // still parked, and UI Toolkit silently drops a detached element's own scheduled items, which would
-        // strand the inline transition-delay on it forever. Off-panel there is nothing to interpolate against,
-        // and schedule.Execute never fires for a detached element, so the delay is never applied in the first
-        // place instead of setting up a schedule that would never run — net-equivalent to CancelExit's
-        // reversal cleanup, which clears an already-applied delay immediately off-panel for the same reason.
-        public void PlayDelayedVariantSwap(VisualElement? element, float totalDelaySec, float durationSec)
-        {
-            if (element == null || totalDelaySec <= 0f)
-            {
-                return;
-            }
-
-            // Cancel any previous still-parked delay on this element first, so an interrupted stagger (a second
-            // label flip before the first swap's grace period elapsed) does not leave a stale timer racing
-            // this one's clear (also covers a rare case where an ON-panel schedule was parked and the element
-            // has since gone off-panel: schedule.Execute never fires for a detached element, so that stale
-            // entry would otherwise leak).
-            CancelDelayedVariantSwap(element);
-
-            if (element.panel == null)
-            {
-                // Nothing to interpolate without a panel, and schedule.Execute never fires for a detached
-                // element, so there is nothing worth setting in the first place — mirrors CancelExit's
-                // off-panel-immediate-clear rule for a reversal cleanup.
-                return;
-            }
-
-            var delayMs = (int)(totalDelaySec * 1000);
-            var delayList = RentDelayList(delayMs);
-            element.style.transitionDelay = delayList;
-            var pending = new PendingDelayedSwap { DelayList = delayList };
-            var timeoutMs = (long)(totalDelaySec * 1000) + (long)(durationSec * 1000) + AnimationGraceMs;
-            // The panel root never detaches during the tree's life, so its scheduled items always fire; the
-            // element being delayed only needs to stay attached for its OWN CSS transition (it does — a keyed
-            // reorder moves it, never removes it), matching PlayExit's stable-host argument exactly.
-            var host = element.panel.visualTree;
-            var timeout = host.schedule.Execute(() =>
-            {
-                if (_pendingDelayedSwaps.Remove(element, out var completed))
-                {
-                    element.style.transitionDelay = StyleKeyword.Null;
-                    ReturnDelayList(completed.DelayList);
-                }
-            });
-            timeout.ExecuteLater(timeoutMs);
-            pending.TimeoutItem = timeout;
-            _pendingDelayedSwaps[element] = pending;
-        }
-
-        // Cancels a still-parked delayed-swap clear (superseded by a follow-up swap, or the element being torn
-        // down) and clears the inline transition-delay immediately. Safe to call when none is pending (no-op).
-        public void CancelDelayedVariantSwap(VisualElement element)
-        {
-            if (_pendingDelayedSwaps.Remove(element, out var pending))
-            {
-                pending.TimeoutItem?.Pause();
-                element.style.transitionDelay = StyleKeyword.Null;
-                ReturnDelayList(pending.DelayList);
-            }
-        }
-
         // Cancels every animation and removes the applied CSS classes and inline styles.
         public void CancelAll()
         {
             CancelAllInMap(_pendingExits);
             CancelAllInMap(_pendingEnters);
-            CancelAllDelayedSwaps();
-        }
-
-        private void CancelAllDelayedSwaps()
-        {
-            foreach (var (element, pending) in _pendingDelayedSwaps)
-            {
-                pending.TimeoutItem?.Pause();
-                element.style.transitionDelay = StyleKeyword.Null;
-                ReturnDelayList(pending.DelayList);
-            }
-            _pendingDelayedSwaps.Clear();
         }
 
         private static bool ValidateDuration(float durationSec, Action? onComplete)
@@ -1306,14 +1229,5 @@ namespace Velvet
             public MotionSpringState? Spring;
         }
 
-        // State for a delayed variant swap's pending inline transition-delay clear (see
-        // PlayDelayedVariantSwap). Deliberately separate from PendingAnimation, which carries enter/exit-only
-        // fields (FromClasses/ToClasses/Shadows/PendingAttach/…) that a plain class-diff swap — having no
-        // lifecycle of its own beyond "clear this one inline style later" — never needs.
-        private sealed class PendingDelayedSwap
-        {
-            public IVisualElementScheduledItem? TimeoutItem;
-            public List<TimeValue>? DelayList;
-        }
     }
 }

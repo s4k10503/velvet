@@ -144,13 +144,13 @@ namespace Velvet
                     // Resolve the applied classes against the effective label (own Animate, else the nearest
                     // ancestor Motion's label read from MotionContext) — the variant-inheritance model.
                     var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
-                    var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out var variantApplied);
+                    var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out var variantClasses);
                     var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
                     // Only record applied-class bookkeeping when a variant actually merged; the variant-less
                     // majority needs no entry (patch falls back to oldNode.ClassNames for the diff baseline).
-                    if (variantApplied)
+                    if (variantClasses.Length > 0)
                     {
-                        _ctx.MotionAppliedClasses[element] = appliedClasses;
+                        _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedClasses, variantClasses);
                     }
                     // Record the label propagated to children now (regardless of whether this Motion currently
                     // has any) so the FIRST patch on this element has an accurate baseline: PatchMotion diffs
