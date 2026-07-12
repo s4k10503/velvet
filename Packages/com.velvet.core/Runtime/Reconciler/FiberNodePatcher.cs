@@ -95,6 +95,9 @@ namespace Velvet
                 case PortalNode oldPortal when newNode is PortalNode newPortal:
                     PatchPortal(element, oldPortal, newPortal);
                     break;
+                case WorldSpaceNode oldWorldSpace when newNode is WorldSpaceNode newWorldSpace:
+                    PatchWorldSpace(element, oldWorldSpace, newWorldSpace);
+                    break;
                 case ContextProviderNode oldProvider when newNode is ContextProviderNode newProvider:
                     PatchContextProvider(element, oldProvider, newProvider);
                     break;
@@ -527,13 +530,60 @@ namespace Velvet
         // This combination is forbidden by design (the target must not itself be a Reconcile subject).
         internal void PatchPortal(VisualElement placeholder, PortalNode oldNode, PortalNode newNode)
         {
-            var target = FiberPortalRegistry.Get(newNode.TargetId);
-            if (target == null)
+            VisualElement? target;
+            string describe;
+            if (newNode.Layer is { } layer)
             {
-                FiberLogger.LogWarning("Portal", $"Target \"{newNode.TargetId}\" is not registered. Children will not be rendered.");
+                // The per-layer framework host was created when the mount drained and persists
+                // until reconciler disposal, so a patch resolves it from the table.
+                target = _ctx.LayerHosts.TryGetValue(layer, out var layerHost)
+                    ? layerHost.Document.rootVisualElement
+                    : null;
+                describe = layer.ToString();
+                if (target == null)
+                {
+                    FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
+                    return;
+                }
+            }
+            else
+            {
+                target = FiberPortalRegistry.Get(newNode.TargetId!);
+                describe = newNode.TargetId!;
+                if (target == null)
+                {
+                    FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
+                    return;
+                }
+            }
+
+            PatchPortalChildren(placeholder, target, oldNode.Children, newNode.Children, describe);
+        }
+
+        // Applies the diff for a WorldSpaceNode: the host transform and virtual panel size follow
+        // the node, and the children reconcile through the same slot bookkeeping every portal
+        // flavor uses (the world-space host root is the recorded target).
+        internal void PatchWorldSpace(VisualElement placeholder, WorldSpaceNode oldNode, WorldSpaceNode newNode)
+        {
+            if (!_ctx.WorldSpaceBindings.TryGetValue(placeholder, out var record))
+            {
+                FiberLogger.LogError("WorldSpace", "Host record missing for a world-space placeholder. Patch skipped.");
                 return;
             }
 
+            record.Host.transform.SetPositionAndRotation(newNode.Position, newNode.Rotation);
+            record.Document.worldSpaceSize = newNode.PanelSize;
+            PatchPortalChildren(placeholder, record.Document.rootVisualElement, oldNode.Children, newNode.Children, "world-space");
+        }
+
+        // The shared slot-range child patch for every portal flavor (registry, layer, world-space):
+        // reconciles only this placeholder's own slot range against the target and shifts the
+        // downstream ranges on the same target by the growth delta. describe names the target in
+        // diagnostics only.
+        private void PatchPortalChildren(
+            VisualElement placeholder, VisualElement target,
+            VNode?[]? oldChildrenRaw, VNode?[]? newChildrenRaw, string describe)
+        {
             UnityEngine.Debug.Assert(
                 target != placeholder.parent,
                 "[Portal] Portal target must not be the same element currently being reconciled. " +
@@ -544,12 +594,12 @@ namespace Velvet
                 // PortalState missing means CreateElement never recorded this Portal's slot range
                 // (mounting was skipped or state was cleared mid-patch). Appending blindly would
                 // alias another Portal's slot, so skip patch and surface the inconsistency.
-                FiberLogger.LogError("Portal", $"PortalState missing for placeholder targeting \"{newNode.TargetId}\". Patch skipped to avoid corrupting other Portals' slot ranges.");
+                FiberLogger.LogError("Portal", $"PortalState missing for placeholder targeting \"{describe}\". Patch skipped to avoid corrupting other Portals' slot ranges.");
                 return;
             }
 
-            var oldChildren = oldNode.Children ?? Array.Empty<VNode>();
-            var newChildren = newNode.Children ?? Array.Empty<VNode>();
+            var oldChildren = oldChildrenRaw ?? Array.Empty<VNode>();
+            var newChildren = newChildrenRaw ?? Array.Empty<VNode>();
             var beforeTailCount = target.childCount;
             _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
@@ -560,7 +610,7 @@ namespace Velvet
 
             _ctx.PortalState[placeholder] = prevState with { Children = newChildren, SlotLength = newSlotLength };
 
-            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, prevState.TargetId, prevState.SlotStart, delta, placeholder);
+            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, prevState.Target, prevState.SlotStart, delta, placeholder);
         }
 
         // Applies the diff for a ContextProviderNode.
@@ -1598,10 +1648,11 @@ namespace Velvet
             {
                 foreach (var info in ctx.PortalState.Values)
                 {
-                    var target = FiberPortalRegistry.Get(info.TargetId);
-                    if (target != null)
+                    // The resolved target recorded at mount covers every portal flavor (registry,
+                    // layer, world-space); null only for the never-mounted missing-registry path.
+                    if (info.Target != null)
                     {
-                        ReevaluateHasOnAncestorChain(ctx, target, hasClass, hasManip);
+                        ReevaluateHasOnAncestorChain(ctx, info.Target, hasClass, hasManip);
                     }
                 }
             }

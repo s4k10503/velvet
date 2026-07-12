@@ -318,12 +318,20 @@ namespace Velvet
                             display = DisplayStyle.None
                         }
                     };
-                    var target = FiberPortalRegistry.Get(portalNode.TargetId);
-                    if (target == null)
+                    // A layer portal resolves its target at DRAIN time — the framework layer host is
+                    // created lazily there, once the placeholder is attached and the declaring panel
+                    // is therefore known. Only a registry portal resolves here, keeping its
+                    // not-registered warning a mount-time signal.
+                    VisualElement? target = null;
+                    if (portalNode.Layer == null)
                     {
-                        FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
-                        _ctx.PortalState[placeholder] = new PortalSlotInfo(portalNode.TargetId, portalNode.Children ?? Array.Empty<VNode>(), 0, 0);
-                        return placeholder;
+                        target = FiberPortalRegistry.Get(portalNode.TargetId!);
+                        if (target == null)
+                        {
+                            FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
+                            _ctx.PortalState[placeholder] = new PortalSlotInfo(null, portalNode.Children ?? Array.Empty<VNode>(), 0, 0);
+                            return placeholder;
+                        }
                     }
 
                     // Defer the target-side mount to the post-reconcile drain so this Portal's
@@ -344,6 +352,24 @@ namespace Velvet
                     // children inherit context from their tree position, not their mount location.
                     var contextSnapshot = _ctx.ComponentContextStack.SnapshotTops();
                     _ctx.PendingPortalMounts.Enqueue((placeholder, portalNode, target, contextSnapshot));
+                    return placeholder;
+                }
+                case WorldSpaceNode worldSpaceNode:
+                {
+                    // The same deferred-mount flow as PortalNode: a hidden placeholder holds the
+                    // node's tree position while the children mount into a framework host — here a
+                    // per-instance world-space panel created at drain time (see
+                    // DrainPendingPortalMounts). Context crosses the logical boundary through the
+                    // same snapshot, for the same reason.
+                    var placeholder = new VisualElement
+                    {
+                        style =
+                        {
+                            display = DisplayStyle.None
+                        }
+                    };
+                    var contextSnapshot = _ctx.ComponentContextStack.SnapshotTops();
+                    _ctx.PendingPortalMounts.Enqueue((placeholder, worldSpaceNode, null, contextSnapshot));
                     return placeholder;
                 }
                 case VirtualListNode virtualListNode:

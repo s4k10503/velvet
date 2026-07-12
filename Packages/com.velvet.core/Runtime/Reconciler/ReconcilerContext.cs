@@ -7,7 +7,12 @@ namespace Velvet
     // Slot range that a single Portal placeholder owns within its target's children list.
     // Multiple Portals targeting the same DOM node each carry one entry of this record so
     // PatchPortal / CleanupPortal can address only that range without disturbing siblings.
-    internal readonly record struct PortalSlotInfo(string TargetId, VNode?[] Children, int SlotStart, int SlotLength);
+    // Keyed by the RESOLVED target element (not a registry id): registry portals, layer portals
+    // and world-space panels all share this bookkeeping, and only the element identity groups the
+    // portals whose ranges shift together — two layer portals on different layers must never
+    // shift each other even though neither carries a registry id. Null only for the mount-time
+    // path that found no registry target (nothing was mounted; SlotLength is 0).
+    internal readonly record struct PortalSlotInfo(VisualElement? Target, VNode?[] Children, int SlotStart, int SlotLength);
 
     // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
     // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
@@ -41,7 +46,7 @@ namespace Velvet
     internal static class PortalSlotTracker
     {
         // Shifts PortalSlotInfo.SlotStart by delta for every Portal
-        // targeting targetId whose range starts at or after
+        // sharing the same resolved target element whose range starts at or after
         // boundary. excludePlaceholder skips one entry (typically
         // the Portal that just patched its own range and updated its own state). When the cleanup
         // path invokes this after removing its own entry, excludePlaceholder may
@@ -49,17 +54,17 @@ namespace Velvet
         // placeholders to shift, then rewrite their entries.
         internal static void ShiftSlotStartsAfter(
             Dictionary<VisualElement, PortalSlotInfo> portalState,
-            string targetId,
+            VisualElement? target,
             int boundary,
             int delta,
             VisualElement? excludePlaceholder = null)
         {
-            if (delta == 0) return;
+            if (delta == 0 || target == null) return;
             List<VisualElement>? placeholders = null;
             foreach (var entry in portalState)
             {
                 if (ReferenceEquals(entry.Key, excludePlaceholder)) continue;
-                if (entry.Value.TargetId != targetId) continue;
+                if (!ReferenceEquals(entry.Value.Target, target)) continue;
                 if (entry.Value.SlotStart < boundary) continue;
                 placeholders ??= new List<VisualElement>();
                 placeholders.Add(entry.Key);
@@ -328,7 +333,8 @@ namespace Velvet
         public Dictionary<VisualElement, PortalSlotInfo> PortalState { get; } = new();
 
         // Portal mounts deferred until the enclosing reconcile pass completes. When a PortalNode
-        // is encountered during a reconcile, its target-side reconcile is queued here instead of
+        // (or a WorldSpaceNode — the same deferred-mount flow) is encountered during a reconcile,
+        // its target-side reconcile is queued here instead of
         // running synchronously — synchronous mount would interleave the inner Portal's children
         // into the outer Portal's slot range and stale every nested slot index by the placeholder
         // insertion that follows. The queue is drained by Reconciler.Reconcile at
@@ -338,8 +344,25 @@ namespace Velvet
         // all previously-mounted Portals' ranges. PortalState is recorded for each
         // placeholder only at drain time — between enqueue and drain the placeholder has no entry,
         // matching FiberNodePatcher.PatchPortal's missing-entry path which logs and skips.
-        public Queue<(VisualElement Placeholder, PortalNode PortalNode, VisualElement Target,
+        // Target is resolved at ENQUEUE only for registry portals (their not-registered warning
+        // stays a mount-time signal); layer portals and world-space nodes carry null and resolve —
+        // creating their framework host on first use — at drain time, when the placeholder is
+        // attached and the declaring panel is therefore known.
+        public Queue<(VisualElement Placeholder, VNode Node, VisualElement? Target,
             List<KeyValuePair<object, object>> ContextSnapshot)> PendingPortalMounts { get; } = new();
+
+        // Framework-owned layer host panels (V.Portal(layer:)), one per UILayer, created lazily at
+        // the first drain that needs the layer and shared by every portal on it. NOT a pure
+        // side-table: each record owns a live GameObject plus runtime-created panel assets, torn
+        // down by the reconciler dispose sweep. Hosts persist across child removals — a layer whose
+        // last portal left keeps its (empty, cheap) host so toggling portals does not churn panels.
+        public Dictionary<UILayer, PanelHostRecord> LayerHosts { get; } = new();
+
+        // Framework-owned world-space host panels (V.WorldSpace), one per placeholder. NOT a pure
+        // side-table: each record owns a live GameObject plus runtime-created panel assets,
+        // destroyed by FiberElementCleaner when the placeholder leaves the tree and swept at
+        // reconciler disposal.
+        public Dictionary<VisualElement, PanelHostRecord> WorldSpaceBindings { get; } = new();
 
         // Inline-mounted ComponentFiber whose insertion / layout effect commit is deferred to the
         // post-commit drain. The DOM mutation + ref attachment must complete before layout effect

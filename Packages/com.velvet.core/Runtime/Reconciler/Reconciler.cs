@@ -512,6 +512,22 @@ namespace Velvet
             _ctx.GridManipulators.Clear();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
+            // Layer and world-space hosts are framework-owned GameObjects with runtime-created
+            // panel assets: destroy them so a disposed tree leaves no hidden panels behind. The
+            // unmount reconcile already removed their children; a still-live layer host with zero
+            // children (layers persist across child removals) dies here too. World-space hosts are
+            // normally destroyed per placeholder by the cleaner — this sweep catches any still
+            // live at root disposal.
+            foreach (var record in _ctx.LayerHosts.Values)
+            {
+                PanelHostFactory.Destroy(record);
+            }
+            _ctx.LayerHosts.Clear();
+            foreach (var record in _ctx.WorldSpaceBindings.Values)
+            {
+                PanelHostFactory.Destroy(record);
+            }
+            _ctx.WorldSpaceBindings.Clear();
             foreach (var controller in _ctx.VirtualListControllers.Values)
             {
                 controller.Dispose();

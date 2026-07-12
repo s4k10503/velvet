@@ -148,8 +148,45 @@ namespace Velvet
             HashSet<ComponentFiber>? childFibersBefore = null;
             while (_ctx.PendingPortalMounts.Count > 0)
             {
-                var (placeholder, portalNode, target, contextSnapshot) = _ctx.PendingPortalMounts.Dequeue();
-                var children = portalNode.Children ?? Array.Empty<VNode>();
+                var (placeholder, node, target, contextSnapshot) = _ctx.PendingPortalMounts.Dequeue();
+                // Resolve the deferred targets: a registry portal arrived with its target resolved
+                // at enqueue; a layer portal creates (or reuses) the per-layer framework host here,
+                // and a world-space node creates its per-instance host here — the placeholder is
+                // attached by now, so the declaring panel whose settings/theme the host copies is
+                // known.
+                VNode?[] children;
+                switch (node)
+                {
+                    case PortalNode { Layer: { } layer } layerPortal:
+                    {
+                        if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost))
+                        {
+                            layerHost = PanelHostFactory.CreateLayerHost(layer, placeholder.panel);
+                            _ctx.LayerHosts[layer] = layerHost;
+                        }
+                        target = layerHost.Document.rootVisualElement;
+                        children = layerPortal.Children ?? Array.Empty<VNode>();
+                        break;
+                    }
+                    case WorldSpaceNode worldSpaceNode:
+                    {
+                        var record = PanelHostFactory.CreateWorldSpaceHost(worldSpaceNode, placeholder.panel);
+                        _ctx.WorldSpaceBindings[placeholder] = record;
+                        target = record.Document.rootVisualElement;
+                        children = worldSpaceNode.Children ?? Array.Empty<VNode>();
+                        break;
+                    }
+                    case PortalNode registryPortal:
+                        children = registryPortal.Children ?? Array.Empty<VNode>();
+                        break;
+                    default:
+                        children = Array.Empty<VNode>();
+                        break;
+                }
+                if (target == null)
+                {
+                    continue;
+                }
                 var slotStart = target.childCount;
                 // Restore the context that enclosed the Portal's tree position (captured at enqueue) so the
                 // children mount under their enclosing Providers / MotionContext rather than an empty cursor.
@@ -202,7 +239,7 @@ namespace Velvet
                     }
                 }
                 var slotLength = target.childCount - slotStart;
-                _ctx.PortalState[placeholder] = new PortalSlotInfo(portalNode.TargetId, children, slotStart, slotLength);
+                _ctx.PortalState[placeholder] = new PortalSlotInfo(target, children, slotStart, slotLength);
             }
         }
 

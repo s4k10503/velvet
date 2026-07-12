@@ -97,8 +97,16 @@ namespace Velvet
                     sb.Append(')');
                     break;
                 case PortalNode portal:
-                    sb.Append("Portal(").Append(node.Key).Append('|').Append(portal.TargetId).Append('|');
+                    // TargetId and Layer are a one-of pair; whichever is set names the target.
+                    sb.Append("Portal(").Append(node.Key).Append('|')
+                        .Append(portal.TargetId ?? portal.Layer?.ToString()).Append('|');
                     AppendTree(sb, portal.Children);
+                    sb.Append(')');
+                    break;
+                case WorldSpaceNode worldSpace:
+                    sb.Append("WS(").Append(node.Key).Append('|').Append(worldSpace.Position).Append('|')
+                        .Append(worldSpace.PanelSize).Append('|');
+                    AppendTree(sb, worldSpace.Children);
                     sb.Append(')');
                     break;
                 case SuspenseNode suspense:
