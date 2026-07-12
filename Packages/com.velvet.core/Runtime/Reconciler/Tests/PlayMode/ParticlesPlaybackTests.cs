@@ -11,6 +11,16 @@ namespace Velvet.Tests
     /// mount-triggered emitter fills the element with particle-colored quads that move frame to
     /// frame, and a Manual trigger renders nothing until played.
     /// </summary>
+    /// <remarks>
+    /// The raised per-test budget covers a software-rasterizer quirk, not slow assertions: on a
+    /// GPU-less runner the process's FIRST particle-drawing frames stall for tens of seconds each
+    /// while the GL stack warms against the per-frame regenerated textured mesh, a one-time window
+    /// of several minutes that expires on its own — identical draws are sub-second afterwards (and
+    /// on real GPUs throughout). Each test here needs only a handful of frame boundaries, so it
+    /// survives that window, but whichever drawing test runs first would blow the 3-minute default
+    /// budget alone. Nothing about the verified behavior changes.
+    /// </remarks>
+    [Timeout(600000)]
     internal sealed class ParticlesPlaybackTests
     {
         private GameObject _effectGo;
