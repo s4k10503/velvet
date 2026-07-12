@@ -120,7 +120,7 @@ namespace Velvet
                     // layout settles; later camera swaps arrive through the props diff.
                     if (elementNode.Props?.SceneView != null)
                     {
-                        FiberPropApplier.ApplySceneView(element, elementNode.Props.SceneView, _ctx);
+                        _patcher.Appliers.ApplySceneView(element, elementNode.Props.SceneView);
                     }
 
                     if (elementNode.WrapElement != null)
@@ -201,6 +201,12 @@ namespace Velvet
                     _patcher.Appliers.ApplyGestureManipulator(element, motionNode.WhileHoverClass, motionNode.WhileTapClass, motionNode.WhileFocusClass);
                     _patcher.ApplyVariantManipulators(element, appliedClasses);
                     _patcher.ApplyAttributes(element, motionNode.Props);
+                    // SceneView through a Motion host: a Motion can host any element type, so the
+                    // camera-output binding must attach exactly like the plain element path above.
+                    if (motionNode.Props?.SceneView != null)
+                    {
+                        _patcher.Appliers.ApplySceneView(element, motionNode.Props.SceneView);
+                    }
                     StyleFontResolver.ApplyIfPresent(element, appliedClasses);
                     _patcher.ApplyGapManipulator(element, appliedClasses);
                     _patcher.ApplyDivideManipulator(element, appliedClasses);

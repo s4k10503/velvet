@@ -38,10 +38,6 @@ namespace Velvet
         private static readonly Dictionary<string, string[]> s_classNameCache = new();
         internal const int MaxClassNameCacheSize = 256;
 
-        // Warn-once flag for V.SceneView's resolutionScale fallback (a per-render factory would
-        // otherwise spam the console every render for the same bad call site).
-        private static bool s_warnedSceneViewScale;
-
 #if UNITY_EDITOR
         /// <summary>Test-only: drains the cache to isolate cache-bound regression coverage.</summary>
         internal static void ClearClassNameCacheForTesting() => s_classNameCache.Clear();
@@ -52,7 +48,6 @@ namespace Velvet
         private static void ResetStaticFields()
         {
             s_classNameCache.Clear();
-            s_warnedSceneViewScale = false;
         }
 #endif
 
@@ -663,7 +658,7 @@ namespace Velvet
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="resolutionScale">Render-resolution multiplier over the element's laid-out pixel
-        /// size (0.5 renders at half resolution). Must be positive.</param>
+        /// size (0.5 renders at half resolution).</param>
         /// <param name="styles">Inline style overrides applied on top of USS classes.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element (gesture-driven).</param>
@@ -672,6 +667,7 @@ namespace Velvet
         /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
         /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
         /// <returns>The created <see cref="ElementNode"/> representing this scene view.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="resolutionScale"/> is &lt;= 0 or NaN.</exception>
         public static ElementNode SceneView(
             Camera? camera,
             string? className = null,
@@ -686,17 +682,11 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
-            // A non-positive (or NaN) scale could never size a texture; warn once and fall back to
-            // identity so a bad call site renders at native resolution instead of silently showing
-            // nothing. Guarded here at the factory boundary so the binding never sees an invalid scale.
+            // A non-positive (or NaN) scale could never size a texture; fail fast at the call site like
+            // the other factories with numeric preconditions. The negated > comparison catches NaN too.
             if (!(resolutionScale > 0f))
             {
-                if (!s_warnedSceneViewScale)
-                {
-                    s_warnedSceneViewScale = true;
-                    Debug.LogWarning("[Velvet] V.SceneView: resolutionScale must be positive; falling back to 1.");
-                }
-                resolutionScale = 1f;
+                throw new ArgumentOutOfRangeException(nameof(resolutionScale), "ResolutionScale must be greater than 0.");
             }
 
             // Always carried (even with a null camera): the patcher needs the settings on BOTH sides of a

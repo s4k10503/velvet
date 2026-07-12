@@ -167,7 +167,7 @@ namespace Velvet
             string[] appliedOldClasses, string[] appliedNewClasses)
         {
             SyncClassDrivenStyling(element, appliedOldClasses, appliedNewClasses);
-            DiffProps(element, oldNode.Props, newNode.Props, _ctx);
+            DiffProps(element, oldNode.Props, newNode.Props);
             // Track an element's own Text prop as raw so the text-effect pass (run post-children) transforms the
             // current value rather than an already-transformed one. When the Text prop is removed, drop the raw
             // entry so the effect pass does not re-apply a stale value over the just-cleared text.
@@ -899,7 +899,7 @@ namespace Velvet
         // side-table (no direct VisualElement property to set), so PatchBaseElement re-syncs them via
         // ApplyAttributes right after this call (which rebuilds the store unconditionally, so a change is
         // always observed).
-        internal static void DiffProps(VisualElement element, FiberElementProps? oldProps, FiberElementProps? newProps, ReconcilerContext ctx)
+        internal void DiffProps(VisualElement element, FiberElementProps? oldProps, FiberElementProps? newProps)
         {
             oldProps ??= FiberElementProps.Empty;
             newProps ??= FiberElementProps.Empty;
@@ -959,7 +959,7 @@ namespace Velvet
             // RESIZE arrives through the binding's geometry callback instead, never through this diff.
             if (oldProps.SceneView != newProps.SceneView)
             {
-                FiberPropApplier.ApplySceneView(element, newProps.SceneView, ctx);
+                _appliers.ApplySceneView(element, newProps.SceneView);
             }
         }
 
@@ -968,12 +968,16 @@ namespace Velvet
         // individually, so any new property added to StyleOverrides must also receive a matching
         // branch here. Missing the addition causes the new property's diff to be silently ignored
         // without a compile error.
-        internal static void DiffStyles(VisualElement element, StyleOverrides? oldStyles, StyleOverrides? newStyles)
+        internal void DiffStyles(VisualElement element, StyleOverrides? oldStyles, StyleOverrides? newStyles)
         {
             oldStyles ??= StyleOverrides.Empty;
             newStyles ??= StyleOverrides.Empty;
 
-            if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage))
+            // The SceneView driver owns backgroundImage while a binding is live (the camera texture is
+            // shown through it), so a StyleOverrides change must not blank the running feed — a poster
+            // passed through styles shows only until the camera texture arrives.
+            if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage)
+                && !_ctx.SceneViewBindings.ContainsKey(element))
             {
                 element.style.backgroundImage = newStyles.BackgroundImage ?? StyleKeyword.Null;
             }

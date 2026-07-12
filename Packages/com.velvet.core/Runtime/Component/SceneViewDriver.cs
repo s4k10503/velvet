@@ -7,16 +7,14 @@ namespace Velvet
     // Reconciler-side bookkeeping for one SceneView element, keyed in
     // ReconcilerContext.SceneViewBindings by the element itself. Holds the current settings (camera +
     // resolution scale), the framework-owned RenderTexture the camera renders into, the registered
-    // geometry callback (so it can be unregistered on detach), and the effective pixel size the
-    // texture was created at (so a geometry change that does not alter the pixel size skips the
-    // re-create).
+    // geometry callback (so it can be unregistered on detach), and the recurring editor-panel repaint
+    // tick (see SyncRepaintTick) so it can be paused whenever the texture is released.
     internal sealed class SceneViewBinding
     {
         public SceneViewSettings Settings;
         public RenderTexture? Texture;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
-        // Effective pixel size (layout x ResolutionScale, rounded) the current Texture was created at.
-        public (int W, int H) SizeKey;
+        public IVisualElementScheduledItem? RepaintTick;
 
         public SceneViewBinding(SceneViewSettings settings)
         {
@@ -33,6 +31,16 @@ namespace Velvet
     /// </summary>
     internal static class SceneViewDriver
     {
+        // Editor-panel repaint cadence (~60fps), matching the recurring-tick interval the style
+        // animation drivers schedule with.
+        private const long RepaintIntervalMs = 16;
+
+        // The texture ceiling per axis. The sibling texture bakers bound their bake sizes the same
+        // way — an unbounded element (a stretch inside a huge scroll canvas) must not translate into
+        // an unbounded VRAM request. 4096 is comfortably above any sane on-screen element while still
+        // universally supported.
+        private const int MaxTextureSize = 4096;
+
         // Wires the geometry-driven texture sync onto the element and returns the binding. The
         // synchronous sync attempt covers a binding attached to an ALREADY laid-out element (a camera
         // arriving through a patch, where no further geometry event may ever fire); at mount the
@@ -50,7 +58,11 @@ namespace Velvet
         // Applies changed settings to a live binding: a swapped-out camera is released politely first,
         // then the sync re-derives the rest — the surviving texture is re-targeted by the new camera
         // when the pixel size is unchanged, and a camera removed to null releases both ends (the
-        // element stays mounted and inert).
+        // element stays mounted and inert). NB the props diff gating this call compares the settings
+        // RECORDS (value equality) while the camera fields here compare through Unity's overloaded ==;
+        // the two disagree when one side is a DESTROYED camera and the other is literal null (distinct
+        // record values, both "null" to Unity). Correctness therefore never rides on the record
+        // verdict alone: SyncTexture re-derives everything from its own camera == null check.
         public static void Update(VisualElement element, SceneViewBinding binding, SceneViewSettings settings)
         {
             var previousCamera = binding.Settings.Camera;
@@ -76,36 +88,38 @@ namespace Velvet
         // point shared by attach, patch, and every geometry change. No camera, or no renderable size
         // (pre-layout NaN, a zero-sized rect, a detached element), releases any existing output;
         // otherwise the texture is re-created only when the effective pixel size actually changed
-        // (the size-keyed skip), and an unchanged-size texture is simply re-targeted (where a camera
-        // swap lands).
+        // (keyed on the live texture's own dimensions), and an unchanged-size texture is simply
+        // re-targeted (where a camera swap lands).
         private static void SyncTexture(VisualElement element, SceneViewBinding binding)
         {
             var camera = binding.Settings.Camera;
-            if (camera == null)
-            {
-                ReleaseOutput(element, binding);
-                return;
-            }
-
             var w = element.layout.width;
             var h = element.layout.height;
-            if (w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h) || element.panel == null)
+            if (camera == null || w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h) || element.panel == null)
             {
                 ReleaseOutput(element, binding);
                 return;
             }
 
-            // The clamp keeps a sub-pixel laid-out rect (a fractional size times a small scale) from
-            // rounding to a zero-dimension texture, which RenderTexture creation rejects.
-            var scale = binding.Settings.ResolutionScale;
-            var pw = Mathf.Max(1, Mathf.RoundToInt(w * scale));
-            var ph = Mathf.Max(1, Mathf.RoundToInt(h * scale));
-            if (binding.Texture != null && binding.SizeKey == (pw, ph))
+            // Size in device pixels: layout points times the resolution scale times the panel's pixel
+            // density, so a scaled panel (HiDPI editor, runtime panel scaling) gets pixel-sharp output.
+            // The floor keeps a sub-pixel rect from rounding to a zero-dimension texture (which
+            // RenderTexture creation rejects); the ceiling bounds the VRAM request like the sibling
+            // texture bakers bound theirs.
+            var pixelScale = binding.Settings.ResolutionScale * element.scaledPixelsPerPoint;
+            var pw = Mathf.Clamp(Mathf.RoundToInt(w * pixelScale), 1, MaxTextureSize);
+            var ph = Mathf.Clamp(Mathf.RoundToInt(h * pixelScale), 1, MaxTextureSize);
+            if (binding.Texture != null && binding.Texture.width == pw && binding.Texture.height == ph)
             {
                 if (camera.targetTexture != binding.Texture)
                 {
                     camera.targetTexture = binding.Texture;
+                    // The texture object shown by the background is unchanged, so nothing else marks
+                    // the element dirty on a bare camera swap — without this a dirty-on-demand panel
+                    // would keep showing the old camera's last frame.
+                    element.MarkDirtyRepaint();
                 }
+                SyncRepaintTick(element, binding);
                 return;
             }
 
@@ -114,7 +128,6 @@ namespace Velvet
             var previous = binding.Texture;
             var texture = new RenderTexture(pw, ph, 24);
             binding.Texture = texture;
-            binding.SizeKey = (pw, ph);
             camera.targetTexture = texture;
             element.style.backgroundImage = Background.FromRenderTexture(texture);
             element.MarkDirtyRepaint();
@@ -123,12 +136,39 @@ namespace Velvet
                 previous.Release();
                 VelvetObjectUtil.Destroy(previous);
             }
+            SyncRepaintTick(element, binding);
+        }
+
+        // An Editor-context panel repaints only when something marks it dirty, so a live camera feed
+        // would freeze on its first frame there (nothing in UI Toolkit knows the sampled texture's
+        // CONTENTS changed). Drive a recurring repaint while a texture is live on an editor panel;
+        // runtime panels render every frame already and get no tick. The scheduled item fires only
+        // when the panel ticks its scheduler, so a headless (batch) editor panel schedules it inertly.
+        // Paused whenever the texture is released or the binding detaches.
+        private static void SyncRepaintTick(VisualElement element, SceneViewBinding binding)
+        {
+            var wantTick = binding.Texture != null && element.panel?.contextType == ContextType.Editor;
+            if (wantTick && binding.RepaintTick == null)
+            {
+                binding.RepaintTick = element.schedule.Execute(element.MarkDirtyRepaint).Every(RepaintIntervalMs);
+            }
+            else if (!wantTick)
+            {
+                StopRepaintTick(binding);
+            }
+        }
+
+        private static void StopRepaintTick(SceneViewBinding binding)
+        {
+            binding.RepaintTick?.Pause();
+            binding.RepaintTick = null;
         }
 
         // Releases both ends of the output pair: politely untargets the camera, destroys the texture,
         // and clears the background image so no dead-texture reference survives on the element.
         private static void ReleaseOutput(VisualElement element, SceneViewBinding binding)
         {
+            StopRepaintTick(binding);
             ReleaseCameraTarget(binding.Settings.Camera, binding.Texture);
             if (binding.Texture == null)
             {
@@ -137,7 +177,6 @@ namespace Velvet
             binding.Texture.Release();
             VelvetObjectUtil.Destroy(binding.Texture);
             binding.Texture = null;
-            binding.SizeKey = default;
             element.style.backgroundImage = StyleKeyword.Null;
             element.MarkDirtyRepaint();
         }
