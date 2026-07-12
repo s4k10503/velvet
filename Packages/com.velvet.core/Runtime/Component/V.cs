@@ -712,6 +712,73 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Creates a Particles element that simulates <paramref name="effect"/> in a hidden,
+        /// framework-owned host and draws the live particles as textured quads inside the element —
+        /// no camera, no world-space canvas, no render-pipeline coupling. The simulation host is
+        /// instantiated on mount (its renderer disabled; only the simulation is consumed), destroyed
+        /// on unmount, and recreated when <paramref name="effect"/> changes.
+        /// </summary>
+        /// <param name="effect">The source ParticleSystem (typically a prefab reference) to simulate.
+        /// Null mounts an inert element until an effect is supplied. Local simulation space only.</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="playOn">When the effect starts: on mount (default) or never (manual control).</param>
+        /// <param name="pixelsPerUnit">World-unit → element-pixel mapping for particle positions and
+        /// sizes, centered on the element. Must be positive.</param>
+        /// <param name="styles">Inline style overrides applied on top of USS classes.</param>
+        /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element (gesture-driven).</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element (gesture-driven).</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <returns>The created <see cref="ElementNode"/> representing this particles element.</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when <paramref name="pixelsPerUnit"/> is not positive.</exception>
+        public static ElementNode Particles(
+            ParticleSystem? effect,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            PlayTrigger playOn = PlayTrigger.Mount,
+            float pixelsPerUnit = 100f,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
+        {
+            if (!(pixelsPerUnit > 0f))
+            {
+                throw new ArgumentOutOfRangeException(nameof(pixelsPerUnit),
+                    "pixelsPerUnit must be positive; it maps particle world units to element pixels.");
+            }
+
+            // Always carried (even with a null effect): the patcher needs the settings on BOTH sides of
+            // a diff to see an effect arriving or leaving as a settings change.
+            var props = VNodePool.RentProps();
+            props.Particles = new ParticlesSettings(effect, playOn, pixelsPerUnit);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(ParticlesElement),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = WithAttributes(props, data, aria),
+                Styles = styles,
+                Children = EmptyChildren,
+                Events = EmptyEvents,
+                RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        /// <summary>
         /// Creates a DropdownField.
         /// </summary>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>

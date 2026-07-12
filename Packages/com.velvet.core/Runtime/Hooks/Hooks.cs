@@ -899,6 +899,27 @@ namespace Velvet
 
         #endregion
 
+        #region UseFrame
+
+        /// <summary>
+        /// Per-frame callback: <paramref name="onFrame"/> runs once per frame with the elapsed time in
+        /// seconds while the component stays mounted, and stops on unmount. The latest render's closure
+        /// is always the one invoked — a re-render swaps the callback without re-subscribing — so
+        /// per-frame data flows without touching component state (the escape hatch for
+        /// simulation-driven visuals; setting state per frame would re-render the world every tick).
+        /// Frames tick while the component's host is attached to a panel and pause while it is not.
+        /// </summary>
+        /// <param name="onFrame">Invoked once per frame with the elapsed time in seconds (always positive).</param>
+        public static void UseFrame(Action<float> onFrame)
+        {
+            if (onFrame == null) throw new ArgumentNullException(nameof(onFrame));
+            _ = Resolve("UseFrame");
+            var latest = UseRef<Action<float>>();
+            latest.Set(onFrame);
+        }
+
+        #endregion
+
         #region Refs
 
         /// <summary>
