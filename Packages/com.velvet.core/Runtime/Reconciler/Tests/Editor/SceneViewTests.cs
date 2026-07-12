@@ -135,10 +135,12 @@ namespace Velvet.Tests
             // Act
             MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]", name: "sv"));
 
-            // Assert — the element displays the exact texture the camera renders into.
+            // Assert — the element displays the exact texture the camera renders into. Read through
+            // resolvedStyle: this editor's INLINE backgroundImage getter reconstructs the value without a
+            // RenderTexture case (a stored RT reads back as Null), while the computed style round-trips it.
             Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera received a texture");
             var el = _host.Root.Q<VisualElement>("sv");
-            Assert.That(el.style.backgroundImage.value.renderTexture, Is.SameAs(cam.targetTexture));
+            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.SameAs(cam.targetTexture));
         }
 
         [Test]
@@ -147,9 +149,10 @@ namespace Velvet.Tests
             // Act — no camera yet: the element is an empty box until one is supplied.
             MountAndLayout(V.SceneView(null, className: "w-[128px] h-[64px]", name: "sv"));
 
-            // Assert
+            // Assert — read through resolvedStyle (the inline getter cannot round-trip a RenderTexture,
+            // so it would pass vacuously here even if a texture had leaked in).
             var el = _host.Root.Q<VisualElement>("sv");
-            Assert.That(el.style.backgroundImage.value.renderTexture, Is.Null);
+            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.Null);
         }
 
         [Test]
