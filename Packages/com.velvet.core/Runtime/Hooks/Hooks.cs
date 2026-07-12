@@ -913,9 +913,38 @@ namespace Velvet
         public static void UseFrame(Action<float> onFrame)
         {
             if (onFrame == null) throw new ArgumentNullException(nameof(onFrame));
-            _ = Resolve("UseFrame");
+            var fiber = Resolve("UseFrame");
+            // Every render overwrites the ref slot, and the tick below reads through it — that is what
+            // swaps in the latest closure without re-subscribing (the effect's empty deps never re-run).
             var latest = UseRef<Action<float>>();
             latest.Set(onFrame);
+
+            UseEffect(() =>
+            {
+                // Resolved inside the effect factory: MountPoint is unset while rendering and assigned
+                // by commit time, and this passive effect runs after the commit has painted.
+                var host = fiber.MountPoint;
+                if (host == null)
+                {
+                    return (Action)(() => { });
+                }
+                var tick = host.schedule.Execute((UnityEngine.UIElements.TimerState ts) =>
+                {
+                    // TimerState.start is the previous callback's time for a repeating item (or the
+                    // schedule time for the first firing), so deltaTime is already exactly the elapsed
+                    // interval — no separate "last tick" bookkeeping. A zero delta (same-frame flush)
+                    // is skipped so the callback only ever observes positive, frame-sized seconds.
+                    var dt = ts.deltaTime / 1000f;
+                    if (dt <= 0f)
+                    {
+                        return;
+                    }
+                    latest.Current?.Invoke(dt);
+                }).Every(16);
+                // Scheduled items only fire while the host is attached to a panel, so detach/reattach
+                // pausing needs no extra wiring; unmount pauses the recurrence for good.
+                return () => tick.Pause();
+            }, Array.Empty<object>());
         }
 
         #endregion
