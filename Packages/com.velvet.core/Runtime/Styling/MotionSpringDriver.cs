@@ -49,9 +49,6 @@ namespace Velvet
         // StyleAnimationScheduler.CancelPending) clears it to null — a reversal settling is not "finishing"
         // anything the original caller asked for.
         public System.Action? OnSettled;
-
-        public bool HasAnyChannel => Opacity != null || TranslateX != null || TranslateY != null
-            || Scale != null || Rotate != null;
     }
 
     /// <summary>
@@ -132,46 +129,37 @@ namespace Velvet
             {
                 var c = state.Opacity;
                 c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
-                element.style.opacity = c.Integrator.Value;
                 settled &= c.Integrator.IsSettled(c.Target, NormalizedRestDelta, NormalizedRestSpeed);
             }
-
-            if (state.TranslateX != null || state.TranslateY != null)
+            if (state.TranslateX != null)
             {
-                if (state.TranslateX != null)
-                {
-                    var c = state.TranslateX;
-                    c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
-                    settled &= c.Integrator.IsSettled(c.Target, PixelRestDelta, PixelRestSpeed);
-                }
-                if (state.TranslateY != null)
-                {
-                    var c = state.TranslateY;
-                    c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
-                    settled &= c.Integrator.IsSettled(c.Target, PixelRestDelta, PixelRestSpeed);
-                }
-                element.style.translate = new Translate(
-                    new Length(state.TranslateX?.Integrator.Value ?? 0f),
-                    new Length(state.TranslateY?.Integrator.Value ?? 0f));
+                var c = state.TranslateX;
+                c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
+                settled &= c.Integrator.IsSettled(c.Target, PixelRestDelta, PixelRestSpeed);
             }
-
+            if (state.TranslateY != null)
+            {
+                var c = state.TranslateY;
+                c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
+                settled &= c.Integrator.IsSettled(c.Target, PixelRestDelta, PixelRestSpeed);
+            }
             if (state.Scale != null)
             {
                 var c = state.Scale;
                 c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
-                var v = c.Integrator.Value;
-                element.style.scale = new Scale(new Vector2(v, v));
                 settled &= c.Integrator.IsSettled(c.Target, NormalizedRestDelta, NormalizedRestSpeed);
             }
-
             if (state.Rotate != null)
             {
                 var c = state.Rotate;
                 c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
-                element.style.rotate = new Rotate(Angle.Degrees(c.Integrator.Value));
                 settled &= c.Integrator.IsSettled(c.Target, DegreeRestDelta, DegreeRestSpeed);
             }
 
+            // Every channel's Integrator.Value was just advanced above; re-applying them is exactly what
+            // ApplyCurrentValues already does for the initial (pre-tick) write, so the four style writes live
+            // in exactly one place instead of being duplicated here.
+            ApplyCurrentValues(element, state);
             return settled;
         }
 
@@ -190,13 +178,23 @@ namespace Velvet
         /// <see cref="SpringIntegrator"/> instance is untouched, so its current value/velocity carry over
         /// unbroken; only the goal it steps toward next changes.
         /// </summary>
-        public static void Retarget(MotionSpringState state)
+        public static void Retarget(MotionSpringState state) => ForEachActiveChannel(state, static c => c.Target = c.RestingTarget);
+
+        /// <summary>
+        /// Runs <paramref name="action"/> against whichever of the five optional channels on <paramref
+        /// name="state"/> are active (non-null) — the single place that walks the fixed channel set for the
+        /// callers (like <see cref="Retarget"/>) whose per-channel action does not otherwise depend on WHICH
+        /// channel it is. Not used by <see cref="ApplyCurrentValues"/> / <see cref="Step"/> (each element.style
+        /// write is channel-specific, and translate x/y compose onto one shared inline style) or
+        /// <see cref="ClearInlineOverrides"/> (same translate composition), which stay hand-written.
+        /// </summary>
+        private static void ForEachActiveChannel(MotionSpringState state, System.Action<SpringChannel> action)
         {
-            if (state.Opacity != null) state.Opacity.Target = state.Opacity.RestingTarget;
-            if (state.TranslateX != null) state.TranslateX.Target = state.TranslateX.RestingTarget;
-            if (state.TranslateY != null) state.TranslateY.Target = state.TranslateY.RestingTarget;
-            if (state.Scale != null) state.Scale.Target = state.Scale.RestingTarget;
-            if (state.Rotate != null) state.Rotate.Target = state.Rotate.RestingTarget;
+            if (state.Opacity != null) action(state.Opacity);
+            if (state.TranslateX != null) action(state.TranslateX);
+            if (state.TranslateY != null) action(state.TranslateY);
+            if (state.Scale != null) action(state.Scale);
+            if (state.Rotate != null) action(state.Rotate);
         }
     }
 }
