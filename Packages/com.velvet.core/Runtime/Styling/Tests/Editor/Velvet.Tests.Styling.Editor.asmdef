@@ -6,7 +6,9 @@
         "UnityEditor.TestRunner",
         "Velvet",
         "Velvet.TestUtilities",
-        "UniTask"
+        "UniTask",
+        "Unity.UI.TestFramework.Runtime",
+        "Unity.UI.TestFramework.Editor"
     ],
     "includePlatforms": [
         "Editor"

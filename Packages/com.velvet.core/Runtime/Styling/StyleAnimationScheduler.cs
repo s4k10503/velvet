@@ -396,7 +396,13 @@ namespace Velvet
             float delaySec, float stiffness, float damping, float mass, Action? onComplete, float additionalDelaySec,
             Dictionary<VisualElement, PendingAnimation> map, string[]? restingClasses, bool isExit)
         {
-            var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses);
+            // Read BEFORE the class swap below lands: the element's own current inline translate is whatever
+            // its UNRELATED (non-swapped) classes rested it at — e.g. a base translate-y-8 alongside a
+            // variant pair that only touches translate-x. Used as the resting value for a translate axis the
+            // swap names on neither side (see Resolve's own doc).
+            var restingTranslate = element.style.translate.value;
+            var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
+                restingTranslate.x.value, restingTranslate.y.value);
             // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
             // below: no state is built, so the shared "land the classes, complete immediately" branch handles
             // it without a separate code path.
@@ -430,6 +436,16 @@ namespace Velvet
                 AnimatingElement = element,
                 Spring = state,
             };
+            // Co-fade drop-shadows with the spring exactly like the tween paths (PlayEnterInternal / PlayExit):
+            // register this play as a shadow driver at the from-value NOW (synchronously, before the spring
+            // ever ticks) so there is no first-frame flash, then the recurring tick — started alongside the
+            // spring's own tick in StartSpringTick — samples the caster's opacity each frame so descendant
+            // shadows track it exactly as they do a tween. isExit selects the same start value PlayExit uses (1
+            // = opaque, the resting state before fading out); a standalone enter always starts invisible (0),
+            // mirroring PlayEnterInternal — matching those hardcoded values (rather than reading the spring's
+            // own opacity channel, which may not even exist for a translate/scale/rotate-only play) keeps a
+            // spring's shadow behavior identical to a tween's for the same enter/exit direction.
+            pending.Shadows = CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
             state.OnSettled = onComplete;
             map[element] = pending;
             pending.OwningMap = map;
@@ -506,6 +522,11 @@ namespace Velvet
                 return;
             }
 
+            // The spring's own physics tick is now live — start sampling the caster's opacity each frame
+            // (StartShadowCoFadeTick) so co-faded descendant shadows track it exactly like a tween's, from the
+            // same moment its CSS transition would have started firing.
+            StartShadowCoFadeTick(pending);
+
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
                 // TimerState.start is the previous callback's time for a repeating item (or the schedule time
@@ -530,10 +551,36 @@ namespace Velvet
                 {
                     pending.OwningMap.Remove(element);
                 }
-                EndShadowCoFade(pending); // No-op: a spring-driven entry never registers a shadow co-fade driver.
+                // Target is at rest now — stop the co-fade and restore the shadows to full strength (a no-op
+                // when this subtree carries none, the common case).
+                EndShadowCoFade(pending);
                 MotionSpringDriver.ClearInlineOverrides(element, state);
+                ReapplySpringOwnedInlineValues(element);
                 state.OnSettled?.Invoke();
             }).Every(SpringTickMs);
+        }
+
+        // MotionSpringDriver.ClearInlineOverrides nulls whichever style slots the spring wrote (opacity /
+        // translate / scale / rotate), letting the cascade take back over — but a class the element still
+        // carries can OWN one of those same slots as a resolver-applied inline value with no USS rule behind
+        // it at all (translate-x-4, translate-x-[100px], opacity-[.5] — see MotionSpringClassParser's own scope
+        // note: translate has no USS form whatsoever), so clearing the slot loses that value instead of letting
+        // it fall back to a cascade rule that does not exist. DiffClassList only re-applies such a value when a
+        // class REMOVAL triggers it; nothing removes a class here (the swap already landed its classes back
+        // when the spring started), so nobody else re-asserts it. Re-read the element's OWN current class list
+        // and re-apply whatever inline-resolved values it still names, mirroring
+        // FiberWrapperElementAppliers.RestoreSharedInlineSlot's identical problem for the animate-* motions.
+        private static void ReapplySpringOwnedInlineValues(VisualElement element)
+        {
+            List<string>? classes = null;
+            foreach (var cls in element.GetClasses())
+            {
+                (classes ??= new List<string>()).Add(cls);
+            }
+            if (classes != null)
+            {
+                FiberNodePatcher.ReapplyArbitraryValues(element, classes.ToArray());
+            }
         }
 
         // Cancels the exit animation on the given element and removes the applied CSS classes; the
@@ -852,6 +899,7 @@ namespace Velvet
                         spring.Tick?.Pause();
                         spring.Tick = null;
                         MotionSpringDriver.ClearInlineOverrides(element, spring);
+                        ReapplySpringOwnedInlineValues(element);
                     }
                     return;
                 }
@@ -951,6 +999,7 @@ namespace Velvet
                     // a spring entry, which never touches transition-* styles or rents a TimeValue list).
                     pending.Spring.Tick?.Pause();
                     MotionSpringDriver.ClearInlineOverrides(element, pending.Spring);
+                    ReapplySpringOwnedInlineValues(element);
                 }
                 ClearTransitionStyles(element);
                 ReturnDurationList(pending.DurationList);

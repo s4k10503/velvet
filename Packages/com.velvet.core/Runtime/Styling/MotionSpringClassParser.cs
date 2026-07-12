@@ -150,9 +150,14 @@ namespace Velvet
         /// scale 1, rotate 0deg) — the common "declare only what changes" authoring style (e.g. a `visible`
         /// variant that only sets `opacity-100` and relies on the default scale/rotate/position). A resting
         /// baseline set by some OTHER, unrelated class on the element is not accounted for (undocumented — see
-        /// the type doc's scope note).
+        /// the type doc's scope note), EXCEPT for translate: since translate x/y always compose onto one inline
+        /// style (see below), naming only one axis still forces a channel for the other, and <paramref
+        /// name="restingTranslateX"/> / <paramref name="restingTranslateY"/> — the element's own current inline
+        /// translate, read by the caller before the swap lands — let that forced channel sit at wherever the
+        /// element's OWN (unrelated) classes already put it instead of snapping it to identity.
         /// </summary>
-        internal static SpringPlan Resolve(string[]? fromClasses, string[]? toClasses)
+        internal static SpringPlan Resolve(string[]? fromClasses, string[]? toClasses,
+            float restingTranslateX = 0f, float restingTranslateY = 0f)
         {
             float? fromOpacity = null, toOpacity = null;
             float? fromX = null, toX = null;
@@ -172,9 +177,15 @@ namespace Velvet
             {
                 // Translate x/y are independent springs but always compose onto ONE inline `translate`
                 // (UI Toolkit has no separate translateX/translateY style), so once either axis is in scope the
-                // other gets a channel too, pinned at its own identity (0) if it was never named.
-                plan.TranslateX = (fromX ?? 0f, toX ?? 0f);
-                plan.TranslateY = (fromY ?? 0f, toY ?? 0f);
+                // other gets a channel too. An axis actually named by either side still falls back to identity
+                // on its own un-naming side (the "declare only what changes" rule above); an axis named by
+                // NEITHER side — forced into the plan only because its sibling needed one — pins at the
+                // element's own resting value instead, so a base translate-y-* class the swap never touches
+                // does not get stomped to 0 for the swap's duration.
+                var xNamed = fromX.HasValue || toX.HasValue;
+                plan.TranslateX = xNamed ? (fromX ?? 0f, toX ?? 0f) : (restingTranslateX, restingTranslateX);
+                var yNamed = fromY.HasValue || toY.HasValue;
+                plan.TranslateY = yNamed ? (fromY ?? 0f, toY ?? 0f) : (restingTranslateY, restingTranslateY);
             }
             if (fromScale.HasValue || toScale.HasValue)
             {
