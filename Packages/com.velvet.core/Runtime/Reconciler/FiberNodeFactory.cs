@@ -248,15 +248,35 @@ namespace Velvet
                     // recorded against that resting state, so PlayVariantEnter's synchronous strip-to-`initial` is
                     // purely a transient visual state: a later patch (PatchMotion) always diffs against the
                     // resting baseline and never replays this entrance.
-                    if (_ctx.PresenceExpansionDepth == 0 && motionNode.Initial != null && motionNode.Transition != null
-                        && GeneralPathReconciler.TryResolveVariantInitial(
-                            motionNode, out var standaloneFromClasses, out var standaloneToClasses))
+                    // Gated on IDENTITY, not PresenceExpansionDepth: the presence expansion drives an enter for
+                    // only its ONE resolved anchor Motion (PresenceAnchorMotion, set by GeneralPathReconciler
+                    // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly) — every
+                    // OTHER Motion created while that expansion is on the stack (nested deeper, sitting under a
+                    // non-anchor wrapper — e.g. a plain Div — or simply a sibling keyed child) is not presence-
+                    // managed at all and must keep this mount enter, or wrapping unrelated content in
+                    // AnimatePresence would silently disable it.
+                    if (!ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion) && motionNode.Initial != null)
                     {
-                        var t = motionNode.Transition;
-                        _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
-                            t.DurationSec, t.Easing, t.DelaySec, motionNode.OnEnterComplete,
-                            propertyOverrides: t.PropertyOverrides,
-                            type: t.Type, stiffness: t.Stiffness, damping: t.Damping, mass: t.Mass);
+                        if (motionNode.Transition != null && GeneralPathReconciler.TryResolveVariantInitial(
+                                motionNode, out var standaloneFromClasses, out var standaloneToClasses))
+                        {
+                            var t = motionNode.Transition;
+                            _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
+                                t.DurationSec, t.Easing, t.DelaySec, motionNode.OnEnterComplete,
+                                propertyOverrides: t.PropertyOverrides,
+                                type: t.Type, stiffness: t.Stiffness, damping: t.Damping, mass: t.Mass);
+                        }
+                        else
+                        {
+                            // Initial declared but unresolvable: no own Animate (an inherited-label
+                            // configuration is not yet driven by the standalone enter), or the label is missing
+                            // from Variants / maps to an empty class. Warn instead of silently mounting inert,
+                            // matching the Exit gate's own inert-configuration diagnostic above.
+                            FiberLogger.LogWarning("Motion",
+                                "initial is set but has no resolvable enter: this Motion needs its own animate + "
+                                + "variants (with initial mapping to a non-empty class) for a standalone mount "
+                                + "enter. An inherited animate label does not yet drive one.");
+                        }
                     }
                     return element;
                 }

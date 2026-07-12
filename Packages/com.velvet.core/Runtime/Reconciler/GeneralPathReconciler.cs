@@ -957,7 +957,8 @@ namespace Velvet
                 {
                     foreach (var (key, node) in oldState.Committed)
                     {
-                        EmitPresenceChild(node, key, presenceKey, result, isNewSide: false, parent, slotStart,
+                        EmitPresenceChildAsAnchor(node, FiberNodeFactory.FindFirstMotionDescendant(node),
+                            key, presenceKey, result, isNewSide: false, parent, slotStart,
                             oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
                     }
                 }
@@ -1078,7 +1079,8 @@ namespace Velvet
                             continue;
                         }
 
-                        var ghostAnchor = EmitPresenceChild(node, key, presenceKey, result, isNewSide: true, parent, slotStart,
+                        var ghostAnchor = EmitPresenceChildAsAnchor(node, ghostMotionNode, key, presenceKey, result,
+                            isNewSide: true, parent, slotStart,
                             oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
 
                         // Track the live ghost anchor so the drop path (exit complete) can dispose the subtree
@@ -1166,8 +1168,15 @@ namespace Velvet
                         continue;
                     }
 
-                    var anchor = EmitPresenceChild(node, key, presenceKey, result, isNewSide: true, parent, slotStart,
-                        oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
+                    // Resolved BEFORE emission (not just once): shared by the PopLayout restore below (it needs
+                    // the re-added node's OWN class list, not the ghost's pre-pin one), the enter dispatch
+                    // further down, and — via EmitPresenceChildAsAnchor — FiberNodeFactory's standalone-enter
+                    // gate, so CreateElement can tell this SAME node (which the dispatch below is about to
+                    // explicitly animate) apart from every OTHER Motion the emission below might create.
+                    var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
+                    var anchor = EmitPresenceChildAsAnchor(node, motion, key, presenceKey, result, isNewSide: true,
+                        parent, slotStart, oldFibers, newFibers, providers, oldProvidersForPairing,
+                        ref newProviderIndex, commit);
 
                     if (commit != null && anchor != null)
                     {
@@ -1187,10 +1196,6 @@ namespace Velvet
                         {
                             state.ExitAnchors.Remove(key!);
                         }
-                        // Resolved once and shared by the PopLayout restore below (it needs the re-added
-                        // node's OWN class list, not the ghost's pre-pin one) and the enter dispatch further
-                        // down, which already read the same descendant on every render before this change.
-                        var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
                         if (wasExiting)
                         {
                             _ctx.StyleAnimationScheduler.CancelExit(anchor);
@@ -1445,6 +1450,45 @@ namespace Velvet
                 return commit.NewElements[startIdx].element;
             }
             return null;
+        }
+
+        // Wraps EmitPresenceChild with ReconcilerContext.PresenceAnchorMotion bookkeeping: anchorMotion is
+        // whichever MotionNode this keyed child's enter/exit is dispatched against (this method's caller's own
+        // FindFirstMotionDescendant resolution — null when the child has none, e.g. a plain Div wrapper), and
+        // recording it for the exact dynamic extent of the expansion below lets FiberNodeFactory.CreateElement
+        // tell that ONE node apart from every OTHER Motion the expansion creates (nested deeper, sitting under
+        // a non-anchor wrapper, or a later sibling keyed child) — only the anchor must skip its own standalone
+        // enter (this class already plays it explicitly), everything else keeps its normal mount behavior.
+        // Saved and RESTORED (not just cleared) around the call so a nested AnimatePresence inside this keyed
+        // child's own subtree — which sets its own anchor for ITS keyed children — does not leave the outer
+        // anchor cleared once its own expansion returns and this child's subtree keeps unwinding.
+        private VisualElement? EmitPresenceChildAsAnchor(
+            VNode? node,
+            MotionNode? anchorMotion,
+            string? key,
+            string? presenceScope,
+            List<VNode>? result,
+            bool isNewSide,
+            VisualElement? parent,
+            int slotStart,
+            List<ComponentFiber> oldFibers,
+            HashSet<ComponentFiber> newFibers,
+            List<ContextProviderNode>? providers,
+            List<ContextProviderNode>? oldProvidersForPairing,
+            ref int newProviderIndex,
+            GeneralCommitState? commit)
+        {
+            var previousAnchor = _ctx.PresenceAnchorMotion;
+            _ctx.PresenceAnchorMotion = anchorMotion;
+            try
+            {
+                return EmitPresenceChild(node, key, presenceScope, result, isNewSide, parent, slotStart,
+                    oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
+            }
+            finally
+            {
+                _ctx.PresenceAnchorMotion = previousAnchor;
+            }
         }
 
         // Resolves the from/to class arrays for an `initial` variant enter: fromClasses =
