@@ -446,6 +446,13 @@ namespace Velvet
                 SceneViewDriver.Detach(element, binding);
             }
             _ctx.SceneViewBindings.Clear();
+            // Particles bindings own a live GameObject (the hidden simulation host): destroy each so a
+            // still-mounted particles element at root disposal leaves no orphaned system simulating.
+            foreach (var (element, binding) in _ctx.ParticlesBindings)
+            {
+                ParticlesDriver.Detach(element, binding);
+            }
+            _ctx.ParticlesBindings.Clear();
             foreach (var (element, manipulator) in _ctx.GestureManipulators)
             {
                 element.RemoveManipulator(manipulator);

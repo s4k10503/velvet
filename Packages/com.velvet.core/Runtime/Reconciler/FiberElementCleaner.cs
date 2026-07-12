@@ -303,6 +303,13 @@ namespace Velvet
                 SceneViewDriver.Detach(element, sceneViewBinding);
                 _ctx.SceneViewBindings.Remove(element);
             }
+            if (_ctx.ParticlesBindings.TryGetValue(element, out var particlesBinding))
+            {
+                // Unhook the particle painter, pause the repaint tick, and destroy the hidden simulation
+                // host so no orphaned GameObject keeps simulating after the element leaves.
+                ParticlesDriver.Detach(element, particlesBinding);
+                _ctx.ParticlesBindings.Remove(element);
+            }
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
             {
                 virtualListController.Dispose();

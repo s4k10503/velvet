@@ -961,6 +961,14 @@ namespace Velvet
             {
                 _appliers.ApplySceneView(element, newProps.SceneView);
             }
+
+            // Record (value) equality, like SceneView above: only an effect swap / removal (or a
+            // trigger / pixel-scale change) lands here — a re-render carrying identical settings in a
+            // fresh record is not a change.
+            if (oldProps.Particles != newProps.Particles)
+            {
+                _appliers.ApplyParticles(element, newProps.Particles);
+            }
         }
 
         // Applies the StyleOverrides diff to element.style.
