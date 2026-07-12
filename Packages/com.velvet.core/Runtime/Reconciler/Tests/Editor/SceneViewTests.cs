@@ -146,13 +146,40 @@ namespace Velvet.Tests
         [Test]
         public void Given_ANullCamera_When_Mounted_Then_TheElementMountsInert()
         {
-            // Act — no camera yet: the element is an empty box until one is supplied.
+            // Arrange & Act — no camera yet: the element is an empty box until one is supplied.
             MountAndLayout(V.SceneView(null, className: "w-[128px] h-[64px]", name: "sv"));
 
             // Assert — read through resolvedStyle (the inline getter cannot round-trip a RenderTexture,
             // so it would pass vacuously here even if a texture had leaked in).
             var el = _host.Root.Q<VisualElement>("sv");
             Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.Null);
+        }
+
+        [Test]
+        public void Given_ASceneViewMountedThroughAMotion_When_LayoutResolves_Then_TheCameraTargetsAFrameworkTexture()
+        {
+            // Arrange — a Motion node can host any element type; a SceneView mounted through one must
+            // bind its camera exactly like the plain element path.
+            var cam = CreateCamera("cam");
+            var props = new FiberElementProps { SceneView = new SceneViewSettings(cam) };
+
+            // Act
+            MountAndLayout(V.Motion(elementType: typeof(SceneViewElement), props: props,
+                className: "w-[128px] h-[64px]"));
+
+            // Assert
+            Assert.That(cam.targetTexture, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_AnInvalidResolutionScale_When_TheFactoryRuns_Then_ItThrows()
+        {
+            // Arrange
+            var cam = CreateCamera("cam");
+
+            // Act & Assert — an invalid required numeric factory argument fails fast at the call site,
+            // like the other factories with numeric preconditions, instead of silently rendering at 1x.
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => V.SceneView(cam, resolutionScale: 0f));
         }
 
         [Test]
@@ -252,9 +279,68 @@ namespace Velvet.Tests
             Assert.That((s_camera.targetTexture == null, rt == null), Is.EqualTo((true, true)));
         }
 
+        [Component]
+        private static VNode StylesFlipHost()
+        {
+            var (cleared, setCleared) = Hooks.UseState(false);
+            s_setFlag = setCleared;
+            return V.SceneView(s_camera, className: "w-[128px] h-[64px]", name: "sv",
+                styles: cleared ? null : new StyleOverrides { BackgroundImage = new StyleBackground(s_poster) });
+        }
+
+        private static Texture2D s_poster;
+
+        [Test]
+        public void Given_AStyleOverrideBackgroundChange_When_Repatched_Then_TheLiveCameraTextureSurvives()
+        {
+            // Arrange — a poster placeholder passed through styles, cleared on a later render. The style
+            // diff must not blank the camera output the driver owns on the same property.
+            s_camera = CreateCamera("cam");
+            s_poster = new Texture2D(4, 4);
+            _spawned.Add(s_poster);
+            MountAndLayout(V.Component(StylesFlipHost, key: "root"));
+            Assume.That(s_camera.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert
+            var el = _host.Root.Q<VisualElement>("sv");
+            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.SameAs(s_camera.targetTexture));
+        }
+
         #endregion
 
         #region Teardown
+
+        [Component]
+        private static VNode TypeSwapHost()
+        {
+            var (swapped, setSwapped) = Hooks.UseState(false);
+            s_setFlag = setSwapped;
+            return swapped
+                ? V.Div(key: "x", className: "w-[128px] h-[64px]")
+                : V.SceneView(s_camera, key: "x", className: "w-[128px] h-[64px]");
+        }
+
+        [Test]
+        public void Given_ASameKeyTypeSwap_When_TheSceneViewBecomesADiv_Then_TeardownRuns()
+        {
+            // Arrange — a same-key element-type change remounts (never patches across types), and the
+            // outgoing SceneView must release its camera and texture through that path too.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(TypeSwapHost, key: "root"));
+            var rt = s_camera.targetTexture;
+            Assume.That(rt, Is.Not.Null, "Precondition: the camera targets the texture");
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert
+            Assert.That((s_camera.targetTexture == null, rt == null), Is.EqualTo((true, true)));
+        }
 
         [Test]
         public void Given_AnUnmount_When_TheTreeDisposes_Then_TheCameraAndTextureAreReleased()
