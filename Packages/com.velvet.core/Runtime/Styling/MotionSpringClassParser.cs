@@ -61,27 +61,12 @@ namespace Velvet
             ["opacity-100"] = 1f,
         };
 
-        // Mirrors _transforms.uss's uniform (non-per-axis) scale scale exactly.
-        private static readonly Dictionary<string, float> s_uniformScale = new()
-        {
-            ["scale-0"] = 0f, ["scale-50"] = 0.5f, ["scale-75"] = 0.75f, ["scale-90"] = 0.9f,
-            ["scale-95"] = 0.95f, ["scale-100"] = 1f, ["scale-105"] = 1.05f, ["scale-110"] = 1.1f,
-            ["scale-125"] = 1.25f, ["scale-150"] = 1.5f,
-        };
-
-        // Mirrors _transforms.uss's positive rotate-N and negative rotate-nN classes exactly.
-        private static readonly Dictionary<string, float> s_rotate = new()
-        {
-            ["rotate-0"] = 0f, ["rotate-1"] = 1f, ["rotate-2"] = 2f, ["rotate-3"] = 3f, ["rotate-6"] = 6f,
-            ["rotate-12"] = 12f, ["rotate-45"] = 45f, ["rotate-90"] = 90f, ["rotate-180"] = 180f,
-            ["rotate-n1"] = -1f, ["rotate-n2"] = -2f, ["rotate-n3"] = -3f, ["rotate-n6"] = -6f,
-            ["rotate-n12"] = -12f, ["rotate-n45"] = -45f, ["rotate-n90"] = -90f, ["rotate-n180"] = -180f,
-        };
-
         /// <summary>
         /// Resolves a single class token to the spring channel it touches. Tries the static literal tables
-        /// above first (classes with a REAL static USS rule, so <see cref="StyleArbitraryValueResolver"/>
-        /// deliberately does not parse them), then falls back to
+        /// first (classes with a REAL static USS rule, so <see cref="StyleArbitraryValueResolver"/>
+        /// deliberately does not parse them) — the opacity scale here, and the uniform scale / rotate
+        /// magnitude shared from <see cref="StyleArbitraryValueResolver"/>'s own preset tables (single-sourced
+        /// rather than a second hand-copied dictionary) — then falls back to
         /// <see cref="StyleArbitraryValueResolver.TryParse"/> for the bracket/spacing-scale forms that have no
         /// USS class at all (<c>translate-x-4</c>, <c>-rotate-6</c>, <c>opacity-[.5]</c>, …). Percentage-based
         /// translate and per-axis scale-x-/scale-y- are recognized by that resolver but rejected here (out of
@@ -103,15 +88,28 @@ namespace Velvet
                 axis = SpringAxis.Opacity;
                 return true;
             }
-            if (s_uniformScale.TryGetValue(core, out value))
+            // Uniform scale-N: the bare suffix mirrors the per-axis scale-x-/scale-y- preset's own numeric
+            // scale exactly, so it is looked up in that same table rather than a duplicate one.
+            if (core.StartsWith("scale-", System.StringComparison.Ordinal)
+                && StyleArbitraryValueResolver.TryGetAxisScale(core.Substring("scale-".Length), out value))
             {
                 axis = SpringAxis.Scale;
                 return true;
             }
-            if (s_rotate.TryGetValue(core, out value))
+            // rotate-N / rotate-nN: the magnitude table is shared with the resolver's own negative-rotate
+            // preset (which only ever stores the unsigned form, negating the negative "-rotate-N" spelling
+            // itself); the sign here is decided by which of the two class spellings this token used.
+            if (core.StartsWith("rotate-", System.StringComparison.Ordinal))
             {
-                axis = SpringAxis.Rotate;
-                return true;
+                var suffix = core.Substring("rotate-".Length);
+                var negated = suffix.StartsWith("n", System.StringComparison.Ordinal);
+                var magnitude = negated ? suffix.Substring(1) : suffix;
+                if (StyleArbitraryValueResolver.TryGetRotateScale(magnitude, out var degrees))
+                {
+                    axis = SpringAxis.Rotate;
+                    value = negated ? -degrees : degrees;
+                    return true;
+                }
             }
 
             if (StyleArbitraryValueResolver.TryParse(core, out var arbitrary))

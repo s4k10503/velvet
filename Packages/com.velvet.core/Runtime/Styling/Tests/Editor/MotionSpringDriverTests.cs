@@ -125,6 +125,33 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AUniformScaleClassPair_When_Resolved_Then_TheScaleChannelMatchesTheAxisScalePreset()
+        {
+            // Arrange / Act — scale-50 -> scale-100 mirrors the uniform (non-per-axis) .scale-N USS classes;
+            // the parser reads this magnitude from StyleArbitraryValueResolver's own per-axis scale table
+            // (shared, not a second hand-copied dictionary), so this pins that the shared table still resolves
+            // the same 0.5 / 1.0 pair.
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-50" }, new[] { "scale-100" });
+            Assume.That(plan.Scale, Is.Not.Null, "Precondition: the pair resolves a scale channel");
+
+            // Assert
+            Assert.That((plan.Scale!.Value.from, plan.Scale.Value.to), Is.EqualTo((0.5f, 1f)));
+        }
+
+        [Test]
+        public void Given_ANegativeRotateClassPair_When_Resolved_Then_TheRotateChannelMatchesTheSharedMagnitudeTable()
+        {
+            // Arrange / Act — rotate-45 -> rotate-n45 mirrors the static .rotate-45 / .rotate-n45 USS classes;
+            // the parser now reads the magnitude from StyleArbitraryValueResolver's own rotate-preset table
+            // (negating it itself for the "n"-suffixed spelling) instead of a duplicate hand-expanded ± table.
+            var plan = MotionSpringClassParser.Resolve(new[] { "rotate-45" }, new[] { "rotate-n45" });
+            Assume.That(plan.Rotate, Is.Not.Null, "Precondition: the pair resolves a rotate channel");
+
+            // Assert
+            Assert.That((plan.Rotate!.Value.from, plan.Rotate.Value.to), Is.EqualTo((45f, -45f)));
+        }
+
+        [Test]
         public void Given_ASpringChannelMidExit_When_Retargeted_Then_ItHeadsBackTowardTheValueItStartedFrom()
         {
             // Arrange — an exit-shaped channel: starts at the resting value (1, opaque) and heads to the exit
