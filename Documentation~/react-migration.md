@@ -49,12 +49,13 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 The Velvet core is independent of any DI framework, and receives an **`IHookServiceResolver`** abstraction (a minimal interface with a single method) via a Provider to bridge to the host DI container (e.g. VContainer). The canonical hook for obtaining short-lived services (UseCase / Factory / Logger, etc.) directly from a functional component is `Hooks.UseService<T>()`.
 
 ```csharp
+// For example, services your host container registers:
 [Component]
-public static VNode UserCardRender()
+public static VNode UserCard()
 {
-    var avatarLifecycle = Hooks.UseService<IAvatarLifecycleUseCase>();
-    var logger          = Hooks.UseService<ILog>();
-    // ... use avatarLifecycle / logger directly
+    var profiles = Hooks.UseService<IProfileUseCase>();
+    var logger   = Hooks.UseService<ILogger>();
+    // ... use profiles / logger directly
     return V.Div(/* ... */);
 }
 ```
@@ -64,16 +65,19 @@ public static VNode UserCardRender()
 | Use case | React canonical | Velvet |
 |------|----------------|--------|
 | Direct access to renderer / scene | R3F `useThree()` | `Hooks.UseService<IFoo>()` |
-| Obtaining a store via a store provider | react-redux `useStore()` | (same shape as above, though the Store itself is best obtained via `<PageContext>.UseRequired()`) |
+| Obtaining a store via a store provider | react-redux `useStore()` | share the `Store` through a `V.Provider` context and read it with `UseContext` |
 | Arbitrary DI container service | (no standard in the React community) | `Hooks.UseService<IFoo>()` |
 
 **Rationale and rules**:
 
-- The host bridge is written once in **`Composition/Bridges/VContainerServiceResolver.cs`**, and the Velvet core never references any VContainer type
+- The host bridge is one small class on the app side — an `IHookServiceResolver` implementation
+  wrapping your container (VContainer, Zenject, a hand-rolled locator, …); the Velvet core never
+  references any DI framework type
 - At the root `V.Mount`, you must wire `V.Provider(HookServiceContext.Ref, value: serviceResolver, children: ...)`
-- For **Page-specific view-state** (Store / Color / Navigation, etc.), continue to use `<PageContext>.UseRequired()` (separation of responsibilities)
+- For **page-scoped view state** (a store, theme, navigation context, …), prefer a typed context
+  published with `V.Provider` and read with `UseContext` over resolving services ad hoc
+  (separation of responsibilities)
 - `UseService<T>()` cannot be called **from within a Store's async lifecycle methods** (hook discipline). A Store obtains its UseCase via constructor injection
-- The three `*Operations` files are **retained as Store-driven static helpers** and are not targets for hook-ification
 
 ### 1-3. State Management (React + Zustand)
 
