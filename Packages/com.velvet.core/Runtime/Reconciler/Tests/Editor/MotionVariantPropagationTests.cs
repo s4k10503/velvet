@@ -59,7 +59,9 @@ namespace Velvet.Tests
         private static VNode MemoizedIntermediateRender()
         {
             s_memoRenderCount++;
-            return V.Motion(name: "memo-leaf", key: "c", variants: Fade);
+            // transition: None opts out of the runtime-swap tween (see MotionRuntimeSwapTests) so the
+            // class list is checked deterministically right after the flush, independent of animation timing.
+            return V.Motion(name: "memo-leaf", key: "c", variants: Fade, transition: StyleTransitionConfig.None);
         }
 
         // A stateful intermediate component under an animated Motion that renders a child Motion. Its
@@ -334,15 +336,23 @@ namespace Velvet.Tests
         [Test]
         public void Given_AChildInheritingHidden_When_TheParentAnimateChangesToVisible_Then_TheChildVariantClassSwitches()
         {
-            // Arrange — mounted with the parent showing "hidden".
+            // Arrange — mounted with the parent showing "hidden". transition: None opts the child out of the
+            // runtime-swap tween (see MotionRuntimeSwapTests) so the class list is checked deterministically
+            // right after the patch, independent of animation timing.
             using var scope = new ReconcilerScope();
             var hidden = new VNode[]
             {
-                V.Motion(key: "p", animate: "hidden", children: new VNode[] { V.Motion(key: "c", variants: Fade) }),
+                V.Motion(key: "p", animate: "hidden", children: new VNode[]
+                {
+                    V.Motion(key: "c", variants: Fade, transition: StyleTransitionConfig.None),
+                }),
             };
             var visible = new VNode[]
             {
-                V.Motion(key: "p", animate: "visible", children: new VNode[] { V.Motion(key: "c", variants: Fade) }),
+                V.Motion(key: "p", animate: "visible", children: new VNode[]
+                {
+                    V.Motion(key: "c", variants: Fade, transition: StyleTransitionConfig.None),
+                }),
             };
             scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), hidden);
             Assume.That(scope.Root[0][0].ClassListContains("opacity-0"), Is.True);

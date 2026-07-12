@@ -236,12 +236,26 @@ namespace Velvet
         public Dictionary<VisualElement, StyleDivideManipulator> DivideManipulators { get; } = new();
         public Dictionary<VisualElement, StyleGridManipulator> GridManipulators { get; } = new();
 
-        // Per-Motion-element bookkeeping of the class array actually APPLIED (base ClassNames plus any
-        // variant classes propagated from an ancestor Motion's active label). The patch path diffs the new
-        // applied set against this stored one so a label change swaps the propagated classes even though the
-        // node's base ClassNames are unchanged. A pure side-table (bare Remove on teardown), so it is enrolled
-        // in _pureElementSideTables and cleared on element cleanup / reconciler dispose through that mechanism.
-        public Dictionary<VisualElement, string[]> MotionAppliedClasses { get; } = new();
+        // Per-Motion-element bookkeeping of the class set actually APPLIED (base ClassNames plus any
+        // variant classes propagated from an ancestor Motion's active label, PLUS the variant-only classes
+        // alone — see MotionAppliedClassSet). The patch path diffs the new applied set against this stored one
+        // so a label change swaps the propagated classes even though the node's base ClassNames are unchanged,
+        // and replays that swap as a runtime variant transition when the variant-only classes actually
+        // changed and the node declares a Transition (see FiberNodePatcher.PatchMotion). A pure side-table
+        // (bare Remove on teardown), so it is enrolled in _pureElementSideTables and cleared on element
+        // cleanup / reconciler dispose through that mechanism.
+        public Dictionary<VisualElement, MotionAppliedClassSet> MotionAppliedClasses { get; } = new();
+
+        // Per-Motion-element bookkeeping of the label last propagated to CHILDREN (Animate ?? ambient) —
+        // independent of MotionAppliedClasses above, because a "coordinator" Motion may propagate a label to
+        // descendants (for staggerChildren/delayChildren orchestration) while carrying no Variants of its own,
+        // and so never gets a MotionAppliedClasses entry at all. FiberNodePatcher.PatchMotion compares the
+        // freshly-resolved child label against this stored one to detect an ACTUAL change (not merely an
+        // unrelated re-render that happens to re-propagate the same label) before establishing a fresh
+        // MotionOrchestrationFrame — a re-render that keeps the same label must not re-trigger the stagger.
+        // A pure side-table (bare Remove on teardown), so it is enrolled in _pureElementSideTables and cleared
+        // on element cleanup / reconciler dispose through that mechanism.
+        public Dictionary<VisualElement, string> MotionChildLabel { get; } = new();
 
         // Per-element drop-shadow bookkeeping for the shadow-* className layer, keyed by the element
         // itself — the shadow needs NO structural wrapper. Like skew and gradient, the shadow is painted
@@ -484,6 +498,19 @@ namespace Velvet
         // created at depth 0 mounts standalone, where those props are inert and warn.
         internal int PresenceExpansionDepth;
 
+        // The MotionNode a presence expansion is CURRENTLY dispatching enter/exit for — the one
+        // FindFirstMotionDescendant resolved for whichever keyed child GeneralPathReconciler is expanding right
+        // now (set/restored around each EmitPresenceChild call, not just cleared, so a nested AnimatePresence
+        // inside that child's own subtree does not lose the OUTER anchor once its own expansion returns). Null
+        // outside any presence expansion, and also null for a keyed child whose FindFirstMotionDescendant walk
+        // found no Motion (e.g. a plain Div wrapper). FiberNodeFactory's standalone-enter gate compares a
+        // freshly created MotionNode against this BY REFERENCE — not PresenceExpansionDepth — so only the ONE
+        // node the presence itself already plays an enter for (via PlayVariantEnter/PlayEnter) skips its
+        // redundant standalone enter; every OTHER Motion created while the expansion is on the stack (nested
+        // deeper, sitting under a non-anchor wrapper, or a sibling keyed child) is not presence-managed at all
+        // and must keep its own mount enter.
+        internal MotionNode? PresenceAnchorMotion;
+
         // Removes all DOM-less AnimatePresence state keyed by boundary. Invoked from
         // ComponentRegistry when the boundary fiber is unregistered, so a boundary that
         // unmounts while a child is exiting leaves no dangling fiber reference in PresenceStates.
@@ -624,6 +651,7 @@ namespace Velvet
                 DataAttributes,
                 SupportsVariants,
                 MotionAppliedClasses,
+                MotionChildLabel,
                 TextEffects,
                 TextRawText,
             };

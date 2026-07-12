@@ -457,19 +457,21 @@ namespace Velvet.Tests
         [Test]
         public void Given_AVariantMotion_When_AnimateLabelChanges_Then_TheVariantClassesSwapInPlace()
         {
-            // Arrange — a Motion driven by a named variant, mounted in the hidden state.
+            // Arrange — a Motion driven by a named variant, mounted in the hidden state. transition: None
+            // opts out of the runtime-swap tween (see MotionRuntimeSwapTests) so the class list itself is
+            // checked deterministically right after the patch, independent of animation timing.
             var variants = new Dictionary<string, string>
             {
                 { "hidden", "opacity-0" },
                 { "visible", "opacity-100" },
             };
-            var old = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "hidden") };
-            var @new = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "visible") };
+            var old = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "hidden", transition: StyleTransitionConfig.None) };
+            var @new = new VNode[] { V.Motion("base", key: "x", variants: variants, animate: "visible", transition: StyleTransitionConfig.None) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), old);
             Assume.That(Root.ElementAt(0).ClassListContains("opacity-0"), Is.True,
                 "Precondition: starts in the hidden variant");
 
-            // Act — switch the active variant label (a USS transition-* utility would tween this swap).
+            // Act — switch the active variant label.
             Reconciler.Reconcile(Root, old, @new);
 
             // Assert — the old variant's classes are gone and the new variant's classes are applied in place.

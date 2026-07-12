@@ -194,9 +194,12 @@ Styling is composed entirely from utility classes — no per-component USS files
 
 Mount / unmount and gesture animations, modeled on Framer Motion:
 
-- **`V.Motion`** — an animated element with `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …) and `whileHoverClass` / `whileTapClass` gestures.
-- **`V.AnimatePresence`** — keyed enter / exit, keeping a removed child mounted until its exit finishes. **DOM-less** (React/Framer parity): it emits no wrapper, so its children flow directly into the parent's layout.
+- **`V.Motion`** — an animated element with `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …), Framer-style **variants** (`variants:` + `initial:` / `animate:` / `exit:` labels, with label inheritance down the tree), and `whileHoverClass` / `whileTapClass` gestures. A Motion outside `AnimatePresence` plays its `initial` → `animate` enter on mount, like any `motion.*` element.
+- **`V.AnimatePresence`** — keyed enter / exit, keeping a removed child mounted until its exit finishes. **DOM-less** (React/Framer parity): it emits no wrapper, so its children flow directly into the parent's layout. `mode: AnimatePresenceMode.PopLayout` pins an exiting child out of flow so siblings reflow immediately (Framer's `mode="popLayout"`).
+- **`StyleTransitionConfig`** — tween timing (`DurationSec` / `Easing` / `DelaySec`), per-property overrides (`PropertyOverrides`), `staggerChildren` / `delayChildren` / `when` orchestration for variant propagation, and opt-in **spring physics** (`Type = TransitionType.Spring` + `Stiffness` / `Damping` / `Mass`) with velocity-preserving interruption.
 - **`V.AnimatedList`** — sugar combining `AnimatePresence` + `List` + `Motion` for animated collections, with `staggerSec`.
+
+See [motion.md](Packages/com.velvet.core/Documentation~/motion.md) for the full guide (variants, orchestration, springs, and the one-config-every-update transition semantics).
 
 ### Source Generator memoization
 

@@ -33,7 +33,9 @@ namespace Velvet
     internal static class StyleAnimateDriver
     {
         // Tick interval (~60fps). The phase is time-derived, so the exact cadence only affects smoothness.
-        private const long TickMs = 16;
+        // Internal: shared with StyleAnimationScheduler's spring tick and shadow co-fade tick, which want the
+        // SAME ~60fps cadence rather than a second (or third) hand-copied literal.
+        internal const long TickMs = 16;
         // Oversize factor for the Gradient pan: the background is twice the box along the pan axis, so the
         // box window slides across the full gradient (offset range [-box, 0]) without revealing an edge.
         private const float GradientOversize = 200f;
