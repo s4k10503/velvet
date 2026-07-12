@@ -122,6 +122,13 @@ namespace Velvet
 
             // Cancel any existing enter animation.
             CancelEnter(element);
+            // Take ownership of the inline transition-delay slot: a parked orchestration swap (plain
+            // parent→child staggerChildren/delayChildren propagation — see PlayDelayedVariantSwap) may have
+            // left a stale delay sitting on this SAME element. This enter is about to become the sole owner of
+            // that slot (ApplyTransitionStyles below only WRITES it when its own delaySec > 0, so a zero-delay
+            // enter would otherwise silently inherit the stale value instead of starting immediately), and the
+            // parked clear must not fire later and null a delay this enter itself goes on to set.
+            CancelDelayedVariantSwap(element);
 
             var staggerDelayMs = (long)(additionalDelaySec * 1000);
 
@@ -249,6 +256,13 @@ namespace Velvet
 
             // Cancel any existing exit animation.
             CancelExit(element);
+            // Take ownership of the inline transition-delay slot: see PlayEnterInternal's identical call
+            // above for the failure this prevents. Concretely, a DelaySec=0 variant exit racing a just-parked
+            // orchestration delay would otherwise inherit it invisibly (ApplyTransitionStyles below never
+            // WRITES transition-delay when this exit's own delaySec is <= 0, so the stale value would survive
+            // untouched) while the completion timeout below is sized from THIS exit's own (unaware) duration —
+            // dropping the ghost before the actually-delayed CSS transition ever visibly starts.
+            CancelDelayedVariantSwap(element);
 
             var fromClasses = config.ExitFromClasses;
             var toClasses = config.ExitToClasses;
@@ -422,6 +436,12 @@ namespace Velvet
             // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
             // CancelEnter(element) / PlayExit's CancelExit(element) self-cancel).
             CancelPending(map, element, animateReversal: isExit);
+            // Take ownership of the inline transition-delay slot exactly like the tween paths above: a spring
+            // never reads transition-delay itself (delaySec below only offsets ScheduleStart's own timer), but
+            // a stale parked swap sharing this element would otherwise clear out from under this play whenever
+            // its own timeout happens to fire, and the element should not carry a transition-delay left over
+            // from a class swap this new play has nothing to do with.
+            CancelDelayedVariantSwap(element);
 
             // Land the classes at rest either way — nothing recognized to animate (or invalid spring
             // parameters) degrades to a plain, instantaneous class swap (the spring equivalent of a
@@ -624,12 +644,14 @@ namespace Velvet
         // already added them); durationSec is that swap's own transition duration, used only to size the
         // deferred clear below. A non-positive totalDelaySec is a no-op.
         // The delay is cleared once the swap's transition would have finished, so a LATER, unrelated patch on
-        // the same element does not inherit a stale delay. On a real panel the clear is deferred via
-        // schedule.Execute (mirrors PlayEnter/PlayExit's own completion timing); off-panel there is nothing to
-        // interpolate against, and schedule.Execute never fires for a detached element, so the delay is never
-        // applied in the first place instead of setting up a schedule that would never run — net-equivalent to
-        // CancelExit's reversal cleanup, which clears an already-applied delay immediately off-panel for the
-        // same reason.
+        // the same element does not inherit a stale delay. On a real panel the clear is scheduled on the
+        // PANEL-ROOT host, not the element itself (mirrors PlayExit's own ScheduleOnHost rationale): a keyed
+        // reorder can transiently detach this element (RemoveFromHierarchy + re-Insert) while the delay is
+        // still parked, and UI Toolkit silently drops a detached element's own scheduled items, which would
+        // strand the inline transition-delay on it forever. Off-panel there is nothing to interpolate against,
+        // and schedule.Execute never fires for a detached element, so the delay is never applied in the first
+        // place instead of setting up a schedule that would never run — net-equivalent to CancelExit's
+        // reversal cleanup, which clears an already-applied delay immediately off-panel for the same reason.
         public void PlayDelayedVariantSwap(VisualElement? element, float totalDelaySec, float durationSec)
         {
             if (element == null || totalDelaySec <= 0f)
@@ -657,7 +679,11 @@ namespace Velvet
             element.style.transitionDelay = delayList;
             var pending = new PendingDelayedSwap { DelayList = delayList };
             var timeoutMs = (long)(totalDelaySec * 1000) + (long)(durationSec * 1000) + AnimationGraceMs;
-            var timeout = element.schedule.Execute(() =>
+            // The panel root never detaches during the tree's life, so its scheduled items always fire; the
+            // element being delayed only needs to stay attached for its OWN CSS transition (it does — a keyed
+            // reorder moves it, never removes it), matching PlayExit's stable-host argument exactly.
+            var host = element.panel.visualTree;
+            var timeout = host.schedule.Execute(() =>
             {
                 if (_pendingDelayedSwaps.Remove(element, out var completed))
                 {
