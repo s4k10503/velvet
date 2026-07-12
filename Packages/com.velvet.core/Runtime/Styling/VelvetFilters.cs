@@ -13,10 +13,11 @@ namespace Velvet
     /// VelvetFilters.Register("dissolve", dissolveDefinition);
     /// V.Div(className: "filter-[dissolve:0.4]");
     /// </code>
-    /// Arguments after the name are colon-separated and fill the filter function's parameters in
-    /// order — floats (<c>filter-[dissolve:0.4]</c>, sign allowed) and hex colors
-    /// (<c>filter-[glow:#ff0000:2]</c>). A name alone (<c>filter-[dissolve]</c>) applies the filter with
-    /// no explicit parameters, so the definition's declared defaults take effect. Custom functions
+    /// Arguments after the name are colon-separated and fill the definition's declared parameters in
+    /// order, parsed by each slot's declared type — floats (<c>filter-[dissolve:0.4]</c>, sign allowed)
+    /// for float slots and colors (<c>filter-[glow:#ff0000:2]</c>) for color slots; a missing tail is
+    /// padded from the declaration's defaults, so a bare name (<c>filter-[dissolve]</c>) applies the
+    /// declared defaults outright. Custom functions
     /// compose into the same inline <c>filter</c> list as the built-in <c>blur-*</c>/<c>contrast-*</c>/…
     /// utilities: built-ins first (canonical CSS order), then customs in class order.
     /// Registration is not reactive: a class resolved before its name was registered stays inert until
@@ -27,7 +28,7 @@ namespace Velvet
     {
         // The built-in filter utility families; reserved so filter-[blur:..] can never mean something
         // different from the blur-* utilities that already exist.
-        private static readonly HashSet<string> s_reserved = new()
+        private static readonly HashSet<string> s_reserved = new(System.StringComparer.OrdinalIgnoreCase)
         {
             "blur", "brightness", "contrast", "grayscale", "hue-rotate", "invert", "saturate", "sepia",
         };
@@ -46,9 +47,10 @@ namespace Velvet
         /// <param name="name">Filter name as written inside the class brackets. Must be non-empty and
         /// must not contain whitespace, <c>:</c>, <c>[</c> or <c>]</c> (they would break the class token);
         /// the built-in filter family names (blur, brightness, contrast, grayscale, hue-rotate, invert,
-        /// saturate, sepia) are reserved. Invalid names are rejected with a warning.</param>
+        /// saturate, sepia) are reserved case-insensitively. Invalid names are rejected with a warning.</param>
         /// <param name="definition">The custom filter definition applied when the class resolves.
-        /// Null (or a destroyed asset) is rejected with a warning.</param>
+        /// Null (or a destroyed asset) is rejected with a warning, as is a definition declaring more than
+        /// the 4 parameters a filter function can carry.</param>
         public static void Register(string name, FilterFunctionDefinition definition)
         {
             if (string.IsNullOrEmpty(name) || !HasValidNameChars(name))
@@ -66,6 +68,14 @@ namespace Velvet
             if (definition == null)
             {
                 Debug.LogWarning($"[VelvetFilters] Cannot register null definition for \"{name}\".");
+                return;
+            }
+
+            // A filter function carries at most 4 parameters (a fixed buffer that throws past its cap), so
+            // a definition declaring more could never compose — fail at the API boundary instead.
+            if (definition.parameters != null && definition.parameters.Length > 4)
+            {
+                Debug.LogWarning($"[VelvetFilters] Cannot register \"{name}\": it declares {definition.parameters.Length} parameters, but a filter function supports at most 4.");
                 return;
             }
 
