@@ -109,6 +109,11 @@ namespace Velvet
                 return new IntegerField();
             }
 
+            if (type == typeof(SceneViewElement))
+            {
+                return new SceneViewElement();
+            }
+
             // Fallback for unknown types only (custom elements such as BlurredBackgroundElement are created here).
             return (VisualElement)Activator.CreateInstance(type);
         }

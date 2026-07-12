@@ -109,6 +109,34 @@ namespace Velvet
             }
         }
 
+        // Binds / re-binds / releases a SceneView element's camera-output machinery (both the mount and
+        // the patch route land here). Unlike the appliers above this one needs the ReconcilerContext:
+        // the binding owns a framework-created RenderTexture and a registered geometry callback, so it
+        // is tracked per element for the cleaner and the reconciler dispose sweep to release.
+        public static void ApplySceneView(VisualElement element, SceneViewSettings? settings, ReconcilerContext ctx)
+        {
+            if (element is not SceneViewElement)
+            {
+                return;
+            }
+            if (ctx.SceneViewBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    // Settings removed entirely: release both ends and drop the binding — the element
+                    // stays mounted and inert, the same end state as a camera removed to null.
+                    SceneViewDriver.Detach(element, binding);
+                    ctx.SceneViewBindings.Remove(element);
+                    return;
+                }
+                SceneViewDriver.Update(element, binding, settings);
+            }
+            else if (settings != null)
+            {
+                ctx.SceneViewBindings[element] = SceneViewDriver.Attach(element, settings);
+            }
+        }
+
         private static T Resolve<T>(T? nullable, T defaultValue) where T : struct
             => nullable ?? defaultValue;
     }

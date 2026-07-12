@@ -38,6 +38,10 @@ namespace Velvet
         private static readonly Dictionary<string, string[]> s_classNameCache = new();
         internal const int MaxClassNameCacheSize = 256;
 
+        // Warn-once flag for V.SceneView's resolutionScale fallback (a per-render factory would
+        // otherwise spam the console every render for the same bad call site).
+        private static bool s_warnedSceneViewScale;
+
 #if UNITY_EDITOR
         /// <summary>Test-only: drains the cache to isolate cache-bound regression coverage.</summary>
         internal static void ClearClassNameCacheForTesting() => s_classNameCache.Clear();
@@ -48,6 +52,7 @@ namespace Velvet
         private static void ResetStaticFields()
         {
             s_classNameCache.Clear();
+            s_warnedSceneViewScale = false;
         }
 #endif
 
@@ -681,6 +686,19 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            // A non-positive (or NaN) scale could never size a texture; warn once and fall back to
+            // identity so a bad call site renders at native resolution instead of silently showing
+            // nothing. Guarded here at the factory boundary so the binding never sees an invalid scale.
+            if (!(resolutionScale > 0f))
+            {
+                if (!s_warnedSceneViewScale)
+                {
+                    s_warnedSceneViewScale = true;
+                    Debug.LogWarning("[Velvet] V.SceneView: resolutionScale must be positive; falling back to 1.");
+                }
+                resolutionScale = 1f;
+            }
+
             // Always carried (even with a null camera): the patcher needs the settings on BOTH sides of a
             // diff to see a camera arriving or leaving as a settings change.
             var props = VNodePool.RentProps();

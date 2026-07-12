@@ -167,7 +167,7 @@ namespace Velvet
             string[] appliedOldClasses, string[] appliedNewClasses)
         {
             SyncClassDrivenStyling(element, appliedOldClasses, appliedNewClasses);
-            DiffProps(element, oldNode.Props, newNode.Props);
+            DiffProps(element, oldNode.Props, newNode.Props, _ctx);
             // Track an element's own Text prop as raw so the text-effect pass (run post-children) transforms the
             // current value rather than an already-transformed one. When the Text prop is removed, drop the raw
             // entry so the effect pass does not re-apply a stale value over the just-cleared text.
@@ -899,7 +899,7 @@ namespace Velvet
         // side-table (no direct VisualElement property to set), so PatchBaseElement re-syncs them via
         // ApplyAttributes right after this call (which rebuilds the store unconditionally, so a change is
         // always observed).
-        internal static void DiffProps(VisualElement element, FiberElementProps? oldProps, FiberElementProps? newProps)
+        internal static void DiffProps(VisualElement element, FiberElementProps? oldProps, FiberElementProps? newProps, ReconcilerContext ctx)
         {
             oldProps ??= FiberElementProps.Empty;
             newProps ??= FiberElementProps.Empty;
@@ -952,6 +952,14 @@ namespace Velvet
             if (oldProps.Choices != newProps.Choices)
             {
                 FiberPropApplier.ApplyChoices(element, newProps.Choices);
+            }
+
+            // Record (value) equality: a re-render carrying the same camera + scale in a fresh record is
+            // not a change, so a camera swap / removal is the only thing that lands here — a class-driven
+            // RESIZE arrives through the binding's geometry callback instead, never through this diff.
+            if (oldProps.SceneView != newProps.SceneView)
+            {
+                FiberPropApplier.ApplySceneView(element, newProps.SceneView, ctx);
             }
         }
 

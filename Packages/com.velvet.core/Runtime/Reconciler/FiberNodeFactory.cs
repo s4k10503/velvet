@@ -115,6 +115,13 @@ namespace Velvet
                     // box-shadow, so it composes with any wrap layer below and a user wrapElement. The paint
                     // self-suppresses while an active clip-path-* is present (clip-path clips the box-shadow).
                     _patcher.Appliers.ApplyShadowOnCreate(element, elementNode.ClassNames);
+                    // SceneView (V.SceneView): wire the camera-output binding. The element has no panel
+                    // yet, so the first real texture sync runs from the binding's geometry callback once
+                    // layout settles; later camera swaps arrive through the props diff.
+                    if (elementNode.Props?.SceneView != null)
+                    {
+                        FiberPropApplier.ApplySceneView(element, elementNode.Props.SceneView, _ctx);
+                    }
 
                     if (elementNode.WrapElement != null)
                     {
