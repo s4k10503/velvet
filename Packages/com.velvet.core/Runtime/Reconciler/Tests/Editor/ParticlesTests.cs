@@ -150,6 +150,99 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AMountedEffect_When_Attached_Then_TheHostAlwaysSimulates()
+        {
+            // Arrange — the host's renderer is disabled and it sits far from every camera, so Unity's
+            // automatic culling would PAUSE a looping simulation; the host must opt out.
+            var effect = CreateEffectSource("fx");
+
+            // Act
+            MountAndLayout(V.Particles(effect, className: "w-[128px] h-[128px]"));
+
+            // Assert
+            var host = FindHost(effect);
+            Assume.That(host, Is.Not.Null, "Precondition: the hidden host clone exists");
+            Assert.That(host.main.cullingMode, Is.EqualTo(ParticleSystemCullingMode.AlwaysSimulate));
+        }
+
+        [Test]
+        public void Given_AnInactiveSource_When_Mounted_Then_TheHostIsActivated()
+        {
+            // Arrange — cloning preserves activeSelf, and an inactive host never simulates; a pooled
+            // prefab kept inactive until spawned must still drive a live element.
+            var effect = CreateEffectSource("fx");
+            effect.gameObject.SetActive(false);
+
+            // Act
+            MountAndLayout(V.Particles(effect, className: "w-[128px] h-[128px]"));
+
+            // Assert
+            var host = FindHost(effect);
+            Assume.That(host, Is.Not.Null, "Precondition: the hidden host clone exists");
+            Assert.That(host.gameObject.activeSelf, Is.True);
+        }
+
+        [Test]
+        public void Given_ACustomSpaceSource_When_Mounted_Then_ItWarns()
+        {
+            // Arrange — Custom simulation space has the same local-space read mismatch as World.
+            var effect = CreateEffectSource("fx");
+            var main = effect.main;
+            main.simulationSpace = ParticleSystemSimulationSpace.Custom;
+            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
+
+            // Act
+            MountAndLayout(V.Particles(effect, className: "w-[128px] h-[128px]"));
+
+            // Assert
+            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 1));
+        }
+
+        [Test]
+        public void Given_ASourceBeyondTheDrawCap_When_Mounted_Then_ItWarns()
+        {
+            // Arrange — the draw path truncates at its particle cap; a denser effect must say so once
+            // instead of silently thinning out compared to everywhere else the prefab is used.
+            var effect = CreateEffectSource("fx");
+            var main = effect.main;
+            main.maxParticles = 5000;
+            LogAssert.Expect(LogType.Warning, new Regex("2048"));
+
+            // Act
+            MountAndLayout(V.Particles(effect, className: "w-[128px] h-[128px]"));
+
+            // Assert
+            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 1));
+        }
+
+        [Component]
+        private static VNode DestroyedEffectToNullHost()
+        {
+            var (removed, setRemoved) = Hooks.UseState(false);
+            s_setFlag = setRemoved;
+            return V.Particles(removed ? null : s_effect, className: "w-[128px] h-[128px]");
+        }
+
+        [Test]
+        public void Given_ASourceDestroyedWhileMounted_When_RepatchedToNull_Then_TheHostIsStillDestroyed()
+        {
+            // Arrange — the settings diff sees destroyed-vs-null as a change, but an engine-equality
+            // compare inside the driver would see them as EQUAL and skip the teardown; the host (an
+            // independent clone, unaffected by the source's death) must still be destroyed.
+            s_effect = CreateEffectSource("fx");
+            MountAndLayout(V.Component(DestroyedEffectToNullHost, key: "root"));
+            Assume.That(CountSystems(), Is.EqualTo(_baselineSystems + 1), "Precondition: the host exists");
+            Object.DestroyImmediate(s_effect.gameObject);
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — only the destroyed source is gone from the count's perspective; no host remains.
+            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems - 1));
+        }
+
+        [Test]
         public void Given_AnInvalidPixelsPerUnit_When_TheFactoryRuns_Then_ItThrows()
         {
             // Arrange

@@ -134,6 +134,40 @@ namespace Velvet.Tests
             });
         }
 
+        [Component]
+        private static VNode ReorderFrameHost()
+        {
+            var (swapped, setSwapped) = Hooks.UseState(false);
+            s_setRemoved = setSwapped;
+            var counting = V.Component(CountingHost, key: "cnt");
+            var spacer = V.Div(key: "sp", className: "w-[1px] h-[1px]");
+            return V.Div(className: "flex-col", children: swapped
+                ? new VNode[] { spacer, counting }
+                : new VNode[] { counting, spacer });
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AKeyedReorder_When_TheHostMoves_Then_TheCallbackKeepsTicking()
+        {
+            // Arrange — a keyed reorder re-inserts the host element, which silently drops element-bound
+            // scheduled items; the frame driver must survive the move or the hook dies while mounted.
+            var root = CreatePanelRoot();
+            yield return null;
+            _mounted = V.Mount(root, V.Component(ReorderFrameHost, key: "root"));
+            yield return WaitRealtime(0.3);
+            Assume.That(s_calls, Is.GreaterThan(0), "Precondition: the hook ticked before the reorder");
+
+            // Act
+            s_setRemoved.Invoke(true);
+            yield return null;
+            yield return null;
+            var callsAfterMove = s_calls;
+            yield return WaitRealtime(0.3);
+
+            // Assert
+            Assert.That(s_calls, Is.GreaterThan(callsAfterMove));
+        }
+
         [UnityTest]
         public IEnumerator Given_AnUnmount_When_FramesAdvance_Then_TheCallbackStopsFiring()
         {

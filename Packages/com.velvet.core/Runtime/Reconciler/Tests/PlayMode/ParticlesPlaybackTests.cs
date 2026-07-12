@@ -154,6 +154,109 @@ namespace Velvet.Tests
             Assert.That(CountParticlePixels(), Is.EqualTo(0));
         }
 
+        [UnityTest]
+        public IEnumerator Given_AManualPlayTrigger_When_PlayIsCalledOnTheElement_Then_ParticlesRender()
+        {
+            // Arrange — Manual's other half: the element exposes the imperative trigger.
+            var effect = CreateEmitter();
+            MountPanel(effect, PlayTrigger.Manual);
+            yield return WaitRealtime(0.3);
+            Assume.That(CountParticlePixels(), Is.EqualTo(0), "Precondition: nothing draws before Play");
+            var element = _docGo.GetComponent<UIDocument>().rootVisualElement.Q<ParticlesElement>();
+            Assume.That(element, Is.Not.Null, "Precondition: the particles element mounted");
+
+            // Act
+            element.Play();
+            yield return WaitRealtime(0.8);
+
+            // Assert
+            Assert.That(CountParticlePixels(), Is.GreaterThan(20));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_APlayTriggerFlipToMount_When_Repatched_Then_ParticlesStart()
+        {
+            // Arrange — flipping playOn on an UNCHANGED effect must start the host; gating the play
+            // state on effect identity alone would make the flip a silent no-op.
+            var effect = CreateEmitter();
+            s_effect = effect;
+            _panelRt = new RenderTexture(300, 300, 32);
+            _docGo = new GameObject("ParticlesPanel");
+            var doc = _docGo.AddComponent<UIDocument>();
+            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
+            _settings.targetTexture = _panelRt;
+            doc.panelSettings = _settings;
+            _mounted = V.Mount(doc.rootVisualElement, V.Component(TriggerFlipHost, key: "root"));
+            yield return WaitRealtime(0.3);
+            Assume.That(CountParticlePixels(), Is.EqualTo(0), "Precondition: Manual draws nothing");
+
+            // Act
+            s_setFlag.Invoke(true);
+            yield return WaitRealtime(0.8);
+
+            // Assert
+            Assert.That(CountParticlePixels(), Is.GreaterThan(20));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AKeyedReorder_When_TheElementMoves_Then_TheDrawnParticlesKeepMoving()
+        {
+            // Arrange — a keyed reorder re-inserts the element, which silently drops element-bound
+            // scheduled items; the repaint driver must survive the move or the drawn output freezes.
+            var effect = CreateEmitter();
+            s_effect = effect;
+            _panelRt = new RenderTexture(300, 300, 32);
+            _docGo = new GameObject("ParticlesPanel");
+            var doc = _docGo.AddComponent<UIDocument>();
+            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
+            _settings.targetTexture = _panelRt;
+            doc.panelSettings = _settings;
+            _mounted = V.Mount(doc.rootVisualElement, V.Component(ReorderHost, key: "root"));
+            yield return WaitRealtime(0.5);
+            Assume.That(CountParticlePixels(), Is.GreaterThan(20), "Precondition: particles are visible");
+
+            // Act — swap the keyed siblings, then let the simulation advance.
+            s_setFlag.Invoke(true);
+            yield return WaitRealtime(0.3);
+            var first = Snapshot();
+            yield return WaitRealtime(0.4);
+
+            // Assert — the drawn output still changes after the move (the tick survived the reorder).
+            var second = Snapshot();
+            var differing = 0;
+            for (var i = 0; i < first.Length; i += 3)
+            {
+                if (Mathf.Abs(first[i].r - second[i].r) > 12) differing++;
+            }
+            Assert.That(differing, Is.GreaterThan(30));
+        }
+
+        private static ParticleSystem s_effect;
+        private static StateUpdater<bool> s_setFlag;
+
+        [Component]
+        private static VNode TriggerFlipHost()
+        {
+            var (mount, setMount) = Hooks.UseState(false);
+            s_setFlag = setMount;
+            return V.Particles(s_effect, className: "w-[300px] h-[300px]",
+                playOn: mount ? PlayTrigger.Mount : PlayTrigger.Manual);
+        }
+
+        [Component]
+        private static VNode ReorderHost()
+        {
+            var (swapped, setSwapped) = Hooks.UseState(false);
+            s_setFlag = setSwapped;
+            var particles = V.Particles(s_effect, key: "px", className: "w-[300px] h-[300px]");
+            var spacer = V.Div(key: "sp", className: "w-[1px] h-[1px]");
+            return V.Div(className: "flex-col", children: swapped
+                ? new VNode[] { spacer, particles }
+                : new VNode[] { particles, spacer });
+        }
+
         private Color32[] Snapshot()
         {
             var prev = RenderTexture.active;
