@@ -221,8 +221,19 @@ namespace Velvet
             }
             else
             {
-                // No extra delay: run on the next frame (matches existing behavior).
-                pending.ScheduledItem = element.schedule.Execute(startAction);
+                // No extra delay: still deferred by one nominal frame (StyleAnimateDriver.TickMs)
+                // rather than a zero-delay schedule.Execute. This call runs from inside the same
+                // timer tick that mounts the element (a standalone Motion's create, or an
+                // AnimatePresence-driven enter), and a zero-delay item becomes runnable within that
+                // very tick — before the panel has resolved the from-state's style even once. With
+                // nothing to compare against, the CSS transition sees no property change and the
+                // whole enter snaps straight to the end pose instead of tweening. A same-tick swap is
+                // possible with any deferral shorter than roughly a frame, so a full nominal frame is
+                // used instead of a token 1ms: it reliably survives the from-state's first style pass
+                // at any practical frame rate while still landing on (about) the very next update.
+                var scheduled = element.schedule.Execute(startAction);
+                scheduled.ExecuteLater(StyleAnimateDriver.TickMs);
+                pending.ScheduledItem = scheduled;
             }
         }
 
