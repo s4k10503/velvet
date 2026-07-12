@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -843,56 +844,74 @@ namespace Velvet
             return (durationList, delayList);
         }
 
+        // Per-overrides-list cache of the property-name list transition-property is set to: WHICH properties
+        // are named never depends on the enter/exit direction (unlike the easing list below, an override's own
+        // Property is never direction-dependent), and PropertyOverrides is fixed at config-authoring time and
+        // typically shared across every element/render a given Motion plays — so building this once per
+        // distinct overrides list (auto-evicted when that list itself is collected, mirroring
+        // StyleArbitraryValueResolver's per-element layer cache) avoids repeating an identical List<T> on every
+        // single enter/exit that reuses the same config.
+        private static readonly ConditionalWeakTable<IReadOnlyList<StylePropertyTransition>, List<StylePropertyName>> s_propertyNameListCache = new();
+
         // Per-property override path: transition-property becomes EXACTLY the overridden properties (in
         // declaration order) instead of "all" — matching CSS semantics where an explicit transition-property list
-        // transitions only what it names. Duration / delay are positionally-matched n-entry lists rented from the
-        // SAME pools the single-entry path above uses (RentDurationList / RentDelayList n-entry overloads), so
-        // they are returned through the existing PendingAnimation.DurationList / DelayList bookkeeping unchanged.
-        // A null override field falls back to the value the caller already resolved for this direction
-        // (durationSec / easing / delaySec — for an exit, easing here is already ExitEasing ?? Easing, so the
-        // fallback stays direction-correct without this method needing to know enter from exit).
-        // The property-name and easing lists are rebuilt each call instead of pooled: PropertyOverrides is a
-        // handful of entries fixed at config-authoring time, so the allocation is bounded and one-shot per
-        // animation start (never per-frame) — but the per-mode EasingFunction INSTANCES are still reused via the
-        // existing static cache (GetOrCreateEasingList) rather than reallocated, mirroring its intent.
+        // transitions only what it names. Duration / delay are positionally-matched n-entry lists, rented EMPTY
+        // and filled directly in the loop below (rather than staged through an intermediary int[] first) from
+        // the SAME pools the single-entry path above uses, so they are returned through the existing
+        // PendingAnimation.DurationList / DelayList bookkeeping unchanged. A null override field falls back to
+        // the value the caller already resolved for this direction (durationSec / easing / delaySec — for an
+        // exit, easing here is already ExitEasing ?? Easing, so the fallback stays direction-correct without
+        // this method needing to know enter from exit).
+        // The easing list IS direction-dependent (an override's null Easing falls back to defaultEasing, which
+        // differs between an enter and an exit) and is rebuilt each call rather than cached: PropertyOverrides
+        // is a handful of entries, so the allocation is bounded and one-shot per animation start (never
+        // per-frame) — the per-mode EasingFunction INSTANCES it holds are still reused via the existing static
+        // cache (GetOrCreateEasingList) rather than reallocated.
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyPropertyOverrideTransitionStyles(
             VisualElement element, float defaultDurationSec, EasingMode defaultEasing, float defaultDelaySec,
             IReadOnlyList<StylePropertyTransition> overrides)
         {
             var count = overrides.Count;
-            var propertyNames = new List<StylePropertyName>(count);
+            var propertyNames = s_propertyNameListCache.GetValue(overrides, static ov =>
+            {
+                var names = new List<StylePropertyName>(ov.Count);
+                for (var i = 0; i < ov.Count; i++)
+                {
+                    names.Add(new StylePropertyName(ov[i].Property));
+                }
+                return names;
+            });
             var easingList = new List<EasingFunction>(count);
-            var durationMs = new int[count];
-            var delayMs = new int[count];
+            var durationList = RentEmptyDurationList(count);
+            var delayList = RentEmptyDelayList(count);
             var hasDelay = false;
             for (var i = 0; i < count; i++)
             {
                 var o = overrides[i];
-                propertyNames.Add(new StylePropertyName(o.Property));
                 easingList.Add(GetOrCreateEasingList(o.Easing ?? defaultEasing)[0]);
-                durationMs[i] = (int)((o.DurationSec ?? defaultDurationSec) * 1000);
+                durationList.Add(new TimeValue((int)((o.DurationSec ?? defaultDurationSec) * 1000), TimeUnit.Millisecond));
                 var delaySec = o.DelaySec ?? defaultDelaySec;
                 if (delaySec > 0f)
                 {
                     hasDelay = true;
-                    delayMs[i] = (int)(delaySec * 1000);
                 }
+                delayList.Add(new TimeValue((int)(delaySec * 1000), TimeUnit.Millisecond));
             }
 
-            var durationList = RentDurationList(durationMs);
             element.style.transitionProperty = propertyNames;
             element.style.transitionDuration = durationList;
             element.style.transitionTimingFunction = easingList;
 
             // Mirrors the single-entry path: transition-delay is set only when at least one property actually
-            // needs one (an all-zero delay list is behaviorally identical to leaving it unset).
-            List<TimeValue>? delayList = null;
-            if (hasDelay)
+            // needs one (an all-zero delay list is behaviorally identical to leaving it unset) — the rented list
+            // is returned immediately rather than handed to the caller for a later ReturnDelayList that would
+            // never come (this play's own bookkeeping only tracks a DelayList when it set one).
+            if (!hasDelay)
             {
-                delayList = RentDelayList(delayMs);
-                element.style.transitionDelay = delayList;
+                ReturnDelayList(delayList);
+                return (durationList, null);
             }
-
+            element.style.transitionDelay = delayList;
             return (durationList, delayList);
         }
 
@@ -1193,45 +1212,38 @@ namespace Velvet
         }
 
         private List<TimeValue> RentDurationList(int ms) => RentTimeValueList(_durationPool, ms);
-        private List<TimeValue> RentDurationList(IReadOnlyList<int> msValues) => RentTimeValueList(_durationPool, msValues);
         private void ReturnDurationList(List<TimeValue>? list) => ReturnTimeValueList(_durationPool, list);
         private List<TimeValue> RentDelayList(int ms) => RentTimeValueList(_delayPool, ms);
-        private List<TimeValue> RentDelayList(IReadOnlyList<int> msValues) => RentTimeValueList(_delayPool, msValues);
         private void ReturnDelayList(List<TimeValue>? list) => ReturnTimeValueList(_delayPool, list);
+        // n-entry siblings for PropertyOverrides: rented EMPTY (the caller fills them directly, positionally
+        // matching each override — see ApplyPropertyOverrideTransitionStyles) rather than pre-filled from an
+        // intermediary int[], but drawn from the SAME pools the single-entry methods above use (a rented list's
+        // capacity just grows to whatever size it was last asked for, so ReturnTimeValueList already handles
+        // returning either shape without change).
+        private List<TimeValue> RentEmptyDurationList(int capacity) => RentEmptyTimeValueList(_durationPool, capacity);
+        private List<TimeValue> RentEmptyDelayList(int capacity) => RentEmptyTimeValueList(_delayPool, capacity);
 
-        // Single-entry hot path (unchanged): every enter / exit without PropertyOverrides rents exactly one of
-        // these per animation.
+        // Single-entry hot path: every enter / exit without PropertyOverrides rents exactly one of these per
+        // animation.
         private static List<TimeValue> RentTimeValueList(Stack<List<TimeValue>> pool, int ms)
         {
-            if (!pool.TryPop(out var list))
-            {
-                list = new List<TimeValue>(1);
-            }
-            else
-            {
-                list.Clear();
-            }
+            var list = RentEmptyTimeValueList(pool, capacity: 1);
             list.Add(new TimeValue(ms, TimeUnit.Millisecond));
             return list;
         }
 
-        // n-entry sibling for PropertyOverrides: builds a positionally-matched TimeValue per override, reusing
-        // the SAME pool as the single-entry path above (a rented list's capacity just grows to whatever size it
-        // was last asked for; Clear()+Add() reuse is agnostic to entry count) — so ReturnTimeValueList below
-        // already handles returning either shape without change.
-        private static List<TimeValue> RentTimeValueList(Stack<List<TimeValue>> pool, IReadOnlyList<int> msValues)
+        // Rents a list with no entries — either a fresh one sized to capacity, or a pooled one cleared of
+        // whatever it held last. Shared by the single-entry rent above (which adds its one TimeValue itself)
+        // and the PropertyOverrides path (which fills several, positionally, in its own loop).
+        private static List<TimeValue> RentEmptyTimeValueList(Stack<List<TimeValue>> pool, int capacity)
         {
             if (!pool.TryPop(out var list))
             {
-                list = new List<TimeValue>(msValues.Count);
+                list = new List<TimeValue>(capacity);
             }
             else
             {
                 list.Clear();
-            }
-            for (var i = 0; i < msValues.Count; i++)
-            {
-                list.Add(new TimeValue(msValues[i], TimeUnit.Millisecond));
             }
             return list;
         }

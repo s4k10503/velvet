@@ -17,8 +17,16 @@ namespace Velvet
     /// between calls, so the SAME instance keeps its current value and velocity — the physical continuity an
     /// interrupted spring needs (e.g. an AnimatePresence exit that gets cancelled hands off to a reversal
     /// spring built from wherever the exit currently was, not from a fresh rest state).
+    /// <para>
+    /// A mutable struct, not a class: <see cref="SpringChannel"/> embeds one inline (as a plain, non-readonly
+    /// field — see its own doc) instead of holding a separate heap reference, so a spring channel costs one
+    /// allocation instead of two. <see cref="Step"/> mutates <see cref="Value"/>/<see cref="Velocity"/> in
+    /// place, so every caller must reach an instance through an addressable field/variable (never through a
+    /// property or a <c>readonly</c> field of this type) or the mutation lands on a silent defensive copy
+    /// instead of the real one.
+    /// </para>
     /// </remarks>
-    internal sealed class SpringIntegrator
+    internal struct SpringIntegrator
     {
         // A single large hitch (a dropped frame, a GC pause, the editor regaining focus) must not make the
         // spring "jump": integrating a huge dt in one step can overshoot wildly or numerically blow up. Capping

@@ -10,7 +10,11 @@ namespace Velvet
     /// </summary>
     internal sealed class SpringChannel
     {
-        public readonly SpringIntegrator Integrator;
+        // Deliberately NOT readonly: SpringIntegrator is a mutable struct embedded inline (see its own doc), and
+        // every Step call mutates it in place through this field. Marking the field readonly would make the
+        // compiler silently invoke Step on a defensive COPY instead — the spring would never advance, only
+        // ever reporting its initial value forever.
+        public SpringIntegrator Integrator;
         public float Target;
         public readonly float RestingTarget;
 
