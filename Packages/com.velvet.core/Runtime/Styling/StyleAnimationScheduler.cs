@@ -167,8 +167,13 @@ namespace Velvet
                 StartShadowCoFadeTick(pending);
 
                 // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
-                // to-classes; variantMode KEEPS them (they are the persistent resting variant).
-                var durationMs = (long)(durationSec * 1000) + (long)(delaySec * 1000) + AnimationGraceMs;
+                // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
+                // SLOWEST animating property (SlowestPropertyTimeoutMs) rather than just the top-level
+                // durationSec/delaySec: PropertyOverrides can give one property a longer duration than the
+                // top-level value, and completing on the top-level timing alone would clear the inline
+                // transition-duration (snapping the still-mid-tween slower property to its resting value) before
+                // it actually finishes.
+                var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
                 var timeout = element.schedule.Execute(() =>
                 {
                     if (_pendingEnters.Remove(element, out var completed))
@@ -314,8 +319,12 @@ namespace Velvet
                     // reconcile-reorder detach of the exiting ghost, which is why the host is the panel root).
                     StartShadowCoFadeTick(pending);
 
-                    // Step 3: invoke onComplete after the duration.
-                    var durationMs = (long)(config.DurationSec * 1000) + (long)(config.DelaySec * 1000) + AnimationGraceMs;
+                    // Step 3: invoke onComplete after the duration. Sized from the SLOWEST animating property
+                    // (SlowestPropertyTimeoutMs) rather than just the top-level DurationSec/DelaySec: a variant
+                    // exit's PropertyOverrides can give one property a longer duration than the top-level value,
+                    // and completing on the top-level timing alone would drop the ghost — removing its element —
+                    // while that slower property is still mid-tween.
+                    var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
                     var timeout = host.schedule.Execute(() =>
                     {
                         if (_pendingExits.Remove(element, out var completed))
@@ -939,7 +948,7 @@ namespace Velvet
                 DurationList = pending.DurationList,
                 DelayList = pending.DelayList,
             };
-            var timeoutMs = MaxReversalTimeoutMs(pending.DurationList, pending.DelayList);
+            var timeoutMs = SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList);
             var timeout = element.schedule.Execute(() =>
             {
                 if (_pendingEnters.Remove(element))
@@ -954,13 +963,17 @@ namespace Velvet
             _pendingEnters[element] = reversal;
         }
 
-        // How long the reversal must stay alive before it is safe to clear the inline transition styles: the
-        // SLOWEST animating property's delay + duration. For the single-entry case (no PropertyOverrides) that
-        // is just duration[0] + delay[0], same as before; PropertyOverrides can give each property its own
-        // duration / delay, so an interrupted variant exit's reversal must wait for whichever one finishes
-        // last, not just the first, or a slower property's transition-duration would be cleared (snapping it to
-        // the resting value) while it is still mid-tween.
-        private static float MaxReversalTimeoutMs(List<TimeValue>? durationList, List<TimeValue>? delayList)
+        // How long a tween must stay alive before it is safe to clear the inline transition styles / fire
+        // completion: the SLOWEST animating property's delay + duration. For the single-entry case (no
+        // PropertyOverrides) that is just duration[0] + delay[0], same as a plain top-level DurationSec/DelaySec;
+        // PropertyOverrides can give each property its own duration / delay, so an interrupted reversal, and an
+        // enter/exit's own completion, must both wait for whichever property finishes last, not just the first
+        // (or the first-declared) one — otherwise a slower property's transition-duration gets cleared (snapping
+        // it to the resting value, or dropping the ghost) while it is still mid-tween. Shared by
+        // ScheduleReversalCleanup (a cancelled exit's reversal) and PlayEnterInternal / PlayExit's own
+        // completion timeout, all three of which already hold the exact duration/delay lists ApplyTransitionStyles
+        // built for this play, so the slowest-property computation only has to live here once.
+        private static float SlowestPropertyTimeoutMs(List<TimeValue>? durationList, List<TimeValue>? delayList)
         {
             if (durationList is not { Count: > 0 })
             {
