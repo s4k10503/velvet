@@ -163,6 +163,13 @@ namespace Velvet
                 if (filter.HasValue) return filter.Value;
             }
 
+            // filter-[name:args] resolves a VelvetFilters-registered custom filter; it shares the same
+            // ApplyCombinedFilter compose-and-apply path as the built-ins above, appended after them.
+            {
+                var custom = StyleFilterValueParser.TryParseCustomFilter(prefix, valueSpan, negate, out result);
+                if (custom.HasValue) return custom.Value;
+            }
+
             if (!TryGetProperty(prefix, out var property))
             {
                 return false;
@@ -588,7 +595,18 @@ namespace Velvet
         // Per-element, per-property stack of arbitrary-value layers keyed by priority (ascending). A
         // ConditionalWeakTable auto-drops entries when an element is GC'd; pooled (reused) elements are scrubbed
         // explicitly via ClearAll so no layer ghosts across reuse.
-        private sealed class LayerMap : Dictionary<ArbitraryProperty, SortedList<int, ArbitraryStyle>> { }
+        private sealed class LayerMap : Dictionary<ArbitraryProperty, SortedList<int, ArbitraryStyle>>
+        {
+            // Per-NAME priority stacks for filter-[name:args] custom filters. Unlike every other
+            // arbitrary property, a custom filter cannot share the single FilterCustom slot in the base
+            // dictionary above — "dissolve" and "glow" (or a base and a hover layer of the SAME name)
+            // would clobber each other. Lazily allocated: most elements never apply a custom filter.
+            public Dictionary<string, SortedList<int, ArbitraryStyle>> Customs;
+            // Stable first-application order for the keys in Customs (Dictionary enumeration order is
+            // unspecified). ApplyCombinedFilter appends one function per name in this order, after the
+            // built-ins, so two custom filters compose in the order their classes were applied.
+            public List<string> CustomOrder;
+        }
 
         private static readonly ConditionalWeakTable<VisualElement, LayerMap> s_layers = new();
 
@@ -598,13 +616,39 @@ namespace Velvet
         public static void Apply(VisualElement element, in ArbitraryStyle style, int priority = StyleLayerPriority.Base)
         {
             var map = s_layers.GetValue(element, static _ => new LayerMap());
-            if (!map.TryGetValue(style.Property, out var layers))
+            if (style.Property == ArbitraryProperty.FilterCustom)
+            {
+                ApplyCustomFilterLayer(map, style, priority);
+            }
+            else
+            {
+                if (!map.TryGetValue(style.Property, out var layers))
+                {
+                    layers = new SortedList<int, ArbitraryStyle>();
+                    map[style.Property] = layers;
+                }
+                layers[priority] = style;
+            }
+            ResolveAndApply(element, style.Property, map);
+        }
+
+        // Registers a filter-[name:args] layer at priority under its own per-name stack (LayerMap.Customs),
+        // appending the name to CustomOrder on its first application so the compose order in
+        // ApplyCombinedFilter is stable application order rather than Dictionary's unspecified enumeration
+        // order. Re-applying the same name again (a repeated class, or a higher-priority variant layer)
+        // reuses the existing stack instead of appending a duplicate CustomOrder entry.
+        private static void ApplyCustomFilterLayer(LayerMap map, in ArbitraryStyle style, int priority)
+        {
+            var name = style.Custom.Name;
+            map.Customs ??= new Dictionary<string, SortedList<int, ArbitraryStyle>>();
+            map.CustomOrder ??= new List<string>();
+            if (!map.Customs.TryGetValue(name, out var layers))
             {
                 layers = new SortedList<int, ArbitraryStyle>();
-                map[style.Property] = layers;
+                map.Customs[name] = layers;
+                map.CustomOrder.Add(name);
             }
             layers[priority] = style;
-            ResolveAndApply(element, style.Property, map);
         }
 
         // Removes the layer at priority for property and re-applies the
@@ -618,12 +662,75 @@ namespace Velvet
                 ClearInline(element, property);
                 return;
             }
-            if (map.TryGetValue(property, out var layers))
+            if (property == ArbitraryProperty.FilterCustom)
+            {
+                // A bare property carries no NAME, so this overload cannot target one custom filter's
+                // stack — it clears every custom filter's layer at priority. A caller that holds the
+                // parsed ArbitraryStyle (ClearClassToken, StyleVariantPayload) uses the ArbitraryStyle-aware
+                // Clear overload below instead, which clears precisely the one name's layer.
+                ClearAllCustomFilterLayers(map, priority);
+            }
+            else if (map.TryGetValue(property, out var layers))
             {
                 layers.Remove(priority);
                 if (layers.Count == 0) map.Remove(property);
             }
             ResolveAndApply(element, property, map);
+        }
+
+        // Clears the layer an ArbitraryStyle applied, using the parsed value itself rather than just its
+        // property. The only case this matters today is FilterCustom, whose value carries the registered
+        // NAME needed to remove precisely that name's layer (LayerMap.Customs) without disturbing another
+        // custom filter stacked on the same element; every other property clears exactly like the
+        // (property, priority) overload.
+        public static void Clear(VisualElement element, in ArbitraryStyle style, int priority = StyleLayerPriority.Base)
+        {
+            if (style.Property != ArbitraryProperty.FilterCustom)
+            {
+                Clear(element, style.Property, priority);
+                return;
+            }
+            if (!s_layers.TryGetValue(element, out var map))
+            {
+                ClearInline(element, style.Property);
+                return;
+            }
+            var name = style.Custom.Name;
+            if (map.Customs != null && map.Customs.TryGetValue(name, out var layers))
+            {
+                layers.Remove(priority);
+                if (layers.Count == 0)
+                {
+                    map.Customs.Remove(name);
+                    map.CustomOrder.Remove(name);
+                }
+            }
+            ResolveAndApply(element, ArbitraryProperty.FilterCustom, map);
+        }
+
+        // Fallback for the bare (property, priority) Clear overload: removes priority from EVERY custom
+        // filter's stack, since that overload has no name to target one specifically.
+        private static void ClearAllCustomFilterLayers(LayerMap map, int priority)
+        {
+            if (map.CustomOrder == null)
+            {
+                return;
+            }
+            // Snapshot names first: removing a now-empty name from CustomOrder while foreach-ing it would
+            // throw (collection modified during enumeration).
+            foreach (var name in map.CustomOrder.ToArray())
+            {
+                if (!map.Customs.TryGetValue(name, out var layers))
+                {
+                    continue;
+                }
+                layers.Remove(priority);
+                if (layers.Count == 0)
+                {
+                    map.Customs.Remove(name);
+                    map.CustomOrder.Remove(name);
+                }
+            }
         }
 
         // Drops all arbitrary-value layers tracked for element. Called when the element is
@@ -661,7 +768,7 @@ namespace Velvet
         {
             if (TryParse(core, out var style))
             {
-                Clear(element, style.Property, priority);
+                Clear(element, in style, priority);
             }
             else if (StyleBackgroundImageResolver.TryParse(core, out _))
             {
@@ -689,7 +796,7 @@ namespace Velvet
                 ApplyCombinedScale(element, map);
                 return;
             }
-            if (IsFilter(property))
+            if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
             {
                 ApplyCombinedFilter(element, map);
                 return;
@@ -797,12 +904,44 @@ namespace Velvet
                 (functions ??= new List<FilterFunction>()).Add(
                     BuildFilter(prop, layers.Values[layers.Count - 1].Value));
             }
+            // Customs compose AFTER every built-in, in first-application order (CustomOrder) — each
+            // contributing its own highest-priority (winning) layer, the same "last entry in the
+            // ascending-by-priority SortedList wins" rule the built-ins use above, just keyed by name
+            // instead of by ArbitraryProperty.
+            if (map.CustomOrder != null)
+            {
+                foreach (var name in map.CustomOrder)
+                {
+                    var layers = map.Customs[name];
+                    if (layers.Count == 0)
+                    {
+                        continue;
+                    }
+                    (functions ??= new List<FilterFunction>()).Add(
+                        BuildCustomFilter(layers.Values[layers.Count - 1].Custom));
+                }
+            }
             if (functions == null)
             {
                 element.style.filter = StyleKeyword.Null;
                 return;
             }
             element.style.filter = functions;
+        }
+
+        // Builds the FilterFunction for a filter-[name:args] custom filter. The public
+        // FilterFunctionDefinition ctor sets type = Custom and customDefinition in one step; AddParameter
+        // fills only the EXPLICITLY parsed arguments (an omitted one is left off entirely, not defaulted
+        // here), so the definition's own declared parameter defaults take effect at render time — the
+        // same outcome a bare filter-[name] token (no arguments at all) produces.
+        private static FilterFunction BuildCustomFilter(CustomFilterValue custom)
+        {
+            var fn = new FilterFunction(custom.Definition);
+            foreach (var arg in custom.Args)
+            {
+                fn.AddParameter(arg);
+            }
+            return fn;
         }
 
         private static FilterFunction BuildFilter(ArbitraryProperty prop, float value)
@@ -936,6 +1075,7 @@ namespace Velvet
                 case ArbitraryProperty.FilterSepia:
                 case ArbitraryProperty.FilterBrightness:
                 case ArbitraryProperty.FilterSaturate:
+                case ArbitraryProperty.FilterCustom:
                     element.style.filter = StyleKeyword.Null;
                     return;
                 case ArbitraryProperty.TransitionDuration:

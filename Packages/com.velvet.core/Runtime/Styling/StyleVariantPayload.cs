@@ -56,7 +56,7 @@ namespace Velvet
                     }
                     else
                     {
-                        StyleArbitraryValueResolver.Clear(target, style.Property, effectivePriority);
+                        StyleArbitraryValueResolver.Clear(target, in style, effectivePriority);
                     }
                 }
                 else if (on)

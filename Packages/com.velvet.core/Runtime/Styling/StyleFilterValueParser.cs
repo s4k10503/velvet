@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -97,6 +98,106 @@ namespace Velvet
             }
 
             return null;
+        }
+
+        // Warn-once bookkeeping for a filter-[name:...] token whose name was never registered with
+        // VelvetFilters: logging once per NAME (not once per resolve) keeps a class re-resolved on every
+        // re-render (e.g. toggled by a hover variant) from spamming the console. Mirrors VelvetFilters'
+        // own reset-on-domain-reload pattern so stale entries never survive into the next Editor session
+        // or test run.
+        private static readonly HashSet<string> s_warnedUnregistered = new();
+
+#if UNITY_EDITOR
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetWarnOnceState() => s_warnedUnregistered.Clear();
+#endif
+
+        // filter-[name] / filter-[name:arg(:arg)*] resolves a name registered via VelvetFilters.Register.
+        // The name is everything up to the first ':' (a colon-free bracket body is a bare name — no
+        // explicit arguments, so the definition's own declared parameter defaults apply at render time).
+        // Each remaining colon-separated segment is one argument: a signed float, else a hex color (the
+        // same grammar bg-[#fff] uses), else the WHOLE token rejects — a registered name with a malformed
+        // argument must not half-apply. Never negated: "-filter-[..]" has no meaning for a named reference.
+        internal static bool? TryParseCustomFilter(string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate || prefix != "filter-")
+            {
+                return null;
+            }
+
+            var colon = valueSpan.IndexOf(':');
+            var nameSpan = colon < 0 ? valueSpan : valueSpan.Slice(0, colon);
+            if (nameSpan.Length == 0)
+            {
+                return false;
+            }
+            var name = nameSpan.ToString();
+
+            if (!VelvetFilters.TryGet(name, out var definition))
+            {
+                if (s_warnedUnregistered.Add(name))
+                {
+                    Debug.LogWarning($"[VelvetFilters] \"{name}\" is not registered; the filter-[{name}:...] class is inert.");
+                }
+                return false;
+            }
+
+            if (colon < 0)
+            {
+                result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, new CustomFilterValue(name, definition, Array.Empty<FilterParameter>()));
+                return true;
+            }
+
+            var args = new List<FilterParameter>();
+            var remaining = valueSpan.Slice(colon + 1);
+            while (true)
+            {
+                var next = remaining.IndexOf(':');
+                var segment = next < 0 ? remaining : remaining.Slice(0, next);
+                if (!TryParseFilterArg(segment, out var parameter))
+                {
+                    return false;
+                }
+                args.Add(parameter);
+                if (next < 0)
+                {
+                    break;
+                }
+                remaining = remaining.Slice(next + 1);
+            }
+            // FilterFunction.AddParameter hard-caps at 4 (a fixed 4-slot buffer); reject up front rather
+            // than let a 5th argument throw later when the layer composes into the inline filter.
+            if (args.Count > 4)
+            {
+                return false;
+            }
+
+            result = new ArbitraryStyle(ArbitraryProperty.FilterCustom, new CustomFilterValue(name, definition, args.ToArray()));
+            return true;
+        }
+
+        // A single filter-[name:...] argument segment: a signed float (invariant culture), else a hex
+        // color (#rgb/#rrggbb/..., reusing StyleColorValueParser's grammar so filter arguments and
+        // bg-[#fff] parse hex identically). An empty segment (a double colon, or a trailing colon) rejects.
+        private static bool TryParseFilterArg(ReadOnlySpan<char> segment, out FilterParameter parameter)
+        {
+            parameter = default;
+            if (segment.Length == 0)
+            {
+                return false;
+            }
+            if (StyleArbitraryValueResolver.TryParseFloat(segment, out var f))
+            {
+                parameter = new FilterParameter(f);
+                return true;
+            }
+            if (StyleColorValueParser.TryParseColor(segment, out var color))
+            {
+                parameter = new FilterParameter(color);
+                return true;
+            }
+            return false;
         }
 
         // Cheap dispatch gate (prefix-only): true when cls MIGHT be a named filter preset, so the reconciler
