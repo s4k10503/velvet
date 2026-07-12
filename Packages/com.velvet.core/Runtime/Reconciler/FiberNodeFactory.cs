@@ -158,15 +158,14 @@ namespace Velvet
                     // staggerChildren/delayChildren orchestration — without seeding it here, that first patch
                     // would see no previous entry and could misfire even when the label held steady across
                     // mount and the first re-render. Orchestration itself only ever starts from a PATCH-time
-                    // label change (see FiberNodePatcher.PatchMotion), never on mount.
+                    // label change (see FiberNodePatcher.PatchMotion), never on mount. A null childLabel needs no
+                    // removal here: a brand-new element was never in this map, and a pooled one already had its
+                    // entry cleared by ReconcilerContext.ClearElementSideTables when it was returned (see
+                    // MotionChildLabel's own doc).
                     var childLabel = MotionVariantResolver.LabelForChildren(motionNode, motionAmbient);
                     if (childLabel != null)
                     {
                         _ctx.MotionChildLabel[element] = childLabel;
-                    }
-                    else
-                    {
-                        _ctx.MotionChildLabel.Remove(element);
                     }
                     if (motionNode.Children != null)
                     {

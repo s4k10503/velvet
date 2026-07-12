@@ -387,27 +387,45 @@ namespace Velvet
             // re-render that keeps the same label must not re-trigger the stagger.
             var previousChildLabel = _ctx.MotionChildLabel.TryGetValue(element, out var prevChildLabel) ? prevChildLabel : null;
             var childLabelChanged = childLabel != previousChildLabel;
-            if (childLabel != null)
+            // Only touch the map when the label actually changed: an unchanged null already has no entry (the
+            // else branch below already removed it last time), and an unchanged non-null value is already
+            // stored under this exact key — re-writing/re-removing it every render would just be a wasted
+            // Dictionary op on the (overwhelming) common "same label" re-render.
+            if (childLabelChanged)
             {
-                _ctx.MotionChildLabel[element] = childLabel;
-            }
-            else
-            {
-                _ctx.MotionChildLabel.Remove(element);
+                if (childLabel != null)
+                {
+                    _ctx.MotionChildLabel[element] = childLabel;
+                }
+                else
+                {
+                    _ctx.MotionChildLabel.Remove(element);
+                }
             }
 
             if (childLabel != null)
             {
                 var childOrchestration = ResolveChildOrchestration(newNode, childLabelChanged, ambientOrchestration, extraDelaySec);
+                // Skip the Orchestration round-trip when this node passes the ambient frame through UNCHANGED
+                // (including the common "no orchestration anywhere in this subtree" case, both null): a
+                // descendant's Get already sees exactly ambientOrchestration without anything new pushed, so
+                // pushing then popping the identical reference back off is pure overhead.
+                var pushOrchestration = !ReferenceEquals(childOrchestration, ambientOrchestration);
                 _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
-                _ctx.ComponentContextStack.Push(MotionContext.Orchestration, childOrchestration);
+                if (pushOrchestration)
+                {
+                    _ctx.ComponentContextStack.Push(MotionContext.Orchestration, childOrchestration);
+                }
                 try
                 {
                     PatchBaseElement(element, oldNode, newNode, appliedOld, appliedNew);
                 }
                 finally
                 {
-                    _ctx.ComponentContextStack.Pop(MotionContext.Orchestration);
+                    if (pushOrchestration)
+                    {
+                        _ctx.ComponentContextStack.Pop(MotionContext.Orchestration);
+                    }
                     _ctx.ComponentContextStack.Pop(MotionContext.ActiveLabel);
                 }
             }
