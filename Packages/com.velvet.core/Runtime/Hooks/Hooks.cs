@@ -899,6 +899,90 @@ namespace Velvet
 
         #endregion
 
+        #region UseFrame
+
+        /// <summary>
+        /// Per-frame callback: <paramref name="onFrame"/> runs once per frame with the elapsed time in
+        /// seconds while the component stays mounted, and stops on unmount. The latest render's closure
+        /// is always the one invoked — a re-render swaps the callback without re-subscribing — so
+        /// per-frame data flows without touching component state (the escape hatch for
+        /// simulation-driven visuals; setting state per frame would re-render the world every tick).
+        /// Frames tick while the component's host is attached to a panel and pause while it is not.
+        /// </summary>
+        /// <param name="onFrame">Invoked once per frame with the elapsed time in seconds (always positive).</param>
+        public static void UseFrame(Action<float> onFrame)
+        {
+            if (onFrame == null) throw new ArgumentNullException(nameof(onFrame));
+            var fiber = Resolve("UseFrame");
+            // Every render overwrites the ref slot, and the tick below reads through it — that is what
+            // swaps in the latest closure without re-subscribing (the effect's empty deps never re-run).
+            // StrictMode's throwaway diagnostic pass must not swap the LIVE closure (its captures are
+            // the discarded pass's state), matching UseImperativeHandle's gate.
+            var latest = UseRef<Action<float>>();
+            if (!IsStrictDiagnosticPass(fiber))
+            {
+                latest.Set(onFrame);
+            }
+
+            UseEffect(() =>
+            {
+                // Resolved inside the effect factory: MountPoint is unset while rendering and assigned
+                // by commit time, and this passive effect runs after the commit has painted.
+                var host = fiber.MountPoint;
+                if (host == null)
+                {
+                    return null;
+                }
+                UnityEngine.UIElements.IVisualElementScheduledItem? tick = null;
+                void StartTick()
+                {
+                    tick?.Pause();
+                    tick = host.schedule.Execute((UnityEngine.UIElements.TimerState ts) =>
+                    {
+                        // TimerState.start is the previous callback's time for a repeating item (or the
+                        // schedule time for the first firing), so deltaTime is already exactly the
+                        // elapsed interval — no separate "last tick" bookkeeping. A zero delta
+                        // (same-frame flush) is skipped so the callback only ever observes positive,
+                        // frame-sized seconds; a hitch spike is clamped the way Time.deltaTime clamps
+                        // its own, so a stall cannot teleport a user simulation by one giant step.
+                        var dt = ts.deltaTime / 1000f;
+                        if (dt <= 0f)
+                        {
+                            return;
+                        }
+                        dt = UnityEngine.Mathf.Min(dt, UnityEngine.Time.maximumDeltaTime);
+                        latest.Current?.Invoke(dt);
+                    }).Every(16);
+                }
+                // A keyed reorder re-inserts the host element, which silently drops its element-bound
+                // scheduled items — so the tick is re-armed from scratch on every attach (a dropped
+                // item cannot be resumed) and released on detach; nothing fires while detached.
+                UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.AttachToPanelEvent> onAttach = _ => StartTick();
+                UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.DetachFromPanelEvent> onDetach = _ =>
+                {
+                    tick?.Pause();
+                    tick = null;
+                };
+                host.RegisterCallback(onAttach);
+                host.RegisterCallback(onDetach);
+                // The passive effect runs post-commit, so the host is ordinarily already attached and
+                // no AttachToPanelEvent is coming — arm the first tick directly.
+                if (host.panel != null)
+                {
+                    StartTick();
+                }
+                return () =>
+                {
+                    host.UnregisterCallback(onAttach);
+                    host.UnregisterCallback(onDetach);
+                    tick?.Pause();
+                    tick = null;
+                };
+            }, Array.Empty<object>());
+        }
+
+        #endregion
+
         #region Refs
 
         /// <summary>

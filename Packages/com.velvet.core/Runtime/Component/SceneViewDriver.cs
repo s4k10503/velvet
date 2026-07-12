@@ -31,9 +31,9 @@ namespace Velvet
     /// </summary>
     internal static class SceneViewDriver
     {
-        // Editor-panel repaint cadence (~60fps), matching the recurring-tick interval the style
-        // animation drivers schedule with.
-        private const long RepaintIntervalMs = 16;
+        // Repaint cadence (~60fps), matching the recurring-tick interval the style animation drivers
+        // schedule with. Shared with the sibling per-frame element driver (ParticlesDriver).
+        internal const long RepaintIntervalMs = 16;
 
         // The texture ceiling per axis. The sibling texture bakers bound their bake sizes the same
         // way — an unbounded element (a stretch inside a huge scroll canvas) must not translate into

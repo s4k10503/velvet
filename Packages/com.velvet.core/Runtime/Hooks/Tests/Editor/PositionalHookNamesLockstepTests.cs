@@ -44,6 +44,7 @@ namespace Velvet.Tests
             "UseService",
             "UseFallback",
             "Use",
+            "UseFrame",
         };
 
         [Test]
