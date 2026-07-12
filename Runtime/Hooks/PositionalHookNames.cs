@@ -31,6 +31,7 @@ namespace Velvet
             nameof(Hooks.UseService),
             nameof(Hooks.UseFallback),
             nameof(Hooks.Use),
+            nameof(Hooks.UseFrame),
         };
     }
 }

@@ -61,6 +61,10 @@ namespace Velvet
         public SceneViewSettings? SceneView { get => _sceneView; set { ThrowIfReadOnly(); _sceneView = value; } }
         private SceneViewSettings? _sceneView;
 
+        /// <summary>Particles-specific settings (the effect the element simulates and draws).</summary>
+        public ParticlesSettings? Particles { get => _particles; set { ThrowIfReadOnly(); _particles = value; } }
+        private ParticlesSettings? _particles;
+
         /// <summary>
         /// Carried <c>data-*</c> attribute values (key → value), the UI-Toolkit stand-in for HTML data
         /// attributes. UI Toolkit has no attributes, so these are stored in the reconciler's per-element
@@ -114,4 +118,14 @@ namespace Velvet
     public sealed record SceneViewSettings(
         Camera? Camera = null,
         float ResolutionScale = 1f);
+
+    /// <summary>
+    /// The particle effect a Particles element simulates and draws: the source effect (a prefab's
+    /// ParticleSystem — the framework instantiates a hidden simulation host from it and owns that
+    /// instance), the play trigger, and the world-unit → element-pixel mapping.
+    /// </summary>
+    public sealed record ParticlesSettings(
+        ParticleSystem? Effect = null,
+        PlayTrigger PlayOn = PlayTrigger.Mount,
+        float PixelsPerUnit = 100f);
 }

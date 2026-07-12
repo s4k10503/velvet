@@ -921,5 +921,39 @@ namespace Velvet
         }
 
         #endregion
+
+        #region Particles
+
+        // Binds / re-binds / releases a Particles element's simulation-and-draw machinery — the mount
+        // paths (plain element AND Motion host) and the props diff all land here, beside the sibling
+        // binding lifecycles above, because the binding owns live resources (the hidden simulation host
+        // GameObject, a painter callback, a repaint tick) tracked per element for the cleaner and the
+        // reconciler dispose sweep to release.
+        internal void ApplyParticles(VisualElement element, ParticlesSettings? settings)
+        {
+            if (element is not ParticlesElement)
+            {
+                return;
+            }
+            if (_ctx.ParticlesBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    // A vanished settings prop only happens on a hand-built ElementNode (V.Particles
+                    // always carries settings, even for a null effect): release everything and drop the
+                    // binding — the element stays mounted and inert.
+                    ParticlesDriver.Detach(element, binding);
+                    _ctx.ParticlesBindings.Remove(element);
+                    return;
+                }
+                ParticlesDriver.Update(element, binding, settings);
+            }
+            else if (settings != null)
+            {
+                _ctx.ParticlesBindings[element] = ParticlesDriver.Attach(element, settings);
+            }
+        }
+
+        #endregion
     }
 }

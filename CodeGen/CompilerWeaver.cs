@@ -100,6 +100,9 @@ namespace Velvet.CodeGen
             nameof(Velvet.Hooks.UseLayoutEffect),
             nameof(Velvet.Hooks.UseInsertionEffect),
             nameof(Velvet.Hooks.UseImperativeHandle),
+            // Runs for its side effect only (the per-frame tick reads the latest closure through a ref
+            // slot); its callback never feeds a captured return value, so it cannot go stale in a memo.
+            nameof(Velvet.Hooks.UseFrame),
         };
 
         // UNSAFE hooks — every PositionalHookName not in the SAFE sets above — bail the whole method:

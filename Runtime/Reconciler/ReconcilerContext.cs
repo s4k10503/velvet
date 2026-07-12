@@ -312,6 +312,13 @@ namespace Velvet
         // Reconciler.Dispose sweeps any binding still live at root disposal.
         public Dictionary<VisualElement, SceneViewBinding> SceneViewBindings { get; } = new();
 
+        // Per-Particles-element bookkeeping (V.Particles), keyed by the element itself. The binding
+        // owns a live GameObject — the hidden simulation host cloned from the source effect — plus a
+        // painter callback and a repaint tick, so it is NOT a pure side-table: FiberElementCleaner
+        // destroys the host on element teardown and Reconciler.Dispose sweeps any binding still live
+        // at root disposal.
+        public Dictionary<VisualElement, ParticlesBinding> ParticlesBindings { get; } = new();
+
         // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
         // range of FiberPortalRegistry.Get(TargetId).Children owned by this Portal — the
         // invariant that lets multiple Portals coexist on the same target without overwriting each

@@ -122,6 +122,13 @@ namespace Velvet
                     {
                         _patcher.Appliers.ApplySceneView(element, elementNode.Props.SceneView);
                     }
+                    // Particles (V.Particles): wire the simulation host + painter binding. The host is
+                    // panel-independent (only the draw needs one); later effect swaps arrive through the
+                    // props diff.
+                    if (elementNode.Props?.Particles != null)
+                    {
+                        _patcher.Appliers.ApplyParticles(element, elementNode.Props.Particles);
+                    }
 
                     if (elementNode.WrapElement != null)
                     {
@@ -206,6 +213,12 @@ namespace Velvet
                     if (motionNode.Props?.SceneView != null)
                     {
                         _patcher.Appliers.ApplySceneView(element, motionNode.Props.SceneView);
+                    }
+                    // Particles through a Motion host: same reason as SceneView above — a Motion can
+                    // host any element type, so the binding must attach on this create path too.
+                    if (motionNode.Props?.Particles != null)
+                    {
+                        _patcher.Appliers.ApplyParticles(element, motionNode.Props.Particles);
                     }
                     StyleFontResolver.ApplyIfPresent(element, appliedClasses);
                     _patcher.ApplyGapManipulator(element, appliedClasses);
