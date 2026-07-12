@@ -10,14 +10,15 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins ownership of the single inline <c>transition-delay</c> slot that orchestrated
-    /// (staggered) variant swaps park on an element. An enter/exit play starting on the same
-    /// element must take the slot over — cancelling the parked swap — or a DelaySec=0 exit
-    /// silently inherits the stale orchestration delay while its completion timeout is sized
-    /// without it, and the ghost is dropped before any visible exit plays. And the parked clear
-    /// must survive a transient keyed-reorder detach (the panel-root-host discipline every other
-    /// must-fire timer in the scheduler follows), or the stale delay postpones every later
-    /// transition on that element indefinitely.
+    /// Pins ownership of a pending runtime variant-swap play (an orchestrated staggerChildren/delayChildren
+    /// claim — see <c>MotionRuntimeSwapTests</c>) against a presence exit starting on the SAME element. The
+    /// swap is scheduled as an ordinary pending ENTER (<c>StyleAnimationScheduler</c>'s own bookkeeping), so
+    /// the existing enter/exit self-cancel discipline — <c>CancelEnter</c>, already called before
+    /// <c>PlayExit</c> in <c>GeneralPathReconciler</c> — is the whole ownership mechanism: an exit starting
+    /// while a stagger-parked swap is still scheduled must cancel it and play on its OWN schedule, with no
+    /// stale delay of any kind postponing it. Unlike the parked-inline-transition-delay mechanism this
+    /// superseded, there is no separate inline style left to race here at all — the claimed delay is purely a
+    /// scheduler-side timing offset on the deferred swap, never written to the element.
     /// </summary>
     [TestFixture]
     internal sealed class MotionDelayedSwapOwnershipTests
@@ -81,12 +82,12 @@ namespace Velvet.Tests
             for (var i = 0; i < steps; i++) Tick();
         }
 
-        private static float InlineDelayMs(VisualElement element)
+        // Whether the element's inline transition-duration is currently set — the runtime-swap play's own
+        // tell (see MotionRuntimeSwapTests), used here to confirm the claimed swap actually started.
+        private static bool InlineDurationIsSet(VisualElement element)
         {
-            var delay = element.style.transitionDelay;
-            return delay.keyword == StyleKeyword.Null || delay.value == null || delay.value.Count == 0
-                ? 0f
-                : delay.value[0].value;
+            var duration = element.style.transitionDuration;
+            return duration.keyword != StyleKeyword.Null && duration.value != null && duration.value.Count > 0;
         }
 
         // A coordinator whose label flip orchestrates ONE inheriting presence child: the child both
@@ -113,9 +114,10 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AParkedOrchestrationDelay_When_TheChildStartsAPresenceExit_Then_TheStaleDelayDoesNotApply()
+        public void Given_AParkedOrchestrationSwap_When_TheChildStartsAPresenceExit_Then_TheExitCompletesOnItsOwnScheduleWithoutTheStaleClaim()
         {
-            // Arrange — flip the coordinator's label so the inheriting child parks a 500ms delay.
+            // Arrange — flip the coordinator's label so the inheriting child's runtime-swap play is claimed
+            // behind a 500ms stagger slot (its own deferred swap has not fired yet).
             using var labels = new LabelStore();
             s_labelStore = labels;
             using var keys = new SetStore("x");
@@ -125,83 +127,19 @@ namespace Velvet.Tests
             Tick();
             labels.Set("visible");
             scheduler.DrainImmediateForTest();
-            var item = Root.Q<VisualElement>("item-x");
-            Assume.That(InlineDelayMs(item), Is.EqualTo(500f).Within(1e-3f),
-                "Precondition: the orchestrated delay is parked on the child");
+            Assume.That(InlineDurationIsSet(Root.Q<VisualElement>("item-x")), Is.True,
+                "Precondition: the child's runtime-swap play started, claimed behind its 500ms stagger slot");
 
-            // Act — remove the key inside the parked window; the exit (DelaySec 0) starts.
+            // Act — remove the key inside the parked window; the exit (its own 0.3s duration, no delay of
+            // its own) must cancel the parked swap and start immediately.
             keys.Set("");
             scheduler.DrainImmediateForTest();
+            AdvancePast(0.3f);
+            scheduler.DrainImmediateForTest();
 
-            // Assert — the exit owns the delay slot now: the stale 500ms must not postpone it
-            // (otherwise the completion timeout, sized without it, drops the ghost before any
-            // visible exit plays).
-            Assert.That(InlineDelayMs(Root.Q<VisualElement>("item-x")), Is.EqualTo(0f).Within(1e-3f));
-        }
-
-        // Plain (non-presence) orchestration for the reorder case: two inheriting keyed children.
-        private static VNode[] StaggerTree(string label, params string[] order)
-        {
-            var children = new VNode[order.Length];
-            for (var i = 0; i < order.Length; i++)
-            {
-                children[i] = V.Motion(key: order[i], name: order[i], variants: s_fade,
-                    transition: new StyleTransitionConfig { DurationSec = 0.15f });
-            }
-            return new VNode[]
-            {
-                V.Motion(key: "p", name: "p", animate: label,
-                    transition: new StyleTransitionConfig { DurationSec = 0.1f, StaggerChildrenSec = 0.3f },
-                    children: children),
-            };
-        }
-
-        [Test]
-        public void Given_AParkedDelayClear_When_TheChildIsReorderedDuringTheWindow_Then_TheDelayIsStillClearedEventually()
-        {
-            // Arrange — flip the label so c1 parks a 300ms delay with its clear scheduled out past
-            // delay + duration.
-            _reconciler.Reconcile(Root, Array.Empty<VNode>(), StaggerTree("hidden", "c0", "c1"));
-            _reconciler.Reconcile(Root, StaggerTree("hidden", "c0", "c1"), StaggerTree("visible", "c0", "c1"));
-            var c1 = Root.Q<VisualElement>("c1");
-            Assume.That(InlineDelayMs(c1), Is.GreaterThan(0f), "Precondition: the stagger delay is parked");
-
-            // Act — a keyed reorder transiently detaches/re-inserts the children inside the parked
-            // window, then time advances well past the whole window.
-            _reconciler.Reconcile(Root, StaggerTree("visible", "c0", "c1"), StaggerTree("visible", "c1", "c0"));
-            AdvancePast(1.5f);
-
-            // Assert — the inline delay is released; a dropped element-scheduled clear would leave
-            // every later transition on this element starting 300ms late.
-            Assert.That(InlineDelayMs(Root.Q<VisualElement>("c1")), Is.EqualTo(0f).Within(1e-3f));
-        }
-
-        [Test]
-        public void Given_AParkedDelayClear_When_TheReorderTransientlyDetachesTheDelayedChild_Then_TheDelayIsStillClearedEventually()
-        {
-            // Arrange — three inheriting children so the rotation below is FORCED to move the one that
-            // actually parked a delay. The sibling test above swaps only two children, and the reconciler's
-            // own LIS-based placement happens to keep ITS delayed child (c1) anchored in place — nothing
-            // there ever transiently detaches it (see that test's own comment). c2 (index 2) claims the
-            // largest stagger delay (600ms) and is the one non-anchor element this 3-way rotation moves via
-            // RemoveFromHierarchy + re-Insert.
-            _reconciler.Reconcile(Root, Array.Empty<VNode>(), StaggerTree("hidden", "c0", "c1", "c2"));
-            _reconciler.Reconcile(Root, StaggerTree("hidden", "c0", "c1", "c2"), StaggerTree("visible", "c0", "c1", "c2"));
-            Assume.That(InlineDelayMs(Root.Q<VisualElement>("c2")), Is.GreaterThan(0f),
-                "Precondition: c2's stagger delay is parked");
-
-            var c2Detached = false;
-            Root.Q<VisualElement>("c2").RegisterCallback<DetachFromPanelEvent>(_ => c2Detached = true);
-
-            // Act — a keyed rotation inside the parked window.
-            _reconciler.Reconcile(Root, StaggerTree("visible", "c0", "c1", "c2"), StaggerTree("visible", "c2", "c0", "c1"));
-            Assume.That(c2Detached, Is.True, "Precondition: the rotation transiently detached the delayed child");
-            AdvancePast(0.6f + 0.15f);
-
-            // Assert — the delay is still released; a clear timer parked on the detached element itself
-            // (rather than the panel-root host) would have been silently dropped by the transient detach,
-            // leaving this element's transition-delay stuck 600ms late on every later transition.
-            Assert.That(InlineDelayMs(Root.Q<VisualElement>("c2")), Is.EqualTo(0f).Within(1e-3f));
+            // Assert — the ghost is already gone well before the original 500ms claim would have elapsed:
+            // the exit ran on its own schedule instead of being postponed by the cancelled swap.
+            Assert.That(Root.Q<VisualElement>("item-x"), Is.Null);
         }
     }
 }
