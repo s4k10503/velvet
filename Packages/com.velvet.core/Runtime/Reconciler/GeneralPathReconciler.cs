@@ -994,7 +994,7 @@ namespace Velvet
                         if (newKeySet.Contains(key)) continue;
                         if (state.ExitComplete.Contains(key)) continue;
                         var ghostMotion = FiberNodeFactory.FindFirstMotionDescendant(node);
-                        if (ghostMotion?.Transition is { DurationSec: > 0f })
+                        if (ghostMotion?.Transition?.HasExitAnimation == true)
                         {
                             blockEnters = true;
                             break;
@@ -1026,8 +1026,23 @@ namespace Velvet
                 foreach (var (key, node) in prevCommitted)
                 {
                     if (newKeySet.Contains(key) || state.ExitComplete.Contains(key)) continue;
-                    if (FiberNodeFactory.FindFirstMotionDescendant(node)?.Transition is { DurationSec: > 0f }) exitCount++;
+                    if (FiberNodeFactory.FindFirstMotionDescendant(node)?.Transition?.HasExitAnimation == true) exitCount++;
                 }
+
+                // An exit's completion callback normally runs long after this method has returned (a tween's
+                // scheduled timeout, a spring's settled tick). A spring exit whose variant pair touches no
+                // spring-animatable channel (MotionSpringDriver.Create returns null — e.g. a color-only exit
+                // variant) is the one case that completes SYNCHRONOUSLY, from inside the PlayExit call below,
+                // before this pass has finished building nextCommitted for every other key and before this
+                // pass's own state.ExitComplete.Clear() further down. Running such a completion's bookkeeping
+                // immediately would have that same Clear() wipe the ExitComplete entry it just added, so the
+                // re-render it schedules finds the ghost "not complete" again, replays PlayExit, and repeats
+                // forever. passSettled tracks whether this pass's own bookkeeping (below) has already run; a
+                // completion that fires before then is queued and drained once it has, so its ExitComplete.Add
+                // survives into the render it schedules — a genuinely async completion always finds passSettled
+                // already true (this method returned long before it fires) and runs immediately, unchanged.
+                var passSettled = false;
+                List<Action>? deferredExitCompletions = null;
 
                 var visualIndex = 0;
                 var exitIndex = 0;
@@ -1055,7 +1070,7 @@ namespace Velvet
 
                         var ghostMotionNode = FiberNodeFactory.FindFirstMotionDescendant(node);
                         var ghostTransition = ghostMotionNode?.Transition;
-                        if (ghostTransition is not { DurationSec: > 0f })
+                        if (ghostTransition?.HasExitAnimation != true)
                         {
                             // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
                             state.Exiting.Remove(key);
@@ -1088,7 +1103,7 @@ namespace Velvet
                             // For a variant exit the From classes ARE the resting variants[animate]; if this exit is
                             // cancelled (the key is re-added before it finishes) the element must return to that resting
                             // variant rather than be left without it (interrupt handling).
-                            _ctx.StyleAnimationScheduler.PlayExit(ghostAnchor, exitTransition, () =>
+                            void RunExitComplete()
                             {
                                 if (_ctx.IsDisposed) return;
                                 // Reconcile-driven removal: flag the finished exit and re-render the boundary;
@@ -1127,6 +1142,13 @@ namespace Velvet
                                         + "so the exited child cannot be removed. Mount AnimatePresence inside a "
                                         + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
                                 }
+                            }
+                            _ctx.StyleAnimationScheduler.PlayExit(ghostAnchor, exitTransition, () =>
+                            {
+                                // See passSettled's own comment above the loop: a synchronous completion (fired
+                                // from inside this very PlayExit call) is queued instead of run inline.
+                                if (passSettled) RunExitComplete();
+                                else (deferredExitCompletions ??= new List<Action>()).Add(RunExitComplete);
                             }, restoreFromOnCancel: variantExit != null,
                                 additionalDelaySec: presence.StaggerDelaySec(exitIndex, exitCount));
                             exitIndex++;
@@ -1246,6 +1268,15 @@ namespace Velvet
                 state.Committed.Clear();
                 foreach (var entry in nextCommitted) state.Committed.Add(entry);
                 state.ExitComplete.Clear();
+
+                // This pass's own bookkeeping has settled — a synchronous exit completion queued above can now
+                // run safely (see passSettled's declaration comment): its ExitComplete.Add survives past this
+                // point instead of being wiped by the Clear() just above.
+                passSettled = true;
+                if (deferredExitCompletions != null)
+                {
+                    foreach (var completion in deferredExitCompletions) completion();
+                }
             }
             finally
             {

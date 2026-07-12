@@ -143,6 +143,17 @@ namespace Velvet
         /// <remarks>Equivalent to Framer Motion's <c>transition.when</c> for users migrating from Framer Motion.</remarks>
         public TransitionWhen When { get; init; } = TransitionWhen.Together;
 
+        /// <summary>
+        /// Whether an AnimatePresence exit gated by this config should be treated as animated (kept mounted as
+        /// an exiting ghost) rather than removed instantly. A spring's settle time is decided by
+        /// <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/>, not <see cref="DurationSec"/>
+        /// (documented as ignored for <see cref="TransitionType.Spring"/>), so a spring counts as animated
+        /// regardless of DurationSec — including the degenerate case where the exit's variant pair touches no
+        /// spring-animatable channel at all, which still plays through the spring machinery (completing on its
+        /// own, deferred, rather than being pre-empted by an instant-removal gate keyed on this flag).
+        /// </summary>
+        internal bool HasExitAnimation => Type == TransitionType.Spring || DurationSec > 0f;
+
         // Parsed class-name array caches (lazily initialized).
         private string[]? _enterFromClasses;
         private string[]? _enterToClasses;
