@@ -115,7 +115,9 @@ namespace Velvet.Tests
             {
                 V.WorldSpace(Vector3.zero, panelSize: new Vector2(400f, 400f), children: new VNode[]
                 {
-                    V.Div(name: "fill", className: "w-[400px] h-[400px] bg-red-500"),
+                    // Inline arbitrary color: the test attaches no USS, so a palette class (bg-red-500)
+                    // would resolve to transparent on every panel here.
+                    V.Div(name: "fill", className: "w-[400px] h-[400px] bg-[#ef4444]"),
                 }),
             }));
             yield return WaitRealtime(0.6);
