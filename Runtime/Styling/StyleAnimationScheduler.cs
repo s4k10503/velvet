@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -48,11 +49,37 @@ namespace Velvet
                 return;
             }
 
+            if (config.Type == TransitionType.Spring)
+            {
+                // Reachable only in principle: a classic (non-variant) transition's EnterFromClass/EnterToClass
+                // are internal-setter-only, so a caller-authored spring config passed here has none set and this
+                // no-ops to an immediate complete (see StartSpringVariant) — kept for completeness/symmetry with
+                // PlayVariantEnter / PlayExit rather than silently ignoring Type on this call path.
+                StartSpringVariant(element, config.EnterFromClasses, config.EnterToClasses, config.DelaySec,
+                    config.Stiffness, config.Damping, config.Mass, onComplete, additionalDelaySec,
+                    restingClasses: null, isExit: false);
+                return;
+            }
+
             // Classic transition enter: the to-classes are a TRANSIENT overlay (resting state = the element's
-            // base classes), so they are removed on completion (variantMode: false).
+            // base classes), so they are removed on completion (variantMode: false). Per-property overrides are
+            // wired only where a variant swap sets transition-property: all (see PlayVariantEnter / PlayExit); a
+            // preset's own USS-declared transition-property is untouched, so PropertyOverrides is not read here.
             PlayEnterInternal(element, config.EnterFromClasses, config.EnterToClasses,
                 config.DurationSec, config.Easing, config.DelaySec, onComplete, additionalDelaySec,
-                variantMode: false);
+                variantMode: false, propertyOverrides: null);
+        }
+
+        // Config-taking overload: every production call site (a standalone Motion's mount enter, and an
+        // AnimatePresence-driven variant enter) reads its timing/spring knobs straight off the enclosing
+        // Motion's OWN StyleTransitionConfig, so this unpacks it once here instead of each call site repeating
+        // the same eight-argument unpack of the same object.
+        public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
+            StyleTransitionConfig config, Action? onComplete = null, float additionalDelaySec = 0f)
+        {
+            PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
+                onComplete, additionalDelaySec, config.PropertyOverrides,
+                config.Type, config.Stiffness, config.Damping, config.Mass);
         }
 
         // Variant-driven enter (initial → animate). Unlike PlayEnter, the
@@ -62,20 +89,34 @@ namespace Velvet
         // difference — the to-classes are KEPT after completion, since they ARE the persistent resting state
         // (the animate target persists). A zero/invalid duration leaves the element at its
         // already-applied resting state (no strip, mounts directly at animate).
+        // type/stiffness/damping/mass: the enclosing StyleTransitionConfig's spring knobs (Tween/100/10/1 by
+        // default — the caller passes the config's own values through, since this overload takes the
+        // already-unpacked timing primitives rather than the config itself).
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
-            float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f)
+            float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f,
+            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
+            TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f)
         {
             if (element == null)
             {
                 return;
             }
 
+            if (type == TransitionType.Spring)
+            {
+                StartSpringVariant(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
+                    delaySec, stiffness, damping, mass, onComplete, additionalDelaySec,
+                    restingClasses: null, isExit: false);
+                return;
+            }
+
             PlayEnterInternal(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
-                durationSec, easing, delaySec, onComplete, additionalDelaySec, variantMode: true);
+                durationSec, easing, delaySec, onComplete, additionalDelaySec, variantMode: true, propertyOverrides);
         }
 
         private void PlayEnterInternal(VisualElement element, string[] fromClasses, string[] toClasses,
-            float durationSec, EasingMode easing, float delaySec, Action? onComplete, float additionalDelaySec, bool variantMode)
+            float durationSec, EasingMode easing, float delaySec, Action? onComplete, float additionalDelaySec, bool variantMode,
+            IReadOnlyList<StylePropertyTransition>? propertyOverrides)
         {
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
@@ -92,7 +133,7 @@ namespace Velvet
             // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
             // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
             var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, delaySec,
-                allProperties: variantMode);
+                allProperties: variantMode, propertyOverrides: propertyOverrides);
             if (variantMode)
             {
                 StyleAnimationClassUtils.RemoveClasses(element, toClasses);
@@ -115,55 +156,105 @@ namespace Velvet
             pending.Shadows = CollectShadowsForCoFade(element, pending, 0f);
             _pendingEnters[element] = pending;
 
-            // schedule.Execute does not fire when the panel is disconnected, but CancelEnter is invoked
-            // via Reconciler.RemoveElement / CleanupDescendants, so the dictionary does not leak.
-            var startAction = new Action(() =>
+            // Schedules the deferred swap (and its own completion timeout) on the PANEL-ROOT host, not the
+            // entering element itself — mirrors PlayExit's identical ScheduleOnHost: a keyed reorder can
+            // transiently detach an already-attached element (RemoveFromHierarchy + re-Insert), and UI Toolkit
+            // silently drops a detached element's own scheduled items, which would stall the enter forever (or,
+            // for a stagger claimed from an ancestor's orchestration, drop the claimed delay's clear entirely).
+            // The element only needs to stay attached for its OWN CSS transition to keep tweening — it does, a
+            // reorder moves it, never removes it.
+            void ScheduleOnHost()
             {
-                if (!_pendingEnters.ContainsKey(element))
+                // Superseded before it ever got to schedule (a cancel-before-attach removed this exact pending).
+                if (!_pendingEnters.TryGetValue(element, out var cur) || !ReferenceEquals(cur, pending))
                 {
                     return;
                 }
 
-                StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
-                StyleAnimationClassUtils.AddClasses(element, toClasses);
-                // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so
-                // descendant shadows fade in lockstep with it.
-                StartShadowCoFadeTick(pending);
-
-                // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
-                // to-classes; variantMode KEEPS them (they are the persistent resting variant).
-                var durationMs = (long)(durationSec * 1000) + (long)(delaySec * 1000) + AnimationGraceMs;
-                var timeout = element.schedule.Execute(() =>
+                var panel = element.panel;
+                if (panel == null)
                 {
-                    if (_pendingEnters.Remove(element, out var completed))
-                    {
-                        if (!variantMode)
-                        {
-                            StyleAnimationClassUtils.RemoveClasses(element, toClasses);
-                        }
-                        // Target is opaque now — stop the co-fade and restore the shadows to full strength.
-                        EndShadowCoFade(completed);
-                        ClearTransitionStyles(element);
-                        ReturnDurationList(completed.DurationList);
-                        ReturnDelayList(completed.DelayList);
-                        onComplete?.Invoke();
-                    }
-                });
-                timeout.ExecuteLater(durationMs);
-                pending.TimeoutItem = timeout;
-            });
+                    return;
+                }
+                var host = panel.visualTree;
 
-            if (staggerDelayMs > 0)
+                var startAction = new Action(() =>
+                {
+                    if (!_pendingEnters.ContainsKey(element))
+                    {
+                        return;
+                    }
+
+                    StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+                    StyleAnimationClassUtils.AddClasses(element, toClasses);
+                    // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so
+                    // descendant shadows fade in lockstep with it.
+                    StartShadowCoFadeTick(pending);
+
+                    // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
+                    // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
+                    // SLOWEST animating property (SlowestPropertyTimeoutMs) rather than just the top-level
+                    // durationSec/delaySec: PropertyOverrides can give one property a longer duration than the
+                    // top-level value, and completing on the top-level timing alone would clear the inline
+                    // transition-duration (snapping the still-mid-tween slower property to its resting value) before
+                    // it actually finishes.
+                    var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
+                    var timeout = host.schedule.Execute(() =>
+                    {
+                        if (_pendingEnters.Remove(element, out var completed))
+                        {
+                            if (!variantMode)
+                            {
+                                StyleAnimationClassUtils.RemoveClasses(element, toClasses);
+                            }
+                            // Target is opaque now — stop the co-fade and restore the shadows to full strength.
+                            EndShadowCoFade(completed);
+                            ClearTransitionStyles(element);
+                            ReturnDurationList(completed.DurationList);
+                            ReturnDelayList(completed.DelayList);
+                            onComplete?.Invoke();
+                        }
+                    });
+                    timeout.ExecuteLater(durationMs);
+                    pending.TimeoutItem = timeout;
+                });
+
+                if (staggerDelayMs > 0)
+                {
+                    // With extra delay: start after staggerDelayMs.
+                    var scheduled = host.schedule.Execute(startAction);
+                    scheduled.ExecuteLater(staggerDelayMs);
+                    pending.ScheduledItem = scheduled;
+                }
+                else
+                {
+                    // No extra delay: still deferred by one nominal frame (StyleAnimateDriver.TickMs)
+                    // rather than a zero-delay schedule.Execute. This call runs from inside the same
+                    // timer tick that mounts the element (a standalone Motion's create, or an
+                    // AnimatePresence-driven enter), and a zero-delay item becomes runnable within that
+                    // very tick — before the panel has resolved the from-state's style even once. With
+                    // nothing to compare against, the CSS transition sees no property change and the
+                    // whole enter snaps straight to the end pose instead of tweening. A same-tick swap is
+                    // possible with any deferral shorter than roughly a frame, so a full nominal frame is
+                    // used instead of a token 1ms: it reliably survives the from-state's first style pass
+                    // at any practical frame rate while still landing on (about) the very next update.
+                    var scheduled = host.schedule.Execute(startAction);
+                    scheduled.ExecuteLater(StyleAnimateDriver.TickMs);
+                    pending.ScheduledItem = scheduled;
+                }
+            }
+
+            // A stable host only exists once the element is attached. Off-panel at call time is the COMMON
+            // case here — a standalone Motion's mount enter plays inside CreateElement, before the element is
+            // inserted into the tree — so defer scheduling until attach, exactly like PlayExit's own off-panel
+            // branch below.
+            if (element.panel != null)
             {
-                // With extra delay: start after staggerDelayMs.
-                var scheduled = element.schedule.Execute(startAction);
-                scheduled.ExecuteLater(staggerDelayMs);
-                pending.ScheduledItem = scheduled;
+                ScheduleOnHost();
             }
             else
             {
-                // No extra delay: run on the next frame (matches existing behavior).
-                pending.ScheduledItem = element.schedule.Execute(startAction);
+                DeferUntilAttached(element, pending, ScheduleOnHost);
             }
         }
 
@@ -188,6 +279,18 @@ namespace Velvet
                 return;
             }
 
+            if (config.Type == TransitionType.Spring)
+            {
+                // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
+                // detached by a keyed reorder (see the tween exit's own ScheduleOnHost below) and this exit must
+                // still eventually complete so the reconciler's ghost-removal re-render fires.
+                StartSpringVariant(element, config.ExitFromClasses, config.ExitToClasses, config.DelaySec,
+                    config.Stiffness, config.Damping, config.Mass, onComplete, additionalDelaySec,
+                    restingClasses: restoreFromOnCancel ? config.ExitFromClasses : null,
+                    isExit: true);
+                return;
+            }
+
             // StyleTransitionConfig.None (DurationSec=0): complete immediately (no warning).
             if (!ValidateDuration(config.DurationSec, onComplete))
             {
@@ -202,9 +305,12 @@ namespace Velvet
             var exitEasing = config.ExitEasing ?? config.Easing;
 
             // Step 1: add the exit initial-state class and set duration / easing as inline styles. A variant exit
-            // (restoreFromOnCancel) swaps variant utility classes, so it needs transition-property: all to tween.
+            // (restoreFromOnCancel) swaps variant utility classes, so it needs transition-property: all to tween
+            // — the same condition that gates reading PropertyOverrides (a preset exit's own USS-declared
+            // transition-property is untouched).
             var (durationList, delayList) = ApplyTransitionStyles(element, config.DurationSec, exitEasing,
-                config.DelaySec, allProperties: restoreFromOnCancel);
+                config.DelaySec, allProperties: restoreFromOnCancel,
+                propertyOverrides: restoreFromOnCancel ? config.PropertyOverrides : null);
             StyleAnimationClassUtils.AddClasses(element, fromClasses);
 
             // Step 2: swap classes on the next frame.
@@ -263,8 +369,12 @@ namespace Velvet
                     // reconcile-reorder detach of the exiting ghost, which is why the host is the panel root).
                     StartShadowCoFadeTick(pending);
 
-                    // Step 3: invoke onComplete after the duration.
-                    var durationMs = (long)(config.DurationSec * 1000) + (long)(config.DelaySec * 1000) + AnimationGraceMs;
+                    // Step 3: invoke onComplete after the duration. Sized from the SLOWEST animating property
+                    // (SlowestPropertyTimeoutMs) rather than just the top-level DurationSec/DelaySec: a variant
+                    // exit's PropertyOverrides can give one property a longer duration than the top-level value,
+                    // and completing on the top-level timing alone would drop the ghost — removing its element —
+                    // while that slower property is still mid-tween.
+                    var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
                     var timeout = host.schedule.Execute(() =>
                     {
                         if (_pendingExits.Remove(element, out var completed))
@@ -303,16 +413,249 @@ namespace Velvet
             }
             else
             {
-                EventCallback<AttachToPanelEvent>? onAttach = null;
-                onAttach = _ =>
+                DeferUntilAttached(element, pending, ScheduleOnHost);
+            }
+        }
+
+        // Defers an action until the element attaches to a panel — shared by any animation that can start
+        // while its element is off-panel (freshly created but not yet inserted, or transiently detached by a
+        // keyed reorder) and therefore has no working schedule / panel-root host to run on yet. The callback
+        // unregisters itself once it fires; pending.PendingAttach is tracked so a cancel-before-attach (see
+        // CancelPending) can remove the still-dangling registration instead of leaking it — and the closure
+        // pinning the caller's PendingAnimation — on the element across pool reuse.
+        private static void DeferUntilAttached(VisualElement element, PendingAnimation pending, Action onAttach)
+        {
+            EventCallback<AttachToPanelEvent>? handler = null;
+            handler = _ =>
+            {
+                element.UnregisterCallback(handler);
+                pending.PendingAttach = null;
+                onAttach();
+            };
+            element.RegisterCallback(handler);
+            pending.PendingAttach = handler;
+        }
+
+        // Starts a spring-driven variant enter/exit (StyleTransitionConfig.Type == Spring). Unlike the tween
+        // path, a spring needs no CSS-transition-triggering frame boundary, so the from→to class swap lands
+        // IMMEDIATELY at rest; MotionSpringClassParser then resolves whatever numeric channels that swap
+        // touches (opacity / translate / scale / rotate) into a from/to pair each, and a per-frame physics tick
+        // (StartSpringTick) drives them via inline styles until they settle — replacing the tween's fixed-
+        // duration completion timeout with a dynamic settle check.
+        // restingClasses: non-null only for a variant exit (restoreFromOnCancel) — see PendingAnimation.RestingClasses.
+        // isExit: selects both the exit-shaped self-cancel (mirrors calling the PUBLIC CancelExit rather than
+        // CancelEnter below) and which bookkeeping map (_pendingExits / _pendingEnters) this play registers
+        // into — a separate map parameter would only ever repeat that same choice, so isExit alone decides it.
+        // Both directions defer the tick start until attach when off-panel: a standalone Motion's enter plays
+        // during element creation (FiberNodeFactory), and a presence enter plays before the entering element is
+        // placed into the tree (GeneralPathReconciler) — so BOTH, like a presence exit, can start while still
+        // detached (see PlayExit's own ScheduleOnHost/AttachToPanelEvent for the same rationale on the exit side).
+        private void StartSpringVariant(VisualElement element, string[] fromClasses, string[] toClasses,
+            float delaySec, float stiffness, float damping, float mass, Action? onComplete, float additionalDelaySec,
+            string[]? restingClasses, bool isExit)
+        {
+            var map = isExit ? _pendingExits : _pendingEnters;
+
+            // Read BEFORE the class swap below lands: the element's own current inline translate is whatever
+            // its UNRELATED (non-swapped) classes rested it at — e.g. a base translate-y-8 alongside a
+            // variant pair that only touches translate-x. Used as the resting value for a translate axis the
+            // swap names on neither side (see Resolve's own doc).
+            var restingTranslate = element.style.translate.value;
+            var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
+                restingTranslate.x.value, restingTranslate.y.value);
+            // An invalid configuration (see ValidateSpringParameters) degrades exactly like an empty plan
+            // below: no state is built, so the shared "land the classes, complete immediately" branch handles
+            // it without a separate code path.
+            var state = ValidateSpringParameters(stiffness, damping, mass)
+                ? MotionSpringDriver.Create(plan, stiffness, damping, mass)
+                : null;
+
+            // Cancel any existing animation of this SAME flavor first (mirrors PlayEnterInternal's
+            // CancelEnter(element) / PlayExit's CancelExit(element) self-cancel).
+            CancelPending(map, element, animateReversal: isExit);
+
+            // Land the classes at rest either way — nothing recognized to animate (or invalid spring
+            // parameters) degrades to a plain, instantaneous class swap (the spring equivalent of a
+            // zero-duration tween).
+            StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+            StyleAnimationClassUtils.AddClasses(element, toClasses);
+
+            if (state == null)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            MotionSpringDriver.ApplyCurrentValues(element, state);
+
+            var pending = new PendingAnimation
+            {
+                FromClasses = fromClasses,
+                ToClasses = toClasses,
+                RestingClasses = restingClasses,
+                AnimatingElement = element,
+                Spring = state,
+            };
+            // Co-fade drop-shadows with the spring exactly like the tween paths (PlayEnterInternal / PlayExit):
+            // register this play as a shadow driver at the from-value NOW (synchronously, before the spring
+            // ever ticks) so there is no first-frame flash, then the recurring tick — started alongside the
+            // spring's own tick in StartSpringTick — samples the caster's opacity each frame so descendant
+            // shadows track it exactly as they do a tween. isExit selects the same start value PlayExit uses (1
+            // = opaque, the resting state before fading out); a standalone enter always starts invisible (0),
+            // mirroring PlayEnterInternal — matching those hardcoded values (rather than reading the spring's
+            // own opacity channel, which may not even exist for a translate/scale/rotate-only play) keeps a
+            // spring's shadow behavior identical to a tween's for the same enter/exit direction.
+            pending.Shadows = CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
+            state.OnSettled = onComplete;
+            map[element] = pending;
+
+            void ScheduleStart()
+            {
+                // Superseded before it ever got to start (a cancel-before-attach removed this exact pending).
+                if (!map.TryGetValue(element, out var current) || !ReferenceEquals(current, pending))
                 {
-                    element.UnregisterCallback(onAttach);
-                    pending.PendingAttach = null;
-                    ScheduleOnHost();
-                };
-                element.RegisterCallback(onAttach);
-                // Track it on the pending so a cancel-before-attach can remove the dangling callback.
-                pending.PendingAttach = onAttach;
+                    return;
+                }
+                var totalDelayMs = (long)((delaySec + additionalDelaySec) * 1000);
+                if (totalDelayMs <= 0)
+                {
+                    StartSpringTick(element, pending);
+                    return;
+                }
+
+                // A delayed start is parked on the panel-root host, not element.schedule: ScheduleStart only
+                // ever runs once attached (called directly below, or from DeferUntilAttached's onAttach), but
+                // a keyed reorder can transiently detach the element again during the delay window itself,
+                // and UI Toolkit silently drops a detached element's own scheduled items (mirrors PlayExit's
+                // ScheduleOnHost rationale). The host should therefore always be available here; the null
+                // guard is defensive (mirrors StartSpringTick's own should-not-happen bail) rather than an
+                // expected path.
+                var host = element.panel?.visualTree;
+                if (host == null)
+                {
+                    return;
+                }
+                var scheduled = host.schedule.Execute(() =>
+                {
+                    // Re-check on fire, not just on schedule: the host outlives a transient detach, so this
+                    // closure can still run after a later cancel/supersede replaced this exact pending.
+                    if (map.TryGetValue(element, out var stillCurrent) && ReferenceEquals(stillCurrent, pending))
+                    {
+                        StartSpringTick(element, pending);
+                    }
+                });
+                scheduled.ExecuteLater(totalDelayMs);
+                pending.ScheduledItem = scheduled;
+            }
+
+            if (element.panel != null)
+            {
+                ScheduleStart();
+            }
+            else
+            {
+                DeferUntilAttached(element, pending, ScheduleStart);
+            }
+        }
+
+        // Starts the recurring spring tick on the panel root — the stable host, mirroring the shadow co-fade
+        // tick's own rationale: a keyed reorder can transiently detach the animating element, and UI Toolkit
+        // silently drops a DETACHED element's own scheduled items, but the panel root never detaches during the
+        // tree's life. Each tick reads the elapsed time from the SAME clock the scheduler itself used to decide
+        // when to fire this callback (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
+        // own time source, which a test's simulated panel overrides) rather than sampling a different clock
+        // (e.g. Time.realtimeSinceStartupAsDouble) that could disagree with it: a hitch is still absorbed by
+        // SpringIntegrator's own dt clamp, but the elapsed time now always matches what actually elapsed on the
+        // clock this tick is scheduled against. No-op if there is no host (should not happen for the on-panel /
+        // already-deferred-to-attach cases this is called from, but this guards rather than throws).
+        private void StartSpringTick(VisualElement element, PendingAnimation pending)
+        {
+            var state = pending.Spring;
+            if (state == null)
+            {
+                return;
+            }
+            var host = element.panel?.visualTree;
+            if (host == null)
+            {
+                return;
+            }
+
+            // The spring's own physics tick is now live — start sampling the caster's opacity each frame
+            // (StartShadowCoFadeTick) so co-faded descendant shadows track it exactly like a tween's, from the
+            // same moment its CSS transition would have started firing.
+            StartShadowCoFadeTick(pending);
+
+            state.Tick = host.schedule.Execute((TimerState ts) =>
+            {
+                // TimerState.start is the previous callback's time for a repeating item (or the schedule time
+                // for the first firing), so deltaTime is already exactly the elapsed interval this tick needs
+                // — no separate "last tick" bookkeeping to maintain.
+                var dt = ts.deltaTime / 1000f;
+                if (dt <= 0f)
+                {
+                    return;
+                }
+
+                var settled = MotionSpringDriver.Step(element, state, dt);
+                if (!settled)
+                {
+                    return;
+                }
+
+                state.Tick?.Pause();
+                state.Tick = null;
+                // Removes this entry from whichever of the two bookkeeping maps currently owns it — ordinarily
+                // the map this play was started into, but an exit-cancel reversal hand-off (CancelPending) can
+                // have MOVED it into _pendingEnters since then, so both are probed rather than assuming the
+                // original one still holds it.
+                if (!RemoveIfCurrent(_pendingExits, element, pending))
+                {
+                    RemoveIfCurrent(_pendingEnters, element, pending);
+                }
+                // Target is at rest now — stop the co-fade and restore the shadows to full strength (a no-op
+                // when this subtree carries none, the common case).
+                EndShadowCoFade(pending);
+                MotionSpringDriver.ClearInlineOverrides(element, state);
+                ReapplySpringOwnedInlineValues(element);
+                state.OnSettled?.Invoke();
+            }).Every(StyleAnimateDriver.TickMs);
+        }
+
+        // Removes element's entry from map, but only when it is STILL exactly pending (a later cancel/supersede
+        // may have already replaced or removed it) — the identity check a settled tick and a cancelled play both
+        // need before touching a map entry that might no longer be theirs. Returns whether it removed anything,
+        // so a caller checking more than one candidate map (see StartSpringTick) can stop at the first hit.
+        private static bool RemoveIfCurrent(Dictionary<VisualElement, PendingAnimation> map, VisualElement element, PendingAnimation pending)
+        {
+            if (map.TryGetValue(element, out var current) && ReferenceEquals(current, pending))
+            {
+                map.Remove(element);
+                return true;
+            }
+            return false;
+        }
+
+        // MotionSpringDriver.ClearInlineOverrides nulls whichever style slots the spring wrote (opacity /
+        // translate / scale / rotate), letting the cascade take back over — but a class the element still
+        // carries can OWN one of those same slots as a resolver-applied inline value with no USS rule behind
+        // it at all (translate-x-4, translate-x-[100px], opacity-[.5] — see MotionSpringClassParser's own scope
+        // note: translate has no USS form whatsoever), so clearing the slot loses that value instead of letting
+        // it fall back to a cascade rule that does not exist. DiffClassList only re-applies such a value when a
+        // class REMOVAL triggers it; nothing removes a class here (the swap already landed its classes back
+        // when the spring started), so nobody else re-asserts it. Re-read the element's OWN current class list
+        // and re-apply whatever inline-resolved values it still names, mirroring
+        // FiberWrapperElementAppliers.RestoreSharedInlineSlot's identical problem for the animate-* motions.
+        private static void ReapplySpringOwnedInlineValues(VisualElement element)
+        {
+            List<string>? classes = null;
+            foreach (var cls in element.GetClasses())
+            {
+                (classes ??= new List<string>()).Add(cls);
+            }
+            if (classes != null)
+            {
+                FiberNodePatcher.ReapplyArbitraryValues(element, classes.ToArray());
             }
         }
 
@@ -320,6 +663,18 @@ namespace Velvet
         // element reverses toward its resting classes with the transition kept alive (the inline
         // transition styles are cleared only after the reversal has run its course).
         public void CancelExit(VisualElement element) => CancelPending(_pendingExits, element, animateReversal: true);
+
+        // Cancels the exit animation on an element being torn down for good (pool return / disposal) — never
+        // hands off to a reversal, regardless of whether the element is still attached at the moment this
+        // runs. FiberElementCleaner releases scheduler resources BEFORE the caller physically detaches the
+        // element (DOM operations are the caller's own job), so element.panel can still be non-null here even
+        // though the element is on its way to the pool. An ordinary CancelExit's reversal hand-off assumes the
+        // element keeps living: for a spring, it re-adds a live entry into the enter map whose recurring,
+        // panel-root-scheduled tick keeps calling MotionSpringDriver.Step and writing inline styles — nothing
+        // ever calls CancelEnter on this element again to catch that re-added entry, so it would otherwise
+        // keep corrupting whatever the pooled element is reused for next.
+        public void CancelExitForTeardown(VisualElement element) =>
+            CancelPending(_pendingExits, element, animateReversal: true, forTeardown: true);
 
         // Cancels the enter animation on the given element and removes the applied CSS classes and inline styles.
         public void CancelEnter(VisualElement element) => CancelPending(_pendingEnters, element);
@@ -351,6 +706,30 @@ namespace Velvet
             return true;
         }
 
+        // Mirrors ValidateDuration's guard, for the spring path: a non-finite or non-positive stiffness/damping
+        // makes SpringIntegrator.Step's settle predicate unsatisfiable forever — zero/negative stiffness never
+        // pulls the value toward its target, zero/negative damping never dissipates velocity, and NaN
+        // propagates into every inline style write and never compares equal to anything (including itself), so
+        // IsSettled never returns true. Left unvalidated, the panel-root tick this drives would run
+        // indefinitely and its completion callback — the ONLY thing that removes a presence exit's ghost —
+        // would never fire. Mass gets its own numeric safety clamp inside SpringIntegrator.Step (a non-positive
+        // mass would otherwise divide by zero or flip the restoring force's sign), but that clamp has no way to
+        // warn the caller, so it is still validated here for the same failure modes.
+        private static bool ValidateSpringParameters(float stiffness, float damping, float mass)
+        {
+            if (float.IsFinite(stiffness) && stiffness > 0f
+                && float.IsFinite(damping) && damping > 0f
+                && float.IsFinite(mass) && mass > 0f)
+            {
+                return true;
+            }
+
+            FiberLogger.LogWarning("Spring",
+                $"Invalid spring parameters (stiffness={stiffness}, damping={damping}, mass={mass}). " +
+                "Expected finite, positive values for all three. Completing immediately instead of ticking forever.");
+            return false;
+        }
+
         // Sets transition-duration and transition-timing-function as inline styles.
         // C# becomes the Single Source of Truth, so they need not be defined in USS.
         // GC tuning: the EasingFunction list is cached statically per EasingMode; TimeValue lists are
@@ -361,8 +740,18 @@ namespace Velvet
             new() { new UnityEngine.UIElements.StylePropertyName("all") };
 
         private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyTransitionStyles(
-            VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false)
+            VisualElement element, float durationSec, EasingMode easing, float delaySec = 0f, bool allProperties = false,
+            IReadOnlyList<StylePropertyTransition>? propertyOverrides = null)
         {
+            // Per-property overrides replace the "all" catch-all with an explicit property list — reachable only
+            // where a variant swap would otherwise set transition-property: all (allProperties), matching the
+            // contract documented on StyleTransitionConfig.PropertyOverrides. Every other combination (no
+            // overrides, or a preset transition that never sets allProperties) falls through unchanged below.
+            if (allProperties && propertyOverrides is { Count: > 0 })
+            {
+                return ApplyPropertyOverrideTransitionStyles(element, durationSec, easing, delaySec, propertyOverrides);
+            }
+
             var durationMs = (int)(durationSec * 1000);
             var durationList = RentDurationList(durationMs);
             element.style.transitionDuration = durationList;
@@ -389,10 +778,85 @@ namespace Velvet
             return (durationList, delayList);
         }
 
+        // Per-overrides-list cache of the property-name list transition-property is set to: WHICH properties
+        // are named never depends on the enter/exit direction (unlike the easing list below, an override's own
+        // Property is never direction-dependent), and PropertyOverrides is fixed at config-authoring time and
+        // typically shared across every element/render a given Motion plays — so building this once per
+        // distinct overrides list (auto-evicted when that list itself is collected, mirroring
+        // StyleArbitraryValueResolver's per-element layer cache) avoids repeating an identical List<T> on every
+        // single enter/exit that reuses the same config.
+        private static readonly ConditionalWeakTable<IReadOnlyList<StylePropertyTransition>, List<StylePropertyName>> s_propertyNameListCache = new();
+
+        // Per-property override path: transition-property becomes EXACTLY the overridden properties (in
+        // declaration order) instead of "all" — matching CSS semantics where an explicit transition-property list
+        // transitions only what it names. Duration / delay are positionally-matched n-entry lists, rented EMPTY
+        // and filled directly in the loop below (rather than staged through an intermediary int[] first) from
+        // the SAME pools the single-entry path above uses, so they are returned through the existing
+        // PendingAnimation.DurationList / DelayList bookkeeping unchanged. A null override field falls back to
+        // the value the caller already resolved for this direction (durationSec / easing / delaySec — for an
+        // exit, easing here is already ExitEasing ?? Easing, so the fallback stays direction-correct without
+        // this method needing to know enter from exit).
+        // The easing list IS direction-dependent (an override's null Easing falls back to defaultEasing, which
+        // differs between an enter and an exit) and is rebuilt each call rather than cached: PropertyOverrides
+        // is a handful of entries, so the allocation is bounded and one-shot per animation start (never
+        // per-frame) — the per-mode EasingFunction INSTANCES it holds are still reused via the existing static
+        // cache (GetOrCreateEasingList) rather than reallocated.
+        private (List<TimeValue> durationList, List<TimeValue>? delayList) ApplyPropertyOverrideTransitionStyles(
+            VisualElement element, float defaultDurationSec, EasingMode defaultEasing, float defaultDelaySec,
+            IReadOnlyList<StylePropertyTransition> overrides)
+        {
+            var count = overrides.Count;
+            var propertyNames = s_propertyNameListCache.GetValue(overrides, static ov =>
+            {
+                var names = new List<StylePropertyName>(ov.Count);
+                for (var i = 0; i < ov.Count; i++)
+                {
+                    names.Add(new StylePropertyName(ov[i].Property));
+                }
+                return names;
+            });
+            var easingList = new List<EasingFunction>(count);
+            var durationList = RentEmptyDurationList(count);
+            var delayList = RentEmptyDelayList(count);
+            var hasDelay = false;
+            for (var i = 0; i < count; i++)
+            {
+                var o = overrides[i];
+                easingList.Add(GetOrCreateEasingList(o.Easing ?? defaultEasing)[0]);
+                durationList.Add(new TimeValue((int)((o.DurationSec ?? defaultDurationSec) * 1000), TimeUnit.Millisecond));
+                var delaySec = o.DelaySec ?? defaultDelaySec;
+                if (delaySec > 0f)
+                {
+                    hasDelay = true;
+                }
+                delayList.Add(new TimeValue((int)(delaySec * 1000), TimeUnit.Millisecond));
+            }
+
+            element.style.transitionProperty = propertyNames;
+            element.style.transitionDuration = durationList;
+            element.style.transitionTimingFunction = easingList;
+
+            // Mirrors the single-entry path: transition-delay is set only when at least one property actually
+            // needs one (an all-zero delay list is behaviorally identical to leaving it unset) — the rented list
+            // is returned immediately rather than handed to the caller for a later ReturnDelayList that would
+            // never come (this play's own bookkeeping only tracks a DelayList when it set one).
+            if (!hasDelay)
+            {
+                ReturnDelayList(delayList);
+                return (durationList, null);
+            }
+            element.style.transitionDelay = delayList;
+            return (durationList, delayList);
+        }
+
         // If the timeout callback already ran, map.Remove returns false and the cancellation is skipped.
         // This is safe because the classes have already been cleaned up in that case.
+        // forTeardown: true only from CancelExitForTeardown — the element is being torn down for good (pool
+        // return / disposal), not merely interrupted, so a reversal (tween or spring) is never appropriate
+        // even when animateReversal is requested and the element still happens to be attached: see
+        // CancelExitForTeardown for why handing off to one would corrupt the element after it is pooled.
         private void CancelPending(Dictionary<VisualElement, PendingAnimation> map, VisualElement element,
-            bool animateReversal = false)
+            bool animateReversal = false, bool forTeardown = false)
         {
             if (map.Remove(element, out var pending))
             {
@@ -418,7 +882,43 @@ namespace Velvet
                 // tween's co-fade and drop its driver — the shadow snaps back to full (product collapses to 1)
                 // unless an enclosing fade still drives it.
                 EndShadowCoFade(pending);
-                if (animateReversal && element.panel != null && pending.DurationList is { Count: > 0 })
+
+                if (pending.Spring != null)
+                {
+                    var spring = pending.Spring;
+                    if (!forTeardown && animateReversal && element.panel != null && spring.Tick != null)
+                    {
+                        // Hand off to a reversal spring: retarget every channel toward the value it STARTED
+                        // from (continuity — each channel's SpringIntegrator instance, and therefore its
+                        // current value/velocity, is untouched by this), drop the original completion (a
+                        // reversal settling is not "finishing" anything the original caller asked for), and
+                        // move ownership into the enter map — mirroring the tween reversal's own move into
+                        // _pendingEnters below. The recurring tick keeps running uninterrupted throughout;
+                        // only its targets and its eventual finalize action change. Requires a tick that has
+                        // actually started (spring.Tick != null): a cancel that lands before then — still
+                        // parked behind its delay — has no running tick to keep alive, and nothing would ever
+                        // start one for it (its ScheduledItem was already paused above, and a still-off-panel
+                        // PendingAttach was already unregistered), so handing off here would just park a dead
+                        // entry in _pendingEnters forever instead of finalizing below.
+                        MotionSpringDriver.Retarget(spring);
+                        spring.OnSettled = null;
+                        CancelPending(_pendingEnters, element);
+                        _pendingEnters[element] = pending;
+                    }
+                    else
+                    {
+                        // No reversal (a plain CancelEnter, an off-panel exit with nothing left to interpolate
+                        // against, a cancel before the tick ever started, or a teardown cancel that must never
+                        // hand off regardless): stop the tick now and drop the inline overrides immediately.
+                        spring.Tick?.Pause();
+                        spring.Tick = null;
+                        MotionSpringDriver.ClearInlineOverrides(element, spring);
+                        ReapplySpringOwnedInlineValues(element);
+                    }
+                    return;
+                }
+
+                if (!forTeardown && animateReversal && element.panel != null && pending.DurationList is { Count: > 0 })
                 {
                     // A cancelled exit retargets a still-attached element back to its resting
                     // classes. Clearing the inline transition styles in this same call would make
@@ -453,9 +953,7 @@ namespace Velvet
                 DurationList = pending.DurationList,
                 DelayList = pending.DelayList,
             };
-            var timeoutMs = 0f;
-            if (pending.DurationList is { Count: > 0 }) timeoutMs += pending.DurationList[0].value;
-            if (pending.DelayList is { Count: > 0 }) timeoutMs += pending.DelayList[0].value;
+            var timeoutMs = SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList);
             var timeout = element.schedule.Execute(() =>
             {
                 if (_pendingEnters.Remove(element))
@@ -470,6 +968,38 @@ namespace Velvet
             _pendingEnters[element] = reversal;
         }
 
+        // How long a tween must stay alive before it is safe to clear the inline transition styles / fire
+        // completion: the SLOWEST animating property's delay + duration. For the single-entry case (no
+        // PropertyOverrides) that is just duration[0] + delay[0], same as a plain top-level DurationSec/DelaySec;
+        // PropertyOverrides can give each property its own duration / delay, so an interrupted reversal, and an
+        // enter/exit's own completion, must both wait for whichever property finishes last, not just the first
+        // (or the first-declared) one — otherwise a slower property's transition-duration gets cleared (snapping
+        // it to the resting value, or dropping the ghost) while it is still mid-tween. Shared by
+        // ScheduleReversalCleanup (a cancelled exit's reversal) and PlayEnterInternal / PlayExit's own
+        // completion timeout, all three of which already hold the exact duration/delay lists ApplyTransitionStyles
+        // built for this play, so the slowest-property computation only has to live here once.
+        private static float SlowestPropertyTimeoutMs(List<TimeValue>? durationList, List<TimeValue>? delayList)
+        {
+            if (durationList is not { Count: > 0 })
+            {
+                return 0f;
+            }
+            var maxMs = 0f;
+            for (var i = 0; i < durationList.Count; i++)
+            {
+                var ms = durationList[i].value;
+                if (delayList is { Count: > 0 })
+                {
+                    ms += delayList[Math.Min(i, delayList.Count - 1)].value;
+                }
+                if (ms > maxMs)
+                {
+                    maxMs = ms;
+                }
+            }
+            return maxMs;
+        }
+
         private void CancelAllInMap(Dictionary<VisualElement, PendingAnimation> map)
         {
             foreach (var (element, pending) in map)
@@ -480,6 +1010,15 @@ namespace Velvet
                 StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
                 StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
                 EndShadowCoFade(pending);
+                if (pending.Spring != null)
+                {
+                    // A hard stop, no reversal: pause the tick and drop the inline overrides it owns (the
+                    // tween-only ClearTransitionStyles/ReturnDurationList/ReturnDelayList below are no-ops for
+                    // a spring entry, which never touches transition-* styles or rents a TimeValue list).
+                    pending.Spring.Tick?.Pause();
+                    MotionSpringDriver.ClearInlineOverrides(element, pending.Spring);
+                    ReapplySpringOwnedInlineValues(element);
+                }
                 ClearTransitionStyles(element);
                 ReturnDurationList(pending.DurationList);
                 ReturnDelayList(pending.DelayList);
@@ -562,7 +1101,7 @@ namespace Velvet
                 {
                     DropShadowSilhouette.SetCoFade(binding, el, pending, factor);
                 }
-            }).Every(16);
+            }).Every(StyleAnimateDriver.TickMs);
         }
 
         // Stops the co-fade tick and drops this animation's driver from each shadow (null-safe; balanced
@@ -610,18 +1149,36 @@ namespace Velvet
         private void ReturnDurationList(List<TimeValue>? list) => ReturnTimeValueList(_durationPool, list);
         private List<TimeValue> RentDelayList(int ms) => RentTimeValueList(_delayPool, ms);
         private void ReturnDelayList(List<TimeValue>? list) => ReturnTimeValueList(_delayPool, list);
+        // n-entry siblings for PropertyOverrides: rented EMPTY (the caller fills them directly, positionally
+        // matching each override — see ApplyPropertyOverrideTransitionStyles) rather than pre-filled from an
+        // intermediary int[], but drawn from the SAME pools the single-entry methods above use (a rented list's
+        // capacity just grows to whatever size it was last asked for, so ReturnTimeValueList already handles
+        // returning either shape without change).
+        private List<TimeValue> RentEmptyDurationList(int capacity) => RentEmptyTimeValueList(_durationPool, capacity);
+        private List<TimeValue> RentEmptyDelayList(int capacity) => RentEmptyTimeValueList(_delayPool, capacity);
 
+        // Single-entry hot path: every enter / exit without PropertyOverrides rents exactly one of these per
+        // animation.
         private static List<TimeValue> RentTimeValueList(Stack<List<TimeValue>> pool, int ms)
+        {
+            var list = RentEmptyTimeValueList(pool, capacity: 1);
+            list.Add(new TimeValue(ms, TimeUnit.Millisecond));
+            return list;
+        }
+
+        // Rents a list with no entries — either a fresh one sized to capacity, or a pooled one cleared of
+        // whatever it held last. Shared by the single-entry rent above (which adds its one TimeValue itself)
+        // and the PropertyOverrides path (which fills several, positionally, in its own loop).
+        private static List<TimeValue> RentEmptyTimeValueList(Stack<List<TimeValue>> pool, int capacity)
         {
             if (!pool.TryPop(out var list))
             {
-                list = new List<TimeValue>(1);
+                list = new List<TimeValue>(capacity);
             }
             else
             {
                 list.Clear();
             }
-            list.Add(new TimeValue(ms, TimeUnit.Millisecond));
             return list;
         }
 
@@ -663,6 +1220,14 @@ namespace Velvet
             // never fires it, so it must be unregistered on cancel — otherwise it (and the closure pinning this
             // PendingAnimation) lingers on the element, surviving even pool reuse. Null for on-panel exits.
             public EventCallback<AttachToPanelEvent>? PendingAttach;
+            // Non-null for a spring-driven entry (StyleAnimationScheduler.StartSpringVariant) — the per-channel
+            // integrators/targets and the recurring tick. Null for a tween entry, which never touches this
+            // (DurationList/DelayList/ScheduledItem/TimeoutItem are the tween's own equivalents). Which of the
+            // two bookkeeping maps (_pendingEnters / _pendingExits) currently holds this entry is NOT tracked
+            // as a field here — a spring's exit-cancel hand-off can MOVE it from one to the other, and the
+            // settled tick just probes both (see RemoveIfCurrent) rather than keeping that choice in sync.
+            public MotionSpringState? Spring;
         }
+
     }
 }

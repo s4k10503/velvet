@@ -53,7 +53,7 @@ The UI is described as the pure-function output of state. The VNode tree may be 
 - **Functional components**: `V.Component(() => ...)` mirrors React Function Components
 - **Reconciler**: diff patching plus Lane-based priority scheduling
 - **Hooks**: React's primary hooks exposed in C# PascalCase (see [Documentation~/](./Documentation~/) for details)
-- **Animation**: `V.Motion` / `V.AnimatePresence` model Framer Motion's enter / exit / gesture animations; `AnimatePresence` is DOM-less (it emits no wrapper, mirroring React/Framer). Lists are `V.AnimatePresence(children: V.List(items, key, (x, i) => V.Motion(...)))` — author the animated cell directly, exactly like Framer's `motion.div`
+- **Animation**: `V.Motion` / `V.AnimatePresence` model Framer Motion — variants with `initial` / `animate` / `exit` labels, standalone mount enters, `PopLayout` exits, `staggerChildren` / `delayChildren` orchestration, per-property transition overrides, and opt-in spring physics (see [Documentation~/motion.md](./Documentation~/motion.md)); `AnimatePresence` is DOM-less (it emits no wrapper, mirroring React/Framer). Lists are `V.AnimatePresence(children: V.List(items, key, (x, i) => V.Motion(...)))` — author the animated cell directly, exactly like Framer's `motion.div`
 - **Source Generator memoization**: `[Memoize]` for partial-method-level memoization, `[Component(Memoize = true)]` for whole-component `React.memo`-equivalent caching
 
 #### 2. Utility-first styling

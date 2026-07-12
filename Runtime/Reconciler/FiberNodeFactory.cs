@@ -144,13 +144,28 @@ namespace Velvet
                     // Resolve the applied classes against the effective label (own Animate, else the nearest
                     // ancestor Motion's label read from MotionContext) — the variant-inheritance model.
                     var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
-                    var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out var variantApplied);
+                    var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out var variantClasses);
                     var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
                     // Only record applied-class bookkeeping when a variant actually merged; the variant-less
                     // majority needs no entry (patch falls back to oldNode.ClassNames for the diff baseline).
-                    if (variantApplied)
+                    if (variantClasses.Length > 0)
                     {
-                        _ctx.MotionAppliedClasses[element] = appliedClasses;
+                        _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedClasses, variantClasses);
+                    }
+                    // Record the label propagated to children now (regardless of whether this Motion currently
+                    // has any) so the FIRST patch on this element has an accurate baseline: PatchMotion diffs
+                    // against this stored value to detect an ACTUAL label change before it (re-)triggers
+                    // staggerChildren/delayChildren orchestration — without seeding it here, that first patch
+                    // would see no previous entry and could misfire even when the label held steady across
+                    // mount and the first re-render. Orchestration itself only ever starts from a PATCH-time
+                    // label change (see FiberNodePatcher.PatchMotion), never on mount. A null childLabel needs no
+                    // removal here: a brand-new element was never in this map, and a pooled one already had its
+                    // entry cleared by ReconcilerContext.ClearElementSideTables when it was returned (see
+                    // MotionChildLabel's own doc).
+                    var childLabel = MotionVariantResolver.LabelForChildren(motionNode, motionAmbient);
+                    if (childLabel != null)
+                    {
+                        _ctx.MotionChildLabel[element] = childLabel;
                     }
                     if (motionNode.Children != null)
                     {
@@ -158,7 +173,6 @@ namespace Velvet
                         // Provide this Motion's active label to its descendants while their subtree reconciles
                         // (same ComponentContextStack the Router/Outlet ambient values ride on). Skip the
                         // stack round-trip entirely when there is no label to propagate (the common case).
-                        var childLabel = MotionVariantResolver.LabelForChildren(motionNode, motionAmbient);
                         if (childLabel != null)
                         {
                             _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
@@ -213,18 +227,53 @@ namespace Velvet
                             "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit "
                             + "(same constraint as shadow-*). Wrap the Motion around a clipped Div instead.");
                     }
-                    // Enter/exit tweens are scheduled by the AnimatePresence expansion, so on a
-                    // standalone Motion these props are silently inert: the element mounts already
-                    // at its animate/resting classes and the declared initial never plays. Warn like
-                    // the shadow-*/clip-path-* gates above so a Framer-style initial/animate pair
-                    // does not just fail to animate without a trace.
-                    if (_ctx.PresenceExpansionDepth == 0
-                        && (motionNode.Initial != null || motionNode.Exit != null))
+                    // Exit tweens are scheduled only by the AnimatePresence expansion — something has to defer
+                    // the unmount for a removal to animate against, and AnimatePresence is what does that — so
+                    // exit outside one is genuinely inert. Warn like the shadow-*/clip-path-* gates above. Initial
+                    // is NOT warned here (see the standalone enter below): unlike exit, a mount-time enter needs
+                    // no deferred unmount to play against, so it works on any Motion, matching Framer parity
+                    // (initial/animate apply to any motion.* component; only AnimatePresence is exit-only).
+                    if (_ctx.PresenceExpansionDepth == 0 && motionNode.Exit != null)
                     {
                         FiberLogger.LogWarning("Motion",
-                            "initial/exit on a Motion outside AnimatePresence is inert: enter/exit tweens are "
-                            + "driven by the AnimatePresence expansion. Wrap the Motion in V.AnimatePresence "
-                            + "(or drop initial/exit).");
+                            "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "
+                            + "AnimatePresence expansion. Wrap the Motion in V.AnimatePresence (or drop exit).");
+                    }
+                    // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
+                    // mount animation, the same variant enter the presence expansion drives
+                    // (GeneralPathReconciler.ExpandAnimatePresenceInline) — just with no stagger (there is no
+                    // AnimatePresence boundary to stagger against). The element above was created carrying the
+                    // resting variants[animate] classes (appliedClasses), with MotionAppliedClasses already
+                    // recorded against that resting state, so PlayVariantEnter's synchronous strip-to-`initial` is
+                    // purely a transient visual state: a later patch (PatchMotion) always diffs against the
+                    // resting baseline and never replays this entrance.
+                    // Gated on IDENTITY, not PresenceExpansionDepth: the presence expansion drives an enter for
+                    // only its ONE resolved anchor Motion (PresenceAnchorMotion, set by GeneralPathReconciler
+                    // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly) — every
+                    // OTHER Motion created while that expansion is on the stack (nested deeper, sitting under a
+                    // non-anchor wrapper — e.g. a plain Div — or simply a sibling keyed child) is not presence-
+                    // managed at all and must keep this mount enter, or wrapping unrelated content in
+                    // AnimatePresence would silently disable it.
+                    if (!ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion) && motionNode.Initial != null)
+                    {
+                        if (motionNode.Transition != null && GeneralPathReconciler.TryResolveVariantInitial(
+                                motionNode, out var standaloneFromClasses, out var standaloneToClasses))
+                        {
+                            var t = motionNode.Transition;
+                            _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
+                                t, motionNode.OnEnterComplete);
+                        }
+                        else
+                        {
+                            // Initial declared but unresolvable: no own Animate (an inherited-label
+                            // configuration is not yet driven by the standalone enter), or the label is missing
+                            // from Variants / maps to an empty class. Warn instead of silently mounting inert,
+                            // matching the Exit gate's own inert-configuration diagnostic above.
+                            FiberLogger.LogWarning("Motion",
+                                "initial is set but has no resolvable enter: this Motion needs its own animate + "
+                                + "variants (with initial mapping to a non-empty class) for a standalone mount "
+                                + "enter. An inherited animate label does not yet drive one.");
+                        }
                     }
                     return element;
                 }

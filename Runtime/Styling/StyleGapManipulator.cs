@@ -45,6 +45,14 @@ namespace Velvet
     // (_margined); on each Apply / Clear any tracked element
     // that is no longer a current child has its gap margins reset first, so a child moved out of (or
     // removed from) a gap container carries no residual inline margin.
+    // Out-of-flow children (position: absolute) are excluded from the index walk entirely — see
+    // StyleOutOfFlowChild — matching CSS gap, which never spaces a child that has been taken out of
+    // flow. This is not a PopLayout-only carve-out: any app-authored .absolute child under a gap
+    // container was already exempt from occupying a flex slot, so it must not consume or shift a gap
+    // margin either. It is also what lets AnimatePresenceMode.PopLayout deliver its purpose — a
+    // GeneralPathReconciler.PinExitingChildOutOfFlow ghost must stop being counted the instant it is
+    // pinned so its still-present siblings reflow into its slot immediately, and the ghost's own frozen
+    // margin (folded into its pinned left/top) is left untouched rather than being reset or reassigned.
     // Wrap (flex-wrap) hybrid. CSS gap under wrapping spaces BOTH axes
     // (between items in a line AND between wrapped lines), but a single leading-edge margin can only
     // space the main axis. So this manipulator switches strategy by container mode:
@@ -206,10 +214,20 @@ namespace Velvet
             _margined.Clear();
 
             var count = container.childCount;
+            var logicalIndex = 0;
             for (var i = 0; i < count; i++)
             {
                 var child = container[i];
-                var value = i == 0 ? new StyleLength(StyleKeyword.Null) : new StyleLength(_gap);
+                // Out-of-flow children (a PopLayout-pinned exiting ghost, or an app-authored .absolute
+                // child) hold no slot in the flex line — see StyleOutOfFlowChild. Skip them entirely rather
+                // than resetting their margin: a pinned ghost's own margin is frozen into the compensated
+                // left/top PinExitingChildOutOfFlow already computed for it, and touching it here would
+                // reintroduce the same double-application it was pinned to avoid.
+                if (StyleOutOfFlowChild.IsOutOfFlow(child))
+                {
+                    continue;
+                }
+                var value = logicalIndex == 0 ? new StyleLength(StyleKeyword.Null) : new StyleLength(_gap);
                 if (edge == Edge.Left)
                 {
                     child.style.marginLeft = value;
@@ -219,6 +237,7 @@ namespace Velvet
                     child.style.marginTop = value;
                 }
                 _margined.Add(child);
+                logicalIndex++;
             }
         }
 
@@ -245,6 +264,12 @@ namespace Velvet
             for (var i = 0; i < count; i++)
             {
                 var child = container[i];
+                // See ApplyLeading: an out-of-flow child takes no line slot, so it gets no half-margin
+                // either — the wrap polyfill only spaces children that actually wrap.
+                if (StyleOutOfFlowChild.IsOutOfFlow(child))
+                {
+                    continue;
+                }
                 child.style.marginLeft = half;
                 child.style.marginRight = half;
                 child.style.marginTop = half;
@@ -377,7 +402,12 @@ namespace Velvet
                 hash = hash * 31 + count;
                 for (var i = 0; i < count; i++)
                 {
-                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(container[i]);
+                    var child = container[i];
+                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(child);
+                    // A child's in-flow / out-of-flow transition (a PopLayout pin or its cancel) changes
+                    // which children the margin walk counts even though neither its identity nor the
+                    // container's total count changed, so it must also flip the signature.
+                    hash = hash * 31 + (StyleOutOfFlowChild.IsOutOfFlow(child) ? 1 : 0);
                 }
                 return hash;
             }

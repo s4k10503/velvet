@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Standalone mount enters: a `V.Motion` outside `AnimatePresence` now plays its `initial` →
+  `animate` variant enter on mount (Framer parity: `initial` / `animate` work on any `motion.*`
+  element).
+- `V.AnimatePresence(mode: AnimatePresenceMode.PopLayout)`: an exiting child is pinned out of
+  flow at its last laid-out rect so siblings reflow immediately (Framer's `mode="popLayout"`);
+  the `gap-*` / `grid-cols-*` / `divide-*` emulations skip the pinned ghost in their index math.
+- Per-property transition overrides: `StyleTransitionConfig.PropertyOverrides` gives individual
+  USS properties their own duration / easing / delay within one variant transition, with
+  completion sized off the slowest overridden property.
+- Orchestration for plain variant propagation: `StaggerChildrenSec` / `DelayChildrenSec` /
+  `When` on a parent Motion's transition stagger its inheriting children without an
+  `AnimatePresence` boundary (`When = AfterChildren` warns and falls back to `Together`).
+- Opt-in spring physics: `StyleTransitionConfig { Type = TransitionType.Spring, Stiffness,
+  Damping, Mass }` drives variant enters / exits with a velocity-preserving integrator — an
+  interrupted spring retargets from its current value and velocity instead of restarting.
+- Runtime variant swaps ride the Motion's own transition config: a mounted Motion whose
+  `animate` label changes — directly or through label inheritance, including every orchestrated
+  stagger child — now tweens (or springs) on its `StyleTransitionConfig`, with no `transition-*`
+  utilities required (Framer parity: `transition` applies to every animate update). Pass
+  `transition: StyleTransitionConfig.None` for an instant swap.
+- A Motion & AnimatePresence guide (`Documentation~/motion.md`): variants and label
+  inheritance, enters / exits, `PopLayout`, orchestration, per-property overrides, springs, and
+  the one-config-every-update transition semantics.
+
+### Changed
+
+- Orchestrated stagger slots now delay the child's class swap itself instead of pre-swapping the
+  classes behind an inline `transition-delay`: the target classes land when the slot elapses,
+  and the swap then plays on the child's own config.
+
+### Fixed
+
+- A classic (tween) enter could snap straight to its end pose on a runtime panel: the class
+  swap now defers one nominal frame so the from-state survives a style pass and the transition
+  actually fires.
+- `gap-*` / `grid-cols-*` / `divide-*` spacing no longer counts absolutely-positioned children:
+  an out-of-flow child neither receives inter-child margins nor shifts its siblings' spacing.
+
 ## [1.1.0] - 2026-07-11
 
 ### Added

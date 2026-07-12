@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -33,13 +34,46 @@ namespace Velvet
         internal string? ExitToClass { get; init; }
 
         /// <summary>
+        /// Selects the animation model: a USS <c>transition-*</c> class swap (<see cref="TransitionType.Tween"/>,
+        /// the default) or a physics-integrated spring (<see cref="TransitionType.Spring"/>). See
+        /// <see cref="TransitionType"/> for the full contract, including what a spring does and does not animate.
+        /// </summary>
+        /// <remarks>Equivalent to setting Framer Motion's <c>transition.type</c> to <c>"tween"</c> / <c>"spring"</c>
+        /// for users migrating from Framer Motion — except Velvet defaults to <c>Tween</c> where Framer defaults
+        /// transform-like values to a spring; spring is opt-in here.</remarks>
+        public TransitionType Type { get; init; } = TransitionType.Tween;
+
+        /// <summary>
+        /// Spring stiffness (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
+        /// Higher values snap toward the target faster. Framer Motion's default (100).
+        /// </summary>
+        public float Stiffness { get; init; } = 100f;
+
+        /// <summary>
+        /// Spring damping (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
+        /// Higher values settle with less oscillation. Framer Motion's default (10).
+        /// </summary>
+        public float Damping { get; init; } = 10f;
+
+        /// <summary>
+        /// Spring mass (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
+        /// Higher values feel heavier / slower to accelerate. Framer Motion's default (1).
+        /// </summary>
+        public float Mass { get; init; } = 1f;
+
+        /// <summary>
         /// Animation duration (seconds). Applied as the inline transition-duration style.
+        /// Ignored when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: a spring's settle time is
+        /// decided entirely by <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/>, not a fixed
+        /// duration.
         /// </summary>
         public float DurationSec { get; init; }
 
         /// <summary>
         /// Easing mode. Applied as the inline transition-timing-function style.
         /// Defaults to EaseOut (for enter). Presets in StyleTransition.cs configure enter/exit easing separately.
+        /// Ignored when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: the physics integration IS the
+        /// curve.
         /// </summary>
         public EasingMode Easing { get; init; } = EasingMode.EaseOut;
 
@@ -57,6 +91,68 @@ namespace Velvet
         /// needed, consider adding ExitDelaySec.
         /// </summary>
         public float DelaySec { get; init; }
+
+        /// <summary>
+        /// Optional per-property transition overrides layered on top of the top-level <see cref="DurationSec"/> /
+        /// <see cref="Easing"/> / <see cref="DelaySec"/> (e.g. opacity tweening in 0.15s while scale takes 0.5s).
+        /// When set, transition-property switches from the implicit "all" catch-all — used for a variant class
+        /// swap, which carries no transition-* of its own — to EXACTLY these properties, in declaration order:
+        /// overrides REPLACE transition-property: all rather than layering on top of it, matching CSS semantics
+        /// where an explicit transition-property list transitions only what it names. Name every property that
+        /// should animate. Currently wired only where a variant swap would otherwise set transition-property:
+        /// all (a variant-driven enter, or an exit driven by a <c>variants</c> + <c>exit</c> label) — a preset
+        /// transition's own USS-declared transition-property is untouched. Null (default) preserves today's
+        /// behavior unchanged.
+        /// Not read when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: a spring drives every animated
+        /// channel with the SAME <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/> — there is no
+        /// per-property override of the spring model itself (only <see cref="TransitionType.Tween"/>'s per-property
+        /// duration/easing/delay can be overridden this way).
+        /// </summary>
+        public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
+
+        /// <summary>
+        /// Delay interval (seconds) applied sequentially to each DESCENDANT Motion that inherits its active
+        /// label from this Motion (it declares <c>variants</c> but no own <c>animate</c> — see
+        /// <see cref="Velvet.MotionNode.Animate"/>) when that ambient label changes: the i-th such inheriting
+        /// descendant, visited in document order, is delayed an additional <c>DelayChildrenSec + StaggerChildrenSec
+        /// * i</c> on top of its OWN <see cref="DelaySec"/>. 0 (default) means no stagger (every inheriting
+        /// descendant responds at the same time). Unlike AnimatePresence's own per-child enter/exit stagger
+        /// (<c>V.AnimatePresence(staggerSec:)</c>), this orchestrates a PLAIN parent → child label propagation —
+        /// no AnimatePresence boundary is required; toggling this Motion's <c>animate</c> prop is enough. A
+        /// descendant with its OWN explicit <c>animate</c> opts out of both the label inheritance and this
+        /// stagger — it is driven by its own render, not this propagation (matching Framer Motion, where an
+        /// explicit <c>animate</c> override disconnects a component from its parent's variant propagation). The
+        /// stagger index is transitive: an inheriting descendant with no stagger config of its own passes this
+        /// orchestration through to ITS OWN inheriting children, who continue claiming from the SAME sequence.
+        /// </summary>
+        /// <remarks>Equivalent to Framer Motion's <c>transition.staggerChildren</c> for users migrating from Framer Motion.</remarks>
+        public float StaggerChildrenSec { get; init; }
+
+        /// <summary>
+        /// A fixed delay (seconds) added before any inheriting descendant's staggered delay — see
+        /// <see cref="StaggerChildrenSec"/> for the full propagation contract. 0 (default) means no fixed delay.
+        /// </summary>
+        /// <remarks>Equivalent to Framer Motion's <c>transition.delayChildren</c> for users migrating from Framer Motion.</remarks>
+        public float DelayChildrenSec { get; init; }
+
+        /// <summary>
+        /// Sequences this Motion's own class swap against its inheriting descendants' swaps (see
+        /// <see cref="StaggerChildrenSec"/>) when its active label changes. Defaults to
+        /// <see cref="TransitionWhen.Together"/>.
+        /// </summary>
+        /// <remarks>Equivalent to Framer Motion's <c>transition.when</c> for users migrating from Framer Motion.</remarks>
+        public TransitionWhen When { get; init; } = TransitionWhen.Together;
+
+        /// <summary>
+        /// Whether an AnimatePresence exit gated by this config should be treated as animated (kept mounted as
+        /// an exiting ghost) rather than removed instantly. A spring's settle time is decided by
+        /// <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/>, not <see cref="DurationSec"/>
+        /// (documented as ignored for <see cref="TransitionType.Spring"/>), so a spring counts as animated
+        /// regardless of DurationSec — including the degenerate case where the exit's variant pair touches no
+        /// spring-animatable channel at all, which still plays through the spring machinery (completing on its
+        /// own, deferred, rather than being pre-empted by an instant-removal gate keyed on this flag).
+        /// </summary>
+        internal bool HasExitAnimation => Type == TransitionType.Spring || DurationSec > 0f;
 
         // Parsed class-name array caches (lazily initialized).
         private string[]? _enterFromClasses;
@@ -99,6 +195,16 @@ namespace Velvet
                 Easing = easing ?? Easing,
                 ExitEasing = exitEasing ?? ExitEasing,
                 DelaySec = delaySec ?? DelaySec,
+                // Passed through unchanged: With() only tunes the top-level timing, not per-property overrides,
+                // the child-orchestration knobs, or the spring model.
+                PropertyOverrides = PropertyOverrides,
+                StaggerChildrenSec = StaggerChildrenSec,
+                DelayChildrenSec = DelayChildrenSec,
+                When = When,
+                Type = Type,
+                Stiffness = Stiffness,
+                Damping = Damping,
+                Mass = Mass,
                 // Class names are identical, so share the parsed arrays (avoids re-parsing).
                 _enterFromClasses = _enterFromClasses,
                 _enterToClasses = _enterToClasses,
@@ -107,6 +213,131 @@ namespace Velvet
             };
         }
 
+        /// <summary>
+        /// Builds a new StyleTransitionConfig for a variant `exit` (see
+        /// <see cref="Velvet.MotionNode.Exit"/>): copies every timing / spring / per-property-override knob
+        /// unchanged from this config — the enclosing Motion's own <c>transition</c> — but replaces the exit
+        /// class pair with the resolved variant classes. Sibling to <see cref="With"/> (which tunes a preset's
+        /// timing while keeping its class names): this keeps the timing/spring knobs fixed while replacing the
+        /// classes, so the two together cover both directions a caller needs to override without repeating the
+        /// growing knob list at each call site.
+        /// </summary>
+        /// <param name="exitFromClass">The resting variant's own class string (variants[Animate]).</param>
+        /// <param name="exitToClass">The exit variant's class string (variants[Exit]).</param>
+        internal StyleTransitionConfig WithExitClasses(string exitFromClass, string exitToClass)
+        {
+            return new StyleTransitionConfig
+            {
+                ExitFromClass = exitFromClass,
+                ExitToClass = exitToClass,
+                DurationSec = DurationSec,
+                Easing = Easing,
+                ExitEasing = ExitEasing,
+                DelaySec = DelaySec,
+                PropertyOverrides = PropertyOverrides,
+                Type = Type,
+                Stiffness = Stiffness,
+                Damping = Damping,
+                Mass = Mass,
+            };
+        }
+
         private static string[] ParseClasses(string? classNames) => Velvet.V.ParseClassNames(classNames);
+    }
+
+    /// <summary>
+    /// A single property's transition override inside <see cref="StyleTransitionConfig.PropertyOverrides"/>.
+    /// Any null field falls back to the enclosing config's corresponding top-level value — <see cref="Easing"/>
+    /// falls back to the config's EFFECTIVE easing for the direction being played (<c>Easing</c> for an enter,
+    /// <c>ExitEasing ?? Easing</c> for an exit), matching how the top-level fields already resolve per direction.
+    /// </summary>
+    public readonly struct StylePropertyTransition
+    {
+        /// <summary>
+        /// The USS property name UI Toolkit animates, e.g. <c>"opacity"</c>, <c>"scale"</c>, <c>"translate"</c>,
+        /// <c>"rotate"</c>, <c>"background-color"</c> — spelled exactly as UI Toolkit's transition-property expects.
+        /// </summary>
+        public string Property { get; }
+
+        /// <summary>Duration override (seconds). Null falls back to <see cref="StyleTransitionConfig.DurationSec"/>.</summary>
+        public float? DurationSec { get; }
+
+        /// <summary>Easing override. Null falls back to the enclosing config's effective easing for the direction being played.</summary>
+        public EasingMode? Easing { get; }
+
+        /// <summary>Delay override (seconds). Null falls back to <see cref="StyleTransitionConfig.DelaySec"/>.</summary>
+        public float? DelaySec { get; }
+
+        public StylePropertyTransition(string property, float? durationSec = null, EasingMode? easing = null, float? delaySec = null)
+        {
+            Property = property;
+            DurationSec = durationSec;
+            Easing = easing;
+            DelaySec = delaySec;
+        }
+    }
+
+    /// <summary>
+    /// Selects the animation model a <see cref="StyleTransitionConfig"/> plays with — see
+    /// <see cref="StyleTransitionConfig.Type"/>.
+    /// </summary>
+    public enum TransitionType
+    {
+        /// <summary>
+        /// A USS <c>transition-*</c> class swap: <see cref="StyleTransitionConfig.DurationSec"/> /
+        /// <see cref="StyleTransitionConfig.Easing"/> drive a fixed-duration tween between the from/to classes.
+        /// The default.
+        /// </summary>
+        Tween,
+
+        /// <summary>
+        /// A physics-integrated spring (see the internal SpringIntegrator): <see cref="StyleTransitionConfig.Stiffness"/>
+        /// / <see cref="StyleTransitionConfig.Damping"/> / <see cref="StyleTransitionConfig.Mass"/> decide the
+        /// curve and settle time instead of a fixed duration — CSS/USS transitions cannot express a spring, so
+        /// this is driven by a per-frame tick that writes inline styles directly (like the drop-shadow co-fade
+        /// tick), not <c>transition-duration</c>/<c>transition-timing-function</c>.
+        /// Only <see cref="Velvet.MotionNode"/>'s variant enter/exit (<c>variants</c> + <c>initial</c>/<c>animate</c>/
+        /// <c>exit</c>) plays a spring — the classic preset transitions (<see cref="StyleTransition"/>) are always
+        /// tweens, since their enter/exit classes are internal to the package.
+        /// Only OPACITY and the transform trio — translate x/y (pixels only; percentage-based translate such as
+        /// <c>translate-x-1/2</c> or <c>translate-x-full</c> is out of scope), uniform scale, and rotate (degrees)
+        /// — are spring-animated; colors, arbitrary lengths (width/height/margin/…), and per-axis
+        /// <c>scale-x-</c>/<c>scale-y-</c> are out of scope and are NOT animated by a spring (they still apply as
+        /// plain classes, just without a tween/spring transition on them).
+        /// </summary>
+        Spring,
+    }
+
+    /// <summary>
+    /// Sequences a Motion's own class swap against its inheriting descendants' swaps — see
+    /// <see cref="StyleTransitionConfig.When"/> and <see cref="StyleTransitionConfig.StaggerChildrenSec"/>.
+    /// </summary>
+    /// <remarks>Equivalent to Framer Motion's <c>transition.when</c> for users migrating from Framer Motion.</remarks>
+    public enum TransitionWhen
+    {
+        /// <summary>
+        /// This Motion and its inheriting descendants animate at the same time, offset only by
+        /// <see cref="StyleTransitionConfig.StaggerChildrenSec"/> / <see cref="StyleTransitionConfig.DelayChildrenSec"/>.
+        /// The default.
+        /// </summary>
+        Together,
+
+        /// <summary>
+        /// Inheriting descendants wait for this Motion's OWN transition to finish before starting: every
+        /// descendant's computed delay additionally includes this Motion's own
+        /// <see cref="StyleTransitionConfig.DelaySec"/> + <see cref="StyleTransitionConfig.DurationSec"/> — the
+        /// full span of its swap, not just the duration, since the swap does not even START until DelaySec has
+        /// elapsed.
+        /// </summary>
+        BeforeChildren,
+
+        /// <summary>
+        /// In Framer Motion, this Motion's own transition would wait for every inheriting descendant to finish
+        /// first. Not implemented: Velvet applies this Motion's own class swap before its descendants are even
+        /// visited during the reconcile walk, so the descendant count / durations needed to delay THIS swap are
+        /// not known in time. Setting this value logs a warning and behaves like <see cref="Together"/> (no
+        /// parent/child sequencing) rather than silently applying the wrong delay.
+        /// </summary>
+        AfterChildren,
     }
 }

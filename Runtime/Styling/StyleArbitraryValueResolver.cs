@@ -229,6 +229,18 @@ namespace Velvet
             ["100"] = 1f, ["105"] = 1.05f, ["110"] = 1.1f, ["125"] = 1.25f, ["150"] = 1.5f,
         };
 
+        // Single source for the uniform .scale-N USS class's own numeric scale (identical mapping to
+        // s_axisScale above, just keyed by the bare suffix rather than the "scale-x-"/"scale-y-" prefixed
+        // form) — shared so MotionSpringClassParser's uniform-scale recognition resolves the SAME table
+        // instead of holding a second copy that could drift, mirroring TryGetSpacingPx's precedent.
+        internal static bool TryGetAxisScale(string suffix, out float scale) => s_axisScale.TryGetValue(suffix, out scale);
+
+        // Single source for the rotate preset's magnitude (degrees), keyed by the UNSIGNED suffix — shared so
+        // MotionSpringClassParser's rotate-N / rotate-nN recognition resolves the SAME magnitude table instead
+        // of hand-expanding a second ±copy, mirroring TryGetSpacingPx's precedent. The caller negates the
+        // result itself for the "-n"-suffixed (negative) form.
+        internal static bool TryGetRotateScale(string suffix, out float degrees) => s_rotateScale.TryGetValue(suffix, out degrees);
+
         // Maps a margin utility prefix (without the leading '-') to its shorthand ArbitraryProperty.
         private static readonly Dictionary<string, ArbitraryProperty> s_marginPrefix = new()
         {

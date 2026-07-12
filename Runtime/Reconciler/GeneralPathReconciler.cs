@@ -957,7 +957,8 @@ namespace Velvet
                 {
                     foreach (var (key, node) in oldState.Committed)
                     {
-                        EmitPresenceChild(node, key, presenceKey, result, isNewSide: false, parent, slotStart,
+                        EmitPresenceChildAsAnchor(node, FiberNodeFactory.FindFirstMotionDescendant(node),
+                            key, presenceKey, result, isNewSide: false, parent, slotStart,
                             oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
                     }
                 }
@@ -994,7 +995,7 @@ namespace Velvet
                         if (newKeySet.Contains(key)) continue;
                         if (state.ExitComplete.Contains(key)) continue;
                         var ghostMotion = FiberNodeFactory.FindFirstMotionDescendant(node);
-                        if (ghostMotion?.Transition is { DurationSec: > 0f })
+                        if (ghostMotion?.Transition?.HasExitAnimation == true)
                         {
                             blockEnters = true;
                             break;
@@ -1026,8 +1027,23 @@ namespace Velvet
                 foreach (var (key, node) in prevCommitted)
                 {
                     if (newKeySet.Contains(key) || state.ExitComplete.Contains(key)) continue;
-                    if (FiberNodeFactory.FindFirstMotionDescendant(node)?.Transition is { DurationSec: > 0f }) exitCount++;
+                    if (FiberNodeFactory.FindFirstMotionDescendant(node)?.Transition?.HasExitAnimation == true) exitCount++;
                 }
+
+                // An exit's completion callback normally runs long after this method has returned (a tween's
+                // scheduled timeout, a spring's settled tick). A spring exit whose variant pair touches no
+                // spring-animatable channel (MotionSpringDriver.Create returns null — e.g. a color-only exit
+                // variant) is the one case that completes SYNCHRONOUSLY, from inside the PlayExit call below,
+                // before this pass has finished building nextCommitted for every other key and before this
+                // pass's own state.ExitComplete.Clear() further down. Running such a completion's bookkeeping
+                // immediately would have that same Clear() wipe the ExitComplete entry it just added, so the
+                // re-render it schedules finds the ghost "not complete" again, replays PlayExit, and repeats
+                // forever. passSettled tracks whether this pass's own bookkeeping (below) has already run; a
+                // completion that fires before then is queued and drained once it has, so its ExitComplete.Add
+                // survives into the render it schedules — a genuinely async completion always finds passSettled
+                // already true (this method returned long before it fires) and runs immediately, unchanged.
+                var passSettled = false;
+                List<Action>? deferredExitCompletions = null;
 
                 var visualIndex = 0;
                 var exitIndex = 0;
@@ -1055,7 +1071,7 @@ namespace Velvet
 
                         var ghostMotionNode = FiberNodeFactory.FindFirstMotionDescendant(node);
                         var ghostTransition = ghostMotionNode?.Transition;
-                        if (ghostTransition is not { DurationSec: > 0f })
+                        if (ghostTransition?.HasExitAnimation != true)
                         {
                             // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
                             state.Exiting.Remove(key);
@@ -1063,7 +1079,8 @@ namespace Velvet
                             continue;
                         }
 
-                        var ghostAnchor = EmitPresenceChild(node, key, presenceKey, result, isNewSide: true, parent, slotStart,
+                        var ghostAnchor = EmitPresenceChildAsAnchor(node, ghostMotionNode, key, presenceKey, result,
+                            isNewSide: true, parent, slotStart,
                             oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
 
                         // Track the live ghost anchor so the drop path (exit complete) can dispose the subtree
@@ -1073,6 +1090,10 @@ namespace Velvet
                         if (commit != null && ghostAnchor != null && state.Exiting.Add(key))
                         {
                             _ctx.StyleAnimationScheduler.CancelEnter(ghostAnchor);
+                            if (presence.Mode == AnimatePresenceMode.PopLayout)
+                            {
+                                PinExitingChildOutOfFlow(ghostAnchor);
+                            }
                             var capturedKey = key;
                             var capturedState = state;
                             var capturedBoundary = boundaryFiber;
@@ -1084,7 +1105,7 @@ namespace Velvet
                             // For a variant exit the From classes ARE the resting variants[animate]; if this exit is
                             // cancelled (the key is re-added before it finishes) the element must return to that resting
                             // variant rather than be left without it (interrupt handling).
-                            _ctx.StyleAnimationScheduler.PlayExit(ghostAnchor, exitTransition, () =>
+                            void RunExitComplete()
                             {
                                 if (_ctx.IsDisposed) return;
                                 // Reconcile-driven removal: flag the finished exit and re-render the boundary;
@@ -1123,6 +1144,13 @@ namespace Velvet
                                         + "so the exited child cannot be removed. Mount AnimatePresence inside a "
                                         + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
                                 }
+                            }
+                            _ctx.StyleAnimationScheduler.PlayExit(ghostAnchor, exitTransition, () =>
+                            {
+                                // See passSettled's own comment above the loop: a synchronous completion (fired
+                                // from inside this very PlayExit call) is queued instead of run inline.
+                                if (passSettled) RunExitComplete();
+                                else (deferredExitCompletions ??= new List<Action>()).Add(RunExitComplete);
                             }, restoreFromOnCancel: variantExit != null,
                                 additionalDelaySec: presence.StaggerDelaySec(exitIndex, exitCount));
                             exitIndex++;
@@ -1140,8 +1168,15 @@ namespace Velvet
                         continue;
                     }
 
-                    var anchor = EmitPresenceChild(node, key, presenceKey, result, isNewSide: true, parent, slotStart,
-                        oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
+                    // Resolved BEFORE emission (not just once): shared by the PopLayout restore below (it needs
+                    // the re-added node's OWN class list, not the ghost's pre-pin one), the enter dispatch
+                    // further down, and — via EmitPresenceChildAsAnchor — FiberNodeFactory's standalone-enter
+                    // gate, so CreateElement can tell this SAME node (which the dispatch below is about to
+                    // explicitly animate) apart from every OTHER Motion the emission below might create.
+                    var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
+                    var anchor = EmitPresenceChildAsAnchor(node, motion, key, presenceKey, result, isNewSide: true,
+                        parent, slotStart, oldFibers, newFibers, providers, oldProvidersForPairing,
+                        ref newProviderIndex, commit);
 
                     if (commit != null && anchor != null)
                     {
@@ -1161,12 +1196,18 @@ namespace Velvet
                         {
                             state.ExitAnchors.Remove(key!);
                         }
-                        if (wasExiting) _ctx.StyleAnimationScheduler.CancelExit(anchor);
+                        if (wasExiting)
+                        {
+                            _ctx.StyleAnimationScheduler.CancelExit(anchor);
+                            if (presence.Mode == AnimatePresenceMode.PopLayout)
+                            {
+                                RestorePopLayoutChildToFlow(anchor, motion?.ClassNames);
+                            }
+                        }
 
                         var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
                         if (isEnter)
                         {
-                            var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
                             if (motion?.Transition != null)
                             {
                                 // The Initial flag only suppresses the enter animation on the AnimatePresence's
@@ -1194,8 +1235,7 @@ namespace Velvet
                                         // (kept as the persistent resting state).
                                         var t = motion.Transition;
                                         _ctx.StyleAnimationScheduler.PlayVariantEnter(anchor, fromClasses, toClasses,
-                                            t.DurationSec, t.Easing, t.DelaySec,
-                                            motion.OnEnterComplete, presence.StaggerDelaySec(visualIndex, newKeyed.Count));
+                                            t, motion.OnEnterComplete, presence.StaggerDelaySec(visualIndex, newKeyed.Count));
                                     }
                                     else if (isVariantMotion)
                                     {
@@ -1233,6 +1273,15 @@ namespace Velvet
                 state.Committed.Clear();
                 foreach (var entry in nextCommitted) state.Committed.Add(entry);
                 state.ExitComplete.Clear();
+
+                // This pass's own bookkeeping has settled — a synchronous exit completion queued above can now
+                // run safely (see passSettled's declaration comment): its ExitComplete.Add survives past this
+                // point instead of being wiped by the Clear() just above.
+                passSettled = true;
+                if (deferredExitCompletions != null)
+                {
+                    foreach (var completion in deferredExitCompletions) completion();
+                }
             }
             finally
             {
@@ -1252,6 +1301,90 @@ namespace Velvet
                 if (list[i].key == key) return true;
             }
             return false;
+        }
+
+        // AnimatePresenceMode.PopLayout: the instant a child's exit starts, pull it out of layout flow and pin
+        // it via absolute positioning at the last rect Yoga resolved for it in-flow (anchor.layout is parent-
+        // relative), so still-present siblings reflow into its place immediately while the exit animation
+        // finishes on top. Skipped when any component is non-finite (an EditMode pass with no forced layout
+        // leaves `.layout` at NaN) — the child then degrades to a normal in-flow exit rather than being pinned
+        // to garbage coordinates.
+        //
+        // layout.x/y is a flow-resolved position that already bakes in the child's own leading margin (an
+        // explicit m-* utility, or the inter-child margin StyleGapManipulator writes for gap-*) — the box
+        // simply renders shifted by that margin. Absolute positioning keeps the margin active too (UI Toolkit
+        // offsets the border box by left/top AND the still-set margin, matching CSS), so pinning at the raw
+        // layout rect would apply the same margin twice and jump the child by it the instant the exit starts.
+        // Subtracting the resolved margin back out of left/top cancels exactly that double count, so the
+        // pinned rect reproduces the in-flow position pixel for pixel.
+        private static void PinExitingChildOutOfFlow(VisualElement anchor)
+        {
+            var rect = anchor.layout;
+            if (!float.IsFinite(rect.x) || !float.IsFinite(rect.y)
+                || !float.IsFinite(rect.width) || !float.IsFinite(rect.height))
+            {
+                return;
+            }
+
+            var resolved = anchor.resolvedStyle;
+            var marginLeft = resolved.marginLeft;
+            var marginTop = resolved.marginTop;
+
+            anchor.style.position = Position.Absolute;
+            anchor.style.left = rect.x - marginLeft;
+            anchor.style.top = rect.y - marginTop;
+            anchor.style.width = rect.width;
+            anchor.style.height = rect.height;
+        }
+
+        // Reverses PinExitingChildOutOfFlow when a PopLayout exit is cancelled (its key re-added before the
+        // exit finished): clears the same five inline styles back to StyleKeyword.Null so the child rejoins
+        // its parent's normal layout flow. A no-op (harmless) when the exit was never pinned (non-finite
+        // layout at exit-start), since clearing an already-null style is idempotent.
+        //
+        // Nulling width/height erases whatever geometry a resolver-applied arbitrary-value class (w-[..],
+        // h-[..]) owns — those live in the SAME inline slots this method clears and have no USS rule to fall
+        // back to, unlike a named utility (w-full) whose class rule keeps applying underneath. classNames is
+        // the re-added Motion's OWN class array (not anchor.GetClasses(): arbitrary-value tokens resolve
+        // straight to inline style and are deliberately never added to the USS class list, so the element's
+        // class list itself never contains them). The caller resolves it from the CURRENT node — already
+        // patched by EmitPresenceChild, which runs before this restore — so a re-add that also changed props
+        // re-applies the new value rather than a stale pre-pin one.
+        //
+        // CancelExit (the caller's previous statement) deliberately leaves transition-property: all /
+        // transition-duration active on this exact element so the variant's OWN reversal (e.g. opacity
+        // fading back toward its resting value) keeps interpolating instead of popping. This geometry fixup
+        // is bookkeeping, not an animated property, but with that transition still live any value it passes
+        // through — including the Null this method itself writes before re-asserting the resting one — is
+        // just as eligible to animate, so the position/left/top/width/height correction would visibly tween
+        // in on top of the resting geometry instead of landing on it immediately. Suspending the transition
+        // for exactly this method's writes and restoring it immediately after keeps the reversal (which never
+        // touches these five properties) running untouched while the geometry itself snaps.
+        private static void RestorePopLayoutChildToFlow(VisualElement anchor, string[]? classNames)
+        {
+            var savedProperty = anchor.style.transitionProperty;
+            var savedDuration = anchor.style.transitionDuration;
+            var savedTimingFunction = anchor.style.transitionTimingFunction;
+            var savedDelay = anchor.style.transitionDelay;
+            anchor.style.transitionProperty = StyleKeyword.Null;
+            anchor.style.transitionDuration = StyleKeyword.Null;
+            anchor.style.transitionTimingFunction = StyleKeyword.Null;
+            anchor.style.transitionDelay = StyleKeyword.Null;
+
+            anchor.style.position = StyleKeyword.Null;
+            anchor.style.left = StyleKeyword.Null;
+            anchor.style.top = StyleKeyword.Null;
+            anchor.style.width = StyleKeyword.Null;
+            anchor.style.height = StyleKeyword.Null;
+            if (classNames != null)
+            {
+                FiberNodePatcher.ReapplyArbitraryValues(anchor, classNames);
+            }
+
+            anchor.style.transitionProperty = savedProperty;
+            anchor.style.transitionDuration = savedDuration;
+            anchor.style.transitionTimingFunction = savedTimingFunction;
+            anchor.style.transitionDelay = savedDelay;
         }
 
         // Disposes the inline/wrapper fibers mounted under an exit-completed ghost's anchor element. Needed
@@ -1316,11 +1449,52 @@ namespace Velvet
             return null;
         }
 
+        // Wraps EmitPresenceChild with ReconcilerContext.PresenceAnchorMotion bookkeeping: anchorMotion is
+        // whichever MotionNode this keyed child's enter/exit is dispatched against (this method's caller's own
+        // FindFirstMotionDescendant resolution — null when the child has none, e.g. a plain Div wrapper), and
+        // recording it for the exact dynamic extent of the expansion below lets FiberNodeFactory.CreateElement
+        // tell that ONE node apart from every OTHER Motion the expansion creates (nested deeper, sitting under
+        // a non-anchor wrapper, or a later sibling keyed child) — only the anchor must skip its own standalone
+        // enter (this class already plays it explicitly), everything else keeps its normal mount behavior.
+        // Saved and RESTORED (not just cleared) around the call so a nested AnimatePresence inside this keyed
+        // child's own subtree — which sets its own anchor for ITS keyed children — does not leave the outer
+        // anchor cleared once its own expansion returns and this child's subtree keeps unwinding.
+        private VisualElement? EmitPresenceChildAsAnchor(
+            VNode? node,
+            MotionNode? anchorMotion,
+            string? key,
+            string? presenceScope,
+            List<VNode>? result,
+            bool isNewSide,
+            VisualElement? parent,
+            int slotStart,
+            List<ComponentFiber> oldFibers,
+            HashSet<ComponentFiber> newFibers,
+            List<ContextProviderNode>? providers,
+            List<ContextProviderNode>? oldProvidersForPairing,
+            ref int newProviderIndex,
+            GeneralCommitState? commit)
+        {
+            var previousAnchor = _ctx.PresenceAnchorMotion;
+            _ctx.PresenceAnchorMotion = anchorMotion;
+            try
+            {
+                return EmitPresenceChild(node, key, presenceScope, result, isNewSide, parent, slotStart,
+                    oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
+            }
+            finally
+            {
+                _ctx.PresenceAnchorMotion = previousAnchor;
+            }
+        }
+
         // Resolves the from/to class arrays for an `initial` variant enter: fromClasses =
         // variants[Initial], toClasses = variants[Animate]. Returns false (no
         // variant-initial enter; caller falls back to the classic transition) unless the Motion sets its own
-        // Initial + Animate + Variants and the initial label maps to a non-empty class string.
-        private static bool TryResolveVariantInitial(MotionNode? motion, out string[]? fromClasses, out string[]? toClasses)
+        // Initial + Animate + Variants and the initial label maps to a non-empty class string. Internal (not
+        // private): FiberNodeFactory calls this too, to play the same variant enter on a standalone Motion
+        // (outside any AnimatePresence) at element-creation time.
+        internal static bool TryResolveVariantInitial(MotionNode? motion, out string[]? fromClasses, out string[]? toClasses)
         {
             fromClasses = null;
             toClasses = null;
@@ -1350,16 +1524,11 @@ namespace Velvet
             }
 
             motion.Variants.TryGetValue(motion.Animate, out var restingClass);
-            var timing = motion.Transition!;
-            return new StyleTransitionConfig
-            {
-                ExitFromClass = restingClass ?? string.Empty,
-                ExitToClass = exitClass,
-                DurationSec = timing.DurationSec,
-                Easing = timing.Easing,
-                ExitEasing = timing.ExitEasing,
-                DelaySec = timing.DelaySec,
-            };
+            // WithExitClasses copies every timing/spring/per-property-override knob (including Type/Stiffness/
+            // Damping/Mass, so a spring-configured Motion's variant EXIT is also spring-driven and hands off to
+            // a reversal spring on an exit-cancel instead of silently falling back to a tween) and replaces
+            // only the exit class pair — a single source for that knob list instead of hand-copying it here.
+            return motion.Transition!.WithExitClasses(restingClass ?? string.Empty, exitClass);
         }
 
         #endregion

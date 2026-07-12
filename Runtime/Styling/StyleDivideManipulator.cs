@@ -29,6 +29,11 @@ namespace Velvet
     // (divide-dashed / divide-dotted are unsupported, handled by StyleDivideClass). An explicit per-child
     // border on the SAME edge the divider draws on (e.g. border-l on a child of a divide-x row) is
     // OVERWRITTEN — this manipulator owns that edge, exactly as the gap manipulator owns its margin edge.
+    //
+    // Out-of-flow children (position: absolute) are excluded from the index walk — see
+    // StyleOutOfFlowChild — the same way StyleGapManipulator excludes them: an out-of-flow child (a
+    // PopLayout-pinned ghost, or an app-authored .absolute child) is not a layout sibling, so it neither
+    // draws a divider nor counts toward which of the remaining children is "first".
     internal sealed class StyleDivideManipulator : Manipulator
     {
         private DivideSpec _spec;
@@ -114,11 +119,18 @@ namespace Velvet
             _bordered.Clear();
 
             var count = container.childCount;
+            var logicalIndex = 0;
             for (var i = 0; i < count; i++)
             {
                 var child = container[i];
+                // An out-of-flow child is not a layout sibling, so it draws no divider and does not
+                // consume the "first child" slot for whichever in-flow child follows it.
+                if (StyleOutOfFlowChild.IsOutOfFlow(child))
+                {
+                    continue;
+                }
                 // The first child has no leading divider (the `> * + *` rule starts at the second child).
-                var isDivider = i != 0;
+                var isDivider = logicalIndex != 0;
                 var width = isDivider ? new StyleFloat(_spec.Width) : new StyleFloat(StyleKeyword.Null);
                 // Own the edge's color channel on EVERY pass (like the gap manipulator owns its margin):
                 // write the divider color only on a colored divider, else reset to Null. Without the reset a
@@ -136,6 +148,7 @@ namespace Velvet
                     child.style.borderTopColor = color;
                 }
                 _bordered.Add(child);
+                logicalIndex++;
             }
 
             _lastSignature = signature;
@@ -226,7 +239,11 @@ namespace Velvet
                 hash = hash * 31 + count;
                 for (var i = 0; i < count; i++)
                 {
-                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(container[i]);
+                    var child = container[i];
+                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(child);
+                    // A child's in-flow / out-of-flow transition changes which children the divider walk
+                    // counts even though neither its identity nor the container's total count changed.
+                    hash = hash * 31 + (StyleOutOfFlowChild.IsOutOfFlow(child) ? 1 : 0);
                 }
                 return hash;
             }
