@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -22,5 +23,22 @@ namespace Velvet
     /// </summary>
     public sealed class ParticlesElement : VisualElement
     {
+        // Assigned by the driver while a binding is attached; null otherwise. Routed through
+        // delegates (rather than the element holding the host) so the element type carries no
+        // simulation state of its own.
+        internal Action? PlayHandler;
+        internal Action? StopHandler;
+
+        /// <summary>
+        /// Starts the bound effect — the imperative half of <see cref="PlayTrigger.Manual"/> (a
+        /// <see cref="PlayTrigger.Mount"/> element may also use it to replay a finished burst).
+        /// A no-op while no effect is bound.
+        /// </summary>
+        public void Play() => PlayHandler?.Invoke();
+
+        /// <summary>
+        /// Stops the bound effect and clears its live particles. A no-op while no effect is bound.
+        /// </summary>
+        public void Stop() => StopHandler?.Invoke();
     }
 }

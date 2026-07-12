@@ -175,6 +175,18 @@ namespace Velvet.Tests
             return V.Label(text: "void-only");
         }
 
+        // UseFrame is a memo-safe void hook: its per-frame callback flows through a ref slot the hook
+        // overwrites every render, never through a captured return value, so it advances the hook
+        // boundary without contributing a dep while the prop supplies the deps entry. A hook missing
+        // from the weaver's allow-lists bails the whole body, so this shape pins the registration —
+        // losing it would silently cost every UseFrame component its auto-memo.
+        [Component]
+        public static VNode UseFrameComponent(GreetProps p)
+        {
+            Hooks.UseFrame(_ => { });
+            return V.Label(text: p.Name);
+        }
+
         // UseRef returns a stable reference that does not self-trigger a re-render. It is on the value allow-list,
         // so capturing the stable reference as a constant dep is sound and the body is woven.
         [Component]
@@ -400,6 +412,15 @@ namespace Velvet.Tests
             // Act + Assert
             Assert.That(IsWoven(LoadMethod(nameof(VoidEffectComponent))), Is.True,
                 "A safe void effect hook advances the hook boundary while UseState supplies the captured dep");
+        }
+
+        [Test]
+        public void Given_UseFrameAlongsideAProp_When_Woven_Then_InjectsBothMemoCalls()
+        {
+            // Act + Assert — a hook absent from the weaver's allow-lists bails the whole body, so this
+            // pins UseFrame's registration: the body must weave, not silently lose its auto-memo.
+            Assert.That(IsWoven(LoadMethod(nameof(UseFrameComponent))), Is.True,
+                "UseFrame is a memo-safe void hook; with a prop supplying the deps entry the body is woven");
         }
 
         [Test]

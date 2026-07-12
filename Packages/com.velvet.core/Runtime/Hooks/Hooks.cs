@@ -916,8 +916,13 @@ namespace Velvet
             var fiber = Resolve("UseFrame");
             // Every render overwrites the ref slot, and the tick below reads through it — that is what
             // swaps in the latest closure without re-subscribing (the effect's empty deps never re-run).
+            // StrictMode's throwaway diagnostic pass must not swap the LIVE closure (its captures are
+            // the discarded pass's state), matching UseImperativeHandle's gate.
             var latest = UseRef<Action<float>>();
-            latest.Set(onFrame);
+            if (!IsStrictDiagnosticPass(fiber))
+            {
+                latest.Set(onFrame);
+            }
 
             UseEffect(() =>
             {
@@ -926,24 +931,53 @@ namespace Velvet
                 var host = fiber.MountPoint;
                 if (host == null)
                 {
-                    return (Action)(() => { });
+                    return null;
                 }
-                var tick = host.schedule.Execute((UnityEngine.UIElements.TimerState ts) =>
+                UnityEngine.UIElements.IVisualElementScheduledItem? tick = null;
+                void StartTick()
                 {
-                    // TimerState.start is the previous callback's time for a repeating item (or the
-                    // schedule time for the first firing), so deltaTime is already exactly the elapsed
-                    // interval — no separate "last tick" bookkeeping. A zero delta (same-frame flush)
-                    // is skipped so the callback only ever observes positive, frame-sized seconds.
-                    var dt = ts.deltaTime / 1000f;
-                    if (dt <= 0f)
+                    tick?.Pause();
+                    tick = host.schedule.Execute((UnityEngine.UIElements.TimerState ts) =>
                     {
-                        return;
-                    }
-                    latest.Current?.Invoke(dt);
-                }).Every(16);
-                // Scheduled items only fire while the host is attached to a panel, so detach/reattach
-                // pausing needs no extra wiring; unmount pauses the recurrence for good.
-                return () => tick.Pause();
+                        // TimerState.start is the previous callback's time for a repeating item (or the
+                        // schedule time for the first firing), so deltaTime is already exactly the
+                        // elapsed interval — no separate "last tick" bookkeeping. A zero delta
+                        // (same-frame flush) is skipped so the callback only ever observes positive,
+                        // frame-sized seconds; a hitch spike is clamped the way Time.deltaTime clamps
+                        // its own, so a stall cannot teleport a user simulation by one giant step.
+                        var dt = ts.deltaTime / 1000f;
+                        if (dt <= 0f)
+                        {
+                            return;
+                        }
+                        dt = UnityEngine.Mathf.Min(dt, UnityEngine.Time.maximumDeltaTime);
+                        latest.Current?.Invoke(dt);
+                    }).Every(16);
+                }
+                // A keyed reorder re-inserts the host element, which silently drops its element-bound
+                // scheduled items — so the tick is re-armed from scratch on every attach (a dropped
+                // item cannot be resumed) and released on detach; nothing fires while detached.
+                UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.AttachToPanelEvent> onAttach = _ => StartTick();
+                UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.DetachFromPanelEvent> onDetach = _ =>
+                {
+                    tick?.Pause();
+                    tick = null;
+                };
+                host.RegisterCallback(onAttach);
+                host.RegisterCallback(onDetach);
+                // The passive effect runs post-commit, so the host is ordinarily already attached and
+                // no AttachToPanelEvent is coming — arm the first tick directly.
+                if (host.panel != null)
+                {
+                    StartTick();
+                }
+                return () =>
+                {
+                    host.UnregisterCallback(onAttach);
+                    host.UnregisterCallback(onDetach);
+                    tick?.Pause();
+                    tick = null;
+                };
             }, Array.Empty<object>());
         }
 
