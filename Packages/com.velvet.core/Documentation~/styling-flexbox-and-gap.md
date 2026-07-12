@@ -150,5 +150,3 @@ A native `gap` and a configurable default direction depend on UI Toolkit feature
 available (USS `gap`, and broader Flexbox parity, are on Unity's roadmap beyond 6.7 LTS). When native
 `gap` lands, the polyfill can be replaced and the residual edge cases above go away. Until then, the
 framework-level manipulator is the supported approach and matches CSS `gap` for the common cases.
-
-See also: the related discussion in issues #7 (gap implementation) and #9 (flex default direction).
