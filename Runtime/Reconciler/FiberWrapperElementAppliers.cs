@@ -887,5 +887,39 @@ namespace Velvet
         }
 
         #endregion
+
+        #region SceneView
+
+        // Binds / re-binds / releases a SceneView element's camera-output machinery — the mount paths
+        // (plain element AND Motion host) and the props diff all land here, beside the sibling binding
+        // lifecycles above, because the binding owns live resources (a framework-created RenderTexture,
+        // a registered geometry callback, an editor-panel repaint tick) tracked per element for the
+        // cleaner and the reconciler dispose sweep to release.
+        internal void ApplySceneView(VisualElement element, SceneViewSettings? settings)
+        {
+            if (element is not SceneViewElement)
+            {
+                return;
+            }
+            if (_ctx.SceneViewBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    // A vanished settings prop only happens on a hand-built ElementNode (V.SceneView
+                    // always carries settings, even for a null camera): release both ends and drop the
+                    // binding — the element stays mounted and inert.
+                    SceneViewDriver.Detach(element, binding);
+                    _ctx.SceneViewBindings.Remove(element);
+                    return;
+                }
+                SceneViewDriver.Update(element, binding, settings);
+            }
+            else if (settings != null)
+            {
+                _ctx.SceneViewBindings[element] = SceneViewDriver.Attach(element, settings);
+            }
+        }
+
+        #endregion
     }
 }

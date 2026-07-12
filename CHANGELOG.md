@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `V.SceneView(camera)`: a Camera's output as an element (`<canvas>` parity). The framework
+  owns the RenderTexture — created at the element's laid-out size (times `resolutionScale`),
+  resized with the element, assigned to `camera.targetTexture` while mounted, and released on
+  unmount (a user-reassigned camera target is left intact). The output arrives through the
+  element's background image, so `rounded-*` / `border-*` and sizing utilities compose with
+  it, and the element samples the live texture — camera motion needs no re-render. A guide
+  (`Documentation~/scene-view.md`) documents the contract.
+
 - Custom filter registry: `VelvetFilters.Register("dissolve", definition)` exposes a Unity 6.3
   `FilterFunctionDefinition` (custom filter shader) to class strings as `filter-[dissolve:0.4]` —
   colon-separated arguments parsed by the declaration's parameter types (floats / colors) and

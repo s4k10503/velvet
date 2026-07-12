@@ -62,6 +62,7 @@ namespace Velvet
             props.ScrollView = null;
             props.TextField = null;
             props.Choices = null;
+            props.SceneView = null;
             props.Data = null;
             props.Aria = null;
 
