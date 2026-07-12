@@ -1,6 +1,7 @@
 #nullable enable
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -56,6 +57,10 @@ namespace Velvet
         public ChoicesSettings? Choices { get => _choices; set { ThrowIfReadOnly(); _choices = value; } }
         private ChoicesSettings? _choices;
 
+        /// <summary>SceneView-specific settings (the camera whose output the element displays).</summary>
+        public SceneViewSettings? SceneView { get => _sceneView; set { ThrowIfReadOnly(); _sceneView = value; } }
+        private SceneViewSettings? _sceneView;
+
         /// <summary>
         /// Carried <c>data-*</c> attribute values (key → value), the UI-Toolkit stand-in for HTML data
         /// attributes. UI Toolkit has no attributes, so these are stored in the reconciler's per-element
@@ -100,4 +105,13 @@ namespace Velvet
     /// <summary>List of choices for DropdownField / RadioButtonGroup.</summary>
     public sealed record ChoicesSettings(
         List<string>? Choices = null);
+
+    /// <summary>
+    /// The camera a SceneView element displays, plus its render-resolution policy. The framework owns
+    /// the RenderTexture: it is created at the element's laid-out pixel size (times
+    /// <paramref name="ResolutionScale"/>), follows geometry changes, and is released on unmount.
+    /// </summary>
+    public sealed record SceneViewSettings(
+        Camera? Camera = null,
+        float ResolutionScale = 1f);
 }

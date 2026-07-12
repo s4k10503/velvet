@@ -645,6 +645,65 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Creates a SceneView element displaying <paramref name="camera"/>'s output — the canvas-parity
+        /// element. The framework owns the RenderTexture: it is created at the element's laid-out pixel
+        /// size (times <paramref name="resolutionScale"/>), resized when the element's geometry changes,
+        /// assigned to <c>camera.targetTexture</c> while mounted, and released on unmount (restoring the
+        /// camera's target only if it is still the framework's own texture). The output arrives through
+        /// the element's background image, so background utilities and rounded corners apply to it.
+        /// </summary>
+        /// <param name="camera">Camera whose output the element displays. Null renders nothing (the
+        /// element mounts as an empty box until a camera is supplied).</param>
+        /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
+        /// <param name="resolutionScale">Render-resolution multiplier over the element's laid-out pixel
+        /// size (0.5 renders at half resolution). Must be positive.</param>
+        /// <param name="styles">Inline style overrides applied on top of USS classes.</param>
+        /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
+        /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element (gesture-driven).</param>
+        /// <param name="whileTapClass">USS class toggled while the pointer is pressed on the element (gesture-driven).</param>
+        /// <param name="whileFocusClass">USS class toggled while the element holds keyboard/UI focus (gesture-driven).</param>
+        /// <param name="data">data-* attribute map matched by <c>data-[...]</c> variants.</param>
+        /// <param name="aria">aria-* attribute map matched by <c>aria-[...]</c> variants.</param>
+        /// <returns>The created <see cref="ElementNode"/> representing this scene view.</returns>
+        public static ElementNode SceneView(
+            Camera? camera,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            float resolutionScale = 1f,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
+        {
+            // Always carried (even with a null camera): the patcher needs the settings on BOTH sides of a
+            // diff to see a camera arriving or leaving as a settings change.
+            var props = VNodePool.RentProps();
+            props.SceneView = new SceneViewSettings(camera, resolutionScale);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(SceneViewElement),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = WithAttributes(props, data, aria),
+                Styles = styles,
+                Children = EmptyChildren,
+                Events = EmptyEvents,
+                RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        /// <summary>
         /// Creates a DropdownField.
         /// </summary>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
