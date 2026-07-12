@@ -200,6 +200,12 @@ namespace Velvet
         // toward luminance). Value = the saturation fraction N; BuildFilter emits grayscale(1-N). Over-saturation
         // (N>1) has no UITK filter and is not supported (the parser rejects saturate>100).
         FilterSaturate,   // saturate-[.5]      -> filter: grayscale(.5)    (Value = saturation 0..1)
+        // filter-[name:args] resolves a VelvetFilters.Register-ed custom filter (VelvetFilters.cs). Unlike
+        // every filter above, it is NOT composed via s_filterOrder / the property-keyed LayerMap: each
+        // registered NAME gets its own priority stack (LayerMap.Customs) so two different custom filters,
+        // or a base layer and a hover layer of the SAME name, never clobber each other. The Custom field
+        // on ArbitraryStyle carries the resolved definition and parsed arguments; Value/Unit/Color are unused.
+        FilterCustom,     // filter-[dissolve:0.4] -> filter: <custom function>(0.4) (payload = Custom)
         #endregion
 
         // Size shorthand (StyleLength; fans out to width + height, like Inset).
@@ -217,15 +223,18 @@ namespace Velvet
     }
 
     // A parsed arbitrary-value result: the target Property plus its length payload
-    // (Value + Unit) or its Color.
+    // (Value + Unit), its Color, or (FilterCustom only) its Custom payload.
     internal readonly struct ArbitraryStyle
     {
         public ArbitraryProperty Property { get; }
-        // Numeric magnitude for length/angle properties (paired with Unit); 0 for color properties.
+        // Numeric magnitude for length/angle properties (paired with Unit); 0 for color/custom properties.
         public float Value { get; }
         public LengthUnit Unit { get; }
-        // Color payload for color properties; default for length/angle properties.
+        // Color payload for color properties; default for length/angle/custom properties.
         public Color Color { get; }
+        // Payload for FilterCustom (the registered name, its definition, and the resolved arguments);
+        // null for every other property.
+        public CustomFilterValue? Custom { get; }
 
         // Creates a length/angle result.
         public ArbitraryStyle(ArbitraryProperty property, float value, LengthUnit unit)
@@ -234,6 +243,7 @@ namespace Velvet
             Value = value;
             Unit = unit;
             Color = default;
+            Custom = null;
         }
 
         // Creates a color result.
@@ -243,6 +253,38 @@ namespace Velvet
             Color = color;
             Value = 0f;
             Unit = LengthUnit.Pixel;
+            Custom = null;
+        }
+
+        // Creates a FilterCustom result.
+        public ArbitraryStyle(ArbitraryProperty property, CustomFilterValue custom)
+        {
+            Property = property;
+            Custom = custom;
+            Value = 0f;
+            Unit = LengthUnit.Pixel;
+            Color = default;
+        }
+    }
+
+    // The resolved payload for a filter-[name:args] custom filter token: the registered NAME (the
+    // per-name layer-stack key, and the ONLY field the clear path reads — a clear synthesized for a
+    // no-longer-registered name carries a null Definition and empty Args), the FilterFunctionDefinition
+    // VelvetFilters.Register stored under that name, and the arguments in declaration order — the
+    // explicitly supplied segments followed by a tail padded from the declaration's defaults, so the
+    // composed function always carries the full declared parameter count (an under-filled function
+    // reads stale material-property state at render time instead of the declared defaults).
+    internal sealed class CustomFilterValue
+    {
+        public readonly string Name;
+        public readonly FilterFunctionDefinition Definition;
+        public readonly FilterParameter[] Args;
+
+        public CustomFilterValue(string name, FilterFunctionDefinition definition, FilterParameter[] args)
+        {
+            Name = name;
+            Definition = definition;
+            Args = args;
         }
     }
 }
