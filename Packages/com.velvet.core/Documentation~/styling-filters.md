@@ -97,6 +97,10 @@ guarantees for a same-name argument change. So `transition-all duration-300` twe
 `filter-[dissolve:0]` → `filter-[dissolve:1]` numerically; adding or removing a function
 (list shapes differ) snaps, matching CSS.
 
+Drive this through the `transition-*` utilities. Pinning an inline `transition-property` to
+`filter` alone makes 6000.3 stop applying further filter changes to the rendered output at all
+(engine quirk, observed on 6000.3.11f1) — `transition-all` does not have the problem.
+
 ### Contract
 
 - **Register before mount.** Resolution happens when a class is applied; a class resolved
