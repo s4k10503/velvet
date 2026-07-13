@@ -493,5 +493,102 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region Background ownership
+
+        private static Texture2D s_posterA;
+        private static Texture2D s_posterB;
+
+        [Component]
+        private static VNode GradientSwapHost()
+        {
+            var (alt, setAlt) = Hooks.UseState(false);
+            s_setFlag = setAlt;
+            return V.SceneView(s_camera, key: "sv", name: "sv", className: alt
+                ? "w-[128px] h-[64px] bg-gradient-to-r from-green-500 to-yellow-500"
+                : "w-[128px] h-[64px] bg-gradient-to-r from-red-500 to-blue-500");
+        }
+
+        [Test]
+        public void Given_ALiveCameraFeed_When_TheGradientClassChanges_Then_TheFeedIsNotClobbered()
+        {
+            // Arrange — a gradient class and a live camera compete for the one backgroundImage slot;
+            // while the camera texture is live it owns the slot, and class-driven writers defer.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(GradientSwapHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            Assume.That(el, Is.Not.Null, "Precondition: the element mounted");
+            Assume.That(s_camera.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+
+            // Act — an ordinary state-driven restyle changes the gradient spec.
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — the background still samples the live camera texture.
+            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.SameAs(s_camera.targetTexture));
+        }
+
+        [Component]
+        private static VNode PosterSwapHost()
+        {
+            var (alt, setAlt) = Hooks.UseState(false);
+            s_setFlag = setAlt;
+            return V.SceneView(null, key: "sv", name: "sv", className: "w-[128px] h-[64px]",
+                styles: new StyleOverrides
+                {
+                    BackgroundImage = new StyleBackground(alt ? s_posterB : s_posterA),
+                });
+        }
+
+        [Test]
+        public void Given_ACameraLessSceneView_When_ThePosterStyleChanges_Then_TheNewPosterShows()
+        {
+            // Arrange — no camera ever arrives, so styles.BackgroundImage owns the slot outright; the
+            // mere existence of a (textureless) binding must not freeze the poster forever.
+            s_posterA = new Texture2D(2, 2);
+            _spawned.Add(s_posterA);
+            s_posterB = new Texture2D(2, 2);
+            _spawned.Add(s_posterB);
+            MountAndLayout(V.Component(PosterSwapHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            Assume.That(el?.resolvedStyle.backgroundImage.texture, Is.SameAs(s_posterA),
+                "Precondition: the first poster shows");
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert
+            Assert.That(el.resolvedStyle.backgroundImage.texture, Is.SameAs(s_posterB));
+        }
+
+        [Component]
+        private static VNode ReleasingGradientHost()
+        {
+            var (released, setReleased) = Hooks.UseState(false);
+            s_setFlag = setReleased;
+            return V.SceneView(released ? null : s_camera, key: "sv", name: "sv",
+                className: "w-[128px] h-[64px] bg-gradient-to-r from-red-500 to-blue-500");
+        }
+
+        [Test]
+        public void Given_ALiveFeedOverAGradient_When_TheCameraIsRemoved_Then_TheGradientIsRestored()
+        {
+            // Arrange
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(ReleasingGradientHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            Assume.That(el?.resolvedStyle.backgroundImage.renderTexture, Is.Not.Null,
+                "Precondition: the camera feed owns the background");
+
+            // Act — removing the camera releases the texture; the deferred class background returns.
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — a baked gradient texture, not a blank slot, fills the element again.
+            Assert.That(el.resolvedStyle.backgroundImage.texture, Is.Not.Null);
+        }
+
+        #endregion
     }
 }

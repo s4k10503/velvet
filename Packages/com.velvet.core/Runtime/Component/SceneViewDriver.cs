@@ -128,6 +128,13 @@ namespace Velvet
             {
                 camera.targetTexture = texture;
             }
+            if (element is SceneViewElement sceneView)
+            {
+                // Taking the slot captures whatever the element was showing (a poster, a baked
+                // gradient) as the deferred restore target; class/style writers keep updating that
+                // deferred value through the ownership gate instead of clobbering the live feed.
+                sceneView.BeginCameraOwnership();
+            }
             element.style.backgroundImage = Background.FromRenderTexture(texture);
             element.MarkDirtyRepaint();
             if (previous != null)
@@ -222,7 +229,16 @@ namespace Velvet
             binding.Texture.Release();
             VelvetObjectUtil.Destroy(binding.Texture);
             binding.Texture = null;
-            element.style.backgroundImage = StyleKeyword.Null;
+            if (element is SceneViewElement sceneView)
+            {
+                // Releasing the feed returns the slot to whatever writer was deferred while the
+                // camera owned it (a poster, a baked gradient) — or clears it when none was.
+                sceneView.EndCameraOwnership();
+            }
+            else
+            {
+                element.style.backgroundImage = StyleKeyword.Null;
+            }
             element.MarkDirtyRepaint();
         }
 

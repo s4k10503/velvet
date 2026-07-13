@@ -1086,13 +1086,12 @@ namespace Velvet
             oldStyles ??= StyleOverrides.Empty;
             newStyles ??= StyleOverrides.Empty;
 
-            // The SceneView driver owns backgroundImage while a binding is live (the camera texture is
-            // shown through it), so a StyleOverrides change must not blank the running feed — a poster
-            // passed through styles shows only until the camera texture arrives.
-            if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage)
-                && !_ctx.SceneViewBindings.ContainsKey(element))
+            // Routed through the SceneView ownership gate: while a live camera texture owns the slot
+            // the poster is deferred (and restored on release); with no live texture — no camera yet,
+            // camera removed, plain elements — the write lands directly.
+            if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage))
             {
-                element.style.backgroundImage = newStyles.BackgroundImage ?? StyleKeyword.Null;
+                SceneViewElement.WriteBackground(element, newStyles.BackgroundImage ?? StyleKeyword.Null);
             }
 
             if (!Equals(oldStyles.BackgroundColor, newStyles.BackgroundColor))
