@@ -28,6 +28,39 @@ namespace Velvet.TestUtilities
                 }
             }
         }
+
+        /// <summary>
+        /// Pumps the panel's internal timer scheduler once — the same call a live panel issues once per
+        /// frame — so an EditMode fixture can drive <c>schedule.Execute</c> items deterministically (the
+        /// batchmode PlayerLoop never ticks them). The scheduler is internal engine surface, reached by
+        /// walking the panel's type chain for its <c>scheduler</c> property.
+        /// </summary>
+        public static void DriveSchedulerOnce(IPanel panel)
+        {
+            object scheduler = null;
+            for (var t = panel.GetType(); t != null && scheduler == null; t = t.BaseType)
+            {
+                var prop = t.GetProperty(
+                    "scheduler",
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                if (prop != null)
+                {
+                    scheduler = prop.GetValue(panel);
+                }
+            }
+            if (scheduler == null)
+            {
+                throw new System.MissingMemberException(panel.GetType().FullName, "scheduler");
+            }
+            var update = scheduler.GetType().GetMethod(
+                "UpdateScheduledEvents",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (update == null)
+            {
+                throw new System.MissingMethodException(scheduler.GetType().FullName, "UpdateScheduledEvents");
+            }
+            update.Invoke(scheduler, null);
+        }
     }
 
 #if UNITY_EDITOR

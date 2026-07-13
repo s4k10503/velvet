@@ -682,15 +682,9 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
-            // A non-positive (or NaN) scale could never size a texture; fail fast at the call site like
-            // the other factories with numeric preconditions. The negated > comparison catches NaN too.
-            if (!(resolutionScale > 0f))
-            {
-                throw new ArgumentOutOfRangeException(nameof(resolutionScale), "ResolutionScale must be greater than 0.");
-            }
-
             // Always carried (even with a null camera): the patcher needs the settings on BOTH sides of a
-            // diff to see a camera arriving or leaving as a settings change.
+            // diff to see a camera arriving or leaving as a settings change. The settings constructor
+            // fail-fasts on an invalid scale for every construction path, this factory included.
             var props = VNodePool.RentProps();
             props.SceneView = new SceneViewSettings(camera, resolutionScale);
 
@@ -750,14 +744,9 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
-            if (!(pixelsPerUnit > 0f))
-            {
-                throw new ArgumentOutOfRangeException(nameof(pixelsPerUnit),
-                    "pixelsPerUnit must be positive; it maps particle world units to element pixels.");
-            }
-
             // Always carried (even with a null effect): the patcher needs the settings on BOTH sides of
-            // a diff to see an effect arriving or leaving as a settings change.
+            // a diff to see an effect arriving or leaving as a settings change. The settings constructor
+            // fail-fasts on an invalid mapping for every construction path, this factory included.
             var props = VNodePool.RentProps();
             props.Particles = new ParticlesSettings(effect, playOn, pixelsPerUnit);
 

@@ -407,5 +407,91 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region Driver hardening
+
+        [Component]
+        private static VNode ShiftingColumnHost()
+        {
+            var (shifted, setShifted) = Hooks.UseState(false);
+            s_setFlag = setShifted;
+            return V.Div(className: "flex-col", children: new VNode[]
+            {
+                V.Div(key: "spacer", className: shifted ? "w-[10px] h-[40px]" : "w-[10px] h-[10px]"),
+                V.SceneView(s_camera, key: "sv", className: "w-[128px] h-[64px]"),
+            });
+        }
+
+        [Test]
+        public void Given_AUserReassignedTarget_When_AnUnrelatedGeometryEventFires_Then_TheForeignTargetSurvives()
+        {
+            // Arrange — user code borrowed the camera while the element stays mounted; a sibling's
+            // resize then moves the element (same size, new position), which fires a geometry event.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(ShiftingColumnHost, key: "root"));
+            Assume.That(s_camera.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            var foreign = new RenderTexture(16, 16, 0);
+            _spawned.Add(foreign);
+            s_camera.targetTexture = foreign;
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — a layout-driven resync must not claw the camera back from user code; only an
+            // explicit camera/settings change may claim a foreign target.
+            Assert.That(s_camera.targetTexture, Is.SameAs(foreign));
+        }
+
+        [Test]
+        public void Given_AnElementWiderThanTheTextureCap_When_TheTextureIsCreated_Then_TheAspectIsPreserved()
+        {
+            // Arrange — 6000×300 points is 20:1; clamping each axis independently to the 4096 ceiling
+            // would flatten the texture to ~13.7:1 and visibly distort the camera picture.
+            var cam = CreateCamera("cam");
+
+            // Act
+            MountAndLayout(V.SceneView(cam, className: "shrink-0 w-[6000px] h-[300px]"));
+
+            // Assert
+            var rt = cam.targetTexture;
+            Assume.That(rt, Is.Not.Null, "Precondition: the camera received a texture");
+            Assume.That(rt.width, Is.EqualTo(4096), "Precondition: the width hit the ceiling");
+            var aspect = (float)rt.width / rt.height;
+            Assert.That((rt.height <= 4096, Mathf.Abs(aspect - 20f) < 0.5f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AStalePixelScale_When_TheEditorRepaintTickFires_Then_TheTextureIsRederived()
+        {
+            // Arrange — a pixel-density change (a monitor-DPI move) alters the derived pixel size with
+            // no geometry event (points are unchanged) and no props pass, so only the recurring editor
+            // repaint tick can notice. Staleness is simulated by doubling the scale on the live
+            // binding directly — the same derivation input a density change moves.
+            var cam = CreateCamera("cam");
+            MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]", name: "sv"));
+            Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            var element = _host.Root.Q<VisualElement>("sv");
+            var binding = _mounted.Root.Reconciler.Context.SceneViewBindings[element];
+            binding.Settings = new SceneViewSettings(cam, 2f);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((256, 128)));
+        }
+
+        [Test]
+        public void Given_ADirectlyConstructedSettings_When_TheScaleIsInvalid_Then_ItThrows()
+        {
+            // Arrange — the factory's fail-fast guard must hold for every construction path (Motion
+            // hosts and fixtures build the settings record directly), or an invalid scale silently
+            // degrades to a degenerate near-1-pixel texture instead of the documented exception.
+            // Act & Assert
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => new SceneViewSettings(null, 0f));
+        }
+
+        #endregion
     }
 }
