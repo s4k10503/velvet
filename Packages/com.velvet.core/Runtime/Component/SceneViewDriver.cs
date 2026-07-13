@@ -15,6 +15,11 @@ namespace Velvet
         public RenderTexture? Texture;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public IVisualElementScheduledItem? RepaintTick;
+        // An explicit camera/settings pass (attach, props update) claims the camera even from a
+        // foreign targetTexture; the intent is recorded here because the claiming sync itself may
+        // bail pre-layout and the FIRST sync that gets past the validity gate must inherit it.
+        // Layout- and tick-driven resyncs never claim a foreign target on their own.
+        public bool ClaimOnNextSync;
 
         public SceneViewBinding(SceneViewSettings settings)
         {
@@ -49,9 +54,10 @@ namespace Velvet
         public static SceneViewBinding Attach(VisualElement element, SceneViewSettings settings)
         {
             var binding = new SceneViewBinding(settings);
-            binding.OnGeometryChanged = _ => SyncTexture(element, binding, claimForeignTarget: false);
+            binding.OnGeometryChanged = _ => SyncTexture(element, binding);
             element.RegisterCallback(binding.OnGeometryChanged);
-            SyncTexture(element, binding, claimForeignTarget: true);
+            binding.ClaimOnNextSync = true;
+            SyncTexture(element, binding);
             return binding;
         }
 
@@ -71,7 +77,8 @@ namespace Velvet
             {
                 ReleaseCameraTarget(previousCamera, binding.Texture);
             }
-            SyncTexture(element, binding, claimForeignTarget: true);
+            binding.ClaimOnNextSync = true;
+            SyncTexture(element, binding);
         }
 
         // Full teardown: unregisters the geometry callback and releases both ends of the output pair.
@@ -90,11 +97,12 @@ namespace Velvet
         // releases any existing output; otherwise the texture is re-created only when the effective
         // pixel size actually changed (keyed on the live texture's own dimensions), and an
         // unchanged-size texture is simply re-targeted (where a camera swap lands).
-        // claimForeignTarget separates the two kinds of caller: an explicit camera/settings pass
-        // (attach, props update) claims the camera outright, while a layout/tick resync reclaims it
-        // only from null or from the framework's own outgoing texture — a targetTexture user code
-        // pointed elsewhere stays theirs, mirroring the polite release on the way out.
-        private static void SyncTexture(VisualElement element, SceneViewBinding binding, bool claimForeignTarget)
+        // Claim intent: an explicit camera/settings pass sets ClaimOnNextSync and the first sync past
+        // the validity gate consumes it, claiming the camera even from a foreign targetTexture.
+        // Without it a resync reclaims only from null or from the framework's own outgoing texture;
+        // while user code holds the camera, the element keeps showing the last framework frame
+        // rather than re-deriving a texture nothing would render into.
+        private static void SyncTexture(VisualElement element, SceneViewBinding binding)
         {
             var camera = binding.Settings.Camera;
             if (camera == null || element.panel == null
@@ -103,11 +111,13 @@ namespace Velvet
                 ReleaseOutput(element, binding);
                 return;
             }
+            var claim = binding.ClaimOnNextSync;
+            binding.ClaimOnNextSync = false;
 
             if (binding.Texture != null && binding.Texture.width == pw && binding.Texture.height == ph)
             {
                 if (camera.targetTexture != binding.Texture
-                    && (claimForeignTarget || camera.targetTexture == null))
+                    && (claim || camera.targetTexture == null))
                 {
                     camera.targetTexture = binding.Texture;
                     // The texture object shown by the background is unchanged, so nothing else marks
@@ -119,15 +129,21 @@ namespace Velvet
                 return;
             }
 
+            var previous = binding.Texture;
+            if (!claim && camera.targetTexture != null && camera.targetTexture != previous)
+            {
+                // The camera is borrowed: re-deriving the texture now would swap the background to an
+                // image nothing renders into and destroy the last good frame. Keep showing that
+                // frame; the next explicit camera/settings pass reclaims and re-derives the size.
+                SyncRepaintTick(element, binding);
+                return;
+            }
+
             // Target the new texture BEFORE destroying the old one so the camera never points at a
             // dead texture in between (the re-target is itself the polite release of our own texture).
-            var previous = binding.Texture;
             var texture = new RenderTexture(pw, ph, 24);
             binding.Texture = texture;
-            if (claimForeignTarget || camera.targetTexture == null || camera.targetTexture == previous)
-            {
-                camera.targetTexture = texture;
-            }
+            camera.targetTexture = texture;
             if (element is SceneViewElement sceneView)
             {
                 // Taking the slot captures whatever the element was showing (a poster, a baked
@@ -205,7 +221,7 @@ namespace Velvet
                 && TryComputePixelSize(element, binding, out var pw, out var ph)
                 && (binding.Texture.width != pw || binding.Texture.height != ph))
             {
-                SyncTexture(element, binding, claimForeignTarget: false);
+                SyncTexture(element, binding);
             }
             element.MarkDirtyRepaint();
         }
@@ -232,12 +248,10 @@ namespace Velvet
             if (element is SceneViewElement sceneView)
             {
                 // Releasing the feed returns the slot to whatever writer was deferred while the
-                // camera owned it (a poster, a baked gradient) — or clears it when none was.
+                // camera owned it (a poster, a baked gradient) — or clears it when none was. Every
+                // binding is keyed by a SceneViewElement (the applier type-gates), so this is the
+                // only live branch.
                 sceneView.EndCameraOwnership();
-            }
-            else
-            {
-                element.style.backgroundImage = StyleKeyword.Null;
             }
             element.MarkDirtyRepaint();
         }

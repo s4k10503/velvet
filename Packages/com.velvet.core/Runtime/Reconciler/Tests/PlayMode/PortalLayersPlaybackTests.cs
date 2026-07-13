@@ -101,14 +101,7 @@ namespace Velvet.Tests
             yield return null;
 
             // Assert — the layer host resolves the same theme as the panel the portal was declared on.
-            PanelSettings hostSettings = null;
-            foreach (var doc in Resources.FindObjectsOfTypeAll<UIDocument>())
-            {
-                if (doc.rootVisualElement?.Q<VisualElement>("inside") != null)
-                {
-                    hostSettings = doc.panelSettings;
-                }
-            }
+            var hostSettings = FindHostSettingsContaining("inside");
             Assume.That(hostSettings, Is.Not.Null, "Precondition: the layer host exists");
             Assert.That(hostSettings.themeStyleSheet, Is.SameAs(_theme));
         }
@@ -231,6 +224,63 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(hostSettings.themeStyleSheet, Is.SameAs(_themeB));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ARuntimeThemeCleared_When_TheLayerPortalRerenders_Then_TheHostDropsTheStaleTheme()
+        {
+            // Arrange — clearing the declaring theme at runtime is drift like any other change: the
+            // host must stop referencing the stale theme (falling back to the shared empty one).
+            var root = CreateMainPanel(withTheme: true);
+            yield return null;
+            _mounted = V.Mount(root, V.Component(TogglingOverlayHost, key: "root"));
+            yield return null;
+            yield return null;
+            var hostSettings = FindHostSettingsContaining("inside");
+            Assume.That(hostSettings, Is.Not.Null, "Precondition: the layer host exists");
+            Assume.That(hostSettings.themeStyleSheet, Is.SameAs(_theme),
+                "Precondition: the host copied the initial theme");
+            // Simulate a session where no themeless declaring panel ever forced the shared empty
+            // theme into existence — the drift probe must not depend on that side effect (another
+            // fixture running first would otherwise mask the regression).
+            var sharedField = typeof(PanelHostFactory).GetField("s_sharedEmptyTheme",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assume.That(sharedField, Is.Not.Null, "Precondition: the shared-theme field exists");
+            sharedField.SetValue(null, null);
+            _settings.themeStyleSheet = null;
+
+            // Act
+            s_bump.Invoke(v => v + 1);
+            yield return null;
+            yield return null;
+
+            // Assert — the stale reference is gone.
+            Assert.That(hostSettings.themeStyleSheet, Is.Not.SameAs(_theme));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_ARuntimeSortingOrderChange_When_TheLayerPortalRerenders_Then_TheHostReanchors()
+        {
+            // Arrange — layer order anchors to the declaring panel's sortingOrder; a runtime change
+            // there must re-anchor the host (base + layer offset), not stay frozen at first resolve.
+            var root = CreateMainPanel(withTheme: false);
+            yield return null;
+            _mounted = V.Mount(root, V.Component(TogglingOverlayHost, key: "root"));
+            yield return null;
+            yield return null;
+            var hostSettings = FindHostSettingsContaining("inside");
+            Assume.That(hostSettings, Is.Not.Null, "Precondition: the layer host exists");
+            Assume.That(hostSettings.sortingOrder, Is.EqualTo(100f),
+                "Precondition: anchored to base 0 plus the overlay offset");
+            _settings.sortingOrder = 7f;
+
+            // Act
+            s_bump.Invoke(v => v + 1);
+            yield return null;
+            yield return null;
+
+            // Assert
+            Assert.That(hostSettings.sortingOrder, Is.EqualTo(107f));
         }
 
         [UnityTest]

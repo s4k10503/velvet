@@ -465,21 +465,39 @@ namespace Velvet.Tests
 
         #region Host resilience
 
+        [Component]
+        private static VNode SlidingWorldSpaceHost()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_bumpStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.WorldSpace(new Vector3(step, 0f, 0f), key: "ws",
+                    children: new VNode[] { V.Div(name: "ws-live") }),
+            });
+        }
+
+        private static StateUpdater<int> s_bumpStep;
+
         [Test]
         public void Given_AHostKilledExternally_When_TheWorldSpacePatches_Then_TheReconcileSurvives()
         {
             // Arrange — a scene unload can destroy the host GameObject while the owning fiber tree
-            // survives; the next patch must skip the dead record instead of throwing out of the pass.
-            MountAndLayout(V.Component(MovingWorldSpaceHost, key: "root"));
+            // survives; EVERY later patch must skip the dead record on the same warning path instead
+            // of throwing or escalating to an error-level log.
+            MountAndLayout(V.Component(SlidingWorldSpaceHost, key: "root"));
             var docs = NewDocs();
             Assume.That(docs.Count, Is.EqualTo(1), "Precondition: the world-space host exists");
             LogAssert.Expect(LogType.Warning, new Regex("died externally", RegexOptions.IgnoreCase));
+            LogAssert.Expect(LogType.Warning, new Regex("died externally", RegexOptions.IgnoreCase));
             Object.DestroyImmediate(docs[0].gameObject);
 
-            // Act & Assert
+            // Act & Assert — two consecutive patches both survive on the warning path.
             Assert.That(() =>
             {
-                s_setFlag.Invoke(true);
+                s_bumpStep.Invoke(s => s + 1);
+                FlushAndLayout();
+                s_bumpStep.Invoke(s => s + 1);
                 FlushAndLayout();
             }, Throws.Nothing);
         }

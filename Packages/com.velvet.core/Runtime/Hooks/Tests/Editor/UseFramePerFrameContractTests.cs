@@ -1,7 +1,4 @@
-using System;
-using System.Reflection;
 using NUnit.Framework;
-using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -48,31 +45,12 @@ namespace Velvet.Tests
         // by 1000); the fake clock is kept in milliseconds and converted here for readability.
         private static double ReadFakeClock() => s_fakeMs / 1000.0;
 
-        // Installs the fake clock: the scheduler and every scheduled item read time exclusively
-        // through the panel's own time function, which the engine exposes for exactly this kind of
-        // deterministic driving. Internal engine surface, reached by walking the panel's type chain.
-        private static void InstallFakeClock(IPanel panel)
-        {
-            PropertyInfo prop = null;
-            for (var t = panel.GetType(); t != null && prop == null; t = t.BaseType)
-            {
-                prop = t.GetProperty(
-                    "TimeSinceStartupFunc",
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
-            }
-            Assume.That(prop, Is.Not.Null, "Precondition: the panel exposes its time function");
-            var clock = Delegate.CreateDelegate(prop.PropertyType,
-                typeof(UseFramePerFrameContractTests).GetMethod(nameof(ReadFakeClock),
-                    BindingFlags.Static | BindingFlags.NonPublic));
-            prop.SetValue(panel, clock);
-        }
-
         [Test]
         public void Given_AMountedUseFrame_When_TheSchedulerUpdatesEveryFewMilliseconds_Then_EachSpacedUpdateTicks()
         {
             // Arrange — mount on the fake clock, run the passive effect that arms the tick, and
             // absorb the arm-time firing (its delta is zero on the frozen clock, so it never counts).
-            InstallFakeClock(_host.Panel);
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, ReadFakeClock);
             _mounted = V.Mount(_host.Root, V.Component(CountingHost, key: "root"));
             _mounted.FlushEffectsForTest();
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);

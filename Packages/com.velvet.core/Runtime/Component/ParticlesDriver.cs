@@ -1,6 +1,5 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -34,6 +33,17 @@ namespace Velvet
         // simulation manually exactly while this is set — the native isPlaying flag cannot serve,
         // because ParticleSystem.Simulate itself flips the system to paused.
         public bool LogicallyPlaying;
+        // Advisory warn-once flags, per mounted element: an unstable effect reference that rebuilds
+        // its source every render must not repeat the advice per rebuild, while two elements whose
+        // sources merely share a name stay independent problems. Dying with the binding, the flags
+        // need no static registry and no domain-reload reset.
+        public bool WarnedSimulationSpace;
+        public bool WarnedDrawCap;
+        // The host's own loop flag and duration, captured at clone time (the framework owns the
+        // clone, so they cannot change underneath): the editor drained-probe reads them every tick
+        // and each ParticleSystem property access is a native call.
+        public bool HostLoops;
+        public float HostDuration;
 
         public ParticlesBinding(ParticlesSettings settings)
         {
@@ -58,23 +68,6 @@ namespace Velvet
         // (or the scene view) never composes the simulation twice even before the renderer disable
         // lands on unusual setups.
         private static readonly Vector3 HostParkingPosition = new(0f, -10000f, 0f);
-
-        // Warn-once bookkeeping per SOURCE NAME for the advisory mount warnings: an unstable effect
-        // reference (a component re-creating its source every render) rebuilds hosts repeatedly with
-        // a FRESH instance id each time — the exact case the debounce exists for — while the name
-        // stays put, and distinct names stay bounded by the project's effect inventory instead of
-        // growing one entry per mounted instance for the life of the session.
-        private static readonly HashSet<string> s_warnedSimulationSpace = new();
-        private static readonly HashSet<string> s_warnedDrawCap = new();
-
-#if UNITY_EDITOR
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetWarnOnceState()
-        {
-            s_warnedSimulationSpace.Clear();
-            s_warnedDrawCap.Clear();
-        }
-#endif
 
         // Wires the particle painter onto the element and returns the binding; a non-null effect gets
         // its hidden host immediately (the simulation needs no panel or layout — only the DRAW does,
@@ -183,7 +176,7 @@ namespace Velvet
         private static void CreateHost(ParticlesBinding binding)
         {
             var source = binding.Settings.Effect!;
-            WarnOnceForSource(source);
+            WarnOnceForSource(binding, source);
 
             var host = UnityEngine.Object.Instantiate(source);
             // Cloning preserves activeSelf, and an inactive host never simulates; a pooled prefab kept
@@ -196,6 +189,8 @@ namespace Velvet
             // output — the host must always simulate; only the element consumes it.
             var main = host.main;
             main.cullingMode = ParticleSystemCullingMode.AlwaysSimulate;
+            binding.HostLoops = main.loop;
+            binding.HostDuration = main.duration;
             var renderer = host.GetComponent<ParticleSystemRenderer>();
             if (renderer != null)
             {
@@ -248,7 +243,7 @@ namespace Velvet
             }
             // Editor-side replay: a Simulate()-driven clock clamps at a finished non-looping timeline
             // and Play() merely resumes the pause there, so a drained host restarts from zero first.
-            if (EditorSimulationDrained(binding.Host))
+            if (!Application.isPlaying && EditorSimulationDrained(binding.Host, binding))
             {
                 binding.Host.Simulate(0f, withChildren: true, restart: true, fixedTimeStep: false);
             }
@@ -270,22 +265,23 @@ namespace Velvet
             }
         }
 
-        // Advisory mount warnings, once per source name (see the warn-once sets above).
-        private static void WarnOnceForSource(ParticleSystem source)
+        // Advisory mount warnings, once per mounted element (see the binding's warn-once flags).
+        private static void WarnOnceForSource(ParticlesBinding binding, ParticleSystem source)
         {
             var main = source.main;
             // Particle positions are read in the simulation's LOCAL space (the element rect is the
             // canvas); any other space draws at meaningless offsets, so say so up front instead of
             // rendering garbage silently. Advisory: the host still simulates.
-            if (main.simulationSpace != ParticleSystemSimulationSpace.Local
-                && s_warnedSimulationSpace.Add(source.name))
+            if (main.simulationSpace != ParticleSystemSimulationSpace.Local && !binding.WarnedSimulationSpace)
             {
+                binding.WarnedSimulationSpace = true;
                 Debug.LogWarning($"[Velvet] V.Particles: \"{source.name}\" does not use local simulation space; particle positions are read locally, so a world- or custom-space simulation will not match the drawn layout. Use local simulation space.");
             }
             // The draw path truncates at its particle cap; a denser effect must say so once instead of
             // silently thinning out compared to everywhere else the same source is used.
-            if (main.maxParticles > MaxDrawnParticles && s_warnedDrawCap.Add(source.name))
+            if (main.maxParticles > MaxDrawnParticles && !binding.WarnedDrawCap)
             {
+                binding.WarnedDrawCap = true;
                 Debug.LogWarning($"[Velvet] V.Particles: \"{source.name}\" declares {main.maxParticles} max particles, above the {MaxDrawnParticles} the element draws; the densest frames will render truncated.");
             }
         }
@@ -372,17 +368,19 @@ namespace Velvet
         private static void OnRepaintTick(VisualElement element, ParticlesBinding binding, float dt)
         {
             var host = binding.Host;
+            var playing = Application.isPlaying;
             // A drained simulation — a finished burst, a stopped Manual host, a host killed by a scene
             // unload — must not keep dirtying the element at tick rate forever: park the tick (Sync
             // and Play() re-arm it) after one final dirty, so the last live frame's quads are
             // regenerated away instead of lingering. Root-only liveness: the draw samples only the
             // root's particles, so a longer-lived child sub-emitter must not hold the tick open after
             // the drawn output is already empty.
-            if (host == null || !host.IsAlive(false) || (binding.LogicallyPlaying && EditorSimulationDrained(host)))
+            if (host == null || !host.IsAlive(false)
+                || (!playing && binding.LogicallyPlaying && EditorSimulationDrained(host, binding)))
             {
                 StopRepaintTick(binding);
             }
-            else if (!Application.isPlaying && binding.LogicallyPlaying && dt > 0f)
+            else if (!playing && binding.LogicallyPlaying && dt > 0f)
             {
                 // Outside Play Mode the engine never steps a particle system's clock on its own, so an
                 // editor-context panel (preview tooling, EditMode fixtures) would repaint one frozen
@@ -398,15 +396,10 @@ namespace Velvet
         // and a paused system reads IsAlive forever (it never transitions to stopped on its own, and
         // its clock clamps at the end of a non-looping timeline), so "drained" is derived directly —
         // a non-looping root whose clock reached its end with no live particles has nothing left to
-        // draw or emit. Root-only on purpose, like the draw.
-        private static bool EditorSimulationDrained(ParticleSystem host)
+        // draw or emit. Root-only on purpose, like the draw. Callers gate on !Application.isPlaying.
+        private static bool EditorSimulationDrained(ParticleSystem host, ParticlesBinding binding)
         {
-            if (Application.isPlaying)
-            {
-                return false;
-            }
-            var main = host.main;
-            return !main.loop && host.particleCount == 0 && host.time >= main.duration;
+            return !binding.HostLoops && host.particleCount == 0 && host.time >= binding.HostDuration;
         }
 
         private static void StopRepaintTick(ParticlesBinding binding)

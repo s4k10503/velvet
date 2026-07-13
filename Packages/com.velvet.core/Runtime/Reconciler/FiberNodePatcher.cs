@@ -543,8 +543,7 @@ namespace Velvet
                     FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
                     return;
                 }
-                // The copy of the declaring configuration is a snapshot: this patch is a recurring
-                // touch point, so late resolution and runtime drift both re-sync here.
+                // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                 target = layerHost.Document.rootVisualElement;
             }
@@ -589,15 +588,15 @@ namespace Velvet
             {
                 // A scene unload can kill the host GameObject while the owning fiber tree survives
                 // (a persistent root anchoring per-scene world-space UI). Patching a dead document
-                // would throw out of the whole reconcile pass; drop the record instead — the
-                // children need a remount of the world-space node to rebuild a host.
-                _ctx.WorldSpaceBindings.Remove(placeholder);
+                // would throw out of the whole reconcile pass, so every patch skips it on this same
+                // warning path — the record stays so later patches keep landing here rather than
+                // degrading into the missing-record corruption error (mirrors the layer flavor);
+                // remount the world-space node to rebuild its host.
                 FiberLogger.LogWarning("WorldSpace",
-                    "Host died externally (scene unload?). Patch skipped and the record dropped; remount the world-space node to rebuild its host.");
+                    "Host died externally (scene unload?). Patch skipped; remount the world-space node to rebuild its host.");
                 return;
             }
-            // The copy of the declaring configuration is a snapshot: this patch is the recurring
-            // touch point, so late resolution and runtime drift both re-sync here (null layer —
+            // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
             // world-space panels depth-sort in the scene, not by sorting order).
             PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
 

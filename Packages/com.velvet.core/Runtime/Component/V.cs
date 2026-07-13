@@ -682,11 +682,13 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
-            // Always carried (even with a null camera): the patcher needs the settings on BOTH sides of a
-            // diff to see a camera arriving or leaving as a settings change. The settings constructor
-            // fail-fasts on an invalid scale for every construction path, this factory included.
+            // Validated BEFORE renting pooled props so a throwing call leaks nothing (the settings
+            // constructor fail-fasts on an invalid scale for every construction path, this factory
+            // included). Always carried (even with a null camera): the patcher needs the settings on
+            // BOTH sides of a diff to see a camera arriving or leaving as a settings change.
+            var sceneView = new SceneViewSettings(camera, resolutionScale);
             var props = VNodePool.RentProps();
-            props.SceneView = new SceneViewSettings(camera, resolutionScale);
+            props.SceneView = sceneView;
 
             return new ElementNode
             {
@@ -744,11 +746,13 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
-            // Always carried (even with a null effect): the patcher needs the settings on BOTH sides of
-            // a diff to see an effect arriving or leaving as a settings change. The settings constructor
-            // fail-fasts on an invalid mapping for every construction path, this factory included.
+            // Validated BEFORE renting pooled props so a throwing call leaks nothing (the settings
+            // constructor fail-fasts on an invalid mapping for every construction path, this factory
+            // included). Always carried (even with a null effect): the patcher needs the settings on
+            // BOTH sides of a diff to see an effect arriving or leaving as a settings change.
+            var particles = new ParticlesSettings(effect, playOn, pixelsPerUnit);
             var props = VNodePool.RentProps();
-            props.Particles = new ParticlesSettings(effect, playOn, pixelsPerUnit);
+            props.Particles = particles;
 
             return new ElementNode
             {

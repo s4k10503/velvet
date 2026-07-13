@@ -65,35 +65,17 @@ namespace Velvet.Editor.DevTools
 
                 case FragmentNode fragmentNode:
                     AppendLine(sb, "[Fragment]", depth);
-                    if (fragmentNode.Children != null)
-                    {
-                        foreach (var child in fragmentNode.Children)
-                        {
-                            AppendNode(sb, child, depth + 1);
-                        }
-                    }
+                    AppendChildren(sb, fragmentNode.Children, depth);
                     break;
 
                 case AnimatePresenceNode apNode:
                     AppendLine(sb, "[AnimatePresence]", depth);
-                    if (apNode.Children != null)
-                    {
-                        foreach (var child in apNode.Children)
-                        {
-                            AppendNode(sb, child, depth + 1);
-                        }
-                    }
+                    AppendChildren(sb, apNode.Children, depth);
                     break;
 
                 case ContextProviderNode contextNode:
                     AppendLine(sb, $"[ContextProvider<{GetGenericTypeName(contextNode)}>]", depth);
-                    if (contextNode.Children != null)
-                    {
-                        foreach (var child in contextNode.Children)
-                        {
-                            AppendNode(sb, child, depth + 1);
-                        }
-                    }
+                    AppendChildren(sb, contextNode.Children, depth);
                     break;
 
                 case PortalNode portalNode:
@@ -101,24 +83,12 @@ namespace Velvet.Editor.DevTools
                     // children live in the logical tree even though they attach elsewhere, so the
                     // dump walks them like every other container's.
                     AppendLine(sb, $"[Portal] target={portalNode.TargetId ?? portalNode.Layer?.ToString()}", depth);
-                    if (portalNode.Children != null)
-                    {
-                        foreach (var child in portalNode.Children)
-                        {
-                            AppendNode(sb, child, depth + 1);
-                        }
-                    }
+                    AppendChildren(sb, portalNode.Children, depth);
                     break;
 
                 case WorldSpaceNode worldSpaceNode:
                     AppendLine(sb, $"[WorldSpace] position={worldSpaceNode.Position} panelSize={worldSpaceNode.PanelSize}", depth);
-                    if (worldSpaceNode.Children != null)
-                    {
-                        foreach (var child in worldSpaceNode.Children)
-                        {
-                            AppendNode(sb, child, depth + 1);
-                        }
-                    }
+                    AppendChildren(sb, worldSpaceNode.Children, depth);
                     break;
 
                 case SuspenseNode:
@@ -153,13 +123,19 @@ namespace Velvet.Editor.DevTools
                 : string.Empty;
 
             AppendLine(sb, $"{prefix}<{typeName}{namePart}{keyPart}{classPart}>", depth);
+            AppendChildren(sb, node.Children, depth);
+        }
 
-            if (node.Children != null)
+        // The shared null-guarded child walk every container case uses.
+        private static void AppendChildren(StringBuilder sb, VNode[] children, int depth)
+        {
+            if (children == null)
             {
-                foreach (var child in node.Children)
-                {
-                    AppendNode(sb, child, depth + 1);
-                }
+                return;
+            }
+            foreach (var child in children)
+            {
+                AppendNode(sb, child, depth + 1);
             }
         }
 

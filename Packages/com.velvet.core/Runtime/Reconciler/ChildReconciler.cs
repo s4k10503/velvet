@@ -178,9 +178,8 @@ namespace Velvet
                         }
                         else
                         {
-                            // The copy of the declaring configuration is a snapshot: this drain is a
-                            // recurring touch point, so late resolution and runtime drift both
-                            // re-sync here.
+                            // Recurring re-sync point for late declaring resolution and runtime
+                            // drift (see SyncDeclaring).
                             PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                         }
                         target = layerHost.Document.rootVisualElement;

@@ -439,27 +439,51 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARecreatedSourceWithTheSameName_When_Remounted_Then_TheAdvisoryDoesNotRepeat()
+        public void Given_AnEffectSwapOnOneElement_When_BothSourcesAreMisconfigured_Then_TheAdvisoryFiresOnce()
         {
-            // Arrange — an unstable effect reference re-creates its source every render with a fresh
-            // instance id; the advisory debounce must survive that, or the advice repeats per rebuild.
-            var first = CreateEffectSource("fx-warn-dedup");
-            var firstMain = first.main;
-            firstMain.simulationSpace = ParticleSystemSimulationSpace.World;
+            // Arrange — the advisory is per mounted element: an unstable reference that rebuilds its
+            // source every render (fresh instance, any name) must not repeat the advice per rebuild.
+            s_effect = CreateEffectSource("fx-adv-a");
+            var mainA = s_effect.main;
+            mainA.simulationSpace = ParticleSystemSimulationSpace.World;
+            s_effectB = CreateEffectSource("fx-adv-b");
+            var mainB = s_effectB.main;
+            mainB.simulationSpace = ParticleSystemSimulationSpace.World;
             LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
-            MountAndLayout(V.Particles(first, className: "w-[128px] h-[128px]"));
-            _mounted.Dispose();
-            _mounted = null;
+            MountAndLayout(V.Component(SwappingHost, key: "root"));
 
-            // Act — a fresh instance under the same name, tripping the same advisory condition.
-            var second = CreateEffectSource("fx-warn-dedup");
-            var secondMain = second.main;
-            secondMain.simulationSpace = ParticleSystemSimulationSpace.World;
-            _mounted = V.Mount(_host.Root, V.Particles(second, className: "w-[128px] h-[128px]"));
+            // Act — swap to a different (differently named) but equally misconfigured source.
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
             LogAssert.NoUnexpectedReceived();
 
-            // Assert — the second mount still created its host; only the repeat advisory is suppressed.
+            // Assert — still exactly one live host after the swap.
             Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 1));
+        }
+
+        [Test]
+        public void Given_TwoElementsWithSameNamedSources_When_BothMisconfigured_Then_BothAdvisoriesFire()
+        {
+            // Arrange — two DIFFERENT effects that merely share a name are independent problems;
+            // each mounted element gets its own advisory.
+            var first = CreateEffectSource("fx-shared-name");
+            var m1 = first.main;
+            m1.simulationSpace = ParticleSystemSimulationSpace.World;
+            var second = CreateEffectSource("fx-shared-name");
+            var m2 = second.main;
+            m2.simulationSpace = ParticleSystemSimulationSpace.World;
+            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
+            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
+
+            // Act
+            MountAndLayout(V.Div(children: new VNode[]
+            {
+                V.Particles(first, className: "w-[64px] h-[64px]"),
+                V.Particles(second, className: "w-[64px] h-[64px]"),
+            }));
+
+            // Assert — both hosts exist (the two expectations pin both advisories firing).
+            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 2));
         }
 
         [Test]

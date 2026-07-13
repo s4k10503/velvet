@@ -364,11 +364,13 @@ namespace Velvet
         // reconciler disposal.
         public Dictionary<VisualElement, PanelHostRecord> WorldSpaceBindings { get; } = new();
 
-        // Resolved (declaring PanelSettings, sorting base) per declaring panel, filled by
+        // The declaring panel's driving UIDocument per panel, filled by
         // PanelHostFactory.ResolveDeclaring so each distinct declaring panel costs one
-        // FindObjectsOfTypeAll scan per reconciler instead of one per host mount. Only successful
-        // resolutions land here — a miss must stay retryable for the late-declaring upgrade.
-        public Dictionary<IPanel, (PanelSettings Settings, float BaseOrder)> DeclaringSettingsCache { get; } = new();
+        // FindObjectsOfTypeAll scan per reconciler instead of one per host mount. Only the document
+        // lookup is cached — the settings and the sorting base are re-read live so runtime changes
+        // propagate — and only successful resolutions land here (a miss must stay retryable for the
+        // late-declaring upgrade).
+        public Dictionary<IPanel, UIDocument> DeclaringSettingsCache { get; } = new();
 
         // Declaring panels whose resolution MISSED during the current top-level pass. A miss means a
         // full FindObjectsOfTypeAll scan found nothing, and every further host mount in the same

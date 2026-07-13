@@ -118,35 +118,16 @@ namespace Velvet
             {
                 return;
             }
-            if (record.DeclaringResolved && !DeclaringDrifted(declaring, settings))
-            {
-                return;
-            }
-            CopyDeclaringSettings(declaring, settings);
+            // Compare-and-assign inside the copy: one field list serves both drift detection and the
+            // re-copy (twin lists would drift apart), and untouched fields never re-dirty the panel.
+            var copied = CopyDeclaringSettings(declaring, settings);
+            var rebased = !record.DeclaringResolved || record.BaseOrder != baseOrder;
             record.BaseOrder = baseOrder;
             record.DeclaringResolved = true;
-            if (layer is { } resolvedLayer)
+            if ((copied || rebased) && layer is { } resolvedLayer)
             {
                 settings.sortingOrder = baseOrder + SortingOffset(resolvedLayer);
             }
-        }
-
-        // The drift probe mirroring CopyDeclaringSettings field-for-field. The theme compares
-        // against the shared empty fallback when the declaring panel carries none, so a themeless
-        // declaring panel does not read as perpetually drifted.
-        private static bool DeclaringDrifted(PanelSettings from, PanelSettings to)
-        {
-            var expectedTheme = from.themeStyleSheet != null ? from.themeStyleSheet : s_sharedEmptyTheme;
-            return (expectedTheme != null && to.themeStyleSheet != expectedTheme)
-                || to.scaleMode != from.scaleMode
-                || to.scale != from.scale
-                || to.referenceResolution != from.referenceResolution
-                || to.screenMatchMode != from.screenMatchMode
-                || to.match != from.match
-                || to.referenceDpi != from.referenceDpi
-                || to.fallbackDpi != from.fallbackDpi
-                || to.textSettings != from.textSettings
-                || to.targetDisplay != from.targetDisplay;
         }
 
         // The shared skeleton: the hidden GameObject + document + a runtime PanelSettings carrying
@@ -178,21 +159,65 @@ namespace Velvet
         private static void AttachDocument(UIDocument document, PanelSettings settings)
             => document.panelSettings = settings;
 
-        // The base configuration a host copies from the panel its portal was declared on. The shared
-        // empty theme stands in when the declaring panel carries none — writing a null theme
-        // through would re-trigger the loud missing-theme warning on the live panel.
-        private static void CopyDeclaringSettings(PanelSettings from, PanelSettings to)
+        // The base configuration a host copies from the panel its portal was declared on, written
+        // compare-and-assign so the return value doubles as the drift signal. The shared empty theme
+        // stands in when the declaring panel carries none — writing a null theme through would
+        // re-trigger the loud missing-theme warning on the live panel.
+        private static bool CopyDeclaringSettings(PanelSettings from, PanelSettings to)
         {
-            to.themeStyleSheet = from.themeStyleSheet != null ? from.themeStyleSheet : SharedEmptyTheme;
-            to.scaleMode = from.scaleMode;
-            to.scale = from.scale;
-            to.referenceResolution = from.referenceResolution;
-            to.screenMatchMode = from.screenMatchMode;
-            to.match = from.match;
-            to.referenceDpi = from.referenceDpi;
-            to.fallbackDpi = from.fallbackDpi;
-            to.textSettings = from.textSettings;
-            to.targetDisplay = from.targetDisplay;
+            var changed = false;
+            var theme = from.themeStyleSheet != null ? from.themeStyleSheet : SharedEmptyTheme;
+            if (to.themeStyleSheet != theme)
+            {
+                to.themeStyleSheet = theme;
+                changed = true;
+            }
+            if (to.scaleMode != from.scaleMode)
+            {
+                to.scaleMode = from.scaleMode;
+                changed = true;
+            }
+            if (to.scale != from.scale)
+            {
+                to.scale = from.scale;
+                changed = true;
+            }
+            if (to.referenceResolution != from.referenceResolution)
+            {
+                to.referenceResolution = from.referenceResolution;
+                changed = true;
+            }
+            if (to.screenMatchMode != from.screenMatchMode)
+            {
+                to.screenMatchMode = from.screenMatchMode;
+                changed = true;
+            }
+            if (to.match != from.match)
+            {
+                to.match = from.match;
+                changed = true;
+            }
+            if (to.referenceDpi != from.referenceDpi)
+            {
+                to.referenceDpi = from.referenceDpi;
+                changed = true;
+            }
+            if (to.fallbackDpi != from.fallbackDpi)
+            {
+                to.fallbackDpi = from.fallbackDpi;
+                changed = true;
+            }
+            if (to.textSettings != from.textSettings)
+            {
+                to.textSettings = from.textSettings;
+                changed = true;
+            }
+            if (to.targetDisplay != from.targetDisplay)
+            {
+                to.targetDisplay = from.targetDisplay;
+                changed = true;
+            }
+            return changed;
         }
 
         // Resolves the declaring panel's own PanelSettings plus the sorting BASE that portals
@@ -210,9 +235,13 @@ namespace Velvet
             {
                 return (null, 0f);
             }
-            if (ctx.DeclaringSettingsCache.TryGetValue(declaringPanel, out var cached))
+            if (ctx.DeclaringSettingsCache.TryGetValue(declaringPanel, out var cachedDocument)
+                && cachedDocument != null && cachedDocument.panelSettings != null)
             {
-                return cached;
+                // Only the document lookup is cached; the settings and the sorting base are re-read
+                // live so a runtime sortingOrder change (or a nested host re-anchoring) reaches
+                // later syncs. A cached document killed externally falls through to a fresh scan.
+                return (cachedDocument.panelSettings, DeriveBaseOrder(cachedDocument, ctx));
             }
             if (ctx.DeclaringResolveMisses.Contains(declaringPanel))
             {
@@ -226,26 +255,34 @@ namespace Velvet
                 {
                     continue;
                 }
-                var result = (Settings: document.panelSettings, BaseOrder: document.panelSettings.sortingOrder);
-                foreach (var record in ctx.LayerHosts.Values)
-                {
-                    if (record.Document == document)
-                    {
-                        result.BaseOrder = record.BaseOrder;
-                    }
-                }
-                foreach (var record in ctx.WorldSpaceBindings.Values)
-                {
-                    if (record.Document == document)
-                    {
-                        result.BaseOrder = record.BaseOrder;
-                    }
-                }
-                ctx.DeclaringSettingsCache[declaringPanel] = result;
-                return result;
+                ctx.DeclaringSettingsCache[declaringPanel] = document;
+                return (document.panelSettings, DeriveBaseOrder(document, ctx));
             }
             ctx.DeclaringResolveMisses.Add(declaringPanel);
             return (null, 0f);
+        }
+
+        // The sorting base portals declared on this document anchor to: one of OUR host records
+        // anchors to that record's own live base (a Background portal declared inside a Topmost host
+        // must sort against the ORIGINAL panel rather than compound the Topmost offset), and a plain
+        // user panel anchors to its settings' current sortingOrder.
+        private static float DeriveBaseOrder(UIDocument document, ReconcilerContext ctx)
+        {
+            foreach (var record in ctx.LayerHosts.Values)
+            {
+                if (record.Document == document)
+                {
+                    return record.BaseOrder;
+                }
+            }
+            foreach (var record in ctx.WorldSpaceBindings.Values)
+            {
+                if (record.Document == document)
+                {
+                    return record.BaseOrder;
+                }
+            }
+            return document.panelSettings.sortingOrder;
         }
 
         // Destroys everything a record owns: the host GameObject (detaching the document from its
