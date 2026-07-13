@@ -105,7 +105,7 @@ namespace Velvet
                     break;
                 case WorldSpaceNode worldSpace:
                     sb.Append("WS(").Append(node.Key).Append('|').Append(worldSpace.Position).Append('|')
-                        .Append(worldSpace.PanelSize).Append('|');
+                        .Append(worldSpace.Rotation).Append('|').Append(worldSpace.PanelSize).Append('|');
                     AppendTree(sb, worldSpace.Children);
                     sb.Append(')');
                     break;

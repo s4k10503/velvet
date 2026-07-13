@@ -181,12 +181,7 @@ namespace Velvet
             // Cloning preserves activeSelf, and an inactive host never simulates; a pooled prefab kept
             // inactive until spawned must still drive a live element.
             host.gameObject.SetActive(true);
-            // Hidden from the hierarchy and excluded from editor scene saves, but deliberately NOT the
-            // full HideAndDontSave: the DontSaveInBuild flag pulls a GameObject out of its scene
-            // entirely (scene.IsValid() turns false), and the host must stay an ordinary scene object —
-            // it is framework-owned, destroyed with its element, and a runtime-instantiated object
-            // never reaches a build's serialized data anyway.
-            host.gameObject.hideFlags = HideFlags.HideInHierarchy | HideFlags.DontSaveInEditor;
+            VelvetObjectUtil.HideFrameworkSceneObject(host.gameObject);
             host.transform.position = HostParkingPosition;
             // The renderer is disabled and the host sits far from every camera, so Unity's automatic
             // culling would judge it offscreen and PAUSE a looping simulation, freezing the drawn

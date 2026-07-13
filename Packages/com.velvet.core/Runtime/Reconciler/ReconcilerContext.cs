@@ -364,6 +364,12 @@ namespace Velvet
         // reconciler disposal.
         public Dictionary<VisualElement, PanelHostRecord> WorldSpaceBindings { get; } = new();
 
+        // Resolved (declaring PanelSettings, sorting base) per declaring panel, filled by
+        // PanelHostFactory.ResolveDeclaring so each distinct declaring panel costs one
+        // FindObjectsOfTypeAll scan per reconciler instead of one per host mount. Only successful
+        // resolutions land here — a miss must stay retryable for the late-declaring upgrade.
+        public Dictionary<IPanel, (PanelSettings Settings, float BaseOrder)> DeclaringSettingsCache { get; } = new();
+
         // Inline-mounted ComponentFiber whose insertion / layout effect commit is deferred to the
         // post-commit drain. The DOM mutation + ref attachment must complete before layout effect
         // setup runs. Velvet's inline-mount path defers child reconcile via

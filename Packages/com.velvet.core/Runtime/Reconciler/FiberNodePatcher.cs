@@ -548,12 +548,25 @@ namespace Velvet
             }
             else
             {
-                target = FiberPortalRegistry.Get(newNode.TargetId!);
                 describe = newNode.TargetId!;
-                if (target == null)
+                if (_ctx.PortalState.TryGetValue(placeholder, out var recorded) && recorded.Target != null)
                 {
-                    FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
-                    return;
+                    // A live portal keeps the target its children mounted into: re-registering the
+                    // id only points FUTURE portals elsewhere, and patching into a re-registered
+                    // element would diff this portal's slot range against another element's
+                    // children.
+                    target = recorded.Target;
+                }
+                else
+                {
+                    // Mounted before the id was registered (the mount warned and recorded no
+                    // target): resolve fresh so the first patch after registration heals the mount.
+                    target = FiberPortalRegistry.Get(describe);
+                    if (target == null)
+                    {
+                        FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
+                        return;
+                    }
                 }
             }
 
@@ -571,8 +584,14 @@ namespace Velvet
                 return;
             }
 
-            record.Host.transform.SetPositionAndRotation(newNode.Position, newNode.Rotation);
-            record.Document.worldSpaceSize = newNode.PanelSize;
+            if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
+            {
+                record.Document.transform.SetPositionAndRotation(newNode.Position, newNode.Rotation);
+            }
+            if (oldNode.PanelSize != newNode.PanelSize)
+            {
+                record.Document.worldSpaceSize = newNode.PanelSize;
+            }
             PatchPortalChildren(placeholder, record.Document.rootVisualElement, oldNode.Children, newNode.Children, "world-space");
         }
 
@@ -608,9 +627,14 @@ namespace Velvet
             var newSlotLength = target.childCount - (beforeTailCount - prevState.SlotLength);
             var delta = newSlotLength - prevState.SlotLength;
 
-            _ctx.PortalState[placeholder] = prevState with { Children = newChildren, SlotLength = newSlotLength };
+            // The RESOLVED target is written back: a portal that mounted before its id registered
+            // recorded no target, and the first healing patch must fill it in so the slot-shift
+            // grouping, the eventual cleanup, and the has-variant portal-target sweep all see where
+            // the children actually live. For an already-recorded portal this rewrites the same
+            // reference.
+            _ctx.PortalState[placeholder] = prevState with { Target = target, Children = newChildren, SlotLength = newSlotLength };
 
-            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, prevState.Target, prevState.SlotStart, delta, placeholder);
+            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, prevState.SlotStart, delta, placeholder);
         }
 
         // Applies the diff for a ContextProviderNode.

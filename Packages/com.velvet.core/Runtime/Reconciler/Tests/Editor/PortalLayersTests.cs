@@ -24,7 +24,6 @@ namespace Velvet.Tests
     {
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
-        private readonly List<Object> _spawned = new();
         private HashSet<int> _baselineDocs;
 
         private static StateUpdater<bool> s_setFlag;
@@ -46,11 +45,6 @@ namespace Velvet.Tests
             _host = null;
             FiberPortalRegistry.Unregister("late-target");
             FiberPortalRegistry.Unregister("swap-target");
-            foreach (var obj in _spawned)
-            {
-                if (obj != null) Object.DestroyImmediate(obj);
-            }
-            _spawned.Clear();
         }
 
         private static HashSet<int> DocIds()
