@@ -3,6 +3,8 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+using static Velvet.TestUtilities.PlayModeRealtimeTestHelpers;
 
 namespace Velvet.Tests
 {
@@ -15,30 +17,26 @@ namespace Velvet.Tests
     internal sealed class SceneViewPlaybackTests
     {
         private GameObject _cameraGo;
-        private GameObject _docGo;
-        private PanelSettings _settings;
-        private RenderTexture _panelRt;
+        private RenderTexturePanelHost _host;
         private MountedTree _mounted;
-        private int _savedTargetFrameRate;
+        private TargetFrameRateScope _frameRateScope;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
         {
-            _savedTargetFrameRate = Application.targetFrameRate;
-            Application.targetFrameRate = 120;
+            _frameRateScope = new TargetFrameRateScope(120);
             yield break;
         }
 
         [UnityTearDown]
         public IEnumerator UnityTearDown()
         {
-            Application.targetFrameRate = _savedTargetFrameRate;
+            _frameRateScope.Dispose();
             _mounted?.Dispose();
             _mounted = null;
-            if (_docGo != null) Object.Destroy(_docGo);
             if (_cameraGo != null) Object.Destroy(_cameraGo);
-            if (_settings != null) Object.Destroy(_settings);
-            if (_panelRt != null) { _panelRt.Release(); Object.Destroy(_panelRt); }
+            _host?.Dispose();
+            _host = null;
             yield return null;
         }
 
@@ -54,39 +52,17 @@ namespace Velvet.Tests
 
         private VisualElement MountPanelWithSceneView(Camera cam)
         {
-            _panelRt = new RenderTexture(400, 300, 32);
-            _docGo = new GameObject("SceneViewPanel");
-            var doc = _docGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
-            _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
-            _settings.targetTexture = _panelRt;
-            doc.panelSettings = _settings;
-            _mounted = V.Mount(doc.rootVisualElement,
+            _host = new RenderTexturePanelHost("SceneViewPanel", 400, 300);
+            _mounted = V.Mount(_host.Root,
                 V.SceneView(cam, className: "w-[200px] h-[150px]", name: "sv"));
-            return doc.rootVisualElement;
+            return _host.Root;
         }
 
         private Color32 SamplePanelCenterOfElement()
         {
-            var prev = RenderTexture.active;
-            RenderTexture.active = _panelRt;
-            var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
             // The element sits at the panel's top-left; sample its center (ReadPixels is bottom-origin).
-            tex.ReadPixels(new Rect(100, 300 - 75, 1, 1), 0, 0);
-            tex.Apply();
-            RenderTexture.active = prev;
-            var c = tex.GetPixel(0, 0);
-            Object.Destroy(tex);
-            return c;
-        }
-
-        private static IEnumerator WaitRealtime(double seconds)
-        {
-            var deadline = Time.realtimeSinceStartupAsDouble + seconds;
-            while (Time.realtimeSinceStartupAsDouble < deadline)
-            {
-                yield return null;
-            }
+            var pixels = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(100, 300 - 75, 1, 1));
+            return pixels[0];
         }
 
         [UnityTest]

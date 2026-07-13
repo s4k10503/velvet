@@ -3,6 +3,8 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+using static Velvet.TestUtilities.PlayModeRealtimeTestHelpers;
 
 namespace Velvet.Tests
 {
@@ -24,30 +26,26 @@ namespace Velvet.Tests
     internal sealed class ParticlesPlaybackTests
     {
         private GameObject _effectGo;
-        private GameObject _docGo;
-        private PanelSettings _settings;
-        private RenderTexture _panelRt;
+        private RenderTexturePanelHost _host;
         private MountedTree _mounted;
-        private int _savedTargetFrameRate;
+        private TargetFrameRateScope _frameRateScope;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
         {
-            _savedTargetFrameRate = Application.targetFrameRate;
-            Application.targetFrameRate = 120;
+            _frameRateScope = new TargetFrameRateScope(120);
             yield break;
         }
 
         [UnityTearDown]
         public IEnumerator UnityTearDown()
         {
-            Application.targetFrameRate = _savedTargetFrameRate;
+            _frameRateScope.Dispose();
             _mounted?.Dispose();
             _mounted = null;
-            if (_docGo != null) Object.Destroy(_docGo);
             if (_effectGo != null) Object.Destroy(_effectGo);
-            if (_settings != null) Object.Destroy(_settings);
-            if (_panelRt != null) { _panelRt.Release(); Object.Destroy(_panelRt); }
+            _host?.Dispose();
+            _host = null;
             yield return null;
         }
 
@@ -74,43 +72,21 @@ namespace Velvet.Tests
 
         private void MountPanel(ParticleSystem effect, PlayTrigger playOn)
         {
-            _panelRt = new RenderTexture(300, 300, 32);
-            _docGo = new GameObject("ParticlesPanel");
-            var doc = _docGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
-            _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
-            _settings.targetTexture = _panelRt;
-            doc.panelSettings = _settings;
-            _mounted = V.Mount(doc.rootVisualElement,
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root,
                 V.Particles(effect, className: "w-[300px] h-[300px]", playOn: playOn));
         }
 
         // Counts red-dominant pixels in the panel's center region (bottom-origin irrelevant: centered).
         private int CountParticlePixels()
         {
-            var prev = RenderTexture.active;
-            RenderTexture.active = _panelRt;
-            var tex = new Texture2D(100, 100, TextureFormat.RGBA32, false);
-            tex.ReadPixels(new Rect(100, 100, 100, 100), 0, 0);
-            tex.Apply();
-            RenderTexture.active = prev;
+            var pixels = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(100, 100, 100, 100));
             var count = 0;
-            var pixels = tex.GetPixels32();
             foreach (var p in pixels)
             {
                 if (p.r > 140 && p.g < 90 && p.b < 90) count++;
             }
-            Object.Destroy(tex);
             return count;
-        }
-
-        private static IEnumerator WaitRealtime(double seconds)
-        {
-            var deadline = Time.realtimeSinceStartupAsDouble + seconds;
-            while (Time.realtimeSinceStartupAsDouble < deadline)
-            {
-                yield return null;
-            }
         }
 
         [UnityTest]
@@ -172,7 +148,7 @@ namespace Velvet.Tests
             MountPanel(effect, PlayTrigger.Manual);
             yield return WaitRealtime(0.3);
             Assume.That(CountParticlePixels(), Is.EqualTo(0), "Precondition: nothing draws before Play");
-            var element = _docGo.GetComponent<UIDocument>().rootVisualElement.Q<ParticlesElement>();
+            var element = _host.Root.Q<ParticlesElement>();
             Assume.That(element, Is.Not.Null, "Precondition: the particles element mounted");
 
             // Act
@@ -190,14 +166,8 @@ namespace Velvet.Tests
             // state on effect identity alone would make the flip a silent no-op.
             var effect = CreateEmitter();
             s_effect = effect;
-            _panelRt = new RenderTexture(300, 300, 32);
-            _docGo = new GameObject("ParticlesPanel");
-            var doc = _docGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
-            _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
-            _settings.targetTexture = _panelRt;
-            doc.panelSettings = _settings;
-            _mounted = V.Mount(doc.rootVisualElement, V.Component(TriggerFlipHost, key: "root"));
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Component(TriggerFlipHost, key: "root"));
             yield return WaitRealtime(0.3);
             Assume.That(CountParticlePixels(), Is.EqualTo(0), "Precondition: Manual draws nothing");
 
@@ -216,14 +186,8 @@ namespace Velvet.Tests
             // scheduled items; the repaint driver must survive the move or the drawn output freezes.
             var effect = CreateEmitter();
             s_effect = effect;
-            _panelRt = new RenderTexture(300, 300, 32);
-            _docGo = new GameObject("ParticlesPanel");
-            var doc = _docGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
-            _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
-            _settings.targetTexture = _panelRt;
-            doc.panelSettings = _settings;
-            _mounted = V.Mount(doc.rootVisualElement, V.Component(ReorderHost, key: "root"));
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root, V.Component(ReorderHost, key: "root"));
             yield return WaitRealtime(0.5);
             Assume.That(CountParticlePixels(), Is.GreaterThan(20), "Precondition: particles are visible");
 
@@ -269,15 +233,7 @@ namespace Velvet.Tests
 
         private Color32[] Snapshot()
         {
-            var prev = RenderTexture.active;
-            RenderTexture.active = _panelRt;
-            var tex = new Texture2D(300, 300, TextureFormat.RGBA32, false);
-            tex.ReadPixels(new Rect(0, 0, 300, 300), 0, 0);
-            tex.Apply();
-            RenderTexture.active = prev;
-            var pixels = tex.GetPixels32();
-            Object.Destroy(tex);
-            return pixels;
+            return RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(0, 0, 300, 300));
         }
     }
 }
