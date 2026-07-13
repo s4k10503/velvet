@@ -41,6 +41,7 @@ namespace Velvet.Tests
             ResetBoundary();
             ResetMultiChild();
             ResetEffectBoundary();
+            ResetBrokenFallback();
         }
 
         #region No boundary
@@ -448,6 +449,53 @@ namespace Velvet.Tests
                 throw new InvalidOperationException("Test cleanup error");
             }), new object[] { tick });
             return V.Label(text: "ok");
+        }
+
+        #endregion
+
+        #region A boundary's own fallback content throws (self re-catch guard)
+
+        private static int s_brokenFallbackContentRenderCount;
+
+        private static void ResetBrokenFallback()
+        {
+            s_brokenFallbackContentRenderCount = 0;
+        }
+
+        [Test]
+        public void Given_ABoundarysOwnFallbackContentThrows_When_TheOriginalExceptionTriggersIt_Then_TheFallbackContentRendersExactlyOnce()
+        {
+            // A component nested inside the fallback VNode throws when rendered. Its exception routes back to
+            // this SAME boundary through the ordinary per-fiber render catch (the boundary is the nested
+            // fiber's parent). Without a re-entrant guard, the boundary would attempt to show its own (still
+            // broken) fallback again, recursing without bound. The guard makes it decline immediately instead.
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(BoundaryWithBrokenFallbackRender, key: "broken-fallback-boundary"));
+            Assume.That(s_brokenFallbackContentRenderCount, Is.EqualTo(0), "Precondition: nothing has thrown yet");
+            s_trackingShouldThrow = true;
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test fallback content error");
+
+            // Act
+            s_trackingSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_brokenFallbackContentRenderCount, Is.EqualTo(1),
+                "The broken fallback content renders exactly once, not recursively");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode BoundaryWithBrokenFallbackRender()
+        {
+            Hooks.UseFallback(_ => V.Component(BrokenFallbackContentRender, key: "broken-fallback-content"));
+            return V.Component(TrackingRender, key: "tracking");
+        }
+
+        [Component]
+        private static VNode BrokenFallbackContentRender()
+        {
+            s_brokenFallbackContentRenderCount++;
+            throw new InvalidOperationException("Test fallback content error");
         }
 
         #endregion

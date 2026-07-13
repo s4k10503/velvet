@@ -395,6 +395,16 @@ namespace Velvet
         internal Func<Exception, ErrorInfo, VNode>? FallbackFactory { get; set; }
 
         /// <summary>
+        /// True while this boundary is in the middle of rendering/reconciling its own fallback UI. An
+        /// exception raised by that fallback content (rather than the original throw it is responding to)
+        /// re-enters <see cref="FiberErrorBoundary.TryCatch"/> for this SAME fiber via the normal
+        /// per-fiber render catch; the guard makes that re-entrant call decline immediately instead of
+        /// attempting to show the (already failing) fallback again, so propagation continues to the next
+        /// ancestor boundary instead of recursing without bound.
+        /// </summary>
+        internal bool IsShowingFallback { get; set; }
+
+        /// <summary>
         /// Calls <c>Set(null)</c> on every ref registered by <see cref="UseImperativeHandle"/>.
         /// Responsible for resetting the parent-side <c>Ref&lt;T&gt;.Current</c> to null.
         /// </summary>

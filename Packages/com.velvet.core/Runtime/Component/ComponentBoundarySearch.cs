@@ -35,7 +35,9 @@ namespace Velvet
         // Propagates an exception to the fiber's ancestor Error Boundary.
         // If a boundary that can catch the exception is found, processing completes there.
         // Otherwise, falls back to logging via Debug.LogException.
-        internal static void PropagateException(ComponentFiber fiber, Exception exception)
+        // fiber is nullable: a caller with no owning component fiber (e.g. AnimatePresence reconciled onto
+        // a bare element) has nothing to walk from and falls straight through to the log.
+        internal static void PropagateException(ComponentFiber? fiber, Exception exception)
         {
             for (var current = fiber?.Parent; current != null; current = current.Parent)
             {

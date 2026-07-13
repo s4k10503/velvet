@@ -1114,12 +1114,30 @@ namespace Velvet
                                 capturedState.ExitComplete.Add(capturedKey);
                                 // onExitComplete fires once the exiting set drains (the last
                                 // in-flight exit finished). Cancelled exits (key re-entered) remove from Exiting
-                                // elsewhere and do not reach here, so they never trigger it.
+                                // elsewhere and do not reach here, so they never trigger it. Contained: a
+                                // throwing callback must not skip the ghost-drop re-render scheduled below,
+                                // mirroring HookEffectExecutor's effect-exception containment.
                                 if (capturedState.Exiting.Count == 0)
                                 {
-                                    capturedOnExitComplete?.Invoke();
+                                    try
+                                    {
+                                        capturedOnExitComplete?.Invoke();
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        ComponentBoundarySearch.PropagateException(capturedBoundary, ex);
+                                    }
                                 }
-                                if (capturedBoundary != null)
+                                if (capturedBoundary != null && capturedBoundary.IsDisposed)
+                                {
+                                    // The callback above threw and an ancestor boundary's fallback already
+                                    // replaced capturedBoundary's whole subtree while handling it — there is no
+                                    // ghost left to drop a re-render for, and ScheduleRerender has no disposed
+                                    // guard of its own (unlike the public RequestRenderFromHook/
+                                    // RequestTransitionRerender), so scheduling here would just pin a disposed
+                                    // fiber dirty in the batch scheduler forever.
+                                }
+                                else if (capturedBoundary != null)
                                 {
                                     // The boundary's own hook inputs are unchanged (the exit finished out of band,
                                     // not via a state update), so an auto-memoized boundary would return its cached
@@ -1263,9 +1281,19 @@ namespace Velvet
                 // onExitComplete fires once the exiting children are gone. When every removed child
                 // had NO exit animation (all instant-removed above) no PlayExit callback runs to fire it, so fire it
                 // here — but only when no animated exit is still in flight (those fire it when the Exiting set drains).
+                // Contained the same way as RunExitComplete's animated-exit path above: a throwing callback
+                // must not skip the state.Committed/passSettled bookkeeping that follows, or the next render
+                // reproduces a stale old side.
                 if (commit != null && removedInstantThisRender && state.Exiting.Count == 0)
                 {
-                    presence.OnExitComplete?.Invoke();
+                    try
+                    {
+                        presence.OnExitComplete?.Invoke();
+                    }
+                    catch (Exception ex)
+                    {
+                        ComponentBoundarySearch.PropagateException(boundaryFiber, ex);
+                    }
                 }
 
                 // 3) Commit the new composition for the next old-side reproduction. Exit-complete keys were
