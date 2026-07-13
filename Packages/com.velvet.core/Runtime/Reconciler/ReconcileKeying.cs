@@ -114,7 +114,13 @@ namespace Velvet
                 case VirtualListNode when newNode is VirtualListNode:
                     return true;
                 case PortalNode oldPortal when newNode is PortalNode newPortal:
-                    return oldPortal.TargetId == newPortal.TargetId;
+                    // (TargetId, Layer) is a one-of pair: a registry portal and a layer portal must
+                    // never patch into each other, and two layer portals patch only on the same
+                    // layer — a mismatch remounts, releasing the old slot range on the old target.
+                    return oldPortal.TargetId == newPortal.TargetId && oldPortal.Layer == newPortal.Layer;
+                case WorldSpaceNode when newNode is WorldSpaceNode:
+                    // Transform, size and children all patch in place on the live host.
+                    return true;
                 case MotionNode oldMotion when newNode is MotionNode newMotion:
                     return oldMotion.ElementType == newMotion.ElementType;
                 case ContextProviderNode oldProvider when newNode is ContextProviderNode newProvider:

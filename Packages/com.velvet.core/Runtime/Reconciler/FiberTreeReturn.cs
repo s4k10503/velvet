@@ -95,6 +95,9 @@ namespace Velvet
                     case PortalNode portal:
                         ReturnPooledTreeRecursive(portal.Children);
                         break;
+                    case WorldSpaceNode worldSpace:
+                        ReturnPooledTreeRecursive(worldSpace.Children);
+                        break;
                     case SuspenseNode suspense:
                         ReturnPooledTreeRecursive(suspense.Children);
                         break;

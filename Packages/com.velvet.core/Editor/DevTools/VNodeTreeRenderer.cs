@@ -97,7 +97,12 @@ namespace Velvet.Editor.DevTools
                     break;
 
                 case PortalNode portalNode:
-                    AppendLine(sb, $"[Portal] target={portalNode.TargetId}", depth);
+                    // TargetId and Layer are a one-of pair; whichever is set names the target.
+                    AppendLine(sb, $"[Portal] target={portalNode.TargetId ?? portalNode.Layer?.ToString()}", depth);
+                    break;
+
+                case WorldSpaceNode worldSpaceNode:
+                    AppendLine(sb, $"[WorldSpace] position={worldSpaceNode.Position} panelSize={worldSpaceNode.PanelSize}", depth);
                     break;
 
                 case SuspenseNode:

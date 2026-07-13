@@ -24,5 +24,14 @@ namespace Velvet
                 Object.DestroyImmediate(obj);
             }
         }
+
+        // Marks a framework-owned scene GameObject (the hidden simulation and panel hosts): hidden
+        // from the hierarchy and excluded from editor scene saves, but deliberately NOT the full
+        // HideAndDontSave — the DontSaveInBuild flag pulls a GameObject out of its scene entirely
+        // (scene.IsValid() turns false), and these hosts must stay ordinary scene objects: they are
+        // framework-owned, destroyed with their owner, and a runtime-instantiated object never
+        // reaches a build's serialized data anyway.
+        internal static void HideFrameworkSceneObject(GameObject gameObject)
+            => gameObject.hideFlags = HideFlags.HideInHierarchy | HideFlags.DontSaveInEditor;
     }
 }

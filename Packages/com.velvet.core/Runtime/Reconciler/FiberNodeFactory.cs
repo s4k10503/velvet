@@ -311,19 +311,33 @@ namespace Velvet
                         "[FiberNodeFactory] AnimatePresenceNode is DOM-less and must be inline-expanded, not created as an element.");
                 case PortalNode portalNode:
                 {
-                    var placeholder = new VisualElement
+                    // TargetId and Layer are a one-of pair; a hand-built node violating that has no
+                    // meaningful routing, so it warns and mounts an inert placeholder rather than
+                    // silently picking a side.
+                    var hasTargetId = !string.IsNullOrEmpty(portalNode.TargetId);
+                    var hasLayer = portalNode.Layer != null;
+                    if (hasTargetId == hasLayer)
                     {
-                        style =
+                        FiberLogger.LogWarning("Portal",
+                            "A PortalNode must set exactly one of TargetId or Layer (they are a one-of pair). Children will not be rendered.");
+                        return CreateHiddenPlaceholder();
+                    }
+
+                    // A layer portal resolves its target at DRAIN time — the framework layer host is
+                    // created lazily there, once the placeholder is attached and the declaring panel
+                    // is therefore known. Only a registry portal resolves here, keeping its
+                    // not-registered warning a mount-time signal.
+                    VisualElement? target = null;
+                    if (!hasLayer)
+                    {
+                        target = FiberPortalRegistry.Get(portalNode.TargetId!);
+                        if (target == null)
                         {
-                            display = DisplayStyle.None
+                            FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
+                            var placeholder = CreateHiddenPlaceholder();
+                            _ctx.PortalState[placeholder] = new PortalSlotInfo(null, portalNode.Children ?? Array.Empty<VNode>(), 0, 0);
+                            return placeholder;
                         }
-                    };
-                    var target = FiberPortalRegistry.Get(portalNode.TargetId);
-                    if (target == null)
-                    {
-                        FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
-                        _ctx.PortalState[placeholder] = new PortalSlotInfo(portalNode.TargetId, portalNode.Children ?? Array.Empty<VNode>(), 0, 0);
-                        return placeholder;
                     }
 
                     // Defer the target-side mount to the post-reconcile drain so this Portal's
@@ -337,15 +351,12 @@ namespace Velvet
                     // PortalState is recorded only at drain time — between enqueue and drain the
                     // placeholder has no entry and PatchPortal/CleanupPortal handle the missing
                     // case explicitly (LogError + skip / early return).
-                    // Capture the context enclosing the Portal's TREE position now (the live cursor is correct
-                    // here, mid-reconcile). The children mount later in DrainPendingPortalMounts, after the
-                    // main pass has unwound the cursor, so without this snapshot they would mount with an empty
-                    // cursor and lose all enclosing Provider / MotionContext values. By design: Portal
-                    // children inherit context from their tree position, not their mount location.
-                    var contextSnapshot = _ctx.ComponentContextStack.SnapshotTops();
-                    _ctx.PendingPortalMounts.Enqueue((placeholder, portalNode, target, contextSnapshot));
-                    return placeholder;
+                    return EnqueueDeferredHostMount(portalNode, target);
                 }
+                case WorldSpaceNode worldSpaceNode:
+                    // The same deferred-mount flow as PortalNode, with a per-instance world-space
+                    // host created at drain time (see DrainPendingPortalMounts).
+                    return EnqueueDeferredHostMount(worldSpaceNode, null);
                 case VirtualListNode virtualListNode:
                 {
                     var scrollView = new ScrollView(ScrollViewMode.Vertical);
@@ -471,6 +482,31 @@ namespace Velvet
                         $"Unsupported VNode type: {node?.GetType().Name ?? "null"}. Returning empty VisualElement.");
                     return new VisualElement();
             }
+        }
+
+        // The invisible stand-in a deferred-host node (Portal / WorldSpace) leaves at its own tree
+        // position while its children live elsewhere.
+        private static VisualElement CreateHiddenPlaceholder() => new()
+        {
+            style =
+            {
+                display = DisplayStyle.None
+            }
+        };
+
+        // The deferred-mount skeleton shared by PortalNode and WorldSpaceNode: a hidden placeholder
+        // holds the node's tree position, and the context enclosing that position is snapshotted NOW
+        // (the live cursor is correct here, mid-reconcile) — the children mount later in
+        // DrainPendingPortalMounts, after the main pass has unwound the cursor, so without the
+        // snapshot they would mount with an empty cursor and lose all enclosing Provider /
+        // MotionContext values. By design: deferred-host children inherit context from their tree
+        // position, not their mount location.
+        private VisualElement EnqueueDeferredHostMount(VNode node, VisualElement? target)
+        {
+            var placeholder = CreateHiddenPlaceholder();
+            var contextSnapshot = _ctx.ComponentContextStack.SnapshotTops();
+            _ctx.PendingPortalMounts.Enqueue((placeholder, node, target, contextSnapshot));
+            return placeholder;
         }
 
         // Converts a children array into a keyed list, copying into a list rented from the pool.

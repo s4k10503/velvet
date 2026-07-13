@@ -223,7 +223,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TargetUnregisteredAfterMount_When_PortalPatched_Then_LogsWarning()
+        public void Given_TargetUnregisteredAfterMount_When_PortalPatched_Then_ItKeepsItsMountedTarget()
         {
             // Arrange
             var target = new VisualElement();
@@ -239,11 +239,14 @@ namespace Velvet.Tests
             {
                 V.Portal("temp", children: new VNode[] { V.Label(text: "Updated") }),
             };
-            LogAssert.Expect(LogType.Warning,
-                "[Portal] Target \"temp\" is not registered. Children will not be rendered.");
 
-            // Act + Assert — LogAssert.Expect verifies a patch against a now-unregistered target warns
+            // Act — a live portal keeps the target its children mounted into; the registry only
+            // routes FUTURE portals, so unregistering mid-life must not strand the mounted children
+            // unpatched (the same lifecycle rule that keeps a re-registered id from stealing them).
             _reconciler.Reconcile(_root, oldChildren, newChildren);
+
+            // Assert
+            Assert.That((target.childCount, ((Label)target.ElementAt(0)).text), Is.EqualTo((1, "Updated")));
         }
 
         #endregion

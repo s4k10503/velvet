@@ -340,7 +340,11 @@ namespace Velvet
             }
 
             _ctx.PortalState.Remove(element);
-            var target = FiberPortalRegistry.Get(portalInfo.TargetId);
+            // The RESOLVED target recorded at mount: the same removal works for registry, layer and
+            // world-space portals, and it stays correct even if a registry id was re-registered to
+            // a different element since (the children live where they were mounted). Null only for
+            // the never-mounted missing-registry-target path (SlotLength 0 — nothing to remove).
+            var target = portalInfo.Target;
             if (target == null)
             {
                 return;
@@ -359,7 +363,23 @@ namespace Velvet
 
             // Surviving Portals on the same target whose slot starts after the removed range
             // collapse left by SlotLength so their next patch addresses the right DOM positions.
-            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, portalInfo.TargetId, portalInfo.SlotStart, -portalInfo.SlotLength);
+            PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, portalInfo.SlotStart, -portalInfo.SlotLength);
+        }
+
+        // Destroys the framework-owned world-space host bound to a departing placeholder. Runs
+        // AFTER CleanupPortal, which already removed and released the children living inside the
+        // host's root — what remains is the host GameObject and its runtime-created panel assets.
+        // Layer hosts are deliberately NOT torn down here: they are shared per layer and persist
+        // until reconciler disposal.
+        private void CleanupWorldSpaceHost(VisualElement element)
+        {
+            if (!_ctx.WorldSpaceBindings.TryGetValue(element, out var record))
+            {
+                return;
+            }
+
+            _ctx.WorldSpaceBindings.Remove(element);
+            PanelHostFactory.Destroy(record);
         }
 
         // Recursively cleans up the descendants of an element. DOM operations are the caller's
@@ -408,6 +428,7 @@ namespace Velvet
 
             CleanupElementResources(element);
             CleanupPortal(element);
+            CleanupWorldSpaceHost(element);
             CleanupDescendants(element, innerElement);
         }
     }

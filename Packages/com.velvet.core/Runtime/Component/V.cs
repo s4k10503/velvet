@@ -1498,6 +1498,62 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Renders <paramref name="children"/> into a framework-managed screen-space layer panel
+        /// sorted around the app's main panel — one host panel per layer per reconciler, created
+        /// lazily and destroyed with the reconciler. Like every portal, the children stay part of the
+        /// LOGICAL tree (context and state cross the boundary) while attaching physically to the layer
+        /// panel — so event bubbling, relational <c>group-</c>/<c>peer-</c> variants and focus-within
+        /// do not cross, and responsive breakpoints evaluate against the layer panel's own width.
+        /// Screen-space layers always composite over the 3D scene; UI that must sit among scene
+        /// geometry is <see cref="WorldSpace"/>'s territory.
+        /// </summary>
+        /// <param name="layer">The framework-managed layer panel to attach the children to.</param>
+        /// <param name="children">Descendant VNodes mounted into the layer panel.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="PortalNode"/>.</returns>
+        public static PortalNode Portal(UILayer layer, VNode?[]? children = null, string? key = null)
+        {
+            return new PortalNode
+            {
+                Key = key,
+                Layer = layer,
+                Children = children ?? EmptyChildren,
+            };
+        }
+
+        /// <summary>
+        /// Renders <paramref name="children"/> into a framework-owned world-space panel positioned by
+        /// a scene transform — UI that lives among 3D content and is depth-tested against it (the drei
+        /// <c>&lt;Html&gt;</c> parity point), unlike the always-on-top screen-space layers. The host
+        /// (GameObject + world-space panel) is created on mount, follows <paramref name="position"/> /
+        /// <paramref name="rotation"/> updates, and is destroyed on unmount. Children stay part of the
+        /// logical tree (context and state cross; events do not — the panel boundary is physical).
+        /// Display-only: world-space input routing is not wired.
+        /// </summary>
+        /// <param name="position">World position of the panel host.</param>
+        /// <param name="rotation">World rotation of the panel host (identity when omitted).</param>
+        /// <param name="panelSize">Virtual panel resolution in pixels (fixed world-space size mode).</param>
+        /// <param name="children">Descendant VNodes rendered inside the world-space panel.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="WorldSpaceNode"/>.</returns>
+        public static WorldSpaceNode WorldSpace(
+            Vector3 position,
+            Quaternion? rotation = null,
+            Vector2? panelSize = null,
+            VNode?[]? children = null,
+            string? key = null)
+        {
+            return new WorldSpaceNode
+            {
+                Key = key,
+                Position = position,
+                Rotation = rotation ?? Quaternion.identity,
+                PanelSize = panelSize ?? new Vector2(1920f, 1080f),
+                Children = children ?? EmptyChildren,
+            };
+        }
+
+        /// <summary>
         /// Placeholder that renders the matched child route component of a nested route at this position.
         /// </summary>
         /// <param name="context">
