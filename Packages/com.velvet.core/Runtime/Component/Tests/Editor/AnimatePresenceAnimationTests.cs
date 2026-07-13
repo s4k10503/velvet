@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 
 using Velvet;
@@ -41,6 +43,8 @@ namespace Velvet.Tests
             s_exitVariantShow = null;
             s_waitConfig = null;
             s_waitKey = null;
+            s_throwingExitConfig = null;
+            s_throwingExitShow = null;
         }
 
         protected override void OnTearDown() => _reconciler?.Dispose();
@@ -306,6 +310,43 @@ namespace Velvet.Tests
             // Assert — the exit was cancelled and the same element retained (not dropped and recreated).
             Assert.That(Root.ElementAt(0), Is.SameAs(original),
                 "Re-adding a key mid-exit cancels the exit and retains the same element rather than dropping and recreating it");
+        }
+
+        // By design onExitComplete is a user-supplied callback; it must not be able to block the ghost-drop
+        // re-render it sits beside by throwing. Reuses ExitRemovalHostRender's component-owned shape so the
+        // drop re-render has a fiber to run on.
+        private static StyleTransitionConfig s_throwingExitConfig;
+        private static Action<bool> s_throwingExitShow;
+
+        [Component]
+        private static VNode ThrowingOnExitCompleteHostRender()
+        {
+            var (show, setShow) = Hooks.UseState(true);
+            s_throwingExitShow = setShow;
+            return V.AnimatePresence(
+                onExitComplete: () => throw new InvalidOperationException("Test onExitComplete error"),
+                children: show
+                    ? new VNode[] { V.Motion(key: "a", transition: s_throwingExitConfig, children: new VNode[] { V.Label(text: "A") }) }
+                    : Array.Empty<VNode>());
+        }
+
+        [Test]
+        public void Given_OnExitCompleteThrows_When_ExitTransitionCompletes_Then_TheElementIsStillRemovedFromTheDom()
+        {
+            // Arrange
+            s_throwingExitConfig = NewConfig();
+            using var mounted = V.Mount(Root, V.Component(ThrowingOnExitCompleteHostRender, key: "throwing-exit-host"));
+            AdvancePast(s_throwingExitConfig.DurationSec);
+            Assume.That(LabelTexts(), Is.EqualTo(new[] { "A" }), "Precondition: the child entered and is present");
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test onExitComplete error");
+
+            // Act — hide the child; its exit completes and onExitComplete throws.
+            s_throwingExitShow.Invoke(false);
+            AdvancePast(s_throwingExitConfig.DurationSec);
+
+            // Assert — the ghost-drop re-render still ran despite the throw.
+            Assert.That(LabelTexts(), Is.Empty,
+                "The exited element is still removed from the DOM even though onExitComplete threw");
         }
 
         #endregion
