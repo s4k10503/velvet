@@ -430,5 +430,70 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region Error boundary interplay
+
+        [Component]
+        private static VNode ThrowingChild() =>
+            throw new System.InvalidOperationException("boundary portal boom");
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode BoundaryWithPortalFallback()
+        {
+            Hooks.UseFallback(_ => V.Div(children: new VNode[]
+            {
+                V.Portal(UILayer.Topmost, children: new VNode[] { V.Div(name: "boundary-toast") }),
+                V.Div(name: "fallback-body"),
+            }));
+            return V.Component(ThrowingChild, key: "child");
+        }
+
+        [Test]
+        public void Given_AFallbackContainingALayerPortal_When_TheBoundaryCatches_Then_ThePortalMounts()
+        {
+            // Arrange — the abort that ends the failed pass must not also discard the deferred mount
+            // the boundary's own fallback just enqueued: that enqueue belongs to a LIVE placeholder.
+            // Act
+            MountAndLayout(V.Component(BoundaryWithPortalFallback, key: "root"));
+
+            // Assert — the fallback's toast reached the Topmost layer host.
+            VisualElement toast = null;
+            foreach (var doc in NewDocs())
+            {
+                toast ??= doc.rootVisualElement?.Q<VisualElement>("boundary-toast");
+            }
+            Assert.That(toast, Is.Not.Null);
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode PortalThenThrowerBoundary()
+        {
+            Hooks.UseFallback(_ => V.Div(name: "plain-fallback"));
+            return V.Div(children: new VNode[]
+            {
+                V.Portal(UILayer.Overlay, children: new VNode[] { V.Div(name: "victim-content") }),
+                V.Component(ThrowingChild, key: "child"),
+            });
+        }
+
+        [Test]
+        public void Given_AFailedSubtreeWithALayerPortal_When_TheBoundaryCatches_Then_ThatPortalNeverMounts()
+        {
+            // Arrange — the failed subtree enqueued a portal before its sibling threw; the boundary's
+            // rollback detaches that placeholder, so the drain must skip the dead enqueue instead of
+            // mounting content for a subtree that no longer exists.
+            // Act
+            MountAndLayout(V.Component(PortalThenThrowerBoundary, key: "root"));
+
+            // Assert — no layer host carries the failed subtree's content.
+            VisualElement victim = null;
+            foreach (var doc in NewDocs())
+            {
+                victim ??= doc.rootVisualElement?.Q<VisualElement>("victim-content");
+            }
+            Assert.That(victim, Is.Null);
+        }
+
+        #endregion
     }
 }
