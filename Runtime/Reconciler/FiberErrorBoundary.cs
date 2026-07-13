@@ -45,6 +45,13 @@ namespace Velvet
             return sb.ToString();
         }
 
+        // Known limitation: when the fallback's OWN content throws and IsShowingFallback declines the
+        // resulting re-entrant TryCatch (see below), that inner exception is resolved entirely inside the
+        // Reconcile call below via the ordinary per-fiber render catch + ComponentBoundarySearch — it never
+        // surfaces as a raw exception here. Reconcile returns normally either way, so this method reports
+        // success (and the caller marks the ORIGINAL exception caught) even on the sub-path where the
+        // fallback content itself failed and nothing meaningful ended up on screen for it. Verifying that
+        // sub-path's own success/failure would need a signal this method doesn't have — tracked separately.
         private static bool TryShowFallback(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception originalException)
         {
             if (fiber.Reconciler == null) return false;
@@ -52,6 +59,12 @@ namespace Velvet
             try
             {
                 fallback = RenderFallback(fiber, throwingFiber, originalException);
+            }
+            catch (FiberSuspendSignal)
+            {
+                // Not a fallback failure: the factory suspended on a pending async resource and must reach
+                // a real Suspense boundary via the ordinary ambient path, the same as any other render.
+                throw;
             }
             catch (Exception fallbackEx)
             {
@@ -62,9 +75,25 @@ namespace Velvet
             }
             if (fallback == null) return false;
             var fallbackTree = new[] { fallback };
-            fiber.Reconciler.Reconcile(fiber.MountPoint, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree);
-            FiberTreeReturn.ReturnPooledObjects(fiber.PreviousTree);
-            fiber.PreviousTree = fallbackTree;
+            try
+            {
+                fiber.Reconciler.Reconcile(fiber.MountPoint, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree);
+                FiberTreeReturn.ReturnPooledObjects(fiber.PreviousTree);
+                fiber.PreviousTree = fallbackTree;
+            }
+            catch (FiberSuspendSignal)
+            {
+                // Same as above: a suspend raised while rendering the fallback's own content must keep
+                // unwinding toward a real Suspense boundary, not be treated as a fallback failure.
+                throw;
+            }
+            catch (Exception reconcileEx)
+            {
+                FiberLogger.LogError("ErrorBoundary",
+                    "FiberRenderer: reconciling the fallback UI threw an exception. The original exception is preserved.");
+                FiberLogger.LogException("ErrorBoundary", reconcileEx);
+                return false;
+            }
             return true;
         }
 
@@ -81,7 +110,13 @@ namespace Velvet
             // Opt-in contract: even if a Fiber returning IsErrorBoundary=false has TryCatch invoked through some
             // path, it does not catch.
             if (!fiber.IsErrorBoundary || fiber.Reconciler == null) return false;
+            // A fiber whose own fallback content throws re-enters here (the content's per-fiber render
+            // catch routes back to this same boundary via ComponentBoundarySearch.PropagateException).
+            // Decline immediately rather than attempting to show the already-failing fallback again — the
+            // caller's propagation loop then continues to the next ancestor boundary on its own.
+            if (fiber.IsShowingFallback) return false;
             var fiberPushed = FiberRenderer.PushFiber(fiber);
+            fiber.IsShowingFallback = true;
             bool result;
             try
             {
@@ -89,6 +124,7 @@ namespace Velvet
             }
             finally
             {
+                fiber.IsShowingFallback = false;
                 FiberRenderer.PopFiber(fiber, fiberPushed);
             }
             if (result)

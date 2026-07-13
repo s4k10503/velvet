@@ -79,6 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Layer and world-space hosts re-copy the declaring panel's configuration when it changes at
   runtime (theme swaps, scale changes, the ConstantPhysicalSize DPI pair) and survive a scene
   unload killing a host: patches skip dead records instead of throwing out of the pass.
+- An error boundary whose own fallback content throws while rendering no longer escapes
+  uncaught or recurses into itself — it declines and propagation continues to the next
+  ancestor boundary, the same as a fallback factory that throws.
+- `AnimatePresence`'s `onExitComplete` no longer escapes into UI Toolkit's scheduler update
+  when it throws: the exception is contained and routed to the nearest error boundary, and the
+  ghost-drop re-render it sits beside still runs.
 
 ## [1.2.0] - 2026-07-12
 
