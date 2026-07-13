@@ -212,8 +212,10 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_AKeyedReorder_When_TheElementMoves_Then_TheDrawnParticlesKeepMoving()
         {
-            // Arrange — a keyed reorder re-inserts the element, which silently drops element-bound
-            // scheduled items; the repaint driver must survive the move or the drawn output freezes.
+            // Arrange — a keyed reorder re-inserts the element. A recurring tick survives that
+            // detach/re-attach on its own (UI Toolkit pauses and reschedules it), but this pins the
+            // OBSERVABLE contract directly: the repaint driver must keep advancing across the move, or
+            // the drawn output freezes.
             var effect = CreateEmitter();
             s_effect = effect;
             _panelRt = new RenderTexture(300, 300, 32);

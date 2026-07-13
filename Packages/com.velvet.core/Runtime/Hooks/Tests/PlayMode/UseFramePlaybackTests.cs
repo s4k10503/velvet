@@ -150,8 +150,9 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_AKeyedReorder_When_TheHostMoves_Then_TheCallbackKeepsTicking()
         {
-            // Arrange — a keyed reorder re-inserts the host element, which silently drops element-bound
-            // scheduled items; the frame driver must survive the move or the hook dies while mounted.
+            // Arrange — a keyed reorder re-inserts the host element. A recurring tick survives that
+            // detach/re-attach on its own (UI Toolkit pauses and reschedules it), but this pins the
+            // OBSERVABLE contract directly: the frame driver must keep ticking across the move.
             var root = CreatePanelRoot();
             yield return null;
             _mounted = V.Mount(root, V.Component(ReorderFrameHost, key: "root"));

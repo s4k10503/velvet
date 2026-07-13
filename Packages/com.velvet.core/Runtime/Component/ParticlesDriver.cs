@@ -80,10 +80,13 @@ namespace Velvet
             // co-resident shadow / skew silhouette prepends its callback precisely so that content
             // registered later covers it.
             element.generateVisualContent += binding.OnGenerate;
-            // Element-bound scheduled items survive a keyed reorder's detach/re-attach (the engine
-            // pauses and resumes them), but the resume restarts the interval phase instead of
-            // continuing it. Re-arming a fresh item per attach keeps the tick's lifetime explicit and
-            // independent of that engine subtlety; released on detach so nothing fires while detached.
+            // A recurring item like this repaint tick actually survives a keyed reorder's
+            // detach/re-attach on its own — UI Toolkit's own per-item attach/detach handling pauses it
+            // on detach and reschedules the same item on the next attach, with no meaningful restart
+            // of the interval (unlike a one-shot item, whose delay genuinely restarts in full on every
+            // re-attach). Re-arming a fresh item per attach is therefore not required for correctness,
+            // but keeps the tick's lifetime tied explicitly to this attach/detach pair rather than
+            // relying on that engine mechanism; released on detach so nothing fires while detached.
             binding.OnAttach = _ =>
             {
                 StopRepaintTick(binding);

@@ -934,9 +934,12 @@ namespace Velvet
                     return null;
                 }
                 UnityEngine.UIElements.IVisualElementScheduledItem? tick = null;
-                void StartTick()
+                void StartTickIfNeeded()
                 {
-                    tick?.Pause();
+                    if (tick != null)
+                    {
+                        return;
+                    }
                     tick = host.schedule.Execute((UnityEngine.UIElements.TimerState ts) =>
                     {
                         // TimerState.start is the previous callback's time for a repeating item (or the
@@ -967,28 +970,26 @@ namespace Velvet
                         }
                     }).Every(0);
                 }
-                // Element-bound scheduled items survive a keyed reorder's detach/re-attach (the engine
-                // pauses and resumes them), but the resume restarts the interval phase instead of
-                // continuing it. Re-arming a fresh item per attach keeps the tick's lifetime explicit
-                // and independent of that engine subtlety; nothing fires while detached.
-                UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.AttachToPanelEvent> onAttach = _ => StartTick();
-                UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.DetachFromPanelEvent> onDetach = _ =>
-                {
-                    tick?.Pause();
-                    tick = null;
-                };
+                // A recurring item like this Every(0) tick survives a keyed reorder's detach/re-attach
+                // on its own: UI Toolkit's own per-item attach/detach handling pauses it when the host
+                // leaves the panel and reschedules the SAME item when the host returns (the detach and
+                // re-attach even cancel out in the scheduler's own bookkeeping when, as here, both land
+                // in a single pass), so nothing needs to re-arm it. A one-shot item has no such luck —
+                // its delay restarts in full on every re-attach. The tick is therefore only ever
+                // created once; an explicit Pause on every detach, as this hook used to do, would
+                // defeat that built-in survival and force a fresh item to be armed on every attach for
+                // no benefit.
+                UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.AttachToPanelEvent> onAttach = _ => StartTickIfNeeded();
                 host.RegisterCallback(onAttach);
-                host.RegisterCallback(onDetach);
                 // The passive effect runs post-commit, so the host is ordinarily already attached and
                 // no AttachToPanelEvent is coming — arm the first tick directly.
                 if (host.panel != null)
                 {
-                    StartTick();
+                    StartTickIfNeeded();
                 }
                 return () =>
                 {
                     host.UnregisterCallback(onAttach);
-                    host.UnregisterCallback(onDetach);
                     tick?.Pause();
                     tick = null;
                 };
