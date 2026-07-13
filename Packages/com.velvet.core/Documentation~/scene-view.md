@@ -12,16 +12,21 @@ V.SceneView(previewCamera, className: "w-64 h-64 rounded-lg border border-neutra
 There is no RenderTexture in the API — the framework owns it:
 
 - On layout, a RenderTexture is created at the element's **laid-out size in device pixels**
-  (the panel's scale factor is included, times `resolutionScale`, capped at 4096 per axis) and
-  assigned to `camera.targetTexture`; the element shows it as its background image.
+  (the panel's scale factor is included, times `resolutionScale`, capped at 4096 — one shared
+  shrink when either axis overflows, so the aspect is preserved) and assigned to
+  `camera.targetTexture`; the element shows it as its background image.
 - A geometry change (the element resizes) recreates the texture at the new size and re-targets
-  the camera. A zero-sized or unattached element holds no texture.
+  the camera. A zero-sized or unattached element holds no texture. A pixel-density change (a
+  monitor DPI move) fires no geometry event: editor panels re-derive the texture on their
+  repaint tick, runtime panels on their next layout or props change.
 - Swapping the `camera:` prop releases the old camera and targets the new one; passing `null`
   releases everything and leaves an inert box.
 - Unmounting (including a conditional `cond ? V.SceneView(...) : null` removal and whole-tree
   disposal) releases the camera's target and destroys the texture.
-- Release is **polite**: if user code reassigned `camera.targetTexture` after mount, unmount
-  leaves that assignment intact.
+- Release is **polite in both directions**: if user code reassigned `camera.targetTexture`
+  after mount, unmount leaves that assignment intact — and a layout- or tick-driven resync
+  never claws it back either (only an explicit camera/settings pass claims the camera; a bare
+  resync reclaims it from `null` alone).
 
 ## Styling composes
 
@@ -34,9 +39,10 @@ camera at half the element's pixel size (the background scales it up). A non-pos
 scale throws at the factory.
 
 One property is spoken for: **the element's background image belongs to the camera output
-while a camera is bound**. A `BackgroundImage` passed through `styles:` (or a `bg-[...]`
-utility) shows only until the camera texture arrives — use a sibling/overlay element for
-poster or overlay imagery.
+while its texture is live**. A `BackgroundImage` passed through `styles:` (or a gradient /
+`bg-[...]` utility) shows until the camera texture arrives, keeps receiving updates in a
+deferred slot while the feed is live, and returns when the camera releases (camera removed,
+element unmounting) — so a poster naturally brackets the feed's lifetime.
 
 ## Live output
 

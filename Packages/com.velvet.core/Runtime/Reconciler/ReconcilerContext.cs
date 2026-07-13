@@ -12,7 +12,7 @@ namespace Velvet
     // portals whose ranges shift together — two layer portals on different layers must never
     // shift each other even though neither carries a registry id. Null only for the mount-time
     // path that found no registry target (nothing was mounted; SlotLength is 0).
-    internal readonly record struct PortalSlotInfo(VisualElement? Target, VNode?[] Children, int SlotStart, int SlotLength);
+    internal readonly record struct PortalSlotInfo(VisualElement? Target, int SlotStart, int SlotLength);
 
     // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
     // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries

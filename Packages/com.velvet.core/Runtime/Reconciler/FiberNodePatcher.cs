@@ -649,7 +649,7 @@ namespace Velvet
             // grouping, the eventual cleanup, and the has-variant portal-target sweep all see where
             // the children actually live. For an already-recorded portal this rewrites the same
             // reference.
-            _ctx.PortalState[placeholder] = prevState with { Target = target, Children = newChildren, SlotLength = newSlotLength };
+            _ctx.PortalState[placeholder] = prevState with { Target = target, SlotLength = newSlotLength };
 
             PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, prevState.SlotStart, delta, placeholder);
         }

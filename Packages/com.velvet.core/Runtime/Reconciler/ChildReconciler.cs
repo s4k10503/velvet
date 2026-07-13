@@ -261,7 +261,7 @@ namespace Velvet
                     }
                 }
                 var slotLength = resolvedTarget.childCount - slotStart;
-                _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, children, slotStart, slotLength);
+                _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, slotStart, slotLength);
             }
         }
 

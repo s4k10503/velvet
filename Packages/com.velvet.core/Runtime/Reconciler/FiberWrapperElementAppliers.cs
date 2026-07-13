@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -888,7 +890,7 @@ namespace Velvet
 
         #endregion
 
-        #region SceneView
+        #region Element bindings (SceneView / Particles)
 
         // Binds / re-binds / releases a SceneView element's camera-output machinery — the mount paths
         // (plain element AND Motion host) and the props diff all land here, beside the sibling binding
@@ -901,56 +903,56 @@ namespace Velvet
             {
                 return;
             }
-            if (_ctx.SceneViewBindings.TryGetValue(element, out var binding))
-            {
-                if (settings == null)
-                {
-                    // A vanished settings prop only happens on a hand-built ElementNode (V.SceneView
-                    // always carries settings, even for a null camera): release both ends and drop the
-                    // binding — the element stays mounted and inert.
-                    SceneViewDriver.Detach(element, binding);
-                    _ctx.SceneViewBindings.Remove(element);
-                    return;
-                }
-                SceneViewDriver.Update(element, binding, settings);
-            }
-            else if (settings != null)
-            {
-                _ctx.SceneViewBindings[element] = SceneViewDriver.Attach(element, settings);
-            }
+            ApplyElementBinding(element, settings, _ctx.SceneViewBindings,
+                s_sceneViewAttach, s_sceneViewUpdate, s_sceneViewDetach);
         }
 
-        #endregion
-
-        #region Particles
-
-        // Binds / re-binds / releases a Particles element's simulation-and-draw machinery — the mount
-        // paths (plain element AND Motion host) and the props diff all land here, beside the sibling
-        // binding lifecycles above, because the binding owns live resources (the hidden simulation host
-        // GameObject, a painter callback, a repaint tick) tracked per element for the cleaner and the
-        // reconciler dispose sweep to release.
+        // Binds / re-binds / releases a Particles element's simulation-and-draw machinery, on the same
+        // dispatch as the SceneView binding: live resources here are the hidden simulation host
+        // GameObject, the painter callback and the repaint tick.
         internal void ApplyParticles(VisualElement element, ParticlesSettings? settings)
         {
             if (element is not ParticlesElement)
             {
                 return;
             }
-            if (_ctx.ParticlesBindings.TryGetValue(element, out var binding))
+            ApplyElementBinding(element, settings, _ctx.ParticlesBindings,
+                s_particlesAttach, s_particlesUpdate, s_particlesDetach);
+        }
+
+        // Cached method-group delegates so the shared dispatch below adds no per-call allocation.
+        private static readonly Func<VisualElement, SceneViewSettings, SceneViewBinding> s_sceneViewAttach = SceneViewDriver.Attach;
+        private static readonly Action<VisualElement, SceneViewBinding, SceneViewSettings> s_sceneViewUpdate = SceneViewDriver.Update;
+        private static readonly Action<VisualElement, SceneViewBinding> s_sceneViewDetach = SceneViewDriver.Detach;
+        private static readonly Func<VisualElement, ParticlesSettings, ParticlesBinding> s_particlesAttach = ParticlesDriver.Attach;
+        private static readonly Action<VisualElement, ParticlesBinding, ParticlesSettings> s_particlesUpdate = ParticlesDriver.Update;
+        private static readonly Action<VisualElement, ParticlesBinding> s_particlesDetach = ParticlesDriver.Detach;
+
+        // The attach/update/detach dispatch both element bindings share. A vanished settings prop only
+        // happens on a hand-built ElementNode (the factories always carry settings, even for a null
+        // camera/effect): release everything and drop the binding — the element stays mounted, inert.
+        private static void ApplyElementBinding<TSettings, TBinding>(
+            VisualElement element,
+            TSettings? settings,
+            Dictionary<VisualElement, TBinding> bindings,
+            Func<VisualElement, TSettings, TBinding> attach,
+            Action<VisualElement, TBinding, TSettings> update,
+            Action<VisualElement, TBinding> detach)
+            where TSettings : class
+        {
+            if (bindings.TryGetValue(element, out var binding))
             {
                 if (settings == null)
                 {
-                    // A vanished settings prop only happens on a hand-built ElementNode (V.Particles
-                    // always carries settings, even for a null effect): release everything and drop the
-                    // binding — the element stays mounted and inert.
-                    ParticlesDriver.Detach(element, binding);
-                    _ctx.ParticlesBindings.Remove(element);
+                    detach(element, binding);
+                    bindings.Remove(element);
                     return;
                 }
-                ParticlesDriver.Update(element, binding, settings);
+                update(element, binding, settings);
             }
             else if (settings != null)
             {
-                _ctx.ParticlesBindings[element] = ParticlesDriver.Attach(element, settings);
+                bindings[element] = attach(element, settings);
             }
         }
 

@@ -430,6 +430,37 @@ namespace Velvet.Tests
             Assert.That(NewDocs().Count, Is.EqualTo(0));
         }
 
+        [Test]
+        public void Given_APanelSizeMatchingTheDocumentDefault_When_Mounted_Then_FixedSizingStillApplies()
+        {
+            // Arrange — the size settings are driven after the attach with a mode round-trip, so the
+            // fixed sizing derives even when the requested size equals the document's own default (a
+            // plain value write would read as no-change and never re-derive).
+            Vector2 documentDefault;
+            var probeGo = new GameObject("ws-default-probe");
+            try
+            {
+                documentDefault = probeGo.AddComponent<UIDocument>().worldSpaceSize;
+            }
+            finally
+            {
+                Object.DestroyImmediate(probeGo);
+            }
+
+            // Act
+            MountAndLayout(V.Div(children: new VNode[]
+            {
+                V.WorldSpace(Vector3.zero, panelSize: documentDefault,
+                    children: new VNode[] { V.Div(name: "ws1") }),
+            }));
+
+            // Assert — the mode landed on Fixed with the requested (default-equal) size.
+            var docs = NewDocs();
+            Assume.That(docs.Count, Is.EqualTo(1), "Precondition: the world-space host exists");
+            Assert.That((docs[0].worldSpaceSizeMode, docs[0].worldSpaceSize),
+                Is.EqualTo((UIDocument.WorldSpaceSizeMode.Fixed, documentDefault)));
+        }
+
         #endregion
 
         #region Host resilience

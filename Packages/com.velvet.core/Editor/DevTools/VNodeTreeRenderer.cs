@@ -97,12 +97,28 @@ namespace Velvet.Editor.DevTools
                     break;
 
                 case PortalNode portalNode:
-                    // TargetId and Layer are a one-of pair; whichever is set names the target.
+                    // TargetId and Layer are a one-of pair; whichever is set names the target. The
+                    // children live in the logical tree even though they attach elsewhere, so the
+                    // dump walks them like every other container's.
                     AppendLine(sb, $"[Portal] target={portalNode.TargetId ?? portalNode.Layer?.ToString()}", depth);
+                    if (portalNode.Children != null)
+                    {
+                        foreach (var child in portalNode.Children)
+                        {
+                            AppendNode(sb, child, depth + 1);
+                        }
+                    }
                     break;
 
                 case WorldSpaceNode worldSpaceNode:
                     AppendLine(sb, $"[WorldSpace] position={worldSpaceNode.Position} panelSize={worldSpaceNode.PanelSize}", depth);
+                    if (worldSpaceNode.Children != null)
+                    {
+                        foreach (var child in worldSpaceNode.Children)
+                        {
+                            AppendNode(sb, child, depth + 1);
+                        }
+                    }
                     break;
 
                 case SuspenseNode:
