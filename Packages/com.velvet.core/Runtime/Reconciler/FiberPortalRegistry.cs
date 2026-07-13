@@ -39,10 +39,9 @@ namespace Velvet
                 return;
             }
 
-            if (!_targets.TryAdd(id, target))
+            if (NameKeyedRegistry.Set(id, target, _targets))
             {
                 Debug.LogWarning($"[FiberPortalRegistry] Id \"{id}\" is already registered. Overwriting.");
-                _targets[id] = target;
             }
         }
 
@@ -50,15 +49,7 @@ namespace Velvet
         /// Unregisters a Portal mount target.
         /// </summary>
         /// <param name="id">Identifier previously passed to <see cref="Register"/>. Null or empty values are no-ops.</param>
-        public static void Unregister(string id)
-        {
-            if (string.IsNullOrEmpty(id))
-            {
-                return;
-            }
-
-            _targets.Remove(id);
-        }
+        public static void Unregister(string id) => NameKeyedRegistry.Unregister(id, _targets);
 
         /// <summary>
         /// Gets a Portal mount target. Returns null if not registered.
@@ -80,15 +71,7 @@ namespace Velvet
         /// </summary>
         /// <param name="id">Identifier to test. Null or empty values always return <c>false</c>.</param>
         /// <returns><c>true</c> when a target is currently registered for <paramref name="id"/>; otherwise <c>false</c>.</returns>
-        public static bool IsRegistered(string id)
-        {
-            if (string.IsNullOrEmpty(id))
-            {
-                return false;
-            }
-
-            return _targets.ContainsKey(id);
-        }
+        public static bool IsRegistered(string id) => NameKeyedRegistry.IsRegistered(id, _targets);
 
         /// <summary>
         /// Test-only: clears all registrations.

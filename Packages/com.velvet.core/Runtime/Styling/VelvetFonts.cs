@@ -126,7 +126,7 @@ namespace Velvet
         /// <summary>Removes a family by name. No-op when it is not registered.</summary>
         public static void Unregister(string? familyName)
         {
-            if (string.IsNullOrEmpty(familyName) || !_families.Remove(familyName))
+            if (!NameKeyedRegistry.Unregister(familyName, _families))
             {
                 return;
             }
@@ -148,8 +148,7 @@ namespace Velvet
         }
 
         /// <summary>True when a family with the given name is registered.</summary>
-        public static bool IsRegistered(string? familyName) =>
-            !string.IsNullOrEmpty(familyName) && _families.ContainsKey(familyName);
+        public static bool IsRegistered(string? familyName) => NameKeyedRegistry.IsRegistered(familyName, _families);
 
         /// <summary>
         /// Resolves a font request to a <see cref="ResolvedFont"/>. When <paramref name="family"/> is null
