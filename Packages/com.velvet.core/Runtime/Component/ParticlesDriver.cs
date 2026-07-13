@@ -29,6 +29,11 @@ namespace Velvet
         public EventCallback<AttachToPanelEvent>? OnAttach;
         public EventCallback<DetachFromPanelEvent>? OnDetach;
         public IVisualElementScheduledItem? RepaintTick;
+        // Logical play state as the DRIVER last set it (Mount trigger, element Play/Stop): outside
+        // Play Mode the engine never advances a system's clock, so the repaint tick steps the
+        // simulation manually exactly while this is set — the native isPlaying flag cannot serve,
+        // because ParticleSystem.Simulate itself flips the system to paused.
+        public bool LogicallyPlaying;
 
         public ParticlesBinding(ParticlesSettings settings)
         {
@@ -54,11 +59,13 @@ namespace Velvet
         // lands on unusual setups.
         private static readonly Vector3 HostParkingPosition = new(0f, -10000f, 0f);
 
-        // Warn-once bookkeeping per SOURCE instance for the advisory mount warnings: an unstable
-        // effect reference (a component re-creating its source every render) rebuilds hosts
-        // repeatedly, and the same advice must not repeat once per rebuild.
-        private static readonly HashSet<int> s_warnedSimulationSpace = new();
-        private static readonly HashSet<int> s_warnedDrawCap = new();
+        // Warn-once bookkeeping per SOURCE NAME for the advisory mount warnings: an unstable effect
+        // reference (a component re-creating its source every render) rebuilds hosts repeatedly with
+        // a FRESH instance id each time — the exact case the debounce exists for — while the name
+        // stays put, and distinct names stay bounded by the project's effect inventory instead of
+        // growing one entry per mounted instance for the life of the session.
+        private static readonly HashSet<string> s_warnedSimulationSpace = new();
+        private static readonly HashSet<string> s_warnedDrawCap = new();
 
 #if UNITY_EDITOR
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -80,9 +87,10 @@ namespace Velvet
             // co-resident shadow / skew silhouette prepends its callback precisely so that content
             // registered later covers it.
             element.generateVisualContent += binding.OnGenerate;
-            // A keyed reorder re-inserts the element, which silently drops its element-bound scheduled
-            // items — so the repaint tick is re-armed from scratch on every attach (a dropped item
-            // cannot be resumed) and released on detach.
+            // Element-bound scheduled items survive a keyed reorder's detach/re-attach (the engine
+            // pauses and resumes them), but the resume restarts the interval phase instead of
+            // continuing it. Re-arming a fresh item per attach keeps the tick's lifetime explicit and
+            // independent of that engine subtlety; released on detach so nothing fires while detached.
             binding.OnAttach = _ =>
             {
                 StopRepaintTick(binding);
@@ -207,10 +215,12 @@ namespace Velvet
             if (binding.Settings.PlayOn == PlayTrigger.Mount)
             {
                 binding.Host!.Play();
+                binding.LogicallyPlaying = true;
             }
             else
             {
                 binding.Host!.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                binding.LogicallyPlaying = false;
             }
             binding.AppliedPlayOn = binding.Settings.PlayOn;
         }
@@ -225,6 +235,7 @@ namespace Velvet
             binding.SourceId = 0;
             binding.Buffer = null;
             binding.Texture = null;
+            binding.LogicallyPlaying = false;
         }
 
         // ParticlesElement.Play: the imperative half of PlayTrigger.Manual (and a replay for a
@@ -235,7 +246,14 @@ namespace Velvet
             {
                 return;
             }
+            // Editor-side replay: a Simulate()-driven clock clamps at a finished non-looping timeline
+            // and Play() merely resumes the pause there, so a drained host restarts from zero first.
+            if (EditorSimulationDrained(binding.Host))
+            {
+                binding.Host.Simulate(0f, withChildren: true, restart: true, fixedTimeStep: false);
+            }
             binding.Host.Play();
+            binding.LogicallyPlaying = true;
             // The idle tick parks itself while nothing simulates; a fresh play must resume dirtying.
             SyncRepaintTick(element, binding);
             element.MarkDirtyRepaint();
@@ -248,10 +266,11 @@ namespace Velvet
             if (binding.Host != null)
             {
                 binding.Host.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                binding.LogicallyPlaying = false;
             }
         }
 
-        // Advisory mount warnings, once per source instance (see the warn-once sets above).
+        // Advisory mount warnings, once per source name (see the warn-once sets above).
         private static void WarnOnceForSource(ParticleSystem source)
         {
             var main = source.main;
@@ -259,13 +278,13 @@ namespace Velvet
             // canvas); any other space draws at meaningless offsets, so say so up front instead of
             // rendering garbage silently. Advisory: the host still simulates.
             if (main.simulationSpace != ParticleSystemSimulationSpace.Local
-                && s_warnedSimulationSpace.Add(source.GetInstanceID()))
+                && s_warnedSimulationSpace.Add(source.name))
             {
                 Debug.LogWarning($"[Velvet] V.Particles: \"{source.name}\" does not use local simulation space; particle positions are read locally, so a world- or custom-space simulation will not match the drawn layout. Use local simulation space.");
             }
             // The draw path truncates at its particle cap; a denser effect must say so once instead of
             // silently thinning out compared to everywhere else the same source is used.
-            if (main.maxParticles > MaxDrawnParticles && s_warnedDrawCap.Add(source.GetInstanceID()))
+            if (main.maxParticles > MaxDrawnParticles && s_warnedDrawCap.Add(source.name))
             {
                 Debug.LogWarning($"[Velvet] V.Particles: \"{source.name}\" declares {main.maxParticles} max particles, above the {MaxDrawnParticles} the element draws; the densest frames will render truncated.");
             }
@@ -341,7 +360,7 @@ namespace Velvet
             if (binding.Host != null && binding.RepaintTick == null)
             {
                 binding.RepaintTick = element.schedule
-                    .Execute(() => OnRepaintTick(element, binding))
+                    .Execute((TimerState ts) => OnRepaintTick(element, binding, ts.deltaTime / 1000f))
                     .Every(SceneViewDriver.RepaintIntervalMs);
             }
             else if (binding.Host == null)
@@ -350,18 +369,44 @@ namespace Velvet
             }
         }
 
-        private static void OnRepaintTick(VisualElement element, ParticlesBinding binding)
+        private static void OnRepaintTick(VisualElement element, ParticlesBinding binding, float dt)
         {
             var host = binding.Host;
             // A drained simulation — a finished burst, a stopped Manual host, a host killed by a scene
             // unload — must not keep dirtying the element at tick rate forever: park the tick (Sync
             // and Play() re-arm it) after one final dirty, so the last live frame's quads are
-            // regenerated away instead of lingering.
-            if (host == null || !host.IsAlive(true))
+            // regenerated away instead of lingering. Root-only liveness: the draw samples only the
+            // root's particles, so a longer-lived child sub-emitter must not hold the tick open after
+            // the drawn output is already empty.
+            if (host == null || !host.IsAlive(false) || (binding.LogicallyPlaying && EditorSimulationDrained(host)))
             {
                 StopRepaintTick(binding);
             }
+            else if (!Application.isPlaying && binding.LogicallyPlaying && dt > 0f)
+            {
+                // Outside Play Mode the engine never steps a particle system's clock on its own, so an
+                // editor-context panel (preview tooling, EditMode fixtures) would repaint one frozen
+                // frame forever. Advance the hidden host by the tick's real elapsed time, clamped the
+                // way frame deltas are clamped; children advance in step for coherence even though
+                // only the root is drawn.
+                host.Simulate(Mathf.Min(dt, Time.maximumDeltaTime), withChildren: true, restart: false, fixedTimeStep: false);
+            }
             element.MarkDirtyRepaint();
+        }
+
+        // The editor-side twin of the IsAlive park above: a Simulate()-driven system is left PAUSED,
+        // and a paused system reads IsAlive forever (it never transitions to stopped on its own, and
+        // its clock clamps at the end of a non-looping timeline), so "drained" is derived directly —
+        // a non-looping root whose clock reached its end with no live particles has nothing left to
+        // draw or emit. Root-only on purpose, like the draw.
+        private static bool EditorSimulationDrained(ParticleSystem host)
+        {
+            if (Application.isPlaying)
+            {
+                return false;
+            }
+            var main = host.main;
+            return !main.loop && host.particleCount == 0 && host.time >= main.duration;
         }
 
         private static void StopRepaintTick(ParticlesBinding binding)
