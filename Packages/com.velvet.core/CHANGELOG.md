@@ -12,7 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `V.Portal(layer:)`: framework-managed screen-space layer panels (`UILayer.Background` /
   `Overlay` / `Topmost`) sorted around the app's main panel — one host per layer per mounted
   tree, created lazily, copying the declaring panel's theme and scale when resolvable,
-  destroyed with the tree. Portal semantics unchanged: context and state cross the logical boundary; events,
+  destroyed with the tree, and kept in sync with the declaring panel's settings. The shared
+  portal semantics apply: context and state cross the logical boundary; events,
   relational variants and focus-within do not, and responsive breakpoints evaluate per panel.
 - `V.WorldSpace(position, rotation, panelSize)`: children rendered into a framework-owned
   world-space panel positioned by a scene transform — depth-tested against scene geometry (the
@@ -50,6 +51,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`hover:filter-[dissolve:0.9]` restores the base arguments on hover-off) and the same
   transition behavior as any other filter change. A filters guide
   (`Documentation~/styling-filters.md`) documents the built-in utilities and the registry.
+
+### Fixed
+
+- `V.Portal(targetId:)` target lifecycle: a live portal keeps the target its children mounted
+  into when the id is re-registered (re-registration routes future portals only), and a portal
+  mounted before its target registered heals on its next patch and records the healed target —
+  previously a re-registration could diff one portal's slot range against another element's
+  children, and a healed mount could leak its cleanup.
+- Deferred portal mounts whose subtree rolled back before the drain (a suspended Suspense
+  primary, an interrupted pass) are skipped instead of mounting content for a subtree that no
+  longer exists.
+- An error boundary's abort no longer discards the layer/world-space portal mounts its own
+  fallback enqueued in the same pass — an error toast rendered by a fallback now reaches its
+  layer — while the failed subtree's pending portals still never mount.
+- `Hooks.UseFrame` ticks once per frame (a fixed 16 ms interval previously skipped frames above
+  ~60 FPS) and contains callback exceptions the way effects do: routed to the nearest error
+  boundary instead of escaping into the panel's scheduler update.
+- `V.SceneView`: class-driven backgrounds (gradients, `bg-[addr:…]`) and `styles:` posters no
+  longer clobber a live camera feed — the camera owns the background while its texture is
+  live, other writers defer and are restored on release; a `camera.targetTexture` reassigned
+  by user code survives layout-driven resyncs, not just unmount; the texture-size ceiling
+  preserves the aspect; and a pixel-density change re-derives the texture on editor panels.
+- `V.Particles` simulates outside Play Mode (editor preview panels previously repainted one
+  frozen frame), parks its repaint tick on the drawn root's own liveness, and rate-limits its
+  advisories per source name so an unstable effect reference cannot repeat them per rebuild.
+- Layer and world-space hosts re-copy the declaring panel's configuration when it changes at
+  runtime (theme swaps, scale changes, the ConstantPhysicalSize DPI pair) and survive a scene
+  unload killing a host: patches skip dead records instead of throwing out of the pass.
 
 ## [1.2.0] - 2026-07-12
 

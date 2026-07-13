@@ -67,17 +67,18 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Sets the element's inline <c>backgroundImage</c> from the given Texture2D.
+        /// Sets the element's inline <c>backgroundImage</c> from the given Texture2D, through the
+        /// SceneView ownership gate (a live camera feed keeps the slot and defers this value).
         /// </summary>
         public static void Apply(VisualElement element, Texture2D? texture)
         {
-            element.style.backgroundImage = new StyleBackground(texture);
+            SceneViewElement.WriteBackground(element, new StyleBackground(texture));
         }
 
-        /// <summary>Reverts the inline background-image to the USS default.</summary>
+        /// <summary>Reverts the inline background-image to the USS default (same gate as Apply).</summary>
         public static void Clear(VisualElement element)
         {
-            element.style.backgroundImage = new StyleBackground(StyleKeyword.Null);
+            SceneViewElement.WriteBackground(element, new StyleBackground(StyleKeyword.Null));
         }
     }
 }

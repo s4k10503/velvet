@@ -535,16 +535,17 @@ namespace Velvet
             if (newNode.Layer is { } layer)
             {
                 // The per-layer framework host was created when the mount drained and persists
-                // until reconciler disposal, so a patch resolves it from the table.
-                target = _ctx.LayerHosts.TryGetValue(layer, out var layerHost)
-                    ? layerHost.Document.rootVisualElement
-                    : null;
+                // until reconciler disposal, so a patch resolves it from the table. A record whose
+                // GameObject a scene unload killed reads as dead here and counts as missing.
                 describe = layer.ToString();
-                if (target == null)
+                if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost) || layerHost.Document == null)
                 {
                     FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
                     return;
                 }
+                // Recurring re-sync point for late declaring resolution and runtime drift.
+                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
+                target = layerHost.Document.rootVisualElement;
             }
             else
             {
@@ -583,6 +584,21 @@ namespace Velvet
                 FiberLogger.LogError("WorldSpace", "Host record missing for a world-space placeholder. Patch skipped.");
                 return;
             }
+            if (record.Document == null)
+            {
+                // A scene unload can kill the host GameObject while the owning fiber tree survives
+                // (a persistent root anchoring per-scene world-space UI). Patching a dead document
+                // would throw out of the whole reconcile pass, so every patch skips it on this same
+                // warning path — the record stays so later patches keep landing here rather than
+                // degrading into the missing-record corruption error (mirrors the layer flavor);
+                // remount the world-space node to rebuild its host.
+                FiberLogger.LogWarning("WorldSpace",
+                    "Host died externally (scene unload?). Patch skipped; remount the world-space node to rebuild its host.");
+                return;
+            }
+            // Recurring re-sync point for late declaring resolution and runtime drift (null layer:
+            // world-space panels depth-sort in the scene, not by sorting order).
+            PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
 
             if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
             {
@@ -632,7 +648,7 @@ namespace Velvet
             // grouping, the eventual cleanup, and the has-variant portal-target sweep all see where
             // the children actually live. For an already-recorded portal this rewrites the same
             // reference.
-            _ctx.PortalState[placeholder] = prevState with { Target = target, Children = newChildren, SlotLength = newSlotLength };
+            _ctx.PortalState[placeholder] = prevState with { Target = target, SlotLength = newSlotLength };
 
             PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, prevState.SlotStart, delta, placeholder);
         }
@@ -689,22 +705,28 @@ namespace Velvet
 
             const int linearThreshold = 8;
             var removedArbitrary = oldClasses.Length <= linearThreshold && newClasses.Length <= linearThreshold
-                ? DiffClassListLinear(element, oldClasses, newClasses)
-                : DiffClassListWithHashSet(element, oldClasses, newClasses);
+                ? DiffClassListLinear(element, oldClasses, newClasses, out var removedFilterFamily)
+                : DiffClassListWithHashSet(element, oldClasses, newClasses, out removedFilterFamily);
 
             // Arbitrary values are cleared per property, so removing a value of the same property
             // also clears any other values that should have remained.
-            // Reapply the arbitrary values from the new list only when a removal occurred to preserve consistency.
+            // Reapply the arbitrary values from the new list only when a removal occurred to preserve
+            // consistency. Filter-family survivors are exempt unless a filter-family token itself was
+            // removed: other properties' clears never touch their per-name layers and every real filter
+            // mutation recomposes inline during the diff, so re-resolving survivors here would only
+            // repeat registry lookups to rebuild an identical composed list.
             if (removedArbitrary)
             {
-                ReapplyArbitraryValues(element, newClasses);
+                ReapplyArbitraryValues(element, newClasses, skipFilterFamily: !removedFilterFamily);
             }
             return true;
         }
 
         // Re-asserts the class list's inline-resolved (arbitrary / preset) values. Shared with the
-        // wrapper element appliers, which call it after detaching a motion that owned a shared inline slot.
-        internal static void ReapplyArbitraryValues(VisualElement element, string[] classes)
+        // wrapper element appliers, which call it after detaching a motion that owned a shared inline
+        // slot. skipFilterFamily exempts composed-filter tokens for callers that know no filter layer
+        // was disturbed (the class-diff reapply); full-scrub callers keep the default full pass.
+        internal static void ReapplyArbitraryValues(VisualElement element, string[] classes, bool skipFilterFamily = false)
         {
             foreach (var rawCls in classes)
             {
@@ -720,6 +742,10 @@ namespace Velvet
                 // Strip the important bang so it reapplies on the same Important layer AddClass used.
                 var cls = StyleArbitraryValueResolver.StripImportant(rawCls, out var important);
                 if (!StyleArbitraryValueResolver.IsInlineResolved(cls))
+                {
+                    continue;
+                }
+                if (skipFilterFamily && StyleArbitraryValueResolver.IsFilterFamilyToken(cls))
                 {
                     continue;
                 }
@@ -748,9 +774,10 @@ namespace Velvet
             return true;
         }
 
-        private static bool DiffClassListLinear(VisualElement element, string[] oldClasses, string[] newClasses)
+        private static bool DiffClassListLinear(VisualElement element, string[] oldClasses, string[] newClasses, out bool removedFilterFamily)
         {
             var removedArbitrary = false;
+            removedFilterFamily = false;
             foreach (var cls in oldClasses)
             {
                 if (string.IsNullOrEmpty(cls))
@@ -769,6 +796,7 @@ namespace Velvet
                     if (StyleArbitraryValueResolver.IsInlineResolved(core))
                     {
                         removedArbitrary = true;
+                        removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                     }
 
                     RemoveClass(element, cls);
@@ -794,9 +822,10 @@ namespace Velvet
             return removedArbitrary;
         }
 
-        private bool DiffClassListWithHashSet(VisualElement element, string[] oldClasses, string[] newClasses)
+        private bool DiffClassListWithHashSet(VisualElement element, string[] oldClasses, string[] newClasses, out bool removedFilterFamily)
         {
             var removedArbitrary = false;
+            removedFilterFamily = false;
 
             // Rent from the pool to make this re-entrant-safe.
             // Even along the path PatchElement → DiffClassList → PatchCommon → Reconcile (recursive)
@@ -816,6 +845,7 @@ namespace Velvet
                         if (StyleArbitraryValueResolver.IsInlineResolved(core))
                         {
                             removedArbitrary = true;
+                            removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                         }
 
                         RemoveClass(element, cls);
@@ -1055,13 +1085,12 @@ namespace Velvet
             oldStyles ??= StyleOverrides.Empty;
             newStyles ??= StyleOverrides.Empty;
 
-            // The SceneView driver owns backgroundImage while a binding is live (the camera texture is
-            // shown through it), so a StyleOverrides change must not blank the running feed — a poster
-            // passed through styles shows only until the camera texture arrives.
-            if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage)
-                && !_ctx.SceneViewBindings.ContainsKey(element))
+            // Routed through the SceneView ownership gate: while a live camera texture owns the slot
+            // the poster is deferred (and restored on release); with no live texture — no camera yet,
+            // camera removed, plain elements — the write lands directly.
+            if (!Equals(oldStyles.BackgroundImage, newStyles.BackgroundImage))
             {
-                element.style.backgroundImage = newStyles.BackgroundImage ?? StyleKeyword.Null;
+                SceneViewElement.WriteBackground(element, newStyles.BackgroundImage ?? StyleKeyword.Null);
             }
 
             if (!Equals(oldStyles.BackgroundColor, newStyles.BackgroundColor))

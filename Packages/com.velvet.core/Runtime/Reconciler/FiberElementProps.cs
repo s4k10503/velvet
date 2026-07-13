@@ -113,19 +113,60 @@ namespace Velvet
     /// <summary>
     /// The camera a SceneView element displays, plus its render-resolution policy. The framework owns
     /// the RenderTexture: it is created at the element's laid-out pixel size (times
-    /// <paramref name="ResolutionScale"/>), follows geometry changes, and is released on unmount.
+    /// <see cref="ResolutionScale"/>), follows geometry changes, and is released on unmount.
+    /// The constructor fail-fasts on a non-positive or NaN scale so every construction path (the
+    /// factory, wrapper hosts, direct construction) shares one guard; a <c>with</c> expression
+    /// bypasses it like any record init.
     /// </summary>
-    public sealed record SceneViewSettings(
-        Camera? Camera = null,
-        float ResolutionScale = 1f);
+    public sealed record SceneViewSettings
+    {
+        public Camera? Camera { get; init; }
+        public float ResolutionScale { get; init; } = 1f;
+
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="resolutionScale"/> is &lt;= 0 or NaN.</exception>
+        public SceneViewSettings(Camera? camera = null, float resolutionScale = 1f)
+        {
+            Camera = camera;
+            ResolutionScale = VelvetArgUtil.RequirePositiveFinite(resolutionScale, nameof(resolutionScale),
+                "resolutionScale must be greater than 0.");
+        }
+    }
 
     /// <summary>
     /// The particle effect a Particles element simulates and draws: the source effect (a prefab's
     /// ParticleSystem — the framework instantiates a hidden simulation host from it and owns that
     /// instance), the play trigger, and the world-unit → element-pixel mapping.
+    /// The constructor fail-fasts on a non-positive or NaN mapping so every construction path shares
+    /// one guard; a <c>with</c> expression bypasses it like any record init.
     /// </summary>
-    public sealed record ParticlesSettings(
-        ParticleSystem? Effect = null,
-        PlayTrigger PlayOn = PlayTrigger.Mount,
-        float PixelsPerUnit = 100f);
+    public sealed record ParticlesSettings
+    {
+        public ParticleSystem? Effect { get; init; }
+        public PlayTrigger PlayOn { get; init; } = PlayTrigger.Mount;
+        public float PixelsPerUnit { get; init; } = 100f;
+
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="pixelsPerUnit"/> is &lt;= 0 or NaN.</exception>
+        public ParticlesSettings(ParticleSystem? effect = null, PlayTrigger playOn = PlayTrigger.Mount, float pixelsPerUnit = 100f)
+        {
+            Effect = effect;
+            PlayOn = playOn;
+            PixelsPerUnit = VelvetArgUtil.RequirePositiveFinite(pixelsPerUnit, nameof(pixelsPerUnit),
+                "pixelsPerUnit must be positive; it maps particle world units to element pixels.");
+        }
+    }
+
+    // Shared numeric precondition for the settings records above: several element factories carry a
+    // positive-finite float knob, and each duplicating its own NaN-safe check invites drift.
+    internal static class VelvetArgUtil
+    {
+        internal static float RequirePositiveFinite(float value, string paramName, string message)
+        {
+            // The negated > comparison catches NaN too.
+            if (!(value > 0f))
+            {
+                throw new System.ArgumentOutOfRangeException(paramName, message);
+            }
+            return value;
+        }
+    }
 }

@@ -35,6 +35,7 @@ namespace Velvet.Tests
             s_minDt = float.MaxValue;
             s_maxDt = 0f;
             s_observedValue = -1;
+            s_fallbackShown = false;
             yield break;
         }
 
@@ -187,6 +188,42 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_calls, Is.EqualTo(callsAtUnmount));
+        }
+
+        private static bool s_fallbackShown;
+
+        [Component]
+        private static VNode ThrowingFrameHost()
+        {
+            Hooks.UseFrame(_ => throw new System.InvalidOperationException("frame boom"));
+            return V.Div(className: "w-[10px] h-[10px]");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode FrameBoundary()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_fallbackShown = true;
+                return V.Div(name: "frame-fallback");
+            });
+            return V.Component(ThrowingFrameHost, key: "thrower");
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AThrowingFrameCallback_When_ABoundaryWraps_Then_TheFallbackRenders()
+        {
+            // Arrange
+            var root = CreatePanelRoot();
+            yield return null;
+
+            // Act
+            _mounted = V.Mount(root, V.Component(FrameBoundary, key: "root"));
+            yield return WaitRealtime(0.5);
+
+            // Assert — a frame-callback exception routes to the nearest error boundary the way effect
+            // exceptions do, instead of escaping into the panel's scheduler update.
+            Assert.That(s_fallbackShown, Is.True);
         }
     }
 }

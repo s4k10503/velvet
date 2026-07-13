@@ -30,8 +30,10 @@ all three forms:
 
 The framework owns one host panel per `UILayer` per mounted tree, created lazily on first use
 and destroyed with the tree. When the declaring panel's settings are resolvable (a runtime
-`UIDocument` panel), the host copies its theme, scaling and text settings and sorts around it;
-a declaring panel without resolvable settings (an editor-hosted or headless root) gets an
+`UIDocument` panel), the host copies its theme, scaling (the DPI pair included) and text
+settings and sorts around it — and keeps them in sync: a runtime change on the declaring
+panel (a theme swap, a scale flip) re-copies on the next pass that touches the portal. A
+declaring panel without resolvable settings (an editor-hosted or headless root) gets an
 empty runtime theme instead — native-control default visuals come from a theme, so declare
 layers from a themed panel when those matter. The host object itself is hidden from the
 Hierarchy (a framework-owned `UIDocument` host, like every other framework host):
@@ -45,7 +47,14 @@ Hierarchy (a framework-owned `UIDocument` host, like every other framework host)
 One engine fact bounds this feature: **a screen-space panel always composites over the 3D
 scene** — the compositor draws overlay panels after cameras, and `sortingOrder` only orders
 panels among themselves. UI that must sit *among or behind scene geometry* is world-space
-territory:
+territory.
+
+Two operational notes: layer order anchors to the **declaring panel's** `sortingOrder`
+(base −100 / +100 / +200), so two mounted trees whose main panels share a `sortingOrder`
+produce layers that tie across the apps — give each main panel its own base when several run
+side by side. And a host panel killed externally (a scene unload tearing down framework
+objects) is replaced the next time a portal mounts on that layer; portals already mounted
+into the dead host need a remount.
 
 ## World space: `V.WorldSpace`
 
@@ -62,3 +71,7 @@ host; `panelSize` is the panel's virtual resolution in pixels.
 
 **Display-only for now**: world-space input routing (picking, focus) is not wired — treat
 these panels as output. Interactive world-space UI is a separate milestone.
+
+A world-space host follows the same declaring-panel sync as the layers, and a host destroyed
+externally (a scene unload) is skipped safely on later patches — remount the `V.WorldSpace`
+node to rebuild it.
