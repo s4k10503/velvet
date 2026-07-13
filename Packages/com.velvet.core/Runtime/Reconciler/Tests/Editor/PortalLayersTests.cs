@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -427,6 +428,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(NewDocs().Count, Is.EqualTo(0));
+        }
+
+        #endregion
+
+        #region Host resilience
+
+        [Test]
+        public void Given_AHostKilledExternally_When_TheWorldSpacePatches_Then_TheReconcileSurvives()
+        {
+            // Arrange — a scene unload can destroy the host GameObject while the owning fiber tree
+            // survives; the next patch must skip the dead record instead of throwing out of the pass.
+            MountAndLayout(V.Component(MovingWorldSpaceHost, key: "root"));
+            var docs = NewDocs();
+            Assume.That(docs.Count, Is.EqualTo(1), "Precondition: the world-space host exists");
+            LogAssert.Expect(LogType.Warning, new Regex("died externally", RegexOptions.IgnoreCase));
+            Object.DestroyImmediate(docs[0].gameObject);
+
+            // Act & Assert
+            Assert.That(() =>
+            {
+                s_setFlag.Invoke(true);
+                FlushAndLayout();
+            }, Throws.Nothing);
         }
 
         #endregion

@@ -5,29 +5,26 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // A framework-owned host panel backing a layer portal or a world-space node. The UIDocument is
-    // the one stored handle — the GameObject and PanelSettings derive from it — and CreatedTheme is
-    // the empty theme created when no declaring theme was resolvable (tracked so disposal destroys
-    // exactly what was created). BaseOrder is the sorting base the host was anchored to, recorded so
-    // a portal declared INSIDE this host anchors to the SAME base instead of compounding this host's
-    // own layer offset on top. DeclaringResolved is false while the host was configured from
-    // defaults because no declaring panel settings were resolvable yet; a later drain that touches
-    // the host retries the resolution and re-copies once. Held in ReconcilerContext.LayerHosts /
-    // WorldSpaceBindings; destroyed by FiberElementCleaner (world-space, with its placeholder) and
-    // the reconciler dispose sweep.
+    // the one stored handle — the GameObject and PanelSettings derive from it. BaseOrder is the
+    // sorting base the host was anchored to, recorded so a portal declared INSIDE this host anchors
+    // to the SAME base instead of compounding this host's own layer offset on top.
+    // DeclaringResolved is false while the host was configured from defaults because no declaring
+    // panel settings were resolvable yet; the passes that touch the host keep re-syncing through
+    // PanelHostFactory.SyncDeclaring (late resolution and runtime drift alike). Held in
+    // ReconcilerContext.LayerHosts / WorldSpaceBindings; destroyed by FiberElementCleaner
+    // (world-space, with its placeholder) and the reconciler dispose sweep.
     internal sealed class PanelHostRecord
     {
         public readonly UIDocument Document;
-        public readonly ThemeStyleSheet? CreatedTheme;
         public float BaseOrder;
         public bool DeclaringResolved;
 
         public GameObject? Host => Document != null ? Document.gameObject : null;
         public PanelSettings? Settings => Document != null ? Document.panelSettings : null;
 
-        public PanelHostRecord(UIDocument document, ThemeStyleSheet? createdTheme)
+        public PanelHostRecord(UIDocument document)
         {
             Document = document;
-            CreatedTheme = createdTheme;
         }
     }
 
@@ -49,6 +46,27 @@ namespace Velvet
             UILayer.Topmost => TopmostSortingOffset,
             _ => OverlaySortingOffset,
         };
+
+        // One empty theme shared by every host whose declaring panel resolves none: panel creation
+        // warns loudly about a missing theme, and per-host instances would pile up one
+        // ScriptableObject per host for identical default styling. Never destroyed (records do not
+        // own it); HideAndDontSave keeps it out of scenes and saves, and a domain reload simply
+        // recreates it on demand.
+        private static ThemeStyleSheet? s_sharedEmptyTheme;
+
+        private static ThemeStyleSheet SharedEmptyTheme
+        {
+            get
+            {
+                if (s_sharedEmptyTheme == null)
+                {
+                    s_sharedEmptyTheme = ScriptableObject.CreateInstance<ThemeStyleSheet>();
+                    s_sharedEmptyTheme.name = "VelvetSharedEmptyTheme";
+                    s_sharedEmptyTheme.hideFlags = HideFlags.HideAndDontSave;
+                }
+                return s_sharedEmptyTheme;
+            }
+        }
 
         // One screen-space host panel for a UILayer, sorted around the resolved base order.
         public static PanelHostRecord CreateLayerHost(UILayer layer, IPanel? declaringPanel, ReconcilerContext ctx)
@@ -85,12 +103,14 @@ namespace Velvet
             return record;
         }
 
-        // A host created while the declaring panel was unresolvable (a headless mount, a panel that
-        // gained settings later) keeps defaults and base 0 otherwise: retry the resolution and
-        // re-copy the declaring configuration — theme, scaling, text settings and sorting — the
-        // first time it resolves. The empty created theme is superseded on the settings but still
-        // destroyed with the record, so nothing leaks either way.
-        public static void TryUpgradeDeclaring(PanelHostRecord record, UILayer layer, IPanel? declaringPanel, ReconcilerContext ctx)
+        // Late resolution and runtime drift, handled at one recurring re-sync point: a host created
+        // while the declaring panel was unresolvable (a headless mount, a panel that gained settings
+        // later) keeps defaults until the first resolution lands here, and an already-resolved host
+        // re-copies whenever the declaring panel's settings were mutated at runtime (a theme swap, a
+        // scale change) — the copy is a snapshot, so the passes that touch the host re-check it.
+        // Layer hosts also re-anchor their sorting; world-space callers pass null (their panels
+        // depth-sort in the scene, not by sorting order).
+        public static void SyncDeclaring(PanelHostRecord record, UILayer? layer, IPanel? declaringPanel, ReconcilerContext ctx)
         {
             var (declaring, baseOrder) = ResolveDeclaring(declaringPanel, ctx);
             var settings = record.Settings;
@@ -98,10 +118,35 @@ namespace Velvet
             {
                 return;
             }
+            if (record.DeclaringResolved && !DeclaringDrifted(declaring, settings))
+            {
+                return;
+            }
             CopyDeclaringSettings(declaring, settings);
             record.BaseOrder = baseOrder;
             record.DeclaringResolved = true;
-            settings.sortingOrder = baseOrder + SortingOffset(layer);
+            if (layer is { } resolvedLayer)
+            {
+                settings.sortingOrder = baseOrder + SortingOffset(resolvedLayer);
+            }
+        }
+
+        // The drift probe mirroring CopyDeclaringSettings field-for-field. The theme compares
+        // against the shared empty fallback when the declaring panel carries none, so a themeless
+        // declaring panel does not read as perpetually drifted.
+        private static bool DeclaringDrifted(PanelSettings from, PanelSettings to)
+        {
+            var expectedTheme = from.themeStyleSheet != null ? from.themeStyleSheet : s_sharedEmptyTheme;
+            return (expectedTheme != null && to.themeStyleSheet != expectedTheme)
+                || to.scaleMode != from.scaleMode
+                || to.scale != from.scale
+                || to.referenceResolution != from.referenceResolution
+                || to.screenMatchMode != from.screenMatchMode
+                || to.match != from.match
+                || to.referenceDpi != from.referenceDpi
+                || to.fallbackDpi != from.fallbackDpi
+                || to.textSettings != from.textSettings
+                || to.targetDisplay != from.targetDisplay;
         }
 
         // The shared skeleton: the hidden GameObject + document + a runtime PanelSettings carrying
@@ -118,16 +163,14 @@ namespace Velvet
             {
                 CopyDeclaringSettings(declaring, settings);
             }
-            ThemeStyleSheet? createdTheme = null;
             if (settings.themeStyleSheet == null)
             {
                 // No resolvable theme (a headless declaring panel, or one whose settings carry
-                // none): panel creation warns loudly about a missing theme, so hand it an empty
-                // runtime-created one — default styling, quiet creation.
-                createdTheme = ScriptableObject.CreateInstance<ThemeStyleSheet>();
-                settings.themeStyleSheet = createdTheme;
+                // none): panel creation warns loudly about a missing theme, so hand it the shared
+                // empty one — default styling, quiet creation.
+                settings.themeStyleSheet = SharedEmptyTheme;
             }
-            return (new PanelHostRecord(document, createdTheme), settings);
+            return (new PanelHostRecord(document), settings);
         }
 
         // Assigning panelSettings is the attach: it inserts the document's root into the settings'
@@ -135,15 +178,19 @@ namespace Velvet
         private static void AttachDocument(UIDocument document, PanelSettings settings)
             => document.panelSettings = settings;
 
-        // The base configuration a host copies from the panel its portal was declared on.
+        // The base configuration a host copies from the panel its portal was declared on. The shared
+        // empty theme stands in when the declaring panel carries none — writing a null theme
+        // through would re-trigger the loud missing-theme warning on the live panel.
         private static void CopyDeclaringSettings(PanelSettings from, PanelSettings to)
         {
-            to.themeStyleSheet = from.themeStyleSheet;
+            to.themeStyleSheet = from.themeStyleSheet != null ? from.themeStyleSheet : SharedEmptyTheme;
             to.scaleMode = from.scaleMode;
             to.scale = from.scale;
             to.referenceResolution = from.referenceResolution;
             to.screenMatchMode = from.screenMatchMode;
             to.match = from.match;
+            to.referenceDpi = from.referenceDpi;
+            to.fallbackDpi = from.fallbackDpi;
             to.textSettings = from.textSettings;
             to.targetDisplay = from.targetDisplay;
         }
@@ -155,8 +202,8 @@ namespace Velvet
         // is reused as the base — a Background portal declared inside a Topmost host must still
         // sort against the ORIGINAL panel rather than compound the Topmost offset. Successful
         // resolutions are cached per declaring panel (one scan per distinct panel per reconciler);
-        // failures are NOT cached, so a panel that gains a driving document later resolves on retry
-        // (the late-declaring upgrade path).
+        // failures are remembered only for the current top-level pass, so a panel that gains a
+        // driving document later still resolves on a later pass (the late-declaring upgrade path).
         private static (PanelSettings? Settings, float BaseOrder) ResolveDeclaring(IPanel? declaringPanel, ReconcilerContext ctx)
         {
             if (declaringPanel == null)
@@ -166,6 +213,10 @@ namespace Velvet
             if (ctx.DeclaringSettingsCache.TryGetValue(declaringPanel, out var cached))
             {
                 return cached;
+            }
+            if (ctx.DeclaringResolveMisses.Contains(declaringPanel))
+            {
+                return (null, 0f);
             }
             foreach (var document in Resources.FindObjectsOfTypeAll<UIDocument>())
             {
@@ -193,6 +244,7 @@ namespace Velvet
                 ctx.DeclaringSettingsCache[declaringPanel] = result;
                 return result;
             }
+            ctx.DeclaringResolveMisses.Add(declaringPanel);
             return (null, 0f);
         }
 
@@ -211,10 +263,6 @@ namespace Velvet
             if (settings != null)
             {
                 VelvetObjectUtil.Destroy(settings);
-            }
-            if (record.CreatedTheme != null)
-            {
-                VelvetObjectUtil.Destroy(record.CreatedTheme);
             }
         }
     }

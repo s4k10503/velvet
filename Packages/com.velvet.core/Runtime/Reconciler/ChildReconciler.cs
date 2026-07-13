@@ -168,17 +168,20 @@ namespace Velvet
                 {
                     case PortalNode { Layer: { } layer } layerPortal:
                     {
-                        if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost))
+                        if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost)
+                            || layerHost.Document == null)
                         {
+                            // Also lands here when a scene unload killed a previously created host:
+                            // the dead record is replaced so new portals mount into a live panel.
                             layerHost = PanelHostFactory.CreateLayerHost(layer, placeholder.panel, _ctx);
                             _ctx.LayerHosts[layer] = layerHost;
                         }
-                        else if (!layerHost.DeclaringResolved)
+                        else
                         {
-                            // The host was configured from defaults because no declaring settings
-                            // were resolvable at creation; a later drain touching the layer is the
-                            // retry point (the declaring panel may have gained its document since).
-                            PanelHostFactory.TryUpgradeDeclaring(layerHost, layer, placeholder.panel, _ctx);
+                            // The copy of the declaring configuration is a snapshot: this drain is a
+                            // recurring touch point, so late resolution and runtime drift both
+                            // re-sync here.
+                            PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                         }
                         target = layerHost.Document.rootVisualElement;
                         children = layerPortal.Children ?? Array.Empty<VNode>();

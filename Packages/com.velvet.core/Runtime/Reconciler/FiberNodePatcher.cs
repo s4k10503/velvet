@@ -535,16 +535,18 @@ namespace Velvet
             if (newNode.Layer is { } layer)
             {
                 // The per-layer framework host was created when the mount drained and persists
-                // until reconciler disposal, so a patch resolves it from the table.
-                target = _ctx.LayerHosts.TryGetValue(layer, out var layerHost)
-                    ? layerHost.Document.rootVisualElement
-                    : null;
+                // until reconciler disposal, so a patch resolves it from the table. A record whose
+                // GameObject a scene unload killed reads as dead here and counts as missing.
                 describe = layer.ToString();
-                if (target == null)
+                if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost) || layerHost.Document == null)
                 {
                     FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
                     return;
                 }
+                // The copy of the declaring configuration is a snapshot: this patch is a recurring
+                // touch point, so late resolution and runtime drift both re-sync here.
+                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
+                target = layerHost.Document.rootVisualElement;
             }
             else
             {
@@ -583,6 +585,21 @@ namespace Velvet
                 FiberLogger.LogError("WorldSpace", "Host record missing for a world-space placeholder. Patch skipped.");
                 return;
             }
+            if (record.Document == null)
+            {
+                // A scene unload can kill the host GameObject while the owning fiber tree survives
+                // (a persistent root anchoring per-scene world-space UI). Patching a dead document
+                // would throw out of the whole reconcile pass; drop the record instead — the
+                // children need a remount of the world-space node to rebuild a host.
+                _ctx.WorldSpaceBindings.Remove(placeholder);
+                FiberLogger.LogWarning("WorldSpace",
+                    "Host died externally (scene unload?). Patch skipped and the record dropped; remount the world-space node to rebuild its host.");
+                return;
+            }
+            // The copy of the declaring configuration is a snapshot: this patch is the recurring
+            // touch point, so late resolution and runtime drift both re-sync here (null layer —
+            // world-space panels depth-sort in the scene, not by sorting order).
+            PanelHostFactory.SyncDeclaring(record, null, placeholder.panel, _ctx);
 
             if (oldNode.Position != newNode.Position || oldNode.Rotation != newNode.Rotation)
             {

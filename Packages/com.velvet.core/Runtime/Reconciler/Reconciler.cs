@@ -186,6 +186,9 @@ namespace Velvet
                         // the same way.
                         _ctx.PendingPortalMounts.Clear();
                         _ctx.IsAborted = false;
+                        // Declaring-resolution misses are scoped to one top-level pass: retrying the
+                        // scan next pass is what lets a late-arriving declaring panel resolve.
+                        _ctx.DeclaringResolveMisses.Clear();
                         // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
                         // per render, so unconsumed entries would otherwise accumulate across renders.
                         _ctx.EffectiveKeys.Clear();

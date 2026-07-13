@@ -370,6 +370,13 @@ namespace Velvet
         // resolutions land here — a miss must stay retryable for the late-declaring upgrade.
         public Dictionary<IPanel, (PanelSettings Settings, float BaseOrder)> DeclaringSettingsCache { get; } = new();
 
+        // Declaring panels whose resolution MISSED during the current top-level pass. A miss means a
+        // full FindObjectsOfTypeAll scan found nothing, and every further host mount in the same
+        // pass would repeat that scan for the same answer; the set clears at the top-level boundary
+        // so a panel that gains a driving document later still resolves on the next pass (the
+        // late-declaring upgrade path).
+        public HashSet<IPanel> DeclaringResolveMisses { get; } = new();
+
         // Inline-mounted ComponentFiber whose insertion / layout effect commit is deferred to the
         // post-commit drain. The DOM mutation + ref attachment must complete before layout effect
         // setup runs. Velvet's inline-mount path defers child reconcile via
