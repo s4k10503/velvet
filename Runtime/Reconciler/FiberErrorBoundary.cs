@@ -45,13 +45,6 @@ namespace Velvet
             return sb.ToString();
         }
 
-        // Known limitation: when the fallback's OWN content throws and IsShowingFallback declines the
-        // resulting re-entrant TryCatch (see below), that inner exception is resolved entirely inside the
-        // Reconcile call below via the ordinary per-fiber render catch + ComponentBoundarySearch — it never
-        // surfaces as a raw exception here. Reconcile returns normally either way, so this method reports
-        // success (and the caller marks the ORIGINAL exception caught) even on the sub-path where the
-        // fallback content itself failed and nothing meaningful ended up on screen for it. Verifying that
-        // sub-path's own success/failure would need a signal this method doesn't have — tracked separately.
         private static bool TryShowFallback(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception originalException)
         {
             if (fiber.Reconciler == null) return false;
@@ -78,8 +71,6 @@ namespace Velvet
             try
             {
                 fiber.Reconciler.Reconcile(fiber.MountPoint, fiber.PreviousTree ?? Array.Empty<VNode>(), fallbackTree);
-                FiberTreeReturn.ReturnPooledObjects(fiber.PreviousTree);
-                fiber.PreviousTree = fallbackTree;
             }
             catch (FiberSuspendSignal)
             {
@@ -94,7 +85,22 @@ namespace Velvet
                 FiberLogger.LogException("ErrorBoundary", reconcileEx);
                 return false;
             }
-            return true;
+            if (fiber.IsDisposed)
+            {
+                // An ancestor boundary's fallback (triggered by this fallback's own content failing, see
+                // FallbackContentFailed) already replaced this fiber's whole subtree while the Reconcile
+                // call above was in progress — nothing here to track bookkeeping for anymore.
+                return false;
+            }
+            FiberTreeReturn.ReturnPooledObjects(fiber.PreviousTree);
+            fiber.PreviousTree = fallbackTree;
+            // FallbackContentFailed is set when a re-entrant TryCatch above declined because THIS
+            // fiber's own fallback content threw (logged, or shown by a farther ancestor instead) — the
+            // Reconcile call still returns normally either way, so this is the only place that can tell
+            // "rendered cleanly" apart from "the content itself failed." When it failed, the ORIGINAL
+            // exception this attempt was responding to was never actually shown anything — report failure
+            // so the caller keeps propagating instead of falsely claiming success.
+            return !fiber.FallbackContentFailed;
         }
 
         // Attempts to display a fallback UI via this fiber's own RenderFallback; returns true on success.
@@ -113,10 +119,25 @@ namespace Velvet
             // A fiber whose own fallback content throws re-enters here (the content's per-fiber render
             // catch routes back to this same boundary via ComponentBoundarySearch.PropagateException).
             // Decline immediately rather than attempting to show the already-failing fallback again — the
-            // caller's propagation loop then continues to the next ancestor boundary on its own.
-            if (fiber.IsShowingFallback) return false;
+            // caller's propagation loop then continues to the next ancestor boundary on its own. Record it
+            // so the OUTER (non-reentrant) call in progress below can report failure for the exception it
+            // was actually handling, instead of the Reconcile call it's nested inside returning normally
+            // and looking like a clean render.
+            if (fiber.IsShowingFallback)
+            {
+                fiber.FallbackContentFailed = true;
+                return false;
+            }
+            // Captured now, while fiber.Reconciler is guaranteed non-null (just checked above), rather than
+            // re-read from fiber.Reconciler in the finally below: a cascading escalation triggered by this
+            // very attempt's fallback content can dispose fiber (nulling fiber.Reconciler) before the
+            // finally runs. FiberRenderer.PopFiber re-reads fiber.Reconciler and silently no-ops when it's
+            // null, which would permanently leak this push on the shared FiberStack — popping through the
+            // captured reference instead pops the same stack regardless of what happened to fiber meanwhile.
+            var fiberStack = fiber.Reconciler.Context.FiberStack;
             var fiberPushed = FiberRenderer.PushFiber(fiber);
             fiber.IsShowingFallback = true;
+            fiber.FallbackContentFailed = false;
             bool result;
             try
             {
@@ -125,7 +146,7 @@ namespace Velvet
             finally
             {
                 fiber.IsShowingFallback = false;
-                FiberRenderer.PopFiber(fiber, fiberPushed);
+                if (fiberPushed) fiberStack.Pop();
             }
             if (result)
             {

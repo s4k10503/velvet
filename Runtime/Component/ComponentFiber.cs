@@ -405,6 +405,16 @@ namespace Velvet
         internal bool IsShowingFallback { get; set; }
 
         /// <summary>
+        /// Set when this boundary's own fallback content throws while <see cref="IsShowingFallback"/> is
+        /// true (the re-entrant <see cref="FiberErrorBoundary.TryCatch"/> call this triggers declines and
+        /// records it here instead of recursing). Read once, immediately after the fallback's Reconcile
+        /// call returns, to tell "the fallback rendered cleanly" apart from "the fallback's own content
+        /// failed and was logged or escalated elsewhere" — both leave the Reconcile call itself returning
+        /// normally, so nothing else observes the difference. Reset before each fallback attempt.
+        /// </summary>
+        internal bool FallbackContentFailed { get; set; }
+
+        /// <summary>
         /// Calls <c>Set(null)</c> on every ref registered by <see cref="UseImperativeHandle"/>.
         /// Responsible for resetting the parent-side <c>Ref&lt;T&gt;.Current</c> to null.
         /// </summary>

@@ -85,6 +85,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AnimatePresence`'s `onExitComplete` no longer escapes into UI Toolkit's scheduler update
   when it throws: the exception is contained and routed to the nearest error boundary, and the
   ghost-drop re-render it sits beside still runs.
+- An error boundary whose own fallback content fails no longer falsely reports the original
+  exception as caught — it now correctly propagates to the next ancestor boundary, which no
+  longer stops short of that ancestor when the failed attempt disposed everything in between,
+  runs its fallback exactly once for the whole cascade rather than once per exception, and no
+  longer leaks a stale entry on the shared fiber stack when that disposal happens mid-attempt.
 
 ## [1.2.0] - 2026-07-12
 

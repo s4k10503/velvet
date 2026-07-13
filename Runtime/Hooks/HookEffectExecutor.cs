@@ -67,6 +67,11 @@ namespace Velvet
                 catch (Exception ex)
                 {
                     ComponentBoundarySearch.PropagateException(fiber, ex);
+                    // An error boundary's fallback can synchronously unmount fiber as part of handling ex
+                    // (the same re-entrancy HookEffectExecutor's own class comment already calls out for
+                    // RunCleanups). Stop running the remaining factories on it rather than standing up new
+                    // resources whose cleanup pass already ran and will never run again.
+                    if (fiber.IsDisposed) return;
                 }
             }
         }
