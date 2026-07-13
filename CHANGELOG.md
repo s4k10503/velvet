@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `V.Portal(layer:)`: framework-managed screen-space layer panels (`UILayer.Background` /
+  `Overlay` / `Topmost`) sorted around the app's main panel — one host per layer per mounted
+  tree, created lazily, copying the declaring panel's theme and scale when resolvable,
+  destroyed with the tree. Portal semantics unchanged: context and state cross the logical boundary; events,
+  relational variants and focus-within do not, and responsive breakpoints evaluate per panel.
+- `V.WorldSpace(position, rotation, panelSize)`: children rendered into a framework-owned
+  world-space panel positioned by a scene transform — depth-tested against scene geometry (the
+  screen-space layers always composite over the scene), following position/rotation updates,
+  destroyed on unmount. Display-only in this release (no world-space input routing). A portals
+  guide (`Documentation~/portals.md`) covers all three portal forms and the shared boundary
+  semantics.
+
 - `Hooks.UseFrame(dt => …)`: a per-frame callback (elapsed seconds) that runs while the
   component stays mounted and stops on unmount. The latest render's closure is always the one
   invoked — re-renders swap the callback without re-subscribing — so per-frame data flows

@@ -148,9 +148,65 @@ namespace Velvet
             HashSet<ComponentFiber>? childFibersBefore = null;
             while (_ctx.PendingPortalMounts.Count > 0)
             {
-                var (placeholder, portalNode, target, contextSnapshot) = _ctx.PendingPortalMounts.Dequeue();
-                var children = portalNode.Children ?? Array.Empty<VNode>();
-                var slotStart = target.childCount;
+                var (placeholder, node, target, contextSnapshot) = _ctx.PendingPortalMounts.Dequeue();
+                // A queue entry can outlive its placeholder: a Suspense primary that suspends rolls
+                // its created elements back as ORPHANS before this drain runs (the entry survives
+                // the rollback), and an ErrorBoundary abort mid-drain reaches the later entries
+                // with the pass already dead. Mounting would create — or populate — a host for a
+                // subtree that no longer exists, so skip without touching any host.
+                if (_ctx.IsAborted || placeholder.parent == null)
+                {
+                    continue;
+                }
+                // Resolve the deferred targets: a registry portal arrived with its target resolved
+                // at enqueue; a layer portal creates (or reuses) the per-layer framework host here,
+                // and a world-space node creates its per-instance host here — the placeholder is
+                // attached by now, so the declaring panel whose settings/theme the host copies is
+                // known.
+                VNode?[] children;
+                switch (node)
+                {
+                    case PortalNode { Layer: { } layer } layerPortal:
+                    {
+                        if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost))
+                        {
+                            layerHost = PanelHostFactory.CreateLayerHost(layer, placeholder.panel, _ctx);
+                            _ctx.LayerHosts[layer] = layerHost;
+                        }
+                        else if (!layerHost.DeclaringResolved)
+                        {
+                            // The host was configured from defaults because no declaring settings
+                            // were resolvable at creation; a later drain touching the layer is the
+                            // retry point (the declaring panel may have gained its document since).
+                            PanelHostFactory.TryUpgradeDeclaring(layerHost, layer, placeholder.panel, _ctx);
+                        }
+                        target = layerHost.Document.rootVisualElement;
+                        children = layerPortal.Children ?? Array.Empty<VNode>();
+                        break;
+                    }
+                    case WorldSpaceNode worldSpaceNode:
+                    {
+                        var record = PanelHostFactory.CreateWorldSpaceHost(worldSpaceNode, placeholder.panel, _ctx);
+                        _ctx.WorldSpaceBindings[placeholder] = record;
+                        target = record.Document.rootVisualElement;
+                        children = worldSpaceNode.Children ?? Array.Empty<VNode>();
+                        break;
+                    }
+                    case PortalNode registryPortal:
+                        // The target was resolved (non-null) at enqueue: the create path never
+                        // queues a registry portal without one.
+                        children = registryPortal.Children ?? Array.Empty<VNode>();
+                        break;
+                    default:
+                        // Only PortalNode / WorldSpaceNode enqueue deferred mounts; anything else is
+                        // a missing branch for a new node kind and must fail loudly rather than
+                        // mount nothing in silence.
+                        FiberLogger.LogWarning("Portal",
+                            $"Unsupported deferred host mount node: {node.GetType().Name}. Entry skipped.");
+                        continue;
+                }
+                var resolvedTarget = target!;
+                var slotStart = resolvedTarget.childCount;
                 // Restore the context that enclosed the Portal's tree position (captured at enqueue) so the
                 // children mount under their enclosing Providers / MotionContext rather than an empty cursor.
                 // The children's own reconcile pushes/pops on top of these and balances out, so popping the
@@ -179,7 +235,7 @@ namespace Velvet
                 }
                 try
                 {
-                    Reconcile(target, Array.Empty<VNode>(), children, slotStart: slotStart);
+                    Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
                 }
                 finally
                 {
@@ -201,8 +257,8 @@ namespace Velvet
                         f.DetachedMountContext = detachedContext;
                     }
                 }
-                var slotLength = target.childCount - slotStart;
-                _ctx.PortalState[placeholder] = new PortalSlotInfo(portalNode.TargetId, children, slotStart, slotLength);
+                var slotLength = resolvedTarget.childCount - slotStart;
+                _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, children, slotStart, slotLength);
             }
         }
 

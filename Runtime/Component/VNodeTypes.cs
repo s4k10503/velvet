@@ -247,10 +247,41 @@ namespace Velvet
     /// </summary>
     public sealed class PortalNode : VNode
     {
-        /// <summary>ID of the mount target registered in FiberPortalRegistry.</summary>
-        public required string TargetId { get; init; }
+        /// <summary>
+        /// ID of the mount target registered in FiberPortalRegistry. Null when the portal targets a
+        /// framework-managed layer panel instead (<see cref="Layer"/> is set) — exactly one of the two
+        /// is non-null.
+        /// </summary>
+        public string? TargetId { get; init; }
+
+        /// <summary>
+        /// Framework-managed screen-space layer panel this portal's children attach to (null for a
+        /// registry-target portal). One host panel exists per layer per reconciler, sorted around the
+        /// app's main panel, destroyed on reconciler disposal.
+        /// </summary>
+        public UILayer? Layer { get; init; }
 
         /// <summary>Array of child nodes to render at the mount target.</summary>
+        public VNode?[] Children { get; init; } = Array.Empty<VNode>();
+    }
+
+    /// <summary>
+    /// A portal into a framework-owned world-space panel positioned by a scene transform — UI that
+    /// lives among 3D content (depth-tested), unlike the always-on-top screen-space layers. Children
+    /// stay part of the logical tree (context crosses; events do not — the panel boundary is physical).
+    /// </summary>
+    public sealed class WorldSpaceNode : VNode
+    {
+        /// <summary>World position of the panel host.</summary>
+        public UnityEngine.Vector3 Position { get; init; }
+
+        /// <summary>World rotation of the panel host.</summary>
+        public UnityEngine.Quaternion Rotation { get; init; } = UnityEngine.Quaternion.identity;
+
+        /// <summary>Virtual panel resolution in pixels (the world-space size mode is fixed).</summary>
+        public UnityEngine.Vector2 PanelSize { get; init; } = new(1920f, 1080f);
+
+        /// <summary>Array of child nodes to render inside the world-space panel.</summary>
         public VNode?[] Children { get; init; } = Array.Empty<VNode>();
     }
 
