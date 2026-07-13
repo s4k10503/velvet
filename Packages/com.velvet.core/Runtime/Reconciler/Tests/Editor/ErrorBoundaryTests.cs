@@ -456,10 +456,12 @@ namespace Velvet.Tests
         #region A boundary's own fallback content throws (self re-catch guard)
 
         private static int s_brokenFallbackContentRenderCount;
+        private static int s_outerBoundaryForCascadeFallbackRenderCount;
 
         private static void ResetBrokenFallback()
         {
             s_brokenFallbackContentRenderCount = 0;
+            s_outerBoundaryForCascadeFallbackRenderCount = 0;
         }
 
         [Test]
@@ -474,6 +476,9 @@ namespace Velvet.Tests
             Assume.That(s_brokenFallbackContentRenderCount, Is.EqualTo(0), "Precondition: nothing has thrown yet");
             s_trackingShouldThrow = true;
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test fallback content error");
+            // The original exception is no longer silently treated as caught (see the next test) — it
+            // also surfaces here since this boundary has no ancestor to escalate to.
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test render error");
 
             // Act
             s_trackingSetTick.Invoke(1);
@@ -482,6 +487,53 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_brokenFallbackContentRenderCount, Is.EqualTo(1),
                 "The broken fallback content renders exactly once, not recursively");
+        }
+
+        [Test]
+        public void Given_ABoundarysOwnFallbackContentThrows_When_NoAncestorBoundaryExists_Then_TheOriginalExceptionIsStillLogged()
+        {
+            // Before this fix, TryShowFallback reported the ORIGINAL exception as successfully caught
+            // whenever its Reconcile call returned without a raw throw — true whether the fallback
+            // content rendered cleanly or failed and was absorbed elsewhere (logged, or shown by a
+            // farther boundary). With no ancestor boundary here, that meant the original exception was
+            // silently dropped instead of falling through to Debug.LogException like any other uncaught
+            // exception. It must now surface.
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(BoundaryWithBrokenFallbackRender, key: "broken-fallback-boundary-logged"));
+            s_trackingShouldThrow = true;
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test fallback content error");
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test render error");
+
+            // Act
+            s_trackingSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — LogAssert.Expect (registered above) verifies the original exception is logged
+            // rather than silently treated as caught
+        }
+
+        [Test]
+        public void Given_ABoundarysOwnFallbackContentThrows_When_AnAncestorBoundaryExists_Then_TheAncestorShowsItsFallbackExactlyOnce()
+        {
+            // With an ancestor boundary present, the inner boundary's failed fallback attempt now
+            // correctly reports failure (see the two tests above), so propagation continues past it —
+            // the ancestor gets the chance to show a working fallback instead of the error being lost.
+            // Exactly once, not twice: the cascaded fallback-content exception's own propagation already
+            // reaches and resolves this same ancestor before the original exception's propagation would
+            // otherwise redundantly retry it (PropagateException stops once the original exception's own
+            // throwing fiber is disposed, since that means its whole context was already replaced).
+            // Arrange
+            using var mounted = V.Mount(_root,
+                V.Component(OuterBoundaryWrappingBrokenInnerBoundaryRender, key: "outer-wrapping-broken-inner"));
+            s_trackingShouldThrow = true;
+
+            // Act
+            s_trackingSetTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_outerBoundaryForCascadeFallbackRenderCount, Is.EqualTo(1),
+                "The ancestor boundary's fallback factory runs exactly once for the whole cascade, not once per exception");
         }
 
         [Component(IsErrorBoundary = true)]
@@ -496,6 +548,17 @@ namespace Velvet.Tests
         {
             s_brokenFallbackContentRenderCount++;
             throw new InvalidOperationException("Test fallback content error");
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode OuterBoundaryWrappingBrokenInnerBoundaryRender()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_outerBoundaryForCascadeFallbackRenderCount++;
+                return V.Label(text: "outer-fallback-shown");
+            });
+            return V.Component(BoundaryWithBrokenFallbackRender, key: "inner");
         }
 
         #endregion

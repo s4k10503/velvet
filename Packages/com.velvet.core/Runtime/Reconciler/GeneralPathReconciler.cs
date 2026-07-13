@@ -1296,6 +1296,11 @@ namespace Velvet
                     }
                 }
 
+                // Unlike RunExitComplete above, nothing here needs an explicit boundaryFiber.IsDisposed
+                // guard even though the callback above can (via a cascading ancestor catch) dispose it:
+                // ComponentRegistry.UnregisterFiber synchronously prunes this boundary's PresenceStates
+                // entry as part of that same disposal, so `state` is already an orphaned, unreferenced
+                // object by the time control returns here — mutating it further is a no-op, not a hazard.
                 // 3) Commit the new composition for the next old-side reproduction. Exit-complete keys were
                 //    not re-emitted this render (their leaves are being removed), so drop them.
                 state.Committed.Clear();
