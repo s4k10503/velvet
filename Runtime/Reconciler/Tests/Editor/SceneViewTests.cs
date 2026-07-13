@@ -407,5 +407,265 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region Driver hardening
+
+        [Component]
+        private static VNode ShiftingColumnHost()
+        {
+            var (shifted, setShifted) = Hooks.UseState(false);
+            s_setFlag = setShifted;
+            return V.Div(className: "flex-col", children: new VNode[]
+            {
+                V.Div(key: "spacer", className: shifted ? "w-[10px] h-[40px]" : "w-[10px] h-[10px]"),
+                V.SceneView(s_camera, key: "sv", className: "w-[128px] h-[64px]"),
+            });
+        }
+
+        [Test]
+        public void Given_AUserReassignedTarget_When_AnUnrelatedGeometryEventFires_Then_TheForeignTargetSurvives()
+        {
+            // Arrange — user code borrowed the camera while the element stays mounted; a sibling's
+            // resize then moves the element (same size, new position), which fires a geometry event.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(ShiftingColumnHost, key: "root"));
+            Assume.That(s_camera.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            var foreign = new RenderTexture(16, 16, 0);
+            _spawned.Add(foreign);
+            s_camera.targetTexture = foreign;
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — a layout-driven resync must not claw the camera back from user code; only an
+            // explicit camera/settings change may claim a foreign target.
+            Assert.That(s_camera.targetTexture, Is.SameAs(foreign));
+        }
+
+        [Test]
+        public void Given_AnElementWiderThanTheTextureCap_When_TheTextureIsCreated_Then_TheAspectIsPreserved()
+        {
+            // Arrange — 6000×300 points is 20:1; clamping each axis independently to the 4096 ceiling
+            // would flatten the texture to ~13.7:1 and visibly distort the camera picture.
+            var cam = CreateCamera("cam");
+
+            // Act
+            MountAndLayout(V.SceneView(cam, className: "shrink-0 w-[6000px] h-[300px]"));
+
+            // Assert
+            var rt = cam.targetTexture;
+            Assume.That(rt, Is.Not.Null, "Precondition: the camera received a texture");
+            Assume.That(rt.width, Is.EqualTo(4096), "Precondition: the width hit the ceiling");
+            var aspect = (float)rt.width / rt.height;
+            Assert.That((rt.height <= 4096, Mathf.Abs(aspect - 20f) < 0.5f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AStalePixelScale_When_TheEditorRepaintTickFires_Then_TheTextureIsRederived()
+        {
+            // Arrange — a pixel-density change (a monitor-DPI move) alters the derived pixel size with
+            // no geometry event (points are unchanged) and no props pass, so only the recurring editor
+            // repaint tick can notice. Staleness is simulated by doubling the scale on the live
+            // binding directly — the same derivation input a density change moves.
+            var cam = CreateCamera("cam");
+            MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]", name: "sv"));
+            Assume.That(cam.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+            var element = _host.Root.Q<VisualElement>("sv");
+            var binding = _mounted.Root.Reconciler.Context.SceneViewBindings[element];
+            binding.Settings = new SceneViewSettings(cam, 2f);
+
+            // Act
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That((cam.targetTexture.width, cam.targetTexture.height), Is.EqualTo((256, 128)));
+        }
+
+        [Test]
+        public void Given_ADirectlyConstructedSettings_When_TheScaleIsInvalid_Then_ItThrows()
+        {
+            // Arrange — the factory's fail-fast guard must hold for every construction path (Motion
+            // hosts and fixtures build the settings record directly), or an invalid scale silently
+            // degrades to a degenerate near-1-pixel texture instead of the documented exception.
+            // Act & Assert
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => new SceneViewSettings(null, 0f));
+        }
+
+        [Test]
+        public void Given_AnInvalidScale_When_TheFactoryThrows_Then_NoPooledPropsLeak()
+        {
+            // Arrange — the factory rents a pooled props bag; a throwing validation must not leave
+            // it stranded in the pool's ownership ledger (each failing render would leak one).
+            var ledger = typeof(VNodePool).GetField("s_ownedProps",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assume.That(ledger, Is.Not.Null, "Precondition: the pool ownership ledger exists");
+            var set = ledger.GetValue(null);
+            var count = set.GetType().GetProperty("Count");
+            Assume.That(count, Is.Not.Null, "Precondition: the ledger exposes a count");
+            var before = (int)count.GetValue(set);
+
+            // Act
+            try
+            {
+                V.SceneView(null, resolutionScale: 0f);
+            }
+            catch (System.ArgumentOutOfRangeException)
+            {
+            }
+
+            // Assert
+            var after = (int)count.GetValue(set);
+            Assert.That(after, Is.EqualTo(before));
+        }
+
+        [Component]
+        private static VNode ResizingSceneHost()
+        {
+            var (wide, setWide) = Hooks.UseState(false);
+            s_setFlag = setWide;
+            return V.SceneView(s_camera, key: "sv", name: "sv",
+                className: wide ? "w-[256px] h-[64px]" : "w-[128px] h-[64px]");
+        }
+
+        [Test]
+        public void Given_AUserReassignedTarget_When_TheElementResizes_Then_TheLastFrameSurvives()
+        {
+            // Arrange — user code borrowed the camera; a later RESIZE must not swap the background
+            // to a fresh texture nothing renders into, nor destroy the frame being shown.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(ResizingSceneHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            var shown = s_camera.targetTexture;
+            Assume.That(shown, Is.Not.Null, "Precondition: the camera targets the texture");
+            var foreign = new RenderTexture(16, 16, 0);
+            _spawned.Add(foreign);
+            s_camera.targetTexture = foreign;
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — the background still shows the framework texture holding the last frame.
+            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.SameAs(shown));
+        }
+
+        [Test]
+        public void Given_ACameraAlreadyTargetingAUserTexture_When_Mounted_Then_TheExplicitPassClaimsIt()
+        {
+            // Arrange — passing a camera to V.SceneView is explicit intent: a target the user set
+            // BEFORE mounting must not stop the mount-time claim (only borrowing that happens after
+            // the claim is respected by layout-driven resyncs).
+            var cam = CreateCamera("cam");
+            var pre = new RenderTexture(16, 16, 0);
+            _spawned.Add(pre);
+            cam.targetTexture = pre;
+
+            // Act
+            MountAndLayout(V.SceneView(cam, className: "w-[128px] h-[64px]", name: "sv"));
+
+            // Assert — the camera renders into the framework texture the element shows.
+            var el = _host.Root.Q<VisualElement>("sv");
+            Assert.That(cam.targetTexture, Is.SameAs(el.resolvedStyle.backgroundImage.renderTexture));
+        }
+
+        #endregion
+
+        #region Background ownership
+
+        private static Texture2D s_posterA;
+        private static Texture2D s_posterB;
+
+        [Component]
+        private static VNode GradientSwapHost()
+        {
+            var (alt, setAlt) = Hooks.UseState(false);
+            s_setFlag = setAlt;
+            return V.SceneView(s_camera, key: "sv", name: "sv", className: alt
+                ? "w-[128px] h-[64px] bg-gradient-to-r from-green-500 to-yellow-500"
+                : "w-[128px] h-[64px] bg-gradient-to-r from-red-500 to-blue-500");
+        }
+
+        [Test]
+        public void Given_ALiveCameraFeed_When_TheGradientClassChanges_Then_TheFeedIsNotClobbered()
+        {
+            // Arrange — a gradient class and a live camera compete for the one backgroundImage slot;
+            // while the camera texture is live it owns the slot, and class-driven writers defer.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(GradientSwapHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            Assume.That(el, Is.Not.Null, "Precondition: the element mounted");
+            Assume.That(s_camera.targetTexture, Is.Not.Null, "Precondition: the camera targets the texture");
+
+            // Act — an ordinary state-driven restyle changes the gradient spec.
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — the background still samples the live camera texture.
+            Assert.That(el.resolvedStyle.backgroundImage.renderTexture, Is.SameAs(s_camera.targetTexture));
+        }
+
+        [Component]
+        private static VNode PosterSwapHost()
+        {
+            var (alt, setAlt) = Hooks.UseState(false);
+            s_setFlag = setAlt;
+            return V.SceneView(null, key: "sv", name: "sv", className: "w-[128px] h-[64px]",
+                styles: new StyleOverrides
+                {
+                    BackgroundImage = new StyleBackground(alt ? s_posterB : s_posterA),
+                });
+        }
+
+        [Test]
+        public void Given_ACameraLessSceneView_When_ThePosterStyleChanges_Then_TheNewPosterShows()
+        {
+            // Arrange — no camera ever arrives, so styles.BackgroundImage owns the slot outright; the
+            // mere existence of a (textureless) binding must not freeze the poster forever.
+            s_posterA = new Texture2D(2, 2);
+            _spawned.Add(s_posterA);
+            s_posterB = new Texture2D(2, 2);
+            _spawned.Add(s_posterB);
+            MountAndLayout(V.Component(PosterSwapHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            Assume.That(el?.resolvedStyle.backgroundImage.texture, Is.SameAs(s_posterA),
+                "Precondition: the first poster shows");
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert
+            Assert.That(el.resolvedStyle.backgroundImage.texture, Is.SameAs(s_posterB));
+        }
+
+        [Component]
+        private static VNode ReleasingGradientHost()
+        {
+            var (released, setReleased) = Hooks.UseState(false);
+            s_setFlag = setReleased;
+            return V.SceneView(released ? null : s_camera, key: "sv", name: "sv",
+                className: "w-[128px] h-[64px] bg-gradient-to-r from-red-500 to-blue-500");
+        }
+
+        [Test]
+        public void Given_ALiveFeedOverAGradient_When_TheCameraIsRemoved_Then_TheGradientIsRestored()
+        {
+            // Arrange
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(ReleasingGradientHost, key: "root"));
+            var el = _host.Root.Q<VisualElement>("sv");
+            Assume.That(el?.resolvedStyle.backgroundImage.renderTexture, Is.Not.Null,
+                "Precondition: the camera feed owns the background");
+
+            // Act — removing the camera releases the texture; the deferred class background returns.
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — a baked gradient texture, not a blank slot, fills the element again.
+            Assert.That(el.resolvedStyle.backgroundImage.texture, Is.Not.Null);
+        }
+
+        #endregion
     }
 }

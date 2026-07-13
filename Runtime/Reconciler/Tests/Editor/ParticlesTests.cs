@@ -136,8 +136,9 @@ namespace Velvet.Tests
         public void Given_AWorldSpaceSource_When_Mounted_Then_ItWarns()
         {
             // Arrange — particle positions are read in local space; a world-space source would misrender,
-            // so mounting one must say so instead of drawing garbage silently.
-            var effect = CreateEffectSource("fx");
+            // so mounting one must say so instead of drawing garbage silently. The advisory debounce is
+            // keyed by source name, so each advisory fixture uses its own name.
+            var effect = CreateEffectSource("fx-world-space");
             var main = effect.main;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
             LogAssert.Expect(LogType.Warning, new Regex("world", RegexOptions.IgnoreCase));
@@ -186,7 +187,7 @@ namespace Velvet.Tests
         public void Given_ACustomSpaceSource_When_Mounted_Then_ItWarns()
         {
             // Arrange — Custom simulation space has the same local-space read mismatch as World.
-            var effect = CreateEffectSource("fx");
+            var effect = CreateEffectSource("fx-custom-space");
             var main = effect.main;
             main.simulationSpace = ParticleSystemSimulationSpace.Custom;
             LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
@@ -203,7 +204,7 @@ namespace Velvet.Tests
         {
             // Arrange — the draw path truncates at its particle cap; a denser effect must say so once
             // instead of silently thinning out compared to everywhere else the prefab is used.
-            var effect = CreateEffectSource("fx");
+            var effect = CreateEffectSource("fx-draw-cap");
             var main = effect.main;
             main.maxParticles = 5000;
             LogAssert.Expect(LogType.Warning, new Regex("2048"));
@@ -374,6 +375,135 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(CountSystems(), Is.EqualTo(_baselineSystems));
+        }
+
+        #endregion
+
+        #region Editor simulation and advisories
+
+        // Fake panel clock for the editor-simulation specs: the repaint tick fires on a 16 ms
+        // interval read exclusively through the panel's time function, so fixed fake steps make the
+        // firing count and every simulated delta deterministic under any machine load.
+        private long _fakeMs;
+
+        [Test]
+        public void Given_AMountedEffectOutsidePlayMode_When_TheRepaintTickFires_Then_TheSimulationAdvances()
+        {
+            // Arrange — outside Play Mode the engine never steps a hidden host's clock on its own, so
+            // the repaint tick must advance the simulation itself or an editor-context panel repaints
+            // one frozen (typically empty) frame forever.
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            var effect = CreateEffectSource("fx-edit-sim");
+            var emission = effect.emission;
+            emission.rateOverTime = 1000f;
+            MountAndLayout(V.Particles(effect, className: "w-[128px] h-[128px]"));
+            var host = FindHost(effect);
+            Assume.That(host, Is.Not.Null, "Precondition: the hidden host clone exists");
+
+            // Act — each 20 fake-ms step crosses the tick interval, so every drive fires once and
+            // advances the simulation by exactly that delta.
+            for (var i = 0; i < 6; i++)
+            {
+                _fakeMs += 20;
+                EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            }
+
+            // Assert — emission produced live particles (~100 fake-ms at 1000/s).
+            Assert.That(host.particleCount, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void Given_AFinishedRootWithALiveChildSystem_When_TheTickObservesIt_Then_TheTickParks()
+        {
+            // Arrange — the draw samples only the ROOT's particles, so a longer-lived child system must
+            // not keep the repaint tick dirtying the element after the drawn output is already empty.
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
+            var effect = CreateEffectSource("fx-park-root");
+            var rootMain = effect.main;
+            rootMain.loop = false;
+            rootMain.duration = 0.02f;
+            rootMain.startLifetime = 0.01f;
+            var childGo = new GameObject("fx-park-child");
+            childGo.transform.SetParent(effect.transform);
+            var childMain = childGo.AddComponent<ParticleSystem>().main;
+            childMain.loop = true;
+            MountAndLayout(V.Particles(effect, name: "px-park", className: "w-[128px] h-[128px]"));
+            var element = _host.Root.Q<VisualElement>("px-park");
+            Assume.That(element, Is.Not.Null, "Precondition: the particles element mounted");
+            var binding = _mounted.Root.Reconciler.Context.ParticlesBindings[element];
+            Assume.That(binding.Host != null && binding.Host.IsAlive(false), Is.True,
+                "Precondition: the played root reads alive before any advance");
+
+            // Act — each 20 fake-ms step fires the tick once: the first firings advance the root past
+            // its whole timeline, and the next observes the drained corpse and parks.
+            for (var i = 0; i < 6; i++)
+            {
+                _fakeMs += 20;
+                EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            }
+
+            // Assert — the tick parked itself even though the looping child system is still alive.
+            Assert.That(binding.RepaintTick, Is.Null);
+        }
+
+        [Test]
+        public void Given_AnEffectSwapOnOneElement_When_BothSourcesAreMisconfigured_Then_TheAdvisoryFiresOnce()
+        {
+            // Arrange — the advisory is per mounted element: an unstable reference that rebuilds its
+            // source every render (fresh instance, any name) must not repeat the advice per rebuild.
+            s_effect = CreateEffectSource("fx-adv-a");
+            var mainA = s_effect.main;
+            mainA.simulationSpace = ParticleSystemSimulationSpace.World;
+            s_effectB = CreateEffectSource("fx-adv-b");
+            var mainB = s_effectB.main;
+            mainB.simulationSpace = ParticleSystemSimulationSpace.World;
+            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
+            MountAndLayout(V.Component(SwappingHost, key: "root"));
+
+            // Act — swap to a different (differently named) but equally misconfigured source.
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+            LogAssert.NoUnexpectedReceived();
+
+            // Assert — still exactly one live host after the swap.
+            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 1));
+        }
+
+        [Test]
+        public void Given_TwoElementsWithSameNamedSources_When_BothMisconfigured_Then_BothAdvisoriesFire()
+        {
+            // Arrange — two DIFFERENT effects that merely share a name are independent problems;
+            // each mounted element gets its own advisory.
+            var first = CreateEffectSource("fx-shared-name");
+            var m1 = first.main;
+            m1.simulationSpace = ParticleSystemSimulationSpace.World;
+            var second = CreateEffectSource("fx-shared-name");
+            var m2 = second.main;
+            m2.simulationSpace = ParticleSystemSimulationSpace.World;
+            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
+            LogAssert.Expect(LogType.Warning, new Regex("simulation space", RegexOptions.IgnoreCase));
+
+            // Act
+            MountAndLayout(V.Div(children: new VNode[]
+            {
+                V.Particles(first, className: "w-[64px] h-[64px]"),
+                V.Particles(second, className: "w-[64px] h-[64px]"),
+            }));
+
+            // Assert — both hosts exist (the two expectations pin both advisories firing).
+            Assert.That(CountSystems(), Is.EqualTo(_baselineSystems + 2));
+        }
+
+        [Test]
+        public void Given_ADirectlyConstructedSettings_When_PixelsPerUnitIsInvalid_Then_ItThrows()
+        {
+            // Arrange — the factory's fail-fast guard must hold for every construction path (fixtures
+            // and wrapper hosts build the settings record directly).
+            // Act & Assert
+            Assert.Throws<System.ArgumentOutOfRangeException>(
+                () => new ParticlesSettings(null, PlayTrigger.Mount, float.NaN));
         }
 
         #endregion

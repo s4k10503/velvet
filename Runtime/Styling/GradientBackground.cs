@@ -53,7 +53,9 @@ namespace Velvet
         public static void Apply(VisualElement element, GradientSpec spec)
         {
             var tex = GetOrBake(spec);
-            element.style.backgroundImage = new StyleBackground(tex);
+            // Through the SceneView ownership gate: a live camera feed keeps the slot and defers
+            // the gradient for its release; everywhere else this is a plain style write.
+            SceneViewElement.WriteBackground(element, new StyleBackground(tex));
             // Stretch the baked texture to the full element box (no 9-slice); border-radius clips it.
             element.style.backgroundSize = new StyleBackgroundSize(
                 new BackgroundSize(Length.Percent(100f), Length.Percent(100f)));
@@ -62,7 +64,7 @@ namespace Velvet
         // Full reset: clears the gradient's background-image AND the backgroundSize it set.
         public static void Clear(VisualElement element)
         {
-            element.style.backgroundImage = new StyleBackground(StyleKeyword.Null);
+            SceneViewElement.WriteBackground(element, new StyleBackground(StyleKeyword.Null));
             ClearSizeOnly(element);
         }
 

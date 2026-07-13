@@ -754,24 +754,34 @@ namespace Velvet
             {
                 Clear(element, in style, priority);
             }
-            else if (TryResolveUnregisteredFilterClear(core, out style))
+            else if (!TryClearUnregisteredFilterToken(element, core, priority))
             {
-                // A filter-[name:args] token whose name is not (or no longer) registered: the
-                // registry-gated parse above does not claim it, but a layer applied while the name WAS
-                // registered is still composed and must leave. The class removal mirrors the
-                // never-registered apply, which fell through to the class list; each action is a no-op
-                // in the other's scenario.
-                Clear(element, in style, priority);
-                element.RemoveFromClassList(core);
+                if (StyleBackgroundImageResolver.TryParse(core, out _))
+                {
+                    StyleBackgroundImageResolver.Clear(element);
+                }
+                else
+                {
+                    element.RemoveFromClassList(core);
+                }
             }
-            else if (StyleBackgroundImageResolver.TryParse(core, out _))
+        }
+
+        // Clears a filter-[name:args] token whose name is not (or no longer) registered. The
+        // registry-gated parse does not claim such a token, but a layer applied while the name WAS
+        // registered is still composed and must leave; the name alone identifies the layer, so it is
+        // resolved syntactically. The class-list removal mirrors the never-registered apply, which
+        // fell through to the class list — each action is a no-op in the other's scenario. Returns
+        // false when the token is not a custom-filter shape at all.
+        internal static bool TryClearUnregisteredFilterToken(VisualElement element, string core, int priority)
+        {
+            if (!TryResolveUnregisteredFilterClear(core, out var style))
             {
-                StyleBackgroundImageResolver.Clear(element);
+                return false;
             }
-            else
-            {
-                element.RemoveFromClassList(core);
-            }
+            Clear(element, in style, priority);
+            element.RemoveFromClassList(core);
+            return true;
         }
 
         // Fallback clear resolution for a filter-[name:args] token whose name is NOT (or no longer)
@@ -789,6 +799,37 @@ namespace Velvet
                 return true;
             }
             style = default;
+            return false;
+        }
+
+        // Prefixes classifying a core token as part of the composed filter family (the built-in filter
+        // utilities' bracket forms plus filter-[name:…] customs) without resolving it — the class-diff
+        // reapply's skip decision must not itself pay the parse it is avoiding.
+        private static readonly string[] s_filterFamilyTokenPrefixes = BuildFilterFamilyTokenPrefixes();
+
+        private static string[] BuildFilterFamilyTokenPrefixes()
+        {
+            var families = StyleFilterValueParser.BuiltInFamilyNames;
+            var prefixes = new string[families.Length + 1];
+            for (var i = 0; i < families.Length; i++)
+            {
+                prefixes[i] = families[i] + "-[";
+            }
+            prefixes[families.Length] = "filter-[";
+            return prefixes;
+        }
+
+        // True for tokens whose resolved property lands in the composed filter family. Purely
+        // syntactic on the bracket prefix: cheap enough to gate a skip without parsing the value.
+        internal static bool IsFilterFamilyToken(string core)
+        {
+            foreach (var prefix in s_filterFamilyTokenPrefixes)
+            {
+                if (core.StartsWith(prefix, System.StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
             return false;
         }
 

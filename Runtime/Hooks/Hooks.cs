@@ -944,19 +944,33 @@ namespace Velvet
                         // elapsed interval — no separate "last tick" bookkeeping. A zero delta
                         // (same-frame flush) is skipped so the callback only ever observes positive,
                         // frame-sized seconds; a hitch spike is clamped the way Time.deltaTime clamps
-                        // its own, so a stall cannot teleport a user simulation by one giant step.
+                        // its own, so a stall cannot teleport a user simulation by one giant step. The
+                        // zero interval fires on every scheduler update — once per frame — rather than
+                        // imposing a wall-clock floor that would skip frames on fast panels.
                         var dt = ts.deltaTime / 1000f;
                         if (dt <= 0f)
                         {
                             return;
                         }
                         dt = UnityEngine.Mathf.Min(dt, UnityEngine.Time.maximumDeltaTime);
-                        latest.Current?.Invoke(dt);
-                    }).Every(16);
+                        try
+                        {
+                            latest.Current?.Invoke(dt);
+                        }
+                        catch (Exception ex)
+                        {
+                            // Contained like an effect exception: an escaped throw would abort the rest
+                            // of this panel's scheduled updates for the frame and re-fire every frame
+                            // thereafter (the scheduler never unschedules a throwing item), and the
+                            // nearest error boundary must receive user-callback failures either way.
+                            ComponentBoundarySearch.PropagateException(fiber, ex);
+                        }
+                    }).Every(0);
                 }
-                // A keyed reorder re-inserts the host element, which silently drops its element-bound
-                // scheduled items — so the tick is re-armed from scratch on every attach (a dropped
-                // item cannot be resumed) and released on detach; nothing fires while detached.
+                // Element-bound scheduled items survive a keyed reorder's detach/re-attach (the engine
+                // pauses and resumes them), but the resume restarts the interval phase instead of
+                // continuing it. Re-arming a fresh item per attach keeps the tick's lifetime explicit
+                // and independent of that engine subtlety; nothing fires while detached.
                 UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.AttachToPanelEvent> onAttach = _ => StartTick();
                 UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.DetachFromPanelEvent> onDetach = _ =>
                 {

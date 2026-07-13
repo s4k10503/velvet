@@ -41,6 +41,10 @@ System is the right tool for UI-scale effects:
 - ❌ Renderer-module features: trails, mesh particles, texture-sheet animation, sub-emitter
   rendering, stretched billboards. One texture per system; up to 2048 particles drawn.
 
+The simulation runs anywhere the element does — including **outside Play Mode**: on
+editor-hosted panels (preview tooling) the repaint tick steps the hidden host itself, so
+effects play live without entering Play Mode.
+
 ## What about VFX Graph?
 
 VFX Graph is GPU-resident — there is no supported per-particle CPU readback, so the

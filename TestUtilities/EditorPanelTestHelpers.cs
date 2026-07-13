@@ -1,3 +1,4 @@
+using System;
 using System.Reflection;
 using UnityEngine.UIElements;
 
@@ -27,6 +28,63 @@ namespace Velvet.TestUtilities
                     m.Invoke(panel, null);
                 }
             }
+        }
+
+        /// <summary>
+        /// Pumps the panel's internal timer scheduler once — the same call a live panel issues once per
+        /// frame — so an EditMode fixture can drive <c>schedule.Execute</c> items deterministically (the
+        /// batchmode PlayerLoop never ticks them). The scheduler is internal engine surface, reached by
+        /// walking the panel's type chain for its <c>scheduler</c> property.
+        /// </summary>
+        public static void DriveSchedulerOnce(IPanel panel)
+        {
+            var scheduler = FindPanelProperty(panel, "scheduler")?.GetValue(panel);
+            if (scheduler == null)
+            {
+                throw new MissingMemberException(panel.GetType().FullName, "scheduler");
+            }
+            var update = scheduler.GetType().GetMethod(
+                "UpdateScheduledEvents",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            if (update == null)
+            {
+                throw new MissingMethodException(scheduler.GetType().FullName, "UpdateScheduledEvents");
+            }
+            update.Invoke(scheduler, null);
+        }
+
+        /// <summary>
+        /// Installs a fake clock on the panel: the scheduler and every scheduled item read time
+        /// exclusively through the panel's own time function (double seconds), so an EditMode fixture
+        /// can drive cadence deterministically regardless of machine load. Internal engine surface,
+        /// like the scheduler above.
+        /// </summary>
+        public static void SetPanelTimeFunction(IPanel panel, Func<double> secondsClock)
+        {
+            var prop = FindPanelProperty(panel, "TimeSinceStartupFunc");
+            if (prop == null)
+            {
+                throw new MissingMemberException(panel.GetType().FullName, "TimeSinceStartupFunc");
+            }
+            var del = Delegate.CreateDelegate(prop.PropertyType, secondsClock.Target, secondsClock.Method);
+            prop.SetValue(panel, del);
+        }
+
+        // Walks the panel's type chain for an internal property: the engine members these helpers
+        // reach (scheduler, time function) are internal AND inherited, which a plain GetProperty on
+        // the concrete type misses.
+        private static PropertyInfo FindPanelProperty(IPanel panel, string name)
+        {
+            for (var t = panel.GetType(); t != null; t = t.BaseType)
+            {
+                var prop = t.GetProperty(name,
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                if (prop != null)
+                {
+                    return prop;
+                }
+            }
+            return null;
         }
     }
 

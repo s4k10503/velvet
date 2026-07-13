@@ -332,9 +332,10 @@ namespace Velvet
             var staggerDelayMs = (long)(additionalDelaySec * 1000);
 
             // Schedule the exit's frame callbacks on a STABLE host (the panel root), not on the exiting
-            // element itself. UI Toolkit silently drops an element's scheduled items the moment it leaves the
-            // panel, and a reconcile reorder briefly detaches a still-exiting ghost (RemoveFromHierarchy +
-            // re-Insert) to move it — which would drop the startAction/timeout, stall the exit, and leak the
+            // element itself. An element-bound scheduled item pauses while its element is off the panel and
+            // its delay RESTARTS in full on re-attach, and a reconcile reorder briefly detaches a
+            // still-exiting ghost (RemoveFromHierarchy + re-Insert) to move it — repeated moves would keep
+            // restarting the startAction/timeout, stall the exit, and leak the
             // ghost (it never completes, so the diff never removes it). The panel root never detaches during
             // the presence's life, so its scheduled items always fire; the exiting child only needs to stay
             // attached for its CSS opacity tween (it does — a committed ghost stays in the DOM). Exit

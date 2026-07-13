@@ -166,22 +166,29 @@ namespace Velvet
                 if (isTopLevel)
                 {
                     LastTopLevelWasAborted = _ctx.IsAborted;
+                    // The abort flag stops sibling work inside the pass that just ended; the deferred
+                    // host mounts below are commit work for placeholders that SURVIVED it. A boundary
+                    // rollback detaches its failed subtree's placeholders (the drain's per-entry
+                    // liveness check skips those), while the fallback the boundary swapped in may have
+                    // enqueued live portals of its own in this same pass — so the flag is consumed
+                    // here rather than used to discard the queue wholesale, and the drain's nested
+                    // reconciles run unimpeded.
+                    _ctx.IsAborted = false;
                     try
                     {
-                        // Drain deferred Portal mounts only on a clean top-level finish; on abort
-                        // the queue holds stale enqueues from the aborted subtree that must not
-                        // survive into the next top-level pass.
-                        if (!_ctx.IsAborted)
-                        {
-                            _childReconciler.DrainPendingPortalMounts();
-                        }
+                        _childReconciler.DrainPendingPortalMounts();
                     }
                     finally
                     {
-                        // Always clear the queue at top-level boundary so aborted or partially
-                        // drained passes do not leak placeholders into the next reconcile.
+                        // Always clear the queue at top-level boundary so partially drained passes do
+                        // not leak placeholders into the next reconcile; an abort raised DURING the
+                        // drain (a boundary inside a portal's children) is consumed at this boundary
+                        // the same way.
                         _ctx.PendingPortalMounts.Clear();
                         _ctx.IsAborted = false;
+                        // Declaring-resolution misses are scoped to one top-level pass: retrying the
+                        // scan next pass is what lets a late-arriving declaring panel resolve.
+                        _ctx.DeclaringResolveMisses.Clear();
                         // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
                         // per render, so unconsumed entries would otherwise accumulate across renders.
                         _ctx.EffectiveKeys.Clear();

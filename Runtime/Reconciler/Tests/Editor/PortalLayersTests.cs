@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -427,6 +428,143 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(NewDocs().Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_APanelSizeMatchingTheDocumentDefault_When_Mounted_Then_FixedSizingStillApplies()
+        {
+            // Arrange — the size settings are driven after the attach with a mode round-trip, so the
+            // fixed sizing derives even when the requested size equals the document's own default (a
+            // plain value write would read as no-change and never re-derive).
+            Vector2 documentDefault;
+            var probeGo = new GameObject("ws-default-probe");
+            try
+            {
+                documentDefault = probeGo.AddComponent<UIDocument>().worldSpaceSize;
+            }
+            finally
+            {
+                Object.DestroyImmediate(probeGo);
+            }
+
+            // Act
+            MountAndLayout(V.Div(children: new VNode[]
+            {
+                V.WorldSpace(Vector3.zero, panelSize: documentDefault,
+                    children: new VNode[] { V.Div(name: "ws1") }),
+            }));
+
+            // Assert — the mode landed on Fixed with the requested (default-equal) size.
+            var docs = NewDocs();
+            Assume.That(docs.Count, Is.EqualTo(1), "Precondition: the world-space host exists");
+            Assert.That((docs[0].worldSpaceSizeMode, docs[0].worldSpaceSize),
+                Is.EqualTo((UIDocument.WorldSpaceSizeMode.Fixed, documentDefault)));
+        }
+
+        #endregion
+
+        #region Host resilience
+
+        [Component]
+        private static VNode SlidingWorldSpaceHost()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_bumpStep = setStep;
+            return V.Div(children: new VNode[]
+            {
+                V.WorldSpace(new Vector3(step, 0f, 0f), key: "ws",
+                    children: new VNode[] { V.Div(name: "ws-live") }),
+            });
+        }
+
+        private static StateUpdater<int> s_bumpStep;
+
+        [Test]
+        public void Given_AHostKilledExternally_When_TheWorldSpacePatches_Then_TheReconcileSurvives()
+        {
+            // Arrange — a scene unload can destroy the host GameObject while the owning fiber tree
+            // survives; EVERY later patch must skip the dead record on the same warning path instead
+            // of throwing or escalating to an error-level log.
+            MountAndLayout(V.Component(SlidingWorldSpaceHost, key: "root"));
+            var docs = NewDocs();
+            Assume.That(docs.Count, Is.EqualTo(1), "Precondition: the world-space host exists");
+            LogAssert.Expect(LogType.Warning, new Regex("died externally", RegexOptions.IgnoreCase));
+            LogAssert.Expect(LogType.Warning, new Regex("died externally", RegexOptions.IgnoreCase));
+            Object.DestroyImmediate(docs[0].gameObject);
+
+            // Act & Assert — two consecutive patches both survive on the warning path.
+            Assert.That(() =>
+            {
+                s_bumpStep.Invoke(s => s + 1);
+                FlushAndLayout();
+                s_bumpStep.Invoke(s => s + 1);
+                FlushAndLayout();
+            }, Throws.Nothing);
+        }
+
+        #endregion
+
+        #region Error boundary interplay
+
+        [Component]
+        private static VNode ThrowingChild() =>
+            throw new System.InvalidOperationException("boundary portal boom");
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode BoundaryWithPortalFallback()
+        {
+            Hooks.UseFallback(_ => V.Div(children: new VNode[]
+            {
+                V.Portal(UILayer.Topmost, children: new VNode[] { V.Div(name: "boundary-toast") }),
+                V.Div(name: "fallback-body"),
+            }));
+            return V.Component(ThrowingChild, key: "child");
+        }
+
+        [Test]
+        public void Given_AFallbackContainingALayerPortal_When_TheBoundaryCatches_Then_ThePortalMounts()
+        {
+            // Arrange — the abort that ends the failed pass must not also discard the deferred mount
+            // the boundary's own fallback just enqueued: that enqueue belongs to a LIVE placeholder.
+            // Act
+            MountAndLayout(V.Component(BoundaryWithPortalFallback, key: "root"));
+
+            // Assert — the fallback's toast reached the Topmost layer host.
+            VisualElement toast = null;
+            foreach (var doc in NewDocs())
+            {
+                toast ??= doc.rootVisualElement?.Q<VisualElement>("boundary-toast");
+            }
+            Assert.That(toast, Is.Not.Null);
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode PortalThenThrowerBoundary()
+        {
+            Hooks.UseFallback(_ => V.Div(name: "plain-fallback"));
+            return V.Div(children: new VNode[]
+            {
+                V.Portal(UILayer.Overlay, children: new VNode[] { V.Div(name: "victim-content") }),
+                V.Component(ThrowingChild, key: "child"),
+            });
+        }
+
+        [Test]
+        public void Given_AFailedSubtreeWithALayerPortal_When_TheBoundaryCatches_Then_ThatPortalNeverMounts()
+        {
+            // Arrange — the failed subtree enqueued a portal before its sibling threw; the boundary's
+            // rollback detaches that placeholder, so the drain must skip the dead enqueue instead of
+            // mounting content for a subtree that no longer exists.
+            // Act
+            MountAndLayout(V.Component(PortalThenThrowerBoundary, key: "root"));
+
+            // Assert — no layer host carries the failed subtree's content.
+            VisualElement victim = null;
+            foreach (var doc in NewDocs())
+            {
+                victim ??= doc.rootVisualElement?.Q<VisualElement>("victim-content");
+            }
+            Assert.That(victim, Is.Null);
         }
 
         #endregion
