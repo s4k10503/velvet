@@ -59,16 +59,11 @@ namespace Velvet
                         StyleArbitraryValueResolver.Clear(target, in style, effectivePriority);
                     }
                 }
-                else if (!on && StyleArbitraryValueResolver.TryResolveUnregisteredFilterClear(core, out style))
+                else if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, effectivePriority))
                 {
                     // The off-toggle of a filter-[name:args] payload whose name was unregistered while
-                    // the layer was active: the registry-gated parse above no longer claims the token,
-                    // but the layer the on-toggle applied is still composed, so resolve the NAME
-                    // syntactically and clear that. The class removal mirrors the never-registered
-                    // on-arm, which falls through to AddToClassList below; each action is a no-op in the
-                    // other's scenario.
-                    StyleArbitraryValueResolver.Clear(target, in style, effectivePriority);
-                    target.RemoveFromClassList(core);
+                    // the layer was active — the shared clear resolves the name syntactically and
+                    // removes the mirrored class (see TryClearUnregisteredFilterToken).
                 }
                 else if (on)
                 {

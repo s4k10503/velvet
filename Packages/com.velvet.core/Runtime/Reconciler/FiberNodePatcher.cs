@@ -689,22 +689,28 @@ namespace Velvet
 
             const int linearThreshold = 8;
             var removedArbitrary = oldClasses.Length <= linearThreshold && newClasses.Length <= linearThreshold
-                ? DiffClassListLinear(element, oldClasses, newClasses)
-                : DiffClassListWithHashSet(element, oldClasses, newClasses);
+                ? DiffClassListLinear(element, oldClasses, newClasses, out var removedFilterFamily)
+                : DiffClassListWithHashSet(element, oldClasses, newClasses, out removedFilterFamily);
 
             // Arbitrary values are cleared per property, so removing a value of the same property
             // also clears any other values that should have remained.
-            // Reapply the arbitrary values from the new list only when a removal occurred to preserve consistency.
+            // Reapply the arbitrary values from the new list only when a removal occurred to preserve
+            // consistency. Filter-family survivors are exempt unless a filter-family token itself was
+            // removed: other properties' clears never touch their per-name layers and every real filter
+            // mutation recomposes inline during the diff, so re-resolving survivors here would only
+            // repeat registry lookups to rebuild an identical composed list.
             if (removedArbitrary)
             {
-                ReapplyArbitraryValues(element, newClasses);
+                ReapplyArbitraryValues(element, newClasses, skipFilterFamily: !removedFilterFamily);
             }
             return true;
         }
 
         // Re-asserts the class list's inline-resolved (arbitrary / preset) values. Shared with the
-        // wrapper element appliers, which call it after detaching a motion that owned a shared inline slot.
-        internal static void ReapplyArbitraryValues(VisualElement element, string[] classes)
+        // wrapper element appliers, which call it after detaching a motion that owned a shared inline
+        // slot. skipFilterFamily exempts composed-filter tokens for callers that know no filter layer
+        // was disturbed (the class-diff reapply); full-scrub callers keep the default full pass.
+        internal static void ReapplyArbitraryValues(VisualElement element, string[] classes, bool skipFilterFamily = false)
         {
             foreach (var rawCls in classes)
             {
@@ -720,6 +726,10 @@ namespace Velvet
                 // Strip the important bang so it reapplies on the same Important layer AddClass used.
                 var cls = StyleArbitraryValueResolver.StripImportant(rawCls, out var important);
                 if (!StyleArbitraryValueResolver.IsInlineResolved(cls))
+                {
+                    continue;
+                }
+                if (skipFilterFamily && StyleArbitraryValueResolver.IsFilterFamilyToken(cls))
                 {
                     continue;
                 }
@@ -748,9 +758,10 @@ namespace Velvet
             return true;
         }
 
-        private static bool DiffClassListLinear(VisualElement element, string[] oldClasses, string[] newClasses)
+        private static bool DiffClassListLinear(VisualElement element, string[] oldClasses, string[] newClasses, out bool removedFilterFamily)
         {
             var removedArbitrary = false;
+            removedFilterFamily = false;
             foreach (var cls in oldClasses)
             {
                 if (string.IsNullOrEmpty(cls))
@@ -769,6 +780,7 @@ namespace Velvet
                     if (StyleArbitraryValueResolver.IsInlineResolved(core))
                     {
                         removedArbitrary = true;
+                        removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                     }
 
                     RemoveClass(element, cls);
@@ -794,9 +806,10 @@ namespace Velvet
             return removedArbitrary;
         }
 
-        private bool DiffClassListWithHashSet(VisualElement element, string[] oldClasses, string[] newClasses)
+        private bool DiffClassListWithHashSet(VisualElement element, string[] oldClasses, string[] newClasses, out bool removedFilterFamily)
         {
             var removedArbitrary = false;
+            removedFilterFamily = false;
 
             // Rent from the pool to make this re-entrant-safe.
             // Even along the path PatchElement → DiffClassList → PatchCommon → Reconcile (recursive)
@@ -816,6 +829,7 @@ namespace Velvet
                         if (StyleArbitraryValueResolver.IsInlineResolved(core))
                         {
                             removedArbitrary = true;
+                            removedFilterFamily |= StyleArbitraryValueResolver.IsFilterFamilyToken(core);
                         }
 
                         RemoveClass(element, cls);

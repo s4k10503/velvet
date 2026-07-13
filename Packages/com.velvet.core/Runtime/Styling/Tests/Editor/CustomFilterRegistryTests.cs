@@ -561,6 +561,36 @@ namespace Velvet.Tests
             Assert.That(VelvetFilters.Unregister("bad:name"), Is.False);
         }
 
+        [Test]
+        public void Given_AReservedNameInUppercase_When_Registered_Then_TheWarningNamesTheCanonicalFamily()
+        {
+            // Arrange — the warning teaches which utility family owns the name, so it must spell the
+            // canonical lowercase family, not echo the caller's casing back as a nonexistent "BLUR-*".
+            LogAssert.Expect(LogType.Warning,
+                "[VelvetFilters] Cannot register \"BLUR\": the name is reserved by the built-in blur-* utilities.");
+
+            // Act
+            VelvetFilters.Register("BLUR", CreateDefinition());
+
+            // Assert — rejected: the reserved spelling never entered the registry.
+            Assert.That(VelvetFilters.Unregister("BLUR"), Is.False);
+        }
+
+        [Test]
+        public void Given_TheSameDefinitionReference_When_RegisteredAgain_Then_NoOverwriteWarningIsLogged()
+        {
+            // Arrange — re-registering the exact same name/definition pair is a true no-op, so the
+            // "overwriting" warning would be noise pointing at a conflict that does not exist.
+            RegisterForTestRun("pulse", _fadeDef);
+
+            // Act
+            VelvetFilters.Register("pulse", _fadeDef);
+            LogAssert.NoUnexpectedReceived();
+
+            // Assert — the registration is intact after the silent no-op.
+            Assert.That(VelvetFilters.Unregister("pulse"), Is.True);
+        }
+
         #endregion
     }
 }

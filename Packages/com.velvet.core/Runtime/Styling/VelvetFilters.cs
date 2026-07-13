@@ -41,7 +41,8 @@ namespace Velvet
 
         /// <summary>
         /// Registers <paramref name="definition"/> under <paramref name="name"/> for
-        /// <c>filter-[name:args]</c> resolution. Re-registering a live name logs a warning and overwrites.
+        /// <c>filter-[name:args]</c> resolution. Re-registering a live name logs a warning and
+        /// overwrites; re-registering the identical definition under the same name is a silent no-op.
         /// </summary>
         /// <param name="name">Filter name as written inside the class brackets. Must be non-empty and
         /// must not contain whitespace, <c>:</c>, <c>[</c> or <c>]</c> (they would break the class token);
@@ -50,7 +51,7 @@ namespace Velvet
         /// <param name="definition">The custom filter definition applied when the class resolves.
         /// Null (or a destroyed asset) is rejected with a warning, as is a definition declaring more than
         /// the 4 parameters a filter function can carry.</param>
-        public static void Register(string name, FilterFunctionDefinition definition)
+        public static void Register(string name, FilterFunctionDefinition? definition)
         {
             if (string.IsNullOrEmpty(name) || !HasValidNameChars(name))
             {
@@ -60,7 +61,7 @@ namespace Velvet
 
             if (s_reserved.Contains(name))
             {
-                Debug.LogWarning($"[VelvetFilters] Cannot register \"{name}\": the name is reserved by the built-in {name}-* utilities.");
+                Debug.LogWarning($"[VelvetFilters] Cannot register \"{name}\": the name is reserved by the built-in {name.ToLowerInvariant()}-* utilities.");
                 return;
             }
 
@@ -78,11 +79,16 @@ namespace Velvet
                 return;
             }
 
-            if (s_definitions.ContainsKey(name))
+            if (s_definitions.TryGetValue(name, out var existing))
             {
+                if (ReferenceEquals(existing, definition))
+                {
+                    // The exact same registration again is a true no-op, not a conflict worth a warning.
+                    return;
+                }
                 Debug.LogWarning($"[VelvetFilters] \"{name}\" is already registered; overwriting.");
             }
-            s_definitions[name] = definition;
+            s_definitions[name] = definition!;
         }
 
         /// <summary>Removes a registration. Returns true when the name was registered.</summary>
