@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -43,6 +44,8 @@ namespace Velvet.Tests
             _mounted = null;
             _host?.Dispose();
             _host = null;
+            FiberPortalRegistry.Unregister("late-target");
+            FiberPortalRegistry.Unregister("swap-target");
             foreach (var obj in _spawned)
             {
                 if (obj != null) Object.DestroyImmediate(obj);
@@ -236,6 +239,97 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(NewDocs().Count, Is.EqualTo(0));
+        }
+
+        private static StateUpdater<int> s_bump;
+        private static StateUpdater<bool> s_setRemoved2;
+
+        [Component]
+        private static VNode LatePortalHost()
+        {
+            var (_, bump) = Hooks.UseState(0);
+            var (removed, setRemoved) = Hooks.UseState(false);
+            s_bump = bump;
+            s_setRemoved2 = setRemoved;
+            return V.Div(children: new VNode[]
+            {
+                removed ? null : V.Portal("late-target", key: "p", children: new VNode[]
+                {
+                    V.Div(name: "inside"),
+                }),
+            });
+        }
+
+        [Test]
+        public void Given_ATargetRegisteredAfterMount_When_Patched_Then_TheMountHeals()
+        {
+            // Arrange — a portal mounted before its id exists warns and stays empty; registering the id
+            // must let the next patch mount the children instead of leaving the portal dead forever.
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("late-target"));
+            MountAndLayout(V.Component(LatePortalHost, key: "root"));
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("late-target", target);
+
+            // Act — an unrelated state bump re-renders the host and patches the portal.
+            s_bump.Invoke(v => v + 1);
+            FlushAndLayout();
+
+            // Assert
+            Assert.That(target.childCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_AHealedLateMount_When_ThePortalUnmounts_Then_TheChildrenAreRemoved()
+        {
+            // Arrange — the recorded target must follow the heal, or the eventual cleanup skips the
+            // live children entirely (elements and effect cleanups leak on the healed target).
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("late-target"));
+            MountAndLayout(V.Component(LatePortalHost, key: "root"));
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("late-target", target);
+            s_bump.Invoke(v => v + 1);
+            FlushAndLayout();
+            Assume.That(target.childCount, Is.EqualTo(1),
+                "Precondition: the patch after registration healed the mount");
+
+            // Act
+            s_setRemoved2.Invoke(true);
+            FlushAndLayout();
+
+            // Assert
+            Assert.That(target.childCount, Is.EqualTo(0));
+        }
+
+        [Component]
+        private static VNode GrowingIdPortalHost()
+        {
+            var (grown, setGrown) = Hooks.UseState(false);
+            s_setFlag = setGrown;
+            return V.Portal("swap-target", children: grown
+                ? new VNode[] { V.Div(name: "one"), V.Div(name: "two") }
+                : new VNode[] { V.Div(name: "one") });
+        }
+
+        [Test]
+        public void Given_ATargetReRegisteredMidLife_When_ThePortalPatches_Then_ItKeepsItsMountedTarget()
+        {
+            // Arrange — re-registering an id points FUTURE portals elsewhere; a live portal's children
+            // already occupy a slot range on the ORIGINAL element, so its patches must keep operating
+            // there (patching into the new element would diff against another element's children).
+            var original = new VisualElement();
+            var replacement = new VisualElement();
+            FiberPortalRegistry.Register("swap-target", original);
+            MountAndLayout(V.Component(GrowingIdPortalHost, key: "root"));
+            Assume.That(original.childCount, Is.EqualTo(1), "Precondition: mounted into the original target");
+            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("swap-target"));
+            FiberPortalRegistry.Register("swap-target", replacement);
+
+            // Act — grow the portal's children after the re-registration.
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — both children live on the original target; the replacement stays untouched.
+            Assert.That((original.childCount, replacement.childCount), Is.EqualTo((2, 0)));
         }
 
         #endregion
