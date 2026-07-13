@@ -381,12 +381,19 @@ namespace Velvet.Tests
 
         #region Editor simulation and advisories
 
+        // Fake panel clock for the editor-simulation specs: the repaint tick fires on a 16 ms
+        // interval read exclusively through the panel's time function, so fixed fake steps make the
+        // firing count and every simulated delta deterministic under any machine load.
+        private long _fakeMs;
+
         [Test]
         public void Given_AMountedEffectOutsidePlayMode_When_TheRepaintTickFires_Then_TheSimulationAdvances()
         {
             // Arrange — outside Play Mode the engine never steps a hidden host's clock on its own, so
             // the repaint tick must advance the simulation itself or an editor-context panel repaints
             // one frozen (typically empty) frame forever.
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
             var effect = CreateEffectSource("fx-edit-sim");
             var emission = effect.emission;
             emission.rateOverTime = 1000f;
@@ -394,15 +401,15 @@ namespace Velvet.Tests
             var host = FindHost(effect);
             Assume.That(host, Is.Not.Null, "Precondition: the hidden host clone exists");
 
-            // Act — pump the panel's scheduler with real time between firings: each firing advances the
-            // simulation by its elapsed delta.
+            // Act — each 20 fake-ms step crosses the tick interval, so every drive fires once and
+            // advances the simulation by exactly that delta.
             for (var i = 0; i < 6; i++)
             {
-                System.Threading.Thread.Sleep(5);
+                _fakeMs += 20;
                 EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
             }
 
-            // Assert — emission produced live particles (~30 ms at 1000/s).
+            // Assert — emission produced live particles (~100 fake-ms at 1000/s).
             Assert.That(host.particleCount, Is.GreaterThan(0));
         }
 
@@ -411,6 +418,8 @@ namespace Velvet.Tests
         {
             // Arrange — the draw samples only the ROOT's particles, so a longer-lived child system must
             // not keep the repaint tick dirtying the element after the drawn output is already empty.
+            _fakeMs = 1000;
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, () => _fakeMs / 1000.0);
             var effect = CreateEffectSource("fx-park-root");
             var rootMain = effect.main;
             rootMain.loop = false;
@@ -427,10 +436,11 @@ namespace Velvet.Tests
             Assume.That(binding.Host != null && binding.Host.IsAlive(false), Is.True,
                 "Precondition: the played root reads alive before any advance");
 
-            // Act — advance well past the root's whole lifetime, then let the tick observe the corpse.
-            for (var i = 0; i < 12; i++)
+            // Act — each 20 fake-ms step fires the tick once: the first firings advance the root past
+            // its whole timeline, and the next observes the drained corpse and parks.
+            for (var i = 0; i < 6; i++)
             {
-                System.Threading.Thread.Sleep(5);
+                _fakeMs += 20;
                 EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
             }
 
