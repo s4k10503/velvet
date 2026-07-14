@@ -34,6 +34,7 @@ namespace Velvet.Tests
         private readonly List<Object> _spawned = new();
 
         private static StateUpdater<bool> s_setFlag;
+        private static StateUpdater<int> s_setStep;
 
         [SetUp]
         public void SetUp()
@@ -253,6 +254,44 @@ namespace Velvet.Tests
             var textureAspect = (float)rt.width / rt.height;
             var elementAspect = 200f / 64f;
             Assert.That(Mathf.Abs(textureAspect - elementAspect), Is.LessThan(0.05f));
+        }
+
+        [Component]
+        private static VNode NearSquareJiggleHost()
+        {
+            var (step, setStep) = Hooks.UseState(0);
+            s_setStep = setStep;
+            var sizes = new[]
+            {
+                "w-[100px] h-[100px]",
+                "w-[99px] h-[100px]",
+                "w-[100px] h-[99px]",
+            };
+            return V.SceneView(s_camera, className: sizes[step]);
+        }
+
+        [Test]
+        public void Given_ANearSquareElement_When_TheDominantAxisAlternates_Then_TheWidthBasisStaysStable()
+        {
+            // Arrange — a 1px jiggle around a 1:1 aspect ratio flips which axis is momentarily
+            // longer (100x100 -> 99x100 -> 100x99). Without a sticky basis-axis, re-deriving "is
+            // width >= height" from scratch each time would flip which axis gets quantized and
+            // rescale the OTHER axis to match it, changing the width bucket on every step even
+            // though the element barely moved.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(NearSquareJiggleHost, key: "root"));
+            var widthAtStep0 = s_camera.targetTexture.width;
+
+            // Act
+            s_setStep.Invoke(1);
+            FlushAndLayout();
+            var widthAtStep1 = s_camera.targetTexture.width;
+            s_setStep.Invoke(2);
+            FlushAndLayout();
+            var widthAtStep2 = s_camera.targetTexture.width;
+
+            // Assert
+            Assert.That((widthAtStep0, widthAtStep1, widthAtStep2), Is.EqualTo((112, 112, 112)));
         }
 
         [Component]

@@ -20,6 +20,10 @@ namespace Velvet
         // bail pre-layout and the FIRST sync that gets past the validity gate must inherit it.
         // Layout- and tick-driven resyncs never claim a foreign target on their own.
         public bool ClaimOnNextSync;
+        // Sticky record of which axis TryComputePixelSize last quantized as the "larger" one; null
+        // until the first successful derivation. See TryComputePixelSize for why this must persist
+        // across calls instead of being re-derived from the bare current size each time.
+        public bool? WidthWasQuantizedAxis;
 
         public SceneViewBinding(SceneViewSettings settings)
         {
@@ -192,6 +196,17 @@ namespace Velvet
         // check hits instead of reallocating. A resize that itself changes the element's aspect ratio
         // still gets a fresh texture either way — that's correct, not a regression, since the aspect
         // actually changed.
+        //
+        // Which axis counts as "larger" is STICKY (binding.WidthWasQuantizedAxis), not re-derived from
+        // scratch on every call: for an element whose aspect ratio hovers near 1:1, re-deriving "is pw
+        // >= ph" from the bare current size would flip which axis is quantized on a 1px change in
+        // which axis is momentarily longer, picking an entirely different bucket for BOTH axes even
+        // though the element barely moved (a square avatar/minimap/preview, or ordinary sub-pixel
+        // layout jitter, would then defeat the whole point of quantizing). Once an axis is chosen it
+        // keeps being used as long as it is still at least as long as the other OR the gap between
+        // them is under one quantization step — only a gap that clears a full step flips the basis,
+        // so which axis is "larger" changes only when the element's aspect ratio has genuinely and
+        // durably changed, not on sub-step jitter.
         private static bool TryComputePixelSize(VisualElement element, SceneViewBinding binding, out int pw, out int ph)
         {
             pw = 0;
@@ -211,7 +226,23 @@ namespace Velvet
                 pw = Mathf.Clamp(Mathf.FloorToInt(pw * shrink), 1, MaxTextureSize);
                 ph = Mathf.Clamp(Mathf.FloorToInt(ph * shrink), 1, MaxTextureSize);
             }
-            if (pw >= ph)
+            bool useWidthAsBasis;
+            if (binding.WidthWasQuantizedAxis is { } stickyToWidth)
+            {
+                // Symmetric hysteresis: the axis last used as the basis keeps being used unless the
+                // OTHER axis has pulled ahead by a full quantization step, so a sub-step wobble in
+                // which axis is momentarily longer never flips the basis.
+                useWidthAsBasis = stickyToWidth
+                    ? pw >= ph || ph - pw < SizeQuantizationStep
+                    : pw > ph && pw - ph >= SizeQuantizationStep;
+            }
+            else
+            {
+                useWidthAsBasis = pw >= ph;
+            }
+            binding.WidthWasQuantizedAxis = useWidthAsBasis;
+
+            if (useWidthAsBasis)
             {
                 var quantizedW = Mathf.Min(QuantizeUp(pw), MaxTextureSize);
                 ph = Mathf.Max(1, Mathf.RoundToInt((float)quantizedW * ph / pw));
@@ -286,6 +317,10 @@ namespace Velvet
             binding.Texture.Release();
             VelvetObjectUtil.Destroy(binding.Texture);
             binding.Texture = null;
+            // The sticky basis-axis choice exists to keep a LIVE texture's bucket continuous across
+            // resizes; once the texture itself is gone there is nothing left to stay continuous with,
+            // so the next texture this binding creates derives its basis fresh from that size alone.
+            binding.WidthWasQuantizedAxis = null;
             if (element is SceneViewElement sceneView)
             {
                 // Releasing the feed returns the slot to whatever writer was deferred while the
