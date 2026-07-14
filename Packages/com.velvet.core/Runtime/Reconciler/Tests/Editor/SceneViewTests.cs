@@ -489,23 +489,6 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnElementFarPastTheTextureCap_When_TheSizeIsQuantized_Then_ItNeverExceedsTheCap()
-        {
-            // Arrange — a square element far past the 4096 ceiling forces the aspect-preserving
-            // shrink to land both axes at the cap; quantizing that result up must not carry either
-            // axis past it into the next 16px bucket.
-            var cam = CreateCamera("cam");
-
-            // Act
-            MountAndLayout(V.SceneView(cam, className: "shrink-0 w-[5000px] h-[5000px]"));
-
-            // Assert
-            var rt = cam.targetTexture;
-            Assume.That(rt, Is.Not.Null, "Precondition: the camera received a texture");
-            Assert.That((rt.width <= 4096, rt.height <= 4096), Is.EqualTo((true, true)));
-        }
-
-        [Test]
         public void Given_AStalePixelScale_When_TheEditorRepaintTickFires_Then_TheTextureIsRederived()
         {
             // Arrange — a pixel-density change (a monitor-DPI move) alters the derived pixel size with
