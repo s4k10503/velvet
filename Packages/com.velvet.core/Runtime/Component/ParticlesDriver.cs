@@ -26,7 +26,6 @@ namespace Velvet
         public Texture? Texture;
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<AttachToPanelEvent>? OnAttach;
-        public EventCallback<DetachFromPanelEvent>? OnDetach;
         public IVisualElementScheduledItem? RepaintTick;
         // Logical play state as the DRIVER last set it (Mount trigger, element Play/Stop): outside
         // Play Mode the engine never advances a system's clock, so the repaint tick steps the
@@ -80,21 +79,15 @@ namespace Velvet
             // co-resident shadow / skew silhouette prepends its callback precisely so that content
             // registered later covers it.
             element.generateVisualContent += binding.OnGenerate;
-            // A recurring item like this repaint tick actually survives a keyed reorder's
-            // detach/re-attach on its own — UI Toolkit's own per-item attach/detach handling pauses it
-            // on detach and reschedules the same item on the next attach, with no meaningful restart
-            // of the interval (unlike a one-shot item, whose delay genuinely restarts in full on every
-            // re-attach). Re-arming a fresh item per attach is therefore not required for correctness,
-            // but keeps the tick's lifetime tied explicitly to this attach/detach pair rather than
-            // relying on that engine mechanism; released on detach so nothing fires while detached.
-            binding.OnAttach = _ =>
-            {
-                StopRepaintTick(binding);
-                SyncRepaintTick(element, binding);
-            };
-            binding.OnDetach = _ => StopRepaintTick(binding);
+            // A recurring item like this repaint tick survives a keyed reorder's detach/re-attach on
+            // its own: UI Toolkit's own per-item attach/detach handling pauses it when the element
+            // leaves the panel and reschedules the SAME item when it returns, with no meaningful
+            // restart of the interval (unlike a one-shot item, whose delay genuinely restarts in full
+            // on every re-attach). SyncRepaintTick already guards on RepaintTick == null, so re-attach
+            // just confirms the tick is present rather than tearing it down and recreating it; Detach
+            // (the true unmount path, not this transient per-attach event) still pauses and releases it.
+            binding.OnAttach = _ => SyncRepaintTick(element, binding);
             element.RegisterCallback(binding.OnAttach);
-            element.RegisterCallback(binding.OnDetach);
             // The imperative half of PlayTrigger.Manual: Play/Stop on the element reach the live host
             // through these handlers, cleared again on detach.
             if (element is ParticlesElement particlesElement)
@@ -128,10 +121,6 @@ namespace Velvet
             if (binding.OnAttach != null)
             {
                 element.UnregisterCallback(binding.OnAttach);
-            }
-            if (binding.OnDetach != null)
-            {
-                element.UnregisterCallback(binding.OnDetach);
             }
             StopRepaintTick(binding);
             DestroyHost(binding);

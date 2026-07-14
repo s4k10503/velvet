@@ -142,9 +142,12 @@ namespace Velvet.Tests
             s_setRemoved = setSwapped;
             var counting = V.Component(CountingHost, key: "cnt");
             var spacer = V.Div(key: "sp", className: "w-[1px] h-[1px]");
+            // The keyed diff's LIS-based placement leaves whichever element is first in the OLD order
+            // as the anchor that is never actually detached — "counting" starts second and moves to
+            // first so this reorder genuinely detaches/re-attaches UseFrame's host.
             return V.Div(className: "flex-col", children: swapped
-                ? new VNode[] { spacer, counting }
-                : new VNode[] { counting, spacer });
+                ? new VNode[] { counting, spacer }
+                : new VNode[] { spacer, counting });
         }
 
         [UnityTest]

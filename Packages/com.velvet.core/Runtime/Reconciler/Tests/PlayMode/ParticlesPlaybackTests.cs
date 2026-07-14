@@ -264,9 +264,12 @@ namespace Velvet.Tests
             s_setFlag = setSwapped;
             var particles = V.Particles(s_effect, key: "px", className: "w-[300px] h-[300px]");
             var spacer = V.Div(key: "sp", className: "w-[1px] h-[1px]");
+            // The keyed diff's LIS-based placement leaves whichever element is first in the OLD order
+            // as the anchor that is never actually detached — "particles" starts second and moves to
+            // first so this reorder genuinely detaches/re-attaches its repaint tick's host.
             return V.Div(className: "flex-col", children: swapped
-                ? new VNode[] { spacer, particles }
-                : new VNode[] { particles, spacer });
+                ? new VNode[] { particles, spacer }
+                : new VNode[] { spacer, particles });
         }
 
         private Color32[] Snapshot()
