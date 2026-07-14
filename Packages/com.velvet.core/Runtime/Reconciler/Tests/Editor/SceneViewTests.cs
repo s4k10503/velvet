@@ -222,8 +222,35 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
+            // Assert — 200 rounds up to the next 16px quantization step (208); 64 already lands on one.
+            Assert.That((s_camera.targetTexture.width, s_camera.targetTexture.height), Is.EqualTo((208, 64)));
+        }
+
+        [Component]
+        private static VNode SubStepResizeHost()
+        {
+            var (grown, setGrown) = Hooks.UseState(false);
+            s_setFlag = setGrown;
+            return V.SceneView(s_camera, className: grown ? "w-[105px] h-[64px]" : "w-[100px] h-[64px]");
+        }
+
+        [Test]
+        public void Given_ASubStepSizeDelta_When_TheElementResizes_Then_TheRenderTextureIsNotReallocated()
+        {
+            // Arrange — 100px and 105px both round up to the same 112px bucket at the 16px
+            // quantization step, so this resize must reuse the existing RenderTexture instead of
+            // reallocating a new one for a size delta smaller than the step.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(SubStepResizeHost, key: "root"));
+            var initial = s_camera.targetTexture;
+            Assume.That(initial, Is.Not.Null, "Precondition: the camera targets a texture");
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
             // Assert
-            Assert.That((s_camera.targetTexture.width, s_camera.targetTexture.height), Is.EqualTo((200, 64)));
+            Assert.That(s_camera.targetTexture, Is.SameAs(initial));
         }
 
         [Component]
@@ -459,6 +486,23 @@ namespace Velvet.Tests
             Assume.That(rt.width, Is.EqualTo(4096), "Precondition: the width hit the ceiling");
             var aspect = (float)rt.width / rt.height;
             Assert.That((rt.height <= 4096, Mathf.Abs(aspect - 20f) < 0.5f), Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AnElementFarPastTheTextureCap_When_TheSizeIsQuantized_Then_ItNeverExceedsTheCap()
+        {
+            // Arrange — a square element far past the 4096 ceiling forces the aspect-preserving
+            // shrink to land both axes at the cap; quantizing that result up must not carry either
+            // axis past it into the next 16px bucket.
+            var cam = CreateCamera("cam");
+
+            // Act
+            MountAndLayout(V.SceneView(cam, className: "shrink-0 w-[5000px] h-[5000px]"));
+
+            // Assert
+            var rt = cam.targetTexture;
+            Assume.That(rt, Is.Not.Null, "Precondition: the camera received a texture");
+            Assert.That((rt.width <= 4096, rt.height <= 4096), Is.EqualTo((true, true)));
         }
 
         [Test]

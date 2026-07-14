@@ -46,6 +46,15 @@ namespace Velvet
         // universally supported.
         private const int MaxTextureSize = 4096;
 
+        // The pixel-size rounding grain TryComputePixelSize quantizes up to. 16 divides
+        // MaxTextureSize evenly (4096 / 16 = 256), so the ceiling clamp and this step never leave a
+        // leftover partial bucket at the boundary. Large enough to absorb the few-pixels-per-frame
+        // deltas a drag-resize or an animated layout produces — so most jitter keeps landing on the
+        // same bucket and reuses the existing RenderTexture instead of reallocating — while small
+        // enough that the worst-case 15px-per-axis overshoot is negligible against any on-screen
+        // SceneView size.
+        private const int SizeQuantizationStep = 16;
+
         // Wires the geometry-driven texture sync onto the element and returns the binding. The
         // synchronous sync attempt covers a binding attached to an ALREADY laid-out element (a camera
         // arriving through a patch, where no further geometry event may ever fire); at mount the
@@ -169,7 +178,12 @@ namespace Velvet
         // zero-dimension texture (which RenderTexture creation rejects); the ceiling bounds the VRAM
         // request like the sibling texture bakers bound theirs — applied as ONE shared shrink when
         // either axis overflows, because clamping each axis independently would change the texture's
-        // aspect and distort the camera picture.
+        // aspect and distort the camera picture. The result is then quantized UP to
+        // SizeQuantizationStep: minor layout jitter (a drag-resize, an animated layout moving a
+        // handful of pixels a frame) keeps landing on the SAME quantized size, so SyncTexture's
+        // exact-match reuse check hits instead of reallocating the RenderTexture on every change.
+        // Re-clamped to MaxTextureSize afterward — quantizing up could otherwise carry a
+        // near-ceiling size into the next bucket past the cap.
         private static bool TryComputePixelSize(VisualElement element, SceneViewBinding binding, out int pw, out int ph)
         {
             pw = 0;
@@ -189,7 +203,16 @@ namespace Velvet
                 pw = Mathf.Clamp(Mathf.FloorToInt(pw * shrink), 1, MaxTextureSize);
                 ph = Mathf.Clamp(Mathf.FloorToInt(ph * shrink), 1, MaxTextureSize);
             }
+            pw = Mathf.Min(QuantizeUp(pw), MaxTextureSize);
+            ph = Mathf.Min(QuantizeUp(ph), MaxTextureSize);
             return true;
+        }
+
+        // Rounds a pixel size up to the next SizeQuantizationStep multiple (e.g. 100 -> 112 at the
+        // 16px step); an already-aligned value passes through unchanged.
+        private static int QuantizeUp(int value)
+        {
+            return (value + SizeQuantizationStep - 1) / SizeQuantizationStep * SizeQuantizationStep;
         }
 
         // An Editor-context panel repaints only when something marks it dirty, so a live camera feed
