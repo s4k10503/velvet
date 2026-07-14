@@ -120,7 +120,7 @@ namespace Velvet
         {
             var camera = binding.Settings.Camera;
             if (camera == null || element.panel == null
-                || !TryComputePixelSize(element, binding, out var pw, out var ph))
+                || !TryComputePixelSize(element, binding, out var pw, out var ph, out var usedWidthAsBasis))
             {
                 ReleaseOutput(element, binding);
                 return;
@@ -130,6 +130,9 @@ namespace Velvet
 
             if (binding.Texture != null && binding.Texture.width == pw && binding.Texture.height == ph)
             {
+                // Confirmed: the live texture already matches this derivation, so this call's basis
+                // choice is the one actually in effect — safe to commit.
+                binding.WidthWasQuantizedAxis = usedWidthAsBasis;
                 if (camera.targetTexture != binding.Texture
                     && (claim || camera.targetTexture == null))
                 {
@@ -148,11 +151,18 @@ namespace Velvet
             {
                 // The camera is borrowed: re-deriving the texture now would swap the background to an
                 // image nothing renders into and destroy the last good frame. Keep showing that
-                // frame; the next explicit camera/settings pass reclaims and re-derives the size.
+                // frame; the next explicit camera/settings pass reclaims and re-derives the size. This
+                // call's (pw, ph, usedWidthAsBasis) is discarded rather than applied to any texture,
+                // so binding.WidthWasQuantizedAxis must NOT be touched here — committing it would let
+                // a transient geometry sample observed while borrowed silently steer the basis-axis
+                // choice for whatever texture the eventual reclaim actually creates.
                 SyncRepaintTick(element, binding);
                 return;
             }
 
+            // Confirmed: about to create a fresh texture at exactly (pw, ph) — commit the basis that
+            // produced it.
+            binding.WidthWasQuantizedAxis = usedWidthAsBasis;
             // Target the new texture BEFORE destroying the old one so the camera never points at a
             // dead texture in between (the re-target is itself the polite release of our own texture).
             var texture = new RenderTexture(pw, ph, 24);
@@ -207,10 +217,19 @@ namespace Velvet
         // them is under one quantization step — only a gap that clears a full step flips the basis,
         // so which axis is "larger" changes only when the element's aspect ratio has genuinely and
         // durably changed, not on sub-step jitter.
-        private static bool TryComputePixelSize(VisualElement element, SceneViewBinding binding, out int pw, out int ph)
+        // usedWidthAsBasis reports which axis THIS call would use as the quantization basis, given
+        // binding's CURRENT sticky state — it does not write binding.WidthWasQuantizedAxis itself.
+        // Not every caller ends up applying this call's (pw, ph) to a texture (SyncTexture's
+        // borrowed-camera bail-out keeps showing an older texture; OnRepaintTick's staleness probe
+        // only checks whether a resync is needed), so committing the sticky axis unconditionally
+        // here would let a call whose result is discarded still steer future basis-axis decisions —
+        // only the caller that actually confirms or creates a texture for (pw, ph) should commit it,
+        // via `binding.WidthWasQuantizedAxis = usedWidthAsBasis`.
+        private static bool TryComputePixelSize(VisualElement element, SceneViewBinding binding, out int pw, out int ph, out bool usedWidthAsBasis)
         {
             pw = 0;
             ph = 0;
+            usedWidthAsBasis = false;
             var w = element.layout.width;
             var h = element.layout.height;
             if (w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h))
@@ -226,21 +245,15 @@ namespace Velvet
                 pw = Mathf.Clamp(Mathf.FloorToInt(pw * shrink), 1, MaxTextureSize);
                 ph = Mathf.Clamp(Mathf.FloorToInt(ph * shrink), 1, MaxTextureSize);
             }
-            bool useWidthAsBasis;
-            if (binding.WidthWasQuantizedAxis is { } stickyToWidth)
-            {
-                // Symmetric hysteresis: the axis last used as the basis keeps being used unless the
-                // OTHER axis has pulled ahead by a full quantization step, so a sub-step wobble in
-                // which axis is momentarily longer never flips the basis.
-                useWidthAsBasis = stickyToWidth
+            // Symmetric hysteresis: the axis last COMMITTED as the basis keeps being used unless the
+            // OTHER axis has pulled ahead by a full quantization step, so a sub-step wobble in which
+            // axis is momentarily longer never flips the basis.
+            var useWidthAsBasis = binding.WidthWasQuantizedAxis is { } stickyToWidth
+                ? (stickyToWidth
                     ? pw >= ph || ph - pw < SizeQuantizationStep
-                    : pw > ph && pw - ph >= SizeQuantizationStep;
-            }
-            else
-            {
-                useWidthAsBasis = pw >= ph;
-            }
-            binding.WidthWasQuantizedAxis = useWidthAsBasis;
+                    : pw > ph && pw - ph >= SizeQuantizationStep)
+                : pw >= ph;
+            usedWidthAsBasis = useWidthAsBasis;
 
             if (useWidthAsBasis)
             {
@@ -289,8 +302,12 @@ namespace Velvet
         // texture. Runtime panels have no tick and heal on their next geometry or props pass instead.
         private static void OnRepaintTick(VisualElement element, SceneViewBinding binding)
         {
+            // This is a staleness PROBE, not a commit: only checks whether the derived size still
+            // matches the live texture. The basis-axis choice this call computes is discarded — if a
+            // resync turns out to be needed, SyncTexture below re-derives (and, on that path, commits)
+            // it from scratch.
             if (binding.Texture != null
-                && TryComputePixelSize(element, binding, out var pw, out var ph)
+                && TryComputePixelSize(element, binding, out var pw, out var ph, out _)
                 && (binding.Texture.width != pw || binding.Texture.height != ph))
             {
                 SyncTexture(element, binding);

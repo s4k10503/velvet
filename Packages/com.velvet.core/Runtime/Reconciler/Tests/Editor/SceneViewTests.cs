@@ -294,6 +294,41 @@ namespace Velvet.Tests
             Assert.That((widthAtStep0, widthAtStep1, widthAtStep2), Is.EqualTo((112, 112, 112)));
         }
 
+        [Test]
+        public void Given_ADiscardedDerivation_When_ItWouldFlipTheBasis_Then_TheBindingIsNotMutated()
+        {
+            // Arrange — mount width-basis (100x100). The geometry-changed callback is unregistered
+            // BEFORE growing the live layout's height, so growing it does not itself trigger the
+            // driver's normal SyncTexture (which would legitimately commit the flip) — this isolates
+            // the one call this test cares about: TryComputePixelSize's own out parameter reports a
+            // derivation that would flip to height-basis, and that call alone must not write the
+            // flip into binding.WidthWasQuantizedAxis — only a caller that actually applies the
+            // derived size (SyncTexture, on either its exact-match or fresh-texture path) may commit
+            // it. This is what keeps a call whose result is discarded (SyncTexture's borrowed-camera
+            // bail-out, OnRepaintTick's staleness probe) from silently steering the basis of whatever
+            // texture a later confirmed call actually produces.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.SceneView(s_camera, className: "w-[100px] h-[100px]", name: "sv"));
+            var element = _host.Root.Q<VisualElement>("sv");
+            var binding = _mounted.Root.Reconciler.Context.SceneViewBindings[element];
+            Assume.That(binding.WidthWasQuantizedAxis, Is.EqualTo(true),
+                "Precondition: width-basis committed by the initial mount");
+            element.UnregisterCallback(binding.OnGeometryChanged);
+            element.style.height = 200;
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Act
+            var method = typeof(SceneViewDriver).GetMethod("TryComputePixelSize",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var args = new object[] { element, binding, 0, 0, false };
+            method.Invoke(null, args);
+            Assume.That(args[4], Is.EqualTo(false),
+                "Precondition: this call's fresh derivation would flip to height-basis");
+
+            // Assert
+            Assert.That(binding.WidthWasQuantizedAxis, Is.EqualTo(true));
+        }
+
         [Component]
         private static VNode SubStepResizeHost()
         {
