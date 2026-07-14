@@ -3,6 +3,8 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+using static Velvet.TestUtilities.PlayModeRealtimeTestHelpers;
 
 namespace Velvet.Tests
 {
@@ -17,7 +19,7 @@ namespace Velvet.Tests
         private GameObject _docGo;
         private PanelSettings _settings;
         private MountedTree _mounted;
-        private int _savedTargetFrameRate;
+        private TargetFrameRateScope _frameRateScope;
 
         private static int s_calls;
         private static float s_minDt;
@@ -29,8 +31,7 @@ namespace Velvet.Tests
         [UnitySetUp]
         public IEnumerator UnitySetUp()
         {
-            _savedTargetFrameRate = Application.targetFrameRate;
-            Application.targetFrameRate = 120;
+            _frameRateScope = new TargetFrameRateScope(120);
             s_calls = 0;
             s_minDt = float.MaxValue;
             s_maxDt = 0f;
@@ -42,7 +43,7 @@ namespace Velvet.Tests
         [UnityTearDown]
         public IEnumerator UnityTearDown()
         {
-            Application.targetFrameRate = _savedTargetFrameRate;
+            _frameRateScope.Dispose();
             _mounted?.Dispose();
             _mounted = null;
             if (_docGo != null) Object.Destroy(_docGo);
@@ -58,15 +59,6 @@ namespace Velvet.Tests
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             return doc.rootVisualElement;
-        }
-
-        private static IEnumerator WaitRealtime(double seconds)
-        {
-            var deadline = Time.realtimeSinceStartupAsDouble + seconds;
-            while (Time.realtimeSinceStartupAsDouble < deadline)
-            {
-                yield return null;
-            }
         }
 
         [Component]
