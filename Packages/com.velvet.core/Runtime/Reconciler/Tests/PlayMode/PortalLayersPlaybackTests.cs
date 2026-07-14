@@ -3,6 +3,8 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
+using static Velvet.TestUtilities.PlayModeRealtimeTestHelpers;
 
 namespace Velvet.Tests
 {
@@ -20,22 +22,21 @@ namespace Velvet.Tests
         private ThemeStyleSheet _themeB;
         private RenderTexture _cameraRt;
         private MountedTree _mounted;
-        private int _savedTargetFrameRate;
+        private TargetFrameRateScope _frameRateScope;
 
         private static StateUpdater<int> s_bump;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
         {
-            _savedTargetFrameRate = Application.targetFrameRate;
-            Application.targetFrameRate = 120;
+            _frameRateScope = new TargetFrameRateScope(120);
             yield break;
         }
 
         [UnityTearDown]
         public IEnumerator UnityTearDown()
         {
-            Application.targetFrameRate = _savedTargetFrameRate;
+            _frameRateScope.Dispose();
             _mounted?.Dispose();
             _mounted = null;
             if (_docGo != null) Object.Destroy(_docGo);
@@ -60,15 +61,6 @@ namespace Velvet.Tests
             }
             doc.panelSettings = _settings;
             return doc.rootVisualElement;
-        }
-
-        private static IEnumerator WaitRealtime(double seconds)
-        {
-            var deadline = Time.realtimeSinceStartupAsDouble + seconds;
-            while (Time.realtimeSinceStartupAsDouble < deadline)
-            {
-                yield return null;
-            }
         }
 
         // The framework host is whichever live UIDocument's tree contains the marker element.
@@ -134,18 +126,12 @@ namespace Velvet.Tests
             yield return WaitRealtime(0.6);
 
             // Assert — the camera's output carries the panel's red pixels.
-            var prev = RenderTexture.active;
-            RenderTexture.active = _cameraRt;
-            var tex = new Texture2D(200, 200, TextureFormat.RGBA32, false);
-            tex.ReadPixels(new Rect(0, 0, 200, 200), 0, 0);
-            tex.Apply();
-            RenderTexture.active = prev;
+            var pixels = RenderTexturePixelReader.ReadPixels(_cameraRt, new RectInt(0, 0, 200, 200));
             var redPixels = 0;
-            foreach (var p in tex.GetPixels32())
+            foreach (var p in pixels)
             {
-                if (p.r > 140 && p.g < 90 && p.b < 90) redPixels++;
+                if (RenderTexturePixelReader.IsRedPixel(p)) redPixels++;
             }
-            Object.Destroy(tex);
             Assert.That(redPixels, Is.GreaterThan(50));
         }
 
