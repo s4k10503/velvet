@@ -230,7 +230,8 @@ namespace Velvet
                     vnode.Key ??= key;
                     newNodes[i] = vnode;
 
-                    if (_oldNodesByKey.TryGetValue(key, out var existing))
+                    var hasExisting = _oldNodesByKey.TryGetValue(key, out var existing);
+                    if (hasExisting && ReconcileKeying.CanPatch(existing.node, vnode))
                     {
                         // Store the patch's RETURN: a class-driven wrap/unwrap (shadow-*/clip-path-*)
                         // swaps the slot's top-level element, and re-mounting a stale reference would
@@ -239,7 +240,16 @@ namespace Velvet
                     }
                     else
                     {
-                        newElements[i] = _reconciler.CreateElementForController(vnode);
+                        // A same-key type flip (CanPatch=false) is a replacement, not a patch — mirroring
+                        // the general keyed diff path's create-before-dispose ordering: a throw while
+                        // constructing the replacement element leaves the old one intact instead of the
+                        // slot holding nothing recoverable.
+                        var replacement = _reconciler.CreateElementForController(vnode);
+                        if (hasExisting)
+                        {
+                            _reconciler.CleanupElementForController(existing.element);
+                        }
+                        newElements[i] = replacement;
                     }
 
                     // Stamp this item's newly created fibers with its own vnode so an isolated re-render can

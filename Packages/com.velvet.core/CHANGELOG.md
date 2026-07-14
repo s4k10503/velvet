@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `V.VirtualList`: a same-key item whose node type changes across a re-render (e.g. a slot
+  swapping from `V.Label` to `V.SceneView` while keeping the same key) is now created fresh
+  instead of patched onto the old element — the fast path was missing the type-compatibility
+  check the general keyed reconcile path already applies before reusing an element.
+
 ## [1.3.0] - 2026-07-13
 
 ### Added
