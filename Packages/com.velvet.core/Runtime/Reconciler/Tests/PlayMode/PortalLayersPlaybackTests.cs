@@ -130,7 +130,7 @@ namespace Velvet.Tests
             var redPixels = 0;
             foreach (var p in pixels)
             {
-                if (p.r > 140 && p.g < 90 && p.b < 90) redPixels++;
+                if (RenderTexturePixelReader.IsRedPixel(p)) redPixels++;
             }
             Assert.That(redPixels, Is.GreaterThan(50));
         }

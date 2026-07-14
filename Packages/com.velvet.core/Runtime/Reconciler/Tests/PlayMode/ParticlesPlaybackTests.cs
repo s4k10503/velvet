@@ -84,7 +84,7 @@ namespace Velvet.Tests
             var count = 0;
             foreach (var p in pixels)
             {
-                if (p.r > 140 && p.g < 90 && p.b < 90) count++;
+                if (RenderTexturePixelReader.IsRedPixel(p)) count++;
             }
             return count;
         }

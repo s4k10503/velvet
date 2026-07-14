@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -29,20 +30,19 @@ namespace Velvet.Tests
         private GameObject _go;
         private PanelSettings _settings;
         private MountedTree _mounted;
-        private int _savedTargetFrameRate;
+        private TargetFrameRateScope _frameRateScope;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
         {
-            _savedTargetFrameRate = Application.targetFrameRate;
-            Application.targetFrameRate = 120;
+            _frameRateScope = new TargetFrameRateScope(120);
             yield break;
         }
 
         [UnityTearDown]
         public IEnumerator UnityTearDown()
         {
-            Application.targetFrameRate = _savedTargetFrameRate;
+            _frameRateScope.Dispose();
             _mounted?.Dispose();
             _mounted = null;
             if (_go != null) Object.Destroy(_go);

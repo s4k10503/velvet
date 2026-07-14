@@ -13,31 +13,28 @@ namespace Velvet.TestUtilities
     /// </summary>
     public sealed class RenderTexturePanelHost : IDisposable
     {
-        private readonly GameObject _gameObject;
+        private readonly UIDocument _document;
         private readonly PanelSettings _settings;
-
-        public UIDocument Document { get; }
 
         /// <summary>The RenderTexture the panel's PanelSettings renders into.</summary>
         public RenderTexture TargetTexture { get; }
 
         /// <summary>The panel's root, ready to V.Mount a VNode tree onto.</summary>
-        public VisualElement Root => Document.rootVisualElement;
+        public VisualElement Root => _document.rootVisualElement;
 
         public RenderTexturePanelHost(string name, int width, int height, int depth = 32)
         {
             TargetTexture = new RenderTexture(width, height, depth);
-            _gameObject = new GameObject(name);
-            Document = _gameObject.AddComponent<UIDocument>();
+            _document = new GameObject(name).AddComponent<UIDocument>();
             _settings = ScriptableObject.CreateInstance<PanelSettings>();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             _settings.targetTexture = TargetTexture;
-            Document.panelSettings = _settings;
+            _document.panelSettings = _settings;
         }
 
         public void Dispose()
         {
-            if (_gameObject != null) UnityEngine.Object.Destroy(_gameObject);
+            if (_document != null) UnityEngine.Object.Destroy(_document.gameObject);
             if (_settings != null) UnityEngine.Object.Destroy(_settings);
             if (TargetTexture != null)
             {
@@ -58,16 +55,25 @@ namespace Velvet.TestUtilities
         public static Color32[] ReadPixels(RenderTexture renderTexture, RectInt region)
         {
             var previouslyActive = RenderTexture.active;
-            RenderTexture.active = renderTexture;
-
             var texture = new Texture2D(region.width, region.height, TextureFormat.RGBA32, false);
-            texture.ReadPixels(new Rect(region.x, region.y, region.width, region.height), 0, 0);
-            texture.Apply();
-            RenderTexture.active = previouslyActive;
-
-            var pixels = texture.GetPixels32();
-            UnityEngine.Object.Destroy(texture);
-            return pixels;
+            try
+            {
+                RenderTexture.active = renderTexture;
+                texture.ReadPixels(new Rect(region.x, region.y, region.width, region.height), 0, 0);
+                texture.Apply();
+                return texture.GetPixels32();
+            }
+            finally
+            {
+                RenderTexture.active = previouslyActive;
+                UnityEngine.Object.Destroy(texture);
+            }
         }
+
+        /// <summary>
+        /// Whether a sampled pixel reads as the saturated red used by the SceneView/Particles playback
+        /// specs' test materials — a fixed threshold wide enough to absorb sRGB/anti-aliasing drift.
+        /// </summary>
+        public static bool IsRedPixel(Color32 pixel) => pixel.r > 140 && pixel.g < 90 && pixel.b < 90;
     }
 }
