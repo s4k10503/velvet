@@ -79,23 +79,20 @@ namespace Velvet
                 return;
             }
 
-            if (s_definitions.TryGetValue(name, out var existing))
+            // The exact same registration again is a true no-op, not a conflict worth a warning.
+            if (s_definitions.TryGetValue(name, out var existingDefinition) && ReferenceEquals(existingDefinition, definition))
             {
-                if (ReferenceEquals(existing, definition))
-                {
-                    // The exact same registration again is a true no-op, not a conflict worth a warning.
-                    return;
-                }
+                return;
+            }
+
+            if (NameKeyedRegistry.Set(name, definition!, s_definitions))
+            {
                 Debug.LogWarning($"[VelvetFilters] \"{name}\" is already registered; overwriting.");
             }
-            s_definitions[name] = definition!;
         }
 
         /// <summary>Removes a registration. Returns true when the name was registered.</summary>
-        public static bool Unregister(string name)
-        {
-            return !string.IsNullOrEmpty(name) && s_definitions.Remove(name);
-        }
+        public static bool Unregister(string name) => NameKeyedRegistry.Unregister(name, s_definitions);
 
         // Parse-time lookup for the filter-[name:args] resolver branch. A destroyed (fake-null) asset
         // fails the lookup so the token falls through instead of applying a dead definition.
