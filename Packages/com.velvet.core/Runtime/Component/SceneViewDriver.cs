@@ -29,7 +29,8 @@ namespace Velvet
 
     /// <summary>
     /// Drives a <see cref="SceneViewElement"/>'s camera-output display: a framework-owned
-    /// RenderTexture created at the element's laid-out pixel size (times the resolution scale),
+    /// RenderTexture sized to the element's laid-out pixel size (times the resolution scale, rounded
+    /// up to reuse the existing texture across minor resizes — see <see cref="TryComputePixelSize"/>),
     /// assigned to <c>camera.targetTexture</c>, and shown through the element's background image. The
     /// element samples the LIVE texture — the camera keeps rendering into it and UI Toolkit's command
     /// list samples it at draw time, so new frames appear with no Velvet re-render and no pixel copy.
@@ -46,13 +47,13 @@ namespace Velvet
         // universally supported.
         private const int MaxTextureSize = 4096;
 
-        // The pixel-size rounding grain TryComputePixelSize quantizes up to. 16 divides
-        // MaxTextureSize evenly (4096 / 16 = 256), so the ceiling clamp and this step never leave a
-        // leftover partial bucket at the boundary. Large enough to absorb the few-pixels-per-frame
-        // deltas a drag-resize or an animated layout produces — so most jitter keeps landing on the
-        // same bucket and reuses the existing RenderTexture instead of reallocating — while small
-        // enough that the worst-case 15px-per-axis overshoot is negligible against any on-screen
-        // SceneView size.
+        // The pixel-size rounding grain TryComputePixelSize quantizes the larger axis up to. 16
+        // divides MaxTextureSize evenly (4096 / 16 = 256), so the ceiling clamp and this step never
+        // leave a leftover partial bucket at the boundary. Large enough to absorb the
+        // few-pixels-per-frame deltas a drag-resize or an animated layout produces — so most jitter
+        // keeps landing on the same bucket and reuses the existing RenderTexture instead of
+        // reallocating — while small enough that the worst-case 15px overshoot is negligible against
+        // any on-screen SceneView size.
         private const int SizeQuantizationStep = 16;
 
         // Wires the geometry-driven texture sync onto the element and returns the binding. The
@@ -178,12 +179,19 @@ namespace Velvet
         // zero-dimension texture (which RenderTexture creation rejects); the ceiling bounds the VRAM
         // request like the sibling texture bakers bound theirs — applied as ONE shared shrink when
         // either axis overflows, because clamping each axis independently would change the texture's
-        // aspect and distort the camera picture. The result is then quantized UP to
-        // SizeQuantizationStep: minor layout jitter (a drag-resize, an animated layout moving a
-        // handful of pixels a frame) keeps landing on the SAME quantized size, so SyncTexture's
-        // exact-match reuse check hits instead of reallocating the RenderTexture on every change.
-        // Re-clamped to MaxTextureSize afterward — quantizing up could otherwise carry a
-        // near-ceiling size into the next bucket past the cap.
+        // aspect and distort the camera picture.
+        //
+        // The result is then quantized for reuse-friendliness, but — for the same distort-the-picture
+        // reason the shrink above is careful about — NOT by rounding each axis up independently: since
+        // SceneViewDriver never pins camera.aspect, Unity derives the camera's render aspect straight
+        // from the texture's own width/height, so a texture whose aspect drifts from the element's
+        // true aspect renders the scene visibly skewed. Instead the LARGER axis is quantized up to
+        // SizeQuantizationStep and the other axis is rescaled by the same factor, which keeps the
+        // texture's aspect equal to the element's true aspect while still landing same-aspect jitter
+        // (a uniform drag-resize, a DPI change) on a shared bucket so SyncTexture's exact-match reuse
+        // check hits instead of reallocating. A resize that itself changes the element's aspect ratio
+        // still gets a fresh texture either way — that's correct, not a regression, since the aspect
+        // actually changed.
         private static bool TryComputePixelSize(VisualElement element, SceneViewBinding binding, out int pw, out int ph)
         {
             pw = 0;
@@ -203,8 +211,18 @@ namespace Velvet
                 pw = Mathf.Clamp(Mathf.FloorToInt(pw * shrink), 1, MaxTextureSize);
                 ph = Mathf.Clamp(Mathf.FloorToInt(ph * shrink), 1, MaxTextureSize);
             }
-            pw = Mathf.Min(QuantizeUp(pw), MaxTextureSize);
-            ph = Mathf.Min(QuantizeUp(ph), MaxTextureSize);
+            if (pw >= ph)
+            {
+                var quantizedW = Mathf.Min(QuantizeUp(pw), MaxTextureSize);
+                ph = Mathf.Max(1, Mathf.RoundToInt((float)quantizedW * ph / pw));
+                pw = quantizedW;
+            }
+            else
+            {
+                var quantizedH = Mathf.Min(QuantizeUp(ph), MaxTextureSize);
+                pw = Mathf.Max(1, Mathf.RoundToInt((float)quantizedH * pw / ph));
+                ph = quantizedH;
+            }
             return true;
         }
 

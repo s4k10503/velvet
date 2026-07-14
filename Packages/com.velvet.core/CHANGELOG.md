@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- `V.SceneView`: the owned RenderTexture's backing resolution now rounds up to the nearest 16px
-  step instead of matching the element's laid-out pixel size exactly, so small, rapid resizes (a
-  drag-resize, an animated layout) reuse the existing texture instead of reallocating on every
-  change. The displayed output is unaffected — only the texture's internal resolution changes.
+- `V.SceneView`: the owned RenderTexture's backing resolution now rounds its larger axis up to the
+  nearest 16px step (rescaling the other axis by the same factor, so the texture's aspect ratio
+  still matches the element's) instead of matching the element's laid-out pixel size exactly, so
+  small, rapid resizes that keep the element's aspect ratio unchanged (a drag-resize, an animated
+  layout) reuse the existing texture instead of reallocating on every change.
 
 ### Fixed
 

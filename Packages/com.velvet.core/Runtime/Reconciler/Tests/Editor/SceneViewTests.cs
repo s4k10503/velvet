@@ -10,12 +10,16 @@ namespace Velvet.Tests
     /// Specifies the contract of <c>V.SceneView</c> — a Camera's output as an element:
     /// <list type="bullet">
     /// <item>Mounting creates the dedicated <see cref="SceneViewElement"/>; once layout resolves, the
-    /// framework creates a RenderTexture at the element's laid-out pixel size (times the resolution
-    /// scale), assigns it to <c>camera.targetTexture</c>, and shows it through the element's background
-    /// image — so background utilities and rounded corners apply to the camera output.</item>
-    /// <item>The texture follows the element: a geometry change re-sizes it, a camera swap releases the
-    /// old camera and targets the new one, and removing the camera (or the element, or disposing the
-    /// tree) releases both the camera's target and the texture.</item>
+    /// framework creates a RenderTexture sized to the element's laid-out pixel size (times the
+    /// resolution scale), assigns it to <c>camera.targetTexture</c>, and shows it through the
+    /// element's background image — so background utilities and rounded corners apply to the camera
+    /// output.</item>
+    /// <item>The texture follows the element: a geometry change re-sizes it (rounding the larger axis
+    /// up to a shared quantization step and rescaling the other axis by the same factor, so its
+    /// aspect ratio keeps matching the element's, so a minor resize reuses the existing texture
+    /// instead of reallocating), a camera swap releases the old camera and targets the new one, and
+    /// removing the camera (or the element, or disposing the tree) releases both the camera's target
+    /// and the texture.</item>
     /// <item>Release is polite: a camera whose targetTexture was reassigned by user code after mount is
     /// left untouched on unmount.</item>
     /// <item>A null camera mounts an inert element; a zero-sized element creates no texture.</item>
@@ -222,8 +226,33 @@ namespace Velvet.Tests
             s_setFlag.Invoke(true);
             FlushAndLayout();
 
-            // Assert — 200 rounds up to the next 16px quantization step (208); 64 already lands on one.
-            Assert.That((s_camera.targetTexture.width, s_camera.targetTexture.height), Is.EqualTo((208, 64)));
+            // Assert — the larger axis (200) rounds up to the next 16px quantization step (208); the
+            // unchanged 64px axis is rescaled by the same factor (208/200) to keep the texture's
+            // aspect equal to the element's, landing at round(208 * 64 / 200) = 67.
+            Assert.That((s_camera.targetTexture.width, s_camera.targetTexture.height), Is.EqualTo((208, 67)));
+        }
+
+        [Test]
+        public void Given_AQuantizedResize_When_TheTextureIsCreated_Then_TheAspectMatchesTheElement()
+        {
+            // Arrange — SceneViewDriver never pins camera.aspect, so Unity derives the camera's
+            // render aspect straight from the texture's own width/height; quantizing width and
+            // height independently would drift the texture's aspect from the element's true 200:64
+            // aspect and visibly skew the rendered scene.
+            s_camera = CreateCamera("cam");
+            MountAndLayout(V.Component(ResizingHost, key: "root"));
+
+            // Act
+            s_setFlag.Invoke(true);
+            FlushAndLayout();
+
+            // Assert — allows the rounding slack RoundToInt introduces when rescaling the shorter axis
+            // (a fraction of a pixel), while still failing hard against independent-axis quantization,
+            // which would land at aspect 208/64 = 3.25 — an 0.125 gap, over 5x this tolerance.
+            var rt = s_camera.targetTexture;
+            var textureAspect = (float)rt.width / rt.height;
+            var elementAspect = 200f / 64f;
+            Assert.That(Mathf.Abs(textureAspect - elementAspect), Is.LessThan(0.05f));
         }
 
         [Component]
@@ -231,15 +260,17 @@ namespace Velvet.Tests
         {
             var (grown, setGrown) = Hooks.UseState(false);
             s_setFlag = setGrown;
-            return V.SceneView(s_camera, className: grown ? "w-[105px] h-[64px]" : "w-[100px] h-[64px]");
+            return V.SceneView(s_camera, className: grown ? "w-[103px] h-[66px]" : "w-[100px] h-[64px]");
         }
 
         [Test]
         public void Given_ASubStepSizeDelta_When_TheElementResizes_Then_TheRenderTextureIsNotReallocated()
         {
-            // Arrange — 100px and 105px both round up to the same 112px bucket at the 16px
-            // quantization step, so this resize must reuse the existing RenderTexture instead of
-            // reallocating a new one for a size delta smaller than the step.
+            // Arrange — 100x64 and 103x66 are nearly the same aspect ratio (1.5625 vs. 1.5606), so
+            // both quantize their larger (width) axis to the same 112px bucket and rescale height to
+            // the same 72px, landing on the identical texture size; this resize must reuse the
+            // existing RenderTexture instead of reallocating a new one for a size delta smaller than
+            // the step.
             s_camera = CreateCamera("cam");
             MountAndLayout(V.Component(SubStepResizeHost, key: "root"));
             var initial = s_camera.targetTexture;
