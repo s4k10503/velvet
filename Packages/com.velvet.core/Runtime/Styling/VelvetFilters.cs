@@ -80,7 +80,12 @@ namespace Velvet
             }
 
             // The exact same registration again is a true no-op, not a conflict worth a warning.
-            if (NameKeyedRegistry.Set(name, definition!, s_definitions, ReferenceEquals))
+            if (s_definitions.TryGetValue(name, out var existingDefinition) && ReferenceEquals(existingDefinition, definition))
+            {
+                return;
+            }
+
+            if (NameKeyedRegistry.Set(name, definition!, s_definitions))
             {
                 Debug.LogWarning($"[VelvetFilters] \"{name}\" is already registered; overwriting.");
             }

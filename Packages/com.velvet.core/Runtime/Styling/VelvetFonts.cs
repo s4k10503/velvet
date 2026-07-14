@@ -86,7 +86,7 @@ namespace Velvet
                 return;
             }
 
-            _families[family.name] = family;
+            NameKeyedRegistry.Set(family.name, family, _families);
             FontsChanged?.Invoke();
         }
 
@@ -110,7 +110,7 @@ namespace Velvet
                 {
                     if (family != null && !string.IsNullOrEmpty(family.name))
                     {
-                        _families[family.name] = family;
+                        NameKeyedRegistry.Set(family.name, family, _families);
                     }
                 }
             }

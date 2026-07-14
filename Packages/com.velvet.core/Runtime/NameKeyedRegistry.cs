@@ -1,5 +1,4 @@
 #nullable enable
-using System;
 using System.Collections.Generic;
 
 namespace Velvet
@@ -16,30 +15,21 @@ namespace Velvet
     {
         /// <summary>
         /// Inserts <paramref name="value"/> under <paramref name="key"/> in <paramref name="store"/>,
-        /// overwriting any existing entry. Returns <c>false</c> for a fresh key. For a key that is already
-        /// registered, returns <c>false</c> when <paramref name="isSameRegistration"/> is supplied and
-        /// reports the existing entry as the same registration restated (a no-op: the store is left
-        /// untouched), and <c>true</c> otherwise — a genuine overwrite the caller can warn about.
+        /// overwriting any existing entry. Returns <c>false</c> for a fresh key (single-probe fast path)
+        /// and <c>true</c> when a key already registered was overwritten, so the caller can warn about it.
+        /// A registry that needs to recognize a re-registration as a no-op (e.g. the same reference
+        /// restated) checks that itself before calling <see cref="Set{TValue}"/>, per this type's own
+        /// principle that per-registry validation stays in the registry.
         /// </summary>
-        public static bool Set<TValue>(
-            string key,
-            TValue value,
-            Dictionary<string, TValue> store,
-            Func<TValue, TValue, bool>? isSameRegistration = null)
+        public static bool Set<TValue>(string key, TValue value, Dictionary<string, TValue> store)
         {
-            if (store.TryGetValue(key, out var existing))
+            if (store.TryAdd(key, value))
             {
-                if (isSameRegistration != null && isSameRegistration(existing, value))
-                {
-                    return false;
-                }
-
-                store[key] = value;
-                return true;
+                return false;
             }
 
             store[key] = value;
-            return false;
+            return true;
         }
 
         /// <summary>
