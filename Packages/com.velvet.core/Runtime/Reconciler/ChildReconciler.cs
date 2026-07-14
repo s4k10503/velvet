@@ -63,6 +63,53 @@ namespace Velvet
             _general = new GeneralPathReconciler(ctx, patcher, factory, cleaner, _placement, _keying);
         }
 
+        // Applies the CanPatch-gated patch-or-replace decision at one DOM slot: patches the existing
+        // element in place when the pair is patch-compatible, otherwise removes the existing element
+        // (when slotExists) and inserts a freshly created one at the same slot. Shared by the
+        // Common-phase indexed loop and both keyed Pass-1 linear-scan implementations (sync and
+        // time-sliced) so this eager remove-then-create sequence cannot independently drift the way
+        // FiberVirtualListController's own separately hand-rolled copy did — it skipped the CanPatch
+        // gate entirely, patching a same-key type flip onto a stale element.
+        //   slotExists: false only for the indexed diff's DOM-desync recovery, where a transient
+        //     AnimatePresence overlap can leave the live range shorter than the baseline; the keyed
+        //     prefix scan's slot always exists by construction (Pass 1 never changes childCount ahead
+        //     of index i).
+        //   clampInsertIndex: the indexed diff inserts at an absolute position that must clamp to
+        //     parent.childCount on a desync-shortened range; the keyed scan's slotStart + i is always
+        //     in range on its own and must NOT be clamped (clamping would silently misplace an insert
+        //     once slotStart + i legitimately reaches parent.childCount, i.e. a tail slot).
+        //   checkAbortAfterCreate: whether to bail before inserting when CreateElement's descendant
+        //     render triggered an error-boundary abort. ReconcileKeyedSync (the fully-synchronous
+        //     keyed caller) does not check this today; preserved as-is here rather than folded in,
+        //     since flipping it would be a behavior change out of scope for this consolidation.
+        // Returns true when the caller must stop (an abort was observed and the caller opted in via
+        // checkAbortAfterCreate).
+        private bool PatchOrReplaceAtSlot(
+            VisualElement parent, int slotStart, int i, VNode? oldNode, VNode? newNode,
+            bool slotExists, bool clampInsertIndex, bool checkAbortAfterCreate)
+        {
+            if (slotExists && ReconcileKeying.CanPatch(oldNode, newNode))
+            {
+                var domElement = parent.ElementAt(slotStart + i);
+                var actualElement = _patcher.ResolveWrapped(domElement);
+                _patcher.PatchNode(actualElement, oldNode, newNode);
+                return false;
+            }
+
+            if (slotExists)
+            {
+                _cleaner.RemoveElement(parent, slotStart + i);
+            }
+            var newElement = _factory.CreateElement(newNode);
+            if (checkAbortAfterCreate && _ctx.IsAborted)
+            {
+                return true;
+            }
+            var insertIndex = clampInsertIndex ? Math.Min(slotStart + i, parent.childCount) : slotStart + i;
+            parent.Insert(insertIndex, newElement);
+            return false;
+        }
+
         public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
             double frameBudgetMs = 0, int slotStart = 0, int slotLimit = int.MaxValue)
         {
@@ -448,21 +495,10 @@ namespace Velvet
                     // tenant childCount includes the following sibling's rows, so an unbounded check would treat a
                     // sibling row as this fiber's and PATCH it. Out of range → create within this fiber's range.
                     var slotExists = slotStart + i < Math.Min(parent.childCount, slotLimit);
-                    if (slotExists && ReconcileKeying.CanPatch(oldNodes[i], newNodes[i]))
+                    if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
+                            slotExists, clampInsertIndex: true, checkAbortAfterCreate: true))
                     {
-                        var domElement = parent.ElementAt(slotStart + i);
-                        var actualElement = _patcher.ResolveWrapped(domElement);
-                        _patcher.PatchNode(actualElement, oldNodes[i], newNodes[i]);
-                    }
-                    else
-                    {
-                        if (slotExists)
-                        {
-                            _cleaner.RemoveElement(parent, slotStart + i);
-                        }
-                        var newElement = _factory.CreateElement(newNodes[i]);
-                        if (_ctx.IsAborted) return;
-                        parent.Insert(Math.Min(slotStart + i, parent.childCount), newElement);
+                        return;
                     }
 
                     if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
@@ -641,18 +677,8 @@ namespace Velvet
                     var newKey = _keying.EffectiveKey(newNodes[i]);
                     if (oldKey != newKey) break;
 
-                    if (ReconcileKeying.CanPatch(oldNodes[i], newNodes[i]))
-                    {
-                        var domElement = parent.ElementAt(slotStart + i);
-                        var actualElement = _patcher.ResolveWrapped(domElement);
-                        _patcher.PatchNode(actualElement, oldNodes[i], newNodes[i]);
-                    }
-                    else
-                    {
-                        _cleaner.RemoveElement(parent, slotStart + i);
-                        var newElement = _factory.CreateElement(newNodes[i]);
-                        parent.Insert(slotStart + i, newElement);
-                    }
+                    PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
+                        slotExists: true, clampInsertIndex: false, checkAbortAfterCreate: false);
                 }
                 // Update only when an operation succeeded; left unchanged on break.
                 linearEnd = i + 1;
@@ -913,18 +939,11 @@ namespace Velvet
                     var newKey = _keying.EffectiveKey(newNodes[i]);
                     if (oldKey != newKey) break;
 
-                    if (ReconcileKeying.CanPatch(oldNodes[i], newNodes[i]))
+                    if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
+                            slotExists: true, clampInsertIndex: false, checkAbortAfterCreate: true))
                     {
-                        var domElement = parent.ElementAt(slotStart + i);
-                        var actualElement = _patcher.ResolveWrapped(domElement);
-                        _patcher.PatchNode(actualElement, oldNodes[i], newNodes[i]);
-                    }
-                    else
-                    {
-                        _cleaner.RemoveElement(parent, slotStart + i);
-                        var newElement = _factory.CreateElement(newNodes[i]);
-                        if (AbortIfCanceled(state)) return true;
-                        parent.Insert(slotStart + i, newElement);
+                        state.Phase = KeyedReconcilePhase.Done;
+                        return true;
                     }
                 }
                 state.LinearEnd = i + 1;
@@ -1291,6 +1310,11 @@ namespace Velvet
         // the caller must stop. Shared by the synchronous (ReconcileKeyedSync) and time-sliced (Pass2Process)
         // keyed Pass-2 loops so their per-node match/patch/create semantics cannot drift; each loop keeps only
         // its own abort-handling and TryYield scaffolding around this call.
+        // NOT folded into PatchOrReplaceAtSlot despite the same CanPatch gate: Pass 2 defers old-element
+        // removal (recorded in replacedKeys, actually removed by a later reverse pass) instead of removing
+        // eagerly, appends to a newElements list instead of inserting at a live DOM index, and re-fetches
+        // the patched element to observe a WrapElement swap — three real differences in shape, not just
+        // naming, so forcing this through the same helper would need as many bool flags as it has callers.
         private bool ProcessKeyedNode(
             VisualElement parent, int slotStart, VNode? newNode, int i,
             Dictionary<ChildKey, (int index, VNode? node)> oldKeyMap,
