@@ -197,6 +197,38 @@ namespace Velvet.Tests
             Assert.That(Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(visibleContainer.childCount));
         }
 
+        [Test]
+        public void Given_MountedVirtualListItem_When_SameKeyRendersADifferentNodeType_Then_TheNewTypeIsCreatedInstead()
+        {
+            // Arrange: item 0 first renders as a Label under key "item-0".
+            var node1 = V.VirtualList(
+                items: CreateItems(10),
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Label(text: item.Name, key: item.Id),
+                overscan: 0);
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            using var controller = new FiberVirtualListController(scrollView, node1, Reconciler);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            var visibleContainer = scrollView.contentContainer.ElementAt(1);
+            Assume.That(visibleContainer.ElementAt(0), Is.InstanceOf<Label>(), "Precondition: item 0 first renders as a Label");
+
+            // Act: the same key now renders as a Div — a same-key type flip, applied via Update (not a fresh mount).
+            // ForceRefresh resets the tracked range but only re-renders once _viewportHeight is known (normally
+            // set by a live GeometryChangedEvent), so re-supply the range directly, as the other tests do.
+            var node2 = V.VirtualList(
+                items: CreateItems(10),
+                keySelector: item => item.Id,
+                itemHeight: 50f,
+                renderer: item => V.Div(key: item.Id),
+                overscan: 0);
+            controller.Update(node2);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+
+            // Assert: item 0 is a fresh VisualElement, not the old Label patched in place.
+            Assert.That(visibleContainer.ElementAt(0).GetType(), Is.EqualTo(typeof(VisualElement)));
+        }
+
         #endregion
 
         #region Context inheritance
