@@ -158,11 +158,12 @@ namespace Velvet
 
             // Schedules the deferred swap (and its own completion timeout) on the PANEL-ROOT host, not the
             // entering element itself — mirrors PlayExit's identical ScheduleOnHost: a keyed reorder can
-            // transiently detach an already-attached element (RemoveFromHierarchy + re-Insert), and UI Toolkit
-            // silently drops a detached element's own scheduled items, which would stall the enter forever (or,
-            // for a stagger claimed from an ancestor's orchestration, drop the claimed delay's clear entirely).
-            // The element only needs to stay attached for its OWN CSS transition to keep tweening — it does, a
-            // reorder moves it, never removes it.
+            // transiently detach an already-attached element (RemoveFromHierarchy + re-Insert), and a one-shot
+            // scheduled item's delay restarts in full on every re-attach — repeated reorders would keep
+            // resetting the wait and could stall the enter forever (or, for a stagger claimed from an
+            // ancestor's orchestration, drop the claimed delay's clear entirely). The element only needs to
+            // stay attached for its OWN CSS transition to keep tweening — it does, a reorder moves it, never
+            // removes it.
             void ScheduleOnHost()
             {
                 // Superseded before it ever got to schedule (a cancel-before-attach removed this exact pending).
@@ -406,8 +407,9 @@ namespace Velvet
             // A stable host only exists once the element is attached. If it is off-panel at exit start (the
             // presence boundary reconciled while its subtree was temporarily detached), defer scheduling until
             // the element attaches — scheduling on the still-detached element here would put the exit's
-            // callbacks on a host that UI Toolkit drops the next time the element moves, stalling the exit and
-            // leaking the ghost (the very failure the stable-host scheduling exists to prevent).
+            // one-shot callbacks on a host whose delay restarts in full the next time the element moves,
+            // stalling the exit and leaking the ghost (the very failure the stable-host scheduling exists to
+            // prevent).
             if (element.panel != null)
             {
                 ScheduleOnHost();
@@ -526,8 +528,8 @@ namespace Velvet
 
                 // A delayed start is parked on the panel-root host, not element.schedule: ScheduleStart only
                 // ever runs once attached (called directly below, or from DeferUntilAttached's onAttach), but
-                // a keyed reorder can transiently detach the element again during the delay window itself,
-                // and UI Toolkit silently drops a detached element's own scheduled items (mirrors PlayExit's
+                // a keyed reorder can transiently detach the element again during the delay window itself, and
+                // a one-shot scheduled item's delay restarts in full on every re-attach (mirrors PlayExit's
                 // ScheduleOnHost rationale). The host should therefore always be available here; the null
                 // guard is defensive (mirrors StartSpringTick's own should-not-happen bail) rather than an
                 // expected path.
@@ -560,10 +562,12 @@ namespace Velvet
         }
 
         // Starts the recurring spring tick on the panel root — the stable host, mirroring the shadow co-fade
-        // tick's own rationale: a keyed reorder can transiently detach the animating element, and UI Toolkit
-        // silently drops a DETACHED element's own scheduled items, but the panel root never detaches during the
-        // tree's life. Each tick reads the elapsed time from the SAME clock the scheduler itself used to decide
-        // when to fire this callback (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
+        // tick's own rationale: a recurring item survives a keyed reorder's detach/re-attach of the animating
+        // element on its own (UI Toolkit pauses and reschedules it automatically), but the panel root is
+        // already where the co-fade sampling and the rest of this pending animation's bookkeeping run, so this
+        // tick shares that same stable host rather than tracking a second one. Each tick reads the elapsed time
+        // from the SAME clock the scheduler itself used to decide when to fire this callback
+        // (TimerState.deltaTime, backed by Panel.TimeSinceStartupMs — the panel's
         // own time source, which a test's simulated panel overrides) rather than sampling a different clock
         // (e.g. Time.realtimeSinceStartupAsDouble) that could disagree with it: a hitch is still absorbed by
         // SpringIntegrator's own dt clamp, but the elapsed time now always matches what actually elapsed on the
@@ -1074,9 +1078,11 @@ namespace Velvet
 
         // Starts the recurring co-fade tick: every frame, sample the animating element's current (transition-
         // interpolated) opacity and push it to each collected descendant shadow, so they fade in lockstep with
-        // the element. Scheduled on the PANEL ROOT (not the animating element) so a keyed reorder that briefly
-        // detaches the subtree — UI Toolkit drops a detached element's scheduled items — does not stall the
-        // fade. No-op when the subtree carries no shadows (the common case), so a shadowless animation costs
+        // the element. Scheduled on the PANEL ROOT (not the animating element): a recurring item survives a
+        // keyed reorder's detach/re-attach of the animating element on its own (UI Toolkit pauses and
+        // reschedules it automatically), but the panel root is already the one stable host every other piece
+        // of this animation's bookkeeping runs against, so the tick shares it instead of tracking its own.
+        // No-op when the subtree carries no shadows (the common case), so a shadowless animation costs
         // nothing. Paused by EndShadowCoFade on completion / cancel.
         private static void StartShadowCoFadeTick(PendingAnimation pending)
         {
