@@ -142,16 +142,20 @@ namespace Velvet.Tests
             s_setRemoved = setSwapped;
             var counting = V.Component(CountingHost, key: "cnt");
             var spacer = V.Div(key: "sp", className: "w-[1px] h-[1px]");
+            // The keyed diff's LIS-based placement leaves whichever element is first in the OLD order
+            // as the anchor that is never actually detached — "counting" starts second and moves to
+            // first so this reorder genuinely detaches/re-attaches UseFrame's host.
             return V.Div(className: "flex-col", children: swapped
-                ? new VNode[] { spacer, counting }
-                : new VNode[] { counting, spacer });
+                ? new VNode[] { counting, spacer }
+                : new VNode[] { spacer, counting });
         }
 
         [UnityTest]
         public IEnumerator Given_AKeyedReorder_When_TheHostMoves_Then_TheCallbackKeepsTicking()
         {
-            // Arrange — a keyed reorder re-inserts the host element, which silently drops element-bound
-            // scheduled items; the frame driver must survive the move or the hook dies while mounted.
+            // Arrange — a keyed reorder re-inserts the host element. A recurring tick survives that
+            // detach/re-attach on its own (UI Toolkit pauses and reschedules it), but this pins the
+            // OBSERVABLE contract directly: the frame driver must keep ticking across the move.
             var root = CreatePanelRoot();
             yield return null;
             _mounted = V.Mount(root, V.Component(ReorderFrameHost, key: "root"));

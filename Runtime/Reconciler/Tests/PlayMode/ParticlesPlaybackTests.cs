@@ -212,8 +212,10 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_AKeyedReorder_When_TheElementMoves_Then_TheDrawnParticlesKeepMoving()
         {
-            // Arrange — a keyed reorder re-inserts the element, which silently drops element-bound
-            // scheduled items; the repaint driver must survive the move or the drawn output freezes.
+            // Arrange — a keyed reorder re-inserts the element. A recurring tick survives that
+            // detach/re-attach on its own (UI Toolkit pauses and reschedules it), but this pins the
+            // OBSERVABLE contract directly: the repaint driver must keep advancing across the move, or
+            // the drawn output freezes.
             var effect = CreateEmitter();
             s_effect = effect;
             _panelRt = new RenderTexture(300, 300, 32);
@@ -262,9 +264,12 @@ namespace Velvet.Tests
             s_setFlag = setSwapped;
             var particles = V.Particles(s_effect, key: "px", className: "w-[300px] h-[300px]");
             var spacer = V.Div(key: "sp", className: "w-[1px] h-[1px]");
+            // The keyed diff's LIS-based placement leaves whichever element is first in the OLD order
+            // as the anchor that is never actually detached — "particles" starts second and moves to
+            // first so this reorder genuinely detaches/re-attaches its repaint tick's host.
             return V.Div(className: "flex-col", children: swapped
-                ? new VNode[] { spacer, particles }
-                : new VNode[] { particles, spacer });
+                ? new VNode[] { particles, spacer }
+                : new VNode[] { spacer, particles });
         }
 
         private Color32[] Snapshot()

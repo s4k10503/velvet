@@ -14,15 +14,11 @@ namespace Velvet.Tests
         private HeadlessEditorPanelHost _host;
         private MountedTree _mounted;
 
-        private static int s_calls;
-        private static long s_fakeMs;
-
         [SetUp]
         public void SetUp()
         {
             _host = new HeadlessEditorPanelHost();
-            s_calls = 0;
-            s_fakeMs = 1000;
+            UseFrameFakeClockHost.Reset();
         }
 
         [TearDown]
@@ -34,37 +30,26 @@ namespace Velvet.Tests
             _host = null;
         }
 
-        [Component]
-        private static VNode CountingHost()
-        {
-            Hooks.UseFrame(_ => s_calls++);
-            return V.Div(className: "w-[10px] h-[10px]");
-        }
-
-        // The per-panel time function reports SECONDS as a double (the ms-facing surface multiplies
-        // by 1000); the fake clock is kept in milliseconds and converted here for readability.
-        private static double ReadFakeClock() => s_fakeMs / 1000.0;
-
         [Test]
         public void Given_AMountedUseFrame_When_TheSchedulerUpdatesEveryFewMilliseconds_Then_EachSpacedUpdateTicks()
         {
             // Arrange — mount on the fake clock, run the passive effect that arms the tick, and
             // absorb the arm-time firing (its delta is zero on the frozen clock, so it never counts).
-            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, ReadFakeClock);
-            _mounted = V.Mount(_host.Root, V.Component(CountingHost, key: "root"));
+            EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
+            _mounted = V.Mount(_host.Root, V.Component(UseFrameFakeClockHost.CountingHost, key: "root"));
             _mounted.FlushEffectsForTest();
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
 
             // Act — four updates two fake-milliseconds apart, all inside a single 16 ms window.
             for (var i = 0; i < 4; i++)
             {
-                s_fakeMs += 2;
+                UseFrameFakeClockHost.Ms += 2;
                 EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
             }
 
             // Assert — per-update ticking: the spaced updates each invoked the callback; a 16 ms
             // minimum interval would have allowed none of them (only 8 ms elapsed in total).
-            Assert.That(s_calls, Is.GreaterThanOrEqualTo(3));
+            Assert.That(UseFrameFakeClockHost.Calls, Is.GreaterThanOrEqualTo(3));
         }
     }
 }
