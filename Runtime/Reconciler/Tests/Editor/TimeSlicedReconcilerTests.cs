@@ -338,6 +338,35 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_KeyedLinearScanWithTypeFlip_When_TimeSliced_Then_ReplacesElementWithNewType()
+        {
+            // Arrange — three same-key entries, the middle one flipping from Label to Button, so the
+            // time-sliced linear scan's CanPatch=false replace branch runs under park/resume; every
+            // other linear-scan spec here only exercises the CanPatch=true patch branch.
+            var oldChildren = new VNode[]
+            {
+                V.Label(text: "a", key: "k0"),
+                V.Label(text: "b", key: "k1"),
+                V.Label(text: "c", key: "k2"),
+            };
+            var newChildren = new VNode[]
+            {
+                V.Label(text: "a2", key: "k0"),
+                V.Button(text: "b2", key: "k1"),
+                V.Label(text: "c2", key: "k2"),
+            };
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
+            Assume.That(_root.ElementAt(1), Is.InstanceOf<Label>(), "Precondition: k1 holds a Label");
+
+            // Act
+            _reconciler.Reconcile(_root, oldChildren, newChildren, frameBudgetMs: 0.001);
+            DrainPendingWork();
+
+            // Assert
+            Assert.That(_root.ElementAt(1), Is.InstanceOf<Button>());
+        }
+
+        [Test]
         public void Given_KeyedTailAdd_When_TimeSliced_Then_AddsAllInOrder()
         {
             // Arrange — the linear scan consumes all old, so the tail-add phase appends the remainder.
