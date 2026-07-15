@@ -22,6 +22,13 @@ namespace Velvet
             if (tree == null) throw new ArgumentNullException(nameof(tree));
             var rootFiber = FiberRenderer.CreateRoot(() => tree);
             FiberRenderer.Mount(rootFiber, target);
+            var ctx = rootFiber.Reconciler!.Context;
+            ctx.MainPanelRoot = target;
+            if (!ctx.CrossPanelRouterAttached)
+            {
+                FiberCrossPanelPointerRouter.AttachToMainPanel(target, ctx);
+                ctx.CrossPanelRouterAttached = true;
+            }
 #if UNITY_EDITOR
             // Auto-attach to DevTools: opening the inspector shows the live tree
             // with no manual Register call. Editor-only — the registry and this call are compiled out of

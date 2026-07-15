@@ -59,6 +59,14 @@ namespace Velvet
                 case ElementNode elementNode:
                 {
                     var element = _ctx.FiberElementFactory.Create(elementNode);
+                    // Stamps the ComponentFiber whose Body is mid-render right now (the element's
+                    // logical owner) onto the reserved userData slot — reset to null on pool reuse
+                    // (FiberElementPoolReset.ResetCommonState) and otherwise never written by Velvet.
+                    // This is the only reverse index from a native VisualElement back to the logical
+                    // fiber tree; cross-panel synthetic event dispatch (V.Portal(layer:)/V.WorldSpace)
+                    // walks it to climb ComponentFiber.Parent from wherever a pointer/focus event
+                    // physically landed. Null at the true tree root (nothing on FiberStack yet).
+                    element.userData = _ctx.FiberStack.Current;
                     // Capture an element's own Text prop (Label / Button) before the text-effect pass below
                     // transforms it, so a re-apply works from the raw value.
                     if (element is TextElement && elementNode.Props != null && elementNode.Props.Text != null)
@@ -160,6 +168,9 @@ namespace Velvet
                     var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
                     var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out var variantClasses);
                     var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
+                    // See the ElementNode case's comment on this same assignment (reserved userData
+                    // slot for cross-panel synthetic event dispatch's VE-to-logical-fiber reverse index).
+                    element.userData = _ctx.FiberStack.Current;
                     // Only record applied-class bookkeeping when a variant actually merged; the variant-less
                     // majority needs no entry (patch falls back to oldNode.ClassNames for the diff baseline).
                     if (variantClasses.Length > 0)
@@ -505,7 +516,11 @@ namespace Velvet
         {
             var placeholder = CreateHiddenPlaceholder();
             var contextSnapshot = _ctx.ComponentContextStack.SnapshotTops();
-            _ctx.PendingPortalMounts.Enqueue((placeholder, node, target, contextSnapshot));
+            // FiberStack.Current is the component whose Body is mid-render right now — the one that
+            // actually wrote `V.Portal(...)`/`V.WorldSpace(...)` into its returned tree. This is the
+            // only point where that's true; by drain time nothing on the stack reflects it anymore.
+            var logicalParent = _ctx.FiberStack.Current;
+            _ctx.PendingPortalMounts.Enqueue((placeholder, node, target, contextSnapshot, logicalParent));
             return placeholder;
         }
 
