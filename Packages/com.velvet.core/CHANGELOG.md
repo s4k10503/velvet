@@ -9,12 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `ChildReconciler`'s same-key/same-index type-flip replacement path now checks for an
-  error-boundary abort (and leaves the old element in place) before removing it, instead of after
-  — a descendant render failure caught during the replacement's construction no longer strands the
-  slot empty. Applies to the Common-phase indexed loop and both keyed Pass-1 linear scans (sync and
-  time-sliced); the fully-synchronous keyed scan additionally now stops scanning the remaining
-  siblings once an abort is observed, matching every other CanPatch-gated call site.
+- `ChildReconciler`'s fully-synchronous keyed diff now stops scanning the remaining siblings once a
+  descendant render failure aborts the reconcile mid-replacement, instead of continuing to
+  patch/replace later slots — matching every other `CanPatch`-gated call site (the Common-phase
+  indexed loop and the time-sliced keyed scan already did).
 
 ### Changed
 

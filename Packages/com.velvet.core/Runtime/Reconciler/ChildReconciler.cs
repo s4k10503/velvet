@@ -64,10 +64,10 @@ namespace Velvet
         }
 
         // Applies the CanPatch-gated patch-or-replace decision at one DOM slot: patches the existing
-        // element in place when the pair is patch-compatible, otherwise creates a replacement and
-        // (when slotExists) removes the existing element before inserting the new one at the same
-        // slot. Shared by the Common-phase indexed loop and both keyed Pass-1 linear-scan
-        // implementations (sync and time-sliced) so this sequence cannot independently drift the way
+        // element in place when the pair is patch-compatible, otherwise removes the existing element
+        // (when slotExists) and inserts a freshly created one at the same slot. Shared by the
+        // Common-phase indexed loop and both keyed Pass-1 linear-scan implementations (sync and
+        // time-sliced) so this eager remove-then-create sequence cannot independently drift the way
         // FiberVirtualListController's own separately hand-rolled copy did — it skipped the CanPatch
         // gate entirely, patching a same-key type flip onto a stale element.
         //   slotExists: false only for the indexed diff's DOM-desync recovery, where a transient
@@ -77,14 +77,25 @@ namespace Velvet
         //   clampInsertIndex: the indexed diff inserts at an absolute position that must clamp to
         //     parent.childCount on a desync-shortened range; the keyed scan's slotStart + i is always
         //     in range on its own and must NOT be clamped (clamping would silently misplace an insert
-        //     once slotStart + i legitimately reaches parent.childCount, i.e. a tail slot). The clamp
-        //     reads parent.childCount AFTER the old element (if any) is removed below, matching the
-        //     original per-site behavior this helper consolidates.
-        //   checkAbortAfterCreate: whether to bail before removing the old element / inserting the new
-        //     one when CreateElement's descendant render triggered an error-boundary abort. Create
-        //     runs before the old element is touched (create-before-dispose, mirroring the ordering
-        //     FiberVirtualListController's own replace branch already uses) so an abort here always
-        //     leaves the old element in place instead of stranding the slot empty.
+        //     once slotStart + i legitimately reaches parent.childCount, i.e. a tail slot).
+        //   checkAbortAfterCreate: whether to bail before inserting when CreateElement's descendant
+        //     render triggered an error-boundary abort.
+        //   Removal deliberately stays BEFORE CreateElement (remove-then-create), not
+        //     create-then-remove: an inline-mounted component fiber is keyed by
+        //     (parentFiber, positionKey, identity) — NOT by which VisualElement currently hosts it
+        //     (FiberRenderer.SetupMount's comment on the registry key; ComponentRegistry.cs). If the
+        //     OLD element (and the same-keyed nested fiber ComponentRegistry still has registered
+        //     under it) is still present when CreateElement builds the NEW element's same-keyed
+        //     child, the registry hands back the OLD, still-live fiber instead of mounting fresh —
+        //     confirmed by a regression in ComponentStateReparityTests
+        //     (Given_ANestedComponentWithAdvancedState_When_TheHostElementTypeChanges_...) when this
+        //     was tried. FiberElementCleaner.CleanupElement's own comment on DisposeFibersUnder
+        //     explains why: an inline fiber under a torn-down host is otherwise invisible to the
+        //     normal orphan sweep and "would survive to be re-paired as a zombie on a same-key
+        //     re-entry" — which is exactly what create-then-remove reintroduces. This means an abort
+        //     during CreateElement can still strand this slot empty (tracked as #48, left open) —
+        //     fixing that safely needs decoupling "unregister the old fiber" from "remove the old DOM
+        //     element", which is a deeper change than this consolidation's scope.
         // Returns true when the caller must stop (an abort was observed and the caller opted in via
         // checkAbortAfterCreate).
         private bool PatchOrReplaceAtSlot(
@@ -99,14 +110,14 @@ namespace Velvet
                 return false;
             }
 
+            if (slotExists)
+            {
+                _cleaner.RemoveElement(parent, slotStart + i);
+            }
             var newElement = _factory.CreateElement(newNode);
             if (checkAbortAfterCreate && _ctx.IsAborted)
             {
                 return true;
-            }
-            if (slotExists)
-            {
-                _cleaner.RemoveElement(parent, slotStart + i);
             }
             var insertIndex = clampInsertIndex ? Math.Min(slotStart + i, parent.childCount) : slotStart + i;
             parent.Insert(insertIndex, newElement);
