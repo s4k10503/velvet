@@ -366,6 +366,11 @@ namespace Velvet
         public Queue<(VisualElement Placeholder, VNode Node, VisualElement? Target,
             List<KeyValuePair<object, object>> ContextSnapshot, ComponentFiber? LogicalParent)> PendingPortalMounts { get; } = new();
 
+        // Guards FiberCrossPanelPointerRouter.AttachToMainPanel against attaching twice on the same
+        // main panel — V.Mount is idempotent-safe to call from a component's own render (uncommon but
+        // not disallowed) and the router's TrickleDown listeners must not stack.
+        internal bool CrossPanelRouterAttached { get; set; }
+
         // Framework-owned layer host panels (V.Portal(layer:)), one per UILayer, created lazily at
         // the first drain that needs the layer and shared by every portal on it. NOT a pure
         // side-table: each record owns a live GameObject plus runtime-created panel assets, torn
