@@ -312,6 +312,19 @@ namespace Velvet
                                 + "enter. An inherited animate label does not yet drive one.");
                         }
                     }
+                    // Shared-element layout animation (Framer's layoutId) on a freshly-created element —
+                    // the same-key-type-flip case PatchMotion's own registration cannot reach (a type
+                    // flip tears down the OLD element and creates a genuinely NEW one for the SAME id,
+                    // never routing through PatchMotion at all). MotionLayoutIdDriver.OnPatched already
+                    // handles "new physical element, existing registry entry" by falling back to the
+                    // registry's own stored rect instead of this element's own (nonexistent) layout
+                    // history — see its own comment.
+                    if (motionNode.LayoutId != null)
+                    {
+                        var lt = motionNode.Transition;
+                        MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId,
+                            lt?.Stiffness ?? 100f, lt?.Damping ?? 10f, lt?.Mass ?? 1f, _ctx);
+                    }
                     return element;
                 }
                 case AnimatePresenceNode:

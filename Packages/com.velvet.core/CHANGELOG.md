@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `V.Motion(layoutId:)`: Framer Motion's shared-element layout animation parity. When a Motion
+  carrying the same `layoutId` string patches at a resolved layout rect different from the rect
+  that id last settled at — including across a same-key type flip or a move to a different
+  parent — it tweens from the old rect to the new one (FLIP: capture, invert, spring back to
+  zero) instead of jump-cutting. Reuses the existing spring physics driver; scoped to uniform
+  scale (UI Toolkit's `scale` style has no independent X/Y factor).
 - Cross-panel input routing for `V.Portal(layer:)` and `V.WorldSpace`: a layer or world-space
   host panel is a wholly separate UI Toolkit `Panel` from the panel its content logically
   belongs to, so native input delivery, propagation, and focus were previously scoped entirely

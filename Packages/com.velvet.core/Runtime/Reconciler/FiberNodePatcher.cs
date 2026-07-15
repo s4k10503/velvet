@@ -476,6 +476,20 @@ namespace Velvet
             // Motion (allowWrap false); a Motion thus carries no ring binding, so this only updates/unwraps an
             // (absent by this rule) binding.
             _appliers.ApplyRingOnPatch(element, appliedNew, suppress: false, allowWrap: false);
+
+            // Shared-element layout animation (Framer's layoutId): independent of the variant swap
+            // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
+            // it fires whether or not this patch also changed Variants/Animate. Falls back to
+            // StyleTransitionConfig's own documented spring defaults (Stiffness 100 / Damping 10 /
+            // Mass 1) when this Motion declares no Transition, since a layoutId tween needs SOME spring
+            // shape to animate with and Velvet does not imitate Framer's implicit default transition
+            // for the variant swap either.
+            if (newNode.LayoutId != null)
+            {
+                var t = newNode.Transition;
+                MotionLayoutIdDriver.OnPatched(element, newNode.LayoutId,
+                    t?.Stiffness ?? 100f, t?.Damping ?? 10f, t?.Mass ?? 1f, _ctx);
+            }
         }
 
         // Resolves the MotionOrchestrationFrame this node exposes to its OWN inheriting children:
