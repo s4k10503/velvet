@@ -77,7 +77,13 @@ namespace Velvet
         public static AnimationSequenceStep Wait(float seconds)
             => new(AnimationSequenceStepKind.Wait, null, null, Math.Max(0f, seconds), null);
 
-        /// <summary>Fires <paramref name="callback"/> synchronously on arrival, then advances immediately — never holds the cursor.</summary>
+        /// <summary>
+        /// Fires <paramref name="callback"/> synchronously on arrival, then advances immediately — never holds
+        /// the cursor. Step 0's callback re-fires under the Editor's StrictMode mount double-invoke diagnostic
+        /// (same expectation as any <c>UseEffect</c> mount factory with a non-idempotent body): write it to
+        /// tolerate running twice if the sequence's own mount matters, exactly as React's own StrictMode
+        /// guidance recommends for an effect that isn't naturally idempotent.
+        /// </summary>
         /// <param name="callback">The callback to invoke. Must not be null.</param>
         public static AnimationSequenceStep Call(Action callback)
         {

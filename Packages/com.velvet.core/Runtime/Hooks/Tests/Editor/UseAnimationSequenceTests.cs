@@ -21,6 +21,7 @@ namespace Velvet.Tests
         private static AnimationSequenceState s_state;
         private static AnimationSequenceControls s_controls;
         private static int s_callCount;
+        private static int s_renderCount;
 
         [SetUp]
         public void SetUp()
@@ -30,6 +31,7 @@ namespace Velvet.Tests
             s_autoplay = true;
             s_loop = false;
             s_callCount = 0;
+            s_renderCount = 0;
         }
 
         [TearDown]
@@ -44,6 +46,7 @@ namespace Velvet.Tests
         [Component]
         private static VNode SequenceHost()
         {
+            s_renderCount++;
             var (state, controls) = Hooks.UseAnimationSequence(s_steps, autoplay: s_autoplay, loop: s_loop);
             s_state = state;
             s_controls = controls;
@@ -87,8 +90,10 @@ namespace Velvet.Tests
             // Act
             Mount();
 
-            // Assert — the walker's Reset (run by the mount effect) commits step 0 before the first paint,
-            // so the very first observable render already reflects it rather than a null "not started yet".
+            // Assert — Mount() flushes the mount effect (which runs Reset, committing step 0) before ever
+            // reading s_state. In production the effect is still post-paint like any UseEffect, so the actual
+            // first painted frame shows no active label yet; this pins the state this test's own flushed
+            // helper observes, not a claim about literal first-paint timing.
             Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
         }
 
@@ -227,6 +232,73 @@ namespace Velvet.Tests
                     EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
                 }
             });
+        }
+
+        [Test]
+        public void Given_ASingleClockJumpSpanningTwoHolds_When_Advanced_Then_TheOvershootCarriesIntoTheThirdStepInsteadOfStallingAtTheSecond()
+        {
+            // Arrange — three 50ms holds; a single 120ms jump should cross step 0 AND step 1 (50ms each, 100ms
+            // total) with 20ms left over into step 2, landing on "c" in one tick rather than stalling on "b".
+            s_steps = new[]
+            {
+                AnimationSequenceStep.To("a", new StyleTransitionConfig { DurationSec = 0.05f }),
+                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 0.05f }),
+                AnimationSequenceStep.To("c", new StyleTransitionConfig { DurationSec = 0.05f }),
+            };
+            Mount();
+
+            // Act — one single large jump, one single scheduler drive (not the small-increment AdvancePast
+            // helper, which would never exercise a multi-hold crossing within one Advance() call).
+            UseFrameFakeClockHost.Ms += 120;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("c"));
+        }
+
+        [Test]
+        public void Given_ASingleStepCallSequenceThatLoops_When_TimeAdvances_Then_TheComponentKeepsReRenderingOnEachRecommit()
+        {
+            // Arrange — a 1-step loop wraps back to the SAME index (0) on every recommit, so a re-render
+            // trigger keyed on "did StepIndex change" would never fire again after the first tick.
+            s_steps = new[] { AnimationSequenceStep.Call(() => s_callCount++) };
+            s_loop = true;
+            Mount();
+            var renderCountAfterMount = s_renderCount;
+            Assume.That(s_callCount, Is.GreaterThan(0), "Precondition: step 0's callback already fired once on mount");
+
+            // Act — a zero-hold step re-arrives every tick regardless of dt.
+            UseFrameFakeClockHost.Ms += 16;
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_renderCount, Is.GreaterThan(renderCountAfterMount));
+        }
+
+        [Test]
+        public void Given_AToStepWithAPropertyOverrideLongerThanTheTopLevelDuration_When_OnlyTheTopLevelDurationHasElapsed_Then_TheStepIsStillCurrent()
+        {
+            // Arrange — the top-level DurationSec (50ms) is shorter than the "translate" override's own (300ms);
+            // the auto-derived hold must follow the slower override, matching StyleAnimationScheduler's own
+            // "completion sized off the slowest overridden property" rule for the same StyleTransitionConfig.
+            s_steps = new[]
+            {
+                AnimationSequenceStep.To("a", new StyleTransitionConfig
+                {
+                    DurationSec = 0.05f,
+                    PropertyOverrides = new[] { new StylePropertyTransition("translate", durationSec: 0.3f) },
+                }),
+                AnimationSequenceStep.To("b", new StyleTransitionConfig { DurationSec = 0.05f }),
+            };
+            Mount();
+
+            // Act — past the top-level 50ms but well short of the override's 300ms.
+            AdvancePast(0.1f);
+
+            // Assert
+            Assert.That(s_state.CurrentLabel, Is.EqualTo("a"));
         }
     }
 }

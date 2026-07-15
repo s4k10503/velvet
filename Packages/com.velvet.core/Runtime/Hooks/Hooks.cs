@@ -1029,8 +1029,19 @@ namespace Velvet
             IReadOnlyList<AnimationSequenceStep> steps, bool autoplay = true, bool loop = false, object?[]? deps = null)
         {
             if (steps == null) throw new ArgumentNullException(nameof(steps));
+            var fiber = Resolve("UseAnimationSequence");
             var walker = UseRef(() => new SequenceWalker());
             var (_, bumpRenderVersion) = UseState(0);
+
+            // Tracks the LATEST render's steps for controls.Restart() to read (see below) — mirrors UseFrame's
+            // own `latest.Set(onFrame)` pattern: a re-render must not leave an earlier render's Restart closing
+            // over a stale steps array, and the StrictMode throwaway diagnostic pass's steps must never become
+            // "latest" since that render is discarded.
+            var latestSteps = UseRef<IReadOnlyList<AnimationSequenceStep>>();
+            if (!IsStrictDiagnosticPass(fiber))
+            {
+                latestSteps.Set(steps);
+            }
 
             UseEffect(() =>
             {
@@ -1046,9 +1057,9 @@ namespace Velvet
                 {
                     return;
                 }
-                var beforeIndex = walker.Current.StepIndex;
+                var beforeGeneration = walker.Current.Generation;
                 walker.Current.Advance(dt, loop);
-                if (walker.Current.StepIndex != beforeIndex || walker.Current.IsComplete)
+                if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete)
                 {
                     bumpRenderVersion.Invoke(v => v + 1);
                 }
@@ -1059,7 +1070,7 @@ namespace Velvet
                 pause: () => walker.Current.IsPaused = true,
                 restart: () =>
                 {
-                    walker.Current.Reset(steps);
+                    walker.Current.Reset(latestSteps.Current ?? steps);
                     bumpRenderVersion.Invoke(v => v + 1);
                 });
 
