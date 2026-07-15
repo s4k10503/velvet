@@ -186,29 +186,6 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
 
 ## Timelines (`Hooks.UseAnimationSequence`)
 
-```csharp
-var (seq, controls) = Hooks.UseAnimationSequence(new[]
-{
-    // 1. float in place for 0.5s
-    AnimationSequenceStep.To("floating", holdSec: 0.5f),
-
-    // emit particles the instant the float step becomes current
-    AnimationSequenceStep.Call(() => OnEmitParticles()),
-
-    // 2. fly toward the target, one particle at a time -- StaggerChildrenSec does the fan-out
-    AnimationSequenceStep.To("flying", transition: new StyleTransitionConfig
-    {
-        Type = TransitionType.Spring, Stiffness = 220f, Damping = 18f, StaggerChildrenSec = 0.08f,
-    }, holdSec: 0.9f),
-
-    // 3. fire the arrival event once the hold above has elapsed
-    AnimationSequenceStep.Call(() => OnArrived()),
-});
-
-return V.Motion(key: "coordinator", animate: seq.CurrentLabel, transition: seq.CurrentTransition,
-    children: /* descendant Motions with no own `animate` inherit seq.CurrentLabel */);
-```
-
 Framer Motion's `useAnimate` parity target: `UseAnimationSequence` owns the clock (it is itself built
 on `UseFrame`) and walks an ordered `AnimationSequenceStep[]`, so a multi-stage animation ("float, then
 emit, then fly to target one at a time, then fire an arrival event") never needs to be hand-rolled with
