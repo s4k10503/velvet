@@ -6,15 +6,19 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies that a same-key/same-index type flip whose replacement element construction triggers
-    /// an error-boundary abort (<see cref="ReconcilerContext.IsAborted"/>) stops the same scan from
-    /// processing any later sibling, across every <c>ChildReconciler.PatchOrReplaceAtSlot</c> call
-    /// site (the Common-phase indexed loop, and both keyed Pass-1 linear-scan implementations — sync
-    /// and time-sliced): a later sibling is left untouched instead of being patched while the
-    /// reconcile is aborted. (The replaced slot's old element is NOT expected to survive the abort —
-    /// see #48, tracked open: removal deliberately stays before CreateElement so an inline-mounted
-    /// same-keyed child fiber isn't handed back stale by ComponentRegistry, per the comment on
-    /// PatchOrReplaceAtSlot.)
+    /// Specifies two properties of a same-key/same-index type flip whose replacement element
+    /// construction triggers an error-boundary abort (<see cref="ReconcilerContext.IsAborted"/>),
+    /// across every <c>ChildReconciler.PatchOrReplaceAtSlot</c> call site (the Common-phase indexed
+    /// loop, and both keyed Pass-1 linear-scan implementations — sync and time-sliced):
+    /// (1) the replacement element is still inserted at the slot — <see cref="ReconcilerContext.IsAborted"/>
+    /// only ever becomes true via a boundary's SUCCESSFUL fallback render (FiberErrorBoundary.TryCatch
+    /// calls SetAborted only after TryShowFallback's own Reconcile call returns without throwing), so by
+    /// the time the abort is observed the newly built element already holds the boundary's fully
+    /// rendered fallback content, not a half-built one — discarding it would strand the slot with
+    /// nothing where the fallback should be, which React's render/commit split never does (an error
+    /// boundary's fallback only ever replaces committed DOM, never leaves it empty mid-render); and
+    /// (2) the same abort stops the scan from processing any LATER sibling — it is left untouched
+    /// instead of being patched while the reconcile is aborted.
     /// </summary>
     [TestFixture]
     internal sealed class ChildReconcilerAbortSafetyTests : ReconcilerTestFixture
@@ -48,17 +52,15 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ErrorBoundaryAbortsDuringIndexedReplace_When_Reconciled_Then_TheLaterSiblingIsUntouched()
+        public void Given_ErrorBoundaryAbortsDuringIndexedReplace_When_Reconciled_Then_TheFallbackIsInsertedAndLaterSiblingIsUntouched()
         {
             // Arrange — unkeyed siblings select the Common-phase indexed diff. The first sibling flips
             // from a Label to a Div wrapping an error boundary whose child throws; the flip's CanPatch
             // decision is false, so building the replacement recurses into the boundary before the
-            // abort can be observed. Remove-then-create means the aborted slot's OLD element is
-            // already gone by the time the abort is observed (see #48) and no new element is
-            // inserted in its place, so the container shrinks by one and the untouched second
-            // sibling's ORIGINAL text shifts down to index 0 — that shift, plus the original text
-            // surviving instead of being patched to "b-updated", is the proof the abort stopped the
-            // scan rather than letting it keep patching later slots.
+            // abort is observed. The boundary catches successfully, so the built Div (containing the
+            // "caught" fallback Label) is inserted at slot 0 despite the abort; the abort then stops
+            // the scan before the second sibling is reached, so its ORIGINAL text survives instead of
+            // being patched to "b-updated".
             using var mounted = V.Mount(Root, V.Component(IndexedListHost, key: "host"));
             var container = Root.ElementAt(0);
 
@@ -67,8 +69,10 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_fallbackShown, container.childCount, ((Label)container.ElementAt(0)).text),
-                Is.EqualTo((true, 1, "b")));
+            var replacement = (VisualElement)container.ElementAt(0);
+            Assert.That(
+                (s_fallbackShown, container.childCount, ((Label)replacement.ElementAt(0)).text, ((Label)container.ElementAt(1)).text),
+                Is.EqualTo((true, 2, "caught", "b")));
         }
 
         [Component]
@@ -90,12 +94,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ErrorBoundaryAbortsDuringKeyedSyncReplace_When_Reconciled_Then_TheLaterSiblingIsUntouched()
+        public void Given_ErrorBoundaryAbortsDuringKeyedSyncReplace_When_Reconciled_Then_TheFallbackIsInsertedAndLaterSiblingIsUntouched()
         {
             // Arrange — keyed siblings with both keys present on both sides select the fully
             // synchronous keyed Pass-1 linear scan (the default V.Mount re-render path runs
-            // frameBudgetMs: 0). Same type-flip-triggers-abort shape as the indexed case above,
-            // including the same remove-then-create index shift (see #48).
+            // frameBudgetMs: 0). Same type-flip-triggers-abort shape as the indexed case above.
             using var mounted = V.Mount(Root, V.Component(KeyedSyncListHost, key: "host"));
             var container = Root.ElementAt(0);
 
@@ -104,12 +107,14 @@ namespace Velvet.Tests
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((s_fallbackShown, container.childCount, ((Label)container.ElementAt(0)).text),
-                Is.EqualTo((true, 1, "b")));
+            var replacement = (VisualElement)container.ElementAt(0);
+            Assert.That(
+                (s_fallbackShown, container.childCount, ((Label)replacement.ElementAt(0)).text, ((Label)container.ElementAt(1)).text),
+                Is.EqualTo((true, 2, "caught", "b")));
         }
 
         [Test]
-        public void Given_AbortObservedDuringTimeSlicedKeyedReplace_When_Reconciled_Then_TheLaterSiblingIsUntouched()
+        public void Given_AbortObservedDuringTimeSlicedKeyedReplace_When_Reconciled_Then_TheReplacementIsInsertedAndLaterSiblingIsUntouched()
         {
             // Arrange — an extremely small frame budget forces the time-sliced keyed Pass-1 linear
             // scan (Pass1Linear) instead of ReconcileKeyedSync, exercising the same helper call
@@ -139,9 +144,10 @@ namespace Velvet.Tests
             Reconciler.Reconcile(Root, oldTree, newTree, frameBudgetMs: 0.001);
             DrainPendingWork();
 
-            // Assert — remove-then-create means the aborted k0 slot is gone with nothing inserted in
-            // its place (see #48), so k1's original text shifts down to index 0.
-            Assert.That((Root.childCount, ((Label)Root.ElementAt(0)).text), Is.EqualTo((1, "b")));
+            // Assert — the rebuilt k0 element is inserted despite the abort (refCallback fires after
+            // the element is fully built), and the abort stops the scan before k1 is reached, so its
+            // original text survives instead of being patched to "b-updated".
+            Assert.That((Root.childCount, ((Label)Root.ElementAt(1)).text), Is.EqualTo((2, "b")));
         }
 
         private void DrainPendingWork(int maxIterations = 500, double budget = 0.001)
