@@ -123,10 +123,10 @@ V.WorldSpace(position: signpost.position, rotation: signpost.rotation,
 ```
 
 Each `V.WorldSpace` owns a world-space panel host (a framework-managed object positioned by
-the given transform values) — the drei `<Html>` parity point. World-space panels are
-**depth-tested**: scene geometry can occlude them and they can sit behind it, which no
-screen-space layer can do. `position` / `rotation` updates on later renders move the live
-host; `panelSize` is the panel's virtual resolution in pixels.
+the given transform values). World-space panels are **depth-tested**: scene geometry can
+occlude them and they can sit behind it, which no screen-space layer can do — the point where
+this differs from `V.Anchored` below. `position` / `rotation` updates on later renders move
+the live host; `panelSize` is the panel's virtual resolution in pixels.
 
 A `BoxCollider` sized to the panel's world extent is attached to the host automatically, so
 Unity's own runtime input system can pick and route pointer input into the panel — see
@@ -135,3 +135,24 @@ Unity's own runtime input system can pick and route pointer input into the panel
 A world-space host follows the same declaring-panel sync as the layers, and a host destroyed
 externally (a scene unload) is skipped safely on later patches — remount the `V.WorldSpace`
 node to rebuild it.
+
+## Screen-space anchored elements: `V.Anchored`
+
+drei's `<Html>` parity in its DEFAULT mode: a plain screen-space element whose `left`/`top`
+track a 3D scene Transform's projected position every frame, re-derived through
+`RuntimePanelUtils.CameraTransformWorldToPanel` on the target's own camera (or
+`Camera.main` when none is given). Not depth-tested — unlike `V.WorldSpace` above, this is
+ordinary 2D UI drawn in the normal screen-space paint order, so it is never occluded by scene
+geometry; it just sits wherever its target currently projects to.
+
+`V.Anchored` forces `position: absolute` inline (dynamic positioning has no other way to
+work), so pass layout classes for everything else — sizing, background, text, and so on —
+exactly as on any other element. The optional pixel offset nudges the projected point (handy
+for centering a label rather than pinning its top-left corner to it), and the element hides
+itself (`display: none`) whenever its target sits behind the camera rather than jumping to a
+wrong on-screen spot — the same "don't draw a mis-projected point" rule drei's own
+`isObjectBehindCamera` check applies, toggleable off if a caller wants the element to keep
+tracking (and clip) regardless.
+
+Raycast-based occlusion against scene geometry — drei's `<Html occlude>` opt-in — is not
+implemented: an explicit, documented scope cut for now, not an oversight.

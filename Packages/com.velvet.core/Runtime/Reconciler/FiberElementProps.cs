@@ -65,6 +65,10 @@ namespace Velvet
         public ParticlesSettings? Particles { get => _particles; set { ThrowIfReadOnly(); _particles = value; } }
         private ParticlesSettings? _particles;
 
+        /// <summary>Anchored-specific settings (the 3D Transform this element's screen position tracks).</summary>
+        public AnchoredSettings? Anchored { get => _anchored; set { ThrowIfReadOnly(); _anchored = value; } }
+        private AnchoredSettings? _anchored;
+
         /// <summary>
         /// Carried <c>data-*</c> attribute values (key → value), the UI-Toolkit stand-in for HTML data
         /// attributes. UI Toolkit has no attributes, so these are stored in the reconciler's per-element
@@ -152,6 +156,27 @@ namespace Velvet
             PlayOn = playOn;
             PixelsPerUnit = VelvetArgUtil.RequirePositiveFinite(pixelsPerUnit, nameof(pixelsPerUnit),
                 "pixelsPerUnit must be positive; it maps particle world units to element pixels.");
+        }
+    }
+
+    /// <summary>
+    /// The 3D Transform an Anchored element's screen position tracks, plus the camera whose projection
+    /// drives it (null resolves to <see cref="Camera.main"/> on every tick, so a scene's active camera
+    /// can change without a settings update) and a pixel offset applied after projection.
+    /// </summary>
+    public sealed record AnchoredSettings
+    {
+        public Transform? Target { get; init; }
+        public Camera? Camera { get; init; }
+        public Vector2 Offset { get; init; }
+        public bool HideWhenBehindCamera { get; init; } = true;
+
+        public AnchoredSettings(Transform? target, Camera? camera = null, Vector2 offset = default, bool hideWhenBehindCamera = true)
+        {
+            Target = target;
+            Camera = camera;
+            Offset = offset;
+            HideWhenBehindCamera = hideWhenBehindCamera;
         }
     }
 

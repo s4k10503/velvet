@@ -1549,6 +1549,60 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Screen-space element that tracks a 3D scene Transform's projected position every frame — drei's
+        /// <c>&lt;Html&gt;</c> parity (default screen-space projection mode). Not depth-tested against scene
+        /// geometry (unlike <see cref="WorldSpace"/>, which renders content INTO the 3D scene and can be
+        /// occluded by it): this is ordinary 2D UI, positioned dynamically. Forces <c>position: absolute</c>
+        /// inline (dynamic left/top positioning has no other way to work; see AnchoredDriver.Attach) — pass
+        /// layout classes for everything else.
+        /// </summary>
+        /// <param name="target">The Transform this element's screen position tracks. Must not be null.</param>
+        /// <param name="camera">The camera to project through. Null resolves to <see cref="Camera.main"/> on
+        /// every tick, so a scene's active camera can change without re-supplying this.</param>
+        /// <param name="offset">Pixel offset applied after projection (e.g. to center a label on the point).</param>
+        /// <param name="hideWhenBehindCamera">When true (default), the element is hidden (display: none)
+        /// while <paramref name="target"/> is behind the camera rather than jumping to a wrong on-screen spot.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode Anchored(
+            Transform target,
+            Camera? camera = null,
+            Vector2? offset = null,
+            bool hideWhenBehindCamera = true,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            FiberElementProps? props = null,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            VNode?[]? children = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
+        {
+            if (target == null) throw new ArgumentNullException(nameof(target));
+            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
+            mergedProps.Anchored = new AnchoredSettings(target, camera, offset ?? Vector2.zero, hideWhenBehindCamera);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(VisualElement),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = mergedProps,
+                Styles = styles,
+                Children = children ?? EmptyChildren,
+                Events = EmptyEvents,
+                RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        /// <summary>
         /// Placeholder that renders the matched child route component of a nested route at this position.
         /// </summary>
         /// <param name="context">

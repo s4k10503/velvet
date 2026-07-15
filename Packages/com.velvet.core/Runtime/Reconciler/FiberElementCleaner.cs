@@ -315,6 +315,13 @@ namespace Velvet
                 ParticlesDriver.Detach(element, particlesBinding);
                 _ctx.ParticlesBindings.Remove(element);
             }
+            if (_ctx.AnchoredBindings.TryGetValue(element, out var anchoredBinding))
+            {
+                // Pause the recurring projection tick so a pooled element does not keep repositioning
+                // itself after it is reused for something unrelated.
+                AnchoredDriver.Detach(element, anchoredBinding);
+                _ctx.AnchoredBindings.Remove(element);
+            }
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
             {
                 virtualListController.Dispose();

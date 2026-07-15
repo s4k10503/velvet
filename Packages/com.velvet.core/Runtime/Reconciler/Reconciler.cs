@@ -460,6 +460,13 @@ namespace Velvet
                 ParticlesDriver.Detach(element, binding);
             }
             _ctx.ParticlesBindings.Clear();
+            // Anchored bindings own a recurring projection tick: pause each so a still-mounted anchored
+            // element at root disposal leaves nothing still ticking.
+            foreach (var (element, binding) in _ctx.AnchoredBindings)
+            {
+                AnchoredDriver.Detach(element, binding);
+            }
+            _ctx.AnchoredBindings.Clear();
             foreach (var (element, manipulator) in _ctx.GestureManipulators)
             {
                 element.RemoveManipulator(manipulator);
