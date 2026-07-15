@@ -17,14 +17,73 @@ all three forms:
 
 - **Context crosses.** A `V.Provider` above the portal call site is visible to the children.
 - **Stores cross.** `UseStore` subscriptions are independent of panels.
-- **Events do not cross.** UI Toolkit computes propagation from the physical tree; a handler on
-  a logical ancestor never sees a portal child's events (documented deviation — there is no
-  panel-spanning bubbling seam to hook).
-- **Physical-walk styling does not cross.** Relational `group-`/`peer-` variants and
-  focus-within resolve against the physical tree (and each panel has its own focus controller).
+- **`events:` handlers cross for `V.Portal(layer:)`/`V.WorldSpace`, not for
+  `V.Portal(targetId:)`.** UI Toolkit computes native propagation from the physical tree, so a
+  logical ancestor's handler never sees a same-panel portal child's events by itself
+  (`V.Portal(targetId:)` reparents within the SAME panel, and there is no API to redirect UI
+  Toolkit's own dispatcher along a logical chain there — documented deviation). But a
+  `V.Portal(layer:)`/`V.WorldSpace` host is a wholly separate Panel, where native bubbling
+  cannot cross the boundary at all (no physical ancestor to bubble into) — so Velvet bridges it
+  itself: `PointerDown`/`Up`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDown`/`Up`, and
+  `FocusIn`/`Out`/`Focus`/`Blur` bindings on an `events:` prop bubble synthetically to the
+  logical ancestor chain outside the host panel (mirrors React's own root-level event
+  delegation — walking the logical parent chain, not the DOM). `ClickedBinding` (`Button`'s
+  native click) and `ChangeEventBinding<T>` (field value-change) stay panel-local for now — see
+  "Cross-panel input routing" below.
+- **Physical-walk styling does not cross, anywhere.** Relational `group-`/`peer-` variants and
+  focus-within variants (`has-[:focus]:`, `group-focus-within:`) resolve against the physical
+  tree in every portal form, including `V.Portal(layer:)`/`V.WorldSpace` — they register their
+  own native focus/pointer callbacks directly rather than going through `events:`, so the
+  synthetic cross-panel bridging above does not extend to them; each panel has its own focus
+  controller regardless.
 - **Responsive breakpoints are per-panel.** `sm:`…`2xl:` evaluate against the width of the panel
   the child is attached to, not the declaring panel.
 - `dark:` is global and identical everywhere.
+
+## Cross-panel input routing (`V.Portal(layer:)` / `V.WorldSpace`)
+
+A framework-managed layer or world-space host is a completely separate UI Toolkit
+`Panel`/`PanelSettings`/`UIDocument` from the panel its content logically belongs to — native
+input delivery, propagation, and focus are all scoped per-panel by UI Toolkit itself. Velvet
+closes three distinct gaps:
+
+**Picking order.** When a screen-space layer panel visually overlaps the main panel, Unity's
+own runtime input system claims to arbitrate delivery by `PanelSettings.sortingOrder`, but this
+isn't reliable enough to depend on (a documented Unity Issue Tracker bug: a click can pass
+through an overlapping `UIDocument`'s content to whatever sits behind it). Velvet arbitrates
+this itself: before the main panel's own native dispatch processes a `PointerDown`/`Up`, it
+walks every layer host in `sortingOrder` order and calls each panel's own `IPanel.Pick()`
+(resolves reliably against that panel's own content, independent of any other panel's
+presence) — the first host with actual content at that screen position wins, and the main
+panel's own processing for that event is stopped. `V.WorldSpace` panels are NOT part of this
+arbitration (see below).
+
+**`V.WorldSpace` picking.** `RuntimePanelUtils.ScreenToPanel`/`CameraTransformWorldToPanel` look
+like the natural tool for converting a screen position into a `PanelRenderMode.WorldSpace`
+panel's local coordinates, but they're actually for UI Toolkit's OLDER RenderTexture-on-a-mesh
+workflow and silently no-op (return the input essentially unchanged) against a
+Transform-driven world-space panel — verified empirically, not just from docs. The correct
+mechanism is Unity's own implicit runtime input system (bootstrapped automatically every Play
+session, using Main Camera as the event camera and processing world-space input by default,
+zero configuration required), which drives picking through an internal-only engine API that a
+package assembly cannot call directly. So Velvet's own job is limited to attaching a
+`BoxCollider` sized to the panel's world extent (`panelSize` in pixels ÷ 100 pixels-per-unit,
+Unity's documented default) to the host — Unity's own system does the rest. This can't be
+verified end-to-end by an automated batchmode test (Unity's runtime input system polls the
+real mouse device state every frame, which batchmode has no way to drive), only the collider's
+placement is (`Physics.Raycast` against it, deterministic).
+
+**Focus.** A focusable element inside a host panel is tracked correctly by that panel's own
+`FocusController` when focused, and a host torn down while it holds focus hands focus back to
+the main panel first (otherwise it would dangle on a destroyed `FocusController`, or — for a
+layer panel, which persists — simply vanish since UI Toolkit clears `focusedElement` as soon as
+the focused element leaves its panel's tree). Automatic Tab/Shift-Tab focus chaining ACROSS
+panel boundaries is intentionally NOT implemented: UI Toolkit's own focus ring unconditionally
+wraps within its own panel (confirmed from the engine source) and exposes no signal for "focus
+tried to leave the ring" — and no web precedent (`<iframe>` boundaries, Shadow DOM's default
+containment, React Aria's `FocusScope`) auto-chains one independent focus scope into a sibling
+on wrap either. If you need this, wire it explicitly (e.g. a `KeyDownEvent` handler on the
+portal's own boundary elements that calls `.Focus()` on the target panel's own focus target).
 
 ## Screen-space layers: `V.Portal(layer:)`
 
@@ -69,8 +128,9 @@ the given transform values) — the drei `<Html>` parity point. World-space pane
 screen-space layer can do. `position` / `rotation` updates on later renders move the live
 host; `panelSize` is the panel's virtual resolution in pixels.
 
-**Display-only for now**: world-space input routing (picking, focus) is not wired — treat
-these panels as output. Interactive world-space UI is a separate milestone.
+A `BoxCollider` sized to the panel's world extent is attached to the host automatically, so
+Unity's own runtime input system can pick and route pointer input into the panel — see
+"Cross-panel input routing" above for what Velvet does and doesn't control here.
 
 A world-space host follows the same declaring-panel sync as the layers, and a host destroyed
 externally (a scene unload) is skipped safely on later patches — remount the `V.WorldSpace`

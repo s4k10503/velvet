@@ -379,6 +379,10 @@ namespace Velvet
             }
 
             _ctx.WorldSpaceBindings.Remove(element);
+            // Focus, if the host held any, was already rescued by RescueFocusFromWorldSpaceHost
+            // before CleanupPortal removed this panel's content (see CleanupElementCore) — by this
+            // point the host's FocusController.focusedElement is already null regardless, since UI
+            // Toolkit clears it as soon as the focused element leaves the panel's visual tree.
             PanelHostFactory.Destroy(record);
         }
 
@@ -427,9 +431,28 @@ namespace Velvet
             }
 
             CleanupElementResources(element);
+            // Must run BEFORE CleanupPortal: UI Toolkit clears FocusController.focusedElement the
+            // moment the focused element leaves its panel's visual tree, which CleanupPortal's own
+            // target.RemoveAt(i) triggers below — checking for a focused element afterward (as
+            // CleanupWorldSpaceHost used to) always observes null by then.
+            RescueFocusFromWorldSpaceHost(element);
             CleanupPortal(element);
             CleanupWorldSpaceHost(element);
             CleanupDescendants(element, innerElement);
+        }
+
+        // If element is a world-space placeholder whose host panel currently holds focus, hands focus
+        // back to the main panel before that panel's content (and soon its whole GameObject) is torn
+        // down — otherwise focus would either dangle on an about-to-be-destroyed FocusController or
+        // simply vanish, leaving keyboard input going nowhere until the app author notices.
+        private void RescueFocusFromWorldSpaceHost(VisualElement element)
+        {
+            if (!_ctx.WorldSpaceBindings.TryGetValue(element, out var record)) return;
+            var hostFocusController = record.Document != null ? record.Document.rootVisualElement?.panel?.focusController : null;
+            if (hostFocusController?.focusedElement != null)
+            {
+                _ctx.MainPanelRoot?.Focus();
+            }
         }
     }
 }

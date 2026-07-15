@@ -216,7 +216,7 @@ namespace Velvet
             HashSet<ComponentFiber>? childFibersBefore = null;
             while (_ctx.PendingPortalMounts.Count > 0)
             {
-                var (placeholder, node, target, contextSnapshot) = _ctx.PendingPortalMounts.Dequeue();
+                var (placeholder, node, target, contextSnapshot, logicalParent) = _ctx.PendingPortalMounts.Dequeue();
                 // A queue entry can outlive its placeholder: a Suspense primary that suspends rolls
                 // its created elements back as ORPHANS before this drain runs (the entry survives
                 // the rollback), and an ErrorBoundary abort mid-drain reaches the later entries
@@ -323,7 +323,7 @@ namespace Velvet
                     for (var f = drainAnchor.Child; f != null; f = f.Sibling)
                     {
                         if (childFibersBefore!.Contains(f)) continue;
-                        detachedContext ??= new DetachedMountContext(contextSnapshot, children, drainAnchor);
+                        detachedContext ??= new DetachedMountContext(contextSnapshot, children, drainAnchor, logicalParent);
                         f.DetachedMountContext = detachedContext;
                     }
                 }

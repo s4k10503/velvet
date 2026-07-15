@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Cross-panel input routing for `V.Portal(layer:)` and `V.WorldSpace`: a layer or world-space
+  host panel is a wholly separate UI Toolkit `Panel` from the panel its content logically
+  belongs to, so native input delivery, propagation, and focus were previously scoped entirely
+  per-panel. Now:
+  - `events:` bindings (`PointerDown`/`Up`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDown`/`Up`,
+    `FocusIn`/`Out`/`Focus`/`Blur`) bubble synthetically across the panel boundary to the
+    logical ancestor chain, mirroring React's own root-level event delegation.
+  - Overlapping screen-space layer panels are arbitrated explicitly by `sortingOrder` using each
+    panel's own `IPanel.Pick()`, since Unity's own runtime input system's arbitration isn't
+    reliable enough to depend on for this.
+  - `V.WorldSpace` hosts get an automatically-sized `BoxCollider` so Unity's own runtime input
+    system can pick and route pointer input into them (the panel-local coordinate APIs that look
+    like the natural tool for this, `RuntimePanelUtils.ScreenToPanel`/
+    `CameraTransformWorldToPanel`, are actually for a different, older workflow and don't apply
+    here).
+  - A focusable element inside a host panel is tracked correctly by that panel's own
+    `FocusController`, and a host torn down while it holds focus hands focus back to the main
+    panel instead of leaving it dangling. Automatic Tab/Shift-Tab focus chaining across panel
+    boundaries is intentionally not implemented — see the portals guide.
+
 ### Fixed
 
 - A `ComponentNode` nested inside a tree reconciled via a direct `Reconciler.Reconcile()` call
