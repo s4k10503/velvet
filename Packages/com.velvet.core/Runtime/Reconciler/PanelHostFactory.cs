@@ -102,7 +102,40 @@ namespace Velvet
             record.Document.worldSpaceSizeMode = UIDocument.WorldSpaceSizeMode.Dynamic;
             record.Document.worldSpaceSize = node.PanelSize;
             record.Document.worldSpaceSizeMode = UIDocument.WorldSpaceSizeMode.Fixed;
+            AttachWorldSpaceCollider(record.Document, node.PanelSize);
             return record;
+        }
+
+        // Unity's own runtime input system (the implicit "default event system" every Play session
+        // bootstraps, configurable via a scene PanelInputConfiguration but functional with sensible
+        // defaults — Main Camera as the event camera, world-space input processing on — without one)
+        // drives World Space UI Toolkit picking through an internal-only API (WorldSpaceInput.Pick3D /
+        // PickDocument3D — the containing class is `internal`, so a package assembly like Velvet's own
+        // cannot call it directly even though its individual methods are `public`) that raycasts
+        // Physics colliders to find which UIDocument a pointer ray hit, THEN converts that hit into a
+        // panel-local pick. Without a Collider on this host, the world-space panel is invisible to that
+        // raycast and never receives pointer input at all — Velvet cannot substitute its own picking
+        // here (RuntimePanelUtils.ScreenToPanel/CameraTransformWorldToPanel are for the OLDER
+        // RenderTexture-on-a-mesh workflow and return the input essentially unchanged for a Transform-
+        // driven WorldSpace panel — verified empirically, not just from docs), so a Collider sized to
+        // the panel's own world extent is the only lever available.
+        // PixelsPerUnit converts the panel's PIXEL resolution to world units (Unity's own "World Space
+        // UI" manual: "the number of panel-space pixels that fit into one unit in the World Space").
+        // The live PanelSettings value is `internal` (inaccessible from here), so this uses its
+        // documented default (100) — accurate for the common case, and the only value obtainable
+        // without reflection into Unity's own non-public API surface.
+        private const float DefaultPixelsPerUnit = 100f;
+
+        private static void AttachWorldSpaceCollider(UIDocument document, Vector2 panelSize)
+        {
+            var collider = document.gameObject.AddComponent<BoxCollider>();
+            var worldWidth = panelSize.x / DefaultPixelsPerUnit;
+            var worldHeight = panelSize.y / DefaultPixelsPerUnit;
+            // A UIDocument's world-space root originates at the GameObject's own position with the
+            // panel extending right/down from there (X > 0, Y < 0 in the document's local frame), so
+            // the collider's center sits at half the panel's extent along each axis, not at the origin.
+            collider.center = new Vector3(worldWidth / 2f, -worldHeight / 2f, 0f);
+            collider.size = new Vector3(worldWidth, worldHeight, 0.01f);
         }
 
         // Late resolution and runtime drift, handled at one recurring re-sync point: a host created

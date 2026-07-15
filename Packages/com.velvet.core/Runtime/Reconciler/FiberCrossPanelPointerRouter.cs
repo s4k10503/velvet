@@ -6,9 +6,9 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Ensures a discrete pointer event that arrives on the MAIN panel is redirected to a
-    // higher-sortingOrder Velvet-managed host panel (V.Portal(layer:) / V.WorldSpace) FIRST, when that
-    // panel's own content actually sits at the same screen position — before the main panel's native
-    // dispatch is allowed to process the event.
+    // higher-sortingOrder Velvet-managed LAYER host panel (V.Portal(layer:)) FIRST, when that panel's
+    // own content actually sits at the same screen position — before the main panel's native dispatch
+    // is allowed to process the event.
     //
     // Why Velvet arbitrates this itself instead of trusting Unity's own runtime input system: Unity's
     // manual states the runtime event system "dispatches pointer events to their panels based on their
@@ -18,8 +18,17 @@ namespace Velvet
     // arbitration using each candidate panel's OWN IPanel.Pick(), which resolves reliably against that
     // panel's own content independent of any other panel's presence or overlap.
     //
-    // Scope: pointer events only (PointerDown/PointerUp) — key events have no screen position to
-    // arbitrate by; they route by FOCUS instead, a separate concern from position-based picking.
+    // Scope: pointer events only (PointerDown/PointerUp), and screen-space LAYER hosts only — NOT
+    // V.WorldSpace. RuntimePanelUtils.ScreenToPanel/CameraTransformWorldToPanel (used below via
+    // PanelToScreen) are for UI Toolkit's OLDER RenderTexture-on-a-mesh workflow: verified empirically
+    // (not just from docs) that both return the input essentially unchanged against a Transform-driven
+    // PanelRenderMode.WorldSpace panel, i.e. they silently no-op rather than performing the documented
+    // transform. World-space panels instead rely entirely on Unity's own implicit runtime input system
+    // picking up their Collider (see PanelHostFactory.AttachWorldSpaceCollider) — Velvet cannot
+    // substitute a manual Pick() for them the way it does for screen-space layers, since the coordinate
+    // conversion these APIs would need is an internal-only code path (WorldSpaceInput.Pick3D /
+    // PickDocument3D — the containing class is `internal`) not reachable from a package assembly.
+    // Key events also route by FOCUS, not position — a separate concern from this class.
     internal static class FiberCrossPanelPointerRouter
     {
         // Registered once per main panel (ReconcilerContext.CrossPanelRouterAttached guards against a
@@ -41,10 +50,6 @@ namespace Velvet
 
             List<PanelHostRecord>? candidates = null;
             foreach (var kvp in ctx.LayerHosts)
-            {
-                (candidates ??= new List<PanelHostRecord>()).Add(kvp.Value);
-            }
-            foreach (var kvp in ctx.WorldSpaceBindings)
             {
                 (candidates ??= new List<PanelHostRecord>()).Add(kvp.Value);
             }
