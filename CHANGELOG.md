@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `ChildReconciler`'s same-key type-flip replacement (the Common-phase indexed loop, and both keyed
+  Pass-1 linear scans — sync and time-sliced) now always inserts the newly built replacement element
+  even when building it triggers an error-boundary abort, instead of discarding it and leaving the
+  slot empty — the abort only fires once the boundary's fallback has already rendered successfully,
+  so the replacement being discarded was always holding valid content. The fully-synchronous keyed
+  diff also now stops scanning the remaining siblings once such an abort is observed, instead of
+  continuing to patch/replace later slots — matching every other `CanPatch`-gated call site (the
+  Common-phase indexed loop and the time-sliced keyed scan already did).
+
 ### Changed
 
 - `V.SceneView`: the owned RenderTexture's backing resolution now rounds its larger axis up to the

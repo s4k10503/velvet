@@ -78,12 +78,37 @@ namespace Velvet
         //     parent.childCount on a desync-shortened range; the keyed scan's slotStart + i is always
         //     in range on its own and must NOT be clamped (clamping would silently misplace an insert
         //     once slotStart + i legitimately reaches parent.childCount, i.e. a tail slot).
-        //   checkAbortAfterCreate: whether to bail before inserting when CreateElement's descendant
-        //     render triggered an error-boundary abort. ReconcileKeyedSync (the fully-synchronous
-        //     keyed caller) does not check this today; preserved as-is here rather than folded in,
-        //     since flipping it would be a behavior change out of scope for this consolidation.
-        // Returns true when the caller must stop (an abort was observed and the caller opted in via
-        // checkAbortAfterCreate).
+        //   checkAbortAfterCreate: whether to stop the caller's scan (return true) after CreateElement
+        //     observes an error-boundary abort. Does NOT discard newElement either way — see below.
+        //   Removal deliberately stays BEFORE CreateElement (remove-then-create), not
+        //     create-then-remove: an inline-mounted component fiber is keyed by
+        //     (parentFiber, positionKey, identity) — NOT by which VisualElement currently hosts it
+        //     (FiberRenderer.SetupMount's comment on the registry key; ComponentRegistry.cs). If the
+        //     OLD element (and the same-keyed nested fiber ComponentRegistry still has registered
+        //     under it) is still present when CreateElement builds the NEW element's same-keyed
+        //     child, the registry hands back the OLD, still-live fiber instead of mounting fresh —
+        //     confirmed by a regression in ComponentStateReparityTests
+        //     (Given_ANestedComponentWithAdvancedState_When_TheHostElementTypeChanges_...) when this
+        //     was tried. FiberElementCleaner.CleanupElement's own comment on DisposeFibersUnder
+        //     explains why: an inline fiber under a torn-down host is otherwise invisible to the
+        //     normal orphan sweep and "would survive to be re-paired as a zombie on a same-key
+        //     re-entry" — which is exactly what create-then-remove reintroduces.
+        //   newElement is ALWAYS inserted, abort or not (#48): _ctx.IsAborted only ever becomes true
+        //     via FiberErrorBoundary.TryCatch -> SetAborted, which fires exclusively on TryShowFallback's
+        //     SUCCESS path (fiber.Reconciler.Reconcile(fiber.MountPoint, ..., fallbackTree) returned
+        //     without throwing and FallbackContentFailed is false) — i.e. by the time CreateElement
+        //     returns, newElement already holds a fully, successfully rendered subtree (the boundary's
+        //     fallback content in place of whatever threw beneath it), not a half-built one. Discarding
+        //     it and leaving the slot empty was strictly worse than what React does: an error boundary
+        //     that catches never leaves the DOM with nothing where its fallback should be (render never
+        //     touches the committed tree — see ReactFiberThrow.js's throwException, which only tags
+        //     fibers for the commit phase to later process; Velvet has no such phase split, so the
+        //     nearest equivalent is "don't throw away content the boundary already finished building").
+        //     checkAbortAfterCreate's true meaning is narrower: stop scanning further siblings in THIS
+        //     pass, because the boundary already resolved the failure and any later slot's patch/replace
+        //     would be racing a reconcile the caller no longer owns end-to-end.
+        // Returns true when the caller must stop scanning further siblings (an abort was observed and
+        // the caller opted in via checkAbortAfterCreate); newElement has already been inserted either way.
         private bool PatchOrReplaceAtSlot(
             VisualElement parent, int slotStart, int i, VNode? oldNode, VNode? newNode,
             bool slotExists, bool clampInsertIndex, bool checkAbortAfterCreate)
@@ -101,13 +126,9 @@ namespace Velvet
                 _cleaner.RemoveElement(parent, slotStart + i);
             }
             var newElement = _factory.CreateElement(newNode);
-            if (checkAbortAfterCreate && _ctx.IsAborted)
-            {
-                return true;
-            }
             var insertIndex = clampInsertIndex ? Math.Min(slotStart + i, parent.childCount) : slotStart + i;
             parent.Insert(insertIndex, newElement);
-            return false;
+            return checkAbortAfterCreate && _ctx.IsAborted;
         }
 
         public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
@@ -677,8 +698,11 @@ namespace Velvet
                     var newKey = _keying.EffectiveKey(newNodes[i]);
                     if (oldKey != newKey) break;
 
-                    PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
-                        slotExists: true, clampInsertIndex: false, checkAbortAfterCreate: false);
+                    if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
+                            slotExists: true, clampInsertIndex: false, checkAbortAfterCreate: true))
+                    {
+                        return;
+                    }
                 }
                 // Update only when an operation succeeded; left unchanged on break.
                 linearEnd = i + 1;
