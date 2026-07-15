@@ -60,9 +60,10 @@ namespace Velvet
         // Attaches the fiber to mountPoint and runs the initial render + layout effects.
         // fiber: Fiber to mount. Must not already be mounted.
         // mountPoint: VisualElement that hosts the rendered tree. Must not be null.
-        public static void Mount(ComponentFiber fiber, VisualElement? mountPoint)
+        // sharedContext: see SetupMount.
+        public static void Mount(ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null)
         {
-            SetupMount(fiber, mountPoint);
+            SetupMount(fiber, mountPoint, sharedContext);
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
         }
@@ -74,9 +75,10 @@ namespace Velvet
         // output VEs into parent.children at slotStart.
         // Subsequent setState-triggered re-renders use the fiber's own Reconciler with slot-range
         // addressing (the deferReconcile flag is only honored on this initial mount path).
-        public static void MountInline(ComponentFiber fiber, VisualElement? parent, int slotStart)
+        // sharedContext: see SetupMount.
+        public static void MountInline(ComponentFiber fiber, VisualElement? parent, int slotStart, ReconcilerContext? sharedContext = null)
         {
-            SetupMount(fiber, parent);
+            SetupMount(fiber, parent, sharedContext);
             fiber.IsInlineMounted = true;
             fiber.MountSlotStart = slotStart;
             RenderAndReconcile(fiber, deferReconcile: true);
@@ -129,7 +131,20 @@ namespace Velvet
             fiber.Reconciler?.Context.BatchScheduler.Remove(fiber);
         }
 
-        private static void SetupMount(ComponentFiber fiber, VisualElement? mountPoint)
+        // sharedContext: the ReconcilerContext this fiber must join, when its creator already knows
+        // one authoritatively — ComponentRegistry passes its own _ctx here (both its inline and
+        // wrapper-mounted GetOrCreate paths), since a fiber it creates always belongs to that
+        // context regardless of tree position. Deriving the context from fiber.Parent?.Reconciler?.Context
+        // instead is unreliable: fiber.Parent is only set when _ctx.FiberStack.Current was non-null at
+        // AppendChild time, which requires an ancestor fiber's render to already be in progress
+        // (RenderAndReconcile / TryCatch push it). A bare Reconciler.Reconcile() call — not driven
+        // through V.Mount, e.g. a hand-authored tree in a test — has nothing on FiberStack, so a nested
+        // ComponentNode's fiber.Parent stays null even though ComponentRegistry itself is unambiguously
+        // running inside a real, non-orphaned context. Falling back to bootstrapping a fresh, unrelated
+        // Reconciler+ReconcilerContext there silently detaches the fiber from the caller's registries /
+        // FiberStack / IsAborted flag (see #51). Left null only by V.Mount's direct root-fiber path,
+        // which has no context to join and must bootstrap its own (this fiber becomes the owner).
+        private static void SetupMount(ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null)
         {
             if (fiber.IsMounted)
             {
@@ -142,7 +157,7 @@ namespace Velvet
             // by (anchor, slotKey, identity) resolve to the same fiber instance regardless of
             // which fiber's Reconciler is currently running. Wrapper-mounted fibers without a
             // parent fiber (root mount path) bootstrap a fresh Reconciler that owns its ctx.
-            var parentCtx = fiber.Parent?.Reconciler?.Context;
+            var parentCtx = sharedContext ?? fiber.Parent?.Reconciler?.Context;
             fiber.Reconciler = parentCtx != null
                 ? new Reconciler(parentCtx)
                 : new Reconciler();
