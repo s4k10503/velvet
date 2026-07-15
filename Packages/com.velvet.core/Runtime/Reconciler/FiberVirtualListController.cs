@@ -230,6 +230,14 @@ namespace Velvet
                     vnode.Key ??= key;
                     newNodes[i] = vnode;
 
+                    // Not routed through ChildReconciler.PatchOrReplaceAtSlot despite the same CanPatch
+                    // gate: this controller lives in a separate class reached only through
+                    // IReconcilerBridge (CreateElementForController / PatchNodeForController /
+                    // CleanupElementForController), which has no access to ChildReconciler's private
+                    // _factory/_patcher/_cleaner fields the helper closes over. It also disposes the old
+                    // element AFTER creating the replacement (create-before-dispose, see below) rather
+                    // than before, so it could not reuse that helper's eager remove-then-create order
+                    // even if the class boundary were bridged.
                     var hasExisting = _oldNodesByKey.TryGetValue(key, out var existing);
                     if (hasExisting && ReconcileKeying.CanPatch(existing.node, vnode))
                     {
