@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `V.SceneView`: the owned RenderTexture's backing resolution now rounds its larger axis up to the
+  nearest 16px step (rescaling the other axis by the same factor, so the texture's aspect ratio
+  still matches the element's) instead of matching the element's laid-out pixel size exactly, so
+  small, rapid resizes that keep the element's aspect ratio unchanged (a drag-resize, an animated
+  layout) reuse the existing texture instead of reallocating on every change.
+
 ### Fixed
 
 - `V.VirtualList`: a same-key item whose node type changes across a re-render (e.g. a slot

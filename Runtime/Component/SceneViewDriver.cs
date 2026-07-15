@@ -20,6 +20,10 @@ namespace Velvet
         // bail pre-layout and the FIRST sync that gets past the validity gate must inherit it.
         // Layout- and tick-driven resyncs never claim a foreign target on their own.
         public bool ClaimOnNextSync;
+        // Sticky record of which axis TryComputePixelSize last quantized as the "larger" one; null
+        // until the first successful derivation. See TryComputePixelSize for why this must persist
+        // across calls instead of being re-derived from the bare current size each time.
+        public bool? WidthWasQuantizedAxis;
 
         public SceneViewBinding(SceneViewSettings settings)
         {
@@ -29,7 +33,8 @@ namespace Velvet
 
     /// <summary>
     /// Drives a <see cref="SceneViewElement"/>'s camera-output display: a framework-owned
-    /// RenderTexture created at the element's laid-out pixel size (times the resolution scale),
+    /// RenderTexture sized to the element's laid-out pixel size (times the resolution scale, rounded
+    /// up to reuse the existing texture across minor resizes — see <see cref="TryComputePixelSize"/>),
     /// assigned to <c>camera.targetTexture</c>, and shown through the element's background image. The
     /// element samples the LIVE texture — the camera keeps rendering into it and UI Toolkit's command
     /// list samples it at draw time, so new frames appear with no Velvet re-render and no pixel copy.
@@ -45,6 +50,15 @@ namespace Velvet
         // an unbounded VRAM request. 4096 is comfortably above any sane on-screen element while still
         // universally supported.
         private const int MaxTextureSize = 4096;
+
+        // The pixel-size rounding grain TryComputePixelSize quantizes the larger axis up to. 16
+        // divides MaxTextureSize evenly (4096 / 16 = 256), so the ceiling clamp and this step never
+        // leave a leftover partial bucket at the boundary. Large enough to absorb the
+        // few-pixels-per-frame deltas a drag-resize or an animated layout produces — so most jitter
+        // keeps landing on the same bucket and reuses the existing RenderTexture instead of
+        // reallocating — while small enough that the worst-case 15px overshoot is negligible against
+        // any on-screen SceneView size.
+        private const int SizeQuantizationStep = 16;
 
         // Wires the geometry-driven texture sync onto the element and returns the binding. The
         // synchronous sync attempt covers a binding attached to an ALREADY laid-out element (a camera
@@ -106,7 +120,7 @@ namespace Velvet
         {
             var camera = binding.Settings.Camera;
             if (camera == null || element.panel == null
-                || !TryComputePixelSize(element, binding, out var pw, out var ph))
+                || !TryComputePixelSize(element, binding, out var pw, out var ph, out var usedWidthAsBasis))
             {
                 ReleaseOutput(element, binding);
                 return;
@@ -116,6 +130,9 @@ namespace Velvet
 
             if (binding.Texture != null && binding.Texture.width == pw && binding.Texture.height == ph)
             {
+                // Confirmed: the live texture already matches this derivation, so this call's basis
+                // choice is the one actually in effect — safe to commit.
+                binding.WidthWasQuantizedAxis = usedWidthAsBasis;
                 if (camera.targetTexture != binding.Texture
                     && (claim || camera.targetTexture == null))
                 {
@@ -134,11 +151,18 @@ namespace Velvet
             {
                 // The camera is borrowed: re-deriving the texture now would swap the background to an
                 // image nothing renders into and destroy the last good frame. Keep showing that
-                // frame; the next explicit camera/settings pass reclaims and re-derives the size.
+                // frame; the next explicit camera/settings pass reclaims and re-derives the size. This
+                // call's (pw, ph, usedWidthAsBasis) is discarded rather than applied to any texture,
+                // so binding.WidthWasQuantizedAxis must NOT be touched here — committing it would let
+                // a transient geometry sample observed while borrowed silently steer the basis-axis
+                // choice for whatever texture the eventual reclaim actually creates.
                 SyncRepaintTick(element, binding);
                 return;
             }
 
+            // Confirmed: about to create a fresh texture at exactly (pw, ph) — commit the basis that
+            // produced it.
+            binding.WidthWasQuantizedAxis = usedWidthAsBasis;
             // Target the new texture BEFORE destroying the old one so the camera never points at a
             // dead texture in between (the re-target is itself the polite release of our own texture).
             var texture = new RenderTexture(pw, ph, 24);
@@ -170,10 +194,42 @@ namespace Velvet
         // request like the sibling texture bakers bound theirs — applied as ONE shared shrink when
         // either axis overflows, because clamping each axis independently would change the texture's
         // aspect and distort the camera picture.
-        private static bool TryComputePixelSize(VisualElement element, SceneViewBinding binding, out int pw, out int ph)
+        //
+        // The result is then quantized for reuse-friendliness, but — for the same distort-the-picture
+        // reason the shrink above is careful about — NOT by rounding each axis up independently: since
+        // SceneViewDriver never pins camera.aspect, Unity derives the camera's render aspect straight
+        // from the texture's own width/height, so a texture whose aspect drifts from the element's
+        // true aspect renders the scene visibly skewed. Instead the LARGER axis is quantized up to
+        // SizeQuantizationStep and the other axis is rescaled by the same factor, which keeps the
+        // texture's aspect equal to the element's true aspect while still landing same-aspect jitter
+        // (a uniform drag-resize, a DPI change) on a shared bucket so SyncTexture's exact-match reuse
+        // check hits instead of reallocating. A resize that itself changes the element's aspect ratio
+        // still gets a fresh texture either way — that's correct, not a regression, since the aspect
+        // actually changed.
+        //
+        // Which axis counts as "larger" is STICKY (binding.WidthWasQuantizedAxis), not re-derived from
+        // scratch on every call: for an element whose aspect ratio hovers near 1:1, re-deriving "is pw
+        // >= ph" from the bare current size would flip which axis is quantized on a 1px change in
+        // which axis is momentarily longer, picking an entirely different bucket for BOTH axes even
+        // though the element barely moved (a square avatar/minimap/preview, or ordinary sub-pixel
+        // layout jitter, would then defeat the whole point of quantizing). Once an axis is chosen it
+        // keeps being used as long as it is still at least as long as the other OR the gap between
+        // them is under one quantization step — only a gap that clears a full step flips the basis,
+        // so which axis is "larger" changes only when the element's aspect ratio has genuinely and
+        // durably changed, not on sub-step jitter.
+        // usedWidthAsBasis reports which axis THIS call would use as the quantization basis, given
+        // binding's CURRENT sticky state — it does not write binding.WidthWasQuantizedAxis itself.
+        // Not every caller ends up applying this call's (pw, ph) to a texture (SyncTexture's
+        // borrowed-camera bail-out keeps showing an older texture; OnRepaintTick's staleness probe
+        // only checks whether a resync is needed), so committing the sticky axis unconditionally
+        // here would let a call whose result is discarded still steer future basis-axis decisions —
+        // only the caller that actually confirms or creates a texture for (pw, ph) should commit it,
+        // via `binding.WidthWasQuantizedAxis = usedWidthAsBasis`.
+        private static bool TryComputePixelSize(VisualElement element, SceneViewBinding binding, out int pw, out int ph, out bool usedWidthAsBasis)
         {
             pw = 0;
             ph = 0;
+            usedWidthAsBasis = false;
             var w = element.layout.width;
             var h = element.layout.height;
             if (w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h))
@@ -189,7 +245,36 @@ namespace Velvet
                 pw = Mathf.Clamp(Mathf.FloorToInt(pw * shrink), 1, MaxTextureSize);
                 ph = Mathf.Clamp(Mathf.FloorToInt(ph * shrink), 1, MaxTextureSize);
             }
+            // Symmetric hysteresis: the axis last COMMITTED as the basis keeps being used unless the
+            // OTHER axis has pulled ahead by a full quantization step, so a sub-step wobble in which
+            // axis is momentarily longer never flips the basis.
+            var useWidthAsBasis = binding.WidthWasQuantizedAxis is { } stickyToWidth
+                ? (stickyToWidth
+                    ? pw >= ph || ph - pw < SizeQuantizationStep
+                    : pw > ph && pw - ph >= SizeQuantizationStep)
+                : pw >= ph;
+            usedWidthAsBasis = useWidthAsBasis;
+
+            if (useWidthAsBasis)
+            {
+                var quantizedW = Mathf.Min(QuantizeUp(pw), MaxTextureSize);
+                ph = Mathf.Max(1, Mathf.RoundToInt((float)quantizedW * ph / pw));
+                pw = quantizedW;
+            }
+            else
+            {
+                var quantizedH = Mathf.Min(QuantizeUp(ph), MaxTextureSize);
+                pw = Mathf.Max(1, Mathf.RoundToInt((float)quantizedH * pw / ph));
+                ph = quantizedH;
+            }
             return true;
+        }
+
+        // Rounds a pixel size up to the next SizeQuantizationStep multiple (e.g. 100 -> 112 at the
+        // 16px step); an already-aligned value passes through unchanged.
+        private static int QuantizeUp(int value)
+        {
+            return (value + SizeQuantizationStep - 1) / SizeQuantizationStep * SizeQuantizationStep;
         }
 
         // An Editor-context panel repaints only when something marks it dirty, so a live camera feed
@@ -217,8 +302,12 @@ namespace Velvet
         // texture. Runtime panels have no tick and heal on their next geometry or props pass instead.
         private static void OnRepaintTick(VisualElement element, SceneViewBinding binding)
         {
+            // This is a staleness PROBE, not a commit: only checks whether the derived size still
+            // matches the live texture. The basis-axis choice this call computes is discarded — if a
+            // resync turns out to be needed, SyncTexture below re-derives (and, on that path, commits)
+            // it from scratch.
             if (binding.Texture != null
-                && TryComputePixelSize(element, binding, out var pw, out var ph)
+                && TryComputePixelSize(element, binding, out var pw, out var ph, out _)
                 && (binding.Texture.width != pw || binding.Texture.height != ph))
             {
                 SyncTexture(element, binding);
@@ -245,6 +334,10 @@ namespace Velvet
             binding.Texture.Release();
             VelvetObjectUtil.Destroy(binding.Texture);
             binding.Texture = null;
+            // The sticky basis-axis choice exists to keep a LIVE texture's bucket continuous across
+            // resizes; once the texture itself is gone there is nothing left to stay continuous with,
+            // so the next texture this binding creates derives its basis fresh from that size alone.
+            binding.WidthWasQuantizedAxis = null;
             if (element is SceneViewElement sceneView)
             {
                 // Releasing the feed returns the slot to whatever writer was deferred while the
