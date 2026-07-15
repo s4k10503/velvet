@@ -32,13 +32,21 @@ namespace Velvet
         internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;
         internal readonly VNode?[]? DescendantNodes;
         internal readonly ComponentFiber Anchor;
+        // The ComponentFiber that logically called V.Portal/V.WorldSpace (captured at enqueue time, when
+        // FiberStack.Current is genuinely correct — see PendingPortalMounts). Null for VirtualList's
+        // detached items (no portal call site to resolve) and for a bare Reconciler.Reconcile() drain
+        // with nothing on FiberStack. Distinct from Anchor: Anchor is a REGISTRY-lookup key (where the
+        // drain happened to leave the child fiber parented), not the authoring component.
+        internal readonly ComponentFiber? LogicalParent;
 
         internal DetachedMountContext(
-            List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor)
+            List<KeyValuePair<object, object>>? enclosingSnapshot, VNode?[]? descendantNodes, ComponentFiber anchor,
+            ComponentFiber? logicalParent = null)
         {
             EnclosingSnapshot = enclosingSnapshot;
             DescendantNodes = descendantNodes;
             Anchor = anchor;
+            LogicalParent = logicalParent;
         }
     }
 
@@ -348,8 +356,15 @@ namespace Velvet
         // stays a mount-time signal); layer portals and world-space nodes carry null and resolve —
         // creating their framework host on first use — at drain time, when the placeholder is
         // attached and the declaring panel is therefore known.
+        // LogicalParent is the ComponentFiber whose Body was mid-render when V.Portal/V.WorldSpace was
+        // called (_ctx.FiberStack.Current at enqueue time — the only point this is available, since the
+        // drain runs after the whole top-level reconcile pass unwinds). Captured for cross-panel
+        // synthetic event bubbling: the drained children's own fiber.Parent ends up pointing at
+        // whatever fiber happens to be on top of FiberStack at DRAIN time (see DrainPendingPortalMounts'
+        // drainAnchor), which is NOT the logically-enclosing component — LogicalParent is the correct
+        // one, stamped onto DetachedMountContext separately from Anchor.
         public Queue<(VisualElement Placeholder, VNode Node, VisualElement? Target,
-            List<KeyValuePair<object, object>> ContextSnapshot)> PendingPortalMounts { get; } = new();
+            List<KeyValuePair<object, object>> ContextSnapshot, ComponentFiber? LogicalParent)> PendingPortalMounts { get; } = new();
 
         // Framework-owned layer host panels (V.Portal(layer:)), one per UILayer, created lazily at
         // the first drain that needs the layer and shared by every portal on it. NOT a pure

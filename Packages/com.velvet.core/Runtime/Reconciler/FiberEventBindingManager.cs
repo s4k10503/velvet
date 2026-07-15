@@ -12,6 +12,15 @@ namespace Velvet
     {
         private readonly Dictionary<VisualElement, List<Action>> _unbindActions = new();
         private readonly Dictionary<VisualElement, List<Delegate>> _boundDelegates = new();
+        // Mirrors _boundDelegates, keyed by the same element, but retains the typed FiberEventBinding
+        // wrapper instead of the bare Handler delegate. Native UI Toolkit dispatch never needs this —
+        // RegisterCallback<T> already knows T from the generic call site. It exists solely for
+        // FiberCrossPanelEventDispatcher.TryInvoke, which receives an already-constructed EventBase
+        // instance at a point where the native dispatcher is NOT involved (an event that bubbled to a
+        // portal/world-space host panel's root and is being carried across the panel boundary to the
+        // logical ancestor chain) and must resolve "does this element have a handler for THIS runtime
+        // event type" without any generic type parameter to dispatch on.
+        private readonly Dictionary<VisualElement, List<FiberEventBinding>> _bindingsByElement = new();
 
         // The owning context's batch scheduler. Used to flush the immediate batch synchronously at the end of a
         // discrete event handler so the UI updates before the next frame. Null when constructed without one (isolated unit
@@ -58,6 +67,12 @@ namespace Velvet
             if (newDelegate != null)
             {
                 delegates.Add(newDelegate);
+                if (!_bindingsByElement.TryGetValue(element, out var typedBindings))
+                {
+                    typedBindings = new List<FiberEventBinding>();
+                    _bindingsByElement[element] = typedBindings;
+                }
+                typedBindings.Add(binding);
             }
 
             switch (binding)
@@ -122,6 +137,7 @@ namespace Velvet
             actions.Clear();
             _unbindActions.Remove(element);
             _boundDelegates.Remove(element);
+            _bindingsByElement.Remove(element);
         }
 
         // Checks whether the bindings already registered on the element match the new event array.
@@ -176,6 +192,91 @@ namespace Velvet
 
             _unbindActions.Clear();
             _boundDelegates.Clear();
+            _bindingsByElement.Clear();
+        }
+
+        // Invoked by FiberCrossPanelEventDispatcher (see that class for the full walk algorithm) when a
+        // native event that already finished bubbling within its own panel needs to continue toward the
+        // logical ancestor chain OUTSIDE that panel — a portal/world-space host panel has no physical
+        // ancestor beyond its own root, so nothing native can carry the event further from there.
+        // Resolves element's own binding matching evt's runtime type and invokes its raw Handler
+        // directly, bypassing UI Toolkit's dispatcher entirely: native RegisterCallback<T> plumbing
+        // never runs here, since element may not even share a panel with evt's original target.
+        // ClickedBinding/ChangeEventBinding<T> are deliberately NOT handled here: Button.clicked has no
+        // underlying bubbling event to carry across the boundary (Clickable detects a click from
+        // PointerDown/Up internally and invokes its Action delegate directly, never dispatching a
+        // synthesizable event object of its own), and INotifyValueChanged<T>'s ChangeEvent<T> is
+        // field-implementation-specific in the same way — both stay panel-local until a dedicated
+        // design extends this.
+        // Returns true when a matching binding was invoked (informational only; the caller's walk
+        // continues regardless — a miss here does not stop propagation up the logical chain).
+        internal bool TryInvokeSynthetic(VisualElement element, EventBase evt)
+        {
+            if (element == null || evt == null || !_bindingsByElement.TryGetValue(element, out var bindings))
+            {
+                return false;
+            }
+
+            var invoked = false;
+            foreach (var binding in bindings)
+            {
+                switch (binding)
+                {
+                    case PointerDownBinding b when evt is PointerDownEvent pe:
+                        RunDiscrete(() => b.Handler?.Invoke(pe));
+                        invoked = true;
+                        break;
+                    case PointerUpBinding b when evt is PointerUpEvent pe:
+                        RunDiscrete(() => b.Handler?.Invoke(pe));
+                        invoked = true;
+                        break;
+                    case KeyDownBinding b when evt is KeyDownEvent ke:
+                        RunDiscrete(() => b.Handler?.Invoke(ke));
+                        invoked = true;
+                        break;
+                    case KeyUpBinding b when evt is KeyUpEvent ke:
+                        RunDiscrete(() => b.Handler?.Invoke(ke));
+                        invoked = true;
+                        break;
+                    case FocusInBinding b when evt is FocusInEvent fe:
+                        RunDiscrete(() => b.Handler?.Invoke(fe));
+                        invoked = true;
+                        break;
+                    case FocusOutBinding b when evt is FocusOutEvent fe:
+                        RunDiscrete(() => b.Handler?.Invoke(fe));
+                        invoked = true;
+                        break;
+                    case FocusBinding b when evt is FocusEvent fe:
+                        RunDiscrete(() => b.Handler?.Invoke(fe));
+                        invoked = true;
+                        break;
+                    case BlurBinding b when evt is BlurEvent fe:
+                        RunDiscrete(() => b.Handler?.Invoke(fe));
+                        invoked = true;
+                        break;
+                    case PointerMoveBinding b when evt is PointerMoveEvent pe:
+                        b.Handler?.Invoke(pe);
+                        invoked = true;
+                        break;
+                    case PointerEnterBinding b when evt is PointerEnterEvent pe:
+                        b.Handler?.Invoke(pe);
+                        invoked = true;
+                        break;
+                    case PointerLeaveBinding b when evt is PointerLeaveEvent pe:
+                        b.Handler?.Invoke(pe);
+                        invoked = true;
+                        break;
+                    case WheelBinding b when evt is WheelEvent we:
+                        b.Handler?.Invoke(we);
+                        invoked = true;
+                        break;
+                    case GeometryChangedBinding b when evt is GeometryChangedEvent ge:
+                        b.Handler?.Invoke(ge);
+                        invoked = true;
+                        break;
+                }
+            }
+            return invoked;
         }
 
         private static void BindCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)
