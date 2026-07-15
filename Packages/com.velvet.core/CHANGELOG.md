@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `ChildReconciler`'s same-key/same-index type-flip replacement path now checks for an
+  error-boundary abort (and leaves the old element in place) before removing it, instead of after
+  — a descendant render failure caught during the replacement's construction no longer strands the
+  slot empty. Applies to the Common-phase indexed loop and both keyed Pass-1 linear scans (sync and
+  time-sliced); the fully-synchronous keyed scan additionally now stops scanning the remaining
+  siblings once an abort is observed, matching every other CanPatch-gated call site.
+
 ### Changed
 
 - `V.SceneView`: the owned RenderTexture's backing resolution now rounds its larger axis up to the

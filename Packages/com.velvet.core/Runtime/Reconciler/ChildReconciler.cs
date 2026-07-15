@@ -64,10 +64,10 @@ namespace Velvet
         }
 
         // Applies the CanPatch-gated patch-or-replace decision at one DOM slot: patches the existing
-        // element in place when the pair is patch-compatible, otherwise removes the existing element
-        // (when slotExists) and inserts a freshly created one at the same slot. Shared by the
-        // Common-phase indexed loop and both keyed Pass-1 linear-scan implementations (sync and
-        // time-sliced) so this eager remove-then-create sequence cannot independently drift the way
+        // element in place when the pair is patch-compatible, otherwise creates a replacement and
+        // (when slotExists) removes the existing element before inserting the new one at the same
+        // slot. Shared by the Common-phase indexed loop and both keyed Pass-1 linear-scan
+        // implementations (sync and time-sliced) so this sequence cannot independently drift the way
         // FiberVirtualListController's own separately hand-rolled copy did — it skipped the CanPatch
         // gate entirely, patching a same-key type flip onto a stale element.
         //   slotExists: false only for the indexed diff's DOM-desync recovery, where a transient
@@ -77,11 +77,14 @@ namespace Velvet
         //   clampInsertIndex: the indexed diff inserts at an absolute position that must clamp to
         //     parent.childCount on a desync-shortened range; the keyed scan's slotStart + i is always
         //     in range on its own and must NOT be clamped (clamping would silently misplace an insert
-        //     once slotStart + i legitimately reaches parent.childCount, i.e. a tail slot).
-        //   checkAbortAfterCreate: whether to bail before inserting when CreateElement's descendant
-        //     render triggered an error-boundary abort. ReconcileKeyedSync (the fully-synchronous
-        //     keyed caller) does not check this today; preserved as-is here rather than folded in,
-        //     since flipping it would be a behavior change out of scope for this consolidation.
+        //     once slotStart + i legitimately reaches parent.childCount, i.e. a tail slot). The clamp
+        //     reads parent.childCount AFTER the old element (if any) is removed below, matching the
+        //     original per-site behavior this helper consolidates.
+        //   checkAbortAfterCreate: whether to bail before removing the old element / inserting the new
+        //     one when CreateElement's descendant render triggered an error-boundary abort. Create
+        //     runs before the old element is touched (create-before-dispose, mirroring the ordering
+        //     FiberVirtualListController's own replace branch already uses) so an abort here always
+        //     leaves the old element in place instead of stranding the slot empty.
         // Returns true when the caller must stop (an abort was observed and the caller opted in via
         // checkAbortAfterCreate).
         private bool PatchOrReplaceAtSlot(
@@ -96,14 +99,14 @@ namespace Velvet
                 return false;
             }
 
-            if (slotExists)
-            {
-                _cleaner.RemoveElement(parent, slotStart + i);
-            }
             var newElement = _factory.CreateElement(newNode);
             if (checkAbortAfterCreate && _ctx.IsAborted)
             {
                 return true;
+            }
+            if (slotExists)
+            {
+                _cleaner.RemoveElement(parent, slotStart + i);
             }
             var insertIndex = clampInsertIndex ? Math.Min(slotStart + i, parent.childCount) : slotStart + i;
             parent.Insert(insertIndex, newElement);
@@ -677,8 +680,11 @@ namespace Velvet
                     var newKey = _keying.EffectiveKey(newNodes[i]);
                     if (oldKey != newKey) break;
 
-                    PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
-                        slotExists: true, clampInsertIndex: false, checkAbortAfterCreate: false);
+                    if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
+                            slotExists: true, clampInsertIndex: false, checkAbortAfterCreate: true))
+                    {
+                        return;
+                    }
                 }
                 // Update only when an operation succeeded; left unchanged on break.
                 linearEnd = i + 1;
