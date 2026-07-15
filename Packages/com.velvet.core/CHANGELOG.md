@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `Hooks.UseAnimationSequence(steps:)`: Framer Motion's `useAnimate` timeline parity — plays an
+  ordered `AnimationSequenceStep` array (`To` label changes, `Wait` gaps, `Call` callbacks) over
+  time and exposes the active step's label/transition to feed straight into a coordinator
+  `V.Motion(animate:, transition:)`, so a multi-stage animation no longer needs to be hand-rolled
+  with `UseEffect` + a timer + `UseState`. Descendant Motions inherit the coordinator's label
+  exactly as they already do for any hand-toggled label, so "animate several elements one at a
+  time" is just `StaggerChildrenSec` on a step's own transition — no new reconciler wiring.
+  `autoplay` / `loop` / `deps` and imperative `Play`/`Pause`/`Restart` controls round out the API.
 - `V.Motion(layoutId:)`: Framer Motion's shared-element layout animation parity. When a Motion
   carrying the same `layoutId` string patches at a resolved layout rect different from the rect
   that id last settled at — including across a same-key type flip or a move to a different

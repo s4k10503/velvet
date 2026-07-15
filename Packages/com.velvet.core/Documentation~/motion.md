@@ -184,6 +184,71 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
   `.layout` stays stale until the following layout pass.
 
+## Timelines (`Hooks.UseAnimationSequence`)
+
+```csharp
+var (seq, controls) = Hooks.UseAnimationSequence(new[]
+{
+    // 1. float in place for 0.5s
+    AnimationSequenceStep.To("floating", holdSec: 0.5f),
+
+    // emit particles the instant the float step becomes current
+    AnimationSequenceStep.Call(() => OnEmitParticles()),
+
+    // 2. fly toward the target, one particle at a time -- StaggerChildrenSec does the fan-out
+    AnimationSequenceStep.To("flying", transition: new StyleTransitionConfig
+    {
+        Type = TransitionType.Spring, Stiffness = 220f, Damping = 18f, StaggerChildrenSec = 0.08f,
+    }, holdSec: 0.9f),
+
+    // 3. fire the arrival event once the hold above has elapsed
+    AnimationSequenceStep.Call(() => OnArrived()),
+});
+
+return V.Motion(key: "coordinator", animate: seq.CurrentLabel, transition: seq.CurrentTransition,
+    children: /* descendant Motions with no own `animate` inherit seq.CurrentLabel */);
+```
+
+Framer Motion's `useAnimate` parity target: `UseAnimationSequence` owns the clock (it is itself built
+on `UseFrame`) and walks an ordered `AnimationSequenceStep[]`, so a multi-stage animation ("float, then
+emit, then fly to target one at a time, then fire an arrival event") never needs to be hand-rolled with
+`UseEffect` + a timer + `UseState`.
+
+A step is exactly one of:
+
+- **`AnimationSequenceStep.To(label, transition?, holdSec?)`** -- activates `label` on the sequence's
+  coordinator Motion. Its effect commits the moment the walker *arrives* at the step (not once its hold
+  elapses) -- "holds on this step" means the label is already active and the cursor is waiting before
+  moving to the next one. `transition` reuses the most recent non-null transition earlier in the
+  sequence when omitted (falling back to `StyleTransition.Fade` if none has been set yet); `holdSec`
+  defaults to that transition's `DurationSec + DelaySec` for a tween. A `Spring`-typed step needs an
+  explicit `holdSec` -- a spring's settle time is physics-derived, not statically knowable -- an omitted
+  one logs a warning and falls back to a fixed estimate rather than stalling the sequence.
+- **`AnimationSequenceStep.Wait(seconds)`** -- holds the current label for `seconds` with no effect of
+  its own.
+- **`AnimationSequenceStep.Call(callback)`** -- fires `callback` synchronously on arrival, then advances
+  immediately (never holds the cursor).
+
+**"One at a time" needs no separate multi-target API.** Descendant Motions with no own `animate` inherit
+the coordinator's label exactly as they already do for any hand-toggled label change (see "Label
+inheritance" above); a `To` step's own `transition` declaring `StaggerChildrenSec` fans that swap out
+across those descendants in document order, the same mechanism `V.Motion`'s orchestration knobs already
+provide.
+
+`autoplay` (default `true`) starts the sequence on mount; pass `false` and call `controls.Play()` (e.g.
+from an `onClick`) to start it on demand. `loop: true` wraps the cursor back to step 0 once the last
+step's hold elapses instead of latching `AnimationSequenceState.IsComplete`. `deps` follows the same
+convention as every other deps-taking hook, but — unlike `UseEffect` — omitting it resets the walker on
+**mount only**, not on every render: a freshly-built `steps` array literal in the component body (the
+common case) must not restart an in-flight sequence every render. `controls.Restart()` returns to step 0
+and re-commits its effect (including firing a `Call` step 0's callback again) without implicitly
+resuming a paused sequence.
+
+Not attempted: an arbitrary-selector scope ref (`useAnimate`'s `[scopeRef, animate]`) reaching elements
+outside the declarative Motion/variant tree, and overlapping/parallel tracks (Framer's `"<"` / `"+0.2"`
+relative-offset DSL) -- steps are a strict FIFO queue; two independently-timed tracks need two separate
+`UseAnimationSequence` coordinators.
+
 ## Transition semantics: one config, every update
 
 Every variant update rides the Motion's own `StyleTransitionConfig` — mount enters
