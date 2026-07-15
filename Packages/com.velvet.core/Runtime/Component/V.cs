@@ -1714,7 +1714,8 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? variants = null,
             string? animate = null,
             string? initial = null,
-            string? exit = null)
+            string? exit = null,
+            string? layoutId = null)
         {
             var resolvedTransition = transition ?? StyleTransition.Fade;
             if (duration != null || easing != null || delay != null)
@@ -1744,6 +1745,7 @@ namespace Velvet
                 Animate = animate,
                 Initial = initial,
                 Exit = exit,
+                LayoutId = layoutId,
             };
         }
 

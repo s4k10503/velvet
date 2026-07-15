@@ -156,6 +156,34 @@ new StyleTransitionConfig
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
 
+## Shared-element layout animation (`layoutId`)
+
+```csharp
+V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px] w-[600px] h-[400px]"
+                                                  : "absolute left-[40px] top-[120px] w-[120px] h-[80px]");
+```
+
+- Framer's `layoutId` parity. When a Motion carrying this same string patches at a resolved
+  layout rect (position and/or size) different from the rect the SAME id last settled at, it
+  tweens from the old rect to the new one — FLIP: the old rect is captured, layout settles at the
+  new one, an inverse inline transform is applied immediately, then it springs back to zero —
+  instead of jump-cutting.
+- Works across a same-key type flip or a move to a different parent, not just an in-place resize:
+  the id, not the physical element, is what's tracked. Two Motions in the same tree must never
+  share a live `layoutId` simultaneously — the second one to patch silently steals the
+  registration.
+- Independent of `Variants`/`Animate`: the tween runs from the ACTUAL rect delta captured off
+  `element.layout`, not a class-defined from/to pair, so it fires whether or not the same patch
+  also changed variants. Falls back to `StyleTransitionConfig`'s own spring defaults (Stiffness
+  100 / Damping 10 / Mass 1) when the Motion declares no `Transition`.
+- **Uniform scale only.** A non-uniform rect change (width and height scale by different factors)
+  averages the two axis scale factors rather than distorting the element on two independent axes
+  — UI Toolkit's `scale` style is a single uniform factor, not independent X/Y.
+- Position is captured synchronously before the patch (mirroring `PopLayout`'s own "read
+  `.layout` before the mutation that invalidates it" pattern); the new rect is captured on the
+  element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
+  `.layout` stays stale until the following layout pass.
+
 ## Transition semantics: one config, every update
 
 Every variant update rides the Motion's own `StyleTransitionConfig` — mount enters

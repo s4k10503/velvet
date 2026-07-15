@@ -131,6 +131,20 @@ namespace Velvet
         /// Null = use the transition's own ExitFrom/ExitTo classes.
         /// </summary>
         public string? Exit { get; init; }
+
+        /// <summary>
+        /// Shared-element layout animation identity (Framer Motion's <c>layoutId</c> parity). When a Motion
+        /// carrying this same string patches at a resolved layout rect (position and/or size) different from
+        /// the rect the SAME id last settled at — including a different physical element entirely, e.g. after
+        /// a same-key type flip or a move to a different parent — it tweens from the old rect to the new one
+        /// (FLIP: capture the old rect, let layout settle at the new one, apply an inverse transform, then
+        /// spring that inverse back to zero) instead of jump-cutting. Independent of <see cref="Variants"/>/
+        /// <see cref="Animate"/>: a layoutId tween runs from the ACTUAL rect delta, not a class-defined
+        /// from/to pair. Null = no layout animation (ordinary jump-cut on a rect change, matching every other
+        /// element). Two Motions in the same tree must never share a live layoutId simultaneously — the
+        /// second one to patch silently steals the registration (see MotionLayoutIdDriver).
+        /// </summary>
+        public string? LayoutId { get; init; }
     }
 
     /// <summary>

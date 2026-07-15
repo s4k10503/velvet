@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -269,6 +270,27 @@ namespace Velvet
         // A pure side-table (bare Remove on teardown), so it is enrolled in _pureElementSideTables and cleared
         // on element cleanup / reconciler dispose through that mechanism.
         public Dictionary<VisualElement, string> MotionChildLabel { get; } = new();
+
+        // The last VisualElement a V.Motion(layoutId:) id settled at, and the resolved layout rect
+        // (parent-relative, from element.layout) it settled at — used by MotionLayoutIdDriver to
+        // detect a rect change (including across a DIFFERENT physical element entirely, e.g. after a
+        // same-key type flip or a move to a different parent) and FLIP-tween from the old rect to the
+        // new one. Keyed by the id string, not an element, so it cannot ride the _pureElementSideTables
+        // auto-clear mechanism below (that clears entries keyed BY a departing element, not entries
+        // that happen to reference one as a value) — ElementToLayoutId is the reverse index that makes
+        // manual cleanup possible: when an element is torn down, look up its id here, and only then
+        // remove the LayoutIdRegistry entry IF it still points at this exact element (a same-key type
+        // flip may already have overwritten it with the replacement before the old element's own
+        // teardown runs).
+        public Dictionary<string, (VisualElement Element, Rect Rect)> LayoutIdRegistry { get; } = new();
+        public Dictionary<VisualElement, string> ElementToLayoutId { get; } = new();
+
+        // The recurring physics tick for an in-flight layoutId FLIP tween, keyed by the animating
+        // element. Owns a real scheduled resource (unlike ElementToLayoutId above), so it is deliberately
+        // NOT enrolled in _pureElementSideTables — MotionLayoutIdDriver.CancelForTeardown pauses and
+        // removes it explicitly, mirroring StyleAnimationScheduler's own spring-tick teardown for the
+        // variant enter/exit case.
+        public Dictionary<VisualElement, IVisualElementScheduledItem> LayoutIdTicks { get; } = new();
 
         // Per-element drop-shadow bookkeeping for the shadow-* className layer, keyed by the element
         // itself — the shadow needs NO structural wrapper. Like skew and gradient, the shadow is painted
@@ -732,6 +754,7 @@ namespace Velvet
                 SupportsVariants,
                 MotionAppliedClasses,
                 MotionChildLabel,
+                ElementToLayoutId,
                 TextEffects,
                 TextRawText,
             };
