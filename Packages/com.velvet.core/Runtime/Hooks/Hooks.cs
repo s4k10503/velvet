@@ -998,6 +998,87 @@ namespace Velvet
 
         #endregion
 
+        #region UseAnimationSequence
+
+        /// <summary>
+        /// Plays an ordered <see cref="AnimationSequenceStep"/> array over time, exposing the active step's
+        /// label/transition to feed straight into a coordinator <c>V.Motion(animate:, transition:)</c>.
+        /// Velvet's timeline primitive (Framer Motion's <c>useAnimate</c> parity target): the hook owns the
+        /// clock (via <see cref="UseFrame"/>) and the step walk, so a caller never hand-rolls
+        /// <see cref="UseEffect(Func{Action},object[])"/> plus a timer plus <see cref="UseState{T}(T)"/> to
+        /// sequence a multi-stage animation. Descendant <c>V.Motion</c> nodes with no own <c>animate</c>
+        /// inherit the coordinator's label exactly as they already do for any hand-toggled label change; "one
+        /// at a time" fan-out across a list of such descendants is <c>StaggerChildrenSec</c> on a step's own
+        /// <see cref="AnimationSequenceStep.Transition"/> — there is no separate multi-target API.
+        /// </summary>
+        /// <param name="steps">The ordered sequence. Must not be null.</param>
+        /// <param name="autoplay">Starts advancing on mount when true (default). When false, call
+        /// <c>controls.Play()</c> — e.g. from an <c>onClick</c> handler — to start it on demand. Only read on
+        /// mount / a <paramref name="deps"/> change, not on every render, so a later <c>controls.Pause()</c>
+        /// is not fought by a re-render that keeps passing <c>autoplay: true</c>.</param>
+        /// <param name="loop">When true, the cursor wraps to step 0 after the last step's hold elapses and
+        /// <see cref="AnimationSequenceState.IsComplete"/> never latches.</param>
+        /// <param name="deps">
+        /// Unlike <see cref="UseEffect(Func{Action},object[])"/>, omitting this (or passing null) resets the
+        /// walker on MOUNT ONLY, not on every render — a freshly-built <paramref name="steps"/> array literal
+        /// in the component body (the common case) must not restart an in-flight sequence every render. Pass
+        /// an explicit array to restart the sequence when one of its entries changes, same convention as every
+        /// other deps-taking hook.
+        /// </param>
+        public static (AnimationSequenceState state, AnimationSequenceControls controls) UseAnimationSequence(
+            IReadOnlyList<AnimationSequenceStep> steps, bool autoplay = true, bool loop = false, object?[]? deps = null)
+        {
+            if (steps == null) throw new ArgumentNullException(nameof(steps));
+            var fiber = Resolve("UseAnimationSequence");
+            var walker = UseRef(() => new SequenceWalker());
+            var (_, bumpRenderVersion) = UseState(0);
+
+            // Tracks the LATEST render's steps for controls.Restart() to read (see below) — mirrors UseFrame's
+            // own `latest.Set(onFrame)` pattern: a re-render must not leave an earlier render's Restart closing
+            // over a stale steps array, and the StrictMode throwaway diagnostic pass's steps must never become
+            // "latest" since that render is discarded.
+            var latestSteps = UseRef<IReadOnlyList<AnimationSequenceStep>>();
+            if (!IsStrictDiagnosticPass(fiber))
+            {
+                latestSteps.Set(steps);
+            }
+
+            UseEffect(() =>
+            {
+                walker.Current.Reset(steps);
+                walker.Current.IsPaused = !autoplay;
+                bumpRenderVersion.Invoke(v => v + 1);
+                return (Action)null;
+            }, deps ?? Array.Empty<object>());
+
+            UseFrame(dt =>
+            {
+                if (walker.Current.IsPaused || walker.Current.IsComplete)
+                {
+                    return;
+                }
+                var beforeGeneration = walker.Current.Generation;
+                walker.Current.Advance(dt, loop);
+                if (walker.Current.Generation != beforeGeneration || walker.Current.IsComplete)
+                {
+                    bumpRenderVersion.Invoke(v => v + 1);
+                }
+            });
+
+            var controls = new AnimationSequenceControls(
+                play: () => walker.Current.IsPaused = false,
+                pause: () => walker.Current.IsPaused = true,
+                restart: () =>
+                {
+                    walker.Current.Reset(latestSteps.Current ?? steps);
+                    bumpRenderVersion.Invoke(v => v + 1);
+                });
+
+            return (walker.Current.ToState(), controls);
+        }
+
+        #endregion
+
         #region Refs
 
         /// <summary>
