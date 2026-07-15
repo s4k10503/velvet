@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `ComponentNode` nested inside a tree reconciled via a direct `Reconciler.Reconcile()` call
+  (rather than `V.Mount`) no longer bootstraps its own isolated `ReconcilerContext`. Its fiber now
+  always joins the context of the `ComponentRegistry` that created it, instead of deriving one from
+  `fiber.Parent?.Reconciler?.Context` — which resolved to nothing whenever nothing had yet been
+  pushed onto the shared `FiberStack` (any hand-authored tree that reconciles directly instead of
+  through `V.Mount`). The gap silently detached the nested fiber from the caller's own registries
+  and `IsAborted` flag, so an error boundary nested this way could catch its child's exception and
+  render a fallback, but the caller's own reconcile pass never observed the abort and kept
+  processing later siblings as if nothing had failed.
 - `ChildReconciler`'s same-key type-flip replacement (the Common-phase indexed loop, and both keyed
   Pass-1 linear scans — sync and time-sliced) now always inserts the newly built replacement element
   even when building it triggers an error-boundary abort, instead of discarding it and leaving the

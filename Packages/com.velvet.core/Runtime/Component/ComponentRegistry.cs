@@ -171,11 +171,11 @@ namespace Velvet
             {
                 if (isInline)
                 {
-                    FiberRenderer.MountInline(fiber, mountPoint, slotStart);
+                    FiberRenderer.MountInline(fiber, mountPoint, slotStart, _ctx);
                 }
                 else
                 {
-                    FiberRenderer.Mount(fiber, mountPoint);
+                    FiberRenderer.Mount(fiber, mountPoint, _ctx);
                 }
             }
             catch (FiberSuspendSignal)
