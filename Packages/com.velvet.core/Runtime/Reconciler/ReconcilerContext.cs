@@ -371,6 +371,14 @@ namespace Velvet
         // not disallowed) and the router's TrickleDown listeners must not stack.
         internal bool CrossPanelRouterAttached { get; set; }
 
+        // The VisualElement V.Mount attached this context's root fiber to. Recorded so a framework
+        // host panel (layer or world-space) that currently holds focus can hand it back here before
+        // being torn down — the host's own FocusController is destroyed along with its GameObject
+        // (world-space) or reused across children (layer), so without this, focus would either
+        // dangle on a defunct panel or simply vanish, leaving keyboard input going nowhere until the
+        // app author notices and refocuses something manually.
+        internal VisualElement? MainPanelRoot { get; set; }
+
         // Framework-owned layer host panels (V.Portal(layer:)), one per UILayer, created lazily at
         // the first drain that needs the layer and shared by every portal on it. NOT a pure
         // side-table: each record owns a live GameObject plus runtime-created panel assets, torn

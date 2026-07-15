@@ -23,6 +23,7 @@ namespace Velvet
             var rootFiber = FiberRenderer.CreateRoot(() => tree);
             FiberRenderer.Mount(rootFiber, target);
             var ctx = rootFiber.Reconciler!.Context;
+            ctx.MainPanelRoot = target;
             if (!ctx.CrossPanelRouterAttached)
             {
                 FiberCrossPanelPointerRouter.AttachToMainPanel(target, ctx);

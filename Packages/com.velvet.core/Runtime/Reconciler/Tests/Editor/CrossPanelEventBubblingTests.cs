@@ -134,6 +134,43 @@ namespace Velvet.Tests
             Assert.That((s_handlerFired, s_handlerEventTarget == portalTarget), Is.EqualTo((true, true)));
         }
 
+        [Test]
+        public void Given_AFocusInInsideALayerPortal_When_Simulated_Then_TheEnclosingComponentsHandlerFires()
+        {
+            // Arrange — same shape as the pointer-down cases, but for FocusInBinding (events: FocusIn
+            // is one of the discrete bindings FiberEventBindingManager.TryInvokeSynthetic supports,
+            // alongside PointerDown/Up, KeyDown/Up, FocusOut/Focus/Blur). Style-driven focus variants
+            // (has-[:focus]:, group-focus-within:) are a SEPARATE mechanism
+            // (StyleHasVariantManipulator/VariantSignalSource register their own native
+            // RegisterCallback<FocusInEvent> directly, bypassing FiberEventBindingManager entirely) and
+            // stay physical-tree-only per the existing portals.md contract — this test covers only the
+            // events: FocusInBinding path this dispatcher actually bridges.
+            var binding = new FocusInBinding
+            {
+                Handler = evt =>
+                {
+                    s_handlerFired = true;
+                    s_handlerEventTarget = evt.target as VisualElement;
+                },
+            };
+            _mounted = V.Mount(_host.Root, V.Motion(
+                name: "enclosing",
+                events: new FiberEventBinding[] { binding },
+                children: new VNode[] { V.Component(PortalHostRender) }));
+
+            var hostDoc = FindHostDocumentContaining("portal-target");
+            Assume.That(hostDoc, Is.Not.Null, "Precondition: the layer host panel exists");
+            var portalTarget = hostDoc.rootVisualElement.Q<VisualElement>("portal-target");
+            Assume.That(portalTarget, Is.Not.Null, "Precondition: the portal's child mounted under the host");
+
+            // Act
+            using var evt = FocusInEvent.GetPooled();
+            hostDoc.rootVisualElement.SimulateBubbledEvent(evt, portalTarget);
+
+            // Assert
+            Assert.That((s_handlerFired, s_handlerEventTarget == portalTarget), Is.EqualTo((true, true)));
+        }
+
         private UIDocument FindHostDocumentContaining(string childName)
         {
             foreach (var doc in UnityEngine.Resources.FindObjectsOfTypeAll<UIDocument>())
