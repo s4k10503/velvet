@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-17
+
 ### Added
 
 - Drag-and-drop primitives, dnd-kit core parity: `V.DndContext` (the scope — `onDragStart` /
