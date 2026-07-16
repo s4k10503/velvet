@@ -1556,7 +1556,11 @@ namespace Velvet
         /// inline (dynamic left/top positioning has no other way to work; see AnchoredDriver.Attach) — pass
         /// layout classes for everything else.
         /// </summary>
-        /// <param name="target">The Transform this element's screen position tracks. Must not be null.</param>
+        /// <param name="target">The Transform this element's screen position tracks. Null (or a Transform
+        /// destroyed later) mounts an inert, hidden (display: none) element until a live target is supplied —
+        /// matching <see cref="SceneView"/>/<see cref="Particles"/>'s own null-tolerant convention, since a
+        /// component holding a Transform in state can have it destroyed by unrelated game logic between
+        /// renders.</param>
         /// <param name="camera">The camera to project through. Null resolves to <see cref="Camera.main"/> on
         /// every tick, so a scene's active camera can change without re-supplying this.</param>
         /// <param name="offset">Pixel offset applied after projection (e.g. to center a label on the point).</param>
@@ -1564,7 +1568,7 @@ namespace Velvet
         /// while <paramref name="target"/> is behind the camera rather than jumping to a wrong on-screen spot.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Anchored(
-            Transform target,
+            Transform? target,
             Camera? camera = null,
             Vector2? offset = null,
             bool hideWhenBehindCamera = true,
@@ -1581,7 +1585,6 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
-            if (target == null) throw new ArgumentNullException(nameof(target));
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
             mergedProps.Anchored = new AnchoredSettings(target, camera, offset ?? Vector2.zero, hideWhenBehindCamera);
 

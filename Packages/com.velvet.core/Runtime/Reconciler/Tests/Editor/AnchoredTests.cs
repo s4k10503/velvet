@@ -93,6 +93,38 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_NoCameraIsSuppliedAndNoMainCameraExists_When_Ticked_Then_TheElementIsHidden()
+        {
+            // Arrange — Camera.main resolves to null: no camera param, and _camera (the only Camera in this
+            // test's scene) is never tagged MainCamera.
+            _targetGo.transform.position = new Vector3(0f, 0f, 0f);
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(),
+                new[] { V.Anchored(_targetGo.transform, key: "a", name: "anchored") });
+            var element = Root.Q<VisualElement>("anchored");
+
+            // Act
+            Tick();
+
+            // Assert
+            Assert.That(element.style.display.value, Is.EqualTo(DisplayStyle.None));
+        }
+
+        [Test]
+        public void Given_ATargetInFrontOfTheCamera_When_TheHostPanelIsNotARuntimePanel_Then_TheElementIsHidden()
+        {
+            // Arrange & Act — this fixture's panel is an Editor-context one (see class remarks); an
+            // in-front-of-camera target has nothing that would otherwise hide it, isolating this guard.
+            _targetGo.transform.position = new Vector3(0f, 0f, 0f);
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(),
+                new[] { V.Anchored(_targetGo.transform, camera: _camera, key: "a", name: "anchored") });
+            var element = Root.Q<VisualElement>("anchored");
+            Tick();
+
+            // Assert
+            Assert.That(element.style.display.value, Is.EqualTo(DisplayStyle.None));
+        }
+
+        [Test]
         public void Given_AnAnchoredElement_When_ItsTargetIsPatchedToADifferentTransform_Then_TheSameBindingIsReused()
         {
             // Arrange
