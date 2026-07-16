@@ -68,7 +68,6 @@ namespace Velvet
         private DndOverlayBinding? _overlay;
         private EventCallback<PointerMoveEvent>? _onDragMove;
         private EventCallback<PointerUpEvent>? _onDragUp;
-        private EventCallback<PointerDownEvent>? _onDragDown;
         private EventCallback<PointerCancelEvent>? _onDragCancel;
         private EventCallback<PointerCaptureOutEvent>? _onCaptureOut;
         private EventCallback<KeyDownEvent>? _onEscape;
@@ -311,13 +310,11 @@ namespace Velvet
             _source.CapturePointer(_pointerId);
             _onDragMove = OnDragMove;
             _onDragUp = OnDragUp;
-            _onDragDown = OnDragDown;
             _onDragCancel = _ => Cancel();
             _onCaptureOut = OnCaptureOut;
             _onEscape = OnEscapeKey;
             _source.RegisterCallback(_onDragMove, TrickleDown.TrickleDown);
             _source.RegisterCallback(_onDragUp, TrickleDown.TrickleDown);
-            _source.RegisterCallback(_onDragDown, TrickleDown.TrickleDown);
             _source.RegisterCallback(_onDragCancel, TrickleDown.TrickleDown);
             _source.RegisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
             // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
@@ -404,7 +401,11 @@ namespace Velvet
             }
             // A phantom session (the primary release happened where no observer could see it — a
             // capture-only delivery, or off-window) dies on the first buttonless motion instead of
-            // dragging with nothing held.
+            // dragging with nothing held. This MOVE-side check is deliberately the only phantom guard:
+            // cancelling on a fresh primary DOWN instead misfires on spurious synthesized downs (observed
+            // against real editor input killing a legitimate mid-drag session), and a mouse phantom
+            // always sees a buttonless hover move before the next press anyway. The residual is
+            // touch-only (no hover moves), where a phantom lingers until the next gesture's release.
             if ((evt.pressedButtons & 1) == 0)
             {
                 Cancel();
@@ -503,17 +504,6 @@ namespace Velvet
             // press never reaches here (it discards in Pending) — clicks stay intact.
             evt.StopImmediatePropagation();
             FireDiscrete(() => _scope.Settings.OnDragEnd?.Invoke(args));
-        }
-
-        // A fresh PRIMARY press arriving while this session is active means the session is a phantom
-        // (the button cannot go down while genuinely held): the unobserved release already happened, so
-        // cancel — the next press then arms normally.
-        private void OnDragDown(PointerDownEvent evt)
-        {
-            if (evt.pointerId == _pointerId && evt.button == 0)
-            {
-                Cancel();
-            }
         }
 
         private void OnCaptureOut(PointerCaptureOutEvent evt)
@@ -652,7 +642,6 @@ namespace Velvet
             {
                 if (_onDragMove != null) _source.UnregisterCallback(_onDragMove, TrickleDown.TrickleDown);
                 if (_onDragUp != null) _source.UnregisterCallback(_onDragUp, TrickleDown.TrickleDown);
-                if (_onDragDown != null) _source.UnregisterCallback(_onDragDown, TrickleDown.TrickleDown);
                 if (_onDragCancel != null) _source.UnregisterCallback(_onDragCancel, TrickleDown.TrickleDown);
                 if (_onCaptureOut != null) _source.UnregisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
                 if (_onEscape != null)
@@ -665,7 +654,6 @@ namespace Velvet
                 _escapeRoots.Clear();
                 _onDragMove = null;
                 _onDragUp = null;
-                _onDragDown = null;
                 _onDragCancel = null;
                 _onCaptureOut = null;
                 _onEscape = null;
