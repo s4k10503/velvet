@@ -398,6 +398,30 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ANonFocusableSourceAnchoredForEscape_When_TheDragEnds_Then_ItKeepsNeitherFocusNorFocusability()
+        {
+            // Arrange — with nothing focused, activation anchors keyboard focus on the source (made
+            // focusable transiently) so the Escape KeyDownEvent is deliverable; the anchor is the
+            // session's own creation and every part of it must be undone on close. (An ALREADY-focusable
+            // source is focused by the engine's own click-to-focus at the down, which the session must
+            // NOT undo — that focus is the user's, not the anchor's.)
+            Mount(Scene);
+            var item = Q("item");
+            Assume.That(_host.Panel.focusController.focusedElement, Is.Null,
+                "Precondition: nothing holds focus before the drag");
+
+            // Act
+            item.SendPointerDownEvent(new Vector2(10, 10));
+            item.SendPointerMoveEvent(new Vector2(30, 10));
+            item.SendPointerUpEvent(new Vector2(30, 10));
+
+            // Assert — neither the anchor focus nor the transient focusability survives the drop.
+            Assert.That(
+                (ReferenceEquals(_host.Panel.focusController.focusedElement, item), item.focusable),
+                Is.EqualTo((false, false)));
+        }
+
+        [Test]
         public void Given_ADraggableInsideNoDndContext_When_APressTravelsPastTheDistance_Then_NothingActivates()
         {
             // Arrange — a draggable with no enclosing scope warns once and stays inert.

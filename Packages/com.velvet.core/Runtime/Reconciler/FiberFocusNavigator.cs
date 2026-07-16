@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -545,7 +546,14 @@ namespace Velvet
         // input). One tick later, after the focus queue has fully drained, an element that did not end
         // up holding focus has its focus-derived variant state settled explicitly; an element that DID
         // end up focused is left alone (its state is live and correct), and the settle is idempotent for
-        // an element whose Blur arrived normally.
+        // an element whose Blur arrived normally. The manipulators are resolved at SCHEDULE time: a
+        // snap-back fires per pointer press outside a modal, so an unstyled landing (the common case,
+        // and always the chained proxy placeholder) must not pay for a closure, a scheduled item, and a
+        // full stacked-variant scan every press. A manipulator torn down inside the one-tick window
+        // settles as a no-op (its unregister already cleared the state its settle would clear); one
+        // attached inside the window has no stale focus state to clear. An element DETACHED at fire time
+        // is settled too — detached means not focused, and a transiently-detached element (a keyed
+        // reorder) would otherwise carry the residue back in with it.
         private static void ScheduleRevertedLandingSettle(VisualElement reverted, ReconcilerContext ctx)
         {
             var root = reverted.panel?.visualTree;
@@ -553,33 +561,37 @@ namespace Velvet
             {
                 return;
             }
+            ctx.GestureManipulators.TryGetValue(reverted, out var gesture);
+            ctx.VariantManipulators.TryGetValue(reverted, out var variant);
+            List<StyleStackedVariantManipulator>? stacked = null;
+            if (ctx.StackedVariantManipulators.Count > 0)
+            {
+                foreach (var kv in ctx.StackedVariantManipulators)
+                {
+                    if (kv.Key.target == reverted)
+                    {
+                        (stacked ??= new List<StyleStackedVariantManipulator>()).Add(kv.Value);
+                    }
+                }
+            }
+            if (gesture == null && variant == null && stacked == null)
+            {
+                return;
+            }
             root.schedule.Execute(() =>
             {
-                if (reverted.panel == null)
-                {
-                    return;
-                }
-                if (reverted.panel.focusController?.focusedElement is VisualElement held
+                if (reverted.panel?.focusController?.focusedElement is VisualElement held
                     && (held == reverted || reverted.Contains(held)))
                 {
                     return;
                 }
-                if (ctx.GestureManipulators.TryGetValue(reverted, out var gesture))
+                gesture?.SettleFocusLoss();
+                variant?.SettleFocusLoss();
+                if (stacked != null)
                 {
-                    gesture.SettleFocusLoss();
-                }
-                if (ctx.VariantManipulators.TryGetValue(reverted, out var variant))
-                {
-                    variant.SettleFocusLoss();
-                }
-                if (ctx.StackedVariantManipulators.Count > 0)
-                {
-                    foreach (var kv in ctx.StackedVariantManipulators)
+                    foreach (var manipulator in stacked)
                     {
-                        if (kv.Key.target == reverted)
-                        {
-                            kv.Value.SettleFocusLoss();
-                        }
+                        manipulator.SettleFocusLoss();
                     }
                 }
             });
