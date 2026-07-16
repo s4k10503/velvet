@@ -24,6 +24,7 @@ namespace Velvet.Tests
         private static readonly List<string> s_ended = new();
         private static int s_cancelCount;
         private static StateUpdater<bool> s_setShowSource;
+        private static StateUpdater<bool> s_setAltDraggingClass;
 
         [SetUp]
         public void SetUp()
@@ -34,6 +35,7 @@ namespace Velvet.Tests
             s_ended.Clear();
             s_cancelCount = 0;
             s_setShowSource = default;
+            s_setAltDraggingClass = default;
         }
 
         [TearDown]
@@ -55,38 +57,17 @@ namespace Velvet.Tests
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }
 
-        // Pointer events are constructed from IMGUI system events: that constructor path maintains the
-        // engine's own PointerDeviceState (pressed buttons), which the pending phase's stale-session
-        // check reads from the move events it observes.
+        // Thin aliases over the SHARED pointer senders (TestUtilities), which construct events from
+        // IMGUI system events so the engine's own PointerDeviceState (pressed buttons) stays truthful —
+        // one implementation for the EditMode and PlayMode suites, so the event shape cannot drift.
         private static void SendPointerDown(VisualElement target, Vector2 position)
-        {
-            using var evt = PointerDownEvent.GetPooled(new Event
-            {
-                type = EventType.MouseDown, mousePosition = position, button = 0, clickCount = 1,
-            });
-            evt.target = target;
-            target.SendEvent(evt);
-        }
+            => target.SendPointerDownEvent(position);
 
         private static void SendPointerMove(VisualElement target, Vector2 position)
-        {
-            using var evt = PointerMoveEvent.GetPooled(new Event
-            {
-                type = EventType.MouseDrag, mousePosition = position, button = 0,
-            });
-            evt.target = target;
-            target.SendEvent(evt);
-        }
+            => target.SendPointerMoveEvent(position);
 
         private static void SendPointerUp(VisualElement target, Vector2 position)
-        {
-            using var evt = PointerUpEvent.GetPooled(new Event
-            {
-                type = EventType.MouseUp, mousePosition = position, button = 0, clickCount = 1,
-            });
-            evt.target = target;
-            target.SendEvent(evt);
-        }
+            => target.SendPointerUpEvent(position);
 
         // A 300x300 scene: a 50x50 draggable at (0,0), a 100x100 droppable at (150,0), and a second,
         // disabled droppable at (150,150). Absolute placement keeps every rect deterministic.
@@ -133,20 +114,22 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADraggableButtonWithAClickHandler_When_APressStaysBelowTheActivationDistance_Then_TheClickStillFires()
+        public void Given_ADraggableElement_When_APressStaysBelowTheActivationDistance_Then_ThePointerUpStillReachesBubbleListeners()
         {
-            // Arrange — the activation threshold exists exactly so draggable controls keep clicking.
+            // Arrange — the activation threshold exists exactly so presses on draggables keep behaving
+            // as plain clicks. (The real Clickable `clicked` contract needs the engine dispatcher's
+            // capture routing and is pinned by the PlayMode suite.)
             Mount(Scene);
             var item = Q("item");
-            var clicks = 0;
-            item.RegisterCallback<PointerUpEvent>(_ => clicks++);
+            var releases = 0;
+            item.RegisterCallback<PointerUpEvent>(_ => releases++);
 
             // Act
             SendPointerDown(item, new Vector2(10, 10));
             SendPointerUp(item, new Vector2(10, 10));
 
             // Assert — the sub-threshold release is untouched (no swallow, no suppression).
-            Assert.That(clicks, Is.EqualTo(1));
+            Assert.That(releases, Is.EqualTo(1));
         }
 
         [Test]
@@ -304,11 +287,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ASourceUnmountedMidDrag_When_ItsPooledElementIsRentedAgain_Then_NoDragResidueRemains()
+        public void Given_ASourceUnmountedMidDrag_When_TheFlushCompletes_Then_NoDragResidueRemainsOnTheElement()
         {
-            // Arrange — the source is a plain VisualElement (not poolable), so pin the scrub contract
-            // directly instead: after a mid-drag teardown the element carries no translate and no
-            // while-dragging class.
+            // Arrange — pins the teardown scrub contract on the element itself: after a mid-drag
+            // unmount it carries no translate and no while-dragging class (the pool's own reset is the
+            // second line of defense for poolable primitives, not exercised here).
             Mount(Scene);
             var item = Q("item");
             SendPointerDown(item, new Vector2(10, 10));
@@ -325,6 +308,93 @@ namespace Velvet.Tests
             Assert.That(
                 (item.ClassListContains("opacity-50"), item.style.translate.keyword == StyleKeyword.Undefined),
                 Is.EqualTo((false, false)));
+        }
+
+        [Component]
+        private static VNode ImmediateActivationScene()
+        {
+            var (showFirst, setShowFirst) = Hooks.UseState(true);
+            s_setShowSource = setShowFirst;
+            return V.DndContext(
+                onDragStart: e =>
+                {
+                    s_started.Add(e.Active.Id);
+                    // The activeId recipe taken to its edge: the immediate activation's own synchronous
+                    // flush unmounts the source.
+                    if (e.Active.Id == "first")
+                    {
+                        s_setShowSource.Invoke(false);
+                    }
+                },
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    showFirst
+                        ? V.Draggable("first", key: "first", name: "first", activation: DragActivation.None,
+                            className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]")
+                        : null,
+                    V.Draggable("second", key: "second", name: "second",
+                        className: "absolute left-[100px] top-[0px] w-[50px] h-[50px]"),
+                });
+        }
+
+        [Test]
+        public void Given_AnImmediateActivationWhoseStartUnmountsTheSource_When_TheNextPressArrives_Then_ArmingStillWorks()
+        {
+            // Arrange — DragActivation.None activates inside the pointer-down dispatch, and its
+            // OnDragStart flush tears the source down; the session must already be installed as the
+            // tree's active drag when that happens, or the torn-down session wedges arming forever.
+            Mount(ImmediateActivationScene);
+            Q("first").SendPointerDownEvent(new Vector2(10, 10));
+            Assume.That(s_started, Is.EqualTo(new[] { "first" }), "Precondition: the immediate drag started");
+
+            // Act — a fresh gesture on the surviving draggable.
+            var second = Q("second");
+            second.SendPointerDownEvent(new Vector2(110, 10));
+            second.SendPointerMoveEvent(new Vector2(130, 10));
+
+            // Assert
+            Assert.That(s_started, Is.EqualTo(new[] { "first", "second" }));
+        }
+
+        [Component]
+        private static VNode SwappingDraggingClassScene()
+        {
+            var (alt, setAlt) = Hooks.UseState(false);
+            s_setAltDraggingClass = setAlt;
+            return V.DndContext(
+                className: "w-[300px] h-[300px]",
+                children: new VNode[]
+                {
+                    V.Draggable("item", key: "item", name: "item",
+                        whileDraggingClass: alt ? "opacity-25" : "opacity-50",
+                        className: "absolute left-[0px] top-[0px] w-[50px] h-[50px]"),
+                });
+        }
+
+        [Test]
+        public void Given_AWhileDraggingClassThatChangesMidDrag_When_TheDragCancels_Then_TheOriginallyAppliedClassIsRemoved()
+        {
+            // Arrange — activate with "opacity-50" applied, then swap the setting mid-drag: restore
+            // symmetry must target what was actually applied, not the re-parsed replacement.
+            Mount(SwappingDraggingClassScene);
+            var item = Q("item");
+            item.SendPointerDownEvent(new Vector2(10, 10));
+            item.SendPointerMoveEvent(new Vector2(30, 10));
+            Assume.That(item.ClassListContains("opacity-50"), Is.True,
+                "Precondition: the activation-time dragging class is applied");
+            s_setAltDraggingClass.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Act
+            using (var evt = KeyDownEvent.GetPooled('\0', KeyCode.Escape, EventModifiers.None))
+            {
+                evt.target = item;
+                item.SendEvent(evt);
+            }
+
+            // Assert
+            Assert.That(item.ClassListContains("opacity-50"), Is.False);
         }
 
         [Test]

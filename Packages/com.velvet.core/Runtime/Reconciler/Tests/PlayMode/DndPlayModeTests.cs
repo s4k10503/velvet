@@ -5,6 +5,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -52,47 +53,20 @@ namespace Velvet.Tests
         private VisualElement Main(string name)
             => _panelGo.GetComponent<UIDocument>().rootVisualElement.Q<VisualElement>(name);
 
+        // Thin aliases over the SHARED pointer senders (TestUtilities) — one implementation for the
+        // EditMode and PlayMode suites, so the event shape (IMGUI-event construction keeping
+        // PointerDeviceState truthful) cannot drift between them.
         private static void SendPointerDown(VisualElement target, Vector2 position)
-        {
-            using var evt = PointerDownEvent.GetPooled(new Event
-            {
-                type = EventType.MouseDown, mousePosition = position, button = 0, clickCount = 1,
-            });
-            evt.target = target;
-            target.SendEvent(evt);
-        }
+            => target.SendPointerDownEvent(position);
 
         private static void SendPointerMove(VisualElement target, Vector2 position)
-        {
-            using var evt = PointerMoveEvent.GetPooled(new Event
-            {
-                type = EventType.MouseDrag, mousePosition = position, button = 0,
-            });
-            evt.target = target;
-            target.SendEvent(evt);
-        }
+            => target.SendPointerMoveEvent(position);
 
         private static void SendPointerUp(VisualElement target, Vector2 position)
-        {
-            using var evt = PointerUpEvent.GetPooled(new Event
-            {
-                type = EventType.MouseUp, mousePosition = position, button = 0, clickCount = 1,
-            });
-            evt.target = target;
-            target.SendEvent(evt);
-        }
+            => target.SendPointerUpEvent(position);
 
-        // No preset target: the panel's own dispatching strategy resolves the destination — the capturing
-        // element when a capture is held, else picking. This is the only dispatch shape that exercises
-        // the engine's real capture routing (a preset target short-circuits it).
         private static void SendPointerMoveUntargeted(IPanel panel, Vector2 position)
-        {
-            using var evt = PointerMoveEvent.GetPooled(new Event
-            {
-                type = EventType.MouseDrag, mousePosition = position, button = 0,
-            });
-            panel.visualTree.SendEvent(evt);
-        }
+            => panel.SendPointerMoveUntargeted(position);
 
         [Component]
         private static VNode PlainScene() => V.DndContext(

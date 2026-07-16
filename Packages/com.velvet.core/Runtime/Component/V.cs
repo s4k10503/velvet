@@ -1844,7 +1844,10 @@ namespace Velvet
         /// <returns>The created <see cref="PortalNode"/>.</returns>
         public static PortalNode DragOverlay(VNode?[]? children = null, string? key = null)
         {
-            var positionerProps = VNodePool.RentProps();
+            // Deliberately NOT a rented pool bag: the fiber-tree recycle path does not descend into
+            // PortalNode children, so a rented bag here would never flow back to the pool and its
+            // ownership tracking would pin one bag per render. A plain instance is ordinary garbage.
+            var positionerProps = new FiberElementProps();
             positionerProps.DragOverlay = new DragOverlaySettings();
             return Portal(UILayer.Overlay, key: key, children: new VNode?[]
             {

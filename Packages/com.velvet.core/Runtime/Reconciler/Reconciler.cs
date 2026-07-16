@@ -482,7 +482,9 @@ namespace Velvet
             // classes on elements that outlive this reconciler), then the registries release their
             // bindings (the draggable armer and the overlay's forced inline state are the two that own
             // registered/forced element state).
-            _ctx.ActiveDrag?.CancelForTeardown();
+            // Inline (not deferred) user cancel: a deferred item would fire against the disposed tree,
+            // or never fire when the panel dies with it.
+            _ctx.ActiveDrag?.CancelForTeardown(deferUserCallback: false);
             foreach (var (element, binding) in _ctx.DraggableBindings)
             {
                 DndDraggableDriver.Detach(element, binding, _ctx);

@@ -162,8 +162,17 @@ namespace Velvet
     // element's binding lifecycle and the panel-space conversion.
     internal static class DndOverlayDriver
     {
-        public static DndOverlayBinding Attach(VisualElement positioner)
+        public static DndOverlayBinding Attach(VisualElement positioner, ReconcilerContext ctx)
         {
+            // Dictionary enumeration order is unspecified once entries have churned, so which of several
+            // overlays a session picks is not deterministic — surface that at mount instead of letting
+            // the ghost jump between containers across drags.
+            if (ctx.DragOverlayBindings.Count > 0)
+            {
+                FiberLogger.LogWarning("Dnd",
+                    "More than one V.DragOverlay is mounted in this tree; which one shows the drag "
+                    + "preview is unspecified. Keep a single overlay per mounted tree.");
+            }
             // Forced inline for the same reason AnchoredDriver forces absolute: dynamic left/top has no
             // other way to work. PickingMode.Ignore keeps the ghost from intercepting the drop or waking
             // the cross-panel pointer router.
@@ -252,13 +261,23 @@ namespace Velvet
         }
     }
 
-    // Settles the press-derived styling state on a drag source after the session swallowed the real
-    // PointerUp (StopImmediatePropagation runs before the bubble-phase signal callbacks): every
-    // manipulator holding an ElementLocalVariantSignals on the element is told to observe a synthetic
-    // release, so whileTap / active: (and their stacked forms) cannot stick on.
+    // Settles the press-derived styling state after the session swallowed the real PointerUp
+    // (StopImmediatePropagation runs before the bubble-phase signal callbacks, and captured delivery
+    // hides it from ancestors entirely): every manipulator holding an ElementLocalVariantSignals on the
+    // source OR any of its ancestors is told to observe a synthetic release — the press's own
+    // PointerDown BUBBLED, so ancestors' whileTap / active: (and stacked forms) lit too and would
+    // otherwise stick on.
     internal static class DndPressVariantSettler
     {
         public static void Settle(VisualElement element, ReconcilerContext ctx)
+        {
+            for (var current = element; current != null; current = current.parent)
+            {
+                SettleOn(current, ctx);
+            }
+        }
+
+        private static void SettleOn(VisualElement element, ReconcilerContext ctx)
         {
             if (ctx.GestureManipulators.TryGetValue(element, out var gesture))
             {

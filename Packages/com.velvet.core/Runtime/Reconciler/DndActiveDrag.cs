@@ -46,24 +46,33 @@ namespace Velvet
         private IVisualElementScheduledItem? _delayTick;
         private long _delayBaselineMs = -1;
 
-        // Active-session state.
+        // Active-session state. Movement mode and the applied class arrays are SNAPSHOTS taken when they
+        // are applied, never re-read from the live bindings: a mid-drag re-render may swap the settings
+        // records (DndDraggableDriver.Update / DndDroppableDriver.Reparse), and restoring by the new
+        // values would strand the actually-applied classes and inline translate on the element — the
+        // state-ghosting class this codebase's pool discipline exists to prevent.
         private Vector2 _origin;
         private Rect _originRect;
         private Vector2 _grabOffset;
         private StyleTranslate _savedTranslate;
         private Vector2 _baseTranslate;
         private Vector2 _delta;
+        private DragMovement _activeMovement;
+        private string[] _activeDraggingClasses = System.Array.Empty<string>();
         private string? _overId;
         private DndDroppableBinding? _overBinding;
         private VisualElement? _overElement;
+        private string[]? _appliedOverClasses;
         private readonly List<(VisualElement Element, string[] Classes)> _appliedActiveClasses = new();
         private VisualElement? _overlayPositioner;
         private DndOverlayBinding? _overlay;
         private EventCallback<PointerMoveEvent>? _onDragMove;
         private EventCallback<PointerUpEvent>? _onDragUp;
+        private EventCallback<PointerDownEvent>? _onDragDown;
         private EventCallback<PointerCancelEvent>? _onDragCancel;
         private EventCallback<PointerCaptureOutEvent>? _onCaptureOut;
         private EventCallback<KeyDownEvent>? _onEscape;
+        private readonly List<VisualElement> _escapeRoots = new();
         private readonly List<DndDroppableRect> _queryBuffer = new();
 
         internal VisualElement Source => _source;
@@ -86,6 +95,13 @@ namespace Velvet
         // a press that never crosses the activation constraint must remain a plain click.
         internal static void Arm(VisualElement source, DndDraggableBinding draggable, ReconcilerContext ctx, PointerDownEvent evt)
         {
+            // A press that can never arm (secondary button, disabled) is validated BEFORE any hand-off:
+            // it must not cost a live pending session its observers (a right-button chord mid-press
+            // would otherwise silently kill the held left gesture).
+            if (evt.button != 0 || draggable.Settings.Disabled)
+            {
+                return;
+            }
             // A lingering PENDING session yields to a fresh press: a press whose release was delivered
             // capture-only to a child (the non-drag-zone case) leaves its pending observers blind to the
             // up, and without this hand-off the dead session would block every future drag. An ACTIVE
@@ -98,7 +114,7 @@ namespace Velvet
                 }
                 ctx.ActiveDrag.DiscardForRearm();
             }
-            if (ctx.ActiveDrag != null || draggable.Settings.Disabled || evt.button != 0)
+            if (ctx.ActiveDrag != null)
             {
                 return;
             }
@@ -119,7 +135,14 @@ namespace Velvet
             {
                 return;
             }
-            ctx.ActiveDrag = new DndActiveDrag(ctx, scopeElement, scope, source, draggable, panelRoot, evt);
+            // The session is INSTALLED before it begins: DragActivation.None activates immediately, and
+            // its OnDragStart runs a synchronous discrete flush — a teardown that flush causes (the
+            // activeId recipe swapping the source out) must find ctx.ActiveDrag set, or every teardown
+            // interlock is bypassed and the closed session would be installed afterward, wedging arming
+            // for the tree's lifetime.
+            var session = new DndActiveDrag(ctx, scopeElement, scope, source, draggable, panelRoot, evt);
+            ctx.ActiveDrag = session;
+            session.Begin();
         }
 
         private DndActiveDrag(
@@ -136,11 +159,17 @@ namespace Velvet
             _pressPosition = evt.position;
             _lastPointerPosition = _pressPosition;
             _activation = draggable.Settings.Activation ?? scope.Settings.Activation ?? DragActivation.Default;
+        }
 
+        private void Begin()
+        {
             if (_activation.DelaySec > 0f)
             {
-                // Hold-to-drag: activation is time-based; travel only ABORTS (Tolerance), never activates.
-                _delayTick = _source.schedule.Execute(OnDelayTick).Every(16);
+                // Hold-to-drag: activation is time-based; travel only ABORTS (Tolerance), never
+                // activates. The clock rides the PANEL ROOT's scheduler, not the source's: a re-attach
+                // resets a recurring item's phase in full, so a source inside a keyed list that reorders
+                // every frame would postpone a source-scheduled tick forever.
+                _delayTick = _panelRoot.schedule.Execute(OnDelayTick).Every(16);
             }
             else if (_activation.Distance <= 0f)
             {
@@ -180,8 +209,10 @@ namespace Velvet
                 return;
             }
             // A stale Pending (the release happened where this panel could not observe it) must never
-            // spuriously activate: any move arriving with no buttons held discards the session lazily.
-            if (evt.pressedButtons == 0)
+            // spuriously activate: any move arriving without the PRIMARY button held discards the
+            // session lazily. Specifically bit 0, not the whole bitfield — a secondary-button drag after
+            // an unobserved left release must not keep a dead left-press session alive.
+            if ((evt.pressedButtons & 1) == 0)
             {
                 DiscardPending();
                 return;
@@ -210,7 +241,9 @@ namespace Velvet
 
         private void OnPendingUp(PointerUpEvent evt)
         {
-            if (_closed || _active || evt.pointerId != _pointerId)
+            // A secondary-button release is not the end of the primary-press gesture (UI Toolkit
+            // dispatches one PointerUpEvent per button under the same pointer id).
+            if (_closed || _active || evt.pointerId != _pointerId || evt.button != 0)
             {
                 return;
             }
@@ -227,6 +260,12 @@ namespace Velvet
             }
             if (timer.now - _delayBaselineMs >= (long)(_activation.DelaySec * 1000f))
             {
+                // A source mid-reorder (transiently detached) cannot take pointer capture; hold the
+                // elapsed clock and activate on a later tick once it is back in the panel.
+                if (_source.panel == null)
+                {
+                    return;
+                }
                 if (_pendingMaxTravel <= _activation.Tolerance)
                 {
                     Activate();
@@ -260,6 +299,10 @@ namespace Velvet
             _savedTranslate = _source.style.translate;
             _baseTranslate = ResolveBaseTranslate(_savedTranslate);
             _delta = Vector2.zero;
+            // Snapshot what the session applies (see the field-block note): restore symmetry must not
+            // depend on the live settings surviving the drag unchanged.
+            _activeMovement = _draggable.Settings.Movement;
+            _activeDraggingClasses = _draggable.DraggingClasses;
 
             // Steals the pointer from a child that captured at its own pointer-down (its
             // PointerCaptureOutEvent aborts its click — "it's a drag now"); from here every pointer event
@@ -267,18 +310,22 @@ namespace Velvet
             _source.CapturePointer(_pointerId);
             _onDragMove = OnDragMove;
             _onDragUp = OnDragUp;
+            _onDragDown = OnDragDown;
             _onDragCancel = _ => Cancel();
             _onCaptureOut = OnCaptureOut;
             _onEscape = OnEscapeKey;
             _source.RegisterCallback(_onDragMove, TrickleDown.TrickleDown);
             _source.RegisterCallback(_onDragUp, TrickleDown.TrickleDown);
+            _source.RegisterCallback(_onDragDown, TrickleDown.TrickleDown);
             _source.RegisterCallback(_onDragCancel, TrickleDown.TrickleDown);
             _source.RegisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
-            _panelRoot.RegisterCallback(_onEscape, TrickleDown.TrickleDown);
+            // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
+            // dispatch through the FOCUSED panel, which need not be the source's.
+            RegisterEscapeOnManagedRoots();
 
-            if (_draggable.DraggingClasses.Length > 0)
+            if (_activeDraggingClasses.Length > 0)
             {
-                StyleAnimationClassUtils.AddClasses(_source, _draggable.DraggingClasses);
+                StyleAnimationClassUtils.AddClasses(_source, _activeDraggingClasses);
             }
             ApplyDragActiveClasses();
 
@@ -297,19 +344,41 @@ namespace Velvet
         {
             foreach (var (element, binding) in _ctx.DroppableBindings)
             {
-                if (binding.ActiveClasses.Length == 0 || !IsCollisionCandidate(element, binding))
+                if (IsCollisionCandidate(element, binding))
                 {
-                    continue;
+                    ApplyDragActiveClassTo(element, binding);
                 }
-                StyleAnimationClassUtils.AddClasses(element, binding.ActiveClasses);
-                _appliedActiveClasses.Add((element, binding.ActiveClasses));
             }
         }
 
+        // Applies the droppable "drag is live" cue exactly once per element per session. Also invoked
+        // from the per-move collision sweep, so a droppable that mounts or is re-enabled MID-drag (the
+        // activeId recipe conditionally rendering drop zones) gets the cue the moment it becomes a
+        // candidate — candidacy and the visual affordance must not diverge.
+        private void ApplyDragActiveClassTo(VisualElement element, DndDroppableBinding binding)
+        {
+            if (binding.ActiveClasses.Length == 0)
+            {
+                return;
+            }
+            for (var i = 0; i < _appliedActiveClasses.Count; i++)
+            {
+                if (ReferenceEquals(_appliedActiveClasses[i].Element, element))
+                {
+                    return;
+                }
+            }
+            StyleAnimationClassUtils.AddClasses(element, binding.ActiveClasses);
+            _appliedActiveClasses.Add((element, binding.ActiveClasses));
+        }
+
+        // Candidacy pairs a droppable with its NEAREST enclosing DndContext (dnd-kit keeps nested
+        // contexts isolated): subtree containment alone would leak an inner scope's droppables into an
+        // outer scope's drag, handing the outer callbacks drop ids they never registered.
         private bool IsCollisionCandidate(VisualElement element, DndDroppableBinding binding)
             => !binding.Settings.Disabled
                && element.panel != null && element.panel == _source.panel
-               && _scopeElement.Contains(element)
+               && ReferenceEquals(FindEnclosingScope(element, _ctx, out _), _scopeElement)
                && binding.Settings.Id != _draggable.Settings.Id;
 
         private void OnDragMove(PointerMoveEvent evt)
@@ -318,9 +387,17 @@ namespace Velvet
             {
                 return;
             }
+            // A phantom session (the primary release happened where no observer could see it — a
+            // capture-only delivery, or off-window) dies on the first buttonless motion instead of
+            // dragging with nothing held.
+            if ((evt.pressedButtons & 1) == 0)
+            {
+                Cancel();
+                return;
+            }
             _lastPointerPosition = evt.position;
             _delta = _lastPointerPosition - _origin;
-            if (_draggable.Settings.Movement == DragMovement.Translate)
+            if (_activeMovement == DragMovement.Translate)
             {
                 _source.style.translate = new Translate(_baseTranslate.x + _delta.x, _baseTranslate.y + _delta.y);
             }
@@ -339,6 +416,7 @@ namespace Velvet
             {
                 if (IsCollisionCandidate(element, binding))
                 {
+                    ApplyDragActiveClassTo(element, binding);
                     _queryBuffer.Add(new DndDroppableRect(binding.Settings.Id, element.worldBound, binding.Settings.Data));
                 }
             }
@@ -354,13 +432,14 @@ namespace Velvet
             {
                 return;
             }
-            if (_overElement != null && _overBinding is { OverClasses.Length: > 0 })
+            if (_overElement != null && _appliedOverClasses is { Length: > 0 })
             {
-                StyleAnimationClassUtils.RemoveClasses(_overElement, _overBinding.OverClasses);
+                StyleAnimationClassUtils.RemoveClasses(_overElement, _appliedOverClasses);
             }
             _overId = winnerId;
             _overBinding = null;
             _overElement = null;
+            _appliedOverClasses = null;
             if (winnerId != null)
             {
                 foreach (var (element, binding) in _ctx.DroppableBindings)
@@ -374,7 +453,10 @@ namespace Velvet
                 }
                 if (_overElement != null && _overBinding is { OverClasses.Length: > 0 })
                 {
-                    StyleAnimationClassUtils.AddClasses(_overElement, _overBinding.OverClasses);
+                    // Snapshot the applied array (see the field-block note): removal must target what
+                    // was actually applied, not a mid-drag re-parse.
+                    _appliedOverClasses = _overBinding.OverClasses;
+                    StyleAnimationClassUtils.AddClasses(_overElement, _appliedOverClasses);
                 }
             }
             // Over-change is continuous-lane feedback (it fires mid-move, potentially every frame):
@@ -386,7 +468,9 @@ namespace Velvet
 
         private void OnDragUp(PointerUpEvent evt)
         {
-            if (evt.pointerId != _pointerId)
+            // Only the PRIMARY release ends the drag — UI Toolkit dispatches one PointerUpEvent per
+            // button under the same pointer id, and a right-button tap mid-drag must not commit a drop.
+            if (evt.pointerId != _pointerId || evt.button != 0)
             {
                 return;
             }
@@ -404,6 +488,17 @@ namespace Velvet
             // press never reaches here (it discards in Pending) — clicks stay intact.
             evt.StopImmediatePropagation();
             FireDiscrete(() => _scope.Settings.OnDragEnd?.Invoke(args));
+        }
+
+        // A fresh PRIMARY press arriving while this session is active means the session is a phantom
+        // (the button cannot go down while genuinely held): the unobserved release already happened, so
+        // cancel — the next press then arms normally.
+        private void OnDragDown(PointerDownEvent evt)
+        {
+            if (evt.pointerId == _pointerId && evt.button == 0)
+            {
+                Cancel();
+            }
         }
 
         private void OnCaptureOut(PointerCaptureOutEvent evt)
@@ -448,7 +543,10 @@ namespace Velvet
         // must reach the pool clean), but the user OnDragCancel is deferred to the panel's next
         // scheduler tick: a state write from inside the flush is silently lost (the fiber's dirty flag
         // clears when the flush ends) and its lost pending value dedups away the next genuine edge.
-        internal void CancelForTeardown()
+        // Reconciler disposal passes deferUserCallback: false — a deferred item would fire against the
+        // disposed tree (or never, if the panel dies with it), so the callback runs inline as a best
+        // effort (its state writes no-op on disposed fibers; external side effects still run).
+        internal void CancelForTeardown(bool deferUserCallback = true)
         {
             if (_closed)
             {
@@ -464,8 +562,27 @@ namespace Velvet
                 return;
             }
             DndPressVariantSettler.Settle(_source, _ctx);
-            deferRoot.schedule.Execute(() =>
-                FiberDiscreteEventScope.Run(() => scope.Settings.OnDragCancel?.Invoke(args), _ctx.BatchScheduler));
+            if (!deferUserCallback)
+            {
+                InvokeCancelGuarded(scope, args);
+                return;
+            }
+            deferRoot.schedule.Execute(() => InvokeCancelGuarded(scope, args));
+        }
+
+        // A throwing scheduled item is never unscheduled — it would re-fire (re-invoking the user
+        // callback) and abort the panel's remaining scheduled items every frame — so the deferred
+        // cancel contains user exceptions itself, like the frame-tick hooks do.
+        private void InvokeCancelGuarded(DndScopeBinding scope, DragCancelArgs args)
+        {
+            try
+            {
+                FiberDiscreteEventScope.Run(() => scope.Settings.OnDragCancel?.Invoke(args), _ctx.BatchScheduler);
+            }
+            catch (System.Exception exception)
+            {
+                UnityEngine.Debug.LogException(exception);
+            }
         }
 
         // A droppable leaving mid-drag (unmount, or a settings flip to disabled) must drop out of this
@@ -483,13 +600,14 @@ namespace Velvet
             }
             if (ReferenceEquals(_overElement, element))
             {
-                if (_overBinding is { OverClasses.Length: > 0 })
+                if (_appliedOverClasses is { Length: > 0 })
                 {
-                    StyleAnimationClassUtils.RemoveClasses(element, _overBinding.OverClasses);
+                    StyleAnimationClassUtils.RemoveClasses(element, _appliedOverClasses);
                 }
                 _overId = null;
                 _overBinding = null;
                 _overElement = null;
+                _appliedOverClasses = null;
             }
         }
 
@@ -519,11 +637,20 @@ namespace Velvet
             {
                 if (_onDragMove != null) _source.UnregisterCallback(_onDragMove, TrickleDown.TrickleDown);
                 if (_onDragUp != null) _source.UnregisterCallback(_onDragUp, TrickleDown.TrickleDown);
+                if (_onDragDown != null) _source.UnregisterCallback(_onDragDown, TrickleDown.TrickleDown);
                 if (_onDragCancel != null) _source.UnregisterCallback(_onDragCancel, TrickleDown.TrickleDown);
                 if (_onCaptureOut != null) _source.UnregisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
-                if (_onEscape != null) _panelRoot.UnregisterCallback(_onEscape, TrickleDown.TrickleDown);
+                if (_onEscape != null)
+                {
+                    foreach (var root in _escapeRoots)
+                    {
+                        root.UnregisterCallback(_onEscape, TrickleDown.TrickleDown);
+                    }
+                }
+                _escapeRoots.Clear();
                 _onDragMove = null;
                 _onDragUp = null;
+                _onDragDown = null;
                 _onDragCancel = null;
                 _onCaptureOut = null;
                 _onEscape = null;
@@ -531,26 +658,28 @@ namespace Velvet
                 {
                     _source.ReleasePointer(_pointerId);
                 }
-                if (_draggable.Settings.Movement == DragMovement.Translate)
+                // Restore symmetry runs on the activation-time snapshots (see the field-block note).
+                if (_activeMovement == DragMovement.Translate)
                 {
                     _source.style.translate = _savedTranslate;
                 }
-                if (_draggable.DraggingClasses.Length > 0)
+                if (_activeDraggingClasses.Length > 0)
                 {
-                    StyleAnimationClassUtils.RemoveClasses(_source, _draggable.DraggingClasses);
+                    StyleAnimationClassUtils.RemoveClasses(_source, _activeDraggingClasses);
                 }
                 foreach (var (element, classes) in _appliedActiveClasses)
                 {
                     StyleAnimationClassUtils.RemoveClasses(element, classes);
                 }
                 _appliedActiveClasses.Clear();
-                if (_overElement != null && _overBinding is { OverClasses.Length: > 0 })
+                if (_overElement != null && _appliedOverClasses is { Length: > 0 })
                 {
-                    StyleAnimationClassUtils.RemoveClasses(_overElement, _overBinding.OverClasses);
+                    StyleAnimationClassUtils.RemoveClasses(_overElement, _appliedOverClasses);
                 }
                 _overId = null;
                 _overBinding = null;
                 _overElement = null;
+                _appliedOverClasses = null;
                 if (_overlayPositioner != null)
                 {
                     DndOverlayDriver.EndSession(_overlayPositioner);
@@ -584,6 +713,39 @@ namespace Velvet
             _onPendingMove = null;
             _onPendingUp = null;
             _onPendingCancel = null;
+        }
+
+        // Key events dispatch through whichever panel holds keyboard focus, which need not be the
+        // source's panel in a tree spanning layer/world-space hosts — the Escape cancel listens on every
+        // managed panel root that exists at activation time.
+        private void RegisterEscapeOnManagedRoots()
+        {
+            void AddRoot(VisualElement? root)
+            {
+                if (root == null || _escapeRoots.Contains(root))
+                {
+                    return;
+                }
+                root.RegisterCallback(_onEscape, TrickleDown.TrickleDown);
+                _escapeRoots.Add(root);
+            }
+
+            AddRoot(_panelRoot);
+            AddRoot(_ctx.MainPanelRoot?.panel?.visualTree);
+            foreach (var host in _ctx.LayerHosts.Values)
+            {
+                if (host.Document != null)
+                {
+                    AddRoot(host.Document.rootVisualElement?.panel?.visualTree);
+                }
+            }
+            foreach (var record in _ctx.WorldSpaceBindings.Values)
+            {
+                if (record.Document != null)
+                {
+                    AddRoot(record.Document.rootVisualElement?.panel?.visualTree);
+                }
+            }
         }
 
         private DraggableInfo ActiveInfo()
