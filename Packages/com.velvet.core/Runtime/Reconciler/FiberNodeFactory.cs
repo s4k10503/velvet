@@ -137,6 +137,13 @@ namespace Velvet
                     {
                         _patcher.Appliers.ApplyParticles(element, elementNode.Props.Particles);
                     }
+                    // Anchored (V.Anchored): wire the per-frame screen-projection tick. Panel-independent at
+                    // creation (Attach's own synchronous Sync call bails cleanly if the element has no panel
+                    // yet); the first real tick fires once mounted.
+                    if (elementNode.Props?.Anchored != null)
+                    {
+                        _patcher.Appliers.ApplyAnchored(element, elementNode.Props.Anchored);
+                    }
 
                     if (elementNode.WrapElement != null)
                     {
@@ -230,6 +237,12 @@ namespace Velvet
                     if (motionNode.Props?.Particles != null)
                     {
                         _patcher.Appliers.ApplyParticles(element, motionNode.Props.Particles);
+                    }
+                    // Anchored through a Motion host: same reason as SceneView/Particles above — a Motion
+                    // can host any element type, so the binding must attach on this create path too.
+                    if (motionNode.Props?.Anchored != null)
+                    {
+                        _patcher.Appliers.ApplyAnchored(element, motionNode.Props.Anchored);
                     }
                     StyleFontResolver.ApplyIfPresent(element, appliedClasses);
                     _patcher.ApplyGapManipulator(element, appliedClasses);

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `V.Anchored(target:)`: drei's `<Html>` parity in its default screen-space projection mode — a
+  plain 2D element whose `left`/`top` track a 3D scene Transform's projected position every frame
+  via `RuntimePanelUtils.CameraTransformWorldToPanel`. Not depth-tested against scene geometry
+  (unlike `V.WorldSpace`, which renders content INTO the 3D scene): ordinary screen-space UI,
+  positioned dynamically. Forces `position: absolute`; hides itself while the target is behind the
+  camera rather than jumping to a wrong spot. Raycast-based occlusion (drei's `<Html occlude>`) is
+  an explicit scope cut, not yet implemented.
 - `Hooks.UseAnimationSequence(steps:)`: Framer Motion's `useAnimate` timeline parity — plays an
   ordered `AnimationSequenceStep` array (`To` label changes, `Wait` gaps, `Call` callbacks) over
   time and exposes the active step's label/transition to feed straight into a coordinator

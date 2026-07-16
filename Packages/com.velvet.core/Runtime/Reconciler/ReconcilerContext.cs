@@ -354,6 +354,12 @@ namespace Velvet
         // at root disposal.
         public Dictionary<VisualElement, ParticlesBinding> ParticlesBindings { get; } = new();
 
+        // Per-Anchored-element bookkeeping (V.Anchored), keyed by the element itself. The binding owns a
+        // live resource — the recurring per-frame projection tick (AnchoredDriver) — so it is NOT a pure
+        // side-table: FiberElementCleaner pauses the tick on element teardown and Reconciler.Dispose sweeps
+        // any binding still live at root disposal.
+        public Dictionary<VisualElement, AnchoredBinding> AnchoredBindings { get; } = new();
+
         // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
         // range of FiberPortalRegistry.Get(TargetId).Children owned by this Portal — the
         // invariant that lets multiple Portals coexist on the same target without overwriting each

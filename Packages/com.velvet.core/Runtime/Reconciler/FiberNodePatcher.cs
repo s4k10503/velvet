@@ -1087,6 +1087,14 @@ namespace Velvet
             {
                 _appliers.ApplyParticles(element, newProps.Particles);
             }
+
+            // Record (value) equality, like SceneView/Particles above: a re-render carrying the same
+            // target/camera/offset in a fresh record is not a change — the position itself updates every
+            // tick regardless (AnchoredDriver's own recurring Sync), not through this diff.
+            if (oldProps.Anchored != newProps.Anchored)
+            {
+                _appliers.ApplyAnchored(element, newProps.Anchored);
+            }
         }
 
         // Applies the StyleOverrides diff to element.style.
