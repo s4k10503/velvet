@@ -20,6 +20,7 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_setShowScope;
         private static StateUpdater<bool> s_setRotated;
         private static StateUpdater<bool> s_setShowOpener;
+        private static StateUpdater<bool> s_setAutoFocusOn;
 
         [SetUp]
         public void SetUp()
@@ -28,6 +29,7 @@ namespace Velvet.Tests
             s_setShowScope = default;
             s_setRotated = default;
             s_setShowOpener = default;
+            s_setAutoFocusOn = default;
         }
 
         [TearDown]
@@ -422,6 +424,155 @@ namespace Velvet.Tests
             // Assert — one attachment, keyed by the panel's true root, never the mount target.
             Assert.That(_mounted.Root.Reconciler.Context.NavigatorAttachments.Keys,
                 Is.EquivalentTo(new[] { _host.Panel.visualTree }));
+        }
+
+        [Component]
+        private static VNode StackedModalsHost()
+        {
+            var (showSecond, setShowSecond) = Hooks.UseState(false);
+            s_setShowScope = setShowSecond;
+            return V.Div(children: new VNode[]
+            {
+                V.FocusScope(name: "modalA", key: "modalA", contain: true, children: new VNode[]
+                {
+                    V.Button(name: "a1"),
+                }),
+                showSecond
+                    ? V.FocusScope(name: "modalB", key: "modalB", contain: true, autoFocus: true, children: new VNode[]
+                    {
+                        V.Button(name: "b1"),
+                    })
+                    : null,
+            });
+        }
+
+        [Test]
+        public void Given_AContainedScopeHoldingFocus_When_ANewContainedScopeMountsWithAutoFocus_Then_TheNewScopeTakesFocus()
+        {
+            // Arrange
+            Mount(StackedModalsHost);
+            Q("a1").Focus();
+            Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("a1")),
+                "Precondition: the first modal holds focus");
+
+            // Act — a stacked dialog: modal B mounts on top and auto-focuses. A landing inside a
+            // contained scope claims focus (the scope receiving focus wins — React Aria's newest-scope
+            // activation); the old-scope snap-back must not yank it back underneath the overlay.
+            s_setShowScope.Invoke(true);
+            _mounted.FlushStateForTest();
+            EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("b1")));
+        }
+
+        [Component]
+        private static VNode TwoContainedScopesHost() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modalA", contain: true, children: new VNode[]
+            {
+                V.Button(name: "a1"),
+            }),
+            V.FocusScope(name: "modalB", contain: true, children: new VNode[]
+            {
+                V.Button(name: "x1"),
+            }),
+        });
+
+        [Test]
+        public void Given_TwoContainedScopes_When_APointerStyleMoveCrossesBetweenThem_Then_TheReceivingScopeKeepsFocus()
+        {
+            // Arrange — pinned as a terminal-recursion guard: a landing inside a contain scope stands
+            // (the receiving scope claims focus), which is what makes cross-scope moves converge. UI
+            // Toolkit QUEUES focus events raised from inside a dispatch, so any design that snaps this
+            // landing back degenerates into two scopes queueing Focus calls at each other forever — a
+            // main-thread livelock, which is why the pre-fix behavior could not be pinned as a failing
+            // assertion.
+            Mount(TwoContainedScopesHost);
+            var a1 = Q("a1");
+            a1.Focus();
+            Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(a1),
+                "Precondition: the first contained scope holds focus");
+
+            // Act
+            var x1 = Q("x1");
+            x1.Focus();
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(x1));
+        }
+
+        [Component]
+        private static VNode RestoringModalHost()
+        {
+            var (showScope, setShowScope) = Hooks.UseState(true);
+            s_setShowOpener = setShowScope;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "opener"),
+                showScope
+                    ? V.FocusScope(name: "modal", key: "modal", contain: true, restoreFocus: true, children: new VNode[]
+                    {
+                        V.Button(name: "inner"),
+                    })
+                    : null,
+            });
+        }
+
+        [Test]
+        public void Given_AContainedRestoringScope_When_ItUnmountsWhileHoldingFocus_Then_FocusReturnsToTheOpener()
+        {
+            // Arrange — the standard modal combo: contain + restoreFocus together.
+            Mount(RestoringModalHost);
+            Q("opener").Focus();
+            Q("inner").Focus();
+            Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("inner")),
+                "Precondition: focus sits inside the modal");
+
+            // Act — the restore's own FocusIn must not see the dying scope as a live contain scope
+            // (the snap-back would revert the restore straight back into the detaching subtree).
+            s_setShowOpener.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("opener")));
+        }
+
+        [Component]
+        private static VNode LatchBypassHost()
+        {
+            var (autoFocusOn, setAutoFocusOn) = Hooks.UseState(false);
+            s_setAutoFocusOn = setAutoFocusOn;
+            var (rotated, setRotated) = Hooks.UseState(false);
+            s_setRotated = setRotated;
+            var scope = V.FocusScope(name: "scope", key: "scope", autoFocus: autoFocusOn, children: new VNode[]
+            {
+                V.Button(name: "first"),
+            });
+            var b1 = V.Button(name: "b1", key: "b1");
+            var b2 = V.Button(name: "b2", key: "b2");
+            return V.Div(children: rotated ? new VNode[] { b1, b2, scope } : new VNode[] { scope, b1, b2 });
+        }
+
+        [Test]
+        public void Given_AScopeWhoseAutoFocusTurnedOnAfterMount_When_AReorderReattachesIt_Then_FocusIsStillNotStolen()
+        {
+            // Arrange — autoFocus is mount-once like React's: a post-mount settings flip must not
+            // re-arm it for the next physical re-attach.
+            Mount(LatchBypassHost);
+            var b1 = Q("b1");
+            b1.Focus();
+            s_setAutoFocusOn.Invoke(true);
+            _mounted.FlushStateForTest();
+            Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(b1),
+                "Precondition: the settings flip alone must not move focus");
+
+            // Act — the keyed rotation physically re-attaches the scope.
+            s_setRotated.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(b1));
         }
 
         [Test]

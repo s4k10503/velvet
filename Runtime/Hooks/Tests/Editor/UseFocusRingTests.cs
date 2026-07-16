@@ -114,6 +114,42 @@ namespace Velvet.Tests
             Assert.That(s_ring.IsFocused, Is.False);
         }
 
+        [Component]
+        private static VNode SwappingRingHost()
+        {
+            var ring = Hooks.UseFocusRing();
+            s_ring = ring;
+            var (swapped, setSwapped) = Hooks.UseState(false);
+            s_setShowTarget = setSwapped;
+            return V.Div(children: new VNode[]
+            {
+                swapped
+                    ? (VNode)V.Div(name: "target2", key: "t", refCallback: ring.Ref)
+                    : V.Button(name: "target", key: "t", refCallback: ring.Ref),
+            });
+        }
+
+        [Test]
+        public void Given_AFocusedRingElement_When_TheRefMovesToAReplacementElement_Then_IsFocusedReturnsToFalse()
+        {
+            // Arrange
+            _mounted = V.Mount(_host.Root, V.Component(SwappingRingHost, key: "root"));
+            _host.Root.Q<VisualElement>("target").Focus();
+            _mounted.FlushStateForTest();
+            Assume.That(s_ring.IsFocused, Is.True, "Precondition: the ring lit for the focused element");
+
+            // Act — a same-key type flip replaces the element under the SAME ref in one flush: the old
+            // element's focus dies with it and the replacement was never focused, so the deferred
+            // correction must fire even though a newer hookup superseded the one that scheduled it.
+            s_setShowTarget.Invoke(true);
+            _mounted.FlushStateForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_ring.IsFocused, Is.False);
+        }
+
         [Test]
         public void Given_AFocusVisibleRing_When_TheElementBlurs_Then_IsFocusVisibleReturnsToFalse()
         {

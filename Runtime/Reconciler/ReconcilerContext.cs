@@ -388,11 +388,6 @@ namespace Velvet
         // fired.
         public List<(VisualElement Element, EventCallback<AttachToPanelEvent> Hook)> NavigatorPendingAttachHooks { get; } = new();
 
-        // Re-entrancy depth of the Contain snap-back's nested Focus dispatch: while > 0, a further
-        // snap-back is suppressed so two contained scopes resolve deterministically (the scope that held
-        // focus wins) instead of ping-ponging Focus calls until the stack dies.
-        public int ContainSnapBackDepth;
-
         // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
         // range of FiberPortalRegistry.Get(TargetId).Children owned by this Portal — the
         // invariant that lets multiple Portals coexist on the same target without overwriting each

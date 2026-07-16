@@ -239,6 +239,128 @@ namespace Velvet.Tests
             Assert.That(main1.panel.focusController.focusedElement, Is.EqualTo(main1));
         }
 
+        [Component]
+        private static VNode ContainedStsPortalHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "main1"),
+            V.Portal(UILayer.Overlay, key: "portal", focusOrder: PanelFocusOrder.Chained, children: new VNode[]
+            {
+                V.FocusScope(name: "modal", contain: true, children: new VNode[]
+                {
+                    V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+                    {
+                        V.Button(name: "p1"),
+                        V.Button(name: "p2"),
+                    }),
+                }),
+            }),
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContainedGroupCoveringAChainedHost_When_TabDispatchesFromAMember_Then_FocusNeverEscapesTheModal()
+        {
+            // Arrange — a contain modal inside a chained host whose only focusables are one
+            // singleTabStop group: the group's one-stop exit finds no candidate, and the chained
+            // boundary escape must NOT override the modal's containment.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ContainedStsPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            var p1 = HostElement("p1");
+            p1.Focus();
+            Assume.That(p1.panel.focusController.focusedElement, Is.EqualTo(p1),
+                "Precondition: a modal group member holds focus");
+
+            // Act
+            SendMove(p1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+            yield return null;
+            yield return null;
+
+            // Assert — the declaring panel must not have received focus.
+            var main1 = Main("main1");
+            Assert.That(main1.panel.focusController.focusedElement, Is.Not.EqualTo(main1));
+        }
+
+        [Component]
+        private static VNode EdgeGroupPortalHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "main1"),
+            V.Portal(UILayer.Overlay, key: "portal", focusOrder: PanelFocusOrder.Chained, children: new VNode[]
+            {
+                V.Button(name: "x"),
+                V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+                {
+                    V.Button(name: "g1"),
+                    V.Button(name: "g2"),
+                }),
+            }),
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASingleTabStopGroupAtAChainedHostsRingEdge_When_TabExitsForward_Then_FocusEscapesToTheDeclaringPanel()
+        {
+            // Arrange — the group sits at the END of the host ring, with another focusable before it:
+            // the group's exit walk WRAPS past the ring edge, and the pinned iframe contract says a
+            // move past the host ring's end exits to the declaring panel — never wraps back to "x".
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(EdgeGroupPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            var g2 = HostElement("g2");
+            g2.Focus();
+            Assume.That(g2.panel.focusController.focusedElement, Is.EqualTo(g2),
+                "Precondition: the edge group's member holds focus");
+
+            // Act
+            SendMove(g2, NavigationMoveEvent.Direction.Next);
+            yield return null;
+            yield return null;
+            yield return null;
+
+            // Assert
+            var main1 = Main("main1");
+            Assert.That(main1.panel.focusController.focusedElement, Is.EqualTo(main1));
+        }
+
+        [Component]
+        private static VNode ModalWithIsolatedPortalHost() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            {
+                V.Button(name: "m1"),
+            }),
+            V.Portal(UILayer.Overlay, key: "portal", focusOrder: PanelFocusOrder.Isolated, children: new VNode[]
+            {
+                V.Button(name: "p1"),
+            }),
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AContainedScopeInTheMainPanel_When_FocusLegitimatelyMovesToAnotherPanel_Then_TheModalDoesNotStealItBack()
+        {
+            // Arrange — a cross-panel focus move blurs the old panel to NOTHING (the same FocusOut
+            // signature as a click on empty space), but here focus went somewhere: another managed
+            // panel. The containment re-focus must recognize that and stand down.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(ModalWithIsolatedPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            var m1 = Main("m1");
+            m1.Focus();
+            Assume.That(m1.panel.focusController.focusedElement, Is.EqualTo(m1),
+                "Precondition: the modal holds focus");
+
+            // Act
+            m1.Blur();
+            HostElement("p1").Focus();
+            yield return null;
+            yield return null;
+
+            // Assert — the main panel must stay unfocused instead of the modal yanking focus back.
+            Assert.That(m1.panel.focusController.focusedElement, Is.Null);
+        }
+
         [UnityTest]
         public IEnumerator Given_AChainedLayerPortal_When_AKeyDownDispatchesInsideTheHost_Then_ItStillReachesItsHandler()
         {
