@@ -65,6 +65,26 @@ namespace Velvet
         public FocusScopeSettings? FocusScope { get => _focusScope; set { ThrowIfReadOnly(); _focusScope = value; } }
         private FocusScopeSettings? _focusScope;
 
+        /// <summary>
+        /// Drag-and-drop scope configuration for this container element (dnd-kit's DndContext parity).
+        /// Draggables and droppables pair with their nearest ancestor scope at event time.
+        /// </summary>
+        public DndContextSettings? DndContext { get => _dndContext; set { ThrowIfReadOnly(); _dndContext = value; } }
+        private DndContextSettings? _dndContext;
+
+        /// <summary>Drag-source configuration (dnd-kit's useDraggable parity) — the element carrying it
+        /// is the drag node itself.</summary>
+        public DraggableSettings? Draggable { get => _draggable; set { ThrowIfReadOnly(); _draggable = value; } }
+        private DraggableSettings? _draggable;
+
+        /// <summary>Drop-target configuration (dnd-kit's useDroppable parity).</summary>
+        public DroppableSettings? Droppable { get => _droppable; set { ThrowIfReadOnly(); _droppable = value; } }
+        private DroppableSettings? _droppable;
+
+        /// <summary>Marker for the V.DragOverlay positioner (the framework-positioned drag preview).</summary>
+        public DragOverlaySettings? DragOverlay { get => _dragOverlay; set { ThrowIfReadOnly(); _dragOverlay = value; } }
+        private DragOverlaySettings? _dragOverlay;
+
         /// <summary>Slider-specific settings.</summary>
         public SliderSettings? Slider { get => _slider; set { ThrowIfReadOnly(); _slider = value; } }
         private SliderSettings? _slider;

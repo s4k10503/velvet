@@ -950,6 +950,81 @@ namespace Velvet
             }
         }
 
+        // The four DnD slots share ApplyFocusScope's hand-inlined shape: the drivers need the
+        // ReconcilerContext (scope resolution, the active-session interlock), which the cached static
+        // delegates of the shared generic dispatch cannot carry.
+        internal void ApplyDndContext(VisualElement element, DndContextSettings? settings)
+        {
+            if (_ctx.DndScopeBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    DndScopeDriver.Detach(element, _ctx);
+                    _ctx.DndScopeBindings.Remove(element);
+                    return;
+                }
+                DndScopeDriver.Update(binding, settings);
+            }
+            else if (settings != null)
+            {
+                _ctx.DndScopeBindings[element] = DndScopeDriver.Attach(element, settings);
+            }
+        }
+
+        internal void ApplyDraggable(VisualElement element, DraggableSettings? settings)
+        {
+            if (_ctx.DraggableBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    DndDraggableDriver.Detach(element, binding, _ctx);
+                    _ctx.DraggableBindings.Remove(element);
+                    return;
+                }
+                DndDraggableDriver.Update(element, binding, settings, _ctx);
+            }
+            else if (settings != null)
+            {
+                _ctx.DraggableBindings[element] = DndDraggableDriver.Attach(element, settings, _ctx);
+            }
+        }
+
+        internal void ApplyDroppable(VisualElement element, DroppableSettings? settings)
+        {
+            if (_ctx.DroppableBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    DndDroppableDriver.Detach(element, _ctx);
+                    _ctx.DroppableBindings.Remove(element);
+                    return;
+                }
+                DndDroppableDriver.Update(element, binding, settings, _ctx);
+            }
+            else if (settings != null)
+            {
+                _ctx.DroppableBindings[element] = DndDroppableDriver.Attach(element, settings);
+            }
+        }
+
+        internal void ApplyDragOverlay(VisualElement element, DragOverlaySettings? settings)
+        {
+            if (_ctx.DragOverlayBindings.TryGetValue(element, out _))
+            {
+                if (settings == null)
+                {
+                    DndOverlayDriver.Detach(element, _ctx);
+                    _ctx.DragOverlayBindings.Remove(element);
+                }
+                // The marker record carries no updatable state, so a live binding has nothing to refresh.
+                return;
+            }
+            if (settings != null)
+            {
+                _ctx.DragOverlayBindings[element] = DndOverlayDriver.Attach(element, _ctx);
+            }
+        }
+
         // Cached method-group delegates so the shared dispatch below adds no per-call allocation.
         private static readonly Func<VisualElement, SceneViewSettings, SceneViewBinding> s_sceneViewAttach = SceneViewDriver.Attach;
         private static readonly Action<VisualElement, SceneViewBinding, SceneViewSettings> s_sceneViewUpdate = SceneViewDriver.Update;

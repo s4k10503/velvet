@@ -1122,6 +1122,25 @@ namespace Velvet
             {
                 _appliers.ApplyFocusScope(element, newProps.FocusScope);
             }
+
+            // Record (value) equality for all four drag-and-drop slots: fresh-but-equal settings never
+            // re-attach, and delegate-bearing records refresh their binding in place on any inequality.
+            if (oldProps.DndContext != newProps.DndContext)
+            {
+                _appliers.ApplyDndContext(element, newProps.DndContext);
+            }
+            if (oldProps.Draggable != newProps.Draggable)
+            {
+                _appliers.ApplyDraggable(element, newProps.Draggable);
+            }
+            if (oldProps.Droppable != newProps.Droppable)
+            {
+                _appliers.ApplyDroppable(element, newProps.Droppable);
+            }
+            if (oldProps.DragOverlay != newProps.DragOverlay)
+            {
+                _appliers.ApplyDragOverlay(element, newProps.DragOverlay);
+            }
         }
 
         // Applies the StyleOverrides diff to element.style.

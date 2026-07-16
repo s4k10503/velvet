@@ -208,5 +208,59 @@ namespace Velvet.TestUtilities
                 ?? throw new InvalidOperationException(
                     "Could not find EventCallbackRegistry.InvokeCallbacks(EventBase, PropagationPhase). Unity internal API may have changed.");
         }
+
+        /// <summary>
+        /// Dispatches a primary-button pointer press through the target's panel, constructed from an
+        /// IMGUI system event — the constructor path that maintains the engine's own
+        /// <c>PointerDeviceState</c> (pressed buttons), which downstream <c>pressedButtons</c> checks
+        /// read from later moves. Shared by the pointer-gesture fixtures (EditMode and PlayMode), so the
+        /// event shape cannot drift between the suites.
+        /// </summary>
+        public static void SendPointerDownEvent(this VisualElement target, UnityEngine.Vector2 position)
+        {
+            using var evt = PointerDownEvent.GetPooled(new UnityEngine.Event
+            {
+                type = UnityEngine.EventType.MouseDown, mousePosition = position, button = 0, clickCount = 1,
+            });
+            evt.target = target;
+            target.SendEvent(evt);
+        }
+
+        /// <summary>Dispatches a primary-button drag move to the target; see <see cref="SendPointerDownEvent"/>.</summary>
+        public static void SendPointerMoveEvent(this VisualElement target, UnityEngine.Vector2 position)
+        {
+            using var evt = PointerMoveEvent.GetPooled(new UnityEngine.Event
+            {
+                type = UnityEngine.EventType.MouseDrag, mousePosition = position, button = 0,
+            });
+            evt.target = target;
+            target.SendEvent(evt);
+        }
+
+        /// <summary>Dispatches a primary-button release to the target; see <see cref="SendPointerDownEvent"/>.</summary>
+        public static void SendPointerUpEvent(this VisualElement target, UnityEngine.Vector2 position)
+        {
+            using var evt = PointerUpEvent.GetPooled(new UnityEngine.Event
+            {
+                type = UnityEngine.EventType.MouseUp, mousePosition = position, button = 0, clickCount = 1,
+            });
+            evt.target = target;
+            target.SendEvent(evt);
+        }
+
+        /// <summary>
+        /// Dispatches a drag move with NO preset target: the panel's own dispatching strategy resolves
+        /// the destination — the capturing element when a capture is held, else picking. The only
+        /// dispatch shape that exercises the engine's real capture routing (a preset target
+        /// short-circuits it).
+        /// </summary>
+        public static void SendPointerMoveUntargeted(this IPanel panel, UnityEngine.Vector2 position)
+        {
+            using var evt = PointerMoveEvent.GetPooled(new UnityEngine.Event
+            {
+                type = UnityEngine.EventType.MouseDrag, mousePosition = position, button = 0,
+            });
+            panel.visualTree.SendEvent(evt);
+        }
     }
 }
