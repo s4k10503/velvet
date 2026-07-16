@@ -72,6 +72,9 @@ namespace Velvet
         // state to settle and no signals instance, so the null-conditional is the whole guard.
         internal void SettleRelease() => _elementSignals?.SettleRelease();
 
+        // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
+        internal void SettleFocusLoss() => _elementSignals?.SettleFocusLoss();
+
         protected override void RegisterCallbacksOnTarget()
         {
             if (IsElementLocal)

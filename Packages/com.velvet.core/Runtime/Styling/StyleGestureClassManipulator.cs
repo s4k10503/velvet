@@ -77,6 +77,9 @@ namespace Velvet
         // ElementLocalVariantSignals.SettleRelease); the per-state dedup below makes it idempotent.
         internal void SettleRelease() => _signals?.SettleRelease();
 
+        // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
+        internal void SettleFocusLoss() => _signals?.SettleFocusLoss();
+
         protected override void UnregisterCallbacksFromTarget()
         {
             if (_isHovered)

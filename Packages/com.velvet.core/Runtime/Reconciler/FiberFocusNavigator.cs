@@ -535,7 +535,54 @@ namespace Velvet
                 return false;
             }
             back.Focus();
+            ScheduleRevertedLandingSettle(target, ctx);
             return true;
+        }
+
+        // A reverted landing's focus events can interleave — under the engine's queued focus dispatch —
+        // such that the element never receives a terminating Blur: its focus / focus-visible variant
+        // styling then sticks lit on an element that is not focused (observed against real editor
+        // input). One tick later, after the focus queue has fully drained, an element that did not end
+        // up holding focus has its focus-derived variant state settled explicitly; an element that DID
+        // end up focused is left alone (its state is live and correct), and the settle is idempotent for
+        // an element whose Blur arrived normally.
+        private static void ScheduleRevertedLandingSettle(VisualElement reverted, ReconcilerContext ctx)
+        {
+            var root = reverted.panel?.visualTree;
+            if (root == null)
+            {
+                return;
+            }
+            root.schedule.Execute(() =>
+            {
+                if (reverted.panel == null)
+                {
+                    return;
+                }
+                if (reverted.panel.focusController?.focusedElement is VisualElement held
+                    && (held == reverted || reverted.Contains(held)))
+                {
+                    return;
+                }
+                if (ctx.GestureManipulators.TryGetValue(reverted, out var gesture))
+                {
+                    gesture.SettleFocusLoss();
+                }
+                if (ctx.VariantManipulators.TryGetValue(reverted, out var variant))
+                {
+                    variant.SettleFocusLoss();
+                }
+                if (ctx.StackedVariantManipulators.Count > 0)
+                {
+                    foreach (var kv in ctx.StackedVariantManipulators)
+                    {
+                        if (kv.Key.target == reverted)
+                        {
+                            kv.Value.SettleFocusLoss();
+                        }
+                    }
+                }
+            });
         }
 
         // The escape containment cannot see from FocusIn: focus cleared to NOTHING (a pointer press on

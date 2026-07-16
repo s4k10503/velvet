@@ -104,6 +104,9 @@ namespace Velvet
         // ElementLocalVariantSignals.SettleRelease); the per-state dedup below makes it idempotent.
         internal void SettleRelease() => _signals?.SettleRelease();
 
+        // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
+        internal void SettleFocusLoss() => _signals?.SettleFocusLoss();
+
         // Maps a detected element-local signal edge to its payload, deduping on the per-state bookkeeping so
         // a repeated edge (e.g. a bubbling PointerOver, or a no-op checked change) does not churn the payload.
         private void OnSignal(VariantSignal signal, bool on)

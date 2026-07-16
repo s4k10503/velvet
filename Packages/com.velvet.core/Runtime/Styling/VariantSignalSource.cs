@@ -136,6 +136,17 @@ namespace Velvet
             _emit(VariantSignal.Active, false);
         }
 
+        // Observes a synthetic focus loss: a containment snap-back reverts a landing whose queued focus
+        // events can interleave such that the reverted element never receives a terminating Blur — its
+        // focus / focus-visible payloads then stick lit on an unfocused element. Consumers' own
+        // per-state dedup makes a redundant call a no-op.
+        public void SettleFocusLoss()
+        {
+            _pointerFocus = false;
+            _emit(VariantSignal.Focus, false);
+            _emit(VariantSignal.FocusVisible, false);
+        }
+
         private void OnFocus(FocusEvent evt)
         {
             _emit(VariantSignal.Focus, true);
