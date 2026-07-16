@@ -17,16 +17,25 @@ for when no container exists yet). Four independent knobs, mirroring React Aria'
 
 - **`contain`** — Tab/Shift-Tab wrap within the subtree instead of leaving it, and a move that
   escapes anyway (a spatial d-pad flick, a pointer press outside) is snapped back inside within
-  the same event flush. The modal-dialog behavior.
+  the same event flush — wherever the escape landed, including inside another scope. A press on
+  empty non-focusable space clears focus to nothing first (no focus event ever lands anywhere),
+  so that path re-focuses the scope on the panel's next scheduler tick instead. When two
+  contained scopes are live at once, the one currently holding focus wins. The modal-dialog
+  behavior.
 - **`restoreFocus`** — when the scope unmounts while holding focus, focus returns to the element
   it came FROM when it first entered the scope (skipped if that element is gone or can no longer
-  take focus). Pair with `contain` for dialogs.
-- **`autoFocus`** — on attach, the scope's first focusable descendant takes focus (skipped when
-  focus already sits inside — a keyed reorder re-attaching the scope must not steal focus back).
+  take focus — an unmounted origin is dropped rather than chased into pool reuse). Pair with
+  `contain` for dialogs.
+- **`autoFocus`** — on mount, the scope's first focusable descendant takes focus (skipped when
+  focus already sits inside). Mount-once, like React's `autoFocus`: a keyed reorder physically
+  re-attaches the scope and must not steal focus back, so a re-attach never re-fires it.
 - **`singleTabStop`** — the whole subtree behaves as ONE Tab stop, the WAI-ARIA composite-widget
   (roving tabindex) contract: Tab from inside exits past the remaining members, and Tab entering
-  from outside lands on the member last used (else the first). Members keep their `tabIndex`,
-  so the engine's spatial navigation INSIDE the group — the arrow/d-pad story — is untouched.
+  from outside — in either direction — lands on the member last used (else the first). The exit
+  wraps within the nearest containing scope when the group is nested in one, and a group covering
+  every reachable focusable holds position (in a `Chained` host panel it exits across the panel
+  boundary instead — see below). Members keep their `tabIndex`, so the engine's spatial
+  navigation INSIDE the group — the arrow/d-pad story — is untouched.
 
 A documented deviation from the web: arrows/d-pad can spatially exit a `singleTabStop` group at
 its edge, because spatial navigation is geometric on runtime panels. That is gamepad-correct

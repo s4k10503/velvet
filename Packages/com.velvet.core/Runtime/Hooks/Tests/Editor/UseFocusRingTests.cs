@@ -16,12 +16,14 @@ namespace Velvet.Tests
         private MountedTree _mounted;
 
         private static FocusRing s_ring;
+        private static StateUpdater<bool> s_setShowTarget;
 
         [SetUp]
         public void SetUp()
         {
             _host = new HeadlessEditorPanelHost();
             s_ring = default;
+            s_setShowTarget = default;
         }
 
         [TearDown]
@@ -75,6 +77,41 @@ namespace Velvet.Tests
 
             // Assert — pointer-driven focus is focus, but not VISIBLE focus.
             Assert.That((s_ring.IsFocused, s_ring.IsFocusVisible), Is.EqualTo((true, false)));
+        }
+
+        [Component]
+        private static VNode CollapsingRingHost()
+        {
+            var ring = Hooks.UseFocusRing();
+            s_ring = ring;
+            var (showTarget, setShowTarget) = Hooks.UseState(true);
+            s_setShowTarget = setShowTarget;
+            return V.Div(children: new VNode[]
+            {
+                showTarget ? V.Button(name: "target", key: "target", refCallback: ring.Ref) : null,
+            });
+        }
+
+        [Test]
+        public void Given_AFocusedRingElement_When_ItUnmountsWhileTheComponentSurvives_Then_IsFocusedReturnsToFalse()
+        {
+            // Arrange — REAL panel focus (not a simulated event): the stuck-state correction keys off
+            // the focus controller's view of the element at cleanup time.
+            _mounted = V.Mount(_host.Root, V.Component(CollapsingRingHost, key: "root"));
+            var target = _host.Root.Q<VisualElement>("target");
+            target.Focus();
+            _mounted.FlushStateForTest();
+            Assume.That(s_ring.IsFocused, Is.True, "Precondition: the ring lit for the focused element");
+
+            // Act — the element unmounts while focused; no Blur can reach the already-unhooked
+            // signals, so the correction rides the panel's next scheduler tick.
+            s_setShowTarget.Invoke(false);
+            _mounted.FlushStateForTest();
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_ring.IsFocused, Is.False);
         }
 
         [Test]

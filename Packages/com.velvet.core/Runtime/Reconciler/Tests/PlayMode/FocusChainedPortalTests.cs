@@ -20,6 +20,7 @@ namespace Velvet.Tests
     internal sealed class FocusChainedPortalTests
     {
         private static PanelFocusOrder s_focusOrder;
+        private static StateUpdater<bool> s_setShowFirstPortal;
 
         private GameObject _panelGo;
         private PanelSettings _settings;
@@ -40,6 +41,7 @@ namespace Velvet.Tests
         public IEnumerator UnitySetUp()
         {
             s_focusOrder = PanelFocusOrder.Isolated;
+            s_setShowFirstPortal = default;
             _panelGo = new GameObject("ChainedPortalPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
             _settings = ScriptableObject.CreateInstance<PanelSettings>();
@@ -146,6 +148,95 @@ namespace Velvet.Tests
             // Assert — the host's own ring wraps internally.
             var p1 = HostElement("p1");
             Assert.That(p1.panel.focusController.focusedElement, Is.EqualTo(p1));
+        }
+
+        [Component]
+        private static VNode StsPortalHost() => V.Div(children: new VNode[]
+        {
+            V.Button(name: "main1"),
+            V.Portal(UILayer.Overlay, key: "portal", focusOrder: PanelFocusOrder.Chained, children: new VNode[]
+            {
+                V.FocusScope(name: "group", singleTabStop: true, children: new VNode[]
+                {
+                    V.Button(name: "p1"),
+                    V.Button(name: "p2"),
+                }),
+            }),
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AChainedHostWhoseContentIsOneSingleTabStopGroup_When_TabDispatchesFromAMember_Then_FocusEscapesToTheDeclaringPanel()
+        {
+            // Arrange — the natural gamepad case: a portal'd roving toolbar. The group's one-stop exit
+            // finds no candidate inside the host, so it must fall through to the chained boundary
+            // escape rather than letting the engine cycle the group's own members.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(StsPortalHost, key: "root"));
+            yield return null;
+            yield return null;
+            var p1 = HostElement("p1");
+            p1.Focus();
+            Assume.That(p1.panel.focusController.focusedElement, Is.EqualTo(p1),
+                "Precondition: a group member holds focus");
+
+            // Act
+            SendMove(p1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+            yield return null;
+            yield return null;
+
+            // Assert
+            var main1 = Main("main1");
+            Assert.That(main1.panel.focusController.focusedElement, Is.EqualTo(main1));
+        }
+
+        [Component]
+        private static VNode TwoChainedPortalsHost()
+        {
+            var (showFirst, setShowFirst) = Hooks.UseState(true);
+            s_setShowFirstPortal = setShowFirst;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "main1"),
+                showFirst
+                    ? V.Portal(UILayer.Overlay, key: "portalA", focusOrder: PanelFocusOrder.Chained, children: new VNode[]
+                    {
+                        V.Button(name: "a1"),
+                    })
+                    : null,
+                V.Portal(UILayer.Overlay, key: "portalB", focusOrder: PanelFocusOrder.Chained, children: new VNode[]
+                {
+                    V.Button(name: "b1"),
+                }),
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Given_TwoChainedPortalsSharingALayerHost_When_TheOwningPortalUnmounts_Then_TheSurvivorStillEscapesAtTheHostRingEdge()
+        {
+            // Arrange — portalA mounted first and owns the host's ring-edge escape; unmounting it must
+            // hand the escape to portalB, or the surviving chained portal silently loses its exit.
+            _mounted = V.Mount(_panelGo.GetComponent<UIDocument>().rootVisualElement,
+                V.Component(TwoChainedPortalsHost, key: "root"));
+            yield return null;
+            yield return null;
+            s_setShowFirstPortal.Invoke(false);
+            yield return null;
+            yield return null;
+            var b1 = HostElement("b1");
+            b1.Focus();
+            Assume.That(b1.panel.focusController.focusedElement, Is.EqualTo(b1),
+                "Precondition: the surviving portal's member holds focus");
+
+            // Act
+            SendMove(b1, NavigationMoveEvent.Direction.Next);
+            yield return null;
+            yield return null;
+            yield return null;
+
+            // Assert
+            var main1 = Main("main1");
+            Assert.That(main1.panel.focusController.focusedElement, Is.EqualTo(main1));
         }
 
         [UnityTest]

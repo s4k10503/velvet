@@ -58,12 +58,16 @@ namespace Velvet
             props.Visible = null;
             props.FieldValue = null;
             props.Focusable = null;
+            props.TabIndex = null;
+            props.DelegatesFocus = null;
+            props.FocusScope = null;
             props.Slider = null;
             props.ScrollView = null;
             props.TextField = null;
             props.Choices = null;
             props.SceneView = null;
             props.Particles = null;
+            props.Anchored = null;
             props.Data = null;
             props.Aria = null;
 

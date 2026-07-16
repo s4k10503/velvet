@@ -340,16 +340,26 @@ namespace Velvet
                 FocusScopeDriver.Detach(element, focusScopeBinding);
                 _ctx.FocusScopeBindings.Remove(element);
             }
-            // A chained portal placeholder unmounting releases both chained registries (the reverse index
-            // only when this placeholder still owns the host's ring-edge escape).
+            // A departing element must not linger as any scope's remembered member or restore target:
+            // pooled primitives get recycled into unrelated roles, and the liveness checks at use time
+            // (panel / canGrabFocus / Contains) all pass again for a recycled element mounted elsewhere,
+            // so focus would land on a widget in a different logical role. Dropping the reference here
+            // makes those paths fall back (ring-first entry / skipped restore) instead.
+            if (_ctx.FocusScopeBindings.Count > 0)
+            {
+                foreach (var scopeBinding in _ctx.FocusScopeBindings.Values)
+                {
+                    if (ReferenceEquals(scopeBinding.LastFocusedMember, element)) scopeBinding.LastFocusedMember = null;
+                    if (ReferenceEquals(scopeBinding.RestoreTarget, element)) scopeBinding.RestoreTarget = null;
+                }
+            }
+            // A chained portal placeholder unmounting releases both chained registries; if it owned the
+            // host's ring-edge escape, ownership is handed to a surviving chained placeholder of the same
+            // host (removal from ChainedPlaceholders first, so the departing one cannot re-elect itself).
             if (_ctx.ChainedPlaceholders.Remove(element, out var chainedRecord))
             {
                 var chainedHostRoot = chainedRecord.Document != null ? chainedRecord.Document.rootVisualElement : null;
-                if (chainedHostRoot != null && _ctx.ChainedHostRoots.TryGetValue(chainedHostRoot, out var owner)
-                    && ReferenceEquals(owner, element))
-                {
-                    _ctx.ChainedHostRoots.Remove(chainedHostRoot);
-                }
+                FiberFocusNavigator.ReleaseChainedOwnership(element, chainedHostRoot, _ctx);
             }
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
             {

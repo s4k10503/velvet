@@ -376,10 +376,22 @@ namespace Velvet
         public Dictionary<VisualElement, PanelHostRecord> ChainedPlaceholders { get; } = new();
         public Dictionary<VisualElement, VisualElement> ChainedHostRoots { get; } = new();
 
-        // The panel roots FiberFocusNavigator has attached its listener pair to, with the registered
+        // The panel roots FiberFocusNavigator has attached its listener trio to, with the registered
         // callbacks retained so Reconciler.Dispose can unregister them (panel roots belong to the user /
-        // the host panels and can outlive this reconciler).
-        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<FocusInEvent> OnFocusIn)> NavigatorAttachments { get; } = new();
+        // the host panels and can outlive this reconciler). Keyed by the panel's TRUE root
+        // (panel.visualTree), so two attach requests from different elements of one panel dedup.
+        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<FocusInEvent> OnFocusIn, EventCallback<FocusOutEvent> OnFocusOut)> NavigatorAttachments { get; } = new();
+
+        // Deferred navigator attachments: elements whose panel was unresolved when EnsureAttached ran (a
+        // detached mount root, a placeholder configured before its declaring tree attaches), each holding
+        // a self-removing AttachToPanelEvent hook. Tracked so DetachAll can unregister hooks that never
+        // fired.
+        public List<(VisualElement Element, EventCallback<AttachToPanelEvent> Hook)> NavigatorPendingAttachHooks { get; } = new();
+
+        // Re-entrancy depth of the Contain snap-back's nested Focus dispatch: while > 0, a further
+        // snap-back is suppressed so two contained scopes resolve deterministically (the scope that held
+        // focus wins) instead of ping-ponging Focus calls until the stack dies.
+        public int ContainSnapBackDepth;
 
         // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
         // range of FiberPortalRegistry.Get(TargetId).Children owned by this Portal — the

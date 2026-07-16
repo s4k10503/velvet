@@ -467,8 +467,9 @@ namespace Velvet
                 AnchoredDriver.Detach(element, binding);
             }
             _ctx.AnchoredBindings.Clear();
-            // Focus-scope bindings own a registered attach callback each; the navigator's own listener
-            // pairs sit on panel roots that outlive this reconciler, so both are released explicitly.
+            // Focus-scope bindings own a registered attach callback each; the navigator's listener trios
+            // (and any still-pending attach hooks) sit on elements that outlive this reconciler, so both
+            // are released explicitly.
             foreach (var (element, binding) in _ctx.FocusScopeBindings)
             {
                 FocusScopeDriver.Detach(element, binding);

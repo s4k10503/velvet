@@ -1093,6 +1093,11 @@ namespace Velvet
         {
             var (isFocused, setFocused) = UseState(false);
             var (isFocusVisible, setFocusVisible) = UseState(false);
+            // Generation cell shared by every ref invocation of this hook instance: each setup stamps a new
+            // generation, so a cleanup's deferred work can tell whether it is still the LATEST hookup for
+            // this component or was superseded (a patch re-invoking the ref, or the ref moving to a
+            // replacement element).
+            var generation = UseRef<int[]>(() => new int[1]);
             var refCallback = UseCallback<Func<UnityEngine.UIElements.VisualElement, Action>>(element =>
             {
                 var signals = new ElementLocalVariantSignals((signal, on) =>
@@ -1104,16 +1109,38 @@ namespace Velvet
                     }
                 });
                 signals.Hook(element, seedChecked: false, registerChecked: false);
-                // The cleanup ONLY unhooks — it deliberately writes no state. The reconciler re-invokes a
-                // ref (cleanup + setup) on every patch of the host element, i.e. MID-FLUSH: a state write
-                // from that phase is silently lost (the fiber's dirty flag clears when the flush ends), and
-                // the lost pending value then dedups away the NEXT genuine edge with the same value. An
-                // element that detaches while focused still resolves cleanly: the panel blurs it on the way
-                // out, and that Blur reaches these signals before this cleanup runs.
-                return signals.Unhook;
-                // Deps are the two setters — reference-stable across renders — so the ref identity never
-                // changes across re-renders.
-            }, setFocused, setFocusVisible);
+                var gen = ++generation.Current[0];
+                return () =>
+                {
+                    signals.Unhook();
+                    // The cleanup itself writes no state: the reconciler re-invokes a ref (cleanup + setup)
+                    // on every patch of the host element, i.e. MID-FLUSH, where a state write is silently
+                    // lost (the fiber's dirty flag clears when the flush ends) and its lost pending value
+                    // then dedups away the NEXT genuine edge with the same value. But an element unmounting
+                    // WHILE FOCUSED gets no Blur through these signals either — the unhook above runs before
+                    // the element leaves the panel — which would strand IsFocused/IsFocusVisible at true on
+                    // a still-mounted component. So when the element holds focus at cleanup time, the
+                    // correction is deferred to the panel's next scheduler tick — safely OUTSIDE any flush —
+                    // and fires only if no newer hookup superseded this one (a patch's re-invoke stamps a
+                    // new generation synchronously right after this cleanup, turning the deferred write into
+                    // a no-op; the setters are already no-ops if the component itself unmounted).
+                    var panel = element.panel;
+                    if (panel?.visualTree == null) return;
+                    if (panel.focusController?.focusedElement is not UnityEngine.UIElements.VisualElement held
+                        || (held != element && !element.Contains(held)))
+                    {
+                        return;
+                    }
+                    panel.visualTree.schedule.Execute(() =>
+                    {
+                        if (generation.Current[0] != gen) return;
+                        setFocused.Invoke(false);
+                        setFocusVisible.Invoke(false);
+                    });
+                };
+                // Deps are the two setters and the generation ref — all reference-stable across renders —
+                // so the ref identity never changes across re-renders.
+            }, setFocused, setFocusVisible, generation);
             return new FocusRing(isFocused, isFocusVisible, refCallback);
         }
 

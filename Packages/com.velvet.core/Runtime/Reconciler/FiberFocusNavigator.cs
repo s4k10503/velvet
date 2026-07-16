@@ -30,6 +30,9 @@ namespace Velvet
         public VisualElement? LastFocusedMember;
         public VisualElement? RestoreTarget;
         public bool RestoreCaptured;
+        // AutoFocus is mount-once, matching React: a keyed reorder physically re-attaches the scope
+        // (RemoveAt + Insert), and re-firing there would steal focus from wherever the user moved on.
+        public bool AutoFocusFired;
         public EventCallback<AttachToPanelEvent>? OnAttach;
 
         public FocusScopeBinding(FocusScopeSettings settings)
@@ -40,7 +43,9 @@ namespace Velvet
 
     /// <summary>
     /// The single owner of every focus-navigation interception in Velvet — the keyboard sibling of
-    /// <c>FiberCrossPanelInput</c>'s two classes, attached exactly once per panel root (never per scope).
+    /// <c>FiberCrossPanelInput</c>'s two classes, attached exactly once per panel (always to the panel's
+    /// TRUE root, <c>panel.visualTree</c>, never to a subtree or per scope — an element whose panel is not
+    /// resolved yet defers the attach to its own <c>AttachToPanelEvent</c>).
     /// Sequential (Next/Previous) <see cref="NavigationMoveEvent"/>s are intercepted on the verified engine
     /// contract pinned by <c>FocusNavigationInterceptionTests</c>: the default focus move runs post-dispatch,
     /// after every listener, and its only suppression is <see cref="FocusController.IgnoreEvent"/> — so a
@@ -56,31 +61,65 @@ namespace Velvet
         // outside the scope) so a pathological ring cannot spin this listener unboundedly.
         private const int MaxRingWalk = 4096;
 
-        // Attaches the navigator's two listeners to a panel root exactly once (tracked in
-        // ctx.NavigatorAttachments so Reconciler.Dispose can unregister them). Called from V.Mount (main
-        // panel), PanelHostFactory (host panels), and lazily when a scope/chained placeholder attaches to a
-        // panel this navigator has not seen yet.
-        internal static void EnsureAttached(VisualElement? panelRoot, ReconcilerContext ctx)
+        // Attaches the navigator's listener trio to `element`'s panel root exactly once per panel. The
+        // anchor is always the panel's TRUE root (panel.visualTree): registering on anything narrower
+        // would compute subtree rings that drift from the engine's own panel-wide ring, and registering
+        // per call-site element would stack duplicate listeners whose relative order inverts the branch
+        // priority. An element with no panel yet defers via a tracked self-removing attach hook. Called
+        // from V.Mount (main panel), ConfigureChainedPlaceholder (declaring + host panels), and the
+        // focus-scope attach hook (whatever panel the scope lands in).
+        internal static void EnsureAttached(VisualElement? element, ReconcilerContext ctx)
         {
-            if (panelRoot == null || ctx.NavigatorAttachments.ContainsKey(panelRoot))
+            if (element == null)
             {
                 return;
             }
-            EventCallback<NavigationMoveEvent> onMove = evt => OnNavigationMove(evt, panelRoot, ctx);
+            var root = element.panel?.visualTree;
+            if (root != null)
+            {
+                AttachToRoot(root, ctx);
+                return;
+            }
+            EventCallback<AttachToPanelEvent> hook = null!;
+            hook = _ =>
+            {
+                element.UnregisterCallback(hook);
+                ctx.NavigatorPendingAttachHooks.Remove((element, hook));
+                AttachToRoot(element.panel?.visualTree, ctx);
+            };
+            element.RegisterCallback(hook);
+            ctx.NavigatorPendingAttachHooks.Add((element, hook));
+        }
+
+        private static void AttachToRoot(VisualElement? root, ReconcilerContext ctx)
+        {
+            if (root == null || ctx.NavigatorAttachments.ContainsKey(root))
+            {
+                return;
+            }
+            EventCallback<NavigationMoveEvent> onMove = evt => OnNavigationMove(evt, root, ctx);
             EventCallback<FocusInEvent> onFocusIn = evt => OnFocusIn(evt, ctx);
-            panelRoot.RegisterCallback(onMove, TrickleDown.TrickleDown);
-            panelRoot.RegisterCallback(onFocusIn);
-            ctx.NavigatorAttachments[panelRoot] = (onMove, onFocusIn);
+            EventCallback<FocusOutEvent> onFocusOut = evt => OnFocusOut(evt, ctx);
+            root.RegisterCallback(onMove, TrickleDown.TrickleDown);
+            root.RegisterCallback(onFocusIn);
+            root.RegisterCallback(onFocusOut);
+            ctx.NavigatorAttachments[root] = (onMove, onFocusIn, onFocusOut);
         }
 
         internal static void DetachAll(ReconcilerContext ctx)
         {
-            foreach (var (root, (onMove, onFocusIn)) in ctx.NavigatorAttachments)
+            foreach (var (root, callbacks) in ctx.NavigatorAttachments)
             {
-                root.UnregisterCallback(onMove, TrickleDown.TrickleDown);
-                root.UnregisterCallback(onFocusIn);
+                root.UnregisterCallback(callbacks.OnMove, TrickleDown.TrickleDown);
+                root.UnregisterCallback(callbacks.OnFocusIn);
+                root.UnregisterCallback(callbacks.OnFocusOut);
             }
             ctx.NavigatorAttachments.Clear();
+            foreach (var (element, hook) in ctx.NavigatorPendingAttachHooks)
+            {
+                element.UnregisterCallback(hook);
+            }
+            ctx.NavigatorPendingAttachHooks.Clear();
         }
 
         // Configures a portal placeholder's participation in the declaring panel's Tab order
@@ -103,9 +142,10 @@ namespace Velvet
                 placeholder.tabIndex = 0;
                 ctx.ChainedPlaceholders[placeholder] = record;
                 // A shared layer host can carry several portals; the first chained one owns the host's
-                // ring-edge escape (flow between two portals' slots stays panel-internal either way).
+                // ring-edge escape (flow between two portals' slots stays panel-internal either way), and
+                // ownership is handed to a survivor when the owner departs — see ReleaseChainedOwnership.
                 ctx.ChainedHostRoots.TryAdd(hostRoot, placeholder);
-                EnsureAttached(placeholder.panel?.visualTree, ctx);
+                EnsureAttached(placeholder, ctx);
                 EnsureAttached(hostRoot, ctx);
                 return;
             }
@@ -117,10 +157,31 @@ namespace Velvet
                 placeholder.style.height = StyleKeyword.Null;
                 placeholder.focusable = false;
                 placeholder.tabIndex = 0;
-                if (hostRoot != null && ctx.ChainedHostRoots.TryGetValue(hostRoot, out var owner)
-                    && ReferenceEquals(owner, placeholder))
+                ReleaseChainedOwnership(placeholder, hostRoot, ctx);
+            }
+        }
+
+        // Drops `placeholder`'s ring-edge-escape ownership of `hostRoot` and re-elects any surviving
+        // chained placeholder of the same host, so the remaining portals keep their exit. Runs when a
+        // chained portal unmounts (FiberElementCleaner) and when a patch flips it back to Isolated. The
+        // caller must have removed the departing placeholder from ChainedPlaceholders first, or it would
+        // re-elect itself.
+        internal static void ReleaseChainedOwnership(
+            VisualElement placeholder, VisualElement? hostRoot, ReconcilerContext ctx)
+        {
+            if (hostRoot == null || !ctx.ChainedHostRoots.TryGetValue(hostRoot, out var owner)
+                || !ReferenceEquals(owner, placeholder))
+            {
+                return;
+            }
+            ctx.ChainedHostRoots.Remove(hostRoot);
+            foreach (var (candidate, record) in ctx.ChainedPlaceholders)
+            {
+                var candidateRoot = record.Document != null ? record.Document.rootVisualElement : null;
+                if (ReferenceEquals(candidateRoot, hostRoot))
                 {
-                    ctx.ChainedHostRoots.Remove(hostRoot);
+                    ctx.ChainedHostRoots[hostRoot] = candidate;
+                    return;
                 }
             }
         }
@@ -156,9 +217,13 @@ namespace Velvet
                 }
                 if (binding.Settings.SingleTabStop)
                 {
-                    // The whole subtree acts as ONE tab stop: walk the panel ring in the move's direction,
-                    // skipping every other member of this scope, and land on the first focusable outside it.
-                    var ring = new VisualElementFocusRing(panelRoot);
+                    // The whole subtree acts as ONE tab stop: walk the sequential ring in the move's
+                    // direction, skipping every other member of this scope, and land on the first focusable
+                    // outside it. The walk ring is bounded by the nearest enclosing CONTAIN scope when one
+                    // exists — a group inside a modal must wrap within the modal, never escape it through
+                    // the group's own exit.
+                    var containRoot = FindEnclosingContainScopeRoot(scopeRoot.parent, ctx, out _);
+                    var ring = new VisualElementFocusRing(containRoot ?? panelRoot);
                     var direction = ToRingDirection(forward);
                     var candidate = ring.GetNextFocusable(focused, direction) as VisualElement;
                     var guard = MaxRingWalk;
@@ -168,8 +233,19 @@ namespace Velvet
                     }
                     if (candidate != null && candidate != focused && !scopeRoot.Contains(candidate))
                     {
-                        Redirect(evt, panel!, candidate);
+                        Redirect(evt, panel!, ResolveScopeEntryTarget(candidate, ctx));
+                        return;
                     }
+                    // Every reachable focusable is a member. In a chained host the group's one-stop exit
+                    // crosses the panel boundary (a portal'd roving toolbar is the natural gamepad case);
+                    // anywhere else the move is suppressed with focus held in place — the engine default
+                    // would cycle the members, breaking the one-stop contract.
+                    if (TryChainedEscape(evt, panel!, panelRoot, focused, forward, ctx, requireRingEdge: false))
+                    {
+                        return;
+                    }
+                    panel!.focusController.IgnoreEvent(evt);
+                    evt.StopPropagation();
                     return;
                 }
             }
@@ -177,41 +253,14 @@ namespace Velvet
             // Chained host escape: focus sits in a host panel that joined its declaring panel's Tab order,
             // and this move would wrap around the host's own ring edge — cross the boundary instead, to the
             // declaring-panel element right after (forward) / before (backward) the portal's placeholder.
-            if (ctx.ChainedHostRoots.TryGetValue(panelRoot, out var placeholder) && placeholder.panel != null)
+            if (TryChainedEscape(evt, panel!, panelRoot, focused, forward, ctx, requireRingEdge: true))
             {
-                var hostRing = new VisualElementFocusRing(panelRoot);
-                var direction = ToRingDirection(forward);
-                var predicted = hostRing.GetNextFocusable(focused, direction);
-                // GetNextFocusable(null, right) is the ring's first element and (null, left) its last, so a
-                // predicted move landing there is exactly the wrap this escape replaces. A single-element
-                // host wraps onto itself and still escapes, which is the correct chained behavior.
-                var ringEdge = hostRing.GetNextFocusable(null, direction);
-                if (predicted != null && ReferenceEquals(predicted, ringEdge))
-                {
-                    var declaringRing = new VisualElementFocusRing(placeholder.panel.visualTree);
-                    var escapeTarget = declaringRing.GetNextFocusable(placeholder, direction) as VisualElement;
-                    if (escapeTarget != null && !ReferenceEquals(escapeTarget, placeholder))
-                    {
-                        // This panel's own move is suppressed NOW, and ITS focused element is blurred
-                        // synchronously (its own controller, mid-its-own-dispatch — safe); the cross-panel
-                        // Focus is deferred to the TARGET panel's next scheduler tick. A synchronous Focus()
-                        // into another panel from inside this panel's dispatch does not stick (verified
-                        // empirically), and the blur must come first: two panels holding a focused element
-                        // simultaneously gets reconciled against the still-focused source panel, unfocusing
-                        // the target again. The placeholder-entry direction needs no such hop: it runs
-                        // inside a FOCUS event, whose nested switches ride the engine's pending-focus gate.
-                        panel!.focusController.IgnoreEvent(evt);
-                        evt.StopPropagation();
-                        focused.Blur();
-                        escapeTarget.schedule.Execute(() => escapeTarget.Focus());
-                    }
-                    return;
-                }
+                return;
             }
 
             // Entering a SingleTabStop scope from outside: the group is one tab stop, so the move lands on
-            // the member last used (else the predicted entry element, which for a forward move is the
-            // scope's ring-first anyway).
+            // the member last used, else the group's first member — from either direction (the WAI-ARIA
+            // composite contract; a backward move's raw prediction would be the group's ring-LAST).
             var panelRing = new VisualElementFocusRing(panelRoot);
             var entryPredicted = panelRing.GetNextFocusable(focused, ToRingDirection(forward)) as VisualElement;
             if (entryPredicted != null)
@@ -220,15 +269,111 @@ namespace Velvet
                 if (enteredRoot != null && enteredBinding is { Settings.SingleTabStop: true }
                     && !enteredRoot.Contains(focused))
                 {
-                    var last = enteredBinding.LastFocusedMember;
-                    if (last != null && last.panel != null && enteredRoot.Contains(last) && last.canGrabFocus)
+                    var landing = ResolveScopeEntryTarget(entryPredicted, ctx);
+                    if (!ReferenceEquals(landing, entryPredicted))
                     {
-                        Redirect(evt, panel!, last);
+                        Redirect(evt, panel!, landing);
                     }
-                    // No remembered member: the predicted element is already the correct entry point; let
-                    // the engine's own move proceed untouched.
+                    // Landing == predicted: the engine's own move already enters at the group's correct
+                    // stop (a forward move's raw prediction IS the group's ring-first).
                 }
             }
+        }
+
+        // A landing inside a SingleTabStop group must enter at the group's roving tab stop — the member
+        // last used, else the group's ring-first — no matter how the landing was produced (an engine
+        // prediction, an exit-walk redirect, a placeholder forwarding, or a cross-panel escape hop).
+        // Direction-agnostic by the WAI-ARIA composite contract: a backward entry lands on the same stop,
+        // never the group's last member. Landings outside any SingleTabStop scope pass through untouched.
+        private static VisualElement ResolveScopeEntryTarget(VisualElement candidate, ReconcilerContext ctx)
+        {
+            var root = FindEnclosingScopeRoot(candidate, ctx, out var binding);
+            if (root == null || binding is not { Settings.SingleTabStop: true })
+            {
+                return candidate;
+            }
+            var last = binding.LastFocusedMember;
+            if (last != null && last.panel != null && root.Contains(last) && last.canGrabFocus)
+            {
+                return last;
+            }
+            return new VisualElementFocusRing(root)
+                .GetNextFocusable(null, VisualElementFocusChangeDirection.right) as VisualElement ?? candidate;
+        }
+
+        // The chained-host boundary exit. With requireRingEdge, escapes only when the engine's own move
+        // would wrap around the host ring's edge (the normal Tab-past-the-end case); without it, escapes
+        // unconditionally in the move's direction (the SingleTabStop-covers-the-whole-host case, where ANY
+        // member is the exit point). Returns true when the move was converted into a cross-panel hop.
+        private static bool TryChainedEscape(
+            NavigationMoveEvent evt, IPanel panel, VisualElement panelRoot, VisualElement focused,
+            bool forward, ReconcilerContext ctx, bool requireRingEdge)
+        {
+            var placeholder = FindChainedPlaceholderForPanel(panel, ctx);
+            if (placeholder == null || placeholder.panel == null)
+            {
+                return false;
+            }
+            var direction = ToRingDirection(forward);
+            if (requireRingEdge)
+            {
+                var hostRing = new VisualElementFocusRing(panelRoot);
+                var predicted = hostRing.GetNextFocusable(focused, direction);
+                // GetNextFocusable(null, right) is the ring's first element and (null, left) its last, so a
+                // predicted move landing there is exactly the wrap this escape replaces. A single-element
+                // host wraps onto itself and still escapes, which is the correct chained behavior.
+                var ringEdge = hostRing.GetNextFocusable(null, direction);
+                if (predicted == null || !ReferenceEquals(predicted, ringEdge))
+                {
+                    return false;
+                }
+            }
+            var declaringRoot = placeholder.panel.visualTree;
+            var declaringRing = new VisualElementFocusRing(declaringRoot);
+            var escapeTarget = declaringRing.GetNextFocusable(placeholder, direction) as VisualElement;
+            if (escapeTarget == null || ReferenceEquals(escapeTarget, placeholder))
+            {
+                return false;
+            }
+            // This panel's own move is suppressed NOW, and ITS focused element is blurred synchronously
+            // (its own controller, mid-its-own-dispatch — safe); the cross-panel Focus is deferred to the
+            // TARGET panel's next scheduler tick. A synchronous Focus() into another panel from inside this
+            // panel's dispatch does not stick (verified empirically), and the blur must come first: two
+            // panels holding a focused element simultaneously gets reconciled against the still-focused
+            // source panel, unfocusing the target again. The placeholder-entry direction needs no such hop:
+            // it runs inside a FOCUS event, whose nested switches ride the engine's pending-focus gate.
+            // The hop is scheduled on the DECLARING PANEL'S ROOT, never on the target element: a one-shot
+            // scheduled item on an element that detaches before executing restarts in full when the element
+            // re-attaches — for a pooled widget that means a stale Focus() firing on whatever unrelated
+            // role it was recycled into. The root is stable, and the fire-time guard skips a target that
+            // left the panel in the window between the hop and the tick.
+            panel.focusController.IgnoreEvent(evt);
+            evt.StopPropagation();
+            focused.Blur();
+            declaringRoot.schedule.Execute(() =>
+            {
+                if (escapeTarget.panel != declaringRoot.panel || !escapeTarget.canGrabFocus)
+                {
+                    return;
+                }
+                ResolveScopeEntryTarget(escapeTarget, ctx).Focus();
+            });
+            return true;
+        }
+
+        // Resolves the chained placeholder owning `panel`'s ring-edge escape. The registry is keyed by the
+        // host's document root element; the lookup matches by panel identity so it is independent of which
+        // element the move listener happened to be registered on (the canonical visualTree).
+        private static VisualElement? FindChainedPlaceholderForPanel(IPanel panel, ReconcilerContext ctx)
+        {
+            foreach (var (hostRoot, placeholder) in ctx.ChainedHostRoots)
+            {
+                if (hostRoot.panel == panel)
+                {
+                    return placeholder;
+                }
+            }
+            return null;
         }
 
         private static void OnFocusIn(FocusInEvent evt, ReconcilerContext ctx)
@@ -247,27 +392,12 @@ namespace Velvet
                 if (hostRoot != null)
                 {
                     var backward = evt.direction == VisualElementFocusChangeDirection.left;
-                    var hostRing = new VisualElementFocusRing(hostRoot);
+                    var hostRing = new VisualElementFocusRing(hostRoot.panel?.visualTree ?? hostRoot);
                     var entry = hostRing.GetNextFocusable(null,
                         backward ? VisualElementFocusChangeDirection.left : VisualElementFocusChangeDirection.right) as VisualElement;
-                    entry?.Focus();
-                }
-                return;
-            }
-
-            var scopeRoot = FindEnclosingScopeRoot(target, ctx, out var binding);
-            if (scopeRoot != null && binding != null)
-            {
-                binding.LastFocusedMember = target;
-                // First entry from outside (or from nothing): remember where focus came from, so RestoreFocus
-                // can return it there when the scope unmounts while holding focus.
-                if (!binding.RestoreCaptured)
-                {
-                    var from = evt.relatedTarget as VisualElement;
-                    if (from == null || !scopeRoot.Contains(from))
+                    if (entry != null)
                     {
-                        binding.RestoreTarget = from;
-                        binding.RestoreCaptured = true;
+                        ResolveScopeEntryTarget(entry, ctx).Focus();
                     }
                 }
                 return;
@@ -275,23 +405,107 @@ namespace Velvet
 
             // Contain snap-back: focus left a contained scope through a path the sequential interception
             // cannot see (a spatial 2D move, or a pointer press outside) — pull it back inside within the
-            // same event flush. A nested Focus() from inside a FocusIn handler starts a new pending switch
-            // that wins (the engine's pending-focus gate), so this is deterministic, not a race.
-            if (evt.relatedTarget is VisualElement from2 && from2.panel == target.panel)
+            // same event flush. Evaluated BEFORE the landing scope's own bookkeeping, against the nearest
+            // CONTAIN scope enclosing the element focus came FROM: containment must hold no matter where
+            // the escape landed (a sibling scope, an outer scope, or scope-less space), and the departure
+            // scope's own walk skips non-contain scopes nested inside the modal. A nested Focus() from
+            // inside a FocusIn handler starts a new pending switch that wins (the engine's pending-focus
+            // gate), so the snap-back is deterministic; the depth guard keeps two contained scopes from
+            // ping-ponging — while a snap-back's own nested dispatch runs, its landing is accepted as-is
+            // (the scope that held focus wins).
+            if (ctx.ContainSnapBackDepth == 0
+                && evt.relatedTarget is VisualElement from && from.panel == target.panel)
             {
-                var fromScopeRoot = FindEnclosingScopeRoot(from2, ctx, out var fromBinding);
-                if (fromScopeRoot != null && fromBinding is { Settings.Contain: true }
-                    && !fromScopeRoot.Contains(target))
+                var containRoot = FindEnclosingContainScopeRoot(from, ctx, out var containBinding);
+                if (containRoot != null && containBinding != null && !containRoot.Contains(target))
                 {
-                    var back = fromBinding.LastFocusedMember;
-                    if (back == null || back.panel == null || !back.canGrabFocus)
+                    var back = containBinding.LastFocusedMember;
+                    if (back == null || back.panel == null || !containRoot.Contains(back) || !back.canGrabFocus)
                     {
-                        back = new VisualElementFocusRing(fromScopeRoot)
+                        back = new VisualElementFocusRing(containRoot)
                             .GetNextFocusable(null, VisualElementFocusChangeDirection.right) as VisualElement;
                     }
-                    back?.Focus();
+                    if (back != null)
+                    {
+                        ctx.ContainSnapBackDepth++;
+                        try
+                        {
+                            back.Focus();
+                        }
+                        finally
+                        {
+                            ctx.ContainSnapBackDepth--;
+                        }
+                        // The landing was reverted: recording it in the landing scope's bookkeeping would
+                        // corrupt that scope's roving memory with a member the user never actually reached.
+                        return;
+                    }
                 }
             }
+
+            var scopeRoot = FindEnclosingScopeRoot(target, ctx, out var binding);
+            if (scopeRoot == null || binding == null)
+            {
+                return;
+            }
+            binding.LastFocusedMember = target;
+            // First entry from outside (or from nothing): remember where focus came from, so RestoreFocus
+            // can return it there when the scope unmounts while holding focus.
+            if (!binding.RestoreCaptured)
+            {
+                var cameFrom = evt.relatedTarget as VisualElement;
+                if (cameFrom == null || !scopeRoot.Contains(cameFrom))
+                {
+                    binding.RestoreTarget = cameFrom;
+                    binding.RestoreCaptured = true;
+                }
+            }
+        }
+
+        // The escape containment cannot see from FocusIn: focus cleared to NOTHING (a pointer press on
+        // empty non-focusable space, or a programmatic Blur) raises no FocusInEvent for the snap-back to
+        // ride — only this FocusOut with a null relatedTarget. The re-focus is deferred one scheduler tick
+        // and re-validated at fire time, because the identical event also fires when the focused element
+        // (or the whole scope) is being torn down mid-flush: by the tick, a real teardown has detached the
+        // scope root (skip — RestoreFocus owns that path), and a legitimate move has repopulated
+        // focusedElement (skip — the FocusIn side owns it); only the true "focus went nowhere" case
+        // remains, and containment pulls it back inside.
+        private static void OnFocusOut(FocusOutEvent evt, ReconcilerContext ctx)
+        {
+            if (evt.relatedTarget != null || evt.target is not VisualElement leaving)
+            {
+                return;
+            }
+            var containRoot = FindEnclosingContainScopeRoot(leaving, ctx, out _);
+            if (containRoot == null)
+            {
+                return;
+            }
+            var root = leaving.panel?.visualTree;
+            if (root == null)
+            {
+                return;
+            }
+            root.schedule.Execute(() =>
+            {
+                if (containRoot.panel == null
+                    || !ctx.FocusScopeBindings.TryGetValue(containRoot, out var binding)
+                    || !binding.Settings.Contain)
+                {
+                    return;
+                }
+                var controller = containRoot.panel.focusController;
+                if (controller == null || controller.focusedElement != null)
+                {
+                    return;
+                }
+                var back = binding.LastFocusedMember;
+                if (back == null || back.panel == null || !containRoot.Contains(back) || !back.canGrabFocus)
+                {
+                    back = FocusScopeDriver.FindFirstFocusableInSubtree(containRoot);
+                }
+                back?.Focus();
+            });
         }
 
         // Walks the parent chain from `element` (inclusive) to the first registered scope root. Physical
@@ -303,6 +517,23 @@ namespace Velvet
             for (var current = element; current != null; current = current.parent)
             {
                 if (ctx.FocusScopeBindings.TryGetValue(current, out var found))
+                {
+                    binding = found;
+                    return current;
+                }
+            }
+            binding = null;
+            return null;
+        }
+
+        // Same walk, but resolving the nearest scope whose settings actually CONTAIN — an element inside a
+        // plain or SingleTabStop scope nested in a modal still belongs to the modal's containment.
+        private static VisualElement? FindEnclosingContainScopeRoot(
+            VisualElement? element, ReconcilerContext ctx, out FocusScopeBinding? binding)
+        {
+            for (var current = element; current != null; current = current.parent)
+            {
+                if (ctx.FocusScopeBindings.TryGetValue(current, out var found) && found.Settings.Contain)
                 {
                     binding = found;
                     return current;
@@ -338,9 +569,15 @@ namespace Velvet
             var binding = new FocusScopeBinding(settings);
             binding.OnAttach = _ =>
             {
-                FiberFocusNavigator.EnsureAttached(element.panel?.visualTree, ctx);
-                if (binding.Settings.AutoFocus)
+                FiberFocusNavigator.EnsureAttached(element, ctx);
+                // Mount-once, matching React's autoFocus (it acts on mount, never again): without the
+                // latch, every physical re-attach — a keyed reorder moves the subtree via RemoveAt +
+                // Insert — would re-fire and steal focus from wherever the user moved on. The transient
+                // detach of a reorder also clears panel focus, so AutoFocusFirst's focus-already-inside
+                // guard cannot cover the reorder case by itself.
+                if (binding.Settings.AutoFocus && !binding.AutoFocusFired)
                 {
+                    binding.AutoFocusFired = true;
                     AutoFocusFirst(element);
                 }
             };
@@ -367,11 +604,11 @@ namespace Velvet
         }
 
         // Focuses the scope's first focusable descendant (document order), skipped when focus already sits
-        // inside the scope — an AutoFocus modal re-attached by a keyed reorder must not steal focus back.
-        // Deliberately NOT computed through a focus ring: ring membership requires the element chain to be
-        // resolved as displayed, which has not happened yet at attach time (the panel's style pass runs
-        // after this frame's mounts) — the engine ring would read empty here. A plain traversal over the
-        // same focusability predicate (minus the displayed check) is what attach-time can actually answer.
+        // inside the scope. Deliberately NOT computed through a focus ring: ring membership requires the
+        // element chain to be resolved as displayed, which has not happened yet at attach time (the panel's
+        // style pass runs after this frame's mounts) — the engine ring would read empty here. A plain
+        // traversal over the same focusability predicate (minus the displayed check) is what attach-time
+        // can actually answer.
         private static void AutoFocusFirst(VisualElement scopeRoot)
         {
             var controller = scopeRoot.panel?.focusController;

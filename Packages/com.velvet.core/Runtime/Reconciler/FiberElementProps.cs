@@ -191,14 +191,18 @@ namespace Velvet
     /// equality simplifies DiffProps.
     /// </summary>
     /// <param name="Contain">Tab/Shift-Tab wrap within the subtree (computed by a focus ring scoped to it);
-    /// a 2D/pointer move that exits the subtree is snapped back within the same event flush.</param>
+    /// a 2D/pointer move that exits the subtree is snapped back within the same event flush, wherever it
+    /// landed. A press on empty non-focusable space clears focus to nothing first — that path re-focuses
+    /// the scope on the panel's next scheduler tick instead.</param>
     /// <param name="RestoreFocus">On unmount while holding focus, refocus the element focus came FROM when
-    /// it first entered the scope (skipped if that element is detached or cannot grab focus).</param>
-    /// <param name="AutoFocus">On attach-to-panel, focus the scope's first focusable descendant (skipped
-    /// when focus is already inside the scope).</param>
+    /// it first entered the scope (skipped if that element is gone, detached, or cannot grab focus).</param>
+    /// <param name="AutoFocus">On mount (the scope's FIRST attach-to-panel, never a re-attach such as a
+    /// keyed reorder's), focus the scope's first focusable descendant (skipped when focus is already
+    /// inside the scope) — matching React's mount-once autoFocus.</param>
     /// <param name="SingleTabStop">The subtree behaves as one Tab stop: Tab from inside exits past the
-    /// remaining members; Tab entering from outside lands on the last-focused member (else the scope's
-    /// first). Members keep tabIndex 0, so engine 2D arrow/dpad navigation inside is untouched.</param>
+    /// remaining members (wrapping within the nearest containing scope, if any); Tab entering from outside
+    /// — in either direction — lands on the last-focused member, else the scope's first. Members keep
+    /// tabIndex 0, so engine 2D arrow/dpad navigation inside is untouched.</param>
     public sealed record FocusScopeSettings(
         bool Contain = false,
         bool RestoreFocus = false,
