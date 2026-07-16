@@ -360,6 +360,27 @@ namespace Velvet
         // any binding still live at root disposal.
         public Dictionary<VisualElement, AnchoredBinding> AnchoredBindings { get; } = new();
 
+        // Per-focus-scope bookkeeping (FiberElementProps.FocusScope / V.FocusScope), keyed by the scope
+        // root element. The binding owns a registered AttachToPanelEvent callback (AutoFocus / lazy
+        // navigator attach), so it is NOT a pure side-table: FiberElementCleaner fires RestoreFocus and
+        // detaches it on teardown, and Reconciler.Dispose sweeps any binding still live at root disposal.
+        // FiberFocusNavigator consults this registry at event time (innermost-scope resolution walks an
+        // element's parent chain against these keys).
+        public Dictionary<VisualElement, FocusScopeBinding> FocusScopeBindings { get; } = new();
+
+        // Chained-portal focus bookkeeping (PanelFocusOrder.Chained): the DECLARING-panel placeholder that
+        // acts as the portal's proxy tab stop → the host record its focus forwards into, plus the reverse
+        // index (host panel root → placeholder) the host-edge escape consults. Entries are added in
+        // DrainPendingPortalMounts and removed by FiberElementCleaner when the portal unmounts;
+        // Reconciler.Dispose sweeps the rest.
+        public Dictionary<VisualElement, PanelHostRecord> ChainedPlaceholders { get; } = new();
+        public Dictionary<VisualElement, VisualElement> ChainedHostRoots { get; } = new();
+
+        // The panel roots FiberFocusNavigator has attached its listener pair to, with the registered
+        // callbacks retained so Reconciler.Dispose can unregister them (panel roots belong to the user /
+        // the host panels and can outlive this reconciler).
+        public Dictionary<VisualElement, (EventCallback<NavigationMoveEvent> OnMove, EventCallback<FocusInEvent> OnFocusIn)> NavigatorAttachments { get; } = new();
+
         // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
         // range of FiberPortalRegistry.Get(TargetId).Children owned by this Portal — the
         // invariant that lets multiple Portals coexist on the same target without overwriting each

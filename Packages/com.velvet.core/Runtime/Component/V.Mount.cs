@@ -29,6 +29,9 @@ namespace Velvet
                 FiberCrossPanelPointerRouter.AttachToMainPanel(target, ctx);
                 ctx.CrossPanelRouterAttached = true;
             }
+            // Focus navigation (scopes, chained portals): the navigator attaches to the mount target's own
+            // panel root when already attached, and scope/placeholder attach hooks cover panels seen later.
+            FiberFocusNavigator.EnsureAttached(target.panel?.visualTree ?? target, ctx);
 #if UNITY_EDITOR
             // Auto-attach to DevTools: opening the inspector shows the live tree
             // with no manual Register call. Editor-only — the registry and this call are compiled out of

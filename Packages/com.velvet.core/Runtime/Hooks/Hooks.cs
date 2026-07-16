@@ -1079,6 +1079,46 @@ namespace Velvet
 
         #endregion
 
+        #region UseFocusRing
+
+        /// <summary>
+        /// React Aria's <c>useFocusRing</c> parity: exposes an element's focus state — and specifically
+        /// keyboard/gamepad-visible focus, as distinct from pointer focus — as re-rendering component
+        /// state. Pass <see cref="FocusRing.Ref"/> as the target element's <c>refCallback:</c>. For pure
+        /// styling, the <c>focus-visible:</c> class variant already covers the same distinction without a
+        /// hook — reach for this when the component must RENDER differently (e.g. a "press A to select"
+        /// hint), not just restyle.
+        /// </summary>
+        public static FocusRing UseFocusRing()
+        {
+            var (isFocused, setFocused) = UseState(false);
+            var (isFocusVisible, setFocusVisible) = UseState(false);
+            var refCallback = UseCallback<Func<UnityEngine.UIElements.VisualElement, Action>>(element =>
+            {
+                var signals = new ElementLocalVariantSignals((signal, on) =>
+                {
+                    switch (signal)
+                    {
+                        case VariantSignal.Focus: setFocused.Invoke(on); break;
+                        case VariantSignal.FocusVisible: setFocusVisible.Invoke(on); break;
+                    }
+                });
+                signals.Hook(element, seedChecked: false, registerChecked: false);
+                // The cleanup ONLY unhooks — it deliberately writes no state. The reconciler re-invokes a
+                // ref (cleanup + setup) on every patch of the host element, i.e. MID-FLUSH: a state write
+                // from that phase is silently lost (the fiber's dirty flag clears when the flush ends), and
+                // the lost pending value then dedups away the NEXT genuine edge with the same value. An
+                // element that detaches while focused still resolves cleanly: the panel blurs it on the way
+                // out, and that Blur reaches these signals before this cleanup runs.
+                return signals.Unhook;
+                // Deps are the two setters — reference-stable across renders — so the ref identity never
+                // changes across re-renders.
+            }, setFocused, setFocusVisible);
+            return new FocusRing(isFocused, isFocusVisible, refCallback);
+        }
+
+        #endregion
+
         #region Refs
 
         /// <summary>

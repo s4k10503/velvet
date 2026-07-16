@@ -144,6 +144,13 @@ namespace Velvet
                     {
                         _patcher.Appliers.ApplyAnchored(element, elementNode.Props.Anchored);
                     }
+                    // Focus scope (V.FocusScope / props.FocusScope): register the scope binding. AutoFocus
+                    // and the lazy navigator attach ride the binding's own AttachToPanelEvent, so an
+                    // off-panel create is fine here.
+                    if (elementNode.Props?.FocusScope != null)
+                    {
+                        _patcher.Appliers.ApplyFocusScope(element, elementNode.Props.FocusScope);
+                    }
 
                     if (elementNode.WrapElement != null)
                     {
@@ -243,6 +250,11 @@ namespace Velvet
                     if (motionNode.Props?.Anchored != null)
                     {
                         _patcher.Appliers.ApplyAnchored(element, motionNode.Props.Anchored);
+                    }
+                    // Focus scope through a Motion host: same reason as the sibling bindings above.
+                    if (motionNode.Props?.FocusScope != null)
+                    {
+                        _patcher.Appliers.ApplyFocusScope(element, motionNode.Props.FocusScope);
                     }
                     StyleFontResolver.ApplyIfPresent(element, appliedClasses);
                     _patcher.ApplyGapManipulator(element, appliedClasses);

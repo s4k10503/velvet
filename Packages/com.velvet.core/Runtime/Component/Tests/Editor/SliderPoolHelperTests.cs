@@ -37,7 +37,7 @@ namespace Velvet.Tests
         public void Given_SliderWithCustomState_When_Reset_Then_ConsumerSetStateIsCleared()
         {
             // Arrange
-            var slider = new Slider { value = 5.5f, label = "Volume", name = "my-slider", tooltip = "my-tooltip", focusable = true, viewDataKey = "my-view-data" };
+            var slider = new Slider { value = 5.5f, label = "Volume", name = "my-slider", tooltip = "my-tooltip", focusable = false, viewDataKey = "my-view-data" };
             slider.AddToClassList("custom-class");
             slider.style.color = new StyleColor(Color.red);
             slider.userData = 42;
@@ -47,8 +47,8 @@ namespace Velvet.Tests
 
             // Assert
             var actual = (slider.value, slider.label, slider.userData, slider.name, slider.tooltip, slider.focusable, slider.viewDataKey);
-            Assert.AreEqual((0f, string.Empty, (object)null, string.Empty, string.Empty, false, (string)null), actual,
-                "Reset clears every consumer-set field back to its constructed default");
+            Assert.AreEqual((0f, string.Empty, (object)null, string.Empty, string.Empty, true, (string)null), actual,
+                "Reset returns every consumer-set field to its constructed default (focusable is TRUE for this widget type)");
         }
 
         [Test]

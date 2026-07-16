@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Focus / gamepad navigation layer, React Aria parity — composing with (never reimplementing)
+  the engine's own focus machinery:
+  - `V.FocusScope(contain:, restoreFocus:, autoFocus:, singleTabStop:)` (and the same knobs as a
+    `FocusScope` element prop on any container): scoped Tab containment with same-flush snap-back
+    for spatial/pointer exits, focus restore on unmount, mount autofocus, and the WAI-ARIA
+    composite-widget single-tab-stop (roving) contract — engine spatial 2D navigation inside a
+    group stays untouched.
+  - `TabIndex` / `DelegatesFocus` element props (with the documented engine trap that -1 removes
+    an element from BOTH the Tab ring and 2D navigation on runtime panels).
+  - `Hooks.UseFocusRing`: keyboard/gamepad-visible focus (vs pointer focus) as re-rendering
+    component state, riding the same element-local heuristic as the existing `focus-visible:`
+    styling variant.
+  - `V.Portal(layer:)` / `V.WorldSpace` accept `focusOrder: PanelFocusOrder.Chained` to join the
+    declaring panel's Tab order at the call site (iframe semantics) — the explicit, opt-in
+    cross-panel focus escape; `Isolated` (default) keeps today's internal wrap.
+  - All sequential interception rides one pinned engine contract (a TrickleDown
+    NavigationMoveEvent listener + `FocusController.IgnoreEvent` deterministically preempts the
+    post-dispatch default move), tripwired by dedicated PlayMode tests.
 - `V.Anchored(target:)`: drei's `<Html>` parity in its default screen-space projection mode — a
   plain 2D element whose `left`/`top` track a 3D scene Transform's projected position every frame
   via `RuntimePanelUtils.CameraTransformWorldToPanel`. Not depth-tested against scene geometry
@@ -52,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `Button`/`Slider`/`TextField`/`Toggle` recycled through the element pool silently lost its
+  focusability (the pool's common reset scrubs `focusable` to the plain-VisualElement default,
+  which is false, and nothing restored the type's own constructor default) — a recycled control
+  dropped out of Tab/gamepad navigation entirely. The type-specific pool resets now restore it.
 - A `ComponentNode` nested inside a tree reconciled via a direct `Reconciler.Reconcile()` call
   (rather than `V.Mount`) no longer bootstraps its own isolated `ReconcilerContext`. Its fiber now
   always joins the context of the `ComponentRegistry` that created it, instead of deriving one from

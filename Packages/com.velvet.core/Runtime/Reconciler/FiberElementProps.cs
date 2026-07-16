@@ -41,6 +41,30 @@ namespace Velvet
         public bool? Focusable { get => _focusable; set { ThrowIfReadOnly(); _focusable = value; } }
         private bool? _focusable;
 
+        /// <summary>
+        /// Maps to the element's tabIndex. Positive values sort ahead of 0 in the sequential (Tab) ring.
+        /// Caution: on runtime panels, -1 removes the element from BOTH the Tab ring AND 2D arrow/dpad/stick
+        /// navigation — it is not the web's "focusable but not tab-reachable". For a group with one Tab
+        /// stop, use a focus scope with SingleTabStop instead.
+        /// </summary>
+        public int? TabIndex { get => _tabIndex; set { ThrowIfReadOnly(); _tabIndex = value; } }
+        private int? _tabIndex;
+
+        /// <summary>
+        /// Maps to the element's delegatesFocus: focusing this element forwards to its first focusable
+        /// child, and the focus rings skip the element itself.
+        /// </summary>
+        public bool? DelegatesFocus { get => _delegatesFocus; set { ThrowIfReadOnly(); _delegatesFocus = value; } }
+        private bool? _delegatesFocus;
+
+        /// <summary>
+        /// Focus-scope behavior for this container element (React Aria's FocusScope parity). Attachable to
+        /// ANY container — the modal Div you already have can be the scope; <c>V.FocusScope</c> is sugar for
+        /// when no container exists yet.
+        /// </summary>
+        public FocusScopeSettings? FocusScope { get => _focusScope; set { ThrowIfReadOnly(); _focusScope = value; } }
+        private FocusScopeSettings? _focusScope;
+
         /// <summary>Slider-specific settings.</summary>
         public SliderSettings? Slider { get => _slider; set { ThrowIfReadOnly(); _slider = value; } }
         private SliderSettings? _slider;
@@ -158,6 +182,28 @@ namespace Velvet
                 "pixelsPerUnit must be positive; it maps particle world units to element pixels.");
         }
     }
+
+    /// <summary>
+    /// Focus-management behavior for a container subtree — React Aria's FocusScope parity:
+    /// <see cref="Contain"/>/<see cref="RestoreFocus"/>/<see cref="AutoFocus"/> map 1:1;
+    /// <see cref="SingleTabStop"/> is the WAI-ARIA composite-widget (roving) contract adapted to UI Toolkit,
+    /// where arrow/dpad movement inside the group is already engine-native 2D navigation. Record structural
+    /// equality simplifies DiffProps.
+    /// </summary>
+    /// <param name="Contain">Tab/Shift-Tab wrap within the subtree (computed by a focus ring scoped to it);
+    /// a 2D/pointer move that exits the subtree is snapped back within the same event flush.</param>
+    /// <param name="RestoreFocus">On unmount while holding focus, refocus the element focus came FROM when
+    /// it first entered the scope (skipped if that element is detached or cannot grab focus).</param>
+    /// <param name="AutoFocus">On attach-to-panel, focus the scope's first focusable descendant (skipped
+    /// when focus is already inside the scope).</param>
+    /// <param name="SingleTabStop">The subtree behaves as one Tab stop: Tab from inside exits past the
+    /// remaining members; Tab entering from outside lands on the last-focused member (else the scope's
+    /// first). Members keep tabIndex 0, so engine 2D arrow/dpad navigation inside is untouched.</param>
+    public sealed record FocusScopeSettings(
+        bool Contain = false,
+        bool RestoreFocus = false,
+        bool AutoFocus = false,
+        bool SingleTabStop = false);
 
     /// <summary>
     /// The 3D Transform an Anchored element's screen position tracks, plus the camera whose projection

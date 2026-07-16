@@ -109,6 +109,48 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
+        public IEnumerator Given_AFocusInHandlerFocusingAnotherElement_When_TheHandlersElementGainsFocus_Then_TheNestedFocusWins()
+        {
+            // Arrange — the engine's pending-focus gate: a Focus() call made from inside a FocusIn handler
+            // starts a new pending switch whose result wins. Scope snap-back and chained-placeholder
+            // forwarding both stand on this, so it gets its own tripwire.
+            var third = new Button { name = "third", text = "third" };
+            _first.panel.visualTree.Add(third);
+            _second.RegisterCallback<FocusInEvent>(_ => third.Focus());
+
+            // Act
+            _second.Focus();
+            yield return null;
+
+            // Assert
+            Assert.That(_first.panel.focusController.focusedElement, Is.EqualTo(third));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AVelvetConstructedFocusRing_When_TheEngineExecutesASequentialMove_Then_BothAgreeOnTheTarget()
+        {
+            // Arrange — sequential prediction rides a Velvet-built VisualElementFocusRing over the panel
+            // root; the runtime ring delegates its own Next/Previous to exactly that class, and this pins
+            // the agreement so an engine change to the delegation shows up as a red test, not a drift.
+            var panel = _first.panel;
+            Assume.That(panel.focusController.focusedElement, Is.EqualTo(_first),
+                "Precondition: the first button holds focus");
+            var predicted = new VisualElementFocusRing(panel.visualTree)
+                .GetNextFocusable(_first, VisualElementFocusChangeDirection.right);
+
+            // Act
+            using (var move = NavigationMoveEvent.GetPooled(NavigationMoveEvent.Direction.Next))
+            {
+                move.target = _first;
+                _first.SendEvent(move);
+            }
+            yield return null;
+
+            // Assert
+            Assert.That(panel.focusController.focusedElement, Is.EqualTo(predicted));
+        }
+
+        [UnityTest]
         public IEnumerator Given_ATrickleDownRootListenerCallingOnlyStopPropagation_When_ANavigationMoveEventDispatches_Then_TheDefaultFocusMoveStillRuns()
         {
             // Arrange — the negative contract: StopPropagation alone silences other listeners but the

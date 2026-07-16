@@ -322,6 +322,35 @@ namespace Velvet
                 AnchoredDriver.Detach(element, anchoredBinding);
                 _ctx.AnchoredBindings.Remove(element);
             }
+            if (_ctx.FocusScopeBindings.TryGetValue(element, out var focusScopeBinding))
+            {
+                // RestoreFocus must run BEFORE this element physically leaves the tree (UI Toolkit clears
+                // the focused element the moment it detaches — the same ordering RescueFocusFromWorldSpaceHost
+                // exists for): if the scope still holds focus, return it to where it came from on first entry.
+                if (focusScopeBinding.Settings.RestoreFocus
+                    && element.panel?.focusController?.focusedElement is VisualElement held
+                    && element.Contains(held))
+                {
+                    var restore = focusScopeBinding.RestoreTarget;
+                    if (restore != null && restore.panel != null && restore.canGrabFocus)
+                    {
+                        restore.Focus();
+                    }
+                }
+                FocusScopeDriver.Detach(element, focusScopeBinding);
+                _ctx.FocusScopeBindings.Remove(element);
+            }
+            // A chained portal placeholder unmounting releases both chained registries (the reverse index
+            // only when this placeholder still owns the host's ring-edge escape).
+            if (_ctx.ChainedPlaceholders.Remove(element, out var chainedRecord))
+            {
+                var chainedHostRoot = chainedRecord.Document != null ? chainedRecord.Document.rootVisualElement : null;
+                if (chainedHostRoot != null && _ctx.ChainedHostRoots.TryGetValue(chainedHostRoot, out var owner)
+                    && ReferenceEquals(owner, element))
+                {
+                    _ctx.ChainedHostRoots.Remove(chainedHostRoot);
+                }
+            }
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
             {
                 virtualListController.Dispose();

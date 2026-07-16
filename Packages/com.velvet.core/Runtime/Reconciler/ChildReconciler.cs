@@ -252,6 +252,8 @@ namespace Velvet
                         }
                         target = layerHost.Document.rootVisualElement;
                         children = layerPortal.Children ?? Array.Empty<VNode>();
+                        FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
+                            layerPortal.FocusOrder == PanelFocusOrder.Chained, _ctx);
                         break;
                     }
                     case WorldSpaceNode worldSpaceNode:
@@ -260,6 +262,8 @@ namespace Velvet
                         _ctx.WorldSpaceBindings[placeholder] = record;
                         target = record.Document.rootVisualElement;
                         children = worldSpaceNode.Children ?? Array.Empty<VNode>();
+                        FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
+                            worldSpaceNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
                         break;
                     }
                     case PortalNode registryPortal:

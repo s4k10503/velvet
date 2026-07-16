@@ -136,6 +136,15 @@ A world-space host follows the same declaring-panel sync as the layers, and a ho
 externally (a scene unload) is skipped safely on later patches — remount the `V.WorldSpace`
 node to rebuild it.
 
+## Cross-panel Tab order: `PanelFocusOrder`
+
+Both host flavors accept a `focusOrder:` argument. The default, `Isolated`, is the pre-existing
+behavior: the host panel's focus ring wraps internally and Tab never crosses the panel boundary
+(the explicit-opt-in stance of the cross-panel navigation decision). `Chained` joins the
+declaring panel's Tab order at the portal's call site with iframe semantics — see the focus
+guide for the full contract, including the one-tick deferral on the escape hop and why 2D
+navigation never crosses panels.
+
 ## Screen-space anchored elements: `V.Anchored`
 
 drei's `<Html>` parity in its DEFAULT mode: a plain screen-space element whose `left`/`top`
