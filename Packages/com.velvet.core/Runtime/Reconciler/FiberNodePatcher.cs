@@ -1055,6 +1055,9 @@ namespace Velvet
             if (oldProps.Focusable != newProps.Focusable)
             {
                 FiberPropApplier.ApplyFocusable(element, newProps.Focusable);
+                // A declared Focusable now owns the flag: the drag session's transient keyboard-focus
+                // anchor must not restore over it on close (the value-diffed prop would never re-apply).
+                _ctx.ActiveDrag?.OnSourceFocusableDeclared(element);
             }
 
             if (oldProps.TabIndex != newProps.TabIndex)

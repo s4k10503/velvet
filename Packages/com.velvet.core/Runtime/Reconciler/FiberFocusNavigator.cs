@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -488,6 +489,13 @@ namespace Velvet
                 return;
             }
 
+            // A drag session's keyboard anchor is plumbing, not user intent: recording it would corrupt
+            // a scope's roving-stop memory and consume its one-shot restore capture.
+            if (ctx.ActiveDrag != null && ctx.ActiveDrag.IsAnchorFocus(target))
+            {
+                return;
+            }
+
             var scopeRoot = FindEnclosingScopeRoot(target, ctx, out var binding);
             if (scopeRoot == null || binding == null)
             {
@@ -535,7 +543,43 @@ namespace Velvet
                 return false;
             }
             back.Focus();
+            ScheduleRevertedLandingSettle(target, ctx);
             return true;
+        }
+
+        // A reverted landing's focus events can interleave — under the engine's queued focus dispatch —
+        // such that the element never receives a terminating Blur: every focus-derived consumer on it
+        // (variant styling, UseFocusRing, user Blur handlers) then believes it is still focused. One
+        // tick later, after the focus queue has fully drained, an element that did not end up holding
+        // focus is dealt the Blur it is semantically owed as a real dispatched event — every consumer
+        // hooked on the element heals uniformly, not just the ones the reconciler knows by table. An
+        // element DETACHED at fire time cannot receive events, so its registered variant consumers are
+        // settled directly through the shared sweep instead (detached means not focused, and a transient
+        // keyed-reorder detach must not carry the residue back in); a hook-local consumer on a detached
+        // element is the unmount path, which owns its own correction.
+        private static void ScheduleRevertedLandingSettle(VisualElement reverted, ReconcilerContext ctx)
+        {
+            var root = reverted.panel?.visualTree;
+            if (root == null)
+            {
+                return;
+            }
+            root.schedule.Execute(() =>
+            {
+                if (reverted.panel?.focusController?.focusedElement is VisualElement held
+                    && (held == reverted || reverted.Contains(held)))
+                {
+                    return;
+                }
+                if (reverted.panel != null)
+                {
+                    using var blur = BlurEvent.GetPooled();
+                    blur.target = reverted;
+                    reverted.SendEvent(blur);
+                    return;
+                }
+                VariantSettleSweep.ForEach(reverted, ctx, static settler => settler.SettleFocusLoss());
+            });
         }
 
         // The escape containment cannot see from FocusIn: focus cleared to NOTHING (a pointer press on
@@ -590,7 +634,7 @@ namespace Velvet
         // True when any panel this reconciler manages (the main panel, a layer host, a world-space host)
         // currently holds a focused element. UI Toolkit focus is per panel, so "this panel's controller
         // reads null" alone cannot distinguish focus-went-nowhere from focus-went-to-another-panel.
-        private static bool AnyManagedPanelHoldsFocus(ReconcilerContext ctx)
+        internal static bool AnyManagedPanelHoldsFocus(ReconcilerContext ctx)
         {
             if (ctx.MainPanelRoot?.panel?.focusController?.focusedElement != null)
             {

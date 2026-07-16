@@ -25,7 +25,7 @@ namespace Velvet
     // so the old code only lit up on the uncovered border ring.) On PointerOut the hover is cleared only
     // once the pointer has actually left this element's bounds; while it merely crosses between descendants the
     // payload is kept, avoiding a per-crossing remove/re-add that restarts any transition.
-    internal sealed class StyleVariantManipulator : Manipulator
+    internal sealed class StyleVariantManipulator : Manipulator, IVariantSettleTarget
     {
         private string[] _hover;
         private string[] _focus;
@@ -102,7 +102,10 @@ namespace Velvet
 
         // Forwards a drag session's synthetic release to the shared signal source (see
         // ElementLocalVariantSignals.SettleRelease); the per-state dedup below makes it idempotent.
-        internal void SettleRelease() => _signals?.SettleRelease();
+        public void SettleRelease() => _signals?.SettleRelease();
+
+        // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
+        public void SettleFocusLoss() => _signals?.SettleFocusLoss();
 
         // Maps a detected element-local signal edge to its payload, deduping on the per-state bookkeeping so
         // a repeated edge (e.g. a bubbling PointerOver, or a no-op checked change) does not churn the payload.
