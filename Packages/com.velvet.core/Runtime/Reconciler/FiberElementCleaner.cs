@@ -322,11 +322,13 @@ namespace Velvet
                 AnchoredDriver.Detach(element, anchoredBinding);
                 _ctx.AnchoredBindings.Remove(element);
             }
-            if (_ctx.FocusScopeBindings.TryGetValue(element, out var focusScopeBinding))
+            if (_ctx.FocusScopeBindings.Remove(element, out var focusScopeBinding))
             {
-                // RestoreFocus must run BEFORE this element physically leaves the tree (UI Toolkit clears
-                // the focused element the moment it detaches — the same ordering RescueFocusFromWorldSpaceHost
-                // exists for): if the scope still holds focus, return it to where it came from on first entry.
+                // The registry entry is dropped BEFORE the restore focus fires: the restore's own FocusIn
+                // must not see the dying scope as a live contain scope, or the snap-back would revert the
+                // restore straight back into the detaching subtree. RestoreFocus itself must still run
+                // BEFORE this element physically leaves the tree (UI Toolkit clears the focused element
+                // the moment it detaches — the same ordering RescueFocusFromWorldSpaceHost exists for).
                 if (focusScopeBinding.Settings.RestoreFocus
                     && element.panel?.focusController?.focusedElement is VisualElement held
                     && element.Contains(held))
@@ -338,7 +340,6 @@ namespace Velvet
                     }
                 }
                 FocusScopeDriver.Detach(element, focusScopeBinding);
-                _ctx.FocusScopeBindings.Remove(element);
             }
             // A departing element must not linger as any scope's remembered member or restore target:
             // pooled primitives get recycled into unrelated roles, and the liveness checks at use time
@@ -360,6 +361,12 @@ namespace Velvet
             {
                 var chainedHostRoot = chainedRecord.Document != null ? chainedRecord.Document.rootVisualElement : null;
                 FiberFocusNavigator.ReleaseChainedOwnership(element, chainedHostRoot, _ctx);
+            }
+            // A deferred navigator attach hook still pending on this element unregisters with it — a
+            // pooled element must not carry a live hook into its next role.
+            if (_ctx.NavigatorPendingAttachHooks.Count > 0)
+            {
+                FiberFocusNavigator.ReleasePendingAttachHooks(element, _ctx);
             }
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
             {

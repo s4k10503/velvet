@@ -1093,11 +1093,12 @@ namespace Velvet
         {
             var (isFocused, setFocused) = UseState(false);
             var (isFocusVisible, setFocusVisible) = UseState(false);
-            // Generation cell shared by every ref invocation of this hook instance: each setup stamps a new
-            // generation, so a cleanup's deferred work can tell whether it is still the LATEST hookup for
-            // this component or was superseded (a patch re-invoking the ref, or the ref moving to a
-            // replacement element).
+            // Generation cell + latest-hooked-element cell, shared by every ref invocation of this hook
+            // instance: each setup stamps a new generation and records its element, so a cleanup's
+            // deferred work can tell whether it was superseded — and by WHAT.
             var generation = UseRef<int[]>(() => new int[1]);
+            var hookedElement = UseRef<UnityEngine.UIElements.VisualElement[]>(
+                () => new UnityEngine.UIElements.VisualElement[1]);
             var refCallback = UseCallback<Func<UnityEngine.UIElements.VisualElement, Action>>(element =>
             {
                 var signals = new ElementLocalVariantSignals((signal, on) =>
@@ -1110,6 +1111,7 @@ namespace Velvet
                 });
                 signals.Hook(element, seedChecked: false, registerChecked: false);
                 var gen = ++generation.Current[0];
+                hookedElement.Current[0] = element;
                 return () =>
                 {
                     signals.Unhook();
@@ -1120,10 +1122,12 @@ namespace Velvet
                     // WHILE FOCUSED gets no Blur through these signals either — the unhook above runs before
                     // the element leaves the panel — which would strand IsFocused/IsFocusVisible at true on
                     // a still-mounted component. So when the element holds focus at cleanup time, the
-                    // correction is deferred to the panel's next scheduler tick — safely OUTSIDE any flush —
-                    // and fires only if no newer hookup superseded this one (a patch's re-invoke stamps a
-                    // new generation synchronously right after this cleanup, turning the deferred write into
-                    // a no-op; the setters are already no-ops if the component itself unmounted).
+                    // correction is deferred to the panel's next scheduler tick — safely OUTSIDE any flush.
+                    // At the tick, a superseding hookup only cancels the correction when ITS element
+                    // actually holds focus (a patch re-invoking the ref on the same still-focused element):
+                    // a ref that moved to a REPLACEMENT element must still correct, because the old
+                    // element's focus died with it and the unfocused replacement will never emit the Blur
+                    // edge. The setters are already no-ops if the component itself unmounted.
                     var panel = element.panel;
                     if (panel?.visualTree == null) return;
                     if (panel.focusController?.focusedElement is not UnityEngine.UIElements.VisualElement held
@@ -1133,14 +1137,24 @@ namespace Velvet
                     }
                     panel.visualTree.schedule.Execute(() =>
                     {
-                        if (generation.Current[0] != gen) return;
+                        if (generation.Current[0] != gen)
+                        {
+                            var current = hookedElement.Current[0];
+                            if (current != null
+                                && current.panel?.focusController?.focusedElement
+                                    is UnityEngine.UIElements.VisualElement nowHeld
+                                && (nowHeld == current || current.Contains(nowHeld)))
+                            {
+                                return;
+                            }
+                        }
                         setFocused.Invoke(false);
                         setFocusVisible.Invoke(false);
                     });
                 };
-                // Deps are the two setters and the generation ref — all reference-stable across renders —
-                // so the ref identity never changes across re-renders.
-            }, setFocused, setFocusVisible, generation);
+                // Deps are the two setters and the two refs — all reference-stable across renders — so
+                // the ref identity never changes across re-renders.
+            }, setFocused, setFocusVisible, generation, hookedElement);
             return new FocusRing(isFocused, isFocusVisible, refCallback);
         }
 
