@@ -308,34 +308,16 @@ namespace Velvet
             actions.Add(() => field.UnregisterValueChangedCallback(callback));
         }
 
-        // Brackets a discrete user-input handler: marks FiberWorkLoop.IsInDiscreteEvent for its
-        // duration so hook-triggered renders take the Urgent lane, then — at the outermost discrete boundary —
-        // flushes the owning context's immediate batch synchronously so the update commits in the same frame.
-        // The flag is restored before the flush so updates scheduled by effects run
-        // during the flush fall back to the Normal next-frame lane rather than recursing synchronously.
-        // Two deliberate limitations of this synchronous flush, which the single-context lane stays correct for
+        // The discrete-input bracket lives in FiberDiscreteEventScope (shared with the drag-and-drop
+        // session, whose start/end/cancel commits must behave exactly like click handlers).
+        // Two deliberate limitations of its synchronous flush, which the single-context lane stays correct for
         // but which differ in flush timing for edge configurations: (1) only the owning context's batch is
         // drained synchronously, so Urgent updates a handler schedules on other ReconcilerContexts (e.g. a
         // shared-Store subscriber in a separately mounted tree) still commit on their own next-frame drain;
         // (2) layout-effect-scheduled updates during the synchronous flush take the Normal next-frame lane
         // rather than being re-flushed synchronously before paint.
         private void RunDiscrete(Action? handler)
-        {
-            var wasInDiscreteEvent = FiberWorkLoop.IsInDiscreteEvent;
-            FiberWorkLoop.IsInDiscreteEvent = true;
-            try
-            {
-                handler?.Invoke();
-            }
-            finally
-            {
-                FiberWorkLoop.IsInDiscreteEvent = wasInDiscreteEvent;
-                if (!wasInDiscreteEvent)
-                {
-                    _batchScheduler?.FlushImmediate();
-                }
-            }
-        }
+            => FiberDiscreteEventScope.Run(handler, _batchScheduler);
 
         private static Delegate? GetDelegate(FiberEventBinding binding)
         {

@@ -73,6 +73,10 @@ namespace Velvet
             _signals.Hook(target, seedChecked: false, registerChecked: false);
         }
 
+        // Forwards a drag session's synthetic release to the shared signal source (see
+        // ElementLocalVariantSignals.SettleRelease); the per-state dedup below makes it idempotent.
+        internal void SettleRelease() => _signals?.SettleRelease();
+
         protected override void UnregisterCallbacksFromTarget()
         {
             if (_isHovered)

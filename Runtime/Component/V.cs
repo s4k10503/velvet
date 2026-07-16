@@ -1666,6 +1666,203 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Drag-and-drop scope — dnd-kit's DndContext. A real container element (the FocusScope
+        /// precedent: the element is the stable scope identity and cleanup anchor). Draggables and
+        /// droppables pair with their nearest ancestor scope at event time; one drag may be active per
+        /// mounted tree at a time. Any existing container can be a scope via props
+        /// (<see cref="FiberElementProps.DndContext"/>) — this factory is convenience.
+        /// </summary>
+        /// <param name="onDragStart">Fired once when a press crosses its activation constraint.</param>
+        /// <param name="onDragOver">Fired when the winning drop target CHANGES (including to null).</param>
+        /// <param name="onDragEnd">Fired on release; state written here flushes synchronously like any
+        /// discrete input handler. Over is null when dropped on nothing.</param>
+        /// <param name="onDragCancel">Fired when a drag aborts (Escape, pointer cancel, lost capture,
+        /// or the source/scope unmounting mid-drag).</param>
+        /// <param name="collisionDetection">Collision strategy; null means
+        /// <see cref="DndCollisions.RectIntersection"/>.</param>
+        /// <param name="activation">Scope-wide activation default; a per-draggable override wins.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode DndContext(
+            Action<DragStartArgs>? onDragStart = null,
+            Action<DragOverArgs>? onDragOver = null,
+            Action<DragEndArgs>? onDragEnd = null,
+            Action<DragCancelArgs>? onDragCancel = null,
+            DndCollisionDetection? collisionDetection = null,
+            DragActivation? activation = null,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            FiberElementProps? props = null,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            VNode?[]? children = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
+        {
+            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
+            mergedProps.DndContext = new DndContextSettings(
+                onDragStart, onDragOver, onDragEnd, onDragCancel, collisionDetection, activation);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(VisualElement),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = mergedProps,
+                Styles = styles,
+                Children = children ?? EmptyChildren,
+                Events = EmptyEvents,
+                RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        /// <summary>
+        /// Drag source — dnd-kit's useDraggable. The element itself is the drag node; it must sit (at
+        /// any depth) under a <see cref="DndContext"/> scope.
+        /// </summary>
+        /// <param name="id">Identity reported to the scope callbacks. An element that is both draggable
+        /// and droppable under one id never collides with itself.</param>
+        /// <param name="dragData">Arbitrary payload carried into the callbacks.</param>
+        /// <param name="disabled">A disabled draggable never arms.</param>
+        /// <param name="movement"><see cref="DragMovement.Translate"/> (default) writes the pointer delta
+        /// as an inline translate during the drag; <see cref="DragMovement.None"/> leaves the source in
+        /// place (the V.DragOverlay ghost pattern).</param>
+        /// <param name="activation">Per-draggable activation constraint; wins over the scope's.</param>
+        /// <param name="whileDraggingClass">Classes applied while this element's drag is active — the
+        /// zero-re-render isDragging channel.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode Draggable(
+            string id,
+            object? dragData = null,
+            bool disabled = false,
+            DragMovement movement = DragMovement.Translate,
+            DragActivation? activation = null,
+            string? whileDraggingClass = null,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            FiberElementProps? props = null,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            VNode?[]? children = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
+        {
+            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
+            mergedProps.Draggable = new DraggableSettings(
+                id, dragData, disabled, movement, activation, whileDraggingClass);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(VisualElement),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = mergedProps,
+                Styles = styles,
+                Children = children ?? EmptyChildren,
+                Events = EmptyEvents,
+                RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        /// <summary>
+        /// Drop target — dnd-kit's useDroppable. Collides with the active drag's rect under the scope's
+        /// collision strategy; accept-filtering stays app logic in the scope callbacks (dnd-kit core
+        /// behavior).
+        /// </summary>
+        /// <param name="id">Identity reported to the scope callbacks.</param>
+        /// <param name="dropData">Arbitrary payload carried into the callbacks.</param>
+        /// <param name="disabled">A disabled droppable never collides.</param>
+        /// <param name="whileOverClass">Classes applied while this target is the winning collision.</param>
+        /// <param name="whileDragActiveClass">Classes applied to every enabled candidate while any drag
+        /// is live in scope (dnd-kit's droppable "active" cue).</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode Droppable(
+            string id,
+            object? dropData = null,
+            bool disabled = false,
+            string? whileOverClass = null,
+            string? whileDragActiveClass = null,
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            FiberElementProps? props = null,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            VNode?[]? children = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
+        {
+            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
+            mergedProps.Droppable = new DroppableSettings(
+                id, dropData, disabled, whileOverClass, whileDragActiveClass);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(VisualElement),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = mergedProps,
+                Styles = styles,
+                Children = children ?? EmptyChildren,
+                Events = EmptyEvents,
+                RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        /// <summary>
+        /// Portal-rendered drag preview — dnd-kit's DragOverlay. Expands to
+        /// <c>V.Portal(UILayer.Overlay)</c> hosting a framework-positioned, picking-ignored positioner
+        /// that is sized to the drag source at activation and tracks the pointer while a drag is active
+        /// (hidden otherwise). Render preview content conditionally from state set in
+        /// <c>onDragStart</c>/<c>onDragEnd</c> — dnd-kit's activeId recipe. Inherits
+        /// <c>V.Portal(layer:)</c>'s editor-context degradation.
+        /// </summary>
+        /// <param name="children">The preview content.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="PortalNode"/>.</returns>
+        public static PortalNode DragOverlay(VNode?[]? children = null, string? key = null)
+        {
+            // Deliberately NOT a rented pool bag: the fiber-tree recycle path does not descend into
+            // PortalNode children, so a rented bag here would never flow back to the pool and its
+            // ownership tracking would pin one bag per render. A plain instance is ordinary garbage.
+            var positionerProps = new FiberElementProps();
+            positionerProps.DragOverlay = new DragOverlaySettings();
+            return Portal(UILayer.Overlay, key: key, children: new VNode?[]
+            {
+                new ElementNode
+                {
+                    Key = "drag-overlay-positioner",
+                    ElementType = typeof(VisualElement),
+                    Props = positionerProps,
+                    Children = children ?? EmptyChildren,
+                    Events = EmptyEvents,
+                },
+            });
+        }
+
+        /// <summary>
         /// Placeholder that renders the matched child route component of a nested route at this position.
         /// </summary>
         /// <param name="context">

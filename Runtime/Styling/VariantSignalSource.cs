@@ -118,13 +118,19 @@ namespace Velvet
             _emit(VariantSignal.Active, true);
         }
 
-        private void OnPointerUp(PointerUpEvent evt)
-        {
-            _pointerFocus = false;
-            _emit(VariantSignal.Active, false);
-        }
+        private void OnPointerUp(PointerUpEvent evt) => ReleasePress();
 
-        private void OnPointerCancel(PointerCancelEvent evt)
+        private void OnPointerCancel(PointerCancelEvent evt) => ReleasePress();
+
+        // Observes a synthetic release: a drag session that captured the pointer swallows the real
+        // PointerUp (StopImmediatePropagation before the bubble phase), so the Active edge these
+        // callbacks would have produced never arrives — without this, whileTap / active: stick on after
+        // every completed drag. Consumers' own per-state bookkeeping dedups a redundant call.
+        public void SettleRelease() => ReleasePress();
+
+        // The one release body all three release paths share, so a change to release semantics cannot
+        // drift between a real pointer-up, a cancel, and a drag's synthetic settle.
+        private void ReleasePress()
         {
             _pointerFocus = false;
             _emit(VariantSignal.Active, false);

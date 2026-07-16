@@ -388,6 +388,19 @@ namespace Velvet
         // fired.
         public List<(VisualElement Element, EventCallback<AttachToPanelEvent> Hook)> NavigatorPendingAttachHooks { get; } = new();
 
+        // Drag-and-drop registries (V.DndContext / V.Draggable / V.Droppable / V.DragOverlay), keyed by
+        // the carrying element. None are pure side-tables: the draggable binding owns a registered
+        // pointer-down armer, the overlay owns forced inline picking/position state, and all four are
+        // torn down explicitly by FiberElementCleaner and swept by Reconciler.Dispose.
+        public Dictionary<VisualElement, DndScopeBinding> DndScopeBindings { get; } = new();
+        public Dictionary<VisualElement, DndDraggableBinding> DraggableBindings { get; } = new();
+        public Dictionary<VisualElement, DndDroppableBinding> DroppableBindings { get; } = new();
+        public Dictionary<VisualElement, DndOverlayBinding> DragOverlayBindings { get; } = new();
+
+        // The one live drag session (pending or active) for this tree, owned by DndActiveDrag itself:
+        // null = idle. See DndActiveDrag for the state machine.
+        internal DndActiveDrag? ActiveDrag { get; set; }
+
         // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
         // range of FiberPortalRegistry.Get(TargetId).Children owned by this Portal — the
         // invariant that lets multiple Portals coexist on the same target without overwriting each
