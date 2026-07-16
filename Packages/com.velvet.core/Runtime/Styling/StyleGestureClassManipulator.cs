@@ -12,7 +12,7 @@ namespace Velvet
     // whileFocus uses the element's own Focus signal (backed by FocusEvent / BlurEvent — only focusable
     // elements — buttons, fields — ever trigger it). whileTap maps to the Active signal (pointer-down /
     // pointer-up / pointer-cancel / release-outside-bounds).
-    internal sealed class StyleGestureClassManipulator : Manipulator
+    internal sealed class StyleGestureClassManipulator : Manipulator, IVariantSettleTarget
     {
         private string[] _hoverClasses;
         private string[] _tapClasses;
@@ -75,10 +75,10 @@ namespace Velvet
 
         // Forwards a drag session's synthetic release to the shared signal source (see
         // ElementLocalVariantSignals.SettleRelease); the per-state dedup below makes it idempotent.
-        internal void SettleRelease() => _signals?.SettleRelease();
+        public void SettleRelease() => _signals?.SettleRelease();
 
         // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
-        internal void SettleFocusLoss() => _signals?.SettleFocusLoss();
+        public void SettleFocusLoss() => _signals?.SettleFocusLoss();
 
         protected override void UnregisterCallbacksFromTarget()
         {

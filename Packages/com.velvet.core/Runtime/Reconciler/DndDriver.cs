@@ -278,25 +278,6 @@ namespace Velvet
         }
 
         private static void SettleOn(VisualElement element, ReconcilerContext ctx)
-        {
-            if (ctx.GestureManipulators.TryGetValue(element, out var gesture))
-            {
-                gesture.SettleRelease();
-            }
-            if (ctx.VariantManipulators.TryGetValue(element, out var variant))
-            {
-                variant.SettleRelease();
-            }
-            if (ctx.StackedVariantManipulators.Count > 0)
-            {
-                foreach (var kv in ctx.StackedVariantManipulators)
-                {
-                    if (kv.Key.target == element)
-                    {
-                        kv.Value.SettleRelease();
-                    }
-                }
-            }
-        }
+            => VariantSettleSweep.ForEach(element, ctx, static settler => settler.SettleRelease());
     }
 }

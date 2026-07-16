@@ -11,7 +11,7 @@ namespace Velvet
     // top-level manipulator uses, but applies nothing until the outer gate opens. The leaf itself may STILL be
     // a variant (dark:hover:focus:...): StyleVariantPayload.Apply recurses, spawning a further stacked
     // manipulator gated by THIS one's combined state.
-    internal sealed class StyleStackedVariantManipulator : Manipulator
+    internal sealed class StyleStackedVariantManipulator : Manipulator, IVariantSettleTarget
     {
         private readonly ReconcilerContext _ctx;
         private readonly StyleVariantKind _innerKind;
@@ -70,10 +70,10 @@ namespace Velvet
         // Forwards a drag session's synthetic release to the shared signal source (see
         // ElementLocalVariantSignals.SettleRelease); a non-element-local inner (dark:/sm:) has no press
         // state to settle and no signals instance, so the null-conditional is the whole guard.
-        internal void SettleRelease() => _elementSignals?.SettleRelease();
+        public void SettleRelease() => _elementSignals?.SettleRelease();
 
         // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
-        internal void SettleFocusLoss() => _elementSignals?.SettleFocusLoss();
+        public void SettleFocusLoss() => _elementSignals?.SettleFocusLoss();
 
         protected override void RegisterCallbacksOnTarget()
         {

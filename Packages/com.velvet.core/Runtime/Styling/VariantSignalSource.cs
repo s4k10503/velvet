@@ -16,6 +16,41 @@ namespace Velvet
         Checked,
     }
 
+    // The synthetic-settle surface every element-local variant consumer implements, so the reconciler
+    // sweeps (drag release, focus-loss fallback) enumerate ONE shape instead of per-type calls.
+    internal interface IVariantSettleTarget
+    {
+        void SettleRelease();
+        void SettleFocusLoss();
+    }
+
+    // Enumerates every registered element-local variant consumer for one element through the shared
+    // settle surface, so the reconciler-side sweeps cannot drift on WHICH registries participate.
+    internal static class VariantSettleSweep
+    {
+        public static void ForEach(VisualElement element, ReconcilerContext ctx, Action<IVariantSettleTarget> action)
+        {
+            if (ctx.GestureManipulators.TryGetValue(element, out var gesture))
+            {
+                action(gesture);
+            }
+            if (ctx.VariantManipulators.TryGetValue(element, out var variant))
+            {
+                action(variant);
+            }
+            if (ctx.StackedVariantManipulators.Count > 0)
+            {
+                foreach (var kv in ctx.StackedVariantManipulators)
+                {
+                    if (kv.Key.target == element)
+                    {
+                        action(kv.Value);
+                    }
+                }
+            }
+        }
+    }
+
     // Detects element-local interaction state on a target and reports each on/off TRANSITION EDGE to a
     // callback. It owns ONLY the detection — the bubbling-PointerOut worldBound check, the
     // focus-visible-vs-pointer-focus heuristic, and the own-target checked filter — so every consumer

@@ -328,8 +328,12 @@ namespace Velvet
             // element, and a mouse-only drag typically has none — the Escape listener would never see
             // its KeyDownEvent (verified against real editor input). The source anchors keyboard focus
             // for the session; Close restores what it changed.
+            // Panel-local null is not "focus went nowhere": keyboard routes through whichever managed
+            // panel holds focus, so the anchor must not steal routing from e.g. a main-panel TextField
+            // while the drag runs in a layer panel.
             var focusController = _source.panel?.focusController;
-            if (focusController != null && focusController.focusedElement == null)
+            if (focusController != null && focusController.focusedElement == null
+                && !FiberFocusNavigator.AnyManagedPanelHoldsFocus(_ctx))
             {
                 if (!_source.focusable)
                 {
@@ -511,17 +515,19 @@ namespace Velvet
             FireDiscrete(() => _scope.Settings.OnDragEnd?.Invoke(args));
         }
 
-        // A fresh primary press under the SAME non-mouse pointer id while this session is active means
-        // the previous release was never observed (capture-only or off-window delivery): a finger cannot
-        // go down twice. Without this, the stale session hijacks the new tap — its moves drive the ghost
-        // drag and its release commits a drop the user never made. Deliberately NON-MOUSE only: a mouse
-        // phantom always sees a buttonless hover move first (the move-side guard), and real mouse input
-        // was observed delivering a spurious synthesized down mid-drag that must not cancel anything.
+        // A fresh primary press under the SAME touch pointer id while this session is active means the
+        // previous release was never observed (capture-only or off-window delivery): a finger cannot go
+        // down twice. Without this, the stale session hijacks the new tap — its moves drive the ghost
+        // drag and its release commits a drop the user never made. Deliberately TOUCH only: mouse AND
+        // pen hover, so their phantoms die on the first buttonless hover move (the move-side guard), and
+        // real mouse input was observed delivering a spurious synthesized down mid-drag that must not
+        // cancel anything. Residual (documented, not structural): touch surfaced through mouse
+        // emulation carries the mouse id and has no hover moves — that phantom lingers until Escape.
         private void OnDragDown(PointerDownEvent evt)
         {
-            if (evt.pointerId == _pointerId
-                && _pointerId != PointerId.mousePointerId
-                && evt.button == 0)
+            var isTouch = _pointerId >= PointerId.touchPointerIdBase
+                && _pointerId < PointerId.touchPointerIdBase + PointerId.touchPointerCount;
+            if (isTouch && evt.pointerId == _pointerId && evt.button == 0)
             {
                 Cancel();
             }
@@ -636,6 +642,22 @@ namespace Velvet
                 _appliedOverClasses = null;
             }
         }
+
+        // A render that DECLARES Focusable on the source takes ownership of the flag mid-session: the
+        // anchor's transient flip must not be "restored" over a value the props now own (the prop diff
+        // would never re-apply it).
+        internal void OnSourceFocusableDeclared(VisualElement element)
+        {
+            if (ReferenceEquals(element, _source))
+            {
+                _madeSourceFocusable = false;
+            }
+        }
+
+        // True while the given element's focus is this session's own keyboard anchor — plumbing, not
+        // user intent, so the focus layer must not record it (roving-stop memory, restore capture).
+        internal bool IsAnchorFocus(VisualElement element)
+            => _anchoredFocus && (element == _source || _source.Contains(element));
 
         internal void OnOverlayInvalidated(VisualElement positioner)
         {
