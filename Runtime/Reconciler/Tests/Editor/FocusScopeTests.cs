@@ -248,6 +248,44 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode StuckRingHost() => V.Div(children: new VNode[]
+        {
+            V.FocusScope(name: "modal", contain: true, children: new VNode[]
+            {
+                V.Button(name: "m1"),
+            }),
+            V.Button(name: "outside", className: "focus-visible:bg-blue-400"),
+        });
+
+        [Test]
+        public void Given_ALandingSnappedBackIntoAContainedScope_When_TheRevertedElementKeepsAFocusVisibleResidue_Then_TheNextTickSettlesIt()
+        {
+            // Arrange — a real escape that the containment reverts: the snap-back schedules a next-tick
+            // settle for the reverted element.
+            Mount(StuckRingHost);
+            var m1 = Q("m1");
+            m1.Focus();
+            var outside = Q("outside");
+            outside.Focus();
+            Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(m1),
+                "Precondition: the landing was reverted to the contained scope");
+
+            // The reverted element's queued focus events can interleave with no terminating Blur
+            // (observed against real editor input), stranding its focus-visible styling lit while it is
+            // not focused. That interleave is not reproducible with synthetic dispatch, so the residue
+            // is staged through the signal channel AFTER the revert resolved.
+            using (var evt = FocusEvent.GetPooled()) outside.SimulateEvent(evt);
+            Assume.That(outside.ClassListContains("bg-blue-400"), Is.True,
+                "Precondition: the focus-visible payload is lit while the element is not focused");
+
+            // Act — the panel's next tick runs the scheduled settle.
+            EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
+
+            // Assert
+            Assert.That(outside.ClassListContains("bg-blue-400"), Is.False);
+        }
+
+        [Component]
         private static VNode ReorderedAutoFocusHost()
         {
             var (rotated, setRotated) = Hooks.UseState(false);

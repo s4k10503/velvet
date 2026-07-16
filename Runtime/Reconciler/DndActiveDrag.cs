@@ -73,6 +73,8 @@ namespace Velvet
         private EventCallback<PointerCaptureOutEvent>? _onCaptureOut;
         private EventCallback<KeyDownEvent>? _onEscape;
         private readonly List<VisualElement> _escapeRoots = new();
+        private bool _madeSourceFocusable;
+        private bool _anchoredFocus;
         private readonly List<DndDroppableRect> _queryBuffer = new();
 
         internal VisualElement Source => _source;
@@ -322,6 +324,25 @@ namespace Velvet
             // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
             // dispatch through the FOCUSED panel, which need not be the source's.
             RegisterEscapeOnManagedRoots();
+            // The runtime input system only routes keyboard events into a panel that HAS a focused
+            // element, and a mouse-only drag typically has none — the Escape listener would never see
+            // its KeyDownEvent (verified against real editor input). The source anchors keyboard focus
+            // for the session; Close restores what it changed.
+            // Panel-local null is not "focus went nowhere": keyboard routes through whichever managed
+            // panel holds focus, so the anchor must not steal routing from e.g. a main-panel TextField
+            // while the drag runs in a layer panel.
+            var focusController = _source.panel?.focusController;
+            if (focusController != null && focusController.focusedElement == null
+                && !FiberFocusNavigator.AnyManagedPanelHoldsFocus(_ctx))
+            {
+                if (!_source.focusable)
+                {
+                    _source.focusable = true;
+                    _madeSourceFocusable = true;
+                }
+                _source.Focus();
+                _anchoredFocus = true;
+            }
 
             if (_activeDraggingClasses.Length > 0)
             {
@@ -389,7 +410,11 @@ namespace Velvet
             }
             // A phantom session (the primary release happened where no observer could see it — a
             // capture-only delivery, or off-window) dies on the first buttonless motion instead of
-            // dragging with nothing held.
+            // dragging with nothing held. This MOVE-side check is the mouse phantom guard (a mouse
+            // phantom always sees a buttonless hover move before the next press); non-mouse pointers,
+            // which have no hover moves, are covered by the same-pointer down-cancel in OnDragDown.
+            // Cancelling on a fresh MOUSE down instead would misfire on spurious synthesized downs
+            // (observed against real editor input killing a legitimate mid-drag session).
             if ((evt.pressedButtons & 1) == 0)
             {
                 Cancel();
@@ -490,12 +515,19 @@ namespace Velvet
             FireDiscrete(() => _scope.Settings.OnDragEnd?.Invoke(args));
         }
 
-        // A fresh PRIMARY press arriving while this session is active means the session is a phantom
-        // (the button cannot go down while genuinely held): the unobserved release already happened, so
-        // cancel — the next press then arms normally.
+        // A fresh primary press under the SAME touch pointer id while this session is active means the
+        // previous release was never observed (capture-only or off-window delivery): a finger cannot go
+        // down twice. Without this, the stale session hijacks the new tap — its moves drive the ghost
+        // drag and its release commits a drop the user never made. Deliberately TOUCH only: mouse AND
+        // pen hover, so their phantoms die on the first buttonless hover move (the move-side guard), and
+        // real mouse input was observed delivering a spurious synthesized down mid-drag that must not
+        // cancel anything. Residual (documented, not structural): touch surfaced through mouse
+        // emulation carries the mouse id and has no hover moves — that phantom lingers until Escape.
         private void OnDragDown(PointerDownEvent evt)
         {
-            if (evt.pointerId == _pointerId && evt.button == 0)
+            var isTouch = _pointerId >= PointerId.touchPointerIdBase
+                && _pointerId < PointerId.touchPointerIdBase + PointerId.touchPointerCount;
+            if (isTouch && evt.pointerId == _pointerId && evt.button == 0)
             {
                 Cancel();
             }
@@ -611,6 +643,22 @@ namespace Velvet
             }
         }
 
+        // A render that DECLARES Focusable on the source takes ownership of the flag mid-session: the
+        // anchor's transient flip must not be "restored" over a value the props now own (the prop diff
+        // would never re-apply it).
+        internal void OnSourceFocusableDeclared(VisualElement element)
+        {
+            if (ReferenceEquals(element, _source))
+            {
+                _madeSourceFocusable = false;
+            }
+        }
+
+        // True while the given element's focus is this session's own keyboard anchor — plumbing, not
+        // user intent, so the focus layer must not record it (roving-stop memory, restore capture).
+        internal bool IsAnchorFocus(VisualElement element)
+            => _anchoredFocus && (element == _source || _source.Contains(element));
+
         internal void OnOverlayInvalidated(VisualElement positioner)
         {
             if (ReferenceEquals(_overlayPositioner, positioner))
@@ -657,6 +705,27 @@ namespace Velvet
                 if (_source.HasPointerCapture(_pointerId))
                 {
                     _source.ReleasePointer(_pointerId);
+                }
+                // Undo the whole anchor, not just the focusable flag: the session created this focus
+                // from nothing, so an already-focusable source must not silently keep it (a lit
+                // focus-visible ring and keyboard routing the user never asked for). Focus the user
+                // moved elsewhere during the drag is left alone. The check is subtree-aware because a
+                // composite source delegates focus to an inner child; the focusable-restore nests inside
+                // the anchor branch because made-focusable implies anchored — the flags are never
+                // independent.
+                if (_anchoredFocus)
+                {
+                    if (_source.panel?.focusController?.focusedElement is VisualElement held
+                        && (held == _source || _source.Contains(held)))
+                    {
+                        _source.Blur();
+                    }
+                    _anchoredFocus = false;
+                    if (_madeSourceFocusable)
+                    {
+                        _source.focusable = false;
+                        _madeSourceFocusable = false;
+                    }
                 }
                 // Restore symmetry runs on the activation-time snapshots (see the field-block note).
                 if (_activeMovement == DragMovement.Translate)
