@@ -73,6 +73,7 @@ namespace Velvet
         private EventCallback<PointerCaptureOutEvent>? _onCaptureOut;
         private EventCallback<KeyDownEvent>? _onEscape;
         private readonly List<VisualElement> _escapeRoots = new();
+        private bool _madeSourceFocusable;
         private readonly List<DndDroppableRect> _queryBuffer = new();
 
         internal VisualElement Source => _source;
@@ -322,6 +323,20 @@ namespace Velvet
             // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
             // dispatch through the FOCUSED panel, which need not be the source's.
             RegisterEscapeOnManagedRoots();
+            // The runtime input system only routes keyboard events into a panel that HAS a focused
+            // element, and a mouse-only drag typically has none — the Escape listener would never see
+            // its KeyDownEvent (verified against real editor input). The source anchors keyboard focus
+            // for the session; Close restores what it changed.
+            var focusController = _source.panel?.focusController;
+            if (focusController != null && focusController.focusedElement == null)
+            {
+                if (!_source.focusable)
+                {
+                    _source.focusable = true;
+                    _madeSourceFocusable = true;
+                }
+                _source.Focus();
+            }
 
             if (_activeDraggingClasses.Length > 0)
             {
@@ -657,6 +672,15 @@ namespace Velvet
                 if (_source.HasPointerCapture(_pointerId))
                 {
                     _source.ReleasePointer(_pointerId);
+                }
+                if (_madeSourceFocusable)
+                {
+                    if (ReferenceEquals(_source.panel?.focusController?.focusedElement, _source))
+                    {
+                        _source.Blur();
+                    }
+                    _source.focusable = false;
+                    _madeSourceFocusable = false;
                 }
                 // Restore symmetry runs on the activation-time snapshots (see the field-block note).
                 if (_activeMovement == DragMovement.Translate)
