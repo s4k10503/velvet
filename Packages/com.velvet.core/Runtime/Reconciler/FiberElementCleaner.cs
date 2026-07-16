@@ -368,6 +368,30 @@ namespace Velvet
             {
                 FiberFocusNavigator.ReleasePendingAttachHooks(element, _ctx);
             }
+            // Drag-and-drop bindings: the draggable's pointer-down armer unregisters, and an element that
+            // is the active session's source or scope cancels that session teardown-flavored (synchronous
+            // scrub so the element reaches the pool clean, deferred user callback — the cleaner runs
+            // mid-flush, where a user state write would be silently lost; see DndActiveDrag).
+            if (_ctx.DndScopeBindings.ContainsKey(element))
+            {
+                DndScopeDriver.Detach(element, _ctx);
+                _ctx.DndScopeBindings.Remove(element);
+            }
+            if (_ctx.DraggableBindings.TryGetValue(element, out var draggableBinding))
+            {
+                DndDraggableDriver.Detach(element, draggableBinding, _ctx);
+                _ctx.DraggableBindings.Remove(element);
+            }
+            if (_ctx.DroppableBindings.ContainsKey(element))
+            {
+                DndDroppableDriver.Detach(element, _ctx);
+                _ctx.DroppableBindings.Remove(element);
+            }
+            if (_ctx.DragOverlayBindings.ContainsKey(element))
+            {
+                DndOverlayDriver.Detach(element, _ctx);
+                _ctx.DragOverlayBindings.Remove(element);
+            }
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
             {
                 virtualListController.Dispose();

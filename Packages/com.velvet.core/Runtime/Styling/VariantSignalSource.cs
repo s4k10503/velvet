@@ -130,6 +130,16 @@ namespace Velvet
             _emit(VariantSignal.Active, false);
         }
 
+        // Observes a synthetic release: a drag session that captured the pointer swallows the real
+        // PointerUp (StopImmediatePropagation before the bubble phase), so the Active edge these
+        // callbacks would have produced never arrives — without this, whileTap / active: stick on after
+        // every completed drag. Consumers' own per-state bookkeeping dedups a redundant call.
+        public void SettleRelease()
+        {
+            _pointerFocus = false;
+            _emit(VariantSignal.Active, false);
+        }
+
         private void OnFocus(FocusEvent evt)
         {
             _emit(VariantSignal.Focus, true);

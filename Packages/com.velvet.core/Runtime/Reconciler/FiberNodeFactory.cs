@@ -151,6 +151,25 @@ namespace Velvet
                     {
                         _patcher.Appliers.ApplyFocusScope(element, elementNode.Props.FocusScope);
                     }
+                    // Drag-and-drop slots: register the bindings. Panel-independent at creation — the
+                    // draggable's pointer-down armer and the overlay's positioning resolve panels at
+                    // event time.
+                    if (elementNode.Props?.DndContext != null)
+                    {
+                        _patcher.Appliers.ApplyDndContext(element, elementNode.Props.DndContext);
+                    }
+                    if (elementNode.Props?.Draggable != null)
+                    {
+                        _patcher.Appliers.ApplyDraggable(element, elementNode.Props.Draggable);
+                    }
+                    if (elementNode.Props?.Droppable != null)
+                    {
+                        _patcher.Appliers.ApplyDroppable(element, elementNode.Props.Droppable);
+                    }
+                    if (elementNode.Props?.DragOverlay != null)
+                    {
+                        _patcher.Appliers.ApplyDragOverlay(element, elementNode.Props.DragOverlay);
+                    }
 
                     if (elementNode.WrapElement != null)
                     {
@@ -255,6 +274,24 @@ namespace Velvet
                     if (motionNode.Props?.FocusScope != null)
                     {
                         _patcher.Appliers.ApplyFocusScope(element, motionNode.Props.FocusScope);
+                    }
+                    // Drag-and-drop through a Motion host: a V.Motion wrapping a draggable/droppable is
+                    // first-class, so the bindings must attach on this create path too.
+                    if (motionNode.Props?.DndContext != null)
+                    {
+                        _patcher.Appliers.ApplyDndContext(element, motionNode.Props.DndContext);
+                    }
+                    if (motionNode.Props?.Draggable != null)
+                    {
+                        _patcher.Appliers.ApplyDraggable(element, motionNode.Props.Draggable);
+                    }
+                    if (motionNode.Props?.Droppable != null)
+                    {
+                        _patcher.Appliers.ApplyDroppable(element, motionNode.Props.Droppable);
+                    }
+                    if (motionNode.Props?.DragOverlay != null)
+                    {
+                        _patcher.Appliers.ApplyDragOverlay(element, motionNode.Props.DragOverlay);
                     }
                     StyleFontResolver.ApplyIfPresent(element, appliedClasses);
                     _patcher.ApplyGapManipulator(element, appliedClasses);

@@ -100,6 +100,10 @@ namespace Velvet
             _signals?.Unhook();
         }
 
+        // Forwards a drag session's synthetic release to the shared signal source (see
+        // ElementLocalVariantSignals.SettleRelease); the per-state dedup below makes it idempotent.
+        internal void SettleRelease() => _signals?.SettleRelease();
+
         // Maps a detected element-local signal edge to its payload, deduping on the per-state bookkeeping so
         // a repeated edge (e.g. a bubbling PointerOver, or a no-op checked change) does not churn the payload.
         private void OnSignal(VariantSignal signal, bool on)

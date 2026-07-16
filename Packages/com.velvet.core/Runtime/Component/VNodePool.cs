@@ -61,6 +61,10 @@ namespace Velvet
             props.TabIndex = null;
             props.DelegatesFocus = null;
             props.FocusScope = null;
+            props.DndContext = null;
+            props.Draggable = null;
+            props.Droppable = null;
+            props.DragOverlay = null;
             props.Slider = null;
             props.ScrollView = null;
             props.TextField = null;

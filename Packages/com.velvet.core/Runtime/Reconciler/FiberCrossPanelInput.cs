@@ -192,7 +192,9 @@ namespace Velvet
         // 2D scale+translate between screen and panel space (never rotation), so the inverse affine
         // transform is derived from two well-separated screen samples rather than hand-deriving it from
         // PanelSettings' own scale-mode math (which differs per scaleMode and DPI configuration).
-        private static Vector2 PanelToScreen(IPanel panel, Vector2 panelPosition)
+        // Internal (not private): the drag-overlay positioner rides the same conversion for its
+        // source-panel → screen → overlay-panel hop.
+        internal static Vector2 PanelToScreen(IPanel panel, Vector2 panelPosition)
         {
             var screenA = Vector2.zero;
             var screenB = new Vector2(Screen.width, Screen.height);

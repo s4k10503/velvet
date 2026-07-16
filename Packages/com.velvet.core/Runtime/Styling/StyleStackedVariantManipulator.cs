@@ -67,6 +67,11 @@ namespace Velvet
         // re-derive their truth on attach and are detached on close to release their subscriptions.
         internal bool RetainsAcrossOuterClose => IsElementLocal || IsRelational;
 
+        // Forwards a drag session's synthetic release to the shared signal source (see
+        // ElementLocalVariantSignals.SettleRelease); a non-element-local inner (dark:/sm:) has no press
+        // state to settle and no signals instance, so the null-conditional is the whole guard.
+        internal void SettleRelease() => _elementSignals?.SettleRelease();
+
         protected override void RegisterCallbacksOnTarget()
         {
             if (IsElementLocal)

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Drag-and-drop primitives, dnd-kit core parity: `V.DndContext` (the scope — `onDragStart` /
+  `onDragOver` / `onDragEnd` / `onDragCancel` callbacks, a pluggable `DndCollisionDetection`
+  delegate with `DndCollisions.RectIntersection` / `ClosestCenter` / `PointerWithin` built-ins,
+  and a scope-wide activation default), `V.Draggable(id:)` (activation constraints defaulting to
+  4 px of travel so clicks keep working on draggable controls; inline-translate or stay-put
+  movement; `whileDraggingClass:`), `V.Droppable(id:)` (`whileOverClass:` /
+  `whileDragActiveClass:`; live-rect collision, so mid-drag layout shifts are picked up
+  automatically), and `V.DragOverlay` (a portal-rendered, picking-ignored preview that tracks the
+  pointer on the Overlay layer). Escape cancels; drop/cancel callbacks commit state synchronously
+  like click handlers; a real drag ending on a Clickable source suppresses its `clicked` and
+  settles the press-derived `whileTap`/`active:` styling synthetically; everything a session
+  writes (capture, inline translate, classes) is restored on drop, cancel, and teardown —
+  including a source unmounting mid-drag, whose user cancel callback is deferred past the flush.
 - Focus / gamepad navigation layer, React Aria parity — composing with (never reimplementing)
   the engine's own focus machinery:
   - `V.FocusScope(contain:, restoreFocus:, autoFocus:, singleTabStop:)` (and the same knobs as a

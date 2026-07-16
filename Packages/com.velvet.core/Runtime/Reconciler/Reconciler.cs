@@ -478,6 +478,23 @@ namespace Velvet
             _ctx.ChainedPlaceholders.Clear();
             _ctx.ChainedHostRoots.Clear();
             FiberFocusNavigator.DetachAll(_ctx);
+            // Drag-and-drop: an active session scrubs first (it holds pointer capture, inline styles and
+            // classes on elements that outlive this reconciler), then the registries release their
+            // bindings (the draggable armer and the overlay's forced inline state are the two that own
+            // registered/forced element state).
+            _ctx.ActiveDrag?.CancelForTeardown();
+            foreach (var (element, binding) in _ctx.DraggableBindings)
+            {
+                DndDraggableDriver.Detach(element, binding, _ctx);
+            }
+            _ctx.DraggableBindings.Clear();
+            foreach (var (element, _) in _ctx.DragOverlayBindings)
+            {
+                DndOverlayDriver.Detach(element, _ctx);
+            }
+            _ctx.DragOverlayBindings.Clear();
+            _ctx.DndScopeBindings.Clear();
+            _ctx.DroppableBindings.Clear();
             foreach (var (element, manipulator) in _ctx.GestureManipulators)
             {
                 element.RemoveManipulator(manipulator);
