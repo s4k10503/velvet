@@ -34,7 +34,7 @@ namespace Velvet.Tests
         public void Given_ToggleWithCustomState_When_Reset_Then_ConsumerSetStateIsCleared()
         {
             // Arrange
-            var toggle = new Toggle { value = true, label = "Enabled", name = "my-toggle", tooltip = "my-tooltip", focusable = true, viewDataKey = "my-view-data" };
+            var toggle = new Toggle { value = true, label = "Enabled", name = "my-toggle", tooltip = "my-tooltip", focusable = false, viewDataKey = "my-view-data" };
             toggle.AddToClassList("custom-class");
             toggle.style.color = new StyleColor(Color.red);
             toggle.userData = 42;
@@ -44,8 +44,8 @@ namespace Velvet.Tests
 
             // Assert
             var actual = (toggle.value, toggle.label, toggle.userData, toggle.name, toggle.tooltip, toggle.focusable, toggle.viewDataKey);
-            Assert.AreEqual((false, string.Empty, (object)null, string.Empty, string.Empty, false, (string)null), actual,
-                "Reset clears every consumer-set field back to its constructed default");
+            Assert.AreEqual((false, string.Empty, (object)null, string.Empty, string.Empty, true, (string)null), actual,
+                "Reset returns every consumer-set field to its constructed default (focusable is TRUE for this widget type)");
         }
 
         [Test]

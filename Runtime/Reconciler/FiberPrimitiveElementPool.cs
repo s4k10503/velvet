@@ -31,6 +31,11 @@ namespace Velvet
             FiberElementPoolReset.ResetClassListAndCommon(button, TextElement.ussClassName, Button.ussClassName);
             button.text = string.Empty;
             button.iconImage = default;
+            // The common reset scrubs focusable to the plain-VisualElement default (false), but a Button's
+            // OWN constructor default is focusable — without restoring it, a recycled button silently drops
+            // out of Tab/gamepad navigation, diverging from the freshly-constructed instance this reset
+            // promises to match.
+            button.focusable = true;
         }
     }
 
@@ -84,6 +89,10 @@ namespace Velvet
             slider.label = string.Empty;
             slider.direction = SliderDirection.Horizontal;
             slider.pageSize = 0f;
+            // See FiberButtonPoolHelper: the common reset's focusable=false is the plain-VisualElement
+            // default; a Slider's own constructor default is focusable, and dropping it would remove a
+            // recycled slider from Tab/gamepad navigation.
+            slider.focusable = true;
         }
     }
 
@@ -135,6 +144,9 @@ namespace Velvet
             textField.maxLength = DefaultMaxLength;
             textField.textSelection.SelectNone();
             textField.label = string.Empty;
+            // See FiberButtonPoolHelper: restore the type's own constructor default after the common
+            // reset's focusable=false, or a recycled field cannot be tabbed into.
+            textField.focusable = true;
         }
     }
 
@@ -161,6 +173,9 @@ namespace Velvet
             FiberElementPoolReset.ResetClassListAndCommon(toggle, BaseField<bool>.ussClassName, Toggle.ussClassName);
             toggle.SetValueWithoutNotify(false);
             toggle.label = string.Empty;
+            // See FiberButtonPoolHelper: restore the type's own constructor default after the common
+            // reset's focusable=false, or a recycled toggle drops out of Tab/gamepad navigation.
+            toggle.focusable = true;
         }
     }
 }

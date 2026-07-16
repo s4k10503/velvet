@@ -929,6 +929,27 @@ namespace Velvet
                 s_anchoredAttach, s_anchoredUpdate, s_anchoredDetach);
         }
 
+        // Same attach/update/detach shape as the bindings above, inlined rather than routed through the
+        // shared generic dispatch: FocusScopeDriver.Attach needs the ReconcilerContext (the navigator's
+        // scope registry and lazy panel attach live there), which the cached static delegates cannot carry.
+        internal void ApplyFocusScope(VisualElement element, FocusScopeSettings? settings)
+        {
+            if (_ctx.FocusScopeBindings.TryGetValue(element, out var binding))
+            {
+                if (settings == null)
+                {
+                    FocusScopeDriver.Detach(element, binding);
+                    _ctx.FocusScopeBindings.Remove(element);
+                    return;
+                }
+                FocusScopeDriver.Update(element, binding, settings);
+            }
+            else if (settings != null)
+            {
+                _ctx.FocusScopeBindings[element] = FocusScopeDriver.Attach(element, settings, _ctx);
+            }
+        }
+
         // Cached method-group delegates so the shared dispatch below adds no per-call allocation.
         private static readonly Func<VisualElement, SceneViewSettings, SceneViewBinding> s_sceneViewAttach = SceneViewDriver.Attach;
         private static readonly Action<VisualElement, SceneViewBinding, SceneViewSettings> s_sceneViewUpdate = SceneViewDriver.Update;

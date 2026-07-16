@@ -322,6 +322,45 @@ namespace Velvet
                 AnchoredDriver.Detach(element, anchoredBinding);
                 _ctx.AnchoredBindings.Remove(element);
             }
+            if (_ctx.FocusScopeBindings.TryGetValue(element, out var focusScopeBinding))
+            {
+                // RestoreFocus must run BEFORE this element physically leaves the tree (UI Toolkit clears
+                // the focused element the moment it detaches — the same ordering RescueFocusFromWorldSpaceHost
+                // exists for): if the scope still holds focus, return it to where it came from on first entry.
+                if (focusScopeBinding.Settings.RestoreFocus
+                    && element.panel?.focusController?.focusedElement is VisualElement held
+                    && element.Contains(held))
+                {
+                    var restore = focusScopeBinding.RestoreTarget;
+                    if (restore != null && restore.panel != null && restore.canGrabFocus)
+                    {
+                        restore.Focus();
+                    }
+                }
+                FocusScopeDriver.Detach(element, focusScopeBinding);
+                _ctx.FocusScopeBindings.Remove(element);
+            }
+            // A departing element must not linger as any scope's remembered member or restore target:
+            // pooled primitives get recycled into unrelated roles, and the liveness checks at use time
+            // (panel / canGrabFocus / Contains) all pass again for a recycled element mounted elsewhere,
+            // so focus would land on a widget in a different logical role. Dropping the reference here
+            // makes those paths fall back (ring-first entry / skipped restore) instead.
+            if (_ctx.FocusScopeBindings.Count > 0)
+            {
+                foreach (var scopeBinding in _ctx.FocusScopeBindings.Values)
+                {
+                    if (ReferenceEquals(scopeBinding.LastFocusedMember, element)) scopeBinding.LastFocusedMember = null;
+                    if (ReferenceEquals(scopeBinding.RestoreTarget, element)) scopeBinding.RestoreTarget = null;
+                }
+            }
+            // A chained portal placeholder unmounting releases both chained registries; if it owned the
+            // host's ring-edge escape, ownership is handed to a surviving chained placeholder of the same
+            // host (removal from ChainedPlaceholders first, so the departing one cannot re-elect itself).
+            if (_ctx.ChainedPlaceholders.Remove(element, out var chainedRecord))
+            {
+                var chainedHostRoot = chainedRecord.Document != null ? chainedRecord.Document.rootVisualElement : null;
+                FiberFocusNavigator.ReleaseChainedOwnership(element, chainedHostRoot, _ctx);
+            }
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
             {
                 virtualListController.Dispose();

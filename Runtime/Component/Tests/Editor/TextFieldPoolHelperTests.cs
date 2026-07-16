@@ -69,7 +69,7 @@ namespace Velvet.Tests
         public void Given_TextFieldWithCustomState_When_Reset_Then_ConsumerSetStateIsCleared()
         {
             // Arrange
-            var textField = new TextField { label = "Email", name = "my-text-field", tooltip = "my-tooltip", focusable = true, viewDataKey = "my-view-data" };
+            var textField = new TextField { label = "Email", name = "my-text-field", tooltip = "my-tooltip", focusable = false, viewDataKey = "my-view-data" };
             textField.AddToClassList("custom-class");
             textField.style.color = new StyleColor(Color.red);
             textField.userData = 42;
@@ -79,8 +79,8 @@ namespace Velvet.Tests
 
             // Assert
             var actual = (textField.label, textField.userData, textField.name, textField.tooltip, textField.focusable, textField.viewDataKey);
-            Assert.AreEqual((string.Empty, (object)null, string.Empty, string.Empty, false, (string)null), actual,
-                "Reset clears every consumer-set field back to its constructed default");
+            Assert.AreEqual((string.Empty, (object)null, string.Empty, string.Empty, true, (string)null), actual,
+                "Reset returns every consumer-set field to its constructed default (focusable is TRUE for this widget type)");
         }
 
         [Test]

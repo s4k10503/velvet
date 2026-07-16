@@ -560,6 +560,11 @@ namespace Velvet
                 // Recurring re-sync point for late declaring resolution and runtime drift.
                 PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
                 target = layerHost.Document.rootVisualElement;
+                if (oldNode.FocusOrder != newNode.FocusOrder)
+                {
+                    FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
+                        newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+                }
             }
             else
             {
@@ -621,6 +626,11 @@ namespace Velvet
             if (oldNode.PanelSize != newNode.PanelSize)
             {
                 record.Document.worldSpaceSize = newNode.PanelSize;
+            }
+            if (oldNode.FocusOrder != newNode.FocusOrder)
+            {
+                FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
+                    newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
             }
             PatchPortalChildren(placeholder, record.Document.rootVisualElement, oldNode.Children, newNode.Children, "world-space");
         }
@@ -1047,6 +1057,16 @@ namespace Velvet
                 FiberPropApplier.ApplyFocusable(element, newProps.Focusable);
             }
 
+            if (oldProps.TabIndex != newProps.TabIndex)
+            {
+                FiberPropApplier.ApplyTabIndex(element, newProps.TabIndex);
+            }
+
+            if (oldProps.DelegatesFocus != newProps.DelegatesFocus)
+            {
+                FiberPropApplier.ApplyDelegatesFocus(element, newProps.DelegatesFocus);
+            }
+
             if (!Equals(oldProps.FieldValue, newProps.FieldValue))
             {
                 FiberPropApplier.ApplyFieldValue(element, newProps.FieldValue);
@@ -1094,6 +1114,13 @@ namespace Velvet
             if (oldProps.Anchored != newProps.Anchored)
             {
                 _appliers.ApplyAnchored(element, newProps.Anchored);
+            }
+
+            // Record (value) equality, like the bindings above: only an actual scope-behavior change (or a
+            // scope arriving/leaving) lands here.
+            if (oldProps.FocusScope != newProps.FocusScope)
+            {
+                _appliers.ApplyFocusScope(element, newProps.FocusScope);
             }
         }
 

@@ -35,7 +35,7 @@ namespace Velvet.Tests
         public void Given_ButtonWithCustomState_When_Reset_Then_ConsumerSetStateIsCleared()
         {
             // Arrange
-            var button = new Button { text = "hello", name = "my-button", tooltip = "my-tooltip", focusable = true, viewDataKey = "my-view-data" };
+            var button = new Button { text = "hello", name = "my-button", tooltip = "my-tooltip", focusable = false, viewDataKey = "my-view-data" };
             button.AddToClassList("custom-class");
             button.style.color = new StyleColor(Color.red);
             button.userData = 42;
@@ -45,8 +45,8 @@ namespace Velvet.Tests
 
             // Assert
             var actual = (button.text, button.userData, button.name, button.tooltip, button.focusable, button.viewDataKey);
-            Assert.AreEqual((string.Empty, (object)null, string.Empty, string.Empty, false, (string)null), actual,
-                "Reset clears every consumer-set field back to its constructed default");
+            Assert.AreEqual((string.Empty, (object)null, string.Empty, string.Empty, true, (string)null), actual,
+                "Reset returns every consumer-set field to its constructed default (focusable is TRUE for this widget type)");
         }
 
         [Test]

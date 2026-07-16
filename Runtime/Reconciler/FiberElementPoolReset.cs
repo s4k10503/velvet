@@ -66,6 +66,10 @@ namespace Velvet
             element.name = string.Empty;
             element.tooltip = string.Empty;
             element.focusable = false;
+            // tabIndex and delegatesFocus are prop-settable (FiberElementProps.TabIndex/DelegatesFocus), so
+            // a pooled element must not carry them into its next consumer's focus order.
+            element.tabIndex = 0;
+            element.delegatesFocus = false;
             element.pickingMode = PickingMode.Position;
             element.viewDataKey = null;
             element.SetEnabled(true);

@@ -44,6 +44,12 @@ namespace Velvet
         public static void ApplyFocusable(VisualElement element, bool? focusable)
             => element.focusable = focusable ?? true;
 
+        public static void ApplyTabIndex(VisualElement element, int? tabIndex)
+            => element.tabIndex = tabIndex ?? 0;
+
+        public static void ApplyDelegatesFocus(VisualElement element, bool? delegatesFocus)
+            => element.delegatesFocus = delegatesFocus ?? false;
+
         public static void ApplyFieldValue(VisualElement element, object? value)
         {
             // A controlled field reflects its declared value, so clearing the value prop to null resets the
