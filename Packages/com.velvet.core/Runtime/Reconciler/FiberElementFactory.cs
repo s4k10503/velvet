@@ -236,6 +236,16 @@ namespace Velvet
                 FiberPropApplier.ApplyFocusable(element, props.Focusable);
             }
 
+            if (props.TabIndex.HasValue)
+            {
+                FiberPropApplier.ApplyTabIndex(element, props.TabIndex);
+            }
+
+            if (props.DelegatesFocus.HasValue)
+            {
+                FiberPropApplier.ApplyDelegatesFocus(element, props.DelegatesFocus);
+            }
+
             if (props.FieldValue != null)
             {
                 FiberPropApplier.ApplyFieldValue(element, props.FieldValue);

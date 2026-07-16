@@ -1506,12 +1506,14 @@ namespace Velvet
         /// <param name="children">Descendant VNodes mounted into the layer panel.</param>
         /// <param name="key">Key used to disambiguate siblings at the same position.</param>
         /// <returns>The created <see cref="PortalNode"/>.</returns>
-        public static PortalNode Portal(UILayer layer, VNode?[]? children = null, string? key = null)
+        public static PortalNode Portal(UILayer layer, VNode?[]? children = null, string? key = null,
+            PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
         {
             return new PortalNode
             {
                 Key = key,
                 Layer = layer,
+                FocusOrder = focusOrder,
                 Children = children ?? EmptyChildren,
             };
         }
@@ -1536,7 +1538,8 @@ namespace Velvet
             Quaternion? rotation = null,
             Vector2? panelSize = null,
             VNode?[]? children = null,
-            string? key = null)
+            string? key = null,
+            PanelFocusOrder focusOrder = PanelFocusOrder.Isolated)
         {
             return new WorldSpaceNode
             {
@@ -1544,6 +1547,7 @@ namespace Velvet
                 Position = position,
                 Rotation = rotation ?? Quaternion.identity,
                 PanelSize = panelSize ?? new Vector2(1920f, 1080f),
+                FocusOrder = focusOrder,
                 Children = children ?? EmptyChildren,
             };
         }
@@ -1587,6 +1591,62 @@ namespace Velvet
         {
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
             mergedProps.Anchored = new AnchoredSettings(target, camera, offset ?? Vector2.zero, hideWhenBehindCamera);
+
+            return new ElementNode
+            {
+                Key = key,
+                ElementType = typeof(VisualElement),
+                Name = name,
+                ClassNames = ParseClassNames(className),
+                Props = mergedProps,
+                Styles = styles,
+                Children = children ?? EmptyChildren,
+                Events = EmptyEvents,
+                RefCallback = refCallback,
+                WhileHoverClass = whileHoverClass,
+                WhileTapClass = whileTapClass,
+                WhileFocusClass = whileFocusClass,
+            };
+        }
+
+        /// <summary>
+        /// Container element whose subtree is a focus scope — React Aria's FocusScope. Deviation
+        /// (documented): Aria's scope is renderless (sentinel spans); Velvet's is a real VisualElement,
+        /// because UI Toolkit containment needs a subtree root for the scoped focus ring and the
+        /// membership test. Any existing container can be a scope via props
+        /// (<see cref="FiberElementProps.FocusScope"/>) — this factory is convenience for when no
+        /// container exists yet. Style it like any Div.
+        /// </summary>
+        /// <param name="contain">Tab/Shift-Tab wrap within the subtree; a 2D/pointer move that exits is
+        /// snapped back within the same event flush (a press on empty space that clears focus to nothing
+        /// re-focuses on the panel's next tick).</param>
+        /// <param name="restoreFocus">On unmount while holding focus, refocus the element focus came from
+        /// when it first entered the scope.</param>
+        /// <param name="autoFocus">On mount (first attach only — never a keyed reorder's re-attach), focus
+        /// the scope's first focusable descendant.</param>
+        /// <param name="singleTabStop">The subtree behaves as one Tab stop (roving); engine 2D
+        /// arrow/dpad navigation inside is untouched.</param>
+        /// <returns>The created <see cref="ElementNode"/>.</returns>
+        public static ElementNode FocusScope(
+            string? className = null,
+            string? key = null,
+            string? name = null,
+            bool contain = false,
+            bool restoreFocus = false,
+            bool autoFocus = false,
+            bool singleTabStop = false,
+            FiberElementProps? props = null,
+            StyleOverrides? styles = null,
+            Func<VisualElement, Action>? refCallback = null,
+            VNode?[]? children = null,
+            string? whileHoverClass = null,
+            string? whileTapClass = null,
+            string? whileFocusClass = null,
+            IReadOnlyDictionary<string, string>? data = null,
+            IReadOnlyDictionary<string, string>? aria = null)
+        {
+            var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
+            mergedProps.FocusScope = new FocusScopeSettings(contain, restoreFocus, autoFocus, singleTabStop);
 
             return new ElementNode
             {
