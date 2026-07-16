@@ -920,6 +920,15 @@ namespace Velvet
                 s_particlesAttach, s_particlesUpdate, s_particlesDetach);
         }
 
+        // Unlike SceneView/Particles, Anchored has no dedicated element type to gate on — V.Anchored builds
+        // a plain ElementNode (any host type is valid; the binding only ever writes inline left/top), so
+        // this dispatches straight to the shared binding logic with no type check.
+        internal void ApplyAnchored(VisualElement element, AnchoredSettings? settings)
+        {
+            ApplyElementBinding(element, settings, _ctx.AnchoredBindings,
+                s_anchoredAttach, s_anchoredUpdate, s_anchoredDetach);
+        }
+
         // Cached method-group delegates so the shared dispatch below adds no per-call allocation.
         private static readonly Func<VisualElement, SceneViewSettings, SceneViewBinding> s_sceneViewAttach = SceneViewDriver.Attach;
         private static readonly Action<VisualElement, SceneViewBinding, SceneViewSettings> s_sceneViewUpdate = SceneViewDriver.Update;
@@ -927,6 +936,9 @@ namespace Velvet
         private static readonly Func<VisualElement, ParticlesSettings, ParticlesBinding> s_particlesAttach = ParticlesDriver.Attach;
         private static readonly Action<VisualElement, ParticlesBinding, ParticlesSettings> s_particlesUpdate = ParticlesDriver.Update;
         private static readonly Action<VisualElement, ParticlesBinding> s_particlesDetach = ParticlesDriver.Detach;
+        private static readonly Func<VisualElement, AnchoredSettings, AnchoredBinding> s_anchoredAttach = AnchoredDriver.Attach;
+        private static readonly Action<VisualElement, AnchoredBinding, AnchoredSettings> s_anchoredUpdate = AnchoredDriver.Update;
+        private static readonly Action<VisualElement, AnchoredBinding> s_anchoredDetach = AnchoredDriver.Detach;
 
         // The attach/update/detach dispatch both element bindings share. A vanished settings prop only
         // happens on a hand-built ElementNode (the factories always carry settings, even for a null
