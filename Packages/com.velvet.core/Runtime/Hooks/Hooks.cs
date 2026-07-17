@@ -1088,6 +1088,13 @@ namespace Velvet
         /// styling, the <c>focus-visible:</c> class variant already covers the same distinction without a
         /// hook — reach for this when the component must RENDER differently (e.g. a "press A to select"
         /// hint), not just restyle.
+        /// <para>
+        /// When composing <see cref="FocusRing.Ref"/> with other per-element work in one callback,
+        /// wrap the composed lambda in <c>Hooks.UseCallback</c>: a per-render lambda is a fresh
+        /// identity each render, so every patch would cycle the ref (cleanup on a still-focused
+        /// element, then re-setup) — the same re-render feedback an inline ref writing state
+        /// produces in React.
+        /// </para>
         /// </summary>
         public static FocusRing UseFocusRing()
         {
@@ -1104,18 +1111,6 @@ namespace Velvet
                     }
                 });
                 signals.Hook(element, seedChecked: false, registerChecked: false);
-                // Seed: the signals are edge-driven, so hooking an element that ALREADY holds focus
-                // raises no Focus edge. A ref composed inside a per-render lambda cycles on every
-                // patch (fresh identity), and its cleanup below writes the flags false on the
-                // still-focused element — without this seed the ring would go dark and stay dark
-                // until a real blur+refocus. Focus-visible is deliberately NOT seeded: the input
-                // modality that produced the pre-existing focus is unknown here, and understating
-                // the ring beats inventing a keyboard modality a pointer created.
-                if (element.panel?.focusController?.focusedElement is UnityEngine.UIElements.VisualElement alreadyHeld
-                    && (alreadyHeld == element || element.Contains(alreadyHeld)))
-                {
-                    setFocused.Invoke(true);
-                }
                 return () =>
                 {
                     signals.Unhook();

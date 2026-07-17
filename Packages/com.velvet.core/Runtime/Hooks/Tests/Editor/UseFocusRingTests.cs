@@ -51,9 +51,9 @@ namespace Velvet.Tests
 
         private static StateUpdater<int> s_bumpComposed;
 
-        // The ring's ref is COMPOSED inside a per-render lambda (the only way to combine it with
-        // other per-element work), so every patch cycles the ref with a fresh identity — the
-        // cleanup fires on the still-focused element and the setup must re-light the ring.
+        // The ring's ref is COMPOSED with other per-element work, wrapped in UseCallback — the
+        // documented composition recipe: the composed identity stays stable across renders, so a
+        // patch leaves the installed ref untouched and the lit ring survives unrelated re-renders.
         [Component]
         private static VNode ComposedRingHost()
         {
@@ -61,30 +61,32 @@ namespace Velvet.Tests
             s_ring = ring;
             var (count, setCount) = Hooks.UseState(0);
             s_bumpComposed = setCount;
+            var composedRef = Hooks.UseCallback<System.Func<VisualElement, System.Action>>(
+                element => ring.Ref(element), ring.Ref);
             return V.Div(children: new VNode[]
             {
                 V.Label(text: "count-" + count),
-                V.Button(name: "target", refCallback: element => ring.Ref(element)),
+                V.Button(name: "target", refCallback: composedRef),
             });
         }
 
         [Test]
-        public void Given_AFocusedRingBehindAPerRenderComposedRef_When_AnUnrelatedRerenderCyclesTheRef_Then_TheRingStaysLit()
+        public void Given_AFocusedRingBehindAComposedStableRef_When_AnUnrelatedRerenderPatchesTheHost_Then_TheRingStaysLit()
         {
-            // Arrange — mounted with a composed (fresh-identity) ref, then really focused.
+            // Arrange — mounted with the UseCallback-composed ref, then really focused.
             _mounted = V.Mount(_host.Root, V.Component(ComposedRingHost, key: "root"));
             _host.Root.Q<VisualElement>("target").Focus();
             _mounted.FlushStateForTest();
             Assume.That(s_ring.IsFocused, Is.True, "Precondition: the ring lit for the focused element");
 
-            // Act — an unrelated state change patches the host; the fresh-identity ref cycles
-            // (cleanup writes the flags false on the still-focused element, setup re-hooks it).
+            // Act — an unrelated state change patches the host; the stable composed identity means
+            // the installed ref is left untouched (no cleanup fires on the still-focused element).
             s_bumpComposed.Invoke(1);
             _mounted.FlushStateForTest();
 
-            // Assert — the setup's focus seed re-lit the ring within the same flush.
+            // Assert
             Assert.That(s_ring.IsFocused, Is.True,
-                "A ref cycling on a still-focused element must not leave the ring dark");
+                "A stable composed ref must survive unrelated patches without darkening the ring");
         }
 
         [Test]

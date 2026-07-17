@@ -29,8 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   frame, while a drop keeps every other component's work alive. Dropped writes used to desync the
   slot value from the committed UI and poison the setter's equality bail for the next genuine edge
   with the same value; `Hooks.UseFocusRing` sheds its deferred-correction workaround accordingly
-  (its cleanup writes the flags directly, and its setup seeds an already-focused element so a ref
-  composed in a per-render lambda cannot strand the ring dark).
+  (its cleanup writes the flags directly; when composing its `Ref` with other per-element work,
+  wrap the composed lambda in `Hooks.UseCallback` — a fresh-identity ref cycling per patch is the
+  same re-render feedback an inline ref writing state produces in React).
 
 - The fiber-tree recycle path now returns factory-rented props bags / event arrays / child arrays
   from EVERY nesting level of a retired tree — previously only the top level was recycled, so any

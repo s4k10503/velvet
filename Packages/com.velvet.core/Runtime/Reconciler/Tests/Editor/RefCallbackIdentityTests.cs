@@ -128,8 +128,9 @@ namespace Velvet.Tests
                 "Unmount must fire the installed ref's cleanup exactly once");
         }
 
-        // A capture-less static delegate: the same identity across two INDEPENDENT mounts, which is
-        // how a pooled element could meet the same callback again on its next tenant.
+        // A capture-less static delegate: the same identity across two tenancies WITHIN one mounted
+        // tree (one ReconcilerContext), which is how a pooled element re-rented under the SAME
+        // per-context identity table could meet the same callback again.
         private static readonly Func<VisualElement, Action> s_pooledTenantRef = _ =>
         {
             s_setupCount++;
@@ -137,30 +138,41 @@ namespace Velvet.Tests
         };
 
         [Component]
-        private static VNode PooledTenantHost() =>
-            V.Div(name: "host", children: new VNode[]
+        private static VNode PooledTenantHost()
+        {
+            var count = Hooks.UseStore(s_store, x => x);
+            return V.Div(name: "host", children: new VNode[]
             {
-                V.Button(name: "target", text: "target", refCallback: s_pooledTenantRef),
+                count % 2 == 0
+                    ? V.Button(name: "target", text: "target", key: "tenant", refCallback: s_pooledTenantRef)
+                    : null,
             });
+        }
 
         [Test]
-        public void Given_AHostUnmountedAndRemountedWithTheSameRefIdentity_When_TheNewTenantMounts_Then_TheSetupRunsAgain()
+        public void Given_ATenantRemovedAndRecreatedWithinOneTree_When_ThePooledElementIsReRented_Then_TheSetupRunsAgain()
         {
-            // Arrange — first mount installs the ref, unmount cleans it up and pools the element.
-            // The identity gate keys on the STORED entry, which the element cleaner must have
-            // removed on the way to the pool — a stale entry would make the same-identity remount
-            // silently skip its setup (no signals hooked, refs never set) instead of running it.
-            var first = V.Mount(_root, V.Component(PooledTenantHost, key: "first"));
-            first.Dispose();
+            // Arrange — mounted with the tenant visible (setup ran), then hidden: the cleanup fires
+            // and the element returns to the pool, which must scrub the per-context identity entry —
+            // a stale entry would make the same-identity re-rent under the SAME context silently
+            // skip its setup (no signals hooked, refs never set) instead of running it.
+            using var store = new CounterStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(PooledTenantHost, key: "host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            store.Increment();
+            scheduler.DrainImmediateForTest();
             Assume.That((s_setupCount, s_cleanupCount), Is.EqualTo((1, 1)),
-                "Precondition: the first tenant ran one setup and one cleanup");
+                "Precondition: the first tenancy ran one setup and one cleanup");
 
-            // Act — a fresh mount whose element may be the pooled instance, under the SAME delegate.
-            using var second = V.Mount(new VisualElement(), V.Component(PooledTenantHost, key: "second"));
+            // Act — show the tenant again: the recreated button (likely the pooled instance) mounts
+            // under the same callback identity and the same context.
+            store.Increment();
+            scheduler.DrainImmediateForTest();
 
-            // Assert — the new tenant's setup ran (the pool return scrubbed the identity entry).
+            // Assert — the new tenancy's setup ran.
             Assert.That(s_setupCount, Is.EqualTo(2),
-                "A remounted element under the same ref identity must run its setup again");
+                "A re-rented element under the same ref identity must run its setup again");
         }
     }
 }
