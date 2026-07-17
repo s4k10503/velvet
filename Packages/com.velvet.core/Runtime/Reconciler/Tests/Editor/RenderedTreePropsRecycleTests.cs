@@ -111,6 +111,11 @@ namespace Velvet.Tests
             return OwnedPropsCount() - baseline;
         }
 
+        // The bound is a small constant, NOT a fraction of RerenderCount: the contract is binary
+        // (retired bags round-trip, or the broken path leaks one per render), and a ratio would
+        // green-light a partial regression that leaks on every other render.
+        private const int OwnedGrowthTolerance = 2;
+
         [Test]
         public void Given_ATopLevelPropsRentingElement_When_TheTreeRerendersRepeatedly_Then_TheOwnershipSetDoesNotGrowPerRender()
         {
@@ -118,7 +123,7 @@ namespace Velvet.Tests
             var growth = MeasureOwnedGrowth(() => V.Component(TopLevelRenter, key: "top"));
 
             // Assert — retired bags round-trip through the pool instead of accumulating one per render.
-            Assert.That(growth, Is.LessThan(RerenderCount / 2),
+            Assert.That(growth, Is.LessThanOrEqualTo(OwnedGrowthTolerance),
                 "A top-level element's rented props bag must return to the pool when its tree is retired");
         }
 
@@ -129,7 +134,7 @@ namespace Velvet.Tests
             var growth = MeasureOwnedGrowth(() => V.Component(NestedRenter, key: "nested"));
 
             // Assert
-            Assert.That(growth, Is.LessThan(RerenderCount / 2),
+            Assert.That(growth, Is.LessThanOrEqualTo(OwnedGrowthTolerance),
                 "A nested element's rented props bag must return to the pool when its tree is retired");
         }
 
@@ -140,8 +145,32 @@ namespace Velvet.Tests
             var growth = MeasureOwnedGrowth(() => V.Component(PortalRenter, key: "portal"));
 
             // Assert
-            Assert.That(growth, Is.LessThan(RerenderCount / 2),
+            Assert.That(growth, Is.LessThanOrEqualTo(OwnedGrowthTolerance),
                 "A Portal-child element's rented props bag must return to the pool when its tree is retired");
+        }
+
+        // A V.Memoized whose deps CHANGE every render: each miss replaces the cached inner tree,
+        // and the replaced subtree's rented bag must flow back to the pool (the memo wrapper is
+        // opaque to the tree walk, so the cache's own replace path is its only retirement point).
+        [Component]
+        private static VNode DepsChangingMemoRenter()
+        {
+            var count = Hooks.UseStore(s_store, x => x);
+            return V.Div(name: "memo-churn", children: new VNode[]
+            {
+                V.Memoized(() => V.Button(text: "memo-" + count), count),
+            });
+        }
+
+        [Test]
+        public void Given_AMemoizedSubtreeWhoseDepsChangeEveryRender_When_TheCacheRecomputes_Then_TheReplacedInnerBagsReturnToThePool()
+        {
+            // Arrange / Act — every re-render misses the memo cache and replaces the inner tree.
+            var growth = MeasureOwnedGrowth(() => V.Component(DepsChangingMemoRenter, key: "memo-churn"));
+
+            // Assert — the replaced inner subtree's bag is retired on each recompute, not stranded.
+            Assert.That(growth, Is.LessThanOrEqualTo(OwnedGrowthTolerance),
+                "A replaced memo inner tree's rented props bag must return to the pool");
         }
 
         #endregion
@@ -227,6 +256,129 @@ namespace Velvet.Tests
             // not have been recycled by the hiding render's sweep.
             Assert.That(PropsPoolContains(slotHeldBag), Is.False,
                 "A UseMemo-held node's props bag must not be returned while the slot can re-emit it");
+        }
+
+        // React's element-in-state pattern: a node seeded into UseState and rendered conditionally
+        // re-enters the output from the STATE slot, so the hiding render's sweep must spare it.
+        [Component]
+        private static VNode StateHeldHost()
+        {
+            var count = Hooks.UseStore(s_store, x => x);
+            var (kept, _) = Hooks.UseState(() => s_capturedMemoNode = V.Button(text: "state-kept"));
+            return V.Div(name: "state-host", children: new VNode[]
+            {
+                V.Label(text: "count-" + count),
+                count % 2 == 0 ? kept : null,
+            });
+        }
+
+        [Test]
+        public void Given_AUseStateHeldSubtreeToggledOutOfTheOutput_When_TheHidingRenderRetiresTheOldTree_Then_TheSlotHeldBagStaysOutOfThePool()
+        {
+            // Arrange — mounted with the state-held subtree visible (count 0).
+            using var store = new CounterStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(StateHeldHost, key: "state-host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var slotHeldBag = ((ElementNode)s_capturedMemoNode).Props;
+            Assume.That(slotHeldBag, Is.Not.Null, "Precondition: the state-held button rented a props bag");
+
+            // Act — count 1 hides the subtree.
+            store.Increment();
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the state slot re-emits the node on the comeback render, so its bag must survive.
+            Assert.That(PropsPoolContains(slotHeldBag), Is.False,
+                "A UseState-held node's props bag must not be returned while the slot can re-emit it");
+        }
+
+        // A memoized LIST of nodes (List<VNode> satisfies the covariant IReadOnlyList probe) toggled
+        // out and back: the slot protection must see through the list wrapper.
+        [Component]
+        private static VNode ListMemoHost()
+        {
+            var count = Hooks.UseStore(s_store, x => x);
+            var kept = Hooks.UseMemo(() =>
+            {
+                s_capturedMemoNode = V.Button(text: "list-kept");
+                return new System.Collections.Generic.List<VNode> { s_capturedMemoNode };
+            }, 1);
+            return V.Div(name: "list-host", children: new VNode[]
+            {
+                V.Label(text: "count-" + count),
+                count % 2 == 0 ? kept[0] : null,
+            });
+        }
+
+        [Test]
+        public void Given_AUseMemoHeldListOfSubtrees_When_TheHidingRenderRetiresTheOldTree_Then_TheListedBagStaysOutOfThePool()
+        {
+            // Arrange
+            using var store = new CounterStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(ListMemoHost, key: "list-host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var listedBag = ((ElementNode)s_capturedMemoNode).Props;
+            Assume.That(listedBag, Is.Not.Null, "Precondition: the listed button rented a props bag");
+
+            // Act — count 1 hides the subtree.
+            store.Increment();
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(PropsPoolContains(listedBag), Is.False,
+                "A node held via a memoized list must not have its bag returned while the slot can re-emit it");
+        }
+
+        // An exiting AnimatePresence ghost: the removal render retires the tree that last emitted
+        // the child, but presence bookkeeping keeps re-emitting the SAME node as the old-side
+        // baseline until the exit animation completes — so the sweep must spare the ghost subtree.
+        private static readonly System.Collections.Generic.Dictionary<string, string> s_fade = new()
+        {
+            ["visible"] = "opacity-100",
+            ["hidden"] = "opacity-0",
+        };
+
+        [Component]
+        private static VNode PresenceHost()
+        {
+            var count = Hooks.UseStore(s_store, x => x);
+            var children = new System.Collections.Generic.List<VNode>
+            {
+                V.Motion(name: "item-a", key: "a", variants: s_fade, animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+            };
+            if (count == 0)
+            {
+                children.Add(V.Motion(name: "item-b", key: "b", variants: s_fade, animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f },
+                    children: new VNode[] { s_capturedMemoNode = V.Button(text: "ghost-content") }));
+            }
+            return V.Div(name: "presence-host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Test]
+        public void Given_AKeyedChildWithAnExitAnimation_When_ItsRemovalRenderRetiresTheOldTree_Then_TheGhostBagStaysOutOfThePool()
+        {
+            // Arrange — both children mounted; the ghost content's bag is captured at mount.
+            using var store = new CounterStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(PresenceHost, key: "presence-host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var ghostBag = ((ElementNode)s_capturedMemoNode).Props;
+            Assume.That(ghostBag, Is.Not.Null, "Precondition: the ghost's button rented a props bag");
+
+            // Act — remove the keyed child; its exit animation keeps it mounted as a ghost whose node
+            // the presence bookkeeping re-reads until the exit finishes.
+            store.Increment();
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the ghost subtree's bag was spared by the removal render's sweep.
+            Assert.That(PropsPoolContains(ghostBag), Is.False,
+                "An exiting ghost's props bag must not be returned while presence state still reads its node");
         }
 
         #endregion

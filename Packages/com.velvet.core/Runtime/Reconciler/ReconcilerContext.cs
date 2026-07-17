@@ -545,8 +545,18 @@ namespace Velvet
         // top-level finally keeps the nodes alive for the whole pass (so the baseline stays intact and no
         // renter can alias them) while still pooling them for the next pass — no added GC pressure.
         // Each entry carries the owning fiber so the drain-time sweep can mark that fiber's committed
-        // tree (and memoized roots) live. Drained and cleared at the end of every top-level Reconcile.
+        // tree (and memoized roots) live. Drained and cleared at the end of every top-level Reconcile;
+        // a fiber unmounting mid-pass takes its own entries with it (FiberRenderer.Unmount) so they are
+        // swept while its committed state and parent chain are still intact rather than after teardown
+        // emptied the mark roots.
         public List<(VNode?[] Tree, ComponentFiber Owner)> DeferredInlineOldTreeReturns { get; } = new();
+
+        // Fibers whose time-sliced reconcile is parked with a PendingOldTree baseline. A paused pass
+        // keeps reading that baseline across frames, so every retirement sweep marks these baselines
+        // live — another fiber retiring in between must not recycle nodes a parked diff still reads
+        // (memo hits legitimately share instances across fibers' trees). Maintained by the park /
+        // resume / unmount paths; a stale leftover entry only over-spares (leak-safe direction).
+        internal HashSet<ComponentFiber> ParkedBaselineFibers { get; } = new();
 
         // Cleanup callback returned from a callback ref (BaseElementNode.RefCallback).
         // Fires when the element detaches from the DOM, releasing resources such as

@@ -80,6 +80,11 @@ namespace Velvet
                 FiberHookCommit.DiscardRenderPhaseAttemptEffects(fiber,
                     committedLayoutEffectCount, committedInsertionEffectCount, committedEffectCount,
                     committedPendingLayoutCount, committedPendingInsertionCount, committedPendingEffectCount);
+                // The throwaway attempt's tree is never reconciled, so this is its only retirement
+                // point; without it every discarded attempt strands its rented bags in the pool's
+                // rented-out set. The owner mark spares whatever a memo hit shared with committed
+                // state or staged slots.
+                FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(rendered), fiber);
                 if (++fiber.RenderPhaseSetStateCounter >= RenderPhaseUpdateLimit)
                 {
                     throw new InvalidOperationException(

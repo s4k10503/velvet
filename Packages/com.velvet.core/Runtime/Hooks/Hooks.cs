@@ -2075,6 +2075,14 @@ namespace Velvet
         {
             if (deps == null) throw new ArgumentNullException(nameof(deps));
             var fiber = Resolve("StoreMemoizedVNode");
+#if UNITY_EDITOR
+            // The StrictMode diagnostic render is isolated from the commit: staging its throwaway
+            // output here would first spare that tree from the diagnostic's own retirement sweep
+            // (the mark reads NextCachedResult) and then strand it when the next real render
+            // restages the slot — one leaked subtree per double render. Mirrors the other
+            // externally-visible hook writes the diagnostic pass no-ops.
+            if (fiber.IsStrictDiagnosticPass) return;
+#endif
             if (fiber.MemoSlots == null || slotIndex < 0 || slotIndex >= fiber.MemoSlots.Count)
             {
                 throw new InvalidOperationException(

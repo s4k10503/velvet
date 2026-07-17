@@ -32,6 +32,19 @@ namespace Velvet
         public object?[]? NextDeps { get; set; }
     }
 
+    // Shared probe for hook-slot values that may be memoized VNode roots. The recycle sweep must
+    // not return pooled objects a slot still holds: with stable inputs the SAME instance re-enters
+    // a later committed tree (e.g. V.When toggling a memoized subtree), so its pooled parts stay
+    // live across renders that omit it. Recognizes a node or any list of nodes (arrays and
+    // List&lt;VNode&gt; both satisfy the covariant IReadOnlyList) — a node buried inside a user
+    // composite (tuple / record) is NOT visible here; that boundary is part of the recycle
+    // contract documented on FiberTreeReturn.
+    internal static class HookSlotRecycleProbe
+    {
+        public static object? Probe(object? value)
+            => value is VNode || value is IReadOnlyList<VNode?> ? value : null;
+    }
+
     internal abstract class HookMemoValueSlot
     {
         public object?[]? LastDeps { get; set; }
@@ -39,10 +52,7 @@ namespace Velvet
         public bool Committed { get; set; }
         public abstract void Commit();
 
-        // The committed value when it is a memoized VNode root (a VNode or a VNode array), else null.
-        // The recycle sweep must not return pooled objects such a slot still holds: with stable deps
-        // the SAME instance re-enters a later committed tree (e.g. V.When toggling a memoized subtree),
-        // so its pooled parts stay live across renders that omit it.
+        // The committed value when it is a memoized VNode root — see HookSlotRecycleProbe.
         public abstract object? RecycleMarkRoot { get; }
     }
 
@@ -51,6 +61,10 @@ namespace Velvet
         public T Value = default!;
         public T NextValue = default!;
 
+        // Evaluated once per instantiation so struct-valued slots skip the probe without the
+        // box-then-isinst the raw type test would emit on backends that cannot fold it.
+        private static readonly bool s_canHoldNodes = !typeof(T).IsValueType;
+
         public override void Commit()
         {
             Value = NextValue;
@@ -58,8 +72,7 @@ namespace Velvet
             Committed = true;
         }
 
-        // The type tests fold to false for value-type T, so this never boxes.
-        public override object? RecycleMarkRoot => Value is VNode || Value is VNode?[] ? Value : null;
+        public override object? RecycleMarkRoot => s_canHoldNodes ? HookSlotRecycleProbe.Probe(Value) : null;
     }
 
     internal abstract class HookDeferredValueSlot { }
@@ -146,14 +159,28 @@ namespace Velvet
     internal sealed class HookRefSlot
     {
         public object Ref { get; set; } = null!;
+
+        // The held Ref&lt;T&gt;'s current value when it is a VNode root (element-in-ref caching) —
+        // see HookSlotRecycleProbe. Ref is typed object here, so the probe goes through the
+        // ref's own accessor.
+        public object? RecycleMarkRoot => (Ref as IHookRefSetter)?.RecycleMarkRoot;
     }
 
-    internal abstract class HookStateSlot { }
+    internal abstract class HookStateSlot
+    {
+        // The committed state value when it is a VNode root (React's element-in-state pattern) —
+        // see HookSlotRecycleProbe.
+        public abstract object? RecycleMarkRoot { get; }
+    }
 
     internal sealed class HookStateSlot<T> : HookStateSlot
     {
         public T Value = default!;
         public StateUpdater<T> Setter = default!;
+
+        private static readonly bool s_canHoldNodes = !typeof(T).IsValueType;
+
+        public override object? RecycleMarkRoot => s_canHoldNodes ? HookSlotRecycleProbe.Probe(Value) : null;
     }
 
     internal sealed class ReducerSlot<TState, TAction> : HookStateSlot
@@ -161,6 +188,10 @@ namespace Velvet
         public TState Value = default!;
         public Func<TState, TAction, TState> Reducer = null!;
         public Action<TAction> Dispatch = null!;
+
+        private static readonly bool s_canHoldNodes = !typeof(TState).IsValueType;
+
+        public override object? RecycleMarkRoot => s_canHoldNodes ? HookSlotRecycleProbe.Probe(Value) : null;
     }
 
     internal abstract class HookStoreSlot : IDisposable

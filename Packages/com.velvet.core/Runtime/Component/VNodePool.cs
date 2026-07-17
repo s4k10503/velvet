@@ -10,6 +10,46 @@ namespace Velvet
     internal static class VNodePool
     {
         private const int MaxPoolSize = 8;
+
+        #region pass-scoped release staging
+
+        // While a reconcile pass is on the stack, returned objects are STAGED instead of pushed to
+        // their pools, and flushed when the outermost pass ends. This guarantees an object retired
+        // mid-pass (an error boundary swapping in its fallback, a mid-pass unmount) cannot be
+        // re-rented by a later factory call in the SAME pass: a second retired tree reaching the
+        // same object later in the pass must find it already out of the rented set (idempotent
+        // no-op) — if the object were re-rented in between, that second return would recycle the
+        // NEW renter's live object. Depth-counted so nested top-level entries (a portal drain's
+        // nested reconcile) flush only at the true outermost boundary. Rent never reads the
+        // staging lists, so a staged object is unreachable until the flush.
+        private static int s_releaseScopeDepth;
+        private static readonly List<FiberElementProps> s_stagedProps = new();
+        private static readonly List<FiberEventBinding[]> s_stagedEventArrays = new();
+        private static readonly List<VNode?[]> s_stagedNodeArrays = new();
+
+        internal static void BeginReleaseScope() => s_releaseScopeDepth++;
+
+        internal static void EndReleaseScope()
+        {
+            if (s_releaseScopeDepth > 0 && --s_releaseScopeDepth > 0) return;
+            if (s_stagedProps.Count > 0)
+            {
+                for (var i = 0; i < s_stagedProps.Count; i++) ReleaseProps(s_stagedProps[i]);
+                s_stagedProps.Clear();
+            }
+            if (s_stagedEventArrays.Count > 0)
+            {
+                for (var i = 0; i < s_stagedEventArrays.Count; i++) ReleaseEventArray(s_stagedEventArrays[i]);
+                s_stagedEventArrays.Clear();
+            }
+            if (s_stagedNodeArrays.Count > 0)
+            {
+                for (var i = 0; i < s_stagedNodeArrays.Count; i++) ReleaseNodeArray(s_stagedNodeArrays[i]);
+                s_stagedNodeArrays.Clear();
+            }
+        }
+
+        #endregion
         // Sized to absorb peak reconcile churn (typically ~30 mounts/unmounts in deep reflows).
         private const int MaxLabelPoolSize = 32;
         private const int MaxButtonPoolSize = 32;
@@ -43,6 +83,17 @@ namespace Velvet
             // Only recycle bags rented out by the pool; a caller-owned or already-returned bag is left
             // untouched (not cleared, not pooled) — Remove doubles as the membership test.
             if (!s_ownedProps.Remove(props)) return;
+            if (s_releaseScopeDepth > 0)
+            {
+                // Mid-pass return: keep the bag unreachable until the pass ends (see the staging region).
+                s_stagedProps.Add(props);
+                return;
+            }
+            ReleaseProps(props);
+        }
+
+        private static void ReleaseProps(FiberElementProps props)
+        {
             if (s_propsPool.Count >= MaxPoolSize)
             {
                 // Pool is full: drop this bag (let it be GC'd); it already left the rented-out set.
@@ -100,6 +151,16 @@ namespace Velvet
             // Only recycle arrays rented out by the pool; a caller-owned or already-returned array is
             // left untouched — Remove doubles as the membership test.
             if (!s_ownedSingleEventArrays.Remove(array)) return;
+            if (s_releaseScopeDepth > 0)
+            {
+                s_stagedEventArrays.Add(array);
+                return;
+            }
+            ReleaseEventArray(array);
+        }
+
+        private static void ReleaseEventArray(FiberEventBinding[] array)
+        {
             if (s_singleEventPool.Count >= MaxPoolSize)
             {
                 return;
@@ -137,7 +198,16 @@ namespace Velvet
             // Only recycle arrays rented out by the pool; a caller-owned or already-returned array is
             // left untouched (not cleared, not pooled) — Remove doubles as the membership test.
             if (!s_ownedNodeArrays.Remove(array)) return;
+            if (s_releaseScopeDepth > 0)
+            {
+                s_stagedNodeArrays.Add(array);
+                return;
+            }
+            ReleaseNodeArray(array);
+        }
 
+        private static void ReleaseNodeArray(VNode?[] array)
+        {
             if (!s_nodeArrayPools.TryGetValue(array.Length, out var pool))
             {
                 pool = new Stack<VNode?[]>();
@@ -265,6 +335,10 @@ namespace Velvet
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticFields()
         {
+            s_releaseScopeDepth = 0;
+            s_stagedProps.Clear();
+            s_stagedEventArrays.Clear();
+            s_stagedNodeArrays.Clear();
             s_propsPool.Clear();
             s_ownedProps.Clear();
             s_singleEventPool.Clear();

@@ -13,15 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from EVERY nesting level of a retired tree — previously only the top level was recycled, so any
   props-carrying element nested under another element (or under `V.Portal` / `V.WorldSpace` /
   `V.Suspense` / provider children) stranded one pooled bag per re-render, pinned forever by the
-  pool's ownership tracking. The recycle is a mark-and-sweep: objects still reachable from the
-  committed tree or from memoized roots (compiler auto-memo slots, `Hooks.UseMemo`-held subtrees,
-  along the ancestor chain) are spared, so memo hits that legitimately share nodes across
-  consecutive renders keep their baselines intact. Pool returns are now idempotent (rent-scoped
-  ownership), double-return can no longer alias one bag to two renters, an aborted reconcile no
-  longer recycles the retained baseline's own pooled parts, and the editor-only StrictMode
-  double-invoke pass no longer recycles committed subtrees a memo hit shared into its discarded
-  diagnostic tree. `V.DragOverlay`'s positioner props now come from the pool too (the workaround
-  for the old leak).
+  pool's ownership tracking. The recycle is a mark-and-sweep: nodes still reachable from committed
+  state are spared, so renders that legitimately share node instances keep their baselines intact.
+  The live roots cover the committed and parked baselines, hook-slot-held node roots (compiler
+  auto-memo slots, plus `Hooks.UseMemo` / `UseState` / `UseRef` values that are a node or a list of
+  nodes) along the LOGICAL ancestor chain (portal-drained fibers hop back to their declaring
+  component), provider values, and exiting `AnimatePresence` ghosts (whose nodes presence
+  bookkeeping re-reads until the exit completes). Holding a factory-built node anywhere else across
+  renders — inside a user record or tuple, a component props record, a `Store` — is outside the
+  tracked surface and documented as unsupported.
+- Pooled-object lifetime hardening around the same recycle path: pool returns are idempotent
+  (rent-scoped ownership) and pass-deferred (a mid-pass return cannot be re-rented within the same
+  reconcile pass, so a second retirement of a shared node can never recycle a NEW renter's live
+  object); an aborted reconcile no longer recycles the retained baseline's own pooled parts; a
+  fiber unmounting mid-pass reclaims its deferred baselines while its mark roots are intact; a
+  replaced `V.Memoized` inner tree and the memo cache's disposal now retire their cached subtrees;
+  discarded render-phase attempts retire their throwaway output; and the editor-only StrictMode
+  double-invoke pass neither recycles committed subtrees a memo hit shared into its diagnostic tree
+  nor stages that tree into the auto-memo slot. `V.DragOverlay`'s positioner props now come from
+  the pool too (the workaround for the old leak).
 
 ## [1.4.0] - 2026-07-17
 

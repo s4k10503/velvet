@@ -90,6 +90,73 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARentedEventArrayReturnedTwice_When_TwoRentsFollow_Then_TheyAreDistinctInstances()
+        {
+            // Arrange — same double-return discipline for the single-event-array pool.
+            var array = VNodePool.RentSingleEventArray();
+            VNodePool.ReturnEventArray(array);
+            VNodePool.ReturnEventArray(array);
+
+            // Act
+            var first = VNodePool.RentSingleEventArray();
+            var second = VNodePool.RentSingleEventArray();
+
+            // Assert
+            Assert.That(ReferenceEquals(first, second), Is.False);
+        }
+
+        [Test]
+        public void Given_AnOpenReleaseScope_When_ABagIsReturnedInsideIt_Then_ARentCannotGetItBackUntilTheScopeEnds()
+        {
+            // Arrange — a reconcile-pass-shaped release scope with one bag returned mid-scope. A tree
+            // retired mid-pass must not be re-rentable by a later factory call in the SAME pass, or a
+            // second retired tree reaching the same bag would recycle the new renter's live object.
+            var bag = VNodePool.RentProps();
+            VNodePool.BeginReleaseScope();
+            try
+            {
+                VNodePool.ReturnProps(bag);
+
+                // Act — drain every pooled bag; the staged one must not be among them.
+                var sawStagedBag = false;
+                for (var i = 0; i < 16; i++)
+                {
+                    if (ReferenceEquals(VNodePool.RentProps(), bag)) sawStagedBag = true;
+                }
+
+                // Assert
+                Assert.That(sawStagedBag, Is.False,
+                    "A bag returned inside a release scope must stay un-rentable until the scope ends");
+            }
+            finally
+            {
+                VNodePool.EndReleaseScope();
+            }
+        }
+
+        [Test]
+        public void Given_AReleaseScopeThatStagedAReturn_When_TheScopeEnds_Then_TheBagIsPoolableAgain()
+        {
+            // Arrange — drain the pool first so the flush target has room and the flushed bag sits on
+            // top of the stack, then stage one return inside a scope.
+            for (var i = 0; i < 16; i++)
+            {
+                VNodePool.RentProps();
+            }
+            var bag = VNodePool.RentProps();
+            VNodePool.BeginReleaseScope();
+            VNodePool.ReturnProps(bag);
+            VNodePool.EndReleaseScope();
+
+            // Act — the flushed bag is on top of the pool stack.
+            var rented = VNodePool.RentProps();
+
+            // Assert
+            Assert.That(ReferenceEquals(rented, bag), Is.True,
+                "A staged return must reach the pool when the scope ends");
+        }
+
+        [Test]
         public void Given_UserEventArrayNotRentedFromPool_When_ReturnEventArray_Then_ItIsNotCleared()
         {
             // Arrange — a caller-owned single-event array, as a component caching events would hold.
