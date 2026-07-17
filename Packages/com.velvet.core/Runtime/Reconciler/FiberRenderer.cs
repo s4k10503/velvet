@@ -66,6 +66,11 @@ namespace Velvet
             SetupMount(fiber, mountPoint, sharedContext);
             RenderAndReconcile(fiber);
             FiberEffects.CommitSubtreeEffects(fiber, mountDoubleInvoke: true);
+            // The setState-in-commit guarantee is entry-point-agnostic: a callback ref or layout
+            // effect that writes state during THIS mount (the measure-in-ref pattern) must commit
+            // before the caller regains control, exactly as a drain-driven flush loops until quiet —
+            // otherwise the first painted frame shows the pre-write state.
+            fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
         }
 
         // Inline-mount variant for wrapper-less fibers. The fiber's render output is held on the
@@ -606,17 +611,9 @@ namespace Velvet
                 // dependency list (matching the real committed render) stays intact.
                 fiber.BeginDependencyStaging();
                 fiber.HasRenderPhaseUpdate = false;
-                // The diagnostic re-runs the BODY, so it opens the same render-phase window the real
-                // render-phase loop does — the impure-setState check below reads the flag this sets.
-                fiber.IsInRenderPhase = true;
-                try
-                {
-                    diagnosticTree = FiberTreeReturn.NormalizeToArray(FiberBeginWork.Render(fiber));
-                }
-                finally
-                {
-                    fiber.IsInRenderPhase = false;
-                }
+                // The diagnostic re-runs the BODY through the same render-phase window the real
+                // render-phase loop uses — the impure-setState check below reads the flag it sets.
+                diagnosticTree = FiberTreeReturn.NormalizeToArray(FiberBeginWork.InvokeBodyInRenderPhase(fiber));
 
                 var diagnosticSignature = FiberStrictMode.ComputeSignature(diagnosticTree);
                 if (!string.Equals(committedSignature, diagnosticSignature, StringComparison.Ordinal))

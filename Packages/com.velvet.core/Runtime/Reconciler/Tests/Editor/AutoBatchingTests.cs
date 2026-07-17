@@ -290,11 +290,13 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ImmediateFlushDuringDrain_When_DrainInProgress_Then_DiscreteUpdateIsDeferredNotCommitted()
+        public void Given_ImmediateFlushDuringDrain_When_TheDelayedDrainEnds_Then_TheSiblingCommitsAtTheBoundaryNotReentrantly()
         {
             // A FlushImmediate raised while a drain is on the stack must no-op: re-entering would re-enter the
             // reconciler at depth > 0 (corrupting shared abort / context-snapshot state) and clobber the shared
-            // drain buffer. The sibling update it schedules stays queued on the immediate tier.
+            // drain buffer. The sibling update it schedules stays queued on the immediate tier and commits at
+            // the drain's own boundary — the setState-in-commit guarantee is tier-agnostic, so the delayed
+            // drain's tail runs the immediate queue rather than leaving a one-frame slot/UI desync.
             // Arrange
             using var mounted = MountReentrantPair();
             Assume.That((s_reentrantHostRenderCount, s_reentrantSiblingRenderCount), Is.EqualTo((1, 1)),
@@ -307,28 +309,27 @@ namespace Velvet.Tests
             // Act
             Scheduler(mounted).DrainDelayedForTest();
 
-            // Assert
-            Assert.AreEqual(1, s_reentrantSiblingRenderCount,
-                "FlushImmediate no-ops during a drain; the discrete sibling update is deferred, not committed re-entrantly");
+            // Assert — exactly one boundary commit: the mid-drain FlushImmediate did not run it re-entrantly
+            // (that would have flushed against a half-committed host), the drain tail did.
+            Assert.AreEqual(2, s_reentrantSiblingRenderCount,
+                "The sibling update commits once, at the delayed drain's boundary");
         }
 
         [Test]
-        public void Given_ImmediateFlushDuringDrain_When_NextFrameDrains_Then_DeferredUpdateCommits()
+        public void Given_ImmediateFlushDuringDrain_When_TheDelayedDrainEnds_Then_NothingIsLeftForTheNextFrame()
         {
             // Arrange
             using var mounted = MountReentrantPair();
             s_reentrantArmed = true;
             s_reentrantHostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+
+            // Act
             Scheduler(mounted).DrainDelayedForTest();
-            Assume.That(Scheduler(mounted).ImmediatePendingCount, Is.EqualTo(1),
-                "Precondition: the deferred sibling update stays enrolled on the immediate tier");
 
-            // Act — the next-frame immediate drain (no reconcile on the stack) commits it
-            Scheduler(mounted).DrainImmediateForTest();
-
-            // Assert
-            Assert.AreEqual(2, s_reentrantSiblingRenderCount,
-                "The deferred update commits on the next-frame immediate drain");
+            // Assert — the boundary commit consumed the queue: a next-frame callback would find nothing,
+            // so the committed UI and the state slots agree within the same frame that wrote them.
+            Assert.AreEqual(0, Scheduler(mounted).ImmediatePendingCount,
+                "The delayed drain's tail leaves no immediate-tier remainder");
         }
 
         #region Async batching

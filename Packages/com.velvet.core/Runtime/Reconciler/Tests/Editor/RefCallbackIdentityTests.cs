@@ -127,5 +127,40 @@ namespace Velvet.Tests
             Assert.That(s_cleanupCount, Is.EqualTo(1),
                 "Unmount must fire the installed ref's cleanup exactly once");
         }
+
+        // A capture-less static delegate: the same identity across two INDEPENDENT mounts, which is
+        // how a pooled element could meet the same callback again on its next tenant.
+        private static readonly Func<VisualElement, Action> s_pooledTenantRef = _ =>
+        {
+            s_setupCount++;
+            return () => s_cleanupCount++;
+        };
+
+        [Component]
+        private static VNode PooledTenantHost() =>
+            V.Div(name: "host", children: new VNode[]
+            {
+                V.Button(name: "target", text: "target", refCallback: s_pooledTenantRef),
+            });
+
+        [Test]
+        public void Given_AHostUnmountedAndRemountedWithTheSameRefIdentity_When_TheNewTenantMounts_Then_TheSetupRunsAgain()
+        {
+            // Arrange — first mount installs the ref, unmount cleans it up and pools the element.
+            // The identity gate keys on the STORED entry, which the element cleaner must have
+            // removed on the way to the pool — a stale entry would make the same-identity remount
+            // silently skip its setup (no signals hooked, refs never set) instead of running it.
+            var first = V.Mount(_root, V.Component(PooledTenantHost, key: "first"));
+            first.Dispose();
+            Assume.That((s_setupCount, s_cleanupCount), Is.EqualTo((1, 1)),
+                "Precondition: the first tenant ran one setup and one cleanup");
+
+            // Act — a fresh mount whose element may be the pooled instance, under the SAME delegate.
+            using var second = V.Mount(new VisualElement(), V.Component(PooledTenantHost, key: "second"));
+
+            // Assert — the new tenant's setup ran (the pool return scrubbed the identity entry).
+            Assert.That(s_setupCount, Is.EqualTo(2),
+                "A remounted element under the same ref identity must run its setup again");
+        }
     }
 }

@@ -96,7 +96,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARunawayCommitPhaseWriteLoop_When_TheDrainHitsTheUpdateDepthCap_Then_ItLogsAndLeavesTheRestForTheNextFrame()
+        public void Given_ARunawayCommitPhaseWriteLoop_When_TheDrainHitsTheUpdateDepthCap_Then_ItLogsAndDropsTheRunawayUpdate()
         {
             // Arrange — mounted quiet, then the first store write starts the self-sustaining loop.
             using var store = new CounterStore();
@@ -109,10 +109,13 @@ namespace Velvet.Tests
             store.Increment();
             scheduler.DrainImmediateForTest();
 
-            // Assert — the loop was cut off with work still pending for the next frame boundary
-            // (the queue is not empty), rather than the drain looping to completion or dropping it.
-            Assert.That(scheduler.ImmediatePendingCount, Is.GreaterThan(0),
-                "The capped drain must defer the still-pending update instead of dropping it");
+            // Assert — the loop genuinely ran (the spin counter committed past its initial value)
+            // and the runaway update was then DROPPED, not deferred: a deferred runaway would re-arm
+            // and burn the full cap again every frame forever, so the queue must end empty.
+            Assert.That(
+                (_root.Q<Label>("spins").text != "spins-0", scheduler.ImmediatePendingCount),
+                Is.EqualTo((true, 0)),
+                "The capped drain must drop the runaway update after real passes ran");
         }
     }
 }

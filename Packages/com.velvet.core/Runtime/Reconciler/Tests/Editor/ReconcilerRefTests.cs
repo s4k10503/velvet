@@ -8,14 +8,16 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies the callback-ref and creation-callback contract of element reconciliation.
     /// <list type="bullet">
-    /// <item>A callback ref runs on element creation and again on each patch, receiving the live
-    /// element; when the element is reused by a patch it receives that same instance.</item>
-    /// <item>A callback ref may return a cleanup action; the cleanup fires when the element is removed,
-    /// and when a patch swaps the callback identity on the same element the old cleanup fires before
-    /// the new callback runs as setup. A null cleanup return is a no-op on removal.</item>
+    /// <item>A callback ref runs on element creation, receiving the live element. On a patch it is
+    /// identity-gated (React's contract): the same callback delegate leaves the installed ref
+    /// untouched, while a changed identity cycles it — the old cleanup fires, then the new callback
+    /// runs as setup against the same reused instance. (The per-render lambdas these tests pass are
+    /// fresh identities, so their patches cycle.)</item>
+    /// <item>A callback ref may return a cleanup action; the cleanup fires when the element is removed.
+    /// A null cleanup return is a no-op on removal.</item>
     /// <item>A typed <c>Ref&lt;T&gt;</c> exposes the element through <c>Current</c>; its
-    /// <c>SetElement</c> cleanup resets <c>Current</c> to null on removal, and across patches of the
-    /// same element <c>Current</c> stays the live instance (never transiently null).</item>
+    /// <c>SetElement</c> delegate is identity-stable for the Ref's lifetime (so patches leave it
+    /// installed), and its cleanup resets <c>Current</c> to null on removal.</item>
     /// <item>Keyed reconciliation that reuses an element keeps the same instance bound to its ref
     /// across a reorder.</item>
     /// <item>The creation callback (<c>OnCreated</c>) runs only when the element is created — never on

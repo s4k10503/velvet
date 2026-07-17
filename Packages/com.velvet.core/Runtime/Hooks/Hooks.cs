@@ -1104,6 +1104,18 @@ namespace Velvet
                     }
                 });
                 signals.Hook(element, seedChecked: false, registerChecked: false);
+                // Seed: the signals are edge-driven, so hooking an element that ALREADY holds focus
+                // raises no Focus edge. A ref composed inside a per-render lambda cycles on every
+                // patch (fresh identity), and its cleanup below writes the flags false on the
+                // still-focused element — without this seed the ring would go dark and stay dark
+                // until a real blur+refocus. Focus-visible is deliberately NOT seeded: the input
+                // modality that produced the pre-existing focus is unknown here, and understating
+                // the ring beats inventing a keyboard modality a pointer created.
+                if (element.panel?.focusController?.focusedElement is UnityEngine.UIElements.VisualElement alreadyHeld
+                    && (alreadyHeld == element || element.Contains(alreadyHeld)))
+                {
+                    setFocused.Invoke(true);
+                }
                 return () =>
                 {
                     signals.Unhook();

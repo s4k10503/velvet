@@ -512,38 +512,37 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_SetStateInsideEffect_When_Mounted_Then_NewStateIsNotYetVisible()
+        public void Given_SetStateInsideEffect_When_Mounted_Then_TheNewStateIsVisibleBeforeTheCallerRegainsControl()
         {
             // Arrange + Act
             using var mounted = V.Mount(_root, V.Component(EffectSetStateRender, key: "setstate"));
 
-            // Assert — the in-effect setter has been scheduled but not yet flushed
-            Assert.That(s_effectSetStateCurrentCount, Is.EqualTo(0),
-                "The new state is not visible immediately after the initial render");
+            // Assert — a layout-effect setState flushes synchronously before the mount returns
+            // (before anything can paint), so the caller never observes the pre-write state.
+            Assert.That(s_effectSetStateCurrentCount, Is.EqualTo(1),
+                "The in-effect setter commits before the initial mount returns");
         }
 
         [Test]
-        public void Given_SetStateInsideEffect_When_StateFlushed_Then_NewStateBecomesVisible()
+        public void Given_SetStateInsideEffect_When_AnotherFlushRuns_Then_NothingFurtherCommits()
         {
-            // Arrange
+            // Arrange — the mount already committed the in-effect write.
             using var mounted = V.Mount(_root, V.Component(EffectSetStateRender, key: "setstate"));
-            Assume.That(s_effectSetStateCurrentCount, Is.EqualTo(0), "Precondition: the new state is not yet visible");
+            Assume.That(s_effectSetStateCurrentCount, Is.EqualTo(1), "Precondition: the write committed at mount");
 
             // Act
             mounted.FlushStateForTest();
 
-            // Assert
-            Assert.That(s_effectSetStateCurrentCount, Is.EqualTo(1), "The in-effect setter is applied after flush");
+            // Assert — the guarded setter converged; later flushes find nothing to do.
+            Assert.That(s_effectSetStateCurrentCount, Is.EqualTo(1), "The settled state does not change again");
         }
 
         [Test]
-        public void Given_SetStateInsideEffect_When_StateFlushed_Then_RendersExactlyTwice()
+        public void Given_SetStateInsideEffect_When_Mounted_Then_RendersExactlyTwice()
         {
-            // Arrange
+            // Arrange + Act — the mount runs the initial render, the effect writes, and the
+            // synchronous follow-up pass commits the second render before returning.
             using var mounted = V.Mount(_root, V.Component(EffectSetStateRender, key: "setstate"));
-
-            // Act
-            mounted.FlushStateForTest();
 
             // Assert — initial render + the render triggered by the setter inside the effect
             Assert.That(s_effectSetStateRenderCount, Is.EqualTo(2),

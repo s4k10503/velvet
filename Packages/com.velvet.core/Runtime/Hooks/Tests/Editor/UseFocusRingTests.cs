@@ -49,6 +49,44 @@ namespace Velvet.Tests
             return _host.Root.Q<VisualElement>("target");
         }
 
+        private static StateUpdater<int> s_bumpComposed;
+
+        // The ring's ref is COMPOSED inside a per-render lambda (the only way to combine it with
+        // other per-element work), so every patch cycles the ref with a fresh identity — the
+        // cleanup fires on the still-focused element and the setup must re-light the ring.
+        [Component]
+        private static VNode ComposedRingHost()
+        {
+            var ring = Hooks.UseFocusRing();
+            s_ring = ring;
+            var (count, setCount) = Hooks.UseState(0);
+            s_bumpComposed = setCount;
+            return V.Div(children: new VNode[]
+            {
+                V.Label(text: "count-" + count),
+                V.Button(name: "target", refCallback: element => ring.Ref(element)),
+            });
+        }
+
+        [Test]
+        public void Given_AFocusedRingBehindAPerRenderComposedRef_When_AnUnrelatedRerenderCyclesTheRef_Then_TheRingStaysLit()
+        {
+            // Arrange — mounted with a composed (fresh-identity) ref, then really focused.
+            _mounted = V.Mount(_host.Root, V.Component(ComposedRingHost, key: "root"));
+            _host.Root.Q<VisualElement>("target").Focus();
+            _mounted.FlushStateForTest();
+            Assume.That(s_ring.IsFocused, Is.True, "Precondition: the ring lit for the focused element");
+
+            // Act — an unrelated state change patches the host; the fresh-identity ref cycles
+            // (cleanup writes the flags false on the still-focused element, setup re-hooks it).
+            s_bumpComposed.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert — the setup's focus seed re-lit the ring within the same flush.
+            Assert.That(s_ring.IsFocused, Is.True,
+                "A ref cycling on a still-focused element must not leave the ring dark");
+        }
+
         [Test]
         public void Given_AComponentUsingUseFocusRing_When_ItsElementGainsFocusWithoutAPointerPress_Then_IsFocusVisibleBecomesTrue()
         {

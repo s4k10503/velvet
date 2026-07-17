@@ -370,8 +370,10 @@ namespace Velvet
             }
             // Drag-and-drop bindings: the draggable's pointer-down armer unregisters, and an element that
             // is the active session's source or scope cancels that session teardown-flavored (synchronous
-            // scrub so the element reaches the pool clean, deferred user callback — the cleaner runs
-            // mid-flush, where a user state write would be silently lost; see DndActiveDrag).
+            // scrub so the element reaches the pool clean, deferred user callback — an ARBITRARY user
+            // callback run mid-flush could read a half-mutated tree or re-enter the reconciler, so it
+            // waits for the flush like effect callbacks do; see DndActiveDrag. Plain state writes from
+            // mid-flush are safe — they schedule a follow-up render.)
             if (_ctx.DndScopeBindings.ContainsKey(element))
             {
                 DndScopeDriver.Detach(element, _ctx);

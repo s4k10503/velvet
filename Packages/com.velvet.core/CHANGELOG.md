@@ -12,17 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Callback refs follow React's re-invocation contract: a ref cycles (cleanup, then setup) only
   when its callback identity changes or the host element remounts — a patch carrying the same
   delegate no longer re-invokes it on every render, so a reference-stable ref (`Hooks.UseCallback`)
-  installs once and its cleanup means the element is genuinely going away.
+  installs once and its cleanup means the element is genuinely going away. `Ref<T>.SetElement` is
+  now an identity-stable delegate for the Ref's lifetime (a method group converted to a fresh
+  delegate per render, so the object-ref pattern could never benefit from the gate), hook calls
+  from commit-phase code fail fast with the invalid-hook-call error instead of corrupting the slot
+  cursor, and reconciler disposal detaches every still-installed ref that a diverged teardown
+  skipped.
 - Hook state writes landing in the COMMIT phase of the same fiber's flush (a callback ref invoked
   during a patch, an event dispatched from a detach) are no longer silently discarded: the
   render-phase-update window now covers only the component body, so commit-phase writes schedule an
-  ordinary follow-up render — and the frame's batch drain keeps draining until the queue is quiet
-  (React's setState-in-commit semantics), capped at React's maximum update depth of 50. A runaway
-  commit-phase loop logs an error and defers the remainder to the next frame instead of throwing,
-  so one component's loop cannot abandon the rest of the batch. Dropped writes used to desync the
+  ordinary follow-up render — and the flush keeps draining until the queue is quiet (React's
+  setState-in-commit semantics) whichever entry point ran it: the frame drain, a delayed-tier
+  drain, a discrete-event flush, or the initial mount. Runaway commit-phase loops hit React's
+  maximum update depth (50); the overflow logs an error and DROPS the runaway update instead of
+  throwing — a throw here cannot reach an error boundary and a deferred runaway would re-arm every
+  frame, while a drop keeps every other component's work alive. Dropped writes used to desync the
   slot value from the committed UI and poison the setter's equality bail for the next genuine edge
   with the same value; `Hooks.UseFocusRing` sheds its deferred-correction workaround accordingly
-  (its cleanup now writes the flags directly).
+  (its cleanup writes the flags directly, and its setup seeds an already-focused element so a ref
+  composed in a per-render lambda cannot strand the ring dark).
 
 - The fiber-tree recycle path now returns factory-rented props bags / event arrays / child arrays
   from EVERY nesting level of a retired tree — previously only the top level was recycled, so any
