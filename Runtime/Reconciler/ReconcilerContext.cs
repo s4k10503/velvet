@@ -558,26 +558,33 @@ namespace Velvet
         // resume / unmount paths; a stale leftover entry only over-spares (leak-safe direction).
         internal HashSet<ComponentFiber> ParkedBaselineFibers { get; } = new();
 
-        // Cleanup callback returned from a callback ref (BaseElementNode.RefCallback).
-        // Fires when the element detaches from the DOM, releasing resources such as
-        // resetting Ref<T>.Current to null.
-        public Dictionary<VisualElement, System.Action> RefCleanups { get; } = new();
+        // Callback-ref bookkeeping per element (BaseElementNode.RefCallback): the callback identity
+        // that installed the current ref plus its returned cleanup. The identity is stored so a
+        // patch can tell a STABLE ref apart from a swapped one — matching React, a ref cycles
+        // (cleanup, then setup) only when its identity changes or the element remounts. The cleanup
+        // fires when the element detaches from the DOM, releasing resources such as resetting
+        // Ref<T>.Current to null.
+        public Dictionary<VisualElement, (System.Func<VisualElement, System.Action> Callback, System.Action? Cleanup)>
+            RefCallbacks { get; } = new();
 
-        // Invokes a callback ref and stores the returned cleanup in RefCleanups.
-        // If the same element already has a previously registered cleanup, fires it first and replaces
-        // it (the case where re-patch changes callback identity).
+        // Invokes a callback ref and records (identity, cleanup) in RefCallbacks. A patch carrying
+        // the SAME callback delegate is a no-op: unconditionally re-invoking made any state write in
+        // a ref cleanup a per-patch mid-flush write, forcing consumers into deferred-correction
+        // workarounds. An entry is stored even when the setup returns no cleanup — the identity is
+        // what makes the stable-ref skip possible.
         internal void InvokeRefCallback(VisualElement element, System.Func<VisualElement, System.Action>? refCallback)
         {
-            // Remove first: if a user-defined cleanup throws, leaving a stale entry would cause
-            // a double-fire on the next reconcile. Remove → Invoke order preserves exception safety.
-            if (RefCleanups.TryGetValue(element, out var oldCleanup))
+            if (RefCallbacks.TryGetValue(element, out var installed))
             {
-                RefCleanups.Remove(element);
-                oldCleanup?.Invoke();
+                if (refCallback != null && ReferenceEquals(installed.Callback, refCallback)) return;
+                // Remove first: if a user-defined cleanup throws, leaving a stale entry would cause
+                // a double-fire on the next reconcile. Remove → Invoke order preserves exception safety.
+                RefCallbacks.Remove(element);
+                installed.Cleanup?.Invoke();
             }
             if (refCallback == null) return;
             var cleanup = refCallback(element);
-            if (cleanup != null) RefCleanups[element] = cleanup;
+            RefCallbacks[element] = (refCallback, cleanup);
         }
 
         // DOM-less AnimatePresence keeps its per-boundary state in PresenceStates (below); the old

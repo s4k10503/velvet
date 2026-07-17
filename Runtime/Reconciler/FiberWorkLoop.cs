@@ -46,14 +46,18 @@ namespace Velvet
                 return;
             }
 
-            // Render-phase setState: the setter updates this fiber's own state while this same fiber
-            // is rendering. Such updates are processed synchronously (discard the in-progress
-            // output and re-run Render() before committing) instead of scheduling a next-frame
-            // re-render. Flag the fiber and let the render loop in RenderAndReconcile re-run; the
-            // state slot already holds the new value by the time this is called. A setter for a
-            // *different* fiber that fires during this fiber's render falls through to the regular
-            // next-frame schedule below.
-            if (fiber.IsRendering && ReferenceEquals(FiberAmbientStack.Current, fiber))
+            // Render-phase setState: the setter updates this fiber's own state while this same
+            // fiber's BODY is on the stack. Such updates are processed synchronously (discard the
+            // in-progress output and re-run Render() before committing) instead of scheduling a
+            // next-frame re-render. Flag the fiber and let the render loop in RenderAndReconcile
+            // re-run; the state slot already holds the new value by the time this is called. The
+            // gate is the render-phase window, NOT IsRendering: a write landing later in the same
+            // flush (a callback ref invoked during the patch, an event dispatched from a detach) is
+            // a commit-phase update that falls through to the regular schedule below — React's
+            // "setState in a commit schedules a follow-up pass" — where the flag would be consumed
+            // by nobody and cleared, silently dropping the write. A setter for a *different* fiber
+            // that fires during this fiber's render also falls through.
+            if (fiber.IsInRenderPhase && ReferenceEquals(FiberAmbientStack.Current, fiber))
             {
                 fiber.HasRenderPhaseUpdate = true;
                 return;
@@ -348,6 +352,12 @@ namespace Velvet
                     // has- ancestor that did not itself reconcile. Scoped to this flush's region (the fiber's
                     // MountPoint subtree) — see RefreshHasVariants.
                     FiberNodePatcher.RefreshHasVariants(fiber.Reconciler?.Context, fiber.MountPoint);
+                    // The setState-in-commit guarantee is entry-point-agnostic: this terminal slice's
+                    // commits may have invoked callback refs that wrote state (the measure-in-ref
+                    // pattern), and the resume runs outside any batch drain — flush now so the write
+                    // commits before the frame yields. Safe here: the pass completed (no pending
+                    // work) and the reconcile-active bracket was exited by ContinueReconcile above.
+                    fiber.Reconciler?.Context.BatchScheduler.FlushImmediate();
                 }
             }
             catch (Exception ex)

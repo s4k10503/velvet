@@ -423,6 +423,24 @@ namespace Velvet
             _ctx.ComponentRegistry.Dispose();
             _ctx.FiberMemoCache.DisposeAndReturnCachedTrees();
             _ctx.WrapperToInnerMap.Clear();
+            // Detach every still-installed callback ref: an element the unmount reconcile skipped (a
+            // parked time-sliced baseline diverged from the DOM, an aborted teardown) never passes
+            // through the element cleaner, and the ref contract is that every attached ref detaches
+            // when its root goes away — Ref<T>.Current must not keep pointing at a dead element and a
+            // user cleanup releasing external resources must run. Best-effort per entry: one throwing
+            // cleanup must not strand the rest.
+            foreach (var (_, installedRef) in _ctx.RefCallbacks)
+            {
+                try
+                {
+                    installedRef.Cleanup?.Invoke();
+                }
+                catch (System.Exception ex)
+                {
+                    FiberLogger.LogException("Reconciler", ex);
+                }
+            }
+            _ctx.RefCallbacks.Clear();
             // Shadowed elements hold paint + re-bake callbacks: detach so a still-mounted element released at
             // root disposal carries no Velvet residue. Then dispose the shared bake Material once (the baked
             // shadow textures are cached process-wide and outlive the reconciler, like the gradient bakes).
