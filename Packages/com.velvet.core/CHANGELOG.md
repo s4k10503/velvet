@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The fiber-tree recycle path now returns factory-rented props bags / event arrays / child arrays
+  from EVERY nesting level of a retired tree — previously only the top level was recycled, so any
+  props-carrying element nested under another element (or under `V.Portal` / `V.WorldSpace` /
+  `V.Suspense` / provider children) stranded one pooled bag per re-render, pinned forever by the
+  pool's ownership tracking. The recycle is a mark-and-sweep: objects still reachable from the
+  committed tree or from memoized roots (compiler auto-memo slots, `Hooks.UseMemo`-held subtrees,
+  along the ancestor chain) are spared, so memo hits that legitimately share nodes across
+  consecutive renders keep their baselines intact. Pool returns are now idempotent (rent-scoped
+  ownership), double-return can no longer alias one bag to two renters, an aborted reconcile no
+  longer recycles the retained baseline's own pooled parts, and the editor-only StrictMode
+  double-invoke pass no longer recycles committed subtrees a memo hit shared into its discarded
+  diagnostic tree. `V.DragOverlay`'s positioner props now come from the pool too (the workaround
+  for the old leak).
+
 ## [1.4.0] - 2026-07-17
 
 ### Added

@@ -333,7 +333,7 @@ namespace Velvet
                 }
                 else
                 {
-                    FiberTreeReturn.ReturnPooledObjects(fiber.PendingOldTree);
+                    FiberTreeReturn.ReturnRetiredTree(fiber.PendingOldTree, fiber);
                     fiber.PendingOldTree = null;
                     // The commit is now fully applied — run the insertion / layout / passive effects FlushState
                     // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
@@ -348,7 +348,7 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                FiberTreeReturn.ReturnPooledObjects(fiber.PendingOldTree);
+                FiberTreeReturn.ReturnRetiredTree(fiber.PendingOldTree, fiber);
                 fiber.PendingOldTree = null;
                 FiberErrorBoundary.OnRenderError(fiber, ex);
             }

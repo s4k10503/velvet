@@ -544,8 +544,9 @@ namespace Velvet
         // subtree instead of patching it (the subtree visibly duplicates). Deferring the return to the
         // top-level finally keeps the nodes alive for the whole pass (so the baseline stays intact and no
         // renter can alias them) while still pooling them for the next pass — no added GC pressure.
-        // Drained and cleared at the end of every top-level Reconcile.
-        public List<VNode?[]> DeferredInlineOldTreeReturns { get; } = new();
+        // Each entry carries the owning fiber so the drain-time sweep can mark that fiber's committed
+        // tree (and memoized roots) live. Drained and cleared at the end of every top-level Reconcile.
+        public List<(VNode?[] Tree, ComponentFiber Owner)> DeferredInlineOldTreeReturns { get; } = new();
 
         // Cleanup callback returned from a callback ref (BaseElementNode.RefCallback).
         // Fires when the element detaches from the DOM, releasing resources such as

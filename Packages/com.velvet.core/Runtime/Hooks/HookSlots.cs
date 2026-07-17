@@ -38,6 +38,12 @@ namespace Velvet
         public object?[]? NextDeps { get; set; }
         public bool Committed { get; set; }
         public abstract void Commit();
+
+        // The committed value when it is a memoized VNode root (a VNode or a VNode array), else null.
+        // The recycle sweep must not return pooled objects such a slot still holds: with stable deps
+        // the SAME instance re-enters a later committed tree (e.g. V.When toggling a memoized subtree),
+        // so its pooled parts stay live across renders that omit it.
+        public abstract object? RecycleMarkRoot { get; }
     }
 
     internal sealed class HookMemoValueSlot<T> : HookMemoValueSlot
@@ -51,6 +57,9 @@ namespace Velvet
             LastDeps = NextDeps;
             Committed = true;
         }
+
+        // The type tests fold to false for value-type T, so this never boxes.
+        public override object? RecycleMarkRoot => Value is VNode || Value is VNode?[] ? Value : null;
     }
 
     internal abstract class HookDeferredValueSlot { }

@@ -83,7 +83,7 @@ namespace Velvet
             {
                 fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
             }
-            FiberTreeReturn.ReturnPooledObjects(fiber.PendingOldTree);
+            FiberTreeReturn.ReturnRetiredTree(fiber.PendingOldTree, fiber);
             fiber.PendingOldTree = null;
         }
 
@@ -131,6 +131,8 @@ namespace Velvet
         }
 
         // Returns the prior committed tree to the VNode pool after the reconcile, or parks / defers it.
+        // The caller must have committed the new tree to fiber.PreviousTree already: the recycle sweep
+        // marks the committed tree live so nodes a memo hit shares across the two renders are spared.
         internal static void ReturnOldTreeAfterReconcile(
             ComponentFiber fiber, Reconciler? reconciler, VNode?[] oldTree, VNode?[]? prevPendingOldTree, bool deferReconcile)
         {
@@ -150,7 +152,7 @@ namespace Velvet
                 // pending-work / PendingOldTree case here.
                 if (oldTree is { Length: > 0 } && reconciler != null)
                 {
-                    reconciler.Context.DeferredInlineOldTreeReturns.Add(oldTree);
+                    reconciler.Context.DeferredInlineOldTreeReturns.Add((oldTree, fiber));
                 }
             }
             else if (reconciler != null && reconciler.HasPendingWork)
@@ -160,12 +162,12 @@ namespace Velvet
             }
             else
             {
-                FiberTreeReturn.ReturnPooledObjects(oldTree);
+                FiberTreeReturn.ReturnRetiredTree(oldTree, fiber);
             }
 
             if (prevPendingOldTree != null && prevPendingOldTree != oldTree)
             {
-                FiberTreeReturn.ReturnPooledObjects(prevPendingOldTree);
+                FiberTreeReturn.ReturnRetiredTree(prevPendingOldTree, fiber);
             }
         }
     }

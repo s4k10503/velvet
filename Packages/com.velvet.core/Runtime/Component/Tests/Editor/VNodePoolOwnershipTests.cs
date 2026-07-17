@@ -57,6 +57,39 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARentedPropsReturnedTwice_When_TwoRentsFollow_Then_TheyAreDistinctInstances()
+        {
+            // Arrange — the recycle sweep can reach one bag through several retired trees (a baseline
+            // retired by its owner and again by a parent expansion), so a double return must recycle once.
+            var bag = VNodePool.RentProps();
+            VNodePool.ReturnProps(bag);
+            VNodePool.ReturnProps(bag);
+
+            // Act — two rents; a double-pooled bag would come back for both.
+            var first = VNodePool.RentProps();
+            var second = VNodePool.RentProps();
+
+            // Assert — the pool never handed the same instance out twice.
+            Assert.That(ReferenceEquals(first, second), Is.False);
+        }
+
+        [Test]
+        public void Given_ARentedNodeArrayReturnedTwice_When_TwoRentsFollow_Then_TheyAreDistinctInstances()
+        {
+            // Arrange — same double-return discipline for the children-array pool.
+            var array = VNodePool.RentNodeArray(3);
+            VNodePool.ReturnNodeArray(array);
+            VNodePool.ReturnNodeArray(array);
+
+            // Act
+            var first = VNodePool.RentNodeArray(3);
+            var second = VNodePool.RentNodeArray(3);
+
+            // Assert
+            Assert.That(ReferenceEquals(first, second), Is.False);
+        }
+
+        [Test]
         public void Given_UserEventArrayNotRentedFromPool_When_ReturnEventArray_Then_ItIsNotCleared()
         {
             // Arrange — a caller-owned single-event array, as a component caching events would hold.
