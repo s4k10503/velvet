@@ -606,7 +606,17 @@ namespace Velvet
                 // dependency list (matching the real committed render) stays intact.
                 fiber.BeginDependencyStaging();
                 fiber.HasRenderPhaseUpdate = false;
-                diagnosticTree = FiberTreeReturn.NormalizeToArray(FiberBeginWork.Render(fiber));
+                // The diagnostic re-runs the BODY, so it opens the same render-phase window the real
+                // render-phase loop does — the impure-setState check below reads the flag this sets.
+                fiber.IsInRenderPhase = true;
+                try
+                {
+                    diagnosticTree = FiberTreeReturn.NormalizeToArray(FiberBeginWork.Render(fiber));
+                }
+                finally
+                {
+                    fiber.IsInRenderPhase = false;
+                }
 
                 var diagnosticSignature = FiberStrictMode.ComputeSignature(diagnosticTree);
                 if (!string.Equals(committedSignature, diagnosticSignature, StringComparison.Ordinal))

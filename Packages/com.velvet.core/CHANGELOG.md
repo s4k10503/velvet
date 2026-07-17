@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Callback refs follow React's re-invocation contract: a ref cycles (cleanup, then setup) only
+  when its callback identity changes or the host element remounts — a patch carrying the same
+  delegate no longer re-invokes it on every render, so a reference-stable ref (`Hooks.UseCallback`)
+  installs once and its cleanup means the element is genuinely going away.
+- Hook state writes landing in the COMMIT phase of the same fiber's flush (a callback ref invoked
+  during a patch, an event dispatched from a detach) are no longer silently discarded: the
+  render-phase-update window now covers only the component body, so commit-phase writes schedule an
+  ordinary follow-up render — and the frame's batch drain keeps draining until the queue is quiet
+  (React's setState-in-commit semantics), capped at React's maximum update depth of 50. A runaway
+  commit-phase loop logs an error and defers the remainder to the next frame instead of throwing,
+  so one component's loop cannot abandon the rest of the batch. Dropped writes used to desync the
+  slot value from the committed UI and poison the setter's equality bail for the next genuine edge
+  with the same value; `Hooks.UseFocusRing` sheds its deferred-correction workaround accordingly
+  (its cleanup now writes the flags directly).
+
 - The fiber-tree recycle path now returns factory-rented props bags / event arrays / child arrays
   from EVERY nesting level of a retired tree — previously only the top level was recycled, so any
   props-carrying element nested under another element (or under `V.Portal` / `V.WorldSpace` /

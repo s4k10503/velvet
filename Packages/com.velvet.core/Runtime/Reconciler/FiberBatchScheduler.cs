@@ -16,6 +16,13 @@ namespace Velvet
     // preserved — only the scheduler-callback count collapses to one per tier.
     internal sealed class FiberBatchScheduler
     {
+        // Cap on the drain-until-quiet passes one DrainImmediate performs (React's
+        // "Maximum update depth exceeded" limit): each pass exists for commit-phase writes (a
+        // callback ref or an event dispatched during a commit re-enqueues its fiber mid-drain),
+        // and a component whose commit writes a NEW value every pass would otherwise spin the
+        // drain forever inside one frame callback.
+        private const int NestedUpdateLimit = 50;
+
         // Insertion-ordered pending queues: the List preserves enqueue order so the drain matches the
         // pre-batching schedule.Execute registration order (a parent dirtied before its child flushes
         // first, so the parent's reconcile does not redundantly rebuild the child's subtree), and the
@@ -140,6 +147,28 @@ namespace Velvet
             // pins the now-current store snapshot.
             var openedWave = _immediateOrder.Count > 0;
             Drain(_immediateOrder, _immediateSet, resetWave: true);
+            // Commit-phase state writes (a callback ref invoked during the patch, an event
+            // dispatched from a detach) re-enqueue their fiber mid-drain. Keep draining until the
+            // queue is quiet so the follow-up render commits before this frame callback yields —
+            // React's "setState during the commit schedules a follow-up pass before paint". Each
+            // extra pass opens a fresh snapshot wave (the write moved state forward). Runaway loops
+            // hit NestedUpdateLimit; unlike React's throw, the overflow logs an error and leaves
+            // the remainder queued for the next frame — throwing here would abandon every OTHER
+            // fiber's pending work in the same batch for one component's runaway commit loop.
+            var nestedPasses = 0;
+            while (_immediateOrder.Count > 0)
+            {
+                if (++nestedPasses >= NestedUpdateLimit)
+                {
+                    FiberLogger.LogError("Scheduler",
+                        "Maximum update depth exceeded. A component repeatedly schedules state"
+                        + " updates from its commit phase (a callback ref or an effect writing on"
+                        + " every pass). The remaining update is deferred to the next frame.");
+                    break;
+                }
+                openedWave = true;
+                Drain(_immediateOrder, _immediateSet, resetWave: true);
+            }
             // A delayed drain already pending after this immediate drain CONTINUES this wave (it should reuse the
             // pins this drain just established). A delayed drain that arrives later, with no immediate drain to pin
             // first, is a separate wave and must open fresh. Only hand off when this drain actually opened a wave.

@@ -69,7 +69,18 @@ namespace Velvet
                 // CommitSettledHookDeps: a render that throws partway must not leave the committed
                 // list empty/partial, or the Provider-change walk would skip this fiber forever.
                 fiber.BeginDependencyStaging();
-                rendered = Render(fiber);
+                // The render-phase window opens strictly around the body: a setter firing inside it
+                // is a render-phase update (this loop consumes the flag); one firing later in the
+                // flush (commit phase) must schedule normally instead — see ComponentFiber.IsInRenderPhase.
+                fiber.IsInRenderPhase = true;
+                try
+                {
+                    rendered = Render(fiber);
+                }
+                finally
+                {
+                    fiber.IsInRenderPhase = false;
+                }
                 if (!fiber.HasRenderPhaseUpdate)
                 {
                     break;

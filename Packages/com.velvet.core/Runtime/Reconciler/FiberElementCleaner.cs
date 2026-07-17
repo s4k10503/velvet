@@ -187,10 +187,10 @@ namespace Velvet
         // CleanupDescendants.
         private void CleanupElementResources(VisualElement element)
         {
-            if (_ctx.RefCleanups.TryGetValue(element, out var refCleanup))
+            if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
-                _ctx.RefCleanups.Remove(element);
-                refCleanup?.Invoke();
+                _ctx.RefCallbacks.Remove(element);
+                installedRef.Cleanup?.Invoke();
             }
             _ctx.StyleAnimationScheduler.CancelEnter(element);
             // Teardown-flavored: this element is being released for good (pool return / disposal), not merely

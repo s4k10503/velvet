@@ -573,8 +573,10 @@ namespace Velvet
         // Teardown-flavored cancel, called by FiberElementCleaner / the drivers when the source, its
         // scope, or the whole tree is going away MID-FLUSH. The scrub runs synchronously (the element
         // must reach the pool clean), but the user OnDragCancel is deferred to the panel's next
-        // scheduler tick: a state write from inside the flush is silently lost (the fiber's dirty flag
-        // clears when the flush ends) and its lost pending value dedups away the next genuine edge.
+        // scheduler tick: while a commit-phase STATE WRITE is safe mid-flush (it schedules a
+        // follow-up render), an arbitrary user callback is not — it can read a half-mutated tree or
+        // re-enter the reconciler through anything beyond a setter, so it runs once the flush is
+        // done, mirroring how effect callbacks run after the commit.
         // Reconciler disposal passes deferUserCallback: false — a deferred item would fire against the
         // disposed tree (or never, if the panel dies with it), so the callback runs inline as a best
         // effort (its state writes no-op on disposed fibers; external side effects still run).

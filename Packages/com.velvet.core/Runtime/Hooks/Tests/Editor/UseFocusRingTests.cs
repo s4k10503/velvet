@@ -104,7 +104,9 @@ namespace Velvet.Tests
             Assume.That(s_ring.IsFocused, Is.True, "Precondition: the ring lit for the focused element");
 
             // Act — the element unmounts while focused; no Blur can reach the already-unhooked
-            // signals, so the correction rides the panel's next scheduler tick.
+            // signals, so the ref cleanup writes the correction directly (a commit-phase write that
+            // the drain's follow-up pass commits). The extra scheduler tick and flush stay: the
+            // contract is "settled by the next tick at the latest", not a specific write path.
             s_setShowTarget.Invoke(false);
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
@@ -138,9 +140,11 @@ namespace Velvet.Tests
             _mounted.FlushStateForTest();
             Assume.That(s_ring.IsFocused, Is.True, "Precondition: the ring lit for the focused element");
 
-            // Act — a same-key type flip replaces the element under the SAME ref in one flush: the old
-            // element's focus dies with it and the replacement was never focused, so the deferred
-            // correction must fire even though a newer hookup superseded the one that scheduled it.
+            // Act — a same-key type flip replaces the element under the SAME ref in one flush: the
+            // old element's focus dies with it and the replacement was never focused, so the OLD
+            // hookup's cleanup must write the correction even though a newer hookup follows it in
+            // the same flush. The extra tick and flush stay: the contract is "settled by the next
+            // tick at the latest", not a specific write path.
             s_setShowTarget.Invoke(true);
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
