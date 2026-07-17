@@ -12,14 +12,24 @@ namespace Velvet
     /// <typeparam name="T">Type being referenced. Only constrained to class; not restricted to VisualElement.</typeparam>
     public sealed class Ref<T> : IHookRefSetter where T : class
     {
-        // The SetElement cleanup always performs the same action (Set(null)) for a given Ref<T> instance,
-        // so allocate it once in the ctor to avoid per-mount closure allocation.
+        // Both delegates are allocated once per Ref so their identities are stable for the Ref's
+        // lifetime: the cleanup always performs the same action (Set(null)), and the setter itself
+        // must be ONE delegate instance — a method group (`refCallback: _ref.SetElement`) would
+        // convert to a fresh delegate every render, so the reconciler's ref-identity gate (a ref
+        // cycles only when its identity changes) could never recognize the same Ref across patches
+        // and would cycle it per render, React's object-ref contract broken by a C# conversion detail.
         private readonly Action _clearAction;
+        private readonly Func<VisualElement, Action> _setElement;
 
         /// <summary>Creates an empty ref whose <see cref="Current"/> is null until assigned.</summary>
         public Ref()
         {
             _clearAction = () => ((IHookRefSetter)this).Set(null);
+            _setElement = element =>
+            {
+                ((IHookRefSetter)this).Set(element);
+                return _clearAction;
+            };
         }
 
         /// <summary>Referenced target. null before mount and after unmount. Can be overwritten at any time via <see cref="Set(T?)"/>.</summary>
@@ -34,15 +44,13 @@ namespace Velvet
         /// <summary>
         /// Callback ref setter. Used as <c>V.Button(refCallback: _ref.SetElement)</c>.
         /// Stores the element into <see cref="Current"/>; the returned <c>Action</c> is the cleanup that
-        /// resets <c>Current = null</c> on detach.
+        /// resets <c>Current = null</c> on detach. The same delegate instance is returned for the
+        /// Ref's lifetime, so a patch that passes it again leaves the installed ref untouched
+        /// (React's object-ref stability).
         /// For T values not derived from VisualElement, <c>element as T</c> is always null, so this is
         /// primarily used for Element-node refs.
         /// </summary>
-        public Action SetElement(VisualElement element)
-        {
-            ((IHookRefSetter)this).Set(element);
-            return _clearAction;
-        }
+        public Func<VisualElement, Action> SetElement => _setElement;
 
         void IHookRefSetter.Set(object? value) => Current = value as T;
 

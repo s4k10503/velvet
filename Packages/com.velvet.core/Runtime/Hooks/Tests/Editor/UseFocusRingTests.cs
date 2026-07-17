@@ -49,6 +49,46 @@ namespace Velvet.Tests
             return _host.Root.Q<VisualElement>("target");
         }
 
+        private static StateUpdater<int> s_bumpComposed;
+
+        // The ring's ref is COMPOSED with other per-element work, wrapped in UseCallback — the
+        // documented composition recipe: the composed identity stays stable across renders, so a
+        // patch leaves the installed ref untouched and the lit ring survives unrelated re-renders.
+        [Component]
+        private static VNode ComposedRingHost()
+        {
+            var ring = Hooks.UseFocusRing();
+            s_ring = ring;
+            var (count, setCount) = Hooks.UseState(0);
+            s_bumpComposed = setCount;
+            var composedRef = Hooks.UseCallback<System.Func<VisualElement, System.Action>>(
+                element => ring.Ref(element), ring.Ref);
+            return V.Div(children: new VNode[]
+            {
+                V.Label(text: "count-" + count),
+                V.Button(name: "target", refCallback: composedRef),
+            });
+        }
+
+        [Test]
+        public void Given_AFocusedRingBehindAComposedStableRef_When_AnUnrelatedRerenderPatchesTheHost_Then_TheRingStaysLit()
+        {
+            // Arrange — mounted with the UseCallback-composed ref, then really focused.
+            _mounted = V.Mount(_host.Root, V.Component(ComposedRingHost, key: "root"));
+            _host.Root.Q<VisualElement>("target").Focus();
+            _mounted.FlushStateForTest();
+            Assume.That(s_ring.IsFocused, Is.True, "Precondition: the ring lit for the focused element");
+
+            // Act — an unrelated state change patches the host; the stable composed identity means
+            // the installed ref is left untouched (no cleanup fires on the still-focused element).
+            s_bumpComposed.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_ring.IsFocused, Is.True,
+                "A stable composed ref must survive unrelated patches without darkening the ring");
+        }
+
         [Test]
         public void Given_AComponentUsingUseFocusRing_When_ItsElementGainsFocusWithoutAPointerPress_Then_IsFocusVisibleBecomesTrue()
         {
@@ -104,7 +144,9 @@ namespace Velvet.Tests
             Assume.That(s_ring.IsFocused, Is.True, "Precondition: the ring lit for the focused element");
 
             // Act — the element unmounts while focused; no Blur can reach the already-unhooked
-            // signals, so the correction rides the panel's next scheduler tick.
+            // signals, so the ref cleanup writes the correction directly (a commit-phase write that
+            // the drain's follow-up pass commits). The extra scheduler tick and flush stay: the
+            // contract is "settled by the next tick at the latest", not a specific write path.
             s_setShowTarget.Invoke(false);
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);
@@ -138,9 +180,11 @@ namespace Velvet.Tests
             _mounted.FlushStateForTest();
             Assume.That(s_ring.IsFocused, Is.True, "Precondition: the ring lit for the focused element");
 
-            // Act — a same-key type flip replaces the element under the SAME ref in one flush: the old
-            // element's focus dies with it and the replacement was never focused, so the deferred
-            // correction must fire even though a newer hookup superseded the one that scheduled it.
+            // Act — a same-key type flip replaces the element under the SAME ref in one flush: the
+            // old element's focus dies with it and the replacement was never focused, so the OLD
+            // hookup's cleanup must write the correction even though a newer hookup follows it in
+            // the same flush. The extra tick and flush stay: the contract is "settled by the next
+            // tick at the latest", not a specific write path.
             s_setShowTarget.Invoke(true);
             _mounted.FlushStateForTest();
             EditorPanelTestHelpers.DriveSchedulerOnce(_host.Panel);

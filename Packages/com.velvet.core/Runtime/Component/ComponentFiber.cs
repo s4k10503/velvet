@@ -164,6 +164,18 @@ namespace Velvet
         /// </summary>
         public bool IsRendering { get; internal set; }
 
+        /// <summary>
+        /// True only while the component BODY is on the stack (a render-phase-loop attempt or the
+        /// StrictMode diagnostic invocation) — a strict subset of <see cref="IsRendering"/>, which
+        /// spans the whole render-and-commit flush. The distinction decides what a setter for this
+        /// fiber's own state means: inside the body it is a render-phase update (discard the
+        /// attempt and re-run), while later in the same flush (a callback ref invoked during the
+        /// patch, an event dispatched from a detach) it schedules an ordinary follow-up render —
+        /// treating commit-phase writes as render-phase ones silently discarded them, desyncing the
+        /// slot value from the committed UI and poisoning the setter's equality bail.
+        /// </summary>
+        internal bool IsInRenderPhase;
+
 #if UNITY_EDITOR
         /// <summary>
         /// Set only while the StrictMode diagnostic (throwaway second) render runs. Hooks consult this to

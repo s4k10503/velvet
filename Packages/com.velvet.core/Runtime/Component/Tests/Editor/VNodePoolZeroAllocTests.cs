@@ -46,42 +46,49 @@ namespace Velvet.Tests.Performance
             }
         }
 
+        // Warming must include the measured DELEGATE itself, not just the pool: the first execution
+        // of a code path can charge one-time runtime work (JIT, lazy statics) to the measuring
+        // scope, which surfaced as a rare order-sensitive false red on this guard.
+
         [Test]
         public void Given_WarmPropsPool_When_RentReturnCycle_Then_DoesNotAllocate()
         {
-            // Warm: the first rent/return populates the pool so later cycles reuse the instance.
-            VNodePool.ReturnProps(VNodePool.RentProps());
-
-            Assert.That(() =>
+            // Warm: the first cycle populates the pool AND runs the measured delegate once.
+            NUnit.Framework.TestDelegate cycle = () =>
             {
                 var props = VNodePool.RentProps();
                 VNodePool.ReturnProps(props);
-            }, Is.Not.AllocatingGCMemory());
+            };
+            cycle();
+
+            Assert.That(cycle, Is.Not.AllocatingGCMemory());
         }
 
         [Test]
         public void Given_WarmSingleEventArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
         {
-            VNodePool.ReturnEventArray(VNodePool.RentSingleEventArray());
-
-            Assert.That(() =>
+            NUnit.Framework.TestDelegate cycle = () =>
             {
                 var events = VNodePool.RentSingleEventArray();
                 VNodePool.ReturnEventArray(events);
-            }, Is.Not.AllocatingGCMemory());
+            };
+            cycle();
+
+            Assert.That(cycle, Is.Not.AllocatingGCMemory());
         }
 
         [Test]
         public void Given_WarmNodeArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
         {
-            // Warm the length-keyed bucket (first call allocates the array, the dictionary entry and the stack).
-            VNodePool.ReturnNodeArray(VNodePool.RentNodeArray(4));
-
-            Assert.That(() =>
+            // The first cycle also warms the length-keyed bucket (array, dictionary entry, stack).
+            NUnit.Framework.TestDelegate cycle = () =>
             {
                 var array = VNodePool.RentNodeArray(4);
                 VNodePool.ReturnNodeArray(array);
-            }, Is.Not.AllocatingGCMemory());
+            };
+            cycle();
+
+            Assert.That(cycle, Is.Not.AllocatingGCMemory());
         }
     }
 }

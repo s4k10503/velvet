@@ -16,6 +16,15 @@ namespace Velvet
     // preserved — only the scheduler-callback count collapses to one per tier.
     internal sealed class FiberBatchScheduler
     {
+        // Cap on the drain-until-quiet passes one DrainImmediate performs — React's
+        // "Maximum update depth exceeded" limit (one initial pass plus this many nested ones):
+        // each pass exists for commit-phase writes (a callback ref or an event dispatched during
+        // a commit re-enqueues its fiber mid-drain), and a component whose commit writes a NEW
+        // value every pass would otherwise spin the drain forever inside one frame callback.
+        // Overflow DROPS the runaway update (see DrainImmediate) rather than deferring it — a
+        // deferred runaway re-arms every frame and burns the full cap forever.
+        private const int NestedUpdateLimit = 50;
+
         // Insertion-ordered pending queues: the List preserves enqueue order so the drain matches the
         // pre-batching schedule.Execute registration order (a parent dirtied before its child flushes
         // first, so the parent's reconcile does not redundantly rebuild the child's subtree), and the
@@ -60,6 +69,11 @@ namespace Velvet
         // reuse (the delayed drain continues the immediate drain's wave). Set by DrainImmediate, consumed by
         // DrainDelayed; a solo delayed drain finds it false and opens a fresh wave.
         private bool _delayedContinuesWave;
+
+        // Set by ScheduleImmediate whenever intake happens while a drain is live; the delayed drain
+        // resets it before draining and reads it after, to decide whether its commits spawned
+        // immediate-tier work owed the setState-in-commit boundary pass (see DrainDelayed).
+        private bool _immediateWorkArrivedMidDrain;
 
         // Tree-stable element the drain callbacks are registered on (the root mount element). A
         // descendant's MountPoint can detach from the panel before the next frame, which stops a
@@ -106,6 +120,10 @@ namespace Velvet
         internal void ScheduleImmediate(ComponentFiber fiber)
         {
             if (fiber?.MountPoint == null) return;
+            // Monotonic mid-drain intake marker for the delayed drain's boundary pass: a net count
+            // comparison would be masked when the drain's own commits also REMOVED entries (an
+            // unmount, a subsume) or when the write dedups onto a fiber already queued.
+            if (_draining) _immediateWorkArrivedMidDrain = true;
             if (_immediateSet.Add(fiber)) _immediateOrder.Add(fiber);
             if (_immediateScheduled || _anchor == null) return;
             _immediateScheduled = true;
@@ -135,15 +153,67 @@ namespace Velvet
 
         private void DrainImmediate()
         {
+            // Commit-phase state writes (a callback ref invoked during the patch, an event
+            // dispatched from a detach) re-enqueue their fiber mid-drain. Keep draining until the
+            // queue is quiet so the follow-up render commits before this frame callback yields —
+            // React's "setState during the commit schedules a follow-up pass before paint". Each
+            // pass opens a fresh tearing-guard wave (a commit write moved state forward, so its
+            // first UseStore read re-pins the now-current snapshot). _immediateScheduled stays SET
+            // for the whole loop: the loop itself consumes every mid-drain enqueue, so registering
+            // another frame callback for one would only fire an empty drain next frame (dead
+            // scheduler churn that also skews the coalescing counter).
+            var openedWave = false;
+            var totalPasses = 0;
+            while (_immediateOrder.Count > 0)
+            {
+                if (totalPasses > NestedUpdateLimit)
+                {
+                    // Runaway commit-phase loop (a component writing a NEW value on every pass).
+                    // React throws here; a throw from the frame callback cannot reach an error
+                    // boundary and would only re-arm next frame, burning the full cap every frame
+                    // forever — so the runaway update is DROPPED instead and the UI keeps the last
+                    // committed state. Only the IMMEDIATE-tier lanes are dropped: a fiber can be
+                    // queued this deep with an unrelated Transition/Deferred lane still pending (the
+                    // runaway's commits may write bystanders each pass), and wiping that lane would
+                    // strand its delayed-tier work (a StartTransition left isPending forever).
+                    FiberLogger.LogError("Scheduler",
+                        "Maximum update depth exceeded. A component repeatedly schedules state"
+                        + " updates from its commit phase (a callback ref or an effect writing a"
+                        + " new value on every pass). The runaway update was dropped.");
+                    _drainBuffer.Clear();
+                    _drainBuffer.AddRange(_immediateOrder);
+                    _immediateOrder.Clear();
+                    _immediateSet.Clear();
+                    for (var i = 0; i < _drainBuffer.Count; i++)
+                    {
+                        var dropped = _drainBuffer[i];
+                        dropped.LaneQueue?.Remove(FiberUpdatePriority.Urgent);
+                        dropped.LaneQueue?.Remove(FiberUpdatePriority.Normal);
+                        if (dropped.LaneQueue == null || dropped.LaneQueue.Count == 0)
+                        {
+                            dropped.IsDirty = false;
+                            dropped.ClearAllTransitionPending();
+                        }
+                        // else: a delayed-tier lane survives — the fiber stays dirty and enrolled on
+                        // that tier, so its pending Transition/Deferred work still commits there.
+                    }
+                    _drainBuffer.Clear();
+                    break;
+                }
+                totalPasses++;
+                openedWave = true;
+                Drain(_immediateOrder, _immediateSet, resetWave: true);
+            }
             _immediateScheduled = false;
-            // The immediate drain opens a fresh tearing-guard wave (reset = true): its first UseStore read
-            // pins the now-current store snapshot.
-            var openedWave = _immediateOrder.Count > 0;
-            Drain(_immediateOrder, _immediateSet, resetWave: true);
             // A delayed drain already pending after this immediate drain CONTINUES this wave (it should reuse the
             // pins this drain just established). A delayed drain that arrives later, with no immediate drain to pin
-            // first, is a separate wave and must open fresh. Only hand off when this drain actually opened a wave.
-            _delayedContinuesWave = openedWave && _delayedScheduled;
+            // first, is a separate wave and must open fresh. Only hand off when this drain actually opened a wave —
+            // and an EMPTY run (a callback whose work an earlier synchronous drain already consumed) must not
+            // clobber a hand-off that earlier drain established.
+            if (openedWave)
+            {
+                _delayedContinuesWave = _delayedScheduled;
+            }
         }
 
         private void DrainDelayed()
@@ -154,7 +224,22 @@ namespace Velvet
             // than a stale pin retained from a prior wave.
             var continuesImmediateWave = _delayedContinuesWave;
             _delayedContinuesWave = false;
+            // Immediate-tier work that PRE-DATES this drain belongs to the next frame callback (its own
+            // wave); only work this drain's commits spawn is owed the setState-in-commit guarantee, so
+            // the boundary pass below is gated on the monotonic intake marker (never on a net count,
+            // which the drain's own removals or a dedup onto an already-queued fiber would mask).
+            _immediateWorkArrivedMidDrain = false;
             Drain(_delayedOrder, _delayedSet, resetWave: !continuesImmediateWave);
+            // A commit-phase write during a DELAYED-tier commit enqueues on the immediate tier; the
+            // setState-in-commit guarantee (the follow-up render commits before this frame callback
+            // yields) is tier-agnostic, so drain it now rather than leaving a one-frame slot/UI
+            // desync for the next immediate callback to converge. (When new and pre-dated work mixed
+            // in the window, the boundary pass carries both — the write's immediacy outranks holding
+            // unrelated work back for one frame.)
+            if (_immediateWorkArrivedMidDrain && _immediateOrder.Count > 0)
+            {
+                DrainImmediate();
+            }
         }
 
         private void Drain(List<ComponentFiber> order, HashSet<ComponentFiber> set, bool resetWave)
@@ -281,6 +366,7 @@ namespace Velvet
             _delayedOrder.Clear();
             _delayedSet.Clear();
             _delayedContinuesWave = false;
+            _immediateWorkArrivedMidDrain = false;
             _immediateScheduled = false;
             _delayedScheduled = false;
             _anchor = null;
