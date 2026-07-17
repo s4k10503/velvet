@@ -333,8 +333,12 @@ namespace Velvet
                 }
                 else
                 {
-                    FiberTreeReturn.ReturnPooledObjects(fiber.PendingOldTree);
+                    fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
+                    // Detach before retiring: the sweep's own mark treats owner.PendingOldTree as
+                    // live, and a still-attached reference would spare this very sweep's target.
+                    var completedBaseline = fiber.PendingOldTree;
                     fiber.PendingOldTree = null;
+                    FiberTreeReturn.ReturnRetiredTree(completedBaseline, fiber);
                     // The commit is now fully applied — run the insertion / layout / passive effects FlushState
                     // deferred while this reconcile was paused. Runs once, only on the terminal chunk.
                     // Bottom-up — descendant effects (LIFO drain) before this fiber's.
@@ -348,8 +352,11 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                FiberTreeReturn.ReturnPooledObjects(fiber.PendingOldTree);
+                fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
+                // Detach before retiring — same self-mark hazard as the completion path above.
+                var abortedBaseline = fiber.PendingOldTree;
                 fiber.PendingOldTree = null;
+                FiberTreeReturn.ReturnRetiredTree(abortedBaseline, fiber);
                 FiberErrorBoundary.OnRenderError(fiber, ex);
             }
             finally

@@ -83,8 +83,13 @@ namespace Velvet
             {
                 fiber.Reconciler!.ContinueReconcile(frameBudgetMs: 0);
             }
-            FiberTreeReturn.ReturnPooledObjects(fiber.PendingOldTree);
+            fiber.Reconciler?.Context.ParkedBaselineFibers.Remove(fiber);
+            // Detach the parked baseline BEFORE retiring it: the sweep's own mark treats
+            // owner.PendingOldTree as live (other fibers' retirements must spare a parked diff's
+            // baseline), and a still-attached reference would spare this very sweep's target.
+            var parkedTree = fiber.PendingOldTree;
             fiber.PendingOldTree = null;
+            FiberTreeReturn.ReturnRetiredTree(parkedTree, fiber);
         }
 
         // Reconciles this render's output into the fiber's slot range and commits the sibling-shift delta.
@@ -131,6 +136,8 @@ namespace Velvet
         }
 
         // Returns the prior committed tree to the VNode pool after the reconcile, or parks / defers it.
+        // The caller must have committed the new tree to fiber.PreviousTree already: the recycle sweep
+        // marks the committed tree live so nodes a memo hit shares across the two renders are spared.
         internal static void ReturnOldTreeAfterReconcile(
             ComponentFiber fiber, Reconciler? reconciler, VNode?[] oldTree, VNode?[]? prevPendingOldTree, bool deferReconcile)
         {
@@ -148,25 +155,48 @@ namespace Velvet
                 // correctness restored. Skip empty trees (initial inline mount) so the queue holds only
                 // real baselines. A deferred render never schedules its own reconcile, so there is no
                 // pending-work / PendingOldTree case here.
-                if (oldTree is { Length: > 0 } && reconciler != null)
+                if (oldTree is { Length: > 0 })
                 {
-                    reconciler.Context.DeferredInlineOldTreeReturns.Add(oldTree);
+                    if (reconciler != null)
+                    {
+                        reconciler.Context.DeferredInlineOldTreeReturns.Add((oldTree, fiber));
+                    }
+                    else
+                    {
+                        // The fiber was disposed mid-render, so there is no context queue to defer
+                        // into — and no later drain that would ever reach this baseline. Retiring it
+                        // immediately is safe: the pass-scoped release staging keeps its objects
+                        // un-rentable until the enclosing pass (which may still read old-side
+                        // captures of these nodes) has fully ended.
+                        FiberTreeReturn.ReturnRetiredTree(oldTree, fiber);
+                    }
                 }
             }
             else if (reconciler != null && reconciler.HasPendingWork)
             {
                 fiber.PendingOldTree = oldTree;
+                // Registered so retirement sweeps elsewhere treat this parked baseline as live: the
+                // paused pass keeps diffing against it across frames.
+                reconciler.Context.ParkedBaselineFibers.Add(fiber);
                 fiber.MountPoint?.schedule.Execute(() => FiberWorkLoop.ContinueReconcile(fiber));
             }
             else
             {
-                FiberTreeReturn.ReturnPooledObjects(oldTree);
+                FiberTreeReturn.ReturnRetiredTree(oldTree, fiber);
             }
 
-            if (prevPendingOldTree != null && prevPendingOldTree != oldTree)
-            {
-                FiberTreeReturn.ReturnPooledObjects(prevPendingOldTree);
-            }
+            ReturnSupersededParkedBaseline(fiber, prevPendingOldTree, oldTree);
+        }
+
+        // Retires a superseded parked baseline. The identity guard encodes an aliasing rule shared
+        // by every caller (the normal path here, plus the abort and exception paths in
+        // FiberRenderer): PendingOldTree may be the very array a new render adopted as oldTree, and
+        // retiring it then would recycle the baseline that render still owns.
+        internal static void ReturnSupersededParkedBaseline(
+            ComponentFiber fiber, VNode?[]? prevPendingOldTree, VNode?[]? oldTree)
+        {
+            if (prevPendingOldTree == null || prevPendingOldTree == oldTree) return;
+            FiberTreeReturn.ReturnRetiredTree(prevPendingOldTree, fiber);
         }
     }
 }

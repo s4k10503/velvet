@@ -153,6 +153,10 @@ namespace Velvet
             if (isTopLevel)
             {
                 profilerScope = s_reconcileMarker.Auto();
+                // Stage pooled-object releases for the span of the pass so nothing retired mid-pass
+                // (a boundary fallback swap, a mid-pass unmount) can be re-rented by a later factory
+                // call in the SAME pass — see VNodePool's staging region.
+                VNodePool.BeginReleaseScope();
             }
 
             _ctx.SharedReconcileDepth++;
@@ -180,23 +184,35 @@ namespace Velvet
                     }
                     finally
                     {
-                        // Always clear the queue at top-level boundary so partially drained passes do
-                        // not leak placeholders into the next reconcile; an abort raised DURING the
-                        // drain (a boundary inside a portal's children) is consumed at this boundary
-                        // the same way.
-                        _ctx.PendingPortalMounts.Clear();
-                        _ctx.IsAborted = false;
-                        // Declaring-resolution misses are scoped to one top-level pass: retrying the
-                        // scan next pass is what lets a late-arriving declaring panel resolve.
-                        _ctx.DeclaringResolveMisses.Clear();
-                        // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
-                        // per render, so unconsumed entries would otherwise accumulate across renders.
-                        _ctx.EffectiveKeys.Clear();
-                        // Return the inline children's old trees (queued by RenderInlineForExpansion) to the
-                        // VNode pool now that the whole pass is done using them as patch baselines — deferred
-                        // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
-                        FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
-                        profilerScope.Dispose();
+                        try
+                        {
+                            // Always clear the queue at top-level boundary so partially drained passes do
+                            // not leak placeholders into the next reconcile; an abort raised DURING the
+                            // drain (a boundary inside a portal's children) is consumed at this boundary
+                            // the same way.
+                            _ctx.PendingPortalMounts.Clear();
+                            _ctx.IsAborted = false;
+                            // Declaring-resolution misses are scoped to one top-level pass: retrying the
+                            // scan next pass is what lets a late-arriving declaring panel resolve.
+                            _ctx.DeclaringResolveMisses.Clear();
+                            // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
+                            // per render, so unconsumed entries would otherwise accumulate across renders.
+                            _ctx.EffectiveKeys.Clear();
+                            // Return the inline children's old trees (queued by RenderInlineForExpansion) to the
+                            // VNode pool now that the whole pass is done using them as patch baselines — deferred
+                            // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
+                            FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
+                        }
+                        finally
+                        {
+                            // Flush releases staged during the pass (AFTER the drain above, which stages
+                            // more). Guaranteed even if the drain throws (its mark pass can execute a user
+                            // IReadOnlyList via the slot probes): a skipped flush would wedge the pool in
+                            // staging mode for the process lifetime — every later return staged, never
+                            // flushed, pools starving — with no recovery outside the editor's domain reload.
+                            VNodePool.EndReleaseScope();
+                            profilerScope.Dispose();
+                        }
                     }
                 }
             }
@@ -237,6 +253,9 @@ namespace Velvet
             // without the probe a discrete event dispatched synchronously inside a slice would
             // re-enter the reconciler on the stack.
             _ctx.SharedReconcileDepth++;
+            // A resume slice rents and returns pooled objects like the original pass, so it gets the
+            // same release staging bracket (nested entries are depth-counted inside VNodePool).
+            VNodePool.BeginReleaseScope();
             try
             {
                 // Indexed and Keyed never become pending simultaneously (the other is cleared when a new
@@ -252,6 +271,7 @@ namespace Velvet
             }
             finally
             {
+                VNodePool.EndReleaseScope();
                 _ctx.SharedReconcileDepth--;
             }
         }
@@ -401,7 +421,7 @@ namespace Velvet
             _ctx.StyleAnimationScheduler.CancelAll();
             _ctx.EventManager.Clear();
             _ctx.ComponentRegistry.Dispose();
-            _ctx.FiberMemoCache.Clear();
+            _ctx.FiberMemoCache.DisposeAndReturnCachedTrees();
             _ctx.WrapperToInnerMap.Clear();
             // Shadowed elements hold paint + re-bake callbacks: detach so a still-mounted element released at
             // root disposal carries no Velvet residue. Then dispose the shared bake Material once (the baked

@@ -703,7 +703,17 @@ namespace Velvet
         {
             var memoScope = FiberKeying.MemoScope(fragmentKeyScope, nodeIndex);
             var cacheKey = FiberKeying.MemoCacheKey(memo.Key, memoScope);
-            var inner = _ctx.FiberMemoCache.GetOrCompute(cacheKey, memo);
+            var (inner, _, previousCached) = _ctx.FiberMemoCache.GetOrComputeWithHitInfo(cacheKey, memo);
+            if (previousCached != null)
+            {
+                // A deps change just replaced the cached inner tree. The memo wrapper is opaque to the
+                // recycle walk (a fiber's retired tree never descends into it), so this is the only
+                // point that can retire the replaced subtree's rented objects; the sweep's owner mark
+                // spares whatever the replacement or the owner's committed state still shares with it,
+                // and the pass-scoped release staging keeps the rest un-rentable until the pass ends.
+                FiberTreeReturn.ReturnRetiredTree(
+                    FiberTreeReturn.NormalizeToArray(previousCached), _ctx.FiberStack.Current);
+            }
             if (inner == null) return;
             var counters = _ctx.BufferPool.RentPositionCounter();
             try
@@ -1066,6 +1076,13 @@ namespace Velvet
                             // before the diff removes the leaves — otherwise a same-key re-entry would re-pair the
                             // undisposed fiber as a zombie whose local state updates no longer re-render.
                             DisposeExitedGhostFibers(state, key);
+                            // Leaving the committed set is the ghost node's last live root (presence bookkeeping
+                            // was what kept it alive past its emitting render), so retire its pooled objects here.
+                            // The entry must leave state.Committed FIRST: the sweep's mark reads that very list
+                            // (other retirements must spare live ghosts), and a still-listed entry would spare
+                            // this sweep's own target. prevCommitted is a copy, so the loop is unaffected.
+                            RemovePresenceCommittedEntry(state.Committed, key);
+                            FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundaryFiber);
                             continue;
                         }
 
@@ -1076,6 +1093,9 @@ namespace Velvet
                             // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
                             state.Exiting.Remove(key);
                             removedInstantThisRender = true;
+                            // Same as the finished-exit drop above: leave the committed set, then retire.
+                            RemovePresenceCommittedEntry(state.Committed, key);
+                            FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundaryFiber);
                             continue;
                         }
 
@@ -1200,6 +1220,21 @@ namespace Velvet
                     {
                         var wasExiting = state.Exiting.Remove(key);
                         var wasExitComplete = state.ExitComplete.Remove(key);
+                        if (wasExiting || wasExitComplete)
+                        {
+                            // The re-entry replaces the ghost's node in the committed set. The OLD node was
+                            // kept alive only by presence bookkeeping (a ghost is never part of the boundary's
+                            // own render output), so this replacement is its last reference — retire it. The
+                            // entry leaves state.Committed first, or the sweep's mark (which reads that list)
+                            // would spare its own target; prevCommitted is a copy, so the loop is unaffected.
+                            var ghostNode = FindPresenceCommittedNode(prevCommitted, key);
+                            if (ghostNode != null && !ReferenceEquals(ghostNode, node))
+                            {
+                                RemovePresenceCommittedEntry(state.Committed, key);
+                                FiberTreeReturn.ReturnRetiredTree(
+                                    FiberTreeReturn.NormalizeToArray(ghostNode), boundaryFiber);
+                            }
+                        }
                         // The key is present again. If a completed exit's ghost was still awaiting its drop and the
                         // re-entry mounted a FRESH element (the detached ghost can't be reproduced, so the new
                         // anchor differs), its inline fibers escaped the orphan sweep exactly as on the normal drop
@@ -1334,6 +1369,29 @@ namespace Velvet
                 if (list[i].key == key) return true;
             }
             return false;
+        }
+
+        private static VNode? FindPresenceCommittedNode(
+            List<(string key, VNode node)> list, string? key)
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (list[i].key == key) return list[i].node;
+            }
+            return null;
+        }
+
+        private static void RemovePresenceCommittedEntry(
+            List<(string key, VNode node)> list, string? key)
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (list[i].key == key)
+                {
+                    list.RemoveAt(i);
+                    return;
+                }
+            }
         }
 
         // AnimatePresenceMode.PopLayout: the instant a child's exit starts, pull it out of layout flow and pin
