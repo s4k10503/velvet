@@ -145,19 +145,44 @@ namespace Velvet
             }
         }
 
-        // Collects the node roots the fiber's hook slots currently hold (see MarkFiberSlotRoots for
-        // the slot kinds), for ReturnRetiredTreesForUnmount. Allocates only when a slot actually
-        // holds a node — unmount-path-only cost.
+        // Collects the node roots held by the fiber's DISPOSABLE hook slots — the memo / ref slot
+        // lists Unmount clears — for ReturnRetiredTreesForUnmount. State slots are deliberately
+        // excluded: Unmount preserves them for a remount, so their held nodes stay live (and the
+        // mark, which reads the still-populated state slots, would spare them anyway). Allocates
+        // only when a slot actually holds a node — unmount-path-only cost.
         internal static List<VNode>? CollectSlotRootsForUnmount(ComponentFiber fiber)
         {
             List<VNode>? roots = null;
-            void Visit(VNode node)
-            {
-                roots ??= new List<VNode>();
-                roots.Add(node);
-            }
-            VisitFiberSlotRoots(fiber, Visit);
+            VisitDisposableSlotRoots(fiber, root => CollectRootNodes(root, ref roots));
             return roots;
+        }
+
+        // Collects the node roots held by the fiber's PERSISTENT (state / reducer) slots, for the
+        // terminal Dispose path: unlike Unmount, Dispose never remounts, so the caller clears the
+        // state slots and retires these roots — otherwise an element-in-state fiber would pin its
+        // node's pooled parts forever.
+        internal static List<VNode>? CollectStateSlotRootsForDispose(ComponentFiber fiber)
+        {
+            List<VNode>? roots = null;
+            VisitPersistentSlotRoots(fiber, root => CollectRootNodes(root, ref roots));
+            return roots;
+        }
+
+        private static void CollectRootNodes(object root, ref List<VNode>? roots)
+        {
+            switch (root)
+            {
+                case VNode node:
+                    (roots ??= new List<VNode>()).Add(node);
+                    break;
+                case IReadOnlyList<VNode?> list:
+                    for (var i = 0; i < list.Count; i++)
+                    {
+                        var node = list[i];
+                        if (node != null) (roots ??= new List<VNode>()).Add(node);
+                    }
+                    break;
+            }
         }
 
         #region live marks
@@ -213,8 +238,8 @@ namespace Velvet
         {
             if (owner == null) return;
 
-            MarkTreeRoot(owner.PreviousTree, live);
-            MarkTreeRoot(owner.PendingOldTree, live);
+            WalkTree(owner.PreviousTree, live, WalkMode.Mark);
+            WalkTree(owner.PendingOldTree, live, WalkMode.Mark);
 
             for (var fiber = owner; fiber != null; fiber = LogicalParentOf(fiber))
             {
@@ -241,7 +266,7 @@ namespace Velvet
             foreach (var parked in ctx.ParkedBaselineFibers)
             {
                 if (ReferenceEquals(parked, owner)) continue;
-                MarkTreeRoot(parked.PendingOldTree, live);
+                WalkTree(parked.PendingOldTree, live, WalkMode.Mark);
                 MarkFiberSlotRoots(parked, live);
             }
         }
@@ -254,15 +279,37 @@ namespace Velvet
 
         private static void MarkFiberSlotRoots(ComponentFiber fiber, HashSet<object> live)
         {
-            VisitFiberSlotRoots(fiber, node => MarkNode(node, live));
+            void Mark(object root) => MarkSlotRoot(root, live);
+            VisitDisposableSlotRoots(fiber, Mark);
+            VisitPersistentSlotRoots(fiber, Mark);
         }
 
-        // Enumerates the node roots a fiber's hook slots hold across renders: the compiler's
-        // auto-memo slots (whole-body trees), and any UseMemo / UseState / UseRef value that is a
-        // node or a list of nodes. A slot with stable inputs re-emits the SAME instance on a later
-        // render even when the current committed tree omits it (V.When toggling a memoized
-        // subtree), so slot-held roots must survive sweeps in between.
-        private static void VisitFiberSlotRoots(ComponentFiber fiber, Action<VNode> visit)
+        private static void MarkSlotRoot(object root, HashSet<object> live)
+        {
+            switch (root)
+            {
+                case VNode node:
+                    MarkNode(node, live);
+                    break;
+                case IReadOnlyList<VNode?> list:
+                    // A slot-held rented ARRAY can itself arrive at a sweep as a retired tree root
+                    // (a fragment-rooted body unwraps to its children array via NormalizeToArray),
+                    // so the array object joins the mark alongside its nodes.
+                    if (list is VNode?[] array) live.Add(array);
+                    for (var i = 0; i < list.Count; i++)
+                    {
+                        MarkNode(list[i], live);
+                    }
+                    break;
+            }
+        }
+
+        // Enumerates the node roots held by the slot lists Unmount DISPOSES (compiler auto-memo
+        // slots — whole-body trees — plus UseMemo / UseRef values that are a node or a list of
+        // nodes). A slot with stable inputs re-emits the SAME instance on a later render even when
+        // the current committed tree omits it (V.When toggling a memoized subtree), so these roots
+        // must survive sweeps while their slot lives — and retire with it when it is disposed.
+        private static void VisitDisposableSlotRoots(ComponentFiber fiber, Action<object> visitRoot)
         {
             var memoSlots = fiber.MemoSlots;
             if (memoSlots != null)
@@ -271,10 +318,10 @@ namespace Velvet
                 {
                     var slot = memoSlots[i];
                     if (slot == null) continue;
-                    if (slot.CachedResult != null) visit(slot.CachedResult);
+                    if (slot.CachedResult != null) visitRoot(slot.CachedResult);
                     if (slot.NextCachedResult != null && !ReferenceEquals(slot.NextCachedResult, slot.CachedResult))
                     {
-                        visit(slot.NextCachedResult);
+                        visitRoot(slot.NextCachedResult);
                     }
                 }
             }
@@ -284,16 +331,8 @@ namespace Velvet
             {
                 for (var i = 0; i < valueSlots.Count; i++)
                 {
-                    VisitSlotRootValue(valueSlots[i]?.RecycleMarkRoot, visit);
-                }
-            }
-
-            var stateSlots = fiber.StateSlots;
-            if (stateSlots != null)
-            {
-                for (var i = 0; i < stateSlots.Count; i++)
-                {
-                    VisitSlotRootValue(stateSlots[i]?.RecycleMarkRoot, visit);
+                    var root = valueSlots[i]?.RecycleMarkRoot;
+                    if (root != null) visitRoot(root);
                 }
             }
 
@@ -302,48 +341,37 @@ namespace Velvet
             {
                 for (var i = 0; i < refSlots.Count; i++)
                 {
-                    VisitSlotRootValue(refSlots[i]?.RecycleMarkRoot, visit);
+                    var root = refSlots[i]?.RecycleMarkRoot;
+                    if (root != null) visitRoot(root);
                 }
             }
         }
 
-        private static void VisitSlotRootValue(object? root, Action<VNode> visit)
+        // Enumerates the node roots held by the slot lists Unmount PRESERVES for a remount
+        // (UseState / UseReducer values). They stay live across unmount; the terminal Dispose path
+        // clears the slots and retires them.
+        private static void VisitPersistentSlotRoots(ComponentFiber fiber, Action<object> visitRoot)
         {
-            switch (root)
+            var stateSlots = fiber.StateSlots;
+            if (stateSlots != null)
             {
-                case VNode node:
-                    visit(node);
-                    break;
-                case IReadOnlyList<VNode?> list:
-                    for (var i = 0; i < list.Count; i++)
-                    {
-                        var node = list[i];
-                        if (node != null) visit(node);
-                    }
-                    break;
-            }
-        }
-
-        // Marks a baseline root array plus its nodes. Only the ROOT array needs an array-level
-        // mark: SweepTree consults the set for its entry array (guarding a retired==committed
-        // aliasing), while nested child arrays are only reachable through their node, which the
-        // sweep prunes on first.
-        private static void MarkTreeRoot(VNode?[]? tree, HashSet<object> live)
-        {
-            if (tree == null || tree.Length == 0) return;
-            live.Add(tree);
-            for (var i = 0; i < tree.Length; i++)
-            {
-                MarkNode(tree[i], live);
+                for (var i = 0; i < stateSlots.Count; i++)
+                {
+                    var root = stateSlots[i]?.RecycleMarkRoot;
+                    if (root != null) visitRoot(root);
+                }
             }
         }
 
         // Add returning false means this node was already marked through another path (a shared
-        // subtree reachable twice); its descendants are marked too, so stop. Marking NODES is
-        // sufficient: a factory rents exactly one props bag / event array per node, so a pooled
-        // part can only be shared by sharing its node, and the sweep prunes at marked nodes
-        // before ever consulting their parts (a caller-supplied part attached to two hand-built
-        // nodes is protected by pool ownership instead — Return no-ops on what was never rented).
+        // subtree reachable twice); its descendants are marked too, so stop. Marking is
+        // node-granular plus the tree ARRAYS: a factory rents exactly one props bag / event array
+        // per node, so pooled parts can only be shared by sharing their node, and the sweep prunes
+        // at marked nodes before ever consulting parts (a caller-supplied part attached to two
+        // hand-built nodes is protected by pool ownership instead — Return no-ops on what was
+        // never rented). Arrays must be marked individually because a live array can arrive at a
+        // sweep as a retired tree ROOT (fragment unwrapping), where SweepTree consults the set for
+        // the array itself before any node prune applies.
         private static void MarkNode(VNode? node, HashSet<object> live)
         {
             if (node == null || !live.Add(node)) return;
@@ -425,7 +453,8 @@ namespace Velvet
                 case ContextProviderNode provider:
                     if (mode == WalkMode.Mark)
                     {
-                        VisitSlotRootValue(provider.BoxedValueForRecycleMark, node2 => MarkNode(node2, live));
+                        var value = provider.BoxedValueForRecycleMark;
+                        if (value != null) MarkSlotRoot(value, live);
                     }
                     WalkTree(provider.Children, live, mode);
                     break;
@@ -443,6 +472,11 @@ namespace Velvet
             if (tree == null || tree.Length == 0) return;
             if (mode == WalkMode.Mark)
             {
+                // The array object joins the mark too: a live children array can arrive at a later
+                // sweep as a retired tree ROOT (a memoized fragment-rooted body unwraps to its
+                // children array via NormalizeToArray), and SweepTree's entry guard consults the
+                // set for the array before any node prune applies.
+                live.Add(tree);
                 for (var i = 0; i < tree.Length; i++)
                 {
                     MarkNode(tree[i], live);

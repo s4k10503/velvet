@@ -221,6 +221,21 @@ namespace Velvet
             // fiber alone held — including a node a slot cached while it was toggled out of the
             // output — is recycled instead of stranding when the slot lists are cleared.
             var slotRoots = FiberTreeReturn.CollectSlotRootsForUnmount(fiber);
+            if (fiber.IsDisposed)
+            {
+                // Terminal teardown (Dispose sets the flag before calling here): state slots never
+                // serve a remount, so their element-in-state roots retire with everything else. This
+                // must happen INSIDE Unmount, while the parent chain is still attached — the final
+                // sweep's mark walks that chain, and ancestor-held nodes that flowed into this
+                // fiber's state stay spared. The slots are cleared now so the sweep's own mark does
+                // not re-spare its targets; disposed setters are no-ops, so nothing repopulates them.
+                var stateRoots = FiberTreeReturn.CollectStateSlotRootsForDispose(fiber);
+                if (stateRoots != null)
+                {
+                    (slotRoots ??= new System.Collections.Generic.List<VNode>()).AddRange(stateRoots);
+                }
+                fiber.StateSlots?.Clear();
+            }
             VNode?[]? retiredTree = null;
             if (fiber.MountPoint != null && fiber.PreviousTree != null)
             {

@@ -693,6 +693,27 @@ namespace Velvet
                 if (newNode.HasValueChanged(oldNode))
                 {
                     _host.NotifyContextValueChange(newNode);
+                    // A replaced VNode-valued provider value has no other retirement point: the sweep
+                    // deliberately never returns provider values (a consumer may hold the CURRENT one),
+                    // but a superseded value is out of distribution for good — every subscribed consumer
+                    // re-renders off the change notification above and commits the NEW value's nodes,
+                    // and the pass-scoped release staging keeps the old parts un-rentable until those
+                    // re-renders have run. A consumer that committed the old node retires it through its
+                    // own old tree too; pool returns are idempotent, so the overlap is harmless.
+                    var oldValueRoot = oldNode.BoxedValueForRecycleMark;
+                    if (oldValueRoot != null && !ReferenceEquals(oldValueRoot, newNode.BoxedValueForRecycleMark))
+                    {
+                        switch (oldValueRoot)
+                        {
+                            case VNode oldValueNode:
+                                FiberTreeReturn.ReturnRetiredTree(
+                                    FiberTreeReturn.NormalizeToArray(oldValueNode), _ctx.FiberStack.Current);
+                                break;
+                            case VNode?[] oldValueTree:
+                                FiberTreeReturn.ReturnRetiredTree(oldValueTree, _ctx.FiberStack.Current);
+                                break;
+                        }
+                    }
                 }
                 var oldChildren = oldNode.Children ?? Array.Empty<VNode>();
                 var newChildren = newNode.Children ?? Array.Empty<VNode>();

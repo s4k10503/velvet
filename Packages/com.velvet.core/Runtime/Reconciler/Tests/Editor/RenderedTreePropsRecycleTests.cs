@@ -33,10 +33,13 @@ namespace Velvet.Tests
             return ((HashSet<FiberElementProps>)field.GetValue(null)).Count;
         }
 
-        private static bool PropsPoolContains(FiberElementProps props)
+        // "Still rented out" is the spare-direction probe: a wrongly swept bag leaves the ownership
+        // set even when the pool is at capacity and drops it (a pool-content probe would read false
+        // either way, going green exactly when the pool is warm).
+        private static bool OwnedPropsContains(FiberElementProps props)
         {
-            var field = typeof(VNodePool).GetField("s_propsPool", BindingFlags.NonPublic | BindingFlags.Static);
-            return ((Stack<FiberElementProps>)field.GetValue(null)).Contains(props);
+            var field = typeof(VNodePool).GetField("s_ownedProps", BindingFlags.NonPublic | BindingFlags.Static);
+            return ((HashSet<FiberElementProps>)field.GetValue(null)).Contains(props);
         }
 
         private sealed class CounterStore : Store<int>
@@ -218,8 +221,8 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
 
             // Assert — the shared bag was never recycled out from under the committed tree.
-            Assert.That(PropsPoolContains(sharedBag), Is.False,
-                "A memo-shared node's props bag must not be returned while the committed tree still holds it");
+            Assert.That(OwnedPropsContains(sharedBag), Is.True,
+                "A memo-shared node's props bag must stay rented out while the committed tree still holds it");
         }
 
         // A deps-stable Hooks.UseMemo subtree that leaves the output on odd counts: the render that
@@ -254,8 +257,8 @@ namespace Velvet.Tests
 
             // Assert — the UseMemo slot still owns the node for its comeback render, so its bag must
             // not have been recycled by the hiding render's sweep.
-            Assert.That(PropsPoolContains(slotHeldBag), Is.False,
-                "A UseMemo-held node's props bag must not be returned while the slot can re-emit it");
+            Assert.That(OwnedPropsContains(slotHeldBag), Is.True,
+                "A UseMemo-held node's props bag must stay rented out while the slot can re-emit it");
         }
 
         // React's element-in-state pattern: a node seeded into UseState and rendered conditionally
@@ -288,8 +291,8 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
 
             // Assert — the state slot re-emits the node on the comeback render, so its bag must survive.
-            Assert.That(PropsPoolContains(slotHeldBag), Is.False,
-                "A UseState-held node's props bag must not be returned while the slot can re-emit it");
+            Assert.That(OwnedPropsContains(slotHeldBag), Is.True,
+                "A UseState-held node's props bag must stay rented out while the slot can re-emit it");
         }
 
         // A memoized LIST of nodes (List<VNode> satisfies the covariant IReadOnlyList probe) toggled
@@ -326,8 +329,8 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
 
             // Assert
-            Assert.That(PropsPoolContains(listedBag), Is.False,
-                "A node held via a memoized list must not have its bag returned while the slot can re-emit it");
+            Assert.That(OwnedPropsContains(listedBag), Is.True,
+                "A node held via a memoized list must stay rented out while the slot can re-emit it");
         }
 
         // An exiting AnimatePresence ghost: the removal render retires the tree that last emitted
@@ -377,8 +380,51 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
 
             // Assert — the ghost subtree's bag was spared by the removal render's sweep.
-            Assert.That(PropsPoolContains(ghostBag), Is.False,
-                "An exiting ghost's props bag must not be returned while presence state still reads its node");
+            Assert.That(OwnedPropsContains(ghostBag), Is.True,
+                "An exiting ghost's props bag must stay rented out while presence state still reads its node");
+        }
+
+        // The return direction of the presence contract: a keyed child WITHOUT an exit animation is
+        // dropped from the presence set the moment it is removed, and that drop is the node's last
+        // reference — its bag must actually flow back (the presence mark protects only LIVE ghosts,
+        // not ones leaving the committed set).
+        [Component]
+        private static VNode InstantRemovalHost()
+        {
+            var count = Hooks.UseStore(s_store, x => x);
+            var children = new System.Collections.Generic.List<VNode>
+            {
+                V.Motion(name: "stay", key: "stay", variants: s_fade, animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+            };
+            if (count == 0)
+            {
+                children.Add(s_capturedMemoNode = V.Button(text: "instant", key: "instant"));
+            }
+            return V.Div(name: "instant-host", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", children: children.ToArray()),
+            });
+        }
+
+        [Test]
+        public void Given_AKeyedChildWithoutAnExitAnimation_When_ItsRemovalDropsItFromThePresenceSet_Then_ItsBagReturnsToThePool()
+        {
+            // Arrange — both children mounted; the instant child's bag is captured at mount.
+            using var store = new CounterStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(InstantRemovalHost, key: "instant-host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var droppedBag = ((ElementNode)s_capturedMemoNode).Props;
+            Assume.That(droppedBag, Is.Not.Null, "Precondition: the instant child rented a props bag");
+
+            // Act — remove the keyed child; with no exit animation it leaves the presence set now.
+            store.Increment();
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the drop actually retired the bag (it left the rented-out set).
+            Assert.That(OwnedPropsContains(droppedBag), Is.False,
+                "A dropped presence child's props bag must be returned when it leaves the committed set");
         }
 
         #endregion

@@ -27,11 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reconcile pass, so a second retirement of a shared node can never recycle a NEW renter's live
   object); an aborted reconcile no longer recycles the retained baseline's own pooled parts; a
   fiber unmounting mid-pass reclaims its deferred baselines while its mark roots are intact; a
-  replaced `V.Memoized` inner tree and the memo cache's disposal now retire their cached subtrees;
-  discarded render-phase attempts retire their throwaway output; and the editor-only StrictMode
-  double-invoke pass neither recycles committed subtrees a memo hit shared into its diagnostic tree
-  nor stages that tree into the auto-memo slot. `V.DragOverlay`'s positioner props now come from
-  the pool too (the workaround for the old leak).
+  replaced `V.Memoized` inner tree, a replaced VNode-valued provider value, and the memo cache's
+  disposal now retire their cached subtrees; an `AnimatePresence` child retires when it leaves the
+  presence set (exit completion, instant removal, mid-exit re-entry); a disposed fiber retires its
+  element-in-state roots (unmount keeps them for a remount); discarded render-phase attempts retire
+  their throwaway output; and the editor-only StrictMode double-invoke pass neither recycles
+  committed subtrees a memo hit shared into its diagnostic tree nor stages that tree into the
+  auto-memo slot. `V.DragOverlay`'s positioner props now come from the pool too (the workaround
+  for the old leak).
 
 ## [1.4.0] - 2026-07-17
 
