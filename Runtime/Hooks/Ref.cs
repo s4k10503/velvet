@@ -45,5 +45,7 @@ namespace Velvet
         }
 
         void IHookRefSetter.Set(object? value) => Current = value as T;
+
+        object? IHookRefSetter.RecycleMarkRoot => HookSlotRecycleProbe.Probe(Current);
     }
 }

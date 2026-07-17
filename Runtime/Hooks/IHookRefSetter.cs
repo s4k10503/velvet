@@ -9,5 +9,9 @@ namespace Velvet
     internal interface IHookRefSetter
     {
         void Set(object? value);
+
+        // The held value when it is a VNode root the recycle sweep must spare (element-in-ref
+        // caching) — see HookSlotRecycleProbe.
+        object? RecycleMarkRoot { get; }
     }
 }

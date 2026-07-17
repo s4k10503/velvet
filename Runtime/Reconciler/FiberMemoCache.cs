@@ -51,5 +51,18 @@ namespace Velvet
         }
 
         public void Clear() => _cache.Clear();
+
+        // Returns every cached inner tree to the VNode pool, then clears. Called at reconciler
+        // disposal: the whole mounted tree is torn down with it, so there is no committed successor
+        // to spare (a cached inner shared with an already-retired committed tree is a harmless
+        // overlap — pool returns are idempotent).
+        public void DisposeAndReturnCachedTrees()
+        {
+            foreach (var entry in _cache.Values)
+            {
+                FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(entry.cached), owner: null);
+            }
+            _cache.Clear();
+        }
     }
 }

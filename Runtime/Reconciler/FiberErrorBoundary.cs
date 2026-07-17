@@ -92,8 +92,12 @@ namespace Velvet
                 // call above was in progress — nothing here to track bookkeeping for anymore.
                 return false;
             }
-            FiberTreeReturn.ReturnPooledObjects(fiber.PreviousTree);
+            // Commit the fallback as the new baseline BEFORE retiring the failed tree, so the recycle
+            // sweep's owner mark protects any node the two share (a memoized subtree that survived the
+            // failure and re-appears inside the fallback).
+            var failedTree = fiber.PreviousTree;
             fiber.PreviousTree = fallbackTree;
+            FiberTreeReturn.ReturnRetiredTree(failedTree, fiber);
             // FallbackContentFailed is set when a re-entrant TryCatch above declined because THIS
             // fiber's own fallback content threw (logged, or shown by a farther ancestor instead) — the
             // Reconcile call still returns normally either way, so this is the only place that can tell

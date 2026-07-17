@@ -515,6 +515,12 @@ namespace Velvet
         /// live tracking. Returns the ComponentContext instance reference.
         /// </summary>
         internal abstract object ContextKey { get; }
+
+        // The provided value when it is a VNode root (slot-injection via context): the recycle
+        // mark must treat it as live — a consumer may have committed the value's node into its own
+        // tree — while the sweep never returns it (leaking a provider-held node is recoverable;
+        // recycling a consumed one is not).
+        internal abstract object? BoxedValueForRecycleMark { get; }
     }
 
     /// <summary>
@@ -531,6 +537,11 @@ namespace Velvet
         internal override void PushContext(ComponentContextStack stack) => stack.Push(Context, Value);
 
         internal override void PopContext(ComponentContextStack stack) => stack.Pop(Context);
+
+        private static readonly bool s_canHoldNodes = !typeof(T).IsValueType;
+
+        internal override object? BoxedValueForRecycleMark
+            => s_canHoldNodes ? HookSlotRecycleProbe.Probe(Value) : null;
 
         internal override bool HasValueChanged(ContextProviderNode other)
         {
