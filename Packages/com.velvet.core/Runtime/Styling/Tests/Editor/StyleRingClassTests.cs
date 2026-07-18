@@ -55,6 +55,27 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADefaultColorRing_When_Extracted_Then_TheColorIsHalfAlpha()
+        {
+            // Tailwind's default ring color is blue-500 at 0.5 alpha, not full opacity.
+            Assert.That(Extract("ring-2").Color.a, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AnExplicitColorRing_When_Extracted_Then_TheColorStaysOpaque()
+        {
+            // Only the DEFAULT ring color is semi-transparent; an explicit ring-<color> is opaque.
+            Assert.That(Extract("ring-2", "ring-red-500").Color.a, Is.EqualTo(1f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_ABareOutline_When_Extracted_Then_TheColorStaysOpaque()
+        {
+            // The 0.5-alpha default is ring-only; a color-less outline keeps its opaque band color.
+            Assert.That(Extract("outline").Color.a, Is.EqualTo(1f).Within(1e-4f));
+        }
+
+        [Test]
         public void Given_RingZero_When_Extracted_Then_NoRing()
         {
             Assert.That(StyleRingClass.TryExtract(new[] { "ring-0" }, out _), Is.False);

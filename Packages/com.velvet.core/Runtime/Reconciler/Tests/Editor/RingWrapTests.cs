@@ -49,7 +49,9 @@ namespace Velvet.Tests
         public void Given_BareRing_When_Reconciled_Then_OverlayUsesDefaultBlueRingColor()
         {
             using var scope = new ReconcilerScope();
+            // Tailwind's default ring color is blue-500 at 0.5 alpha (the palette token resolves opaque).
             VelvetPalette.TryResolveColorToken("blue-500", out var blue);
+            blue.a = 0.5f;
 
             Mount(scope, new VNode[] { V.Div(className: "ring", name: "card") });
 

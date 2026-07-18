@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The default ring color (`ring` / `ring-2` with no explicit `ring-<color>`) is now blue-500 at 0.5
+  alpha, matching Tailwind's `--tw-ring-color`, instead of fully opaque. An explicit ring color stays
+  opaque.
 - A `skew-*` sheared silhouette and a `shadow-*` / `drop-shadow-*` bleed no longer clip to the layout
   rect when the same element carries an inline filter (`blur-*`, `hue-rotate-*`, `animate-hue`, or a
   variant such as `hover:blur-sm`). A filter renders the element through an offscreen tree sized to its
