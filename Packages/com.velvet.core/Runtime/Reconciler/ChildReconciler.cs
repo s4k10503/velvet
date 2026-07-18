@@ -126,7 +126,7 @@ namespace Velvet
                 _cleaner.RemoveElement(parent, slotStart + i);
             }
             var newElement = _factory.CreateElement(newNode);
-            var insertIndex = clampInsertIndex ? Math.Min(slotStart + i, parent.childCount) : slotStart + i;
+            var insertIndex = clampInsertIndex ? Math.Min(slotStart + i, SilhouetteBoundsSpacer.NonSpacerChildCount(parent)) : slotStart + i;
             parent.Insert(insertIndex, newElement);
             return checkAbortAfterCreate && _ctx.IsAborted;
         }
@@ -280,7 +280,10 @@ namespace Velvet
                         continue;
                 }
                 var resolvedTarget = target!;
-                var slotStart = resolvedTarget.childCount;
+                // Exclude a trailing filter bounds-spacer (a skewed / shadowed + filtered target carries one):
+                // portal children must land BEFORE it so it stays last and the recorded slot start does not
+                // drift when the spacer self-heals to the end.
+                var slotStart = SilhouetteBoundsSpacer.NonSpacerChildCount(resolvedTarget);
                 // Restore the context that enclosed the Portal's tree position (captured at enqueue) so the
                 // children mount under their enclosing Providers / MotionContext rather than an empty cursor.
                 // The children's own reconcile pushes/pops on top of these and balances out, so popping the
@@ -331,7 +334,7 @@ namespace Velvet
                         f.DetachedMountContext = detachedContext;
                     }
                 }
-                var slotLength = resolvedTarget.childCount - slotStart;
+                var slotLength = SilhouetteBoundsSpacer.NonSpacerChildCount(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, slotStart, slotLength);
             }
         }
@@ -434,7 +437,10 @@ namespace Velvet
             VisualElement? parent, VNode?[]? oldNodes, VNode?[]? newNodes, int slotStart, int slotLimit)
         {
             if (parent == null || oldNodes == null || newNodes == null) return false;
-            var rangeEnd = Math.Min(parent.childCount, slotLimit);
+            // NonSpacerChildCount, not raw childCount: a trailing filter bounds-spacer on a skewed / shadowed +
+            // filtered parent is not a keyed row, so it must not pad `available` (masking a real desync) nor be
+            // the first element the removal loop below tears out.
+            var rangeEnd = Math.Min(SilhouetteBoundsSpacer.NonSpacerChildCount(parent), slotLimit);
             var available = rangeEnd - slotStart;
             if (available < 0) available = 0;
             if (oldNodes.Length <= available) return false;
@@ -448,7 +454,7 @@ namespace Velvet
             {
                 var element = _factory.CreateElement(newNodes[i]);
                 if (_ctx.IsAborted) return true;
-                parent.Insert(Math.Min(slotStart + i, parent.childCount), element);
+                parent.Insert(Math.Min(slotStart + i, SilhouetteBoundsSpacer.NonSpacerChildCount(parent)), element);
             }
             return true;
         }
@@ -519,7 +525,7 @@ namespace Velvet
                     // Bound by slotLimit (this fiber's range end), not just childCount: for a non-last inline
                     // tenant childCount includes the following sibling's rows, so an unbounded check would treat a
                     // sibling row as this fiber's and PATCH it. Out of range → create within this fiber's range.
-                    var slotExists = slotStart + i < Math.Min(parent.childCount, slotLimit);
+                    var slotExists = slotStart + i < Math.Min(SilhouetteBoundsSpacer.NonSpacerChildCount(parent), slotLimit);
                     if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
                             slotExists, clampInsertIndex: true, checkAbortAfterCreate: true))
                     {
@@ -555,7 +561,8 @@ namespace Velvet
 
                     // DOM-desync recovery (see the Common phase): when the live container is shorter than the
                     // baseline claims, the tail slot to remove may not exist — skip it instead of over-indexing.
-                    if (slotStart + i >= parent.childCount)
+                    // NonSpacerChildCount so a trailing filter bounds-spacer is never the slot removal targets.
+                    if (slotStart + i >= SilhouetteBoundsSpacer.NonSpacerChildCount(parent))
                     {
                         continue;
                     }
@@ -602,7 +609,7 @@ namespace Velvet
                 // equivalent to Add (slotStart + i == parent.childCount at this point). Clamp to childCount so a
                 // DOM-desync resume directly into this phase (the live range shrank since the slice was parked)
                 // appends rather than over-indexing — symmetric with the Common-phase create-on-missing guard.
-                parent.Insert(Math.Min(slotStart + i, parent.childCount), newElement);
+                parent.Insert(Math.Min(slotStart + i, SilhouetteBoundsSpacer.NonSpacerChildCount(parent)), newElement);
 
                 if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {
@@ -1303,9 +1310,12 @@ namespace Velvet
         // stale element as the new type. Both the synchronous and time-sliced keyed paths gate on this.
         private static void AssertDomIndexInvariant(int slotStart, int oldIndex, VisualElement parent)
         {
+            // NonSpacerChildCount so a trailing filter bounds-spacer does not loosen the bound (masking a real
+            // Pass-1 ordering violation); keyed rows always precede the spacer, so the access itself is in range.
+            var rendered = SilhouetteBoundsSpacer.NonSpacerChildCount(parent);
             UnityEngine.Debug.Assert(
-                slotStart + oldIndex < parent.childCount,
-                $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} >= parent.childCount={parent.childCount}. " +
+                slotStart + oldIndex < rendered,
+                $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} >= renderedChildCount={rendered}. " +
                 "Pass 1 may have modified parent's child order.");
         }
 

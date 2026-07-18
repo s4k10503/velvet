@@ -46,6 +46,15 @@ namespace Velvet
         // to skip a redundant re-bake; GradBaked gates it (SetGradient clears it so a spec change re-bakes).
         public (int w, int h, int sx, int sy, int tl, int tr, int br, int bl) GradKey;
         public bool GradBaked;
+
+        // When the caster carries an inline filter, the sheared silhouette would be clipped to the layout
+        // rect by the filter's offscreen render tree (sized to boundingBox, which excludes gVC overflow). A
+        // transparent last-child spacer sized to the sheared AABB widens boundingBox so the silhouette
+        // survives. WantSpacer is decided by the reconciler from the class list (a filter utility / animate-hue
+        // present); BoundsSpacer is the child, created / sized once layout gives a real size and destroyed on
+        // detach. See SilhouetteBoundsSpacer.
+        public bool WantSpacer;
+        public VisualElement? BoundsSpacer;
     }
 
     /// <summary>
@@ -119,6 +128,8 @@ namespace Velvet
                 // Bake the gradient silhouette once layout gives a real size (the bake needs the element
                 // pixel size + radius). Graphics.Blit here is safe — a geometry callback, not mesh generation.
                 SyncGradientBake(element, binding);
+                // Size the filter bounds-spacer to the now-known sheared extent (no-op when not wanted).
+                SyncBoundsSpacer(element, binding);
             };
             element.RegisterCallback(binding.OnGeometryChanged);
             // Synchronous attempt: if the resolver's inline bg-[…]/border-[…] are already on the element,
@@ -147,7 +158,32 @@ namespace Velvet
                 binding.Face.Release(element);
             }
             DestroyGradientTex(binding);
+            SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
             element.MarkDirtyRepaint();
+        }
+
+        // Records whether the caster carries a filter (so its sheared silhouette needs the bounds-spacer to
+        // survive the filter's offscreen render tree) and syncs the spacer now. Called from the reconciler on
+        // create / patch; the geometry callback re-syncs when the size settles. Reads the live layout, so it is
+        // a no-op-safe re-run at any time.
+        public static void SetWantSpacer(VisualElement element, SkewBinding binding, bool want)
+        {
+            binding.WantSpacer = want;
+            SyncBoundsSpacer(element, binding);
+        }
+
+        // Sizes (or removes) the bounds-spacer to the sheared AABB from the live layout + skew. The gVC
+        // silhouette is drawn centred on the box, so the spacer covers [-ox, w+ox] x [-oy, h+oy].
+        private static void SyncBoundsSpacer(VisualElement element, SkewBinding binding)
+        {
+            // The AABB is empty until layout gives a real size; Sync then attaches the spacer now (so it exists
+            // for the reconciler / a create before layout) and sizes it once the geometry callback re-runs.
+            var aabb = SilhouetteBoundsSpacer.TryGetLayoutSize(element, out var w, out var h)
+                ? SilhouetteBoundsSpacer.ShearedAabb(w, h,
+                    Mathf.Tan(binding.Spec.XDeg * Mathf.Deg2Rad),
+                    Mathf.Tan(binding.Spec.YDeg * Mathf.Deg2Rad))
+                : default;
+            SilhouetteBoundsSpacer.Sync(element, ref binding.BoundsSpacer, binding.WantSpacer, aabb);
         }
 
         // Sets or clears the gradient fill for a skewed element, fed by the reconciler from the same class

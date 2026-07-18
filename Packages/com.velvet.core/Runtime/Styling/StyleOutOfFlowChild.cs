@@ -20,6 +20,13 @@ namespace Velvet
         // StyleGapManipulator.IsRow/IsWrap already use for flex-direction / flex-wrap.
         internal static bool IsOutOfFlow(VisualElement child)
         {
+            // The filter bounds-spacer is always out of flow (position:absolute) and must never occupy a
+            // gap / grid / divide slot; recognize it by its marker so it does not need the "absolute" utility
+            // class (which would leak into a user's has-[.absolute]: selector).
+            if (SilhouetteBoundsSpacer.IsSpacer(child))
+            {
+                return true;
+            }
             if (child.panel != null)
             {
                 return child.resolvedStyle.position == Position.Absolute;

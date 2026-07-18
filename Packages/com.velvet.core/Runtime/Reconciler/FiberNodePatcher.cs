@@ -2056,7 +2056,10 @@ namespace Velvet
             var outer = ResolveOuter(element);
             if (outer.parent != null)
             {
-                EvaluateStructural(element, outer.parent.IndexOf(outer), outer.parent.childCount, rules);
+                // Exclude the trailing filter bounds-spacer(s) from the sibling count: they are internal
+                // render-bounds children, not part of the logical child list a first:/last:/nth match sees.
+                EvaluateStructural(element, outer.parent.IndexOf(outer),
+                    SilhouetteBoundsSpacer.NonSpacerChildCount(outer.parent), rules);
             }
         }
 
@@ -2083,7 +2086,9 @@ namespace Velvet
                 return;
             }
 
-            var count = container.childCount;
+            // The trailing filter bounds-spacer(s) are internal render-bounds children, not logical siblings:
+            // exclude them from the count and skip evaluating them so first:/last:/nth match the real children.
+            var count = SilhouetteBoundsSpacer.NonSpacerChildCount(container);
             for (var i = 0; i < count; i++)
             {
                 // The slot may hold a shadow / clip-path WRAPPER; the structural rules are keyed by the inner.
