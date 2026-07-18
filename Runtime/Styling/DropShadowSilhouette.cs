@@ -38,6 +38,10 @@ namespace Velvet
         // reconciler from the class list; BoundsSpacer is the child. See SilhouetteBoundsSpacer.
         public bool WantSpacer;
         public VisualElement? BoundsSpacer;
+        // The caster's left/top border, parsed from the class list, to shift the spacer origin into padding-box
+        // space (see SilhouetteBoundsSpacer.BorderInset).
+        public float BorderLeft;
+        public float BorderTop;
 
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
@@ -251,9 +255,10 @@ namespace Velvet
         // Records whether the caster carries a filter (so its shadow bleed needs the bounds-spacer to survive
         // the filter's offscreen render tree) and syncs the spacer now. Called from the reconciler on create /
         // patch; the geometry callback re-syncs when the size / radius settles.
-        public static void SetWantSpacer(VisualElement element, DropShadowBinding binding, bool want)
+        public static void SetWantSpacer(VisualElement element, DropShadowBinding binding, bool want, string[] classNames)
         {
             binding.WantSpacer = want;
+            SilhouetteBoundsSpacer.BorderInset(classNames, out binding.BorderLeft, out binding.BorderTop);
             SyncBoundsSpacer(element, binding);
         }
 
@@ -276,6 +281,7 @@ namespace Velvet
                     aabb = SilhouetteBoundsSpacer.ExpandForShear(aabb, tanX, 0f);
                 }
             }
+            aabb = SilhouetteBoundsSpacer.ShiftToPaddingBox(aabb, binding.BorderLeft, binding.BorderTop);
             SilhouetteBoundsSpacer.Sync(element, ref binding.BoundsSpacer, binding.WantSpacer, aabb);
         }
 

@@ -52,6 +52,10 @@ namespace Velvet
         public VisualElement? BoundsSpacer;
         public Rect LiveExtentLocal;
         public Rect AppliedSpacerAabb;
+        // The caster's left/top border, parsed from the class list, to shift the spacer origin into padding-box
+        // space (see SilhouetteBoundsSpacer.BorderInset).
+        public float BorderLeft;
+        public float BorderTop;
 
         public ParticlesBinding(ParticlesSettings settings)
         {
@@ -120,9 +124,10 @@ namespace Velvet
         // A filter comes and goes independent of the effect (a class swap, a state variant), so the reconciler
         // drives this from the class list on every patch, not only on a Particles-settings change. The extent
         // itself follows the live particles through the repaint tick, not this call.
-        public static void SetWantSpacer(VisualElement element, ParticlesBinding binding, bool want)
+        public static void SetWantSpacer(VisualElement element, ParticlesBinding binding, bool want, string[] classNames)
         {
             binding.WantSpacer = want;
+            SilhouetteBoundsSpacer.BorderInset(classNames, out binding.BorderLeft, out binding.BorderTop);
             SyncBoundsSpacer(element, binding);
         }
 
@@ -164,7 +169,8 @@ namespace Velvet
             {
                 reserved = box;
             }
-            var quantized = QuantizeOutward(reserved);
+            var quantized = SilhouetteBoundsSpacer.ShiftToPaddingBox(
+                QuantizeOutward(reserved), binding.BorderLeft, binding.BorderTop);
             if (quantized == binding.AppliedSpacerAabb)
             {
                 return;

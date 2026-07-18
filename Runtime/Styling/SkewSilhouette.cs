@@ -55,6 +55,10 @@ namespace Velvet
         // detach. See SilhouetteBoundsSpacer.
         public bool WantSpacer;
         public VisualElement? BoundsSpacer;
+        // The caster's left/top border, parsed from the class list, so the spacer's padding-box-relative
+        // origin is shifted back into border-box space (see SilhouetteBoundsSpacer.BorderInset).
+        public float BorderLeft;
+        public float BorderTop;
     }
 
     /// <summary>
@@ -166,9 +170,10 @@ namespace Velvet
         // survive the filter's offscreen render tree) and syncs the spacer now. Called from the reconciler on
         // create / patch; the geometry callback re-syncs when the size settles. Reads the live layout, so it is
         // a no-op-safe re-run at any time.
-        public static void SetWantSpacer(VisualElement element, SkewBinding binding, bool want)
+        public static void SetWantSpacer(VisualElement element, SkewBinding binding, bool want, string[] classNames)
         {
             binding.WantSpacer = want;
+            SilhouetteBoundsSpacer.BorderInset(classNames, out binding.BorderLeft, out binding.BorderTop);
             SyncBoundsSpacer(element, binding);
         }
 
@@ -183,6 +188,7 @@ namespace Velvet
                     Mathf.Tan(binding.Spec.XDeg * Mathf.Deg2Rad),
                     Mathf.Tan(binding.Spec.YDeg * Mathf.Deg2Rad))
                 : default;
+            aabb = SilhouetteBoundsSpacer.ShiftToPaddingBox(aabb, binding.BorderLeft, binding.BorderTop);
             SilhouetteBoundsSpacer.Sync(element, ref binding.BoundsSpacer, binding.WantSpacer, aabb);
         }
 
