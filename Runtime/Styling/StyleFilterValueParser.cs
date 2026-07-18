@@ -289,6 +289,43 @@ namespace Velvet
                 || cls.StartsWith("saturate-", StringComparison.Ordinal);
         }
 
+        // True when the leaf token is a filter utility — a named preset (blur-sm, -hue-rotate-90, bare
+        // blur/grayscale/…), a bracket form (blur-[6px], -hue-rotate-[30deg]), or a custom filter-[name:..].
+        // IsFilterPreset already matches every bracket form (each is "<family>-[..]" and its
+        // StartsWith("<family>-") check fires on the "<family>-" prefix), so the only case it misses is the
+        // custom filter-[..] token.
+        internal static bool IsFilterLeaf(string? leaf)
+            => leaf != null && (IsFilterPreset(leaf) || leaf.StartsWith("filter-[", StringComparison.Ordinal));
+
+        // True when ANY class resolves to a filter utility, INCLUDING one carried by a state variant
+        // (hover:blur-sm, dark:hue-rotate-90, sm:blur-md, group-hover:filter-[…], and stacked forms). A variant
+        // filter is applied by a manipulator at state time — outside the reconcile path that decides the
+        // bounds-spacer — so the spacer must exist whenever a filter COULD apply, not only when it is active;
+        // peeling the variant layers to the leaf utility mirrors StyleClipPathClass.WantsClipWrapper, which
+        // keeps its wrapper alive for a variant-only clip for the same reason. Loose like IsFilterPreset: a
+        // matched-but-invalid suffix still gates true, which is harmless for the consumer (the bounds-spacer
+        // reserves render bounds — over-reserving is invisible, under-reserving would clip the paint).
+        internal static bool HasFilterClass(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            foreach (var cls in classNames)
+            {
+                var leaf = cls;
+                while (StyleVariantClass.TryParse(leaf, out _, out var payload))
+                {
+                    leaf = payload;
+                }
+                if (IsFilterLeaf(leaf))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Parses the non-bracket named filter presets (blur-sm, blur, grayscale, contrast-125,
         // hue-rotate-90, grayscale-0, ...) to the same Filter* properties as the bracket forms, so they merge
         // through ApplyCombinedFilter. hue-rotate is the only filter with a negative preset (-hue-rotate-90).

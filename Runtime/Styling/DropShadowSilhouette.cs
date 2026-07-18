@@ -32,6 +32,13 @@ namespace Velvet
         // resolvedStyle.borderTopLeftRadius once on a panel — the same precedence the wrapper path used.
         public float CornerRadius;
 
+        // When the caster carries an inline filter, the shadow bleed (painted outside the box) would be
+        // clipped to the layout rect by the filter's offscreen render tree. A transparent last-child spacer
+        // sized to the shadow's extent widens boundingBox so the bleed survives. WantSpacer is decided by the
+        // reconciler from the class list; BoundsSpacer is the child. See SilhouetteBoundsSpacer.
+        public bool WantSpacer;
+        public VisualElement? BoundsSpacer;
+
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
@@ -190,6 +197,8 @@ namespace Velvet
                 {
                     binding.Face.TryStash(element);
                 }
+                // Size the filter bounds-spacer to the now-known shadow extent (no-op when not wanted).
+                SyncBoundsSpacer(element, binding);
                 element.MarkDirtyRepaint();
             };
             element.RegisterCallback(binding.OnGeometryChanged);
@@ -234,8 +243,40 @@ namespace Velvet
             {
                 binding.Face.Release(element);
             }
+            SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
             s_byElement.Remove(element);
             element.MarkDirtyRepaint();
+        }
+
+        // Records whether the caster carries a filter (so its shadow bleed needs the bounds-spacer to survive
+        // the filter's offscreen render tree) and syncs the spacer now. Called from the reconciler on create /
+        // patch; the geometry callback re-syncs when the size / radius settles.
+        public static void SetWantSpacer(VisualElement element, DropShadowBinding binding, bool want)
+        {
+            binding.WantSpacer = want;
+            SyncBoundsSpacer(element, binding);
+        }
+
+        // Sizes (or removes) the bounds-spacer to the shadow's extent: the baked quad (box grown by
+        // blur + ExtraPadding per side, shifted by the offset) unioned with the box, and — for a skewed caster,
+        // whose shadow shears with it — grown by the shear overhang. Empty AABB until layout gives a size.
+        private static void SyncBoundsSpacer(VisualElement element, DropShadowBinding binding)
+        {
+            var aabb = default(Rect);
+            if (SilhouetteBoundsSpacer.TryGetLayoutSize(element, out var w, out var h))
+            {
+                var spec = binding.Spec;
+                var pad = DropShadowBaker.QuantizePx(spec.Blur) + DropShadowBaker.ExtraPadding
+                    + DropShadowBaker.QuantizePx(spec.Spread);
+                var quad = new Rect(-pad + spec.OffsetX, -pad + spec.OffsetY, w + (2f * pad), h + (2f * pad));
+                aabb = SilhouetteBoundsSpacer.Union(new Rect(0f, 0f, w, h), quad);
+                if (binding.CasterSkewed)
+                {
+                    var tanX = Mathf.Tan(binding.SkewXDeg * Mathf.Deg2Rad);
+                    aabb = SilhouetteBoundsSpacer.ExpandForShear(aabb, tanX, 0f);
+                }
+            }
+            SilhouetteBoundsSpacer.Sync(element, ref binding.BoundsSpacer, binding.WantSpacer, aabb);
         }
 
         // Re-applies the spec / skew of an already-attached element after a patch, refreshing the radius from

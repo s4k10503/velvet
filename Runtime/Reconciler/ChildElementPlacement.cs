@@ -255,8 +255,11 @@ namespace Velvet
                 }
                 else
                 {
-                    parent.Add(element);
-                    insertHint = parent.childCount - 1;
+                    // Insert before any trailing filter bounds-spacer (not parent.Add, which appends past it)
+                    // so a skewed / shadowed + filtered container keeps its spacer last through the reorder.
+                    var end = SilhouetteBoundsSpacer.NonSpacerChildCount(parent);
+                    parent.Insert(end, element);
+                    insertHint = end;
                 }
             }
         }

@@ -183,7 +183,7 @@ namespace Velvet
             // IndexOutOfRange — the time-sliced keyed path asserts this invariant; the general path
             // can be re-entered mid-suspend so it guards defensively.
             var oldMatched = commit.OldKeyMap.TryGetValue(key, out var old)
-                && slotStart + old.index < parent.childCount;
+                && slotStart + old.index < SilhouetteBoundsSpacer.NonSpacerChildCount(parent);
             if (oldMatched && commit.UsedKeys.Contains(key))
             {
                 // A second new-side sibling resolved the same old entry its first occurrence already
