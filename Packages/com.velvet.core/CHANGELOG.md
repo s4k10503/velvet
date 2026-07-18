@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `skew-*` sheared silhouette and a `shadow-*` / `drop-shadow-*` bleed no longer clip to the layout
+  rect when the same element carries an inline filter (`blur-*`, `hue-rotate-*`, `animate-hue`, or a
+  variant such as `hover:blur-sm`). A filter renders the element through an offscreen tree sized to its
+  layout box, which dropped the paint drawn outside that box; a transparent, non-interactive spacer
+  child sized to the paint's extent now widens the element's render bounds so the overflow survives,
+  matching how CSS composes `filter` with `transform: skewX()` and `box-shadow`.
+- `V.Particles` quads that draw beyond the host rect survive an inline filter the same way, tracked to
+  the live particle extent as the simulation moves; the reserved bounds return to the box when the
+  effect drains and are skipped entirely when no filter is present.
+- The filter bounds-spacer now offsets itself by the caster's border width (parsed from the class list,
+  so state borders like `hover:border-8` count too), so an element whose border is thicker than the
+  paint's overhang no longer clips a strip of the sheared silhouette / shadow / particle overflow.
 - Callback refs follow React's re-invocation contract: a ref cycles (cleanup, then setup) only
   when its callback identity changes or the host element remounts — a patch carrying the same
   delegate no longer re-invokes it on every render, so a reference-stable ref (`Hooks.UseCallback`)
