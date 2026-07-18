@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The default ring color (`ring` / `ring-2` with no explicit `ring-<color>`) is now blue-500 at 0.5
   alpha, matching Tailwind's `--tw-ring-color`, instead of fully opaque. An explicit ring color stays
   opaque.
+- The default `transition-*` timing function is now `ease-in-out`, the closest UI Toolkit keyword to
+  Tailwind's default `cubic-bezier(0.4, 0, 0.2, 1)`, instead of the fast-start `ease-out`. An explicit
+  `ease-*` class still overrides it.
+- The `tracking-*` (letter-spacing) scale is baked at Tailwind's 16px root font (`tracking-widest` =
+  0.1em → 1.6px, etc.) so it matches Tailwind at the default text size, instead of the previous
+  ~25%-too-wide values.
 - A `skew-*` sheared silhouette and a `shadow-*` / `drop-shadow-*` bleed no longer clip to the layout
   rect when the same element carries an inline filter (`blur-*`, `hue-rotate-*`, `animate-hue`, or a
   variant such as `hover:blur-sm`). A filter renders the element through an offscreen tree sized to its
