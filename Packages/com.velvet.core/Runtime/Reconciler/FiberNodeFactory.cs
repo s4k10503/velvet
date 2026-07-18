@@ -136,6 +136,8 @@ namespace Velvet
                     if (elementNode.Props?.Particles != null)
                     {
                         _patcher.Appliers.ApplyParticles(element, elementNode.Props.Particles);
+                        // After ApplyParticles: the spacer sync needs the binding that call creates.
+                        _patcher.Appliers.ApplyParticlesSpacer(element, elementNode.ClassNames);
                     }
                     // Anchored (V.Anchored): wire the per-frame screen-projection tick. Panel-independent at
                     // creation (Attach's own synchronous Sync call bails cleanly if the element has no panel
@@ -263,6 +265,8 @@ namespace Velvet
                     if (motionNode.Props?.Particles != null)
                     {
                         _patcher.Appliers.ApplyParticles(element, motionNode.Props.Particles);
+                        // After ApplyParticles, as on the plain element path.
+                        _patcher.Appliers.ApplyParticlesSpacer(element, appliedClasses);
                     }
                     // Anchored through a Motion host: same reason as SceneView/Particles above — a Motion
                     // can host any element type, so the binding must attach on this create path too.

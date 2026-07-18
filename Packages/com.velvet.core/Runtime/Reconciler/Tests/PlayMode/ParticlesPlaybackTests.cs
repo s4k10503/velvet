@@ -126,6 +126,43 @@ namespace Velvet.Tests
             Assert.That(differing, Is.GreaterThan(30));
         }
 
+        // The internal bounds-spacer child, or null. Widening the caster's boundingBox (the size of the
+        // filter's offscreen texture) is exactly what the spacer's layout rect does, so its resolved size
+        // extending past the host rect is the public proxy for "the filtered quads are no longer clipped".
+        private static VisualElement FindBoundsSpacer(VisualElement host)
+        {
+            for (var i = 0; i < host.childCount; i++)
+            {
+                if (SilhouetteBoundsSpacer.IsSpacer(host[i]))
+                {
+                    return host[i];
+                }
+            }
+            return null;
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AFilteredLiveSimulation_When_FramesAdvance_Then_TheReservedBoundsCoverTheOverflow()
+        {
+            // Arrange — a filter renders the element through an offscreen tree sized to its layout box, so the
+            // quads drawn past the small rect would clip. The fix tracks the live particle extent into a spacer
+            // whose layout reaches beyond the host rect; a spacer merely pinned to the box would not.
+            var effect = CreateEmitter();
+            _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
+            _mounted = V.Mount(_host.Root,
+                V.Particles(effect, className: "w-[40px] h-[40px] hue-rotate-90", playOn: PlayTrigger.Mount));
+            var element = _host.Root.Q<ParticlesElement>();
+            Assume.That(element, Is.Not.Null, "Precondition: the particles element mounted");
+
+            // Act — let the burst populate and draw quads beyond the 40px box.
+            yield return WaitRealtime(0.8);
+            var spacer = FindBoundsSpacer(element);
+            Assume.That(spacer, Is.Not.Null, "Precondition: the filtered element carries a bounds-spacer");
+
+            // Assert
+            Assert.That(spacer.layout.width, Is.GreaterThan(element.layout.width));
+        }
+
         [UnityTest]
         public IEnumerator Given_AManualPlayTrigger_When_FramesAdvance_Then_NothingRenders()
         {

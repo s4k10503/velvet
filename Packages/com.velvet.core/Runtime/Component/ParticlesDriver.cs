@@ -43,6 +43,15 @@ namespace Velvet
         // and each ParticleSystem property access is a native call.
         public bool HostLoops;
         public float HostDuration;
+        // An inline filter renders the element through an offscreen tree sized to its layout boundingBox, so
+        // the particle quads drawn beyond the host rect clip; a last-child spacer widens the boundingBox to
+        // cover them (shared with the skew / shadow paints via SilhouetteBoundsSpacer). Unlike those static
+        // AABBs the particles move every frame, hence the quantize + last-applied cache below: without them
+        // the spacer would re-layout (and the filter texture reallocate) on every tick.
+        public bool WantSpacer;
+        public VisualElement? BoundsSpacer;
+        public Rect LiveExtentLocal;
+        public Rect AppliedSpacerAabb;
 
         public ParticlesBinding(ParticlesSettings settings)
         {
@@ -108,6 +117,72 @@ namespace Velvet
             element.MarkDirtyRepaint();
         }
 
+        // A filter comes and goes independent of the effect (a class swap, a state variant), so the reconciler
+        // drives this from the class list on every patch, not only on a Particles-settings change. The extent
+        // itself follows the live particles through the repaint tick, not this call.
+        public static void SetWantSpacer(VisualElement element, ParticlesBinding binding, bool want)
+        {
+            binding.WantSpacer = want;
+            SyncBoundsSpacer(element, binding);
+        }
+
+        // So an animating burst that grows a few pixels a frame re-lays-out the spacer (and reallocates the
+        // filter texture) only when its extent crosses a bucket, not every tick. Over-covering by up to a
+        // bucket is invisible — the spacer paints nothing.
+        private const float SpacerQuantum = 32f;
+
+        // Off-panel / pre-layout there is no extent yet, but the spacer still attaches unsized: the reconciler
+        // must count it as a trailing child from the moment a filter wants it, and the tick sizes it once
+        // layout and a live simulation resolve a real extent.
+        private static void SyncBoundsSpacer(VisualElement element, ParticlesBinding binding)
+        {
+            if (!binding.WantSpacer)
+            {
+                SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
+                binding.AppliedSpacerAabb = default;
+                return;
+            }
+            if (!SilhouetteBoundsSpacer.TryGetLayoutSize(element, out var w, out var h))
+            {
+                SilhouetteBoundsSpacer.Sync(element, ref binding.BoundsSpacer, true, default);
+                return;
+            }
+            var box = new Rect(0f, 0f, w, h);
+            var live = binding.LiveExtentLocal;
+            Rect reserved;
+            if (live.width > 0f && live.height > 0f)
+            {
+                // Lead the live extent by a quantum: the extent this reads was stashed by Draw one frame ago,
+                // so a fast-growing burst would otherwise outrun the reserved bounds between frames and clip
+                // its leading edge. The headroom keeps growth up to a quantum per frame covered. No lookahead
+                // for the box-only fallback (nothing overflows there).
+                var u = SilhouetteBoundsSpacer.Union(box, live);
+                reserved = new Rect(u.xMin - SpacerQuantum, u.yMin - SpacerQuantum,
+                    u.width + (2f * SpacerQuantum), u.height + (2f * SpacerQuantum));
+            }
+            else
+            {
+                reserved = box;
+            }
+            var quantized = QuantizeOutward(reserved);
+            if (quantized == binding.AppliedSpacerAabb)
+            {
+                return;
+            }
+            binding.AppliedSpacerAabb = quantized;
+            SilhouetteBoundsSpacer.Sync(element, ref binding.BoundsSpacer, true, quantized);
+        }
+
+        // Outward, not nearest, so the reserved bounds never fall short of the live extent between buckets.
+        private static Rect QuantizeOutward(Rect r)
+        {
+            var xMin = Mathf.Floor(r.xMin / SpacerQuantum) * SpacerQuantum;
+            var yMin = Mathf.Floor(r.yMin / SpacerQuantum) * SpacerQuantum;
+            var xMax = Mathf.Ceil(r.xMax / SpacerQuantum) * SpacerQuantum;
+            var yMax = Mathf.Ceil(r.yMax / SpacerQuantum) * SpacerQuantum;
+            return new Rect(xMin, yMin, xMax - xMin, yMax - yMin);
+        }
+
         // Full teardown: clears the imperative handlers, unregisters the painter and the panel
         // callbacks, pauses the repaint tick, and destroys the hidden host.
         public static void Detach(VisualElement element, ParticlesBinding binding)
@@ -124,6 +199,7 @@ namespace Velvet
             }
             StopRepaintTick(binding);
             DestroyHost(binding);
+            SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
             element.MarkDirtyRepaint();
         }
 
@@ -158,6 +234,14 @@ namespace Velvet
                 ApplyPlayTrigger(binding);
             }
             SyncRepaintTick(element, binding);
+            if (binding.Host == null)
+            {
+                // A null / destroyed effect draws nothing, and the tick that would otherwise collapse the
+                // reserved bounds on drain is now parked — so return them to the box here, else the filter
+                // texture stays oversized at the last live extent until the effect returns or unmount.
+                binding.LiveExtentLocal = default;
+                SyncBoundsSpacer(element, binding);
+            }
         }
 
         // Clones the source effect into the hidden simulation host: renderer disabled (no camera may
@@ -290,23 +374,34 @@ namespace Velvet
             var buffer = binding.Buffer;
             if (host == null || buffer == null)
             {
+                binding.LiveExtentLocal = default;
                 return;
             }
             var w = element.layout.width;
             var h = element.layout.height;
             if (w <= 0f || h <= 0f || float.IsNaN(w) || float.IsNaN(h))
             {
+                binding.LiveExtentLocal = default;
                 return;
             }
             var count = host.GetParticles(buffer);
             if (count <= 0)
             {
+                // No live quads, so the spacer collapses back to the box on the next tick.
+                binding.LiveExtentLocal = default;
                 return;
             }
 
             var ppu = binding.Settings.PixelsPerUnit;
             var cx = w * 0.5f;
             var cy = h * 0.5f;
+            // Only a filtered element consumes the extent, so the far more common no-filter case skips the
+            // per-particle reach work and the Rect write entirely.
+            var track = binding.WantSpacer;
+            var minX = float.MaxValue;
+            var minY = float.MaxValue;
+            var maxX = float.MinValue;
+            var maxY = float.MinValue;
             var mwd = mgc.Allocate(4 * count, 6 * count, binding.Texture);
             for (var q = 0; q < count; q++)
             {
@@ -317,6 +412,17 @@ namespace Velvet
                 var cos = Mathf.Cos(rad);
                 var sin = Mathf.Sin(rad);
                 Color32 tint = p.GetCurrentColor(host);
+
+                if (track)
+                {
+                    // A `half`-half-extent square rotated by the particle's rotation reaches half*(|cos| + |sin|)
+                    // on each axis — the bound the filter spacer must cover to keep the quad from clipping.
+                    var reach = half * (Mathf.Abs(cos) + Mathf.Abs(sin));
+                    if (center.x - reach < minX) { minX = center.x - reach; }
+                    if (center.y - reach < minY) { minY = center.y - reach; }
+                    if (center.x + reach > maxX) { maxX = center.x + reach; }
+                    if (center.y + reach > maxY) { maxY = center.y + reach; }
+                }
 
                 // Corner offsets rotated around the particle center; UVs raw 0..1 with v flipped at the
                 // top (UI Toolkit remaps them into the atlas slot), matching the sibling quad painters.
@@ -331,6 +437,10 @@ namespace Velvet
                 mwd.SetNextIndex((ushort)(b + 0));
                 mwd.SetNextIndex((ushort)(b + 2));
                 mwd.SetNextIndex((ushort)(b + 3));
+            }
+            if (track)
+            {
+                binding.LiveExtentLocal = new Rect(minX, minY, maxX - minX, maxY - minY);
             }
         }
 
@@ -371,15 +481,25 @@ namespace Velvet
                 || (!playing && binding.LogicallyPlaying && EditorSimulationDrained(host, binding)))
             {
                 StopRepaintTick(binding);
+                // Collapse the reserved bounds before the tick parks, else a one-shot burst leaves the filter
+                // texture oversized until unmount (Play() / Sync re-arm the tick and the extent re-grows).
+                binding.LiveExtentLocal = default;
+                SyncBoundsSpacer(element, binding);
             }
-            else if (!playing && binding.LogicallyPlaying && dt > 0f)
+            else
             {
-                // Outside Play Mode the engine never steps a particle system's clock on its own, so an
-                // editor-context panel (preview tooling, EditMode fixtures) would repaint one frozen
-                // frame forever. Advance the hidden host by the tick's real elapsed time, clamped the
-                // way frame deltas are clamped; children advance in step for coherence even though
-                // only the root is drawn.
-                host.Simulate(Mathf.Min(dt, Time.maximumDeltaTime), withChildren: true, restart: false, fixedTimeStep: false);
+                if (!playing && binding.LogicallyPlaying && dt > 0f)
+                {
+                    // Outside Play Mode the engine never steps a particle system's clock on its own, so an
+                    // editor-context panel (preview tooling, EditMode fixtures) would repaint one frozen
+                    // frame forever. Advance the hidden host by the tick's real elapsed time, clamped the
+                    // way frame deltas are clamped; children advance in step for coherence even though
+                    // only the root is drawn.
+                    host.Simulate(Mathf.Min(dt, Time.maximumDeltaTime), withChildren: true, restart: false, fixedTimeStep: false);
+                }
+                // Draw stashed the extent last repaint, one frame behind the particles — invisible after the
+                // quantize + slack, and it saves a second GetParticles here.
+                SyncBoundsSpacer(element, binding);
             }
             element.MarkDirtyRepaint();
         }
