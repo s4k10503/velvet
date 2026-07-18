@@ -959,6 +959,19 @@ namespace Velvet
                 s_particlesAttach, s_particlesUpdate, s_particlesDetach);
         }
 
+        // A filter clips the particle quads drawn beyond the host rect (it renders the element through an
+        // offscreen tree sized to the layout box); the driver reserves render bounds to keep them, gated on
+        // the same variant-peeling filter check as the skew / shadow paints. Driven on every patch rather than
+        // the Particles-settings diff, because a filter comes and goes independent of the effect — a class
+        // swap, or a state variant the reconcile pass never sees active.
+        internal void ApplyParticlesSpacer(VisualElement element, string[] classNames)
+        {
+            if (element is ParticlesElement && _ctx.ParticlesBindings.TryGetValue(element, out var binding))
+            {
+                ParticlesDriver.SetWantSpacer(element, binding, CarriesFilter(classNames));
+            }
+        }
+
         // Unlike SceneView/Particles, Anchored has no dedicated element type to gate on — V.Anchored builds
         // a plain ElementNode (any host type is valid; the binding only ever writes inline left/top), so
         // this dispatches straight to the shared binding logic with no type check.
