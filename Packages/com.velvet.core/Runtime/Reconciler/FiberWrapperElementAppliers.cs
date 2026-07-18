@@ -40,6 +40,38 @@ namespace Velvet
             // sheared mesh (the rectangular background-image the non-skew path would set cannot follow the
             // shear). ApplyGradientOnCreate runs next and defers to this binding.
             SyncSkewGradient(element, binding, classNames);
+            SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(classNames));
+        }
+
+        // True when the class list carries an inline filter — a static filter-* utility or the animate-hue
+        // motion (which drives style.filter every frame) — in the base classes OR any state variant. A filter
+        // promotes the element to an offscreen render tree sized to its layout boundingBox, which clips a
+        // sheared silhouette / shadow bleed; the paint layers answer with a bounds-spacer (SilhouetteBoundsSpacer)
+        // that widens boundingBox. The spacer must exist whenever a filter COULD apply (a variant applies its
+        // payload at state time, outside this reconcile pass), so both checks peel variant layers to the leaf.
+        private static bool CarriesFilter(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            if (StyleFilterValueParser.HasFilterClass(classNames))
+            {
+                return true;
+            }
+            foreach (var cls in classNames)
+            {
+                var leaf = cls;
+                while (StyleVariantClass.TryParse(leaf, out _, out var payload))
+                {
+                    leaf = payload;
+                }
+                if (leaf != null && leaf.StartsWith("animate-hue", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // Feeds the gradient resolved from the element's class list into a skew binding (or clears it), so
@@ -82,6 +114,8 @@ namespace Velvet
                 if (classesChanged)
                 {
                     SyncSkewGradient(element, binding, newClassNames);
+                    // A filter utility / animate-hue can appear or vanish without the skew tokens changing.
+                    SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(newClassNames));
                 }
                 return binding.Spec.XDeg;
             }
@@ -94,6 +128,7 @@ namespace Velvet
                 binding.Spec = spec;
                 SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
                 SyncSkewGradient(element, binding, newClassNames);
+                SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(newClassNames));
                 element.MarkDirtyRepaint();
                 return spec.XDeg;
             }
@@ -103,6 +138,7 @@ namespace Velvet
                 _ctx.SkewBindings[element] = fresh;
                 SkewSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true);
                 SyncSkewGradient(element, fresh, newClassNames);
+                SkewSilhouette.SetWantSpacer(element, fresh, CarriesFilter(newClassNames));
                 return spec.XDeg;
             }
             if (bound)
@@ -331,8 +367,9 @@ namespace Velvet
             // suppressing the native chrome and repainting an upright fill over the shadow quad. skew-y casters
             // have skewXDeg 0 yet are skewed, so this gate is the SkewBindings presence, not the X angle.
             var casterSkewed = _ctx.SkewBindings.ContainsKey(element);
-            _ctx.ShadowBindings[element] =
-                DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
+            var shadowBinding = DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
+            _ctx.ShadowBindings[element] = shadowBinding;
+            DropShadowSilhouette.SetWantSpacer(element, shadowBinding, CarriesFilter(classNames));
         }
 
         // Patch-time reconciliation of an element's shadow state against its new class list. Mirrors the
@@ -364,11 +401,13 @@ namespace Velvet
             if (want && bound)
             {
                 DropShadowSilhouette.Sync(element, binding, spec, classNames, skewXDeg, casterSkewed);
+                DropShadowSilhouette.SetWantSpacer(element, binding, CarriesFilter(classNames));
             }
             else if (want)
             {
-                _ctx.ShadowBindings[element] =
-                    DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
+                var fresh = DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
+                _ctx.ShadowBindings[element] = fresh;
+                DropShadowSilhouette.SetWantSpacer(element, fresh, CarriesFilter(classNames));
             }
             else if (bound)
             {
