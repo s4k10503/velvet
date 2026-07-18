@@ -285,6 +285,10 @@ namespace Velvet
             StyleTextEffectResolver.Apply(_ctx, element, classNames);
             _appliers.ApplyGradientOnPatch(element, classNames, skewable: gradientSkewable);
             _appliers.ApplyAnimateOnPatch(element, classNames);
+            // Here, not in the Particles-settings diff: the spacer follows the class list (a filter comes and
+            // goes via a class swap or variant), and this pass is the one hook shared by the element and Motion
+            // patch paths — a particle can be Motion-hosted.
+            _appliers.ApplyParticlesSpacer(element, classNames);
         }
 
         private void PatchText(Label label, TextNode oldNode, TextNode newNode)
