@@ -29,9 +29,9 @@ namespace Velvet
         internal const string MarkerClass = "velvet-bounds-spacer";
         internal const string SpacerName = "velvet-bounds-spacer";
 
-        // A little slack beyond the computed AABB absorbs the stroke half-width, antialiasing, and any
-        // border/padding offset between the gVC origin and the absolute-positioning origin. Over-covering only
-        // grows the offscreen texture slightly; it is never visible (the spacer paints nothing).
+        // A little slack beyond the computed AABB absorbs the stroke half-width and antialiasing (the
+        // border-box vs padding-box origin offset is handled exactly in Sync, not by this fudge). Over-covering
+        // only grows the offscreen texture slightly; it is never visible (the spacer paints nothing).
         private const float Slack = 4f;
 
         /// <summary>
@@ -81,6 +81,9 @@ namespace Velvet
             if (aabbLocal.width > 0f && aabbLocal.height > 0f
                 && !float.IsNaN(aabbLocal.width) && !float.IsNaN(aabbLocal.height))
             {
+                // aabbLocal is the paint extent in the caster's border-box gVC space; the caller has already
+                // shifted its origin left/up by the caster's border so this padding-box-relative left/top lands
+                // the coverage correctly in border-box space (see BorderInset / the paint layers' aabb shift).
                 spacer.style.left = aabbLocal.xMin - Slack;
                 spacer.style.top = aabbLocal.yMin - Slack;
                 spacer.style.width = aabbLocal.width + (2f * Slack);
@@ -156,6 +159,107 @@ namespace Velvet
             return new Rect(r.xMin - ox, r.yMin - oy, r.width + (2f * ox), r.height + (2f * oy));
         }
 
+        // The left/top border width the class list implies, in px, so a caller can shift the paint AABB into
+        // padding-box space (the origin an absolute child's left/top resolve against) and keep the spacer's
+        // coverage correct under any border. Parsed straight from the classes — not resolvedStyle (unresolved
+        // at the paint layers' one-shot geometry-callback sizing time) nor inline style (misses the USS-class
+        // scale borders border/border-2/…). Variant layers are peeled so a state border (hover:border-8) is
+        // reserved for too, and the MAX across classes is taken: over-covering is invisible, under-covering
+        // clips. Mirrors the fixed scale in _borders.uss (border=1, border-N=N, per-side the same).
+        internal static void BorderInset(string[] classNames, out float left, out float top)
+        {
+            left = 0f;
+            top = 0f;
+            if (classNames == null)
+            {
+                return;
+            }
+            foreach (var cls in classNames)
+            {
+                // Strip !important before peeling variants (a bang sits at the class edge, e.g. border-8! /
+                // !border-8) so the border is still recognized under the important modifier.
+                var leaf = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                while (StyleVariantClass.TryParse(leaf, out _, out var payload))
+                {
+                    leaf = payload;
+                }
+                if (TryParseBorderLeaf(leaf, out var affectsLeft, out var affectsTop, out var width))
+                {
+                    if (affectsLeft && width > left) { left = width; }
+                    if (affectsTop && width > top) { top = width; }
+                }
+            }
+        }
+
+        // Parses one border-width leaf to which origin sides it insets and by how much. Returns false for
+        // color / style / non-width border classes (border-red-500, border-dashed) and non-border classes.
+        private static bool TryParseBorderLeaf(string leaf, out bool affectsLeft, out bool affectsTop, out float width)
+        {
+            affectsLeft = false;
+            affectsTop = false;
+            width = 0f;
+            if (leaf == null)
+            {
+                return false;
+            }
+            if (leaf == "border")
+            {
+                affectsLeft = true;
+                affectsTop = true;
+                width = 1f;
+                return true;
+            }
+            if (!leaf.StartsWith("border-", System.StringComparison.Ordinal))
+            {
+                return false;
+            }
+            var rest = leaf.Substring("border-".Length);
+            // Per-side form: a side letter (t/r/b/l/x/y), optionally "-<width>". Only left-affecting (l, x) and
+            // top-affecting (t, y) sides matter for the top-left origin; r/b are irrelevant to the shift.
+            var c0 = rest.Length > 0 ? rest[0] : '\0';
+            var isSide = (rest.Length == 1 || (rest.Length > 1 && rest[1] == '-')) && "trblxy".IndexOf(c0) >= 0;
+            if (isSide)
+            {
+                var widthPart = rest.Length > 1 ? rest.Substring(2) : string.Empty;
+                if (widthPart.Length == 0)
+                {
+                    width = 1f;
+                }
+                else if (!TryParseWidth(widthPart, out width))
+                {
+                    return false;
+                }
+                affectsLeft = c0 == 'l' || c0 == 'x';
+                affectsTop = c0 == 't' || c0 == 'y';
+                return affectsLeft || affectsTop;
+            }
+            // All-sides form: border-<width> / border-[Npx]. A color/style token fails TryParseWidth.
+            if (TryParseWidth(rest, out width))
+            {
+                affectsLeft = true;
+                affectsTop = true;
+                return true;
+            }
+            return false;
+        }
+
+        // A border-width token to px: an integer (0/2/4/8/…) or an arbitrary bracket value. The bracket form
+        // delegates to the resolver's own length grammar so it matches the width actually applied (px and rem;
+        // a percent border width is meaningless and left unreserved — over-covering, never a clip).
+        private static bool TryParseWidth(string s, out float width)
+        {
+            width = 0f;
+            if (string.IsNullOrEmpty(s))
+            {
+                return false;
+            }
+            if (s[0] == '[')
+            {
+                return StyleArbitraryValueResolver.TryParseArbitraryPixels(s, out width);
+            }
+            return int.TryParse(s, out var i) && i >= 0 && (width = i) >= 0f;
+        }
+
         // The caster's laid-out size, or false when layout has not resolved one yet (pre-layout / EditMode,
         // where the spacer attaches unsized and the geometry callback re-sizes it). Shared by the skew and
         // shadow layers so the "laid out" gate cannot drift between them.
@@ -164,6 +268,19 @@ namespace Velvet
             w = element.layout.width;
             h = element.layout.height;
             return w > 0f && h > 0f && !float.IsNaN(w) && !float.IsNaN(h);
+        }
+
+        // Shifts a paint AABB (in the caster's border-box gVC space) into the padding-box space an absolute
+        // child's left/top resolve against, by insetting its origin by the caster's border. Keeps the size, so
+        // Sync's `xMin - Slack` / `xMax + Slack` land the coverage correctly in border-box space. A no-op for an
+        // empty AABB (pre-layout) or a zero border.
+        internal static Rect ShiftToPaddingBox(Rect aabbLocal, float borderLeft, float borderTop)
+        {
+            if (aabbLocal.width <= 0f || aabbLocal.height <= 0f)
+            {
+                return aabbLocal;
+            }
+            return new Rect(aabbLocal.xMin - borderLeft, aabbLocal.yMin - borderTop, aabbLocal.width, aabbLocal.height);
         }
 
         // Axis-aligned union of two rects.

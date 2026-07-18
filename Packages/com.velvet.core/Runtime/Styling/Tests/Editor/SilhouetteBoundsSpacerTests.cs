@@ -111,5 +111,105 @@ namespace Velvet.Tests
             // Act / Assert
             Assert.That(SilhouetteBoundsSpacer.NonSpacerChildCount(container), Is.EqualTo(1));
         }
+
+        [Test]
+        public void Given_AllSidesScaleBorder_When_InsetParsed_Then_LeftMatchesTheScale()
+        {
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-8" }, out var left, out _);
+
+            Assert.That(left, Is.EqualTo(8f));
+        }
+
+        [Test]
+        public void Given_BareBorder_When_InsetParsed_Then_TopIsOne()
+        {
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border" }, out _, out var top);
+
+            Assert.That(top, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_ALeftOnlyBorder_When_InsetParsed_Then_TopStaysZero()
+        {
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-l-4" }, out _, out var top);
+
+            Assert.That(top, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_AnXAxisBorder_When_InsetParsed_Then_LeftIsInset()
+        {
+            // border-x sets the left (and right) border; only left matters for the top-left origin.
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-x-4" }, out var left, out _);
+
+            Assert.That(left, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_ABorderColorClass_When_InsetParsed_Then_ItContributesNoInset()
+        {
+            // border-red-500 is a color, not a width — it must not be read as an inset.
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-red-500" }, out var left, out var top);
+
+            Assert.That(left + top, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_AVariantCarriedBorder_When_InsetParsed_Then_ItIsStillReserved()
+        {
+            // A state border (hover:border-8) applies outside the reconcile, so it must be reserved for.
+            SilhouetteBoundsSpacer.BorderInset(new[] { "hover:border-8" }, out var left, out _);
+
+            Assert.That(left, Is.EqualTo(8f));
+        }
+
+        [Test]
+        public void Given_AnArbitraryBorder_When_InsetParsed_Then_ThePixelValueIsRead()
+        {
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-[16px]" }, out var left, out _);
+
+            Assert.That(left, Is.EqualTo(16f));
+        }
+
+        [Test]
+        public void Given_ConflictingBorders_When_InsetParsed_Then_TheMaxIsTaken()
+        {
+            // Over-covering is invisible, so the widest left-affecting class wins rather than the cascade.
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-2", "border-l-8" }, out var left, out _);
+
+            Assert.That(left, Is.EqualTo(8f));
+        }
+
+        [Test]
+        public void Given_AnImportantBorder_When_InsetParsed_Then_TheBangIsStrippedAndReserved()
+        {
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-8!" }, out var left, out _);
+
+            Assert.That(left, Is.EqualTo(8f));
+        }
+
+        [Test]
+        public void Given_AnArbitraryRemBorder_When_InsetParsed_Then_ItConvertsAtSixteenPxPerRem()
+        {
+            SilhouetteBoundsSpacer.BorderInset(new[] { "border-[2rem]" }, out var left, out _);
+
+            Assert.That(left, Is.EqualTo(32f));
+        }
+
+        [Test]
+        public void Given_APaintAabb_When_ShiftedToPaddingBox_Then_TheOriginInsetsByTheBorder()
+        {
+            var shifted = SilhouetteBoundsSpacer.ShiftToPaddingBox(new Rect(-10f, -6f, 120f, 60f), 8f, 4f);
+
+            Assert.That(shifted.xMin, Is.EqualTo(-18f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_APaintAabb_When_ShiftedToPaddingBox_Then_TheSizeIsUnchanged()
+        {
+            var shifted = SilhouetteBoundsSpacer.ShiftToPaddingBox(new Rect(-10f, -6f, 120f, 60f), 8f, 4f);
+
+            Assert.That(shifted.width, Is.EqualTo(120f).Within(1e-4f));
+        }
     }
 }

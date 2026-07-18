@@ -40,7 +40,7 @@ namespace Velvet
             // sheared mesh (the rectangular background-image the non-skew path would set cannot follow the
             // shear). ApplyGradientOnCreate runs next and defers to this binding.
             SyncSkewGradient(element, binding, classNames);
-            SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(classNames));
+            SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(classNames), classNames);
         }
 
         // True when the class list carries an inline filter — a static filter-* utility or the animate-hue
@@ -115,7 +115,7 @@ namespace Velvet
                 {
                     SyncSkewGradient(element, binding, newClassNames);
                     // A filter utility / animate-hue can appear or vanish without the skew tokens changing.
-                    SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(newClassNames));
+                    SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(newClassNames), newClassNames);
                 }
                 return binding.Spec.XDeg;
             }
@@ -128,7 +128,7 @@ namespace Velvet
                 binding.Spec = spec;
                 SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
                 SyncSkewGradient(element, binding, newClassNames);
-                SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(newClassNames));
+                SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(newClassNames), newClassNames);
                 element.MarkDirtyRepaint();
                 return spec.XDeg;
             }
@@ -138,7 +138,7 @@ namespace Velvet
                 _ctx.SkewBindings[element] = fresh;
                 SkewSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true);
                 SyncSkewGradient(element, fresh, newClassNames);
-                SkewSilhouette.SetWantSpacer(element, fresh, CarriesFilter(newClassNames));
+                SkewSilhouette.SetWantSpacer(element, fresh, CarriesFilter(newClassNames), newClassNames);
                 return spec.XDeg;
             }
             if (bound)
@@ -369,7 +369,7 @@ namespace Velvet
             var casterSkewed = _ctx.SkewBindings.ContainsKey(element);
             var shadowBinding = DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
             _ctx.ShadowBindings[element] = shadowBinding;
-            DropShadowSilhouette.SetWantSpacer(element, shadowBinding, CarriesFilter(classNames));
+            DropShadowSilhouette.SetWantSpacer(element, shadowBinding, CarriesFilter(classNames), classNames);
         }
 
         // Patch-time reconciliation of an element's shadow state against its new class list. Mirrors the
@@ -401,13 +401,13 @@ namespace Velvet
             if (want && bound)
             {
                 DropShadowSilhouette.Sync(element, binding, spec, classNames, skewXDeg, casterSkewed);
-                DropShadowSilhouette.SetWantSpacer(element, binding, CarriesFilter(classNames));
+                DropShadowSilhouette.SetWantSpacer(element, binding, CarriesFilter(classNames), classNames);
             }
             else if (want)
             {
                 var fresh = DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
                 _ctx.ShadowBindings[element] = fresh;
-                DropShadowSilhouette.SetWantSpacer(element, fresh, CarriesFilter(classNames));
+                DropShadowSilhouette.SetWantSpacer(element, fresh, CarriesFilter(classNames), classNames);
             }
             else if (bound)
             {
@@ -968,7 +968,7 @@ namespace Velvet
         {
             if (element is ParticlesElement && _ctx.ParticlesBindings.TryGetValue(element, out var binding))
             {
-                ParticlesDriver.SetWantSpacer(element, binding, CarriesFilter(classNames));
+                ParticlesDriver.SetWantSpacer(element, binding, CarriesFilter(classNames), classNames);
             }
         }
 
