@@ -51,11 +51,16 @@ namespace Velvet
         public const int GroupFocusWithin = 36;
         public const int PeerFocusWithin = 37;
         public const int PeerChecked = 38;
+        // Element-local interaction states. Tailwind's default variant order emits `checked` BEFORE
+        // hover/focus/active, so on a same-property tie an interaction state (emitted later) wins over
+        // `checked:` — the checked layer therefore ranks BELOW them (but still above the relational
+        // group-/peer- layers). Getting this backwards would let a checked control's `checked:` value beat a
+        // concurrent `hover:` / `focus:` / `active:` value, which Tailwind does not.
+        public const int Checked = 39;
         public const int Hover = 40;
         public const int Focus = 50;
         public const int FocusVisible = 55;
         public const int Active = 60;
-        public const int Checked = 65;
 
         // The important modifier (!utility / utility!): the highest layer, so an important utility
         // wins over the base and every state/variant layer — the inline-style stand-in for CSS !important

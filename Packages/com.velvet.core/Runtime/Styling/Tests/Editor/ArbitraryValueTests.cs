@@ -2206,6 +2206,32 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_CheckedAndHoverWidthLayers_When_BothActive_Then_HoverWins()
+        {
+            // Tailwind emits checked before hover in its variant order, so a hovered checked control's
+            // hover:w-[200px] wins the same-property tie over checked:w-[100px].
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.Width, 100f, LengthUnit.Pixel), StyleLayerPriority.Checked);
+            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.Width, 200f, LengthUnit.Pixel), StyleLayerPriority.Hover);
+
+            Assert.That(el.style.width.value.value, Is.EqualTo(200f));
+        }
+
+        [Test]
+        public void Given_CheckedAndHoverWidthLayers_When_HoverCleared_Then_CheckedIsRestored()
+        {
+            // Hover off falls back to the still-checked layer (not wiped), so the checked value returns.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.Width, 100f, LengthUnit.Pixel), StyleLayerPriority.Checked);
+            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.Width, 200f, LengthUnit.Pixel), StyleLayerPriority.Hover);
+            Assume.That(el.style.width.value.value, Is.EqualTo(200f), "Precondition: hover wins over checked");
+
+            StyleArbitraryValueResolver.Clear(el, ArbitraryProperty.Width, StyleLayerPriority.Hover);
+
+            Assert.That(el.style.width.value.value, Is.EqualTo(100f));
+        }
+
+        [Test]
         public void Given_TranslateYBaseAndTranslateXHover_When_TranslateXCleared_Then_TranslateYSurvives()
         {
             // Arrange — translate-y-[20px] (base) + hover:translate-x-[10px].
