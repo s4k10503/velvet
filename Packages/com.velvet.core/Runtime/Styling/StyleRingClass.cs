@@ -43,25 +43,40 @@ namespace Velvet
     // cancel an earlier ring in the cascade.
     internal static class StyleRingClass
     {
-        // The DEFAULT ring is 3px blue-500/… ; the bare `ring` and a color-only `ring-red-500` use it.
+        // The DEFAULT ring is 3px blue-500; the bare `ring` and a width-only `ring-2` use it (color applied at
+        // 0.5 alpha, see DefaultRingColor). An explicit `ring-<color>` is opaque and does not go through here.
         private const float DefaultRingWidth = 3f;
+        // The default ring's alpha. Tailwind renders a ring with no explicit color at blue-500 / 0.5, not full
+        // opacity; an explicit ring color stays opaque, and the outline default (below) is unaffected.
+        private const float DefaultRingAlpha = 0.5f;
         // Bare `outline` (outline-style: solid) — Velvet picks a thin default width; outline-{N} overrides.
         private const float DefaultOutlineWidth = 1f;
 
-        private static bool s_defaultRingColorResolved;
-        private static Color s_defaultRingColor = new(59f / 255f, 130f / 255f, 246f / 255f, 1f); // blue-500 fallback
+        private static bool s_blue500Resolved;
+        private static Color s_blue500 = new(59f / 255f, 130f / 255f, 246f / 255f, 1f); // opaque fallback
 
-        private static Color DefaultRingColor()
+        // The default band color, opaque, shared by the ring and outline defaults. The ring applies its own
+        // 0.5 alpha on top (DefaultRingColor); bare `outline` keeps this opaque (a color-less outline is a
+        // pre-existing currentColor approximation, out of scope, so its alpha must not change with the ring).
+        private static Color DefaultBandColor()
         {
-            if (!s_defaultRingColorResolved)
+            if (!s_blue500Resolved)
             {
                 if (VelvetPalette.TryResolveColorToken("blue-500", out var c))
                 {
-                    s_defaultRingColor = c;
+                    s_blue500 = c;
                 }
-                s_defaultRingColorResolved = true;
+                s_blue500Resolved = true;
             }
-            return s_defaultRingColor;
+            return s_blue500;
+        }
+
+        // A color-less ring: blue-500 at 0.5 alpha (Tailwind's default --tw-ring-color).
+        private static Color DefaultRingColor()
+        {
+            var c = DefaultBandColor();
+            c.a = DefaultRingAlpha;
+            return c;
         }
 
         // suffix → width (px). Shared by ring-{N} and outline-{N}; the ring/outline width scale.
@@ -202,7 +217,8 @@ namespace Velvet
                 return false; // ring-0 / outline-none: no ring
             }
 
-            var effectiveColor = colorSet ? color : DefaultRingColor();
+            // A color-less ring uses the 0.5-alpha default; a color-less outline keeps the opaque band color.
+            var effectiveColor = colorSet ? color : (isOutline ? DefaultBandColor() : DefaultRingColor());
             spec = new RingSpec(effectiveWidth, effectiveColor, Mathf.Max(0f, offset), inset);
             return true;
         }
