@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A prior commit's pending passive effect (`Hooks.UseEffect`) now runs BEFORE a discrete event's
+  re-render, matching React's flush-passive-effects-before-update: a click handler that re-renders no
+  longer commits its render ahead of an effect that has not run yet. Scoped to the discrete-event
+  boundary, so a mount / commit-phase flush still leaves passive effects pending for the scheduler tick.
 - The default ring color (`ring` / `ring-2` with no explicit `ring-<color>`) is now blue-500 at 0.5
   alpha, matching Tailwind's `--tw-ring-color`, instead of fully opaque. An explicit ring color stays
   opaque.
