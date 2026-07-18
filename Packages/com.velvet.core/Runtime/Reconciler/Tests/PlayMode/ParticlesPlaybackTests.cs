@@ -146,7 +146,7 @@ namespace Velvet.Tests
         {
             // Arrange — a filter renders the element through an offscreen tree sized to its layout box, so the
             // quads drawn past the small rect would clip. The fix tracks the live particle extent into a spacer
-            // whose layout reaches beyond the host rect; a spacer merely pinned to the box would not.
+            // that reaches beyond the host rect; a spacer merely pinned to the box would not.
             var effect = CreateEmitter();
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
             _mounted = V.Mount(_host.Root,
@@ -154,13 +154,24 @@ namespace Velvet.Tests
             var element = _host.Root.Q<ParticlesElement>();
             Assume.That(element, Is.Not.Null, "Precondition: the particles element mounted");
 
-            // Act — let the burst populate and draw quads beyond the 40px box.
-            yield return WaitRealtime(0.8);
-            var spacer = FindBoundsSpacer(element);
-            Assume.That(spacer, Is.Not.Null, "Precondition: the filtered element carries a bounds-spacer");
+            // Act — the spacer is sized by the tick reading the extent Draw stashed a frame earlier, a
+            // multi-frame chain (draw → stash → tick → size). Advance until it settles rather than a fixed
+            // realtime wait, so the GPU-less runner's one-time multi-second draw warmup can't starve the chain.
+            var reached = false;
+            var deadline = Time.realtimeSinceStartupAsDouble + 180.0;
+            while (Time.realtimeSinceStartupAsDouble < deadline)
+            {
+                yield return null;
+                var spacer = FindBoundsSpacer(element);
+                if (spacer != null && spacer.resolvedStyle.width > element.resolvedStyle.width)
+                {
+                    reached = true;
+                    break;
+                }
+            }
 
             // Assert
-            Assert.That(spacer.layout.width, Is.GreaterThan(element.layout.width));
+            Assert.That(reached, Is.True);
         }
 
         [UnityTest]
