@@ -14,8 +14,8 @@ namespace Velvet
         Vertical,
     }
 
-    // A resolved divide-* utility: the axis + width of the inter-child border, and an optional color.
-    // A divide is only active when an axis class (divide-x / divide-y / divide-x-N / divide-x-[..]) is
+    // A resolved divide-* utility: the axis + width of the inter-child border, an optional color, and the line
+    // style. A divide is only active when an axis class (divide-x / divide-y / divide-x-N / divide-x-[..]) is
     // present — a lone divide-{color} does nothing (the color needs a width to show).
     internal readonly struct DivideSpec
     {
@@ -23,13 +23,15 @@ namespace Velvet
         public readonly float Width;
         public readonly bool HasColor;
         public readonly Color Color;
+        public readonly BorderLineStyle Style;
 
-        public DivideSpec(DivideAxis axis, float width, bool hasColor, Color color)
+        public DivideSpec(DivideAxis axis, float width, bool hasColor, Color color, BorderLineStyle style)
         {
             Axis = axis;
             Width = width;
             HasColor = hasColor;
             Color = color;
+            Style = style;
         }
     }
 
@@ -40,8 +42,9 @@ namespace Velvet
     // no USS selector can express (UI Toolkit has no :first-child and no `> *` child combinator).
     //
     // Deviations (UI Toolkit constraints):
-    //   - divide-{style}: divide-solid is the only style UI Toolkit can render (USS has no
-    //     border-style), so divide-dashed / divide-dotted / divide-double are unsupported and ignored.
+    //   - divide-dashed / divide-dotted have no UI Toolkit border-style, so they are painted by
+    //     DivideDashPainter on each divided child's own generateVisualContent (the manipulator still writes
+    //     the real gutter width and masks the color with the sentinel). divide-double is still unsupported.
     //   - divide-*-reverse is unsupported.
     //   - A single element resolves ONE axis (last axis class wins, CSS-cascade order); divide-x and
     //     divide-y are not combined onto the same element.
@@ -90,6 +93,7 @@ namespace Velvet
             var width = 0f;
             var hasColor = false;
             var color = default(Color);
+            var style = BorderLineStyle.Solid;
 
             foreach (var cls in classNames)
             {
@@ -104,21 +108,47 @@ namespace Velvet
                     axis = a;
                     width = w;
                 }
+                else if (TryParseStyle(cls, out var st))
+                {
+                    style = st;
+                }
                 else if (TryParseColor(cls, out var c))
                 {
                     hasColor = true;
                     color = c;
                 }
-                // Otherwise an unsupported divide-* (divide-dashed, divide-solid, divide-*-reverse, …):
-                // skip it without disturbing the accumulated spec.
+                // Otherwise an unsupported divide-* (divide-double, divide-*-reverse, …): skip it without
+                // disturbing the accumulated spec.
             }
 
             if (!foundAxis)
             {
                 return false;
             }
-            spec = new DivideSpec(axis, width, hasColor, color);
+            spec = new DivideSpec(axis, width, hasColor, color, style);
             return true;
+        }
+
+        // divide-solid / divide-dashed / divide-dotted (the last one wins in the cascade). divide-solid is the
+        // default and a recognized reset (it overrides an earlier divide-dashed). Returns false for anything
+        // else so the caller falls through to the color / axis parse.
+        private static bool TryParseStyle(string cls, out BorderLineStyle style)
+        {
+            switch (cls)
+            {
+                case "divide-dashed":
+                    style = BorderLineStyle.Dashed;
+                    return true;
+                case "divide-dotted":
+                    style = BorderLineStyle.Dotted;
+                    return true;
+                case "divide-solid":
+                    style = BorderLineStyle.Solid;
+                    return true;
+                default:
+                    style = BorderLineStyle.Solid;
+                    return false;
+            }
         }
 
         // divide-x / divide-y, divide-x-{0,2,4,8}, divide-x-[Npx] (and the y forms).

@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tween drives the filter parameters frame-by-frame; opt in with `transition-filter` (honoring `duration-*`
   and the easing longhand). Non-interpolable changes (a custom filter, or an ambiguous add/remove) and the
   off-panel / zero-duration cases fall back to an instant write.
+- `border-dashed` / `border-dotted` border styles and their `divide-dashed` / `divide-dotted` divider
+  counterparts. UI Toolkit has no CSS `border-style`, so a non-solid border is drawn by the element's own
+  `generateVisualContent`: an arc-length marcher strokes the rounded-rect outline as dash / dot runs, the
+  native border color is masked with a near-invisible sentinel, and the border WIDTH is left untouched so the
+  box reserves the same layout gutter a solid border would (`border-2 border-red-500 border-dashed` composes
+  as CSS width + style + color). A `divide-x` / `divide-y` divider paints the same dashed / dotted stroke on
+  each divided child's own leading edge, layout-identical to a solid divider; `border-solid` / `divide-solid`
+  reset to the plain native border. When the same element is also skewed or shadowed that layer owns the whole
+  face and repaints a solid border, so a dashed border there stays solid — a documented limitation, the same
+  tier as the clip + shadow / clip + ring mutual exclusions.
 
 ### Fixed
 
