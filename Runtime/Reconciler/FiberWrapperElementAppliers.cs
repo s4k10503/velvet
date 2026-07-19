@@ -109,6 +109,10 @@ namespace Velvet
             if (bound && has && binding.Spec.SourceX == winnerX && binding.Spec.SourceY == winnerY)
             {
                 SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged);
+                // Re-seat the descendant-shear child translate unconditionally (not gated on classesChanged): a
+                // child add / remove / reorder leaves the caster's own skew tokens untouched, so the children
+                // must still re-seat even when this element's class list did not change.
+                SkewSilhouette.SyncChildTranslate(binding);
                 // Re-resolve the gradient only when the class list changed (an unchanged list cannot
                 // have changed the gradient); SetGradient is itself a no-op when the spec is unchanged.
                 if (classesChanged)
@@ -127,6 +131,8 @@ namespace Velvet
             {
                 binding.Spec = spec;
                 SkewSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
+                // The manipulator reads Spec live, so the just-changed angle re-seats the children here.
+                SkewSilhouette.SyncChildTranslate(binding);
                 SyncSkewGradient(element, binding, newClassNames);
                 SkewSilhouette.SetWantSpacer(element, binding, CarriesFilter(newClassNames), newClassNames);
                 element.MarkDirtyRepaint();
