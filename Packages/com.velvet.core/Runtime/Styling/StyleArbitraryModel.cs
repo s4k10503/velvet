@@ -197,14 +197,16 @@ namespace Velvet
         FilterHueRotate,  // hue-rotate-[90deg] -> filter: hue-rotate(90deg)(Value = degrees)
         FilterInvert,     // invert-[1]         -> filter: invert(1)        (Value = 0..1)
         FilterSepia,      // sepia-[1]          -> filter: sepia(1)         (Value = 0..1)
-        // brightness has no UITK filter type, but the built-in Tint multiplies the rendered RGB by a color, so
-        // brightness(N) == Tint(N,N,N). UITK clamps the Tint factor to [0,1], so only the darken range N<=1 is
-        // representable (the parser rejects N>1). Value = the multiplier N (brightness-50 -> 0.5).
-        FilterBrightness, // brightness-[.5]    -> filter: tint(.5,.5,.5)   (Value = multiplier 0..1)
-        // saturate has no UITK filter type either, but saturate(N) == grayscale(1-N) for N in 0..1 (both lerp
-        // toward luminance). Value = the saturation fraction N; BuildFilter emits grayscale(1-N). Over-saturation
-        // (N>1) has no UITK filter and is not supported (the parser rejects saturate>100).
-        FilterSaturate,   // saturate-[.5]      -> filter: grayscale(.5)    (Value = saturation 0..1)
+        // brightness has no UITK filter type; it renders through a first-party custom-filter shader
+        // (BuiltInFilterDefinitions.Brightness) as a FilterFunctionType.Custom function. The shader multiplies
+        // unclamped, so the full CSS range (N >= 0, including over-bright N > 1) is representable. Value = the
+        // multiplier N (brightness-50 -> 0.5, brightness-150 -> 1.5).
+        FilterBrightness, // brightness-[.5]    -> filter: <custom brightness>(.5) (Value = multiplier N >= 0)
+        // saturate has no UITK filter type either; it renders through a first-party custom-filter shader
+        // (BuiltInFilterDefinitions.Saturate) as a FilterFunctionType.Custom function that lerps toward
+        // luminance natively, so Value is the RAW saturation fraction N (no 1-N complement) and over-saturation
+        // (N > 1) is supported.
+        FilterSaturate,   // saturate-[.5]      -> filter: <custom saturate>(.5)   (Value = saturation N >= 0)
         // filter-[name:args] resolves a VelvetFilters.Register-ed custom filter (VelvetFilters.cs). Unlike
         // every filter above, it is NOT composed via s_filterOrder / the property-keyed LayerMap: each
         // registered NAME gets its own priority stack (LayerMap.Customs) so two different custom filters,

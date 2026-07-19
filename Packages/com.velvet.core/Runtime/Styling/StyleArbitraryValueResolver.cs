@@ -954,8 +954,10 @@ namespace Velvet
                 {
                     continue;
                 }
-                (functions ??= new List<FilterFunction>()).Add(
-                    BuildFilter(prop, layers.Values[layers.Count - 1].Value));
+                if (BuildFilter(prop, layers.Values[layers.Count - 1].Value) is { } fn)
+                {
+                    (functions ??= new List<FilterFunction>()).Add(fn);
+                }
             }
             // Customs compose AFTER every built-in, in first-application order — each entry contributing
             // its own highest-priority (winning) layer, the same "last entry in the ascending-by-priority
@@ -1016,27 +1018,39 @@ namespace Velvet
             return fn;
         }
 
-        private static FilterFunction BuildFilter(ArbitraryProperty prop, float value)
+        // Null only when a built-in custom-filter shader (brightness/saturate) is unavailable in the build;
+        // the caller drops that layer. Every other branch always returns a value.
+        private static FilterFunction? BuildFilter(ArbitraryProperty prop, float value)
         {
-            // brightness has no UITK filter type: Tint multiplies the rendered RGB by a color, so
-            // brightness(N) == tint(N, N, N, 1). Tint takes a COLOR parameter, not a float. NB: in a Linear
-            // color-space project UITK linearizes the tint before the multiply, so the darkening is stronger
-            // than CSS brightness(N) (which multiplies in gamma space); the match is exact only in Gamma space.
-            // Values are clamped to [0,1] by Tint, so the parser only admits N<=1 (over-brighten is rejected).
+            // brightness and saturate have no UITK filter type; each renders through a first-party
+            // custom-filter shader (BuiltInFilterDefinitions) as a FilterFunctionType.Custom function. Unlike
+            // the old Tint / grayscale(1-N) approximations, the shaders take the full CSS range (over-brighten
+            // and over-saturate, N>1) and do the multiply/lerp on the encoded pixel before the Linear-output
+            // conversion, matching browser semantics exactly. The stored Value is the raw CSS factor N — the
+            // shader implements saturate's lerp-toward-luminance natively, so there is no 1-N complement to
+            // pre-compute. A null definition (shader stripped from the build) drops the layer, the same degrade
+            // the bake shaders take when their shader is missing.
             if (prop == ArbitraryProperty.FilterBrightness)
             {
-                var tint = new FilterFunction(FilterFunctionType.Tint);
-                tint.AddParameter(new FilterParameter(new Color(value, value, value, 1f)));
-                return tint;
+                var def = BuiltInFilterDefinitions.Brightness;
+                if (def == null)
+                {
+                    return null;
+                }
+                var brightness = new FilterFunction(def!);
+                brightness.AddParameter(new FilterParameter(value));
+                return brightness;
             }
-            // saturate has no UITK filter type either: saturate(N) == grayscale(1 - N) for N in 0..1 (both lerp
-            // the color toward its luminance). The stored Value is the saturation fraction, so emit grayscale of
-            // its complement.
             if (prop == ArbitraryProperty.FilterSaturate)
             {
-                var gray = new FilterFunction(FilterFunctionType.Grayscale);
-                gray.AddParameter(new FilterParameter(1f - value));
-                return gray;
+                var def = BuiltInFilterDefinitions.Saturate;
+                if (def == null)
+                {
+                    return null;
+                }
+                var saturate = new FilterFunction(def!);
+                saturate.AddParameter(new FilterParameter(value));
+                return saturate;
             }
 
             var type = prop switch
