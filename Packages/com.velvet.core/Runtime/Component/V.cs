@@ -1400,7 +1400,7 @@ namespace Velvet
         /// memoizes a function-style component by props equality.
         /// </summary>
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency values. When deeply equal to the previous render, the cached VNode is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached VNode is reused.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
         public static MemoNode Memoized(Func<VNode> factory, params object?[]? deps)
         {
