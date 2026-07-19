@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -20,11 +21,28 @@ namespace Velvet
         private static FilterFunctionDefinition? s_brightness;
         private static FilterFunctionDefinition? s_saturate;
 
+        // Shader paths already warned about as missing, so a build that permanently lacks a filter shader logs
+        // once instead of on every resolve (the properties rebuild whenever the cached definition is null, so a
+        // missing shader is retried every access). Cleared on the editor reset below.
+        private static readonly HashSet<string> s_missingShaderWarned = new();
+
         internal static FilterFunctionDefinition? Brightness
             => IsUsable(s_brightness) ? s_brightness : s_brightness = Build("Velvet/FilterBrightness", "_Brightness", "velvet-brightness");
 
         internal static FilterFunctionDefinition? Saturate
             => IsUsable(s_saturate) ? s_saturate : s_saturate = Build("Velvet/FilterSaturate", "_Saturate", "velvet-saturate");
+
+        // Identity checks against the CACHED definitions only (never forcing a lazy Build): a caller probing an
+        // arbitrary function's definition must not load the brightness/saturate shaders as a side effect. A
+        // first-party custom exists on an element only after its definition was built, so a live built-in
+        // function always matches the cached reference here.
+        internal static bool IsBrightness(FilterFunctionDefinition? def) => def != null && ReferenceEquals(def, s_brightness);
+
+        internal static bool IsSaturate(FilterFunctionDefinition? def) => def != null && ReferenceEquals(def, s_saturate);
+
+        // True for either first-party built-in definition — the ones that interpolate like a native float
+        // filter, as opposed to a user filter-[name:args] custom whose parameters carry no tween semantics.
+        internal static bool IsBuiltIn(FilterFunctionDefinition? def) => IsBrightness(def) || IsSaturate(def);
 
         // A cached definition is reusable only while both it and the material its single pass binds are live.
         // A shader reimport can destroy the pass material out from under a surviving definition; UI Toolkit's
@@ -49,8 +67,11 @@ namespace Velvet
             var shader = Shader.Find(shaderPath);
             if (shader == null)
             {
-                FiberLogger.LogWarning("Filter", $"Shader not found: {shaderPath}. " +
-                    "Ensure it is included in the build (Always Included Shaders); the brightness/saturate layer is omitted.");
+                if (s_missingShaderWarned.Add(shaderPath))
+                {
+                    FiberLogger.LogWarning("Filter", $"Shader not found: {shaderPath}. " +
+                        "Ensure it is included in the build (Always Included Shaders); the brightness/saturate layer is omitted.");
+                }
                 return null;
             }
 
@@ -99,6 +120,9 @@ namespace Velvet
         {
             s_brightness = null;
             s_saturate = null;
+            // Re-arm the one-shot missing-shader warning so a shader edit that fixes availability (or newly
+            // breaks it) is reported once in the next session rather than staying silent.
+            s_missingShaderWarned.Clear();
         }
 #endif
     }
