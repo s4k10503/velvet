@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   amounts are rejected, as CSS disallows them). The shaders apply the multiply / lerp-toward-luminance on
   the encoded pixel before the engine's Linear-colorspace conversion, so a Linear project matches the
   browser exactly instead of over-darkening.
+
 ### Fixed
 
 - A parent's layout-effect (`Hooks.UseLayoutEffect`) cleanup now runs before an inline child's layout-effect
