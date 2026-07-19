@@ -91,11 +91,12 @@
 .text-ellipsis { text-overflow: ellipsis; }
 .text-clip { text-overflow: clip; }
 
-/* Letter Spacing (Tailwind: tracking-*).
-   USS letter-spacing has no `em` unit, so values are in px (use tracking-[2px] for arbitrary). */
-.tracking-tighter { letter-spacing: -1px; }
-.tracking-tight { letter-spacing: -0.5px; }
+/* Letter Spacing (Tailwind: tracking-*). USS letter-spacing has no `em` unit, so the em scale is
+   baked at Tailwind's 16px root font (tighter -0.05em, tight -0.025em, wide 0.025em, wider 0.05em,
+   widest 0.1em → the px values below), exact at the default text size (use tracking-[Npx] for others). */
+.tracking-tighter { letter-spacing: -0.8px; }
+.tracking-tight { letter-spacing: -0.4px; }
 .tracking-normal { letter-spacing: 0; }
-.tracking-wide { letter-spacing: 0.5px; }
-.tracking-wider { letter-spacing: 1px; }
-.tracking-widest { letter-spacing: 2px; }
+.tracking-wide { letter-spacing: 0.4px; }
+.tracking-wider { letter-spacing: 0.8px; }
+.tracking-widest { letter-spacing: 1.6px; }

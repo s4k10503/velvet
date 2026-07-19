@@ -106,32 +106,34 @@
 /* Each property utility bundles a default duration + curve (Tailwind ships
  * transition-duration/timing-function inside every transition-* utility) so the class works
  * standalone — UI Toolkit's initial transition-duration is 0s, which would otherwise snap.
- * The explicit .duration-* / .ease-* classes below are declared later, so they still override. */
+ * The default curve is ease-in-out: Tailwind's default is cubic-bezier(0.4, 0, 0.2, 1), which UI
+ * Toolkit (no cubic-bezier easing) approximates most closely with its ease-in-out keyword, not the
+ * fast-start ease-out. The explicit .duration-* / .ease-* classes below are declared later and override. */
 .transition-all {
     transition-property: all;
     transition-duration: var(--duration-normal);
-    transition-timing-function: ease-out;
+    transition-timing-function: ease-in-out;
 }
 .transition-none { transition-property: none; }
 .transition-opacity {
     transition-property: opacity;
     transition-duration: var(--duration-normal);
-    transition-timing-function: ease-out;
+    transition-timing-function: ease-in-out;
 }
 .transition-colors {
     transition-property: background-color, border-color, color;
     transition-duration: var(--duration-normal);
-    transition-timing-function: ease-out;
+    transition-timing-function: ease-in-out;
 }
 .transition-colors-scale {
     transition-property: background-color, border-color, color, scale;
     transition-duration: var(--duration-normal);
-    transition-timing-function: ease-out;
+    transition-timing-function: ease-in-out;
 }
 .transition-colors-scale-opacity {
     transition-property: background-color, border-color, color, scale, opacity;
     transition-duration: var(--duration-normal);
-    transition-timing-function: ease-out;
+    transition-timing-function: ease-in-out;
 }
 .duration-fast { transition-duration: var(--duration-fast); }
 .duration-normal { transition-duration: var(--duration-normal); }
