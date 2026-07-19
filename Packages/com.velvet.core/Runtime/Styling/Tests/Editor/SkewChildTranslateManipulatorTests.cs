@@ -15,9 +15,14 @@ namespace Velvet.Tests
     /// ways, (2) removing skew resets the children's translate, (3) a child added to an already-skewed steady
     /// state is seated by the reconciler's re-run (not by a geometry event, which is deliberately withheld), (4)
     /// an out-of-flow <c>.absolute</c> child is skipped, (5) a child's own static <c>translate-x-*</c> survives
-    /// the parent being unskewed, and (6) a translate a child acquires AFTER it transitions out-of-flow survives
-    /// the parent being unskewed rather than being clobbered by the stale pre-shear capture. GWT, one assert per
-    /// case.
+    /// the parent being unskewed, (6) a translate a child acquires AFTER it transitions out-of-flow survives
+    /// the parent being unskewed rather than being clobbered by the stale pre-shear capture, (7) a seated child
+    /// that transitions out-of-flow WITHOUT acquiring its own translate has the stale shear offset cleared (not
+    /// left carrying it), (8) inside an overflowing ScrollView the seat frame is the caster's own visible box
+    /// (where the silhouette paints), not contentContainer's full content extent, and (9) a child that goes
+    /// out-of-flow AND authors its own translate across the same transition keeps that translate — the relinquish
+    /// clears only a still-untouched shear, so the authored value is not clobbered back to the stale capture even
+    /// though the out-of-flow signal lags the class change. GWT, one assert per case.
     /// </summary>
     [TestFixture]
     internal sealed class SkewChildTranslateManipulatorTests : PanelTestBase
@@ -112,6 +117,18 @@ namespace Velvet.Tests
                 V.Div(key: "t", name: "t", className: "translate-x-1 h-[24px]"),
                 V.Div(key: "b", name: "b", className: "h-[24px]"),
             });
+        }
+
+        [Component]
+        private static VNode RenderSkewedOverflowingScrollView()
+        {
+            // A fixed-height skewed ScrollView whose rows overflow it, so contentContainer's resolved height (the
+            // full content extent) is far taller than the ScrollView's own visible box — the two candidate shear
+            // frames the seat could centre on.
+            return V.ScrollView(className: "skew-x-12 w-[200px] h-[100px]", name: "sv",
+                children: Enumerable.Range(0, 5)
+                    .Select(i => (VNode?)V.Div(key: "r" + i, name: "r" + i, className: "h-[40px] w-full"))
+                    .ToArray());
         }
 
         [Test]
@@ -262,6 +279,86 @@ namespace Velvet.Tests
 
             // Assert — unskew released the out-of-flow child untouched instead of restoring the stale Null capture.
             Assert.That(child.style.translate.value.x.value, Is.EqualTo(4f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_SeatedInFlowChildTransitionsOutOfFlow_When_Reseated_Then_StaleShearTranslateIsCleared()
+        {
+            // Arrange — a child seated in-flow under a skewed caster carries a shear translate (its captured
+            // pre-shear translate is Null, since it authored none of its own).
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderFlowTransitionColumn));
+            var col = _window.rootVisualElement.Q<VisualElement>("col");
+            var child = _window.rootVisualElement.Q<VisualElement>("m");
+            SeatViaGeometry(col);
+            Assume.That(child.style.translate.keyword, Is.Not.EqualTo(StyleKeyword.Null),
+                "Precondition: the in-flow child carried a shear translate while managed");
+
+            // Act — move the child out of flow (still attached under the same caster) and re-seat, without the
+            // child ever acquiring a translate of its own.
+            s_setChildClass.Invoke("absolute h-[24px]");
+            Drain();
+            SeatViaGeometry(col);
+
+            // Assert — relinquishing the now-out-of-flow child restored its captured pre-shear translate (Null
+            // here), so the stale shear offset does not survive on an element that holds no seat in the slanted
+            // frame (and cannot be re-captured as its 'own' baseline should it return to flow).
+            Assert.That(child.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ChildGoesOutOfFlowAndAuthorsOwnTranslateSameTransition_When_Reseated_Then_ItsTranslateSurvives()
+        {
+            // Arrange — a child seated in-flow under a skewed caster (its captured own-translate is Null, since it
+            // authored none), carrying a shear translate the manipulator wrote.
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderFlowTransitionColumn));
+            var col = _window.rootVisualElement.Q<VisualElement>("col");
+            var child = _window.rootVisualElement.Q<VisualElement>("m");
+            SeatViaGeometry(col);
+            Assume.That(child.style.translate.keyword, Is.Not.EqualTo(StyleKeyword.Null),
+                "Precondition: the in-flow child carried a shear translate while managed");
+
+            // Act — in ONE transition the child both goes out-of-flow AND authors its own translate-x-1 (4px).
+            // The out-of-flow signal is resolvedStyle-based and lags this class change, so the reconciler applies
+            // the child's 4px while the manipulator still considers it managed; the relinquish only fires on the
+            // next re-seat, once the signal has caught up and the child already carries its authored value.
+            s_setChildClass.Invoke("absolute translate-x-1 h-[24px]");
+            Drain();
+            SeatViaGeometry(col);
+            Assume.That(child.resolvedStyle.position, Is.EqualTo(Position.Absolute),
+                "Precondition: the child transitioned out of flow, so the relinquish path ran for it");
+
+            // Assert — the relinquish cleared the shear only if the child still carried it; here the child had
+            // replaced it with its own 4px, so that authored translate survives instead of being clobbered back
+            // to the stale Null capture.
+            Assert.That(child.style.translate.value.x.value, Is.EqualTo(4f).Within(0.01f));
+        }
+
+        [Test]
+        public void Given_SkewedScrollViewWithOverflowingContent_When_Seated_Then_ChildSeatedAgainstCasterBoxNotContentExtent()
+        {
+            // Arrange — a skew-x-12 ScrollView clipped to 100px over 200px of rows. A row whose centroid sits
+            // BELOW the caster's visible-box centre but ABOVE the full-content centre leans one way when the seat
+            // frame is the caster's own box (where SkewSilhouette paints) and the OTHER way when it is
+            // contentContainer's content extent, so its translate sign reveals which box fed the seat.
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderSkewedOverflowingScrollView));
+            var sv = _window.rootVisualElement.Q<ScrollView>("sv");
+            var content = sv.contentContainer;
+            var row = _window.rootVisualElement.Q<VisualElement>("r1");
+            SeatViaGeometry(sv);
+            var casterCenterY = sv.layout.height * 0.5f;
+            var contentCenterY = content.layout.height * 0.5f;
+            var rowCenterY = row.layout.y + (row.layout.height * 0.5f);
+            Assume.That(content.layout.height, Is.GreaterThan(sv.layout.height),
+                "Precondition: the content overflows the caster's visible box, so the two shear frames differ");
+            Assume.That(rowCenterY, Is.GreaterThan(casterCenterY).And.LessThan(contentCenterY),
+                "Precondition: the row centroid lies between the caster centre and the content centre, so the shear-box choice flips its sign");
+            Assume.That(row.style.translate.keyword, Is.Not.EqualTo(StyleKeyword.Null),
+                "Precondition: the manipulator seated the row");
+
+            // Assert — a positive dx means the seat used the caster's visible box (the row is below its centre
+            // under positive skewX); the content-extent frame would place the row above centre and lean it
+            // negative.
+            Assert.That(row.style.translate.value.x.value, Is.GreaterThan(0f));
         }
     }
 }
