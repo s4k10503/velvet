@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Filter utilities (`blur-*`, `brightness-*`, …) now transition smoothly when they change on an element
+  carrying the new `transition-filter` class (e.g. `transition-filter hover:blur-md`), matching CSS
+  `transition: filter`. UI Toolkit cannot transition the inline `filter` property natively, so a scheduler
+  tween drives the filter parameters frame-by-frame; opt in with `transition-filter` (honoring `duration-*`
+  and the easing longhand). Non-interpolable changes (a custom filter, or an ambiguous add/remove) and the
+  off-panel / zero-duration cases fall back to an instant write.
+
 ### Fixed
 
 - A parent's layout-effect (`Hooks.UseLayoutEffect`) cleanup now runs before an inline child's layout-effect
