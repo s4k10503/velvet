@@ -245,6 +245,10 @@ namespace Velvet
             var skewXDeg = _appliers.ApplySkewOnPatch(element, oldNode.ClassNames, newNode.ClassNames);
             var clipActive = _appliers.ApplyClipPathOnPatch(element, newNode.ClassNames);
             _appliers.ApplyShadowOnPatch(element, newNode.ClassNames, clipActive, skewXDeg);
+            // border-dashed / border-dotted paint: runs strictly AFTER the skew and shadow patches so it reads
+            // their final post-patch ownership — while either owns the face the dashed layer defers (the border
+            // stays solid), so an add/remove of skew/shadow in the same patch resolves without a race.
+            _appliers.ApplyBorderStyleOnPatch(element, oldNode.ClassNames, newNode.ClassNames);
             // Ring is the lowest-precedence WRAPPER layer: suppressed only when clip owns the wrapper (the two
             // are mutually exclusive — one wrapper per element). The shadow is now a paint, so a ring composes
             // with it rather than competing for the wrapper.
@@ -2256,7 +2260,7 @@ namespace Velvet
             }
             else if (hasDivide)
             {
-                var manipulator = new StyleDivideManipulator(spec);
+                var manipulator = new StyleDivideManipulator(spec, _ctx);
                 element.AddManipulator(manipulator);
                 _ctx.DivideManipulators[element] = manipulator;
             }
