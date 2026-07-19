@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `checked:` variant value no longer beats a concurrent `hover:` / `focus:` / `active:` value on the
+  same property. Tailwind's variant order emits `checked` before the interaction states, so on a hovered
+  checked control the interaction state wins the tie; the layer priority now ranks `checked` below them
+  to match (it previously ranked highest).
 - A prior commit's pending passive effect (`Hooks.UseEffect`) now runs BEFORE a discrete event's
   re-render, matching React's flush-passive-effects-before-update: a click handler that re-renders no
   longer commits its render ahead of an effect that has not run yet. Scoped to the discrete-event
