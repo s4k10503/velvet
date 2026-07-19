@@ -35,11 +35,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and a nested transform on the child is not composed. Out-of-flow children (`.absolute`, a `PopLayout` exit
   ghost, the filter bounds-spacer) hold no seat and are skipped, and a child's own static `translate-x-*` /
   `translate-y-*` is preserved when the parent later loses its skew — including a translate the child acquires
-  only after it moves out of flow, which is released untouched rather than reset to its pre-shear value.- The `[&>*]:<utility>` child-combinator variant, CSS's `& > *` "every direct child" rule applied to
+  only after it moves out of flow, which is released untouched rather than reset to its pre-shear value.
+- The `[&>*]:<utility>` child-combinator variant, CSS's `& > *` "every direct child" rule applied to
   Velvet's utility classes (`[&>*]:mt-2`, `[&>*]:mt-[8px]`, `[&>*]:hover:bg-red-500`): the wrapped
   utility — a plain class, an arbitrary value, or a state variant — is applied to every direct,
   in-flow child of the element that carries the token, instead of the element itself. Runs before
   `gap-*` / `divide-*` / `grid-cols-*`, so those still own a margin/border/width edge they also set.
+
 ### Fixed
 
 - A parent's layout-effect (`Hooks.UseLayoutEffect`) cleanup now runs before an inline child's layout-effect
