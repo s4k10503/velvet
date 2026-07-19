@@ -37,8 +37,11 @@ namespace Velvet
     // PARITY NOTE: CSS transform: skewX() shears the element AND its descendants. UI Toolkit's
     // transform supports only translate / rotate / scale — shear is unrepresentable — so Velvet's
     // skew is a documented deviation: it shears the element's own box silhouette (background +
-    // border, painted by SkewSilhouette) while children stay upright. This matches the dominant
-    // CSS usage (skew the card, counter-skew the content) with the counter-skew built in.
+    // border, painted by SkewSilhouette). The descendant shear is APPROXIMATED, not exact:
+    // StyleSkewChildTranslateManipulator seats each direct in-flow child's centroid where the shear would
+    // carry it via an inline translate, applied automatically (Velvet does the counter-translate a CSS author
+    // would otherwise hand-write per row). The seat is piecewise-constant — exact at each child's centroid,
+    // slightly off at the far corners of a child large relative to the frame, and it does not rotate the child.
     internal static class StyleSkewClass
     {
         private const string XPrefix = "skew-x-";

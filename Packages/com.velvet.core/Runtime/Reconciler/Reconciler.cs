@@ -616,6 +616,12 @@ namespace Velvet
             }
 
             _ctx.GridManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ChildVariantManipulators.Clear();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
             // Layer and world-space hosts are framework-owned GameObjects with runtime-created

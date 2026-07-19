@@ -243,6 +243,7 @@ namespace Velvet
             DetachManipulator(element, _ctx.GapManipulators);
             DetachManipulator(element, _ctx.DivideManipulators);
             DetachManipulator(element, _ctx.GridManipulators);
+            DetachManipulator(element, _ctx.ChildVariantManipulators);
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);

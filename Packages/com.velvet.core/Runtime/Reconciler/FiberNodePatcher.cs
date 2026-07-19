@@ -258,7 +258,10 @@ namespace Velvet
         // The ordered post-children effect-pass sequence shared by PatchElement and PatchMotion, kept in
         // one place so the two patch paths cannot drift (a pass added here reaches both). The ORDER is
         // load-bearing:
-        // - Gap runs first but still AFTER PatchCommon (which reconciles children) so the manipulator's
+        // - The [&>*]: child-combinator variant runs first so gap / divide / grid (next) win a shared child
+        //   edge — [&>*]:ml-[2px] behaves like a child's own margin, which gap already overwrites. It too runs
+        //   AFTER PatchCommon so it sees the final child set.
+        // - Gap runs next but still AFTER PatchCommon (which reconciles children) so the manipulator's
         //   margin writes are the final word on the element — the wrap path writes the container's OWN
         //   margins (-gap/2) — and so it re-applies against the current child set (a child add / remove
         //   re-spaces even when the className did not change). Divide / grid follow at the same timing
@@ -280,6 +283,10 @@ namespace Velvet
         // callers: PatchMotion intentionally omits the trio and passes different ring flags.
         private void ApplyPostChildrenClassPasses(VisualElement element, string[] classNames, bool gradientSkewable)
         {
+            // Before gap / divide / grid: on a SHARED style property ([&>*]:ml-[2px] alongside gap-x-4) those
+            // three own the edge and must win, exactly as they already win over a child's own explicit margin
+            // — running [&>*]: first makes it behave as if the child itself carried the wrapped class.
+            ApplyChildVariantManipulator(element, classNames);
             ApplyGapManipulator(element, classNames);
             ApplyDivideManipulator(element, classNames);
             ApplyGridManipulator(element, classNames);
@@ -790,7 +797,8 @@ namespace Velvet
                     || StyleStructuralVariantClass.IsStructural(rawCls)
                     || StyleHasVariantClass.IsHas(rawCls)
                     || StyleAttributeVariantClass.IsAttribute(rawCls)
-                    || StyleSupportsVariantClass.IsSupports(rawCls))
+                    || StyleSupportsVariantClass.IsSupports(rawCls)
+                    || StyleChildVariantClass.IsChildVariant(rawCls))
                 {
                     continue;
                 }
@@ -932,6 +940,14 @@ namespace Velvet
                 return;
             }
 
+            // [&>*]: child-combinator tokens style the CONTAINER's children, never the container itself; the
+            // child-variant manipulator owns them. Guarded here (before the inline-resolved branch) because the
+            // token starts with '[' and would otherwise be mis-routed as an arbitrary value.
+            if (StyleChildVariantClass.IsChildVariant(cls))
+            {
+                return;
+            }
+
             // Structural variants (first:/last:/[&:nth-child(N)]:) are owned by the reconciler's structural
             // pass (evaluated against sibling position); never added as classes.
             if (StyleStructuralVariantClass.IsStructural(cls))
@@ -992,6 +1008,13 @@ namespace Velvet
         {
             // State-variant tokens are owned by the variant manipulator, never the class list.
             if (StyleVariantClass.IsVariant(cls))
+            {
+                return;
+            }
+
+            // [&>*]: child-combinator tokens never entered the class list (see AddClass); the child-variant
+            // manipulator clears the payloads it applied to children on the class change, not here.
+            if (StyleChildVariantClass.IsChildVariant(cls))
             {
                 return;
             }
@@ -2108,6 +2131,46 @@ namespace Velvet
                 {
                     EvaluateStructural(inner, i, count, rules);
                 }
+            }
+        }
+
+        // Configures the element's StyleChildVariantManipulator from the [&>*]:<utility> tokens in classNames
+        // and (re-)applies it so every direct child carries the wrapped payload. Mirrors ApplyGapManipulator —
+        // call AFTER the container's children have been reconciled so the manipulator sees the final child set.
+        internal void ApplyChildVariantManipulator(VisualElement element, string[] classNames)
+        {
+            // Fast early-out for the ~99% of elements with no [&>*]: class and no existing manipulator.
+            if (!StyleChildVariantClass.HasChildVariantClass(classNames))
+            {
+                if (_ctx.ChildVariantManipulators.TryGetValue(element, out var stale))
+                {
+                    element.RemoveManipulator(stale);
+                    _ctx.ChildVariantManipulators.Remove(element);
+                }
+                return;
+            }
+
+            // A [&>*]: token can still resolve to no payload (every wrapped payload was a dead-token kind —
+            // structural / has- / attribute- / supports-), so the real gate is TryExtract, not the prefix scan.
+            var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads);
+
+            if (_ctx.ChildVariantManipulators.TryGetValue(element, out var existing))
+            {
+                if (hasPayloads)
+                {
+                    existing.UpdatePayloads(payloads);
+                }
+                else
+                {
+                    element.RemoveManipulator(existing);
+                    _ctx.ChildVariantManipulators.Remove(element);
+                }
+            }
+            else if (hasPayloads)
+            {
+                var manipulator = new StyleChildVariantManipulator(_ctx, payloads);
+                element.AddManipulator(manipulator);
+                _ctx.ChildVariantManipulators[element] = manipulator;
             }
         }
 

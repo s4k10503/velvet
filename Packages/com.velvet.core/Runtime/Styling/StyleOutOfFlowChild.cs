@@ -3,10 +3,10 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Shared out-of-flow test for the index-driven child manipulators (StyleGapManipulator,
-    // StyleGridManipulator, StyleDivideManipulator). Each of them walks a container's children by raw
-    // DOM index to decide "is this the first child" / "which column or row does this child fall into", and
-    // writes margins / borders / widths on that basis. A child pulled out of layout flow via
-    // position: absolute — a PopLayout ghost pinned by GeneralPathReconciler.PinExitingChildOutOfFlow, or an
+    // StyleGridManipulator, StyleDivideManipulator, StyleChildVariantManipulator). Each of them walks a
+    // container's children by raw DOM index to decide "is this the first child" / "which column or row does
+    // this child fall into", and writes margins / borders / widths on that basis. A child pulled out of layout
+    // flow via position: absolute — a PopLayout ghost pinned by GeneralPathReconciler.PinExitingChildOutOfFlow, or an
     // app-authored .absolute utility child — holds no slot in the flex line, so counting it would both waste
     // spacing on a sibling that no longer occupies one and, for a pinned ghost, disturb the compensated
     // inline position PinExitingChildOutOfFlow computed for it. CSS itself excludes out-of-flow children from
