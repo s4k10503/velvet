@@ -33,8 +33,13 @@ namespace Velvet
     //
     // Limitations: an explicit per-child border on the SAME edge the divider draws on (e.g. border-l on a
     // child of a divide-x row) is OVERWRITTEN — this manipulator owns that edge, exactly as the gap
-    // manipulator owns its margin edge. A child that is itself skewed keeps its border-left owned by
-    // SkewSilhouette, so its divider renders solid (a documented known limitation).
+    // manipulator owns its margin edge. A child whose border face is owned by a higher paint layer — a skew
+    // silhouette or a drop shadow — keeps its border owned there, so its dashed divider renders solid (a
+    // documented known limitation, mirroring the element-level border-dashed gate which defers to either).
+    // An IMPLICIT (no divide-{color}) dashed divider takes its color from the divided child's would-be border
+    // color, captured and re-resolved on the CONTAINER's Apply (reconcile / GeometryChanged / attach) — the same
+    // container-Apply cadence the gap manipulator runs on. A child that re-renders on its own fiber alone, with
+    // no container Apply, keeps the last captured color until an unrelated container reconcile.
     //
     // Out-of-flow children (position: absolute) are excluded from the index walk — see
     // StyleOutOfFlowChild — the same way StyleGapManipulator excludes them: an out-of-flow child (a
@@ -153,16 +158,18 @@ namespace Velvet
         // paints the stroke on the child's own generateVisualContent (DivideDashChildBinding).
         private void ApplyToChild(VisualElement child, Edge edge, bool isDivider)
         {
-            // A skewed child's SkewSilhouette owns its border face, so a dashed divider can only render solid
-            // there — route it through the solid path (documented known limitation).
+            // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
+            // dashed divider on the same child would fight it — route it through the solid path (documented known
+            // limitation). Gates on EITHER owner, mirroring the element-level border-dashed gate.
             var dashed = (_spec.Style == BorderLineStyle.Dashed || _spec.Style == BorderLineStyle.Dotted)
-                && !_ctx.SkewBindings.ContainsKey(child);
+                && !_ctx.SkewBindings.ContainsKey(child)
+                && !_ctx.ShadowBindings.ContainsKey(child);
 
             if (!dashed || !isDivider)
             {
-                // Solid divider, the first child (no divider), or a skewed child: a plain inline border. Detach
-                // any stale dash paint (e.g. a divide-dashed → divide-solid flip, or a colored child reordered
-                // to the first slot).
+                // Solid divider, the first child (no divider), or a child whose face a skew / shadow layer owns:
+                // a plain inline border. Detach any stale dash paint (e.g. a divide-dashed → divide-solid flip, or
+                // a colored child reordered to the first slot).
                 DetachDash(child);
                 var width = isDivider ? new StyleFloat(_spec.Width) : new StyleFloat(StyleKeyword.Null);
                 // Own the edge's color channel on EVERY pass (like the gap manipulator owns its margin): write
