@@ -306,6 +306,36 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_SeatedChildOutOfFlowWithoutReseat_When_CasterUnskewedTearsDownManipulator_Then_StaleShearTranslateIsCleared()
+        {
+            // Arrange — a child seated in-flow under a skewed caster carries a shear translate (its captured
+            // pre-shear translate is Null, since it authored none of its own).
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderFlowTransitionColumn));
+            var col = _window.rootVisualElement.Q<VisualElement>("col");
+            var child = _window.rootVisualElement.Q<VisualElement>("m");
+            SeatViaGeometry(col);
+            Assume.That(child.style.translate.keyword, Is.Not.EqualTo(StyleKeyword.Null),
+                "Precondition: the in-flow child carried a shear translate while managed");
+
+            // Act — move the child out of flow and let its resolved position settle WITHOUT delivering a geometry
+            // event, so no re-seat runs and the manipulator still tracks it as an in-flow seat carrying the shear;
+            // then unskew the caster, tearing the manipulator down through Detach ⟶ RemoveManipulator ⟶ Clear
+            // rather than a re-seat's DropUnmanaged.
+            s_setChildClass.Invoke("absolute h-[24px]");
+            Drain();
+            ForcePanelUpdate(col.panel);
+            Assume.That(child.resolvedStyle.position == Position.Absolute
+                && child.style.translate.keyword != StyleKeyword.Null, Is.True,
+                "Precondition: the child is out-of-flow but the un-reseated manipulator still holds its shear write");
+            s_setCasterClass.Invoke("w-[120px] h-[200px]");
+            Drain();
+
+            // Assert — teardown restored the still-shear-carrying out-of-flow child to its captured pre-shear
+            // translate (Null here), so the stale shear does not leak on a seatless element the manipulator let go.
+            Assert.That(child.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
         public void Given_ChildGoesOutOfFlowAndAuthorsOwnTranslateSameTransition_When_Reseated_Then_ItsTranslateSurvives()
         {
             // Arrange — a child seated in-flow under a skewed caster (its captured own-translate is Null, since it

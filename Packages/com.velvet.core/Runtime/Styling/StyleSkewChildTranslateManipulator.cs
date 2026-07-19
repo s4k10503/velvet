@@ -201,22 +201,29 @@ namespace Velvet
             return new Vector2(dx, dy);
         }
 
-        // Restores the captured translate onto every child the manipulator still owns, then stops tracking all.
-        // Invoked on unskew / detach. A child that has left management — gone out-of-flow, moved out of the
-        // container, or been pooled and reused for another node — is NOT written to: its present translate is
-        // legitimately its own (acquired after the manipulator relinquished it), so forcing the stale pre-shear
-        // capture back would clobber it. Only a still-seated in-flow child currently carries the shear write and
-        // must get its own translate back.
+        // Restores the captured translate onto every child the manipulator wrote a shear to, then stops tracking
+        // all. Invoked on unskew / detach, which can fire before any re-seat has relinquished a child that just
+        // went out-of-flow — so this teardown must relinquish such a child the same way DropUnmanaged would, not
+        // skip it. A still-owned in-flow child is restored unconditionally (it always carries the latest shear); a
+        // child now out-of-flow but still attached and STILL carrying the exact shear is restored too, so the
+        // stale offset does not leak on a seatless element (and cannot be re-captured as its 'own' baseline on a
+        // later return to flow). A child that has left the container — or one out-of-flow that already carries a
+        // translate it authored across the transition — keeps that value: forcing the stale capture back would clobber it.
         private void Clear()
         {
             var container = ChildContainer;
             foreach (var pair in _seated)
             {
-                if (IsManaged(pair.Key, container))
+                var child = pair.Key;
+                if (IsManaged(child, container))
                 {
-                    pair.Key.style.translate = pair.Value.Own;
+                    child.style.translate = pair.Value.Own;
                 }
-                pair.Key.UnregisterCallback<DetachFromPanelEvent>(OnChildDetach);
+                else
+                {
+                    RestoreRelinquishedShear(child, pair.Value, container);
+                }
+                child.UnregisterCallback<DetachFromPanelEvent>(OnChildDetach);
             }
             _seated.Clear();
             _hasSignature = false;
@@ -244,22 +251,25 @@ namespace Velvet
             {
                 foreach (var child in stale)
                 {
-                    // Still parented to the container ⟹ it went out-of-flow (the one non-managed reason left
-                    // once container membership holds). Clear the stale shear by restoring the pre-shear capture,
-                    // but ONLY while the child still carries the exact shear the manipulator last wrote: the
-                    // out-of-flow signal lags the class change, so the child may have authored its own translate
-                    // across the same transition — a current value that no longer matches the shear is that
-                    // authored translate and must survive, not be clobbered back to the stale capture.
-                    if (child.parent == container)
-                    {
-                        var seat = _seated[child];
-                        if (child.style.translate == seat.Shear)
-                        {
-                            child.style.translate = seat.Own;
-                        }
-                    }
+                    // A still-parented non-managed child went out-of-flow (the one non-managed reason left once
+                    // container membership holds); restore its pre-shear capture, guarded so a translate it
+                    // authored across the same transition survives. See RestoreRelinquishedShear.
+                    RestoreRelinquishedShear(child, _seated[child], container);
                     Forget(child);
                 }
+            }
+        }
+
+        // Restores a relinquished child's captured pre-shear translate, but ONLY while it is still attached to the
+        // container AND still carries the exact shear the manipulator last wrote. The out-of-flow signal is
+        // resolvedStyle-based and lags the class change, so a child can author its own translate across the same
+        // transition: a current value that no longer matches the shear is that authored translate and must
+        // survive. A child that has left the container is not restored — its translate is legitimately its own.
+        private static void RestoreRelinquishedShear(VisualElement child, in SeatState seat, VisualElement? container)
+        {
+            if (container != null && child.parent == container && child.style.translate == seat.Shear)
+            {
+                child.style.translate = seat.Own;
             }
         }
 
