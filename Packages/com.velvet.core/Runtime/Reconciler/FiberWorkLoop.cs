@@ -148,11 +148,11 @@ namespace Velvet
             }
         }
 
-        // Flushes the dirty state and runs RenderAndReconcile + RunLayoutEffects.
+        // Flushes the dirty state and runs RenderAndReconcile + the layout-effect commit.
         // Normally invoked automatically via schedule.Execute.
         // In test environments (no panel attached), call manually after a hook setter fires to confirm
         // immediate reflection.
-        // RunLayoutEffects is intentionally outside the OnRenderError guard.
+        // The layout-effect commit is intentionally outside the OnRenderError guard.
         // An error thrown from an effect is not routed to an Error Boundary; Velvet
         // instead try-catches each effect individually and emits via Debug.LogException.
         // Returns immediately if the fiber is not mounted or not dirty.
