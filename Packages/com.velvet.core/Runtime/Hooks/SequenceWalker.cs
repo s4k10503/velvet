@@ -221,11 +221,13 @@ namespace Velvet
             }
         }
 
-        // Auto-derives a To step's hold from its transition when the step declares no explicit HoldSec.
-        // Mirrors StyleAnimationScheduler.SlowestPropertyTimeoutMs's own "slowest overridden property wins"
-        // rule: a PropertyOverrides entry can give one property a longer duration/delay than the top-level
-        // values (StyleTransitionConfig's own documented example: opacity in 0.15s while scale takes 0.5s), and
-        // the walker must not advance past a step while a property that override still governs is mid-tween.
+        // Auto-derives a To step's hold from its transition when the step declares no explicit HoldSec. A Spring
+        // has no statically knowable settle time and a Bezier drives every channel with one fixed-duration curve
+        // — both are handled specially below and ignore PropertyOverrides. Only a Tween reads them, mirroring
+        // StyleAnimationScheduler.SlowestPropertyTimeoutMs's own "slowest overridden property wins" rule: a
+        // PropertyOverrides entry can give one property a longer duration/delay than the top-level values
+        // (StyleTransitionConfig's own documented example: opacity in 0.15s while scale takes 0.5s), and the
+        // walker must not advance past a Tween step while a property that override still governs is mid-tween.
         private float ResolveHoldFromTransition(int index, StyleTransitionConfig transition)
         {
             if (transition.Type == TransitionType.Spring)
@@ -240,6 +242,16 @@ namespace Velvet
             }
 
             var hold = transition.DurationSec + transition.DelaySec;
+
+            // Bezier playback drives every channel with the SAME curve and never reads PropertyOverrides (like a
+            // spring's single stiffness/damping/mass), so its real span is the fixed DurationSec + DelaySec.
+            // Factoring a longer per-property override in here would park the walker on the step past the moment
+            // the tween it describes has actually finished.
+            if (transition.Type == TransitionType.Bezier)
+            {
+                return hold;
+            }
+
             var overrides = transition.PropertyOverrides;
             if (overrides != null)
             {
