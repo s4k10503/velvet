@@ -76,5 +76,24 @@ namespace Velvet.Tests
             // Assert
             Assert.That(leaf.resolvedStyle.transitionDuration.First().value, Is.EqualTo(0f));
         }
+
+        [Test]
+        public void Given_TransitionColorsAlone_When_Resolved_Then_ItsDefaultCurveEasesInAndOut()
+        {
+            // Tailwind's default transition timing is cubic-bezier(0.4, 0, 0.2, 1); UI Toolkit has no
+            // cubic-bezier, so the bundled default is its closest keyword, ease-in-out (not fast-start ease-out).
+            var leaf = MountLeaf("transition-colors");
+
+            Assert.That(leaf.resolvedStyle.transitionTimingFunction.First().mode, Is.EqualTo(EasingMode.EaseInOut));
+        }
+
+        [Test]
+        public void Given_AnExplicitEaseClass_When_Resolved_Then_ItStillOverridesTheDefaultCurve()
+        {
+            // The .ease-* utilities are declared after the transition-* defaults, so an explicit curve wins.
+            var leaf = MountLeaf("transition-colors ease-linear");
+
+            Assert.That(leaf.resolvedStyle.transitionTimingFunction.First().mode, Is.EqualTo(EasingMode.Linear));
+        }
     }
 }

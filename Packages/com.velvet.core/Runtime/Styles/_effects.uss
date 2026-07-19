@@ -47,7 +47,8 @@
 .transition-transform {
     transition-property: translate, scale, rotate;
     transition-duration: var(--duration-normal);
-    transition-timing-function: ease-out;
+    /* ease-in-out: the closest UI Toolkit keyword to Tailwind's default cubic-bezier(0.4, 0, 0.2, 1). */
+    transition-timing-function: ease-in-out;
 }
 
 /* object-fit (Tailwind) — for an element showing an image as background-image. Mapped onto background-size
