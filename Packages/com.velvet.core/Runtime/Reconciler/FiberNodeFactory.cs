@@ -94,6 +94,9 @@ namespace Velvet
                     _patcher.ApplyAttributes(element, elementNode.Props);
                     StyleFontResolver.ApplyIfPresent(element, elementNode.ClassNames);
                     // After ReconcileChildren so the gap / divide manipulators see the final child list.
+                    // [&>*]: runs before gap / divide / grid so those win a shared child edge (see
+                    // ApplyPostChildrenClassPasses for the same ordering on the patch path).
+                    _patcher.ApplyChildVariantManipulator(element, elementNode.ClassNames);
                     _patcher.ApplyGapManipulator(element, elementNode.ClassNames);
                     _patcher.ApplyDivideManipulator(element, elementNode.ClassNames);
                     _patcher.ApplyGridManipulator(element, elementNode.ClassNames);
@@ -302,6 +305,7 @@ namespace Velvet
                         _patcher.Appliers.ApplyDragOverlay(element, motionNode.Props.DragOverlay);
                     }
                     StyleFontResolver.ApplyIfPresent(element, appliedClasses);
+                    _patcher.ApplyChildVariantManipulator(element, appliedClasses);
                     _patcher.ApplyGapManipulator(element, appliedClasses);
                     _patcher.ApplyDivideManipulator(element, appliedClasses);
                     _patcher.ApplyGridManipulator(element, appliedClasses);
