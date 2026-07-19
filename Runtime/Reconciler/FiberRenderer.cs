@@ -92,7 +92,7 @@ namespace Velvet
             // defers child CreateElement / InvokeRefCallback to the parent expansion which
             // happens AFTER MountInline returns, so running LayoutEffects here would observe
             // stale (null) refs. Push the fiber onto the deferred stack and let the top-level
-            // reconcile entry drain it (LIFO = bottom-up) before its own RunLayoutEffects so the
+            // reconcile entry drain it (LIFO = bottom-up) before its own layout-effect commit so the
             // root commits last.
             fiber.Reconciler!.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: true));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: true);
@@ -385,7 +385,7 @@ namespace Velvet
                 // Clear once before the render-phase loop. The committed pending-layout length is
                 // captured just below; each discarded attempt is truncated back to it, and the settled
                 // attempt re-collects exactly the layout effects it renders. UseLayoutEffect runs
-                // synchronously in RunLayoutEffects right after this returns, so the list is empty again
+                // synchronously in the layout-effect commit right after this returns, so the list is empty again
                 // before the next RenderAndReconcile.
                 fiber.PendingLayoutEffects?.Clear();
                 fiber.PendingInsertionEffects?.Clear();

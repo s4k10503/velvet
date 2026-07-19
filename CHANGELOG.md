@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A parent's layout-effect (`Hooks.UseLayoutEffect`) cleanup now runs before an inline child's layout-effect
+  setup when both re-run on one commit, matching React's all-cleanups-before-all-setups across the whole
+  subtree — previously that held only within a batch of inline siblings, and a parent committed after its
+  inline children were fully committed (their setups included), so a parent cleanup could read state a child
+  setup had just written. The inline-effect drain now splits into a cleanup pass and a setup pass with the
+  parent interleaved between them; a layout effect that mounts more inline children commits them as a
+  follow-up pass, as React runs effect-mounted work in a subsequent commit rather than the current one.
 - A `checked:` variant value no longer beats a concurrent `hover:` / `focus:` / `active:` value on the
   same property. Tailwind's variant order emits `checked` before the interaction states, so on a hovered
   checked control the interaction state wins the tie; the layer priority now ranks `checked` below them

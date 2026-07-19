@@ -464,7 +464,7 @@ namespace Velvet.Tests
             // Act
             using var mounted = V.Mount(_root, V.Component(EffectWithRefRender, key: "withref"));
 
-            // Assert — the refCallback fires during Reconcile, before RunLayoutEffects, so Current is committed
+            // Assert — the refCallback fires during Reconcile, before the layout-effect commit, so Current is committed
             Assert.That(capturedElement, Is.SameAs(_root.Q<Label>()),
                 "The layout effect factory observes Ref.Current already committed");
         }
