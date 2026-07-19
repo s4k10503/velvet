@@ -51,6 +51,18 @@
     transition-timing-function: ease-in-out;
 }
 
+/* transition-filter — opt-in for animating filter-* changes (blur-*, brightness-*, ...).
+ *
+ * Deliberately sets NO transition-property: filter. UI Toolkit stops repainting an inline filter once its
+ * transition-property is [filter], so a native transition would freeze the effect after the first frame.
+ * Instead this carries only the duration + timing-function, which a scheduler-tween driver reads to lerp the
+ * filter's parameters itself (StyleFilterTransitionDriver). duration-* / ease-* still override, declared later.
+ */
+.transition-filter {
+    transition-duration: var(--duration-normal);
+    transition-timing-function: ease-in-out;
+}
+
 /* object-fit (Tailwind) — for an element showing an image as background-image. Mapped onto background-size
    (the modern, non-deprecated property; keywords match the Tailwind names). object-contain / object-cover
    also center the image to match CSS object-fit's 50% 50% default object-position (UITK's background default

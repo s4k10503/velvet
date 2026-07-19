@@ -300,6 +300,13 @@ namespace Velvet
                 StyleAnimateDriver.Detach(element, animationBinding);
                 _ctx.AnimationBindings.Remove(element);
             }
+            if (_ctx.FilterTransitionBindings.TryGetValue(element, out var filterTransitionBinding))
+            {
+                // Pause the one-shot tick and unregister so a pooled element does not keep ticking a mid-flight
+                // filter tween. The inline filter itself is scrubbed by the pool reset + ClearAll above.
+                StyleFilterTransitionDriver.Detach(element, filterTransitionBinding);
+                _ctx.FilterTransitionBindings.Remove(element);
+            }
             if (_ctx.SceneViewBindings.TryGetValue(element, out var sceneViewBinding))
             {
                 // Release both ends of the camera-output pair: the geometry callback, the camera's target
