@@ -67,6 +67,11 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   the ghost holds its slot until the exit completes (the default `Sync` mode).
 - Re-adding a key mid-exit cancels the exit and returns the element to its resting variant —
   including inline geometry the pose had overwritten.
+- **What an exit animates:** the same channels a Motion transition drives — `opacity` and the
+  `translate` / `scale` / `rotate` transform trio. UI Toolkit has no animatable `transform`
+  shorthand, so an exit pose expresses movement with those three utilities, not a combined
+  `transform`; a `skew-*` exit does not animate, because skew is a silhouette paint rather than a
+  transform.
 
 ### `PopLayout` mode
 
