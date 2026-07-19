@@ -13,15 +13,9 @@ namespace Velvet
     {
         #region Effects
 
-        // Runs the effects pending change that were queued during Render, in 2-pass order
-        // (all cleanup → all effect). mountDoubleInvoke is forwarded so the
-        // Editor-only effect double-cycle runs on the mount commit only.
-        private static void RunLayoutEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
-            => HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke);
-
         // Runs insertion effects (Hooks.UseInsertionEffect) synchronously.
         // Insertion effects fire before layout effects of the same commit, so every commit site invokes this
-        // immediately before RunLayoutEffects.
+        // immediately before the layout-effect cleanup pass.
         private static void RunInsertionEffects(ComponentFiber fiber, bool mountDoubleInvoke = false)
             => HookEffectExecutor.RunPendingEffects(fiber, fiber.PendingInsertionEffects, mountDoubleInvoke);
 
@@ -52,10 +46,33 @@ namespace Velvet
 
         private static void CommitSubtreeEffectsNow(ComponentFiber fiber, bool mountDoubleInvoke)
         {
-            DrainDeferredInlineLayoutEffects(fiber);
+            // React commits ALL layout-effect cleanups (the mutation phase) across a whole subtree before ANY
+            // layout-effect setup (the layout phase). This root fiber and the inline children MountInline
+            // deferred onto the drain stack form one subtree, so their layout effects run as one cleanup pass
+            // then one setup pass with the root interleaved between: the root's cleanup runs before a child's
+            // setup, so a child setup that writes shared state can no longer be observed by the root's cleanup —
+            // React's [child.cleanup, root.cleanup, child.setup, root.setup]. Committing each child fully before
+            // the root began (the child's setup ahead of the root's cleanup) inverted that pair. Imperative
+            // handles and layout setups belong to the setup pass; insertion effects run in the cleanup pass
+            // (React runs them during mutation).
+            var stack = fiber.Reconciler?.Context.DeferredInlineLayoutEffectFibers;
+            List<(ComponentFiber Fiber, bool IsMount)>? inlineBatch = null;
+            if (stack is { Count: > 0 })
+            {
+                inlineBatch = new List<(ComponentFiber Fiber, bool IsMount)>(stack.Count);
+                DrainInlineLayoutCleanupsOneBatch(fiber, inlineBatch);
+            }
             RunInsertionEffects(fiber, mountDoubleInvoke);
+            HookEffectExecutor.RunCleanups(fiber, fiber.PendingLayoutEffects);
+
+            if (inlineBatch != null) RunInlineLayoutSetups(inlineBatch);
             FiberHookCommit.RunImperativeHandleSlots(fiber);
-            RunLayoutEffects(fiber, mountDoubleInvoke);
+            HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke);
+
+            // A setup (a child's or this root's) that mounted more inline children pushed them onto the drain
+            // stack: they are a subsequent pass, committed after this root's layout phase — React runs
+            // effect-mounted work in a follow-up commit, not the current one.
+            DrainDeferredInlineLayoutEffects(fiber);
             ScheduleRunEffects(fiber, mountDoubleInvoke);
         }
 
@@ -88,18 +105,35 @@ namespace Velvet
             }
         }
 
-        // Drains layout effects that MountInline deferred while the parent
-        // expansion was still committing child elements (DOM mutation + ref attach). Layout
-        // effects run after the DOM mutations + ref attach are committed for the
-        // entire subtree, so every inline-mounted fiber's UseLayoutEffect observes
-        // already-attached refs. Top-level reconcile entries (Mount,
-        // FlushState) invoke this before their own RunLayoutEffects
-        // so the root commits last; MountInline never calls it directly because nested inline
-        // mounts must all settle before any layout effect runs. Drained in LIFO order so the
-        // deepest fiber runs first — layout effects commit children
-        // before their parent (bottom-up), so a parent layout effect that reads a child's
-        // imperative handle / measured size observes the child's already-applied effect.
+        // Commits inline fibers still on the deferred-inline stack, each batch in its own cleanup-then-setup
+        // two-phase. MountInline defers a fiber's layout effects here instead of running them at mount so they
+        // observe the parent expansion's already-attached child refs; CommitSubtreeEffectsNow drains the first
+        // batch interleaved with its own root, then calls this to pick up any fibers a setup mounted. The outer
+        // loop re-drains because an inline setup can synchronously push MORE deferred fibers (e.g. a
+        // UseLayoutEffect that mounts another inline child) — each such push is a fresh subtree, committed after
+        // the one that mounted it, matching how React runs effect-mounted work in a follow-up commit.
         private static void DrainDeferredInlineLayoutEffects(ComponentFiber rootFiber)
+        {
+            var stack = rootFiber.Reconciler?.Context.DeferredInlineLayoutEffectFibers;
+            if (stack == null) return;
+            while (stack.Count > 0)
+            {
+                var ordered = new List<(ComponentFiber Fiber, bool IsMount)>(stack.Count);
+                DrainInlineLayoutCleanupsOneBatch(rootFiber, ordered);
+                RunInlineLayoutSetups(ordered);
+            }
+        }
+
+        // Snapshots the current deferred-inline stack as one batch, orders it post-order (children before
+        // parents), and runs the layout-effect CLEANUP pass over that order into `ordered` — per fiber, its
+        // insertion effects then its layout-effect cleanups. The caller feeds the same `ordered` list to
+        // RunInlineLayoutSetups for the SETUP pass; splitting the two lets CommitSubtreeEffectsNow interleave
+        // its root fiber's own cleanup/setup between them, so React's all-cleanups-before-all-setups holds
+        // across the root/child boundary and not just within the child batch. Ordering off a snapshot and
+        // running after is equivalent to running mid-walk: an effect that synchronously pushes MORE deferred
+        // fibers lands on the stack and is picked up by the caller's re-drain, not this already-captured batch.
+        private static void DrainInlineLayoutCleanupsOneBatch(
+            ComponentFiber rootFiber, List<(ComponentFiber Fiber, bool IsMount)> ordered)
         {
             var reconciler = rootFiber.Reconciler;
             if (reconciler == null) return;
@@ -107,60 +141,52 @@ namespace Velvet
             if (stack == null || stack.Count == 0) return;
             var bufferPool = reconciler.Context.BufferPool;
 
-            // Outer loop: an inline-effect callback can synchronously push more deferred fibers
-            // (e.g., a UseLayoutEffect that mounts another inline child). The old `while Pop`
-            // picked them up incrementally; our snapshot-based pass needs to re-drain explicitly.
-            while (stack.Count > 0)
+            // The stack was populated in DFS pre-order during reconcile (parent before children, siblings
+            // left-to-right). A naive LIFO drain would run sibling B before sibling A — layout effects visit
+            // siblings left-to-right then their parent (post-order DFS, LtR). Reconstruct that order.
+            var entries = new List<(ComponentFiber Fiber, bool IsMount)>(stack.Count);
+            while (stack.Count > 0) entries.Add(stack.Pop());
+            entries.Reverse();
+
+            // Dedup: the same fiber pushed twice (MountInline + a follow-up RenderInlineForExpansion bundled in
+            // the same reconcile pass) must drain ONCE. Walk in reverse so the last entry wins — Mount is
+            // architecturally first, so IsMount=false (the update) prevails.
+            var pushedSet = bufferPool.RentFiberSet();
+            var deduped = new List<(ComponentFiber Fiber, bool IsMount)>(entries.Count);
+            for (var i = entries.Count - 1; i >= 0; i--)
             {
-                // The stack was populated in DFS pre-order during reconcile (parent before children,
-                // siblings in left-to-right reconcile-walk order). Naive LIFO drain (`while Pop`)
-                // would run sibling B before sibling A — layout effects visit
-                // siblings left-to-right then their parent (post-order DFS, LtR). Reconstruct the
-                // post-order sequence via fiber.Parent ancestry.
-                var entries = new List<(ComponentFiber Fiber, bool IsMount)>(stack.Count);
-                while (stack.Count > 0) entries.Add(stack.Pop());
-                entries.Reverse();
+                if (pushedSet.Add(entries[i].Fiber)) deduped.Add(entries[i]);
+            }
+            deduped.Reverse();
 
-                // Dedup: the same fiber pushed twice (MountInline + a follow-up
-                // RenderInlineForExpansion bundled in the same reconcile pass) must drain ONCE,
-                // not twice. Walk in reverse so the last (latest semantics) entry wins — Mount is
-                // architecturally first in this scenario, so IsMount=false (the update) prevails.
-                var pushedSet = bufferPool.RentFiberSet();
-                var deduped = new List<(ComponentFiber Fiber, bool IsMount)>(entries.Count);
-                for (var i = entries.Count - 1; i >= 0; i--)
-                {
-                    if (pushedSet.Add(entries[i].Fiber)) deduped.Add(entries[i]);
-                }
-                deduped.Reverse();
+            OrderByNearestStagedAncestorPostOrder(deduped, pushedSet, static e => e.Fiber, ordered);
+            bufferPool.ReturnFiberSet(pushedSet);
 
-                // Reconstruct the post-order sequence over the deduped snapshot (nearest-staged-ancestor
-                // grouping — see OrderByNearestStagedAncestorPostOrder), then commit each fiber's deferred
-                // effects in that order. The traversal reads only the snapshot built above, so ordering
-                // first and running after is equivalent to running mid-walk; an effect that synchronously
-                // pushes MORE deferred fibers lands on the stack and is picked up by the outer re-drain
-                // loop, exactly as before.
-                var ordered = new List<(ComponentFiber Fiber, bool IsMount)>(deduped.Count);
-                OrderByNearestStagedAncestorPostOrder(deduped, pushedSet, static e => e.Fiber, ordered);
-                bufferPool.ReturnFiberSet(pushedSet);
+            // Cleanup pass — React's mutation phase. Running every cleanup before any setup is the point of the
+            // split: a later fiber's cleanup must not observe state an earlier fiber's setup wrote. Insertion
+            // effects belong to the mutation phase too; imperative handles and layout setups defer to the setup
+            // pass so a parent setup can observe a child's already-committed handle.
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                var (deferred, isMount) = ordered[i];
+                if (deferred == null || deferred.IsDisposed) continue;
+                RunInsertionEffects(deferred, mountDoubleInvoke: isMount);
+                HookEffectExecutor.RunCleanups(deferred, deferred.PendingLayoutEffects);
+            }
+        }
 
-                for (var i = 0; i < ordered.Count; i++)
-                {
-                    // Children already committed (post-order) — commit this fiber's deferred effects.
-                    // Mount commits run the Editor-only double-invoke; re-expansion commits (parent
-                    // re-render reaching an existing inline child) only run prior cleanup + new setup
-                    // for deps-changed slots. Insertion effects fire before layout effects.
-                    // UseImperativeHandle commits between insertion and layout effects so a
-                    // parent layout effect / handle factory observes the child's handle already
-                    // written into its parent ref (imperative handles are part of the
-                    // layout-effect phase). 2-phase separation (all-insertion → all-layout across the
-                    // subtree, splitting DOM mutation from layout-effect commit) is tracked
-                    // separately for the broader CommitSubtreeEffects refactor.
-                    var (deferred, isMount) = ordered[i];
-                    if (deferred == null || deferred.IsDisposed) continue;
-                    RunInsertionEffects(deferred, mountDoubleInvoke: isMount);
-                    FiberHookCommit.RunImperativeHandleSlots(deferred);
-                    RunLayoutEffects(deferred, mountDoubleInvoke: isMount);
-                }
+        // Runs the layout-effect SETUP pass over a batch DrainInlineLayoutCleanupsOneBatch already ordered and
+        // cleaned up: each fiber's imperative handles then its layout-effect setups, in post-order (a parent
+        // setup observes a child's already-committed handle). A setup that mounts more inline children pushes
+        // them onto the drain stack for the caller's re-drain.
+        private static void RunInlineLayoutSetups(List<(ComponentFiber Fiber, bool IsMount)> ordered)
+        {
+            for (var i = 0; i < ordered.Count; i++)
+            {
+                var (deferred, isMount) = ordered[i];
+                if (deferred == null || deferred.IsDisposed) continue;
+                FiberHookCommit.RunImperativeHandleSlots(deferred);
+                HookEffectExecutor.RunFactoriesAndClear(deferred, deferred.PendingLayoutEffects, mountDoubleInvoke: isMount);
             }
         }
 

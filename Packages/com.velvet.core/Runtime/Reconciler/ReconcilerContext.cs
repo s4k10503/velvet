@@ -482,7 +482,7 @@ namespace Velvet
         // RenderAndReconcile(deferReconcile: true) so the parent expansion calls
         // CreateElement + InvokeRefCallback for child elements AFTER MountInline
         // returns; running LayoutEffects inside MountInline would observe stale (null) refs.
-        // The top-level reconcile entry drains this stack before its own RunLayoutEffects so
+        // The top-level reconcile entry drains this stack before its own layout-effect commit so
         // every layout effect runs once all child refs are attached. A Stack (LIFO) is used so
         // the drain runs deepest-first — layout effects commit children
         // before their parent (bottom-up), so a parent layout effect that reads a child's
@@ -490,7 +490,7 @@ namespace Velvet
         // Both Mount and update commits push onto this stack: MountInline pushes with
         // IsMount: true, RenderInlineForExpansion (parent re-render reaching an
         // existing inline child) pushes with IsMount: false. The drain forwards the flag
-        // to RunInsertionEffects / RunLayoutEffects as mountDoubleInvoke so
+        // to the insertion- and layout-effect passes as mountDoubleInvoke so
         // the Editor-only mount double-invoke fires only on initial Mount, not on the deps-changed
         // re-expansion path: a layout effect on an update fires its deps
         // cleanup + setup once, not twice.
