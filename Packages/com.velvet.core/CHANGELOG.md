@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tween drives the filter parameters frame-by-frame; opt in with `transition-filter` (honoring `duration-*`
   and the easing longhand). Non-interpolable changes (a custom filter, or an ambiguous add/remove) and the
   off-panel / zero-duration cases fall back to an instant write.
+- `skew-x-*` / `skew-y-*` now approximate CSS `skewX()` / `skewY()`'s **descendant shear**, not only the
+  caster's own painted silhouette. UI Toolkit's transform has no shear, so each in-flow direct child is given
+  an inline `translate` that seats its centroid where the shear would carry it — the per-row counter-translate
+  a CSS author would otherwise hand-write, applied automatically. The seat re-runs on child add / remove /
+  reorder and as layout settles; it is exact at each child's centroid and piecewise-constant across the child
+  (a real shear also rotates it), so a child large relative to the frame reads slightly off at its far corners
+  and a nested transform on the child is not composed. Out-of-flow children (`.absolute`, a `PopLayout` exit
+  ghost, the filter bounds-spacer) hold no seat and are skipped, and a child's own static `translate-x-*` /
+  `translate-y-*` is preserved when the parent later loses its skew — including a translate the child acquires
+  only after it moves out of flow, which is released untouched rather than reset to its pre-shear value.
 
 ### Fixed
 
