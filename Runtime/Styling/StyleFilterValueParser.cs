@@ -41,21 +41,22 @@ namespace Velvet
             ["0"] = 0f, ["15"] = 15f, ["30"] = 30f, ["60"] = 60f, ["90"] = 90f, ["180"] = 180f,
         };
 
-        // brightness multiplier presets (rendered via Tint). UI Toolkit's Tint clamps the per-channel multiply
-        // to [0,1] (the color-matrix factor is Clamp01(channel*alpha)), so a factor above 1 collapses to
-        // identity and CANNOT brighten. The over-bright values (brightness-105/110/125/150/200) are
-        // therefore intentionally absent — only the darken/identity range 0..1 is representable, the same
-        // reason saturate>1 is rejected.
+        // brightness multiplier presets (the full Tailwind scale). brightness renders through a first-party
+        // custom-filter shader that multiplies unclamped, so the over-bright values (105/110/125/150/200)
+        // genuinely brighten — the whole point of the shader over the old Tint approximation, which could
+        // never exceed identity.
         private static readonly Dictionary<string, float> s_brightnessPreset = new()
         {
             ["0"] = 0f, ["50"] = 0.5f, ["75"] = 0.75f, ["90"] = 0.9f, ["95"] = 0.95f, ["100"] = 1f,
+            ["105"] = 1.05f, ["110"] = 1.1f, ["125"] = 1.25f, ["150"] = 1.5f, ["200"] = 2f,
         };
 
-        // saturate presets as a 0..1 saturation fraction (rendered via grayscale(1-N)). The over-saturate
-        // values (saturate-150 / -200) are intentionally absent: UI Toolkit has no over-saturation filter.
+        // saturate presets as a saturation fraction (the full Tailwind scale). saturate renders through a
+        // first-party custom-filter shader that lerps toward luminance unclamped, so the over-saturate values
+        // (150 / 200) push past the original colour, which the old grayscale(1-N) approximation could not do.
         private static readonly Dictionary<string, float> s_saturatePreset = new()
         {
-            ["0"] = 0f, ["50"] = 0.5f, ["100"] = 1f,
+            ["0"] = 0f, ["50"] = 0.5f, ["100"] = 1f, ["150"] = 1.5f, ["200"] = 2f,
         };
 
         // Filter-function bracket prefixes, routed here so all filter-* utilities share the one compose-and-
@@ -88,19 +89,21 @@ namespace Velvet
                 result = new ArbitraryStyle(ArbitraryProperty.FilterHueRotate, negate ? -deg : deg, LengthUnit.Pixel);
                 return true;
             }
-            // brightness-[N] is a 0..1 multiplier rendered via the built-in Tint filter. N>1 is rejected:
-            // UITK's Tint clamps the per-channel factor to [0,1], so over-brightening is not representable.
+            // brightness-[N] is an unbounded (N >= 0) multiplier rendered through a first-party custom-filter
+            // shader, so over-brightening (N > 1) is accepted. Only negative amounts are rejected — CSS
+            // disallows them.
             if (!negate && prefix == "brightness-")
             {
-                if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var b) || b < 0f || b > 1f) return false;
+                if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var b) || b < 0f) return false;
                 result = new ArbitraryStyle(ArbitraryProperty.FilterBrightness, b, LengthUnit.Pixel);
                 return true;
             }
-            // saturate-[N] is a 0..1 saturation fraction (over-saturation N>1 has no UITK filter), rendered
-            // via the built-in Grayscale filter as grayscale(1-N).
+            // saturate-[N] is an unbounded (N >= 0) saturation fraction rendered through a first-party
+            // custom-filter shader, so over-saturation (N > 1) is accepted. Only negative amounts are rejected
+            // — CSS disallows them.
             if (!negate && prefix == "saturate-")
             {
-                if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var s) || s < 0f || s > 1f) return false;
+                if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var s) || s < 0f) return false;
                 result = new ArbitraryStyle(ArbitraryProperty.FilterSaturate, s, LengthUnit.Pixel);
                 return true;
             }
@@ -395,7 +398,6 @@ namespace Velvet
             }
             if (body.StartsWith("saturate-", StringComparison.Ordinal))
             {
-                // Only the 0..1 saturation presets resolve; saturate-150 / -200 are absent (no UITK over-saturate).
                 if (!s_saturatePreset.TryGetValue(body.Substring("saturate-".Length), out var s))
                 {
                     return false;

@@ -51,6 +51,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reset to the plain native border. When the same element is also skewed or shadowed that layer owns the whole
   face and repaints a solid border, so a dashed border there stays solid — a documented limitation, the same
   tier as the clip + shadow / clip + ring mutual exclusions.
+- `brightness-*` and `saturate-*` now cover the full CSS range, matching Tailwind. Each renders through a
+  first-party custom-filter shader (`Velvet/FilterBrightness`, `Velvet/FilterSaturate`) bound as a
+  `FilterFunctionType.Custom` definition, rather than the previous approximations (`brightness` through the
+  built-in Tint, `saturate` as `grayscale(1 - N)`) that clamped to the darken / desaturate range. The
+  over-bright presets `brightness-105/110/125/150/200` and over-saturate presets `saturate-150/200` are now
+  recognized, and the bracket forms `brightness-[N]` / `saturate-[N]` accept any `N >= 0` (only negative
+  amounts are rejected, as CSS disallows them). The shaders apply the multiply / lerp-toward-luminance on
+  the encoded pixel before the engine's Linear-colorspace conversion, so a Linear project matches the
+  browser exactly instead of over-darkening.
 
 ### Fixed
 

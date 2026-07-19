@@ -23,17 +23,18 @@ Every filter utility on an element — built-in or custom — composes into the 
 | `invert` / `invert-0` / `invert-[N]` | bare = 100% | N in 0..1 |
 | `sepia` / `sepia-0` / `sepia-[N]` | bare = 100% | N in 0..1 |
 | `hue-rotate-<deg>` / `hue-rotate-[Ndeg]` | presets 0/15/30/60/90/180; the only filter with a negative form (`-hue-rotate-90`) | degrees |
-| `brightness-<n>` / `brightness-[N]` | presets 0/50/75/90/95/100 — **darken range only** | see below |
-| `saturate-<n>` / `saturate-[N]` | presets 0/50/100 — **desaturate range only** | see below |
+| `brightness-<n>` / `brightness-[N]` | presets 0/50/75/90/95/100/105/110/125/150/200 (× 0.01); bracket ≥ 0 | full CSS range, see below |
+| `saturate-<n>` / `saturate-[N]` | presets 0/50/100/150/200 (× 0.01); bracket ≥ 0 | full CSS range, see below |
 
-Two utilities are narrower than their Tailwind counterparts because UI Toolkit has no native
-filter type for them and the closest built-in clamps:
-
-- **`brightness`** renders through the Tint filter, which clamps its per-channel multiplier to
-  [0,1] — over-brightening (`brightness-150`) is not representable, so only the darken/identity
-  range exists.
-- **`saturate`** renders as `grayscale(1 - N)` — over-saturation (`saturate-150`) has no UI
-  Toolkit filter, so only the desaturate/identity range exists.
+`brightness` and `saturate` are the only two utilities UI Toolkit has no native filter type
+for. Rather than approximate them through a built-in (which clamps to the darken/desaturate
+range), Velvet renders each through its own custom-filter shader — `Velvet/FilterBrightness`
+and `Velvet/FilterSaturate`, registered internally as `FilterFunctionType.Custom` definitions.
+The shaders apply CSS `brightness()`'s uniform multiply and `saturate()`'s lerp-toward-luminance
+directly, unclamped, so the **full CSS range** applies: over-brightening (`brightness-150`) and
+over-saturation (`saturate-150`) work, and both match the browser exactly (the arithmetic runs on
+the encoded pixel before the engine's Linear-colorspace conversion, so a Linear project does not
+over-darken). Only negative amounts are rejected, as CSS disallows them.
 
 Stacked filters compose in the canonical CSS order (blur, brightness, contrast, grayscale,
 hue-rotate, invert, saturate, sepia) regardless of class order, matching how browsers apply a

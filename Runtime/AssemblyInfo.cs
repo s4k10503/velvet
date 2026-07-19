@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Velvet.Tests.Store.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Store.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Styling.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Styling.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.TestUtilities")]
 [assembly: InternalsVisibleTo("Velvet.Editor")]
 [assembly: InternalsVisibleTo("Unity.Velvet.CodeGen")]

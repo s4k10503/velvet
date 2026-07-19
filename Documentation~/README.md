@@ -11,7 +11,7 @@ For the package overview and installation instructions, see the repository root 
 | [memoization.md](memoization.md) | The `[Memoize]` attribute — usage, constraints, and diagnostic IDs (Source Generator-driven partial-method memoization) |
 | [styling-flexbox-and-gap.md](styling-flexbox-and-gap.md) | Flexbox direction (`flex` defaults to column, not row) and `gap-*` gotchas (single-axis, trailing margin) vs Tailwind |
 | [styling-variants.md](styling-variants.md) | The variant set (state / theme `dark:` / responsive `sm:`…`2xl:` / relational `group-`·`peer-` / stacked) and container queries (`@container`, the `container-type: inline-size` equivalent) |
-| [styling-filters.md](styling-filters.md) | Filter utilities (`blur-*` … `sepia-*`, the UITK-imposed brightness/saturate ranges) and the `VelvetFilters` custom filter registry (`filter-[name:args]`) |
+| [styling-filters.md](styling-filters.md) | Filter utilities (`blur-*` … `sepia-*`, the shader-backed full-range `brightness-*`/`saturate-*`) and the `VelvetFilters` custom filter registry (`filter-[name:args]`) |
 | [scene-view.md](scene-view.md) | `V.SceneView` — a camera's output as an element (`<canvas>` parity): the framework-owned RenderTexture contract, styling composition, live sampling |
 | [portals.md](portals.md) | Portals three ways — registry targets, framework-managed screen-space layers (`V.Portal(layer:)`), and depth-tested world-space panels (`V.WorldSpace`) — plus the shared boundary semantics |
 | [particles.md](particles.md) | `V.Particles` (a hidden ParticleSystem simulation drawn as in-element quads — no camera, no render-pipeline coupling), the VFX-Graph-via-SceneView decision matrix, and the `UseFrame` per-frame hook |
