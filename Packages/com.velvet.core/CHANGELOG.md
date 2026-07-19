@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tween drives the filter parameters frame-by-frame; opt in with `transition-filter` (honoring `duration-*`
   and the easing longhand). Non-interpolable changes (a custom filter, or an ambiguous add/remove) and the
   off-panel / zero-duration cases fall back to an instant write.
+- The `[&>*]:<utility>` child-combinator variant, CSS's `& > *` "every direct child" rule applied to
+  Velvet's utility classes (`[&>*]:mt-2`, `[&>*]:mt-[8px]`, `[&>*]:hover:bg-red-500`): the wrapped
+  utility — a plain class, an arbitrary value, or a state variant — is applied to every direct,
+  in-flow child of the element that carries the token, instead of the element itself. Runs before
+  `gap-*` / `divide-*` / `grid-cols-*`, so those still own a margin/border/width edge they also set.
 
 ### Fixed
 

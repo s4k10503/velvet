@@ -143,6 +143,14 @@ namespace Velvet
                     continue;
                 }
 
+                // [&>*]: child-combinator tokens style the container's children (via the child-variant
+                // manipulator), never the container itself; and their leading '[' would otherwise be
+                // mis-routed as an arbitrary value below. Never added as classes.
+                if (StyleChildVariantClass.IsChildVariant(className))
+                {
+                    continue;
+                }
+
                 // Structural variants (first:/last:/odd:/[&:nth-child(N)]:) are owned by the reconciler's
                 // structural pass (evaluated against sibling position); never added as classes.
                 if (StyleStructuralVariantClass.IsStructural(className))
