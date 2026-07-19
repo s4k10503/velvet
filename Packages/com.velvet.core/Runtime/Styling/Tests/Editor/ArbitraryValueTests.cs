@@ -2059,7 +2059,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_BrightnessPreset_When_Parsed_Then_ResolvesMultiplier()
         {
-            // brightness-50 == multiplier 0.5 (rendered via the built-in Tint filter).
+            // brightness-50 == multiplier 0.5.
             var ok = StyleArbitraryValueResolver.TryParse("brightness-50", out var s);
 
             Assume.That(ok, Is.True, "Precondition: brightness-50 is recognized");
@@ -2067,44 +2067,56 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_BrightnessArbitrary_When_Applied_Then_EmitsATintMultiplyByThatValue()
+        public void Given_BrightnessArbitrary_When_Applied_Then_EmitsTheBuiltInBrightnessShaderFunction()
         {
-            // brightness(N) is rendered as Tint(N, N, N, 1) — a per-channel RGB multiply (N <= 1; Tint clamps).
+            // brightness renders through the first-party custom-filter shader as a Custom function bound to
+            // the shared brightness definition, carrying the raw multiplier as its single parameter.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("brightness-[0.8]", out var s);
 
             StyleArbitraryValueResolver.Apply(el, in s);
 
             var f = el.style.filter.value[0];
-            Assert.That((f.type, f.GetParameter(0).colorValue), Is.EqualTo((FilterFunctionType.Tint, new Color(0.8f, 0.8f, 0.8f, 1f))));
+            Assert.That((f.type, f.customDefinition, f.GetParameter(0).floatValue),
+                Is.EqualTo((FilterFunctionType.Custom, BuiltInFilterDefinitions.Brightness, 0.8f)));
         }
 
         [Test]
-        public void Given_OverBrightness_When_Parsed_Then_NotRecognized()
+        public void Given_OverBrightnessPreset_When_Parsed_Then_ResolvesTheWidenedMultiplier()
         {
-            // brightness > 1 cannot brighten: UITK Tint clamps the per-channel factor to [0,1], so N>1 is an
-            // identity no-op and is rejected (mirrors the saturate>1 rejection), preset and arbitrary alike.
-            Assert.That(StyleArbitraryValueResolver.TryParse("brightness-150", out _), Is.False);
+            // brightness-150 now brightens: the shader multiplies unclamped, so the over-bright preset resolves
+            // to a multiplier above 1 instead of being rejected.
+            var ok = StyleArbitraryValueResolver.TryParse("brightness-150", out var s);
+
+            Assume.That(ok, Is.True, "Precondition: brightness-150 is recognized");
+            Assert.That(s.Value, Is.EqualTo(1.5f));
         }
 
         [Test]
-        public void Given_OverBrightnessArbitrary_When_Parsed_Then_NotRecognized()
+        public void Given_OverBrightnessArbitrary_When_Parsed_Then_ResolvesTheUnclampedMultiplier()
         {
-            Assert.That(StyleArbitraryValueResolver.TryParse("brightness-[1.5]", out _), Is.False);
+            // brightness-[1.5] is accepted (only negative amounts are rejected) and carries the raw factor.
+            var ok = StyleArbitraryValueResolver.TryParse("brightness-[1.5]", out var s);
+
+            Assume.That(ok, Is.True, "Precondition: brightness-[1.5] is recognized");
+            Assert.That(s.Value, Is.EqualTo(1.5f));
         }
 
         [Test]
-        public void Given_OverSaturateArbitrary_When_Parsed_Then_NotRecognized()
+        public void Given_OverSaturateArbitrary_When_Parsed_Then_ResolvesTheUnclampedFraction()
         {
-            // The bracket-form over-saturate guard (s > 1) — distinct from the preset-table omission.
-            Assert.That(StyleArbitraryValueResolver.TryParse("saturate-[1.5]", out _), Is.False);
+            // saturate-[1.5] is accepted (only negative amounts are rejected) and carries the raw fraction.
+            var ok = StyleArbitraryValueResolver.TryParse("saturate-[1.5]", out var s);
+
+            Assume.That(ok, Is.True, "Precondition: saturate-[1.5] is recognized");
+            Assert.That(s.Value, Is.EqualTo(1.5f));
         }
 
         [Test]
-        public void Given_GrayscaleAndSaturate_When_Applied_Then_BothEmitDistinctGrayscaleFunctions()
+        public void Given_GrayscaleAndSaturate_When_Applied_Then_TheyRemainIndependentComposedLayers()
         {
-            // grayscale and saturate are separate layers (saturate renders AS grayscale of its complement), so
-            // an element with both composes TWO Grayscale filter functions rather than one clobbering the other.
+            // grayscale and saturate are separate layers, so an element with both composes TWO filter functions
+            // rather than one clobbering the other.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("grayscale", out var g);
             StyleArbitraryValueResolver.TryParse("saturate-50", out var s);
@@ -2118,7 +2130,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_BrightnessAndContrast_When_Applied_Then_BrightnessComposesBeforeContrast()
         {
-            // Canonical CSS filter order: brightness precedes contrast.
+            // Canonical CSS filter order: brightness precedes contrast, even though brightness is now a Custom
+            // function keyed by its own filter slot rather than routed through LayerMap.Customs.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("contrast-125", out var c);
             StyleArbitraryValueResolver.TryParse("brightness-50", out var b);
@@ -2126,39 +2139,49 @@ namespace Velvet.Tests
 
             StyleArbitraryValueResolver.Apply(el, in b);
 
-            Assert.That(el.style.filter.value[0].type, Is.EqualTo(FilterFunctionType.Tint)); // brightness (Tint) first
+            var f = el.style.filter.value[0];
+            Assert.That((f.type, f.customDefinition),
+                Is.EqualTo((FilterFunctionType.Custom, BuiltInFilterDefinitions.Brightness)));
         }
 
         [Test]
-        public void Given_SaturatePreset_When_Applied_Then_EmitsGrayscaleOfTheComplement()
+        public void Given_SaturatePreset_When_Applied_Then_EmitsTheBuiltInSaturateShaderFunction()
         {
-            // saturate(0.5) == grayscale(1 - 0.5) = grayscale(0.5).
+            // saturate renders through the first-party custom-filter shader as a Custom function bound to the
+            // shared saturate definition. The stored parameter is the RAW fraction (0.5), not the old 1-N
+            // complement, because the shader implements the lerp-toward-luminance natively.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("saturate-50", out var s);
 
             StyleArbitraryValueResolver.Apply(el, in s);
 
             var f = el.style.filter.value[0];
-            Assert.That((f.type, f.GetParameter(0).floatValue), Is.EqualTo((FilterFunctionType.Grayscale, 0.5f)));
+            Assert.That((f.type, f.customDefinition, f.GetParameter(0).floatValue),
+                Is.EqualTo((FilterFunctionType.Custom, BuiltInFilterDefinitions.Saturate, 0.5f)));
         }
 
         [Test]
-        public void Given_FullSaturate_When_Applied_Then_EmitsZeroGrayscale()
+        public void Given_FullSaturate_When_Applied_Then_EmitsIdentityParameter()
         {
-            // saturate-100 == grayscale(0) = unchanged.
+            // saturate-100 is the CSS identity, so the shader parameter is 1 (unchanged), not the old
+            // grayscale(0) complement.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("saturate-100", out var s);
 
             StyleArbitraryValueResolver.Apply(el, in s);
 
-            Assert.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(0f));
+            Assert.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(1f));
         }
 
         [Test]
-        public void Given_OverSaturate_When_Parsed_Then_NotRecognized()
+        public void Given_OverSaturate_When_Parsed_Then_ResolvesTheWidenedFraction()
         {
-            // saturate-150 (over-saturation N>1) has no UI Toolkit filter, so it is not a recognized utility.
-            Assert.That(StyleArbitraryValueResolver.TryParse("saturate-150", out _), Is.False);
+            // saturate-150 now over-saturates: the shader lerps toward luminance unclamped, so the over-saturate
+            // preset resolves to a fraction above 1 instead of being rejected.
+            var ok = StyleArbitraryValueResolver.TryParse("saturate-150", out var s);
+
+            Assume.That(ok, Is.True, "Precondition: saturate-150 is recognized");
+            Assert.That(s.Value, Is.EqualTo(1.5f));
         }
 
         [TestCase("brightness-50")]
