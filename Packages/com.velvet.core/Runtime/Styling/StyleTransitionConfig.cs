@@ -35,8 +35,9 @@ namespace Velvet
 
         /// <summary>
         /// Selects the animation model: a USS <c>transition-*</c> class swap (<see cref="TransitionType.Tween"/>,
-        /// the default) or a physics-integrated spring (<see cref="TransitionType.Spring"/>). See
-        /// <see cref="TransitionType"/> for the full contract, including what a spring does and does not animate.
+        /// the default), a physics-integrated spring (<see cref="TransitionType.Spring"/>), or a fixed-duration
+        /// tween whose easing is an EXACT numeric cubic-bezier curve (<see cref="TransitionType.Bezier"/>). See
+        /// <see cref="TransitionType"/> for the full contract, including what each does and does not animate.
         /// </summary>
         /// <remarks>Equivalent to setting Framer Motion's <c>transition.type</c> to <c>"tween"</c> / <c>"spring"</c>
         /// for users migrating from Framer Motion — except Velvet defaults to <c>Tween</c> where Framer defaults
@@ -62,10 +63,39 @@ namespace Velvet
         public float Mass { get; init; } = 1f;
 
         /// <summary>
+        /// First control point's X (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>).
+        /// CSS <c>cubic-bezier(x1,y1,x2,y2)</c> parameter order. X must stay in [0,1] (a timing function must be
+        /// monotone in time); a value outside that range is invalid per the <c>cubic-bezier()</c> spec and
+        /// degrades to the default curve below with a one-shot warning, rather than being silently clamped.
+        /// Defaults to Tailwind's own default curve, <c>cubic-bezier(0.4, 0, 0.2, 1)</c> — the exact curve the
+        /// bundled USS only approximates with the <c>ease-in-out</c> keyword.
+        /// </summary>
+        public float BezierX1 { get; init; } = 0.4f;
+
+        /// <summary>
+        /// First control point's Y (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>).
+        /// Left unclamped so an overshoot/anticipate curve is preserved. See <see cref="BezierX1"/>.
+        /// </summary>
+        public float BezierY1 { get; init; } = 0f;
+
+        /// <summary>
+        /// Second control point's X (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>).
+        /// Must stay in [0,1]. See <see cref="BezierX1"/>.
+        /// </summary>
+        public float BezierX2 { get; init; } = 0.2f;
+
+        /// <summary>
+        /// Second control point's Y (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>).
+        /// Left unclamped so an overshoot/anticipate curve is preserved. See <see cref="BezierX1"/>.
+        /// </summary>
+        public float BezierY2 { get; init; } = 1f;
+
+        /// <summary>
         /// Animation duration (seconds). Applied as the inline transition-duration style.
         /// Ignored when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: a spring's settle time is
         /// decided entirely by <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/>, not a fixed
-        /// duration.
+        /// duration. For <see cref="TransitionType.Bezier"/> it IS the (fixed) duration, exactly as for a plain
+        /// tween — only the easing sampling differs.
         /// </summary>
         public float DurationSec { get; init; }
 
@@ -73,13 +103,18 @@ namespace Velvet
         /// Easing mode. Applied as the inline transition-timing-function style.
         /// Defaults to EaseOut (for enter). Presets in StyleTransition.cs configure enter/exit easing separately.
         /// Ignored when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: the physics integration IS the
-        /// curve.
+        /// curve. Also ignored when <see cref="Type"/> is <see cref="TransitionType.Bezier"/>: the
+        /// <see cref="BezierX1"/>/<see cref="BezierY1"/>/<see cref="BezierX2"/>/<see cref="BezierY2"/> control
+        /// points ARE the curve (an exact numeric one no <c>EasingMode</c> keyword can express).
         /// </summary>
         public EasingMode Easing { get; init; } = EasingMode.EaseOut;
 
         /// <summary>
         /// Easing mode for exit. When null, <see cref="Easing"/> is reused.
         /// The presets in StyleTransition.cs typically use EaseOut for enter and EaseIn for exit.
+        /// Ignored when <see cref="Type"/> is <see cref="TransitionType.Spring"/> or
+        /// <see cref="TransitionType.Bezier"/>: like a spring's single stiffness/damping/mass, one bezier curve
+        /// drives BOTH directions — there is no separate exit curve.
         /// </summary>
         public EasingMode? ExitEasing { get; init; }
 
@@ -103,10 +138,11 @@ namespace Velvet
         /// all (a variant-driven enter, or an exit driven by a <c>variants</c> + <c>exit</c> label) — a preset
         /// transition's own USS-declared transition-property is untouched. Null (default) preserves today's
         /// behavior unchanged.
-        /// Not read when <see cref="Type"/> is <see cref="TransitionType.Spring"/>: a spring drives every animated
-        /// channel with the SAME <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/> — there is no
-        /// per-property override of the spring model itself (only <see cref="TransitionType.Tween"/>'s per-property
-        /// duration/easing/delay can be overridden this way).
+        /// Not read when <see cref="Type"/> is <see cref="TransitionType.Spring"/> or
+        /// <see cref="TransitionType.Bezier"/>: both drive every animated channel with the SAME curve — a spring's
+        /// <see cref="Stiffness"/> / <see cref="Damping"/> / <see cref="Mass"/>, a bezier's four control points —
+        /// so there is no per-property override of the model itself (only <see cref="TransitionType.Tween"/>'s
+        /// per-property duration/easing/delay can be overridden this way).
         /// </summary>
         public IReadOnlyList<StylePropertyTransition>? PropertyOverrides { get; init; }
 
@@ -205,6 +241,10 @@ namespace Velvet
                 Stiffness = Stiffness,
                 Damping = Damping,
                 Mass = Mass,
+                BezierX1 = BezierX1,
+                BezierY1 = BezierY1,
+                BezierX2 = BezierX2,
+                BezierY2 = BezierY2,
                 // Class names are identical, so share the parsed arrays (avoids re-parsing).
                 _enterFromClasses = _enterFromClasses,
                 _enterToClasses = _enterToClasses,
@@ -239,6 +279,10 @@ namespace Velvet
                 Stiffness = Stiffness,
                 Damping = Damping,
                 Mass = Mass,
+                BezierX1 = BezierX1,
+                BezierY1 = BezierY1,
+                BezierX2 = BezierX2,
+                BezierY2 = BezierY2,
             };
         }
 
@@ -306,6 +350,22 @@ namespace Velvet
         /// plain classes, just without a tween/spring transition on them).
         /// </summary>
         Spring,
+
+        /// <summary>
+        /// A fixed-duration tween like <see cref="Tween"/>, but with its easing sampled from an EXACT numeric
+        /// <c>cubic-bezier(</c><see cref="StyleTransitionConfig.BezierX1"/>, <see cref="StyleTransitionConfig.BezierY1"/>,
+        /// <see cref="StyleTransitionConfig.BezierX2"/>, <see cref="StyleTransitionConfig.BezierY2"/><c>)</c> curve
+        /// instead of one of UI Toolkit's five <c>EasingMode</c> keywords (which cannot express an arbitrary
+        /// cubic-bezier). Like <see cref="Spring"/>, this cannot be expressed by CSS/USS transitions, so it is
+        /// driven by a per-frame tick that writes inline styles directly — and so shares the spring's channel
+        /// scope EXACTLY: only OPACITY and the transform trio (translate x/y in pixels, uniform scale, rotate
+        /// degrees) are animated; everything else applies as a plain class with no tween. One curve drives BOTH
+        /// enter and exit (there is no separate exit curve, mirroring the spring's single stiffness/damping/mass),
+        /// and <see cref="StyleTransitionConfig.PropertyOverrides"/> is not read (no per-property curve). A zero
+        /// <see cref="StyleTransitionConfig.DurationSec"/> completes immediately with no animation, exactly like a
+        /// zero-duration <see cref="Tween"/>.
+        /// </summary>
+        Bezier,
     }
 
     /// <summary>

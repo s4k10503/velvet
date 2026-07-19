@@ -15,12 +15,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tween drives the filter parameters frame-by-frame; opt in with `transition-filter` (honoring `duration-*`
   and the easing longhand). Non-interpolable changes (a custom filter, or an ambiguous add/remove) and the
   off-panel / zero-duration cases fall back to an instant write.
-- The `[&>*]:<utility>` child-combinator variant, CSS's `& > *` "every direct child" rule applied to
+- A third transition model, `StyleTransitionConfig { Type = TransitionType.Bezier, BezierX1,
+  BezierY1, BezierX2, BezierY2 }`: variant enters / exits sample an EXACT CSS
+  `cubic-bezier(x1,y1,x2,y2)` curve every tick instead of one of the five `EasingMode` keywords,
+  which cannot express an arbitrary numeric curve. Sibling to the spring model — it shares its
+  channel scope (opacity and the translate/scale/rotate transform trio) and its
+  one-curve-drives-both-directions contract — but keeps a fixed `DurationSec` like a plain tween;
+  only the easing shape differs. Defaults to Tailwind's own default curve,
+  `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates with the
+  `ease-in-out` keyword. `BezierX1`/`BezierX2` outside `[0,1]` is invalid per the `cubic-bezier()`
+  spec (a timing function must stay monotone in time) and falls back to that default curve with a
+  one-shot console warning instead of being silently clamped into range.
+- `skew-x-*` / `skew-y-*` now approximate CSS `skewX()` / `skewY()`'s **descendant shear**, not only the
+  caster's own painted silhouette. UI Toolkit's transform has no shear, so each in-flow direct child is given
+  an inline `translate` that seats its centroid where the shear would carry it — the per-row counter-translate
+  a CSS author would otherwise hand-write, applied automatically. The seat re-runs on child add / remove /
+  reorder and as layout settles; it is exact at each child's centroid and piecewise-constant across the child
+  (a real shear also rotates it), so a child large relative to the frame reads slightly off at its far corners
+  and a nested transform on the child is not composed. Out-of-flow children (`.absolute`, a `PopLayout` exit
+  ghost, the filter bounds-spacer) hold no seat and are skipped, and a child's own static `translate-x-*` /
+  `translate-y-*` is preserved when the parent later loses its skew — including a translate the child acquires
+  only after it moves out of flow, which is released untouched rather than reset to its pre-shear value.- The `[&>*]:<utility>` child-combinator variant, CSS's `& > *` "every direct child" rule applied to
   Velvet's utility classes (`[&>*]:mt-2`, `[&>*]:mt-[8px]`, `[&>*]:hover:bg-red-500`): the wrapped
   utility — a plain class, an arbitrary value, or a state variant — is applied to every direct,
   in-flow child of the element that carries the token, instead of the element itself. Runs before
   `gap-*` / `divide-*` / `grid-cols-*`, so those still own a margin/border/width edge they also set.
-
 ### Fixed
 
 - A parent's layout-effect (`Hooks.UseLayoutEffect`) cleanup now runs before an inline child's layout-effect
