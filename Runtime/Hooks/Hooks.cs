@@ -350,7 +350,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Delegate type to memoize.</typeparam>
         /// <param name="callback">Callback to memoize. Captured on first render and on dependency changes.</param>
-        /// <param name="deps">Dependency values. When deeply equal to the previous render, the cached callback is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached callback is reused.</param>
         /// <returns>The cached callback reference (stable across renders while <paramref name="deps"/> are equal).</returns>
         public static T UseCallback<T>(T callback, params object?[] deps) where T : Delegate
         {
@@ -435,7 +435,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Type of the value to memoize.</typeparam>
         /// <param name="factory">Factory invoked to produce the value on the first render and whenever the deps change.</param>
-        /// <param name="deps">Dependency values. When deeply equal to the previous render, the cached value is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached value is reused.</param>
         /// <returns>The cached value (stable across renders while <paramref name="deps"/> are equal).</returns>
         public static T UseMemo<T>(Func<T> factory, params object?[]? deps)
         {
@@ -807,7 +807,7 @@ namespace Velvet
         /// before the frame is painted.
         /// </summary>
         /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency array. When deeply equal to the previous render, the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
         public static void UseLayoutEffect(Func<Action?>? factory, object?[]? deps = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
@@ -823,7 +823,7 @@ namespace Velvet
 
         /// <summary>IDisposable variant. Dispose() is called when deps change.</summary>
         /// <param name="factory">Effect body returning an <see cref="IDisposable"/>. Disposed on unmount or when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency array. When deeply equal to the previous render, the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
         public static void UseLayoutEffect(Func<IDisposable> factory, object?[]? deps = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
@@ -842,7 +842,7 @@ namespace Velvet
         /// for that.
         /// </summary>
         /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency array. When deeply equal to the previous render, the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
         public static void UseInsertionEffect(Func<Action?>? factory, object?[]? deps = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
@@ -858,7 +858,7 @@ namespace Velvet
 
         /// <summary>IDisposable variant. Dispose() is called when deps change.</summary>
         /// <param name="factory">Effect body returning an <see cref="IDisposable"/>. Disposed on unmount or when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency array. When deeply equal to the previous render, the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
         public static void UseInsertionEffect(Func<IDisposable> factory, object?[]? deps = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
@@ -873,7 +873,7 @@ namespace Velvet
         /// Position-based asynchronous effect. Runs at the next frame boundary, after the frame is painted.
         /// </summary>
         /// <param name="factory">Effect body. Returns a cleanup Action invoked on unmount or when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency array. When deeply equal to the previous render, the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
         public static void UseEffect(Func<Action?>? factory, object?[]? deps = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
@@ -890,7 +890,7 @@ namespace Velvet
 
         /// <summary>IDisposable variant.</summary>
         /// <param name="factory">Effect body returning an <see cref="IDisposable"/>. Disposed on unmount or when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency array. When deeply equal to the previous render, the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
+        /// <param name="deps">Dependency array. When equal to the previous render (each dependency compared with <c>Object.is</c>), the effect is skipped. When omitted or <c>null</c>, the effect runs on every render.</param>
         public static void UseEffect(Func<IDisposable> factory, object?[]? deps = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
