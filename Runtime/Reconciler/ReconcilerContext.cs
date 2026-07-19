@@ -250,6 +250,12 @@ namespace Velvet
         public Dictionary<VisualElement, StyleDivideManipulator> DivideManipulators { get; } = new();
         public Dictionary<VisualElement, StyleGridManipulator> GridManipulators { get; } = new();
 
+        // [&>*]:<utility> child-combinator variant — a manipulator on the CONTAINER that applies the wrapped
+        // payload to each direct child. Mirrors GapManipulators / DivideManipulators; removed on cleanup /
+        // dispose. The per-child stacked manipulators a state-variant payload spawns live in
+        // StackedVariantManipulators (keyed by the child) and are swept with each child, not here.
+        public Dictionary<VisualElement, StyleChildVariantManipulator> ChildVariantManipulators { get; } = new();
+
         // Per-Motion-element bookkeeping of the class set actually APPLIED (base ClassNames plus any
         // variant classes propagated from an ancestor Motion's active label, PLUS the variant-only classes
         // alone — see MotionAppliedClassSet). The patch path diffs the new applied set against this stored one
