@@ -61,6 +61,16 @@ namespace Velvet
                 return;
             }
 
+            if (config.Type == TransitionType.Bezier)
+            {
+                // Same "reachable only in principle" caveat as the Spring branch above: a classic (non-variant)
+                // config carries no enter classes, so this no-ops to an immediate complete — kept for symmetry.
+                StartBezierVariant(element, config.EnterFromClasses, config.EnterToClasses, config.DelaySec,
+                    config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, config.DurationSec,
+                    onComplete, additionalDelaySec, restingClasses: null, isExit: false);
+                return;
+            }
+
             // Classic transition enter: the to-classes are a TRANSIENT overlay (resting state = the element's
             // base classes), so they are removed on completion (variantMode: false). Per-property overrides are
             // wired only where a variant swap sets transition-property: all (see PlayVariantEnter / PlayExit); a
@@ -79,7 +89,8 @@ namespace Velvet
         {
             PlayVariantEnter(element, fromClasses, toClasses, config.DurationSec, config.Easing, config.DelaySec,
                 onComplete, additionalDelaySec, config.PropertyOverrides,
-                config.Type, config.Stiffness, config.Damping, config.Mass);
+                config.Type, config.Stiffness, config.Damping, config.Mass,
+                config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2);
         }
 
         // Variant-driven enter (initial → animate). Unlike PlayEnter, the
@@ -92,10 +103,13 @@ namespace Velvet
         // type/stiffness/damping/mass: the enclosing StyleTransitionConfig's spring knobs (Tween/100/10/1 by
         // default — the caller passes the config's own values through, since this overload takes the
         // already-unpacked timing primitives rather than the config itself).
+        // bezierX1/bezierY1/bezierX2/bezierY2: the config's cubic-bezier control points (Tailwind's own default
+        // curve by default), meaningful only when type is Bezier — passed through the same way.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
-            TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f)
+            TransitionType type = TransitionType.Tween, float stiffness = 100f, float damping = 10f, float mass = 1f,
+            float bezierX1 = 0.4f, float bezierY1 = 0f, float bezierX2 = 0.2f, float bezierY2 = 1f)
         {
             if (element == null)
             {
@@ -106,6 +120,14 @@ namespace Velvet
             {
                 StartSpringVariant(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
                     delaySec, stiffness, damping, mass, onComplete, additionalDelaySec,
+                    restingClasses: null, isExit: false);
+                return;
+            }
+
+            if (type == TransitionType.Bezier)
+            {
+                StartBezierVariant(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
+                    delaySec, bezierX1, bezierY1, bezierX2, bezierY2, durationSec, onComplete, additionalDelaySec,
                     restingClasses: null, isExit: false);
                 return;
             }
@@ -287,6 +309,18 @@ namespace Velvet
                 // still eventually complete so the reconciler's ghost-removal re-render fires.
                 StartSpringVariant(element, config.ExitFromClasses, config.ExitToClasses, config.DelaySec,
                     config.Stiffness, config.Damping, config.Mass, onComplete, additionalDelaySec,
+                    restingClasses: restoreFromOnCancel ? config.ExitFromClasses : null,
+                    isExit: true);
+                return;
+            }
+
+            if (config.Type == TransitionType.Bezier)
+            {
+                // One curve drives both directions (no ExitBezier* fields — mirrors the spring reusing its single
+                // stiffness/damping/mass for the exit). Deferred-to-attach when off-panel, same as the spring exit.
+                StartBezierVariant(element, config.ExitFromClasses, config.ExitToClasses, config.DelaySec,
+                    config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, config.DurationSec,
+                    onComplete, additionalDelaySec,
                     restingClasses: restoreFromOnCancel ? config.ExitFromClasses : null,
                     isExit: true);
                 return;
@@ -561,6 +595,98 @@ namespace Velvet
             }
         }
 
+        // Starts a bezier-driven variant enter/exit (StyleTransitionConfig.Type == Bezier). Structurally the
+        // spring's sibling (StartSpringVariant), not the tween's: it bypasses CSS transitions to sample an EXACT
+        // cubic-bezier curve, so the from→to class swap lands IMMEDIATELY at rest and a per-frame tick
+        // (StartBezierTick) drives the resolved channels via inline styles. The one difference from the spring is
+        // its completion is a fixed duration (BezierTweenDriver.Step reports done once elapsed reaches it) rather
+        // than a dynamic settle. x1/y1/x2/y2 are the CSS cubic-bezier control points; durationSec is the fixed
+        // tween length. See StartSpringVariant for the shared restingClasses / isExit / off-panel-defer contract.
+        private void StartBezierVariant(VisualElement element, string[] fromClasses, string[] toClasses,
+            float delaySec, float x1, float y1, float x2, float y2, float durationSec,
+            Action? onComplete, float additionalDelaySec, string[]? restingClasses, bool isExit)
+        {
+            var map = isExit ? _pendingExits : _pendingEnters;
+
+            // Read BEFORE the class swap lands (same rationale as StartSpringVariant): a translate axis the swap
+            // names on neither side rests at the element's own current inline translate rather than snapping to 0.
+            var restingTranslate = element.style.translate.value;
+            var plan = MotionSpringClassParser.Resolve(fromClasses, toClasses,
+                restingTranslate.x.value, restingTranslate.y.value);
+            // An invalid configuration (see ValidateBezierParameters) degrades exactly like an empty plan below:
+            // no state is built, so the shared "land the classes, complete immediately" branch handles it. A zero
+            // duration is one such case — it completes immediately with no warning, exactly like a Tween's None.
+            var state = ValidateBezierParameters(x1, y1, x2, y2, durationSec)
+                ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec)
+                : null;
+
+            CancelPending(map, element, animateReversal: isExit);
+
+            StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+            StyleAnimationClassUtils.AddClasses(element, toClasses);
+
+            if (state == null)
+            {
+                onComplete?.Invoke();
+                return;
+            }
+
+            BezierTweenDriver.ApplyCurrentValues(element, state);
+
+            var pending = new PendingAnimation
+            {
+                FromClasses = fromClasses,
+                ToClasses = toClasses,
+                RestingClasses = restingClasses,
+                AnimatingElement = element,
+                Bezier = state,
+            };
+            pending.Shadows = CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
+            state.OnSettled = onComplete;
+            map[element] = pending;
+
+            void ScheduleStart()
+            {
+                // Superseded before it ever got to start (a cancel-before-attach removed this exact pending).
+                if (!map.TryGetValue(element, out var current) || !ReferenceEquals(current, pending))
+                {
+                    return;
+                }
+                var totalDelayMs = (long)((delaySec + additionalDelaySec) * 1000);
+                if (totalDelayMs <= 0)
+                {
+                    StartBezierTick(element, pending);
+                    return;
+                }
+
+                // See StartSpringVariant for why a delayed start parks on the panel-root host (survives a
+                // transient reorder detach) rather than element.schedule.
+                var host = element.panel?.visualTree;
+                if (host == null)
+                {
+                    return;
+                }
+                var scheduled = host.schedule.Execute(() =>
+                {
+                    if (map.TryGetValue(element, out var stillCurrent) && ReferenceEquals(stillCurrent, pending))
+                    {
+                        StartBezierTick(element, pending);
+                    }
+                });
+                scheduled.ExecuteLater(totalDelayMs);
+                pending.ScheduledItem = scheduled;
+            }
+
+            if (element.panel != null)
+            {
+                ScheduleStart();
+            }
+            else
+            {
+                DeferUntilAttached(element, pending, ScheduleStart);
+            }
+        }
+
         // Starts the recurring spring tick on the panel root — the stable host, mirroring the shadow co-fade
         // tick's own rationale: a recurring item survives a keyed reorder's detach/re-attach of the animating
         // element on its own (UI Toolkit pauses and reschedules it automatically), but the panel root is
@@ -622,7 +748,55 @@ namespace Velvet
                 // when this subtree carries none, the common case).
                 EndShadowCoFade(pending);
                 MotionSpringDriver.ClearInlineOverrides(element, state);
-                ReapplySpringOwnedInlineValues(element);
+                ReapplyMotionOwnedInlineValues(element);
+                state.OnSettled?.Invoke();
+            }).Every(StyleAnimateDriver.TickMs);
+        }
+
+        // The bezier sibling of StartSpringTick: identical panel-root recurring-tick shape (same stable-host and
+        // same-clock deltaTime rationale — see StartSpringTick), stepping the fixed-duration bezier tween instead
+        // of the spring's physics and finalizing once BezierTweenDriver.Step reports elapsed has reached the
+        // duration rather than a dynamic settle. No-op if there is no host (guards rather than throws).
+        private void StartBezierTick(VisualElement element, PendingAnimation pending)
+        {
+            var state = pending.Bezier;
+            if (state == null)
+            {
+                return;
+            }
+            var host = element.panel?.visualTree;
+            if (host == null)
+            {
+                return;
+            }
+
+            StartShadowCoFadeTick(pending);
+
+            state.Tick = host.schedule.Execute((TimerState ts) =>
+            {
+                var dt = ts.deltaTime / 1000f;
+                if (dt <= 0f)
+                {
+                    return;
+                }
+
+                var completed = BezierTweenDriver.Step(element, state, dt);
+                if (!completed)
+                {
+                    return;
+                }
+
+                state.Tick?.Pause();
+                state.Tick = null;
+                // Probe both maps, not just the one this play started into: an exit-cancel reversal hand-off
+                // (CancelPending) can have MOVED it into _pendingEnters since then (same as the spring path).
+                if (!RemoveIfCurrent(_pendingExits, element, pending))
+                {
+                    RemoveIfCurrent(_pendingEnters, element, pending);
+                }
+                EndShadowCoFade(pending);
+                BezierTweenDriver.ClearInlineOverrides(element, state);
+                ReapplyMotionOwnedInlineValues(element);
                 state.OnSettled?.Invoke();
             }).Every(StyleAnimateDriver.TickMs);
         }
@@ -641,17 +815,19 @@ namespace Velvet
             return false;
         }
 
-        // MotionSpringDriver.ClearInlineOverrides nulls whichever style slots the spring wrote (opacity /
+        // A driver's ClearInlineOverrides (spring or bezier) nulls whichever style slots it wrote (opacity /
         // translate / scale / rotate), letting the cascade take back over — but a class the element still
         // carries can OWN one of those same slots as a resolver-applied inline value with no USS rule behind
         // it at all (translate-x-4, translate-x-[100px], opacity-[.5] — see MotionSpringClassParser's own scope
         // note: translate has no USS form whatsoever), so clearing the slot loses that value instead of letting
         // it fall back to a cascade rule that does not exist. DiffClassList only re-applies such a value when a
         // class REMOVAL triggers it; nothing removes a class here (the swap already landed its classes back
-        // when the spring started), so nobody else re-asserts it. Re-read the element's OWN current class list
+        // when the motion started), so nobody else re-asserts it. Re-read the element's OWN current class list
         // and re-apply whatever inline-resolved values it still names, mirroring
         // FiberWrapperElementAppliers.RestoreSharedInlineSlot's identical problem for the animate-* motions.
-        private static void ReapplySpringOwnedInlineValues(VisualElement element)
+        // Driver-agnostic (takes only the element, reads its own class list), so both the spring and bezier
+        // settle/cancel paths share it.
+        private static void ReapplyMotionOwnedInlineValues(VisualElement element)
         {
             List<string>? classes = null;
             foreach (var cls in element.GetClasses())
@@ -732,6 +908,35 @@ namespace Velvet
             FiberLogger.LogWarning("Spring",
                 $"Invalid spring parameters (stiffness={stiffness}, damping={damping}, mass={mass}). " +
                 "Expected finite, positive values for all three. Completing immediately instead of ticking forever.");
+            return false;
+        }
+
+        // Validates a bezier play's control points and duration. Duration is validated like the tween path
+        // (ValidateDuration), NOT ignored like a spring's: a zero duration is an intentional "no animation" (the
+        // same silent immediate-complete as StyleTransitionConfig.None), while a negative / out-of-range duration
+        // or a non-finite control point IS a misconfiguration and warns. A NaN/Infinity control point would
+        // propagate into every inline style write (LerpUnclamped) and never reach a target, so the tick this
+        // drives would run forever and its completion callback — the only thing that removes a presence exit's
+        // ghost — would never fire. The control points' x range ([0,1], a monotone timing function) is validated
+        // downstream in CubicBezierEvaluator instead: it degrades an out-of-range value to the default curve
+        // rather than the forever-tick failure mode this method exists to catch, so it is not re-checked here.
+        private static bool ValidateBezierParameters(float x1, float y1, float x2, float y2, float durationSec)
+        {
+            if (durationSec == 0f)
+            {
+                return false;
+            }
+
+            if (float.IsFinite(x1) && float.IsFinite(y1) && float.IsFinite(x2) && float.IsFinite(y2)
+                && durationSec > 0f && durationSec <= MaxDurationSec)
+            {
+                return true;
+            }
+
+            FiberLogger.LogWarning("Bezier",
+                $"Invalid bezier parameters (x1={x1}, y1={y1}, x2={x2}, y2={y2}, duration={durationSec}). " +
+                $"Expected finite control points and 0 < duration <= {MaxDurationSec}. " +
+                "Completing immediately instead of ticking forever.");
             return false;
         }
 
@@ -918,7 +1123,32 @@ namespace Velvet
                         spring.Tick?.Pause();
                         spring.Tick = null;
                         MotionSpringDriver.ClearInlineOverrides(element, spring);
-                        ReapplySpringOwnedInlineValues(element);
+                        ReapplyMotionOwnedInlineValues(element);
+                    }
+                    return;
+                }
+
+                if (pending.Bezier != null)
+                {
+                    var bezier = pending.Bezier;
+                    if (!forTeardown && animateReversal && element.panel != null && bezier.Tick != null)
+                    {
+                        // Hand off to a reversal exactly like the spring branch above: freeze each channel at its
+                        // current sampled value, retarget it back toward its resting value, drop the original
+                        // completion, and move ownership into the enter map. Requires a tick that has actually
+                        // started (bezier.Tick != null) — a cancel that lands while still parked behind the delay
+                        // has no running tick to redirect and nothing would ever start one, so it finalizes below.
+                        BezierTweenDriver.Retarget(bezier);
+                        bezier.OnSettled = null;
+                        CancelPending(_pendingEnters, element);
+                        _pendingEnters[element] = pending;
+                    }
+                    else
+                    {
+                        bezier.Tick?.Pause();
+                        bezier.Tick = null;
+                        BezierTweenDriver.ClearInlineOverrides(element, bezier);
+                        ReapplyMotionOwnedInlineValues(element);
                     }
                     return;
                 }
@@ -1022,7 +1252,15 @@ namespace Velvet
                     // a spring entry, which never touches transition-* styles or rents a TimeValue list).
                     pending.Spring.Tick?.Pause();
                     MotionSpringDriver.ClearInlineOverrides(element, pending.Spring);
-                    ReapplySpringOwnedInlineValues(element);
+                    ReapplyMotionOwnedInlineValues(element);
+                }
+                if (pending.Bezier != null)
+                {
+                    // A hard stop, no reversal (same as the spring branch above; the tween-only clears below are
+                    // no-ops for a bezier entry, which never touches transition-* styles or rents a TimeValue list).
+                    pending.Bezier.Tick?.Pause();
+                    BezierTweenDriver.ClearInlineOverrides(element, pending.Bezier);
+                    ReapplyMotionOwnedInlineValues(element);
                 }
                 ClearTransitionStyles(element);
                 ReturnDurationList(pending.DurationList);
@@ -1234,6 +1472,9 @@ namespace Velvet
             // as a field here — a spring's exit-cancel hand-off can MOVE it from one to the other, and the
             // settled tick just probes both (see RemoveIfCurrent) rather than keeping that choice in sync.
             public MotionSpringState? Spring;
+            // Non-null for a bezier-driven entry (StartBezierVariant) — the bezier sibling of Spring. Mutually
+            // exclusive with it per play (which one is set depends on config.Type); both null for a plain tween.
+            public BezierTweenState? Bezier;
         }
 
     }

@@ -3,9 +3,9 @@
 `V.Motion` and `V.AnimatePresence` model [Framer Motion](https://www.framer.com/motion/)'s
 declarative animation API on Unity UI Toolkit. This guide covers the variant-driven feature set:
 labels and inheritance, mount enters, exits and `PopLayout`, orchestration
-(`staggerChildren` / `delayChildren` / `when`), per-property transition overrides, and spring
-physics — plus the transition semantics that tie them together: **one config, every update**
-(and the instant opt-out; see the last section).
+(`staggerChildren` / `delayChildren` / `when`), per-property transition overrides, spring physics,
+and exact cubic-bezier easing — plus the transition semantics that tie them together: **one
+config, every update** (and the instant opt-out; see the last section).
 
 The `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …) and
 `whileHoverClass` / `whileTapClass` gestures are covered in the README; everything below uses
@@ -155,6 +155,22 @@ new StyleTransitionConfig
   a label mid-spring retargets from the current value and velocity.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
+
+## Cubic-bezier easing
+
+`TransitionType.Bezier` is Spring's other non-CSS sibling: instead of `EasingMode`'s five keyword
+curves, it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
+algorithm every browser's `cubic-bezier()` runs — via `BezierX1` / `BezierY1` / `BezierX2` /
+`BezierY2`. Unlike a spring it keeps a fixed `DurationSec`, exactly like a plain tween; only the
+shape of the easing differs. It shares Spring's channel scope (opacity and the
+translate/scale/rotate transform trio only) and its one-curve-drives-both-directions contract —
+there is no separate exit curve, and `PropertyOverrides` is not read. Defaults to Tailwind's own
+default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates
+with the `ease-in-out` keyword. `BezierX1` / `BezierX2` must stay in `[0,1]`, since a CSS timing
+function is a function of time and so must be monotone; a value outside that range is invalid and
+falls back to the default curve with a one-shot console warning instead of being silently clamped.
+`BezierY1` / `BezierY2` are left unclamped, so an overshoot/anticipate curve genuinely passes its
+target mid-tween.
 
 ## Shared-element layout animation (`layoutId`)
 

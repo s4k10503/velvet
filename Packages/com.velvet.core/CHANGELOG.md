@@ -15,6 +15,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tween drives the filter parameters frame-by-frame; opt in with `transition-filter` (honoring `duration-*`
   and the easing longhand). Non-interpolable changes (a custom filter, or an ambiguous add/remove) and the
   off-panel / zero-duration cases fall back to an instant write.
+- A third transition model, `StyleTransitionConfig { Type = TransitionType.Bezier, BezierX1,
+  BezierY1, BezierX2, BezierY2 }`: variant enters / exits sample an EXACT CSS
+  `cubic-bezier(x1,y1,x2,y2)` curve every tick instead of one of the five `EasingMode` keywords,
+  which cannot express an arbitrary numeric curve. Sibling to the spring model — it shares its
+  channel scope (opacity and the translate/scale/rotate transform trio) and its
+  one-curve-drives-both-directions contract — but keeps a fixed `DurationSec` like a plain tween;
+  only the easing shape differs. Defaults to Tailwind's own default curve,
+  `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates with the
+  `ease-in-out` keyword. `BezierX1`/`BezierX2` outside `[0,1]` is invalid per the `cubic-bezier()`
+  spec (a timing function must stay monotone in time) and falls back to that default curve with a
+  one-shot console warning instead of being silently clamped into range.
 
 ### Fixed
 

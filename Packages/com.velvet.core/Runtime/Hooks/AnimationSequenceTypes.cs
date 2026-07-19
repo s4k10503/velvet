@@ -35,7 +35,8 @@ namespace Velvet
         /// <summary>
         /// How long the sequence holds on this step before advancing. On a <see cref="To"/> step, null derives
         /// the hold from <see cref="Transition"/> (<c>DurationSec + DelaySec</c> for
-        /// <see cref="TransitionType.Tween"/>); a <see cref="TransitionType.Spring"/>-typed <see cref="To"/>
+        /// <see cref="TransitionType.Tween"/> or <see cref="TransitionType.Bezier"/>, both fixed-duration); a
+        /// <see cref="TransitionType.Spring"/>-typed <see cref="To"/>
         /// step with no explicit hold logs a warning and falls back to a fixed estimate, since a spring's
         /// settle time is physics-derived and not statically knowable (matches
         /// <see cref="StyleTransitionConfig"/>'s own documented "DurationSec is ignored for Spring" contract).
