@@ -250,6 +250,18 @@ namespace Velvet
         public Dictionary<VisualElement, StyleDivideManipulator> DivideManipulators { get; } = new();
         public Dictionary<VisualElement, StyleGridManipulator> GridManipulators { get; } = new();
 
+        // Per-divided-child dashed / dotted divider paint (divide-dashed / divide-dotted), keyed by the CHILD
+        // element (not the container) — the divider is painted on the child's own generateVisualContent, since
+        // a container paints BEHIND its children. Attached / updated by StyleDivideManipulator; the callback is
+        // not a style property, so the pool reset cannot scrub it: FiberElementCleaner detaches it per child
+        // (so a keyed-list reorder recycling one child is still caught) and Reconciler.Dispose sweeps the rest.
+        public Dictionary<VisualElement, DivideDashChildBinding> DivideDashBindings { get; } = new();
+        // [&>*]:<utility> child-combinator variant — a manipulator on the CONTAINER that applies the wrapped
+        // payload to each direct child. Mirrors GapManipulators / DivideManipulators; removed on cleanup /
+        // dispose. The per-child stacked manipulators a state-variant payload spawns live in
+        // StackedVariantManipulators (keyed by the child) and are swept with each child, not here.
+        public Dictionary<VisualElement, StyleChildVariantManipulator> ChildVariantManipulators { get; } = new();
+
         // Per-Motion-element bookkeeping of the class set actually APPLIED (base ClassNames plus any
         // variant classes propagated from an ancestor Motion's active label, PLUS the variant-only classes
         // alone — see MotionAppliedClassSet). The patch path diffs the new applied set against this stored one
@@ -327,6 +339,13 @@ namespace Velvet
         // Sheared-silhouette bookkeeping for skew-x-*/skew-y-* elements (SkewSilhouette). Keyed by
         // the element itself — skew paints via the element's own generateVisualContent, no wrapper.
         public Dictionary<VisualElement, SkewBinding> SkewBindings { get; } = new();
+
+        // Dashed / dotted border outline per element (border-dashed / border-dotted), keyed by the element
+        // itself — like skew, the outline is painted by the element's own generateVisualContent with no
+        // wrapper (only the border color is suppressed; the fill and width are untouched). Defers to skew /
+        // shadow when either owns the face. Maintained by FiberWrapperElementAppliers' border-style methods
+        // and torn down by FiberElementCleaner / Reconciler.Dispose.
+        public Dictionary<VisualElement, BorderStyleBinding> BorderStyleBindings { get; } = new();
 
         // Active gradient background per element (bg-gradient-to-* + from/via/to). Keyed by the element
         // itself — the gradient is baked to a texture set as the element's own background-image, no

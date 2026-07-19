@@ -471,6 +471,20 @@ namespace Velvet
                 SkewSilhouette.Detach(element, binding);
             }
             _ctx.SkewBindings.Clear();
+            // border-dashed / border-dotted elements hold a paint/stash callback and a border-color
+            // suppression: detach so a still-mounted element released at root disposal carries no residue.
+            foreach (var (element, binding) in _ctx.BorderStyleBindings)
+            {
+                BorderStyleSilhouette.Detach(element, binding);
+            }
+            _ctx.BorderStyleBindings.Clear();
+            // Dashed / dotted divider children hold a paint callback (not a style property, so unscrubbed by
+            // the pool reset): detach each so a still-mounted divider at root disposal leaves no live delegate.
+            foreach (var (element, binding) in _ctx.DivideDashBindings)
+            {
+                DivideDashPainter.Detach(element, binding);
+            }
+            _ctx.DivideDashBindings.Clear();
             // Gradient elements hold an inline background-image referencing a shared baked texture: clear
             // the inline image so a still-mounted element released at root disposal carries no residue
             // (the cached textures themselves are shared and outlive the reconciler).
@@ -602,6 +616,12 @@ namespace Velvet
             }
 
             _ctx.GridManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ChildVariantManipulators.Clear();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
             // Layer and world-space hosts are framework-owned GameObjects with runtime-created

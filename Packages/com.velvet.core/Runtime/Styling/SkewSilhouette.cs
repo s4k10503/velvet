@@ -59,6 +59,12 @@ namespace Velvet
         // origin is shifted back into border-box space (see SilhouetteBoundsSpacer.BorderInset).
         public float BorderLeft;
         public float BorderTop;
+
+        // Approximates skewX/skewY's descendant shear: seats each in-flow direct child's centroid at its
+        // sheared position via an inline translate (UI Toolkit's transform has no shear, so children would
+        // otherwise stay axis-aligned inside the slanted frame). Owned here so every Detach path tears it down
+        // for free; reads Spec live each pass, so a spec change needs no separate notification.
+        public StyleSkewChildTranslateManipulator? ChildTranslate;
     }
 
     /// <summary>
@@ -77,10 +83,14 @@ namespace Velvet
     /// branch already catches).
     /// <para>
     /// Caveat — this paints ONLY the element's own silhouette; it is NOT a real transform, so the element's
-    /// layout box and its children stay axis-aligned and do NOT follow the lean (unlike CSS
-    /// <c>transform: skewX()</c>, which shears descendants too). UI Toolkit has no shear transform — only
-    /// position/rotation/scale — so children must be offset manually (e.g. a per-row <c>translate-x</c> by the
-    /// frame's centre-based shear) to seat them inside a slanted frame.
+    /// layout box stays axis-aligned (unlike CSS <c>transform: skewX()</c>, which shears descendants too). UI
+    /// Toolkit has no shear transform — only position/rotation/scale — so descendant shear is
+    /// APPROXIMATED: <see cref="StyleSkewChildTranslateManipulator"/> writes each in-flow direct child an
+    /// inline translate that seats its centroid where the shear would carry it (the counter-translate a CSS
+    /// author would hand-write per row, made automatic). The approximation is exact only at each child's
+    /// centroid and piecewise-constant across the child — a real shear also rotates it — so a child large
+    /// relative to the frame reads slightly off at its far corners, and a nested transform on the child is not
+    /// composed.
     /// </para>
     /// </remarks>
     internal static class SkewSilhouette
@@ -140,6 +150,10 @@ namespace Velvet
             // suppress now so there is not even a one-frame ghost. Off-panel with no inline value it bails
             // and the events above pick it up.
             binding.Face.TryStash(element);
+            // Seat the direct children's approximate descendant shear. AddManipulator synchronously runs the
+            // manipulator's Apply once (a no-op pre-layout — the geometry callback re-seats once size resolves).
+            binding.ChildTranslate = new StyleSkewChildTranslateManipulator(binding);
+            element.AddManipulator(binding.ChildTranslate);
             element.MarkDirtyRepaint();
             return binding;
         }
@@ -160,6 +174,13 @@ namespace Velvet
             if (binding.SuppressionApplied)
             {
                 binding.Face.Release(element);
+            }
+            // RemoveManipulator runs the manipulator's UnregisterCallbacksFromTarget → Clear, which restores the
+            // translate each child carried before the shear overwrite (so a static translate-x-* is not erased).
+            if (binding.ChildTranslate != null)
+            {
+                element.RemoveManipulator(binding.ChildTranslate);
+                binding.ChildTranslate = null;
             }
             DestroyGradientTex(binding);
             SilhouetteBoundsSpacer.Remove(element, ref binding.BoundsSpacer);
@@ -224,6 +245,11 @@ namespace Velvet
         // for the three cases (resolver overwrote us / USS color may have moved beneath the sentinel / current).
         public static void SyncStashOnPatch(VisualElement element, SkewBinding binding, bool classesChanged)
             => binding.Face.SyncOnPatch(element, classesChanged);
+
+        // Re-seats the direct children's approximate descendant shear from the reconciler, the panel-independent
+        // path that also covers a child add / remove / reorder when the caster's own box did not change size (so
+        // no GeometryChangedEvent fires). The manipulator's own signature guard makes a no-change call cheap.
+        public static void SyncChildTranslate(SkewBinding binding) => binding.ChildTranslate?.Apply();
 
         private static void Draw(MeshGenerationContext mgc, VisualElement ve, SkewBinding binding)
         {

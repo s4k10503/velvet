@@ -11,6 +11,14 @@ namespace Velvet
     internal static class StyleLayerPriority
     {
         public const int Base = 0;
+        // [&>*]: child-combinator variant — an ambient blanket rule the PARENT imposes on every direct child.
+        // Ranked just above the base utility and below every self-condition (even mere sibling position): the
+        // file orders layers by how strong / intentional the activating condition is, and a rule the CHILD
+        // itself declares is a more intentional signal than one inherited from the container, so the child's
+        // own layers win. A distinct priority is also required for correctness — the arbitrary-value LayerMap
+        // is a per-property SortedList set by an INDEXER, so reusing Base for a [&>*]: arbitrary payload would
+        // let a child's own base arbitrary utility and this inherited one clobber the same slot.
+        public const int ChildVariant = 5;
         // Structural (child-position) variants first:/last:/odd:/even:/nth-child:. Velvet orders these inline
         // layers by how strong / intentional the activating condition is; a position in the sibling list is
         // the WEAKEST condition, so it sits just above the base utility and yields to every layer below it

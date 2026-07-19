@@ -124,6 +124,46 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_DivideXAndDashed_When_Extracted_Then_StyleIsDashed()
+        {
+            // Act — a dashed divider is painted (DivideDashPainter); the style rides the spec.
+            StyleDivideClass.TryExtract(new[] { "divide-x", "divide-dashed" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Style, Is.EqualTo(BorderLineStyle.Dashed));
+        }
+
+        [Test]
+        public void Given_DivideXAndDotted_When_Extracted_Then_StyleIsDotted()
+        {
+            // Act
+            StyleDivideClass.TryExtract(new[] { "divide-x", "divide-dotted" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Style, Is.EqualTo(BorderLineStyle.Dotted));
+        }
+
+        [Test]
+        public void Given_DivideXAndSolid_When_Extracted_Then_StyleIsSolid()
+        {
+            // Act — divide-solid is the default (a plain inline border), and a recognized reset.
+            StyleDivideClass.TryExtract(new[] { "divide-x", "divide-solid" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Style, Is.EqualTo(BorderLineStyle.Solid));
+        }
+
+        [Test]
+        public void Given_DivideDashedThenSolid_When_Extracted_Then_SolidResetsTheStyle()
+        {
+            // Act — last recognized style token wins (CSS cascade), so divide-solid overrides divide-dashed.
+            StyleDivideClass.TryExtract(new[] { "divide-x", "divide-dashed", "divide-solid" }, out var spec);
+
+            // Assert
+            Assert.That(spec.Style, Is.EqualTo(BorderLineStyle.Solid));
+        }
+
+        [Test]
         public void Given_LoneNamedColor_When_Extracted_Then_Inert()
         {
             // Act — a color with no divide-x / divide-y draws nothing.
@@ -278,12 +318,151 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region End-to-end (dashed / dotted dividers)
+
+        [Test]
+        public void Given_DivideXDashedRow_When_Reconciled_Then_TheDividerGutterMatchesSolid()
+        {
+            // Arrange — a dashed divider must reserve the SAME layout gutter as a solid one (only the paint
+            // differs), so its leading border WIDTH stays real (the color is what gets masked).
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.borderLeftWidth.value, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_DivideXDashedRow_When_Reconciled_Then_TheDividerColorIsSuppressed()
+        {
+            // Arrange — the native border color is masked with the sentinel so only the dashed paint shows.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(SilhouetteFace.IsSentinel(scope.Root[0][1].style.borderLeftColor.value), Is.True);
+        }
+
+        [Test]
+        public void Given_DivideXDashedRow_When_Reconciled_Then_TheDividerChildGetsAPaintCallback()
+        {
+            // Arrange — the dashed divider is painted on the divided CHILD's own generateVisualContent (a
+            // container paints behind its children, so a container-drawn divider would hide under an opaque child).
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].generateVisualContent, Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_DivideXDashedRow_When_Reconciled_Then_TheFirstChildGetsNoPaintCallback()
+        {
+            // Arrange — only actual divider children (the 2nd onward) get a paint; the first has no leading divider.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][0].generateVisualContent, Is.Null);
+        }
+
+        [Test]
+        public void Given_DivideXDashedRow_When_FlippedToSolid_Then_TheDividerColorIsReleased()
+        {
+            // Arrange — a dashed divider (color masked by the sentinel).
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row divide-x divide-dashed divide-gray-200", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            Assume.That(SilhouetteFace.IsSentinel(scope.Root[0][1].style.borderLeftColor.value), Is.True,
+                "Precondition: the dashed divider masked the border color");
+
+            // Act — flip to a solid divider; the sentinel is released back to a real color.
+            var tree2 = new VNode[] { Row("flex flex-row divide-x divide-solid divide-gray-200", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert
+            Assert.That(SilhouetteFace.IsSentinel(scope.Root[0][1].style.borderLeftColor.value), Is.False);
+        }
+
+        [Test]
+        public void Given_DivideXDashedKeyedLabels_When_OneChildIsRemoved_Then_TheDividerPaintCountTracksTheDividers()
+        {
+            // Arrange — pooled Label children (keyed) under a dashed divide: children 2 and 3 each get a paint
+            // binding. Removing the last child recycles it and must shed its binding, leaving one divider.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { KeyedLabels("flex flex-col divide-y divide-dashed divide-gray-200", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            Assume.That(scope.Reconciler.Context.DivideDashBindings.Count, Is.EqualTo(2),
+                "Precondition: two divider children each carry a paint binding");
+
+            // Act — drop the last keyed child.
+            var tree2 = new VNode[] { KeyedLabels("flex flex-col divide-y divide-dashed divide-gray-200", 2) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — one divider remains, so exactly one paint binding survives.
+            Assert.That(scope.Reconciler.Context.DivideDashBindings.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_DivideXDashedImplicitColor_When_AChildBorderColorChanges_Then_TheDividerPaintReSyncs()
+        {
+            // Arrange — a dashed divider with NO divide-{color} takes its paint color from the divided child's own
+            // would-be border color (here an inline border-[#hex]). That color must be re-synced each pass, not
+            // captured once and cached, so a later change to the child's border color moves the divider with it.
+            ColorUtility.TryParseHtmlString("#FF0000", out var red);
+            ColorUtility.TryParseHtmlString("#00FF00", out var green);
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-[#FF0000]") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            Assume.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(red),
+                "Precondition: the dashed divider captured the child's initial border color");
+
+            // Act — change the child's own border color; the divider's implicit color must follow.
+            var tree2 = new VNode[] { DividerRowWithColoredChild("flex flex-row divide-x divide-dashed", "border-[#00FF00]") };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.DivideDashBindings[scope.Root[0][1]].Color, Is.EqualTo(green));
+        }
+
+        #endregion
+
+        private static VNode DividerRowWithColoredChild(string className, string childBorderClass)
+            => V.Div(className: className, children: new VNode[]
+            {
+                V.Div(className: "child"),
+                V.Div(className: "child " + childBorderClass),
+                V.Div(className: "child"),
+            });
+
         private static VNode Row(string className, int childCount)
         {
             var children = new VNode[childCount];
             for (var i = 0; i < childCount; i++)
             {
                 children[i] = V.Div(className: "child");
+            }
+            return V.Div(className: className, children: children);
+        }
+
+        private static VNode KeyedLabels(string className, int childCount)
+        {
+            var children = new VNode[childCount];
+            for (var i = 0; i < childCount; i++)
+            {
+                children[i] = V.Label(text: "x", key: "item-" + i);
             }
             return V.Div(className: className, children: children);
         }

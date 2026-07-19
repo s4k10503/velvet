@@ -94,6 +94,9 @@ namespace Velvet
                     _patcher.ApplyAttributes(element, elementNode.Props);
                     StyleFontResolver.ApplyIfPresent(element, elementNode.ClassNames);
                     // After ReconcileChildren so the gap / divide manipulators see the final child list.
+                    // [&>*]: runs before gap / divide / grid so those win a shared child edge (see
+                    // ApplyPostChildrenClassPasses for the same ordering on the patch path).
+                    _patcher.ApplyChildVariantManipulator(element, elementNode.ClassNames);
                     _patcher.ApplyGapManipulator(element, elementNode.ClassNames);
                     _patcher.ApplyDivideManipulator(element, elementNode.ClassNames);
                     _patcher.ApplyGridManipulator(element, elementNode.ClassNames);
@@ -127,6 +130,11 @@ namespace Velvet
                     // box-shadow, so it composes with any wrap layer below and a user wrapElement. The paint
                     // self-suppresses while an active clip-path-* is present (clip-path clips the box-shadow).
                     _patcher.Appliers.ApplyShadowOnCreate(element, elementNode.ClassNames);
+                    // border-dashed / border-dotted: another wrapper-less paint (the dashed outline is the
+                    // element's own generateVisualContent; only the border color is suppressed). Attaches after
+                    // skew / shadow so it can defer to whichever owns the face. ElementNode only — a Motion never
+                    // renders this silhouette (mirroring skew's own silent Motion exclusion).
+                    _patcher.Appliers.ApplyBorderStyleOnCreate(element, elementNode.ClassNames);
                     // SceneView (V.SceneView): wire the camera-output binding. The element has no panel
                     // yet, so the first real texture sync runs from the binding's geometry callback once
                     // layout settles; later camera swaps arrive through the props diff.
@@ -302,6 +310,7 @@ namespace Velvet
                         _patcher.Appliers.ApplyDragOverlay(element, motionNode.Props.DragOverlay);
                     }
                     StyleFontResolver.ApplyIfPresent(element, appliedClasses);
+                    _patcher.ApplyChildVariantManipulator(element, appliedClasses);
                     _patcher.ApplyGapManipulator(element, appliedClasses);
                     _patcher.ApplyDivideManipulator(element, appliedClasses);
                     _patcher.ApplyGridManipulator(element, appliedClasses);

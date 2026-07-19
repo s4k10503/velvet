@@ -243,6 +243,7 @@ namespace Velvet
             DetachManipulator(element, _ctx.GapManipulators);
             DetachManipulator(element, _ctx.DivideManipulators);
             DetachManipulator(element, _ctx.GridManipulators);
+            DetachManipulator(element, _ctx.ChildVariantManipulators);
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);
@@ -284,6 +285,22 @@ namespace Velvet
                 // background onto its next consumer.
                 SkewSilhouette.Detach(element, skewBinding);
                 _ctx.SkewBindings.Remove(element);
+            }
+            if (_ctx.BorderStyleBindings.TryGetValue(element, out var borderStyleBinding))
+            {
+                // The dashed-outline paint is a generateVisualContent delegate, not a style property, so the
+                // pool reset cannot scrub it — detach unhooks the paint/stash callbacks and releases the border
+                // color suppression so a pooled element cannot ghost a dashed outline onto its next consumer.
+                BorderStyleSilhouette.Detach(element, borderStyleBinding);
+                _ctx.BorderStyleBindings.Remove(element);
+            }
+            if (_ctx.DivideDashBindings.TryGetValue(element, out var divideDashBinding))
+            {
+                // Keyed by the divided CHILD, so a keyed-list reorder recycling one child independently of its
+                // divide container is still caught here (the container's own manipulator may never re-run for
+                // it). Detach unhooks the divider paint delegate the pool reset cannot scrub.
+                DivideDashPainter.Detach(element, divideDashBinding);
+                _ctx.DivideDashBindings.Remove(element);
             }
             if (_ctx.GradientBackgrounds.ContainsKey(element))
             {
