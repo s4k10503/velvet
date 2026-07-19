@@ -54,11 +54,13 @@ namespace Velvet.Tests
             // Act — an over-bright bracket value (N>1), a range the pre-shader parser rejected outright.
             var fn = ResolveSingle("brightness-[1.5]");
 
-            // Assert — resolves to exactly the built-in brightness Custom definition carrying the raw factor. RED
+            // Assert — resolves to exactly the built-in brightness Custom definition (matched by its filterName,
+            // not its reference: a material-invalidation rebuild hands back a fresh definition instance, which a
+            // reference compare would flake against once the cache re-primes) carrying the raw factor. RED
             // against the pre-shader path two ways: it rejected N>1 at parse (fn stays null), and even a value it
             // accepted bound the Tint filter, not this Custom definition.
-            Assert.That((fn?.type, fn?.customDefinition, fn?.GetParameter(0).floatValue),
-                Is.EqualTo((FilterFunctionType.Custom, BuiltInFilterDefinitions.Brightness, 1.5f)));
+            Assert.That((fn?.type, fn?.customDefinition?.filterName, fn?.GetParameter(0).floatValue),
+                Is.EqualTo(((FilterFunctionType?)FilterFunctionType.Custom, "velvet-brightness", (float?)1.5f)));
         }
 
         [Test]
@@ -70,8 +72,8 @@ namespace Velvet.Tests
             // Assert — resolves to exactly the built-in saturate Custom definition carrying the raw factor. RED
             // against the pre-shader path two ways: it rejected N>1 at parse (fn stays null), and even a value it
             // accepted bound the Grayscale filter, not this Custom definition.
-            Assert.That((fn?.type, fn?.customDefinition, fn?.GetParameter(0).floatValue),
-                Is.EqualTo((FilterFunctionType.Custom, BuiltInFilterDefinitions.Saturate, 1.5f)));
+            Assert.That((fn?.type, fn?.customDefinition?.filterName, fn?.GetParameter(0).floatValue),
+                Is.EqualTo(((FilterFunctionType?)FilterFunctionType.Custom, "velvet-saturate", (float?)1.5f)));
         }
 
         [Test]
@@ -87,8 +89,8 @@ namespace Velvet.Tests
 
             // Assert
             var f = el.style.filter.value;
-            Assert.That((f[0].customDefinition, f[1].type),
-                Is.EqualTo((BuiltInFilterDefinitions.Brightness, FilterFunctionType.Contrast)));
+            Assert.That((f[0].customDefinition?.filterName, f[1].type),
+                Is.EqualTo(("velvet-brightness", FilterFunctionType.Contrast)));
         }
 
         [Test]
@@ -103,8 +105,8 @@ namespace Velvet.Tests
 
             // Assert
             var f = el.style.filter.value;
-            Assert.That((f[0].customDefinition, f[1].type),
-                Is.EqualTo((BuiltInFilterDefinitions.Saturate, FilterFunctionType.Sepia)));
+            Assert.That((f[0].customDefinition?.filterName, f[1].type),
+                Is.EqualTo(("velvet-saturate", FilterFunctionType.Sepia)));
         }
 
         [Test]

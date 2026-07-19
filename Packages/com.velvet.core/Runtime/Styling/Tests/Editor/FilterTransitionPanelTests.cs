@@ -115,10 +115,16 @@ namespace Velvet.Tests
             // Act — the midpoint frame.
             StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
 
-            // Assert — halfway between 1.0 and 1.5. RED without the built-in-custom fix: TryBuildChannels bails
-            // on any Custom, leaving zero channels, so ApplyFrame writes an empty list (FirstOrDefault → 0).
-            Assert.That(element.style.filter.value.Select(fn => fn.GetParameter(0).floatValue).FirstOrDefault(),
-                Is.EqualTo(1.25f));
+            // Assert — the rebuilt Custom carries the brightness definition (not a definition-less Custom that
+            // renders nothing) and lerps to halfway (1.25). RED without the built-in-custom fix (TryBuildChannels
+            // bails on any Custom → zero channels → empty list → fn null), and RED if ApplyFrame drops the
+            // definition threading (a rebuilt Custom would carry a null customDefinition). The definition's
+            // filterName is the probe, not its reference: a material-invalidation rebuild hands back a fresh
+            // definition instance, so a reference compare would flake once the cache is re-primed.
+            var list = element.style.filter.value;
+            FilterFunction? fn = list != null && list.Count > 0 ? list[0] : null;
+            Assert.That((fn?.type, fn?.customDefinition?.filterName, fn?.GetParameter(0).floatValue),
+                Is.EqualTo(((FilterFunctionType?)FilterFunctionType.Custom, "velvet-brightness", (float?)1.25f)));
         }
 
         [Test]
