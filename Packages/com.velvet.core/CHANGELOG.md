@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `checked:` variant value no longer beats a concurrent `hover:` / `focus:` / `active:` value on the
+  same property. Tailwind's variant order emits `checked` before the interaction states, so on a hovered
+  checked control the interaction state wins the tie; the layer priority now ranks `checked` below them
+  to match (it previously ranked highest).
 - The default ring color (`ring` / `ring-2` with no explicit `ring-<color>`) is now blue-500 at 0.5
   alpha, matching Tailwind's `--tw-ring-color`, instead of fully opaque. An explicit ring color stays
   opaque.
