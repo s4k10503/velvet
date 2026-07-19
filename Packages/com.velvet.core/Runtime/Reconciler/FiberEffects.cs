@@ -400,6 +400,14 @@ namespace Velvet
                 if (rootFiber != null) RunEffects(rootFiber);
                 return;
             }
+            FlushPendingPassiveEffects(context);
+        }
+
+        // Context overload: the batch scheduler drives this before a synchronous discrete-event flush so a
+        // prior commit's pending passive effects run before the new update's render — React's
+        // flushPassiveEffects-before-update. A no-op when nothing is pending.
+        internal static void FlushPendingPassiveEffects(ReconcilerContext context)
+        {
             // An effect setup may setState and stage a fresh batch synchronously; drain until quiescent.
             // Bounded to surface a runaway effect-stages-effect loop as a test failure rather than a hang.
             var guard = 0;

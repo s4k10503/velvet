@@ -64,6 +64,10 @@ namespace Velvet
         // whole-tree flush) run in a single pass with no tier separation and read the live store snapshot.
         private Action<bool>? _onDrainBegin;
         private Action? _onDrainEnd;
+        // Flushes any pending passive effects from a prior commit, wired by the owning Reconciler. Run before a
+        // synchronous discrete-event drain so those effects commit before the new update's render — React's
+        // flushPassiveEffects-before-update.
+        private Action? _flushPassiveEffects;
 
         // True when an immediate drain has just established snapshot pins that a pending delayed drain should
         // reuse (the delayed drain continues the immediate drain's wave). Set by DrainImmediate, consumed by
@@ -114,6 +118,10 @@ namespace Velvet
             _onDrainBegin = onDrainBegin;
             _onDrainEnd = onDrainEnd;
         }
+
+        // Registers the pending-passive-effect flush run before a synchronous discrete-event drain (React's
+        // flushPassiveEffects-before-update). Called once by the owning Reconciler.
+        internal void SetPassiveEffectFlush(Action flush) => _flushPassiveEffects = flush;
 
         // Enqueues fiber for a batched flush at the next frame boundary
         // (Normal / Urgent priority) and registers the single shared drain callback if not already pending.
@@ -347,6 +355,16 @@ namespace Velvet
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
             DrainImmediate();
+        }
+
+        // Flushes a prior commit's pending passive effects (React's flushPassiveEffects-before-update), driven
+        // by the discrete-event boundary so an effect runs before that event's render — NOT from the mount /
+        // commit-phase FlushImmediate callers, which must leave passive effects pending for the scheduler tick.
+        // Gated like FlushImmediate so it never re-enters a live drain / reconcile.
+        internal void FlushPendingPassiveEffects()
+        {
+            if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;
+            _flushPassiveEffects?.Invoke();
         }
 
         // Drops fiber from both pending queues. Called on Unmount / Dispose so a

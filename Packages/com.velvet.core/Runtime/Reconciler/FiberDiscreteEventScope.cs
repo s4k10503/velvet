@@ -30,7 +30,18 @@ namespace Velvet
                 FiberWorkLoop.IsInDiscreteEvent = wasInDiscreteEvent;
                 if (!wasInDiscreteEvent)
                 {
-                    batchScheduler?.FlushImmediate();
+                    // React flushes a prior commit's pending passive effects before a discrete update's render,
+                    // so the effect runs before this event's re-render. Scoped to the discrete boundary (not the
+                    // mount / commit-phase FlushImmediate callers, which keep passive effects pending). The
+                    // event's own flush still runs even if a runaway passive-effect loop throws its guard.
+                    try
+                    {
+                        batchScheduler?.FlushPendingPassiveEffects();
+                    }
+                    finally
+                    {
+                        batchScheduler?.FlushImmediate();
+                    }
                 }
             }
         }
