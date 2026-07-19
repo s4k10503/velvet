@@ -67,6 +67,35 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ChildVariantNestingChildVariantBehindStateLayer_When_Parsed_Then_Declines()
+        {
+            // Act — the nested [&>*] hides behind an intervening state layer (hover: / dark:). It still has no
+            // CONTAINER to walk at that depth, so it must be rejected exactly like the immediate [&>*]:[&>*]:
+            // form — the reject peels state-variant layers rather than only inspecting the immediate inner token.
+            var hoverNested = StyleChildVariantClass.TryParse("[&>*]:hover:[&>*]:mt-2", out _);
+            var darkNested = StyleChildVariantClass.TryParse("[&>*]:dark:[&>*]:mt-2", out _);
+
+            // Assert — neither state-mediated self-nest is admitted.
+            Assert.That((hoverNested, darkNested), Is.EqualTo((false, false)));
+        }
+
+        [Test]
+        public void Given_ChildVariantHidingUngatedVariantBehindStateLayer_When_Parsed_Then_Declines()
+        {
+            // Act — each ungated kind (structural / has- / attribute- / supports-) hides behind an intervening
+            // state layer (hover: / dark:). None reaches a gating owner at that depth, so — exactly like the same
+            // kind sitting at the payload head — each must be rejected: the reject peels state layers and
+            // re-checks the whole reject-list at every depth, not only the immediate inner token.
+            var structural = StyleChildVariantClass.TryParse("[&>*]:hover:first:mt-2", out _);
+            var has = StyleChildVariantClass.TryParse("[&>*]:hover:has-[.x]:mt-2", out _);
+            var attribute = StyleChildVariantClass.TryParse("[&>*]:dark:data-[open=true]:mt-2", out _);
+            var supports = StyleChildVariantClass.TryParse("[&>*]:hover:supports-[display:flex]:mt-2", out _);
+
+            // Assert — no state-mediated ungated variant is admitted.
+            Assert.That((structural, has, attribute, supports), Is.EqualTo((false, false, false, false)));
+        }
+
+        [Test]
         public void Given_ChildVariantWrappingStateVariantPayload_When_Parsed_Then_AcceptsComposedPayload()
         {
             // Act — a state variant (hover:) DOES compose through GateStackedVariant, so the whole

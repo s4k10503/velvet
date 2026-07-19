@@ -35,6 +35,17 @@ namespace Velvet.Tests
             return new List<FilterFunction> { fn };
         }
 
+        // A single brightness inline filter list. brightness renders as a FIRST-PARTY custom-filter function
+        // (FilterFunctionType.Custom bound to BuiltInFilterDefinitions.Brightness), so it exercises the driver's
+        // built-in-custom interpolation path — distinct from a user filter-[name:args] custom, which stays a
+        // discrete instant write.
+        private static List<FilterFunction> BrightnessList(float amount)
+        {
+            var fn = new FilterFunction(BuiltInFilterDefinitions.Brightness);
+            fn.AddParameter(new FilterParameter(amount));
+            return new List<FilterFunction> { fn };
+        }
+
         // Mounts a named leaf, forces a layout pass so resolvedStyle.transitionDuration resolves, and returns it.
         private VisualElement MountResolved(string className)
         {
@@ -86,6 +97,34 @@ namespace Velvet.Tests
 
             // Assert — a distinct reference each frame (RED if the driver reuses one mutated list).
             Assert.That(ReferenceEquals(first, second), Is.False);
+        }
+
+        [Test]
+        public void Given_BrightnessTween_When_FrameAtMid_Then_BrightnessIsHalfway()
+        {
+            // Arrange — a built-in brightness 1.0 → 1.5 tween. brightness composes as FilterFunctionType.Custom,
+            // so the driver must interpolate it like blur rather than treating every Custom as a discrete
+            // instant write (which would leave the aligned channels empty and write no filter at all).
+            Assume.That(BuiltInFilterDefinitions.Brightness, Is.Not.Null,
+                "Precondition: the brightness shader resolved into a definition");
+            var element = new VisualElement();
+            var to = BrightnessList(1.5f);
+            StyleFilterTransitionDriver.TryBuildChannels(BrightnessList(1f), to, out var channels);
+            var binding = new StyleFilterTransitionBinding { Channels = channels, Easing = EasingMode.Linear, Target = to };
+
+            // Act — the midpoint frame.
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert — the rebuilt Custom carries the brightness definition (not a definition-less Custom that
+            // renders nothing) and lerps to halfway (1.25). RED without the built-in-custom fix (TryBuildChannels
+            // bails on any Custom → zero channels → empty list → fn null), and RED if ApplyFrame drops the
+            // definition threading (a rebuilt Custom would carry a null customDefinition). The definition's
+            // filterName is the probe, not its reference: a material-invalidation rebuild hands back a fresh
+            // definition instance, so a reference compare would flake once the cache is re-primed.
+            var list = element.style.filter.value;
+            FilterFunction? fn = list != null && list.Count > 0 ? list[0] : null;
+            Assert.That((fn?.type, fn?.customDefinition?.filterName, fn?.GetParameter(0).floatValue),
+                Is.EqualTo(((FilterFunctionType?)FilterFunctionType.Custom, "velvet-brightness", (float?)1.25f)));
         }
 
         [Test]

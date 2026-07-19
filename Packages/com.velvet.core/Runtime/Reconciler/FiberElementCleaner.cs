@@ -320,7 +320,8 @@ namespace Velvet
             if (_ctx.FilterTransitionBindings.TryGetValue(element, out var filterTransitionBinding))
             {
                 // Pause the one-shot tick and unregister so a pooled element does not keep ticking a mid-flight
-                // filter tween. The inline filter itself is scrubbed by the pool reset + ClearAll above.
+                // filter tween. The inline filter itself is scrubbed by FiberElementPoolReset before reuse; the
+                // ClearAll above only drops the arbitrary-value layer map, never style.filter.
                 StyleFilterTransitionDriver.Detach(element, filterTransitionBinding);
                 _ctx.FilterTransitionBindings.Remove(element);
             }

@@ -16,9 +16,13 @@ namespace Velvet
     // with NO gating owner reachable through that path — a structural (first:/nth-child), has-, attribute-,
     // supports-, or (self-)child-variant — is rejected at parse time (it would only ever be a dead token),
     // mirroring the has- extractor's reject-list precisely (which, unlike the structural config's stricter
-    // list, keeps state variants because they DO reach a gating owner here). The self-nesting reject matters
-    // because a child is never itself the CONTAINER a nested [&>*]: would need to walk — [&>*]:[&>*]:mt-2 has
-    // nothing to apply the inner wrap to and must not silently degrade into applying mt-2 directly.
+    // list, keeps state variants because they DO reach a gating owner here). Because a state variant DOES
+    // compose, an ungated variant can hide one or more state layers deep ([&>*]:hover:first:mt-2,
+    // [&>*]:dark:has-[.x]:mt-2, [&>*]:hover:[&>*]:mt-2) and still be dead, so the reject peels every leading
+    // state layer and re-checks the whole reject-list at each depth, not only at the payload's head. The
+    // self-nesting reject is one of that list for the same reason it never gates: a child is never itself the
+    // CONTAINER a nested [&>*]: would walk, so the inner wrap has nothing to apply to and must not silently
+    // degrade into applying the leaf directly.
     //
     // This recognizes only the literal [&>*]: direct-child scope, not a general child-combinator family.
     internal static class StyleChildVariantClass
@@ -50,10 +54,10 @@ namespace Velvet
         }
 
         // Splits a [&>*]:<payload> token into its wrapped payload. Returns false for a non-token, an empty
-        // payload, or a payload with no gating owner reachable through StyleVariantPayload.Apply — a
-        // structural / has- / attribute- / supports- / (self-nested) child-variant — which would only become
-        // a dead token. A state variant (hover:, dark:hover:, group-hover:) IS accepted: it composes through
-        // GateStackedVariant.
+        // payload, or a payload that — at its head or behind any number of intervening state layers — carries a
+        // variant with no gating owner reachable through StyleVariantPayload.Apply: a structural / has- /
+        // attribute- / supports- / (self-nested) child-variant, which would only become a dead token. A state
+        // variant (hover:, dark:hover:, group-hover:) IS accepted: it composes through GateStackedVariant.
         public static bool TryParse(string? cls, out string payload)
         {
             payload = string.Empty;
@@ -62,17 +66,44 @@ namespace Velvet
                 return false;
             }
             var inner = cls!.Substring(Prefix.Length);
-            if (inner.Length == 0
-                || StyleStructuralVariantClass.IsStructural(inner)
-                || StyleHasVariantClass.IsHas(inner)
-                || StyleAttributeVariantClass.IsAttribute(inner)
-                || StyleSupportsVariantClass.IsSupports(inner)
-                || IsChildVariant(inner))
+            if (inner.Length == 0 || NestsUngatedVariant(inner))
             {
                 return false;
             }
             payload = inner;
             return true;
+        }
+
+        // True when payload — at its head or behind any number of intervening state-variant layers — carries a
+        // variant with no gating owner reachable through StyleVariantPayload.Apply: a structural / has- /
+        // attribute- / supports- / (self-nested) child-variant. Only state variants (hover:, dark:,
+        // group-hover:) compose through Apply, so those are the only peelable layers; every other variant kind
+        // is a dead token here whether it leads the payload or hides one or more state layers deep
+        // (hover:first:mt-2, dark:has-[.x]:mt-2, hover:[&>*]:mt-2). A self-nested [&>*] is rejected for the same
+        // reason it never gates: a child is not the CONTAINER that inner wrap would walk. Peel each leading
+        // state layer and re-check the whole reject-list at every depth; each peel strips the segment after the
+        // variant's ':', so payload strictly shrinks and the loop terminates.
+        private static bool NestsUngatedVariant(string payload)
+        {
+            var current = payload;
+            while (true)
+            {
+                if (StyleStructuralVariantClass.IsStructural(current)
+                    || StyleHasVariantClass.IsHas(current)
+                    || StyleAttributeVariantClass.IsAttribute(current)
+                    || StyleSupportsVariantClass.IsSupports(current)
+                    || IsChildVariant(current))
+                {
+                    return true;
+                }
+                // Only a leading state variant is peelable; a non-variant remainder is the leaf utility, with
+                // nothing left to peel, so no ungated variant is nested behind it.
+                if (!StyleVariantClass.TryParse(current, out _, out var next) || string.IsNullOrEmpty(next))
+                {
+                    return false;
+                }
+                current = next!;
+            }
         }
 
         // Collects the wrapped payload of EVERY [&>*]: token, unlike gap / divide's last-value-wins scalar:
