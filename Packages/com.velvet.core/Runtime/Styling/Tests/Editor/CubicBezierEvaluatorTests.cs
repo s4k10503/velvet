@@ -9,9 +9,10 @@ namespace Velvet.Tests
     /// <summary>
     /// Pins the pure CSS <c>cubic-bezier(x1,y1,x2,y2)</c> evaluation (<see cref="CubicBezierEvaluator.Evaluate"/>):
     /// the boundary clamps, the linear/identity fast path, an exact front-loaded reference point that a keyword
-    /// easing could not reproduce, an unclamped overshoot, solver monotonicity, and the out-of-range x1/x2
-    /// reject-and-fall-back-to-default-curve path (with its one-shot warning). Panel-free by design — the
-    /// evaluator is pure math with no <c>VisualElement</c>/panel dependency.
+    /// easing could not reproduce, an unclamped overshoot, solver monotonicity, and the reject-and-fall-back-to-
+    /// default-curve path (with its one-shot warning) for both an out-of-range x1/x2 and a non-finite coordinate
+    /// on any of the four axes. Panel-free by design — the evaluator is pure math with no
+    /// <c>VisualElement</c>/panel dependency.
     /// </summary>
     /// <remarks>
     /// The reference midpoint (0.7756) was computed independently with a Python implementation of the same
@@ -120,6 +121,41 @@ namespace Velvet.Tests
 
             // Act
             var output = CubicBezierEvaluator.Evaluate(2f, 0f, 0.2f, 1f, 0.5f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ANaNXControlPoint_When_Evaluated_Then_TheOutputMatchesTheDefaultCurveInsteadOfPassingNaNThrough()
+        {
+            // Arrange — a NaN control point is not caught by an ordinary out-of-range comparison (every
+            // comparison against NaN is false), so without an explicit finiteness check the NaN would flow
+            // straight into the solver and poison the output; the finite fallback must degrade it to the default
+            // curve exactly like an out-of-range value. The reference is a valid call, so it logs nothing.
+            var expected = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
+            LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
+
+            // Act
+            var output = CubicBezierEvaluator.Evaluate(float.NaN, 0f, 0.2f, 1f, 0.5f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ANaNYControlPoint_When_Evaluated_Then_TheOutputMatchesTheDefaultCurveInsteadOfPassingNaNThrough()
+        {
+            // Arrange — a NaN in y1/y2 survives the x-axis range/finiteness test (its x's are valid) but still
+            // poisons SampleCurve(y1,y2,s) into a NaN output, so the finiteness guard has to cover every
+            // coordinate, not just the two x's. With a valid x pair here, only guarding y catches this — it must
+            // degrade to the default curve and warn exactly like any other invalid control point. The reference
+            // is a valid call, so it logs nothing.
+            var expected = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
+            LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
+
+            // Act
+            var output = CubicBezierEvaluator.Evaluate(0.4f, float.NaN, 0.2f, 1f, 0.5f);
 
             // Assert
             Assert.That(output, Is.EqualTo(expected));

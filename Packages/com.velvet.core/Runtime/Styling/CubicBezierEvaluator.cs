@@ -69,10 +69,15 @@ namespace Velvet
 
             // A CSS timing function must be monotone in time, so an x1/x2 outside [0,1] makes the WHOLE curve
             // invalid — not just the offending coordinate — the same way a browser rejects the entire
-            // cubic-bezier() declaration rather than clamping one axis into range.
-            if (x1 < 0f || x1 > 1f || x2 < 0f || x2 > 1f)
+            // cubic-bezier() declaration rather than clamping one axis into range. Finiteness is tested on ALL
+            // four control coordinates, not just the x's: every comparison against NaN is false, so a range check
+            // alone would wave a non-finite point straight through — and a NaN in y1/y2 clears the x-only range
+            // test yet still poisons SampleCurve(y1,y2,s) into a NaN output. Guarding every coordinate keeps
+            // Evaluate self-safe regardless of what a caller passes.
+            if (!float.IsFinite(x1) || !float.IsFinite(y1) || !float.IsFinite(x2) || !float.IsFinite(y2)
+                || x1 < 0f || x1 > 1f || x2 < 0f || x2 > 1f)
             {
-                WarnInvalidControlPoints(x1, x2);
+                WarnInvalidControlPoints(x1, y1, x2, y2);
                 x1 = DefaultX1;
                 y1 = DefaultY1;
                 x2 = DefaultX2;
@@ -90,7 +95,7 @@ namespace Velvet
             return SampleCurve(y1, y2, s);
         }
 
-        private static void WarnInvalidControlPoints(float x1, float x2)
+        private static void WarnInvalidControlPoints(float x1, float y1, float x2, float y2)
         {
             if (s_warnedInvalidControlPoints)
             {
@@ -98,8 +103,9 @@ namespace Velvet
             }
             s_warnedInvalidControlPoints = true;
             FiberLogger.LogWarning("Bezier",
-                $"cubic-bezier control points x1={x1}, x2={x2} are outside [0,1], which is invalid — a timing " +
-                "function must be monotone in time. Falling back to the default curve, cubic-bezier(0.4, 0, 0.2, 1).");
+                $"cubic-bezier control points (x1={x1}, y1={y1}, x2={x2}, y2={y2}) are invalid — a timing " +
+                "function's x must stay within [0,1] to be monotone in time, and every coordinate must be finite. " +
+                "Falling back to the default curve, cubic-bezier(0.4, 0, 0.2, 1).");
         }
 
         // Bézier with endpoints fixed at 0 and 1 collapses to the cubic polynomial (a*s + b)*s*s + c*s, whose
