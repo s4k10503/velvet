@@ -981,12 +981,22 @@ namespace Velvet
                     (functions ??= new List<FilterFunction>()).Add(BuildCustomFilter(custom));
                 }
             }
+            // The transition-filter opt-in tween owns the write when active; it reads the current inline list as
+            // its from-side, so it must run BEFORE the instant write below (never observing its own write). It
+            // returns false — deferring to the instant write — for a non-opting element, off-panel, zero
+            // duration, or a non-interpolable change.
             if (functions == null)
             {
-                element.style.filter = StyleKeyword.Null;
+                if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, null))
+                {
+                    element.style.filter = StyleKeyword.Null;
+                }
                 return;
             }
-            element.style.filter = functions;
+            if (!StyleFilterTransitionDriver.TryStartOrRedirect(element, functions))
+            {
+                element.style.filter = functions;
+            }
         }
 
         // Builds the FilterFunction for a filter-[name:args] custom filter. The public

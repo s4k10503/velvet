@@ -486,6 +486,13 @@ namespace Velvet
                 StyleAnimateDriver.Detach(element, binding);
             }
             _ctx.AnimationBindings.Clear();
+            // filter-* transitions hold a one-shot scheduled tick: pause + unregister each so a still-mounted
+            // element released at root disposal stops ticking any in-flight filter tween.
+            foreach (var (element, binding) in _ctx.FilterTransitionBindings)
+            {
+                StyleFilterTransitionDriver.Detach(element, binding);
+            }
+            _ctx.FilterTransitionBindings.Clear();
             // SceneView bindings own a live RenderTexture with a camera rendering into it: release both
             // ends so a still-mounted scene view at root disposal leaves no orphaned texture and no
             // camera left targeting one.
