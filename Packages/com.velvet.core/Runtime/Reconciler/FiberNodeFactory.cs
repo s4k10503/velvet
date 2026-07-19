@@ -130,6 +130,11 @@ namespace Velvet
                     // box-shadow, so it composes with any wrap layer below and a user wrapElement. The paint
                     // self-suppresses while an active clip-path-* is present (clip-path clips the box-shadow).
                     _patcher.Appliers.ApplyShadowOnCreate(element, elementNode.ClassNames);
+                    // border-dashed / border-dotted: another wrapper-less paint (the dashed outline is the
+                    // element's own generateVisualContent; only the border color is suppressed). Attaches after
+                    // skew / shadow so it can defer to whichever owns the face. ElementNode only — a Motion never
+                    // renders this silhouette (mirroring skew's own silent Motion exclusion).
+                    _patcher.Appliers.ApplyBorderStyleOnCreate(element, elementNode.ClassNames);
                     // SceneView (V.SceneView): wire the camera-output binding. The element has no panel
                     // yet, so the first real texture sync runs from the binding's geometry callback once
                     // layout settles; later camera swaps arrive through the props diff.
