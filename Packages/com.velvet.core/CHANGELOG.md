@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carrying the new `transition-filter` class (e.g. `transition-filter hover:blur-md`), matching CSS
   `transition: filter`. UI Toolkit cannot transition the inline `filter` property natively, so a scheduler
   tween drives the filter parameters frame-by-frame; opt in with `transition-filter` (honoring `duration-*`
-  and the easing longhand). Non-interpolable changes (a custom filter, or an ambiguous add/remove) and the
-  off-panel / zero-duration cases fall back to an instant write.
+  and the easing longhand). The built-in `brightness-*` / `saturate-*` filters interpolate like the others
+  even though they render as custom-filter functions; only a user `filter-[name:args]` custom filter, an
+  ambiguous add/remove, or the off-panel / zero-duration cases fall back to an instant write.
 - A third transition model, `StyleTransitionConfig { Type = TransitionType.Bezier, BezierX1,
   BezierY1, BezierX2, BezierY2 }`: variant enters / exits sample an EXACT CSS
   `cubic-bezier(x1,y1,x2,y2)` curve every tick instead of one of the five `EasingMode` keywords,

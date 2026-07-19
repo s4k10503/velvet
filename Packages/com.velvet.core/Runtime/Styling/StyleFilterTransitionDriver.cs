@@ -61,12 +61,17 @@ namespace Velvet
         internal readonly struct Channel
         {
             public readonly FilterFunctionType Type;
+            // The bound definition for a first-party built-in Custom function (brightness/saturate); null for a
+            // native filter type. ApplyFrame rebuilds the function through it so a rebuilt Custom rebinds its
+            // shader material instead of collapsing to a definition-less Custom that renders nothing.
+            public readonly FilterFunctionDefinition? Definition;
             public readonly FilterParameter[] From;
             public readonly FilterParameter[] To;
 
-            public Channel(FilterFunctionType type, FilterParameter[] from, FilterParameter[] to)
+            public Channel(FilterFunctionType type, FilterFunctionDefinition? definition, FilterParameter[] from, FilterParameter[] to)
             {
                 Type = type;
+                Definition = definition;
                 From = from;
                 To = to;
             }
@@ -116,7 +121,7 @@ namespace Velvet
             var from = element.style.filter.value;
             if (!TryBuildChannels(from, to, out var channels))
             {
-                // Non-interpolable (a custom filter, or an ambiguous add/remove) → discrete instant write.
+                // Non-interpolable (a user custom filter, or an ambiguous add/remove) → discrete instant write.
                 Cancel(b);
                 return false;
             }
@@ -152,7 +157,11 @@ namespace Velvet
             var list = new List<FilterFunction>(b.Channels.Length);
             foreach (var channel in b.Channels)
             {
-                var fn = new FilterFunction(channel.Type);
+                // A first-party built-in Custom (brightness/saturate) must be rebuilt through its definition so
+                // it rebinds its shader; a native type is rebuilt by its FilterFunctionType.
+                var fn = channel.Definition != null
+                    ? new FilterFunction(channel.Definition)
+                    : new FilterFunction(channel.Type);
                 for (var k = 0; k < channel.From.Length; k++)
                 {
                     fn.AddParameter(LerpParam(channel.From[k], channel.To[k], e));
@@ -221,10 +230,11 @@ namespace Velvet
         #region Channel alignment
 
         // Builds the aligned interpolation slots for from→to (both always in canonical filter order). Returns
-        // false — meaning "not interpolable, write instantly" — for a custom filter or an ambiguous add/remove
-        // (a UITK filter type that appears more than once, e.g. grayscale-* + saturate- both rendering as
-        // Grayscale, which cannot be paired by type alone). A null from is treated as an empty list (a
-        // freshly-mounted element with no inline filter reads null, not []).
+        // false — meaning "not interpolable, write instantly" — for a user filter-[name:args] custom or an
+        // ambiguous add/remove (a channel that appears more than once, which cannot be paired by identity
+        // alone). The first-party brightness/saturate customs DO interpolate: each is a single float amount, so
+        // they pair like a native filter, keyed by their definition to stay distinct from one another. A null
+        // from is treated as an empty list (a freshly-mounted element with no inline filter reads null, not []).
         internal static bool TryBuildChannels(List<FilterFunction>? from, List<FilterFunction>? to,
             out Channel[] channels)
         {
@@ -235,14 +245,15 @@ namespace Velvet
             {
                 return false;
             }
-            // A custom filter binds opaque shader material state; a numeric cross-fade is meaningless.
-            if (ContainsCustom(from) || ContainsCustom(to))
+            // A user custom filter binds opaque shader material state; a numeric cross-fade is meaningless. The
+            // first-party brightness/saturate customs are excluded — they interpolate like a native filter.
+            if (ContainsUserCustom(from) || ContainsUserCustom(to))
             {
                 return false;
             }
 
-            // Fast path: identical type sequence — the common case (a value change on the same filter set).
-            if (SameTypeSequence(from, to))
+            // Fast path: identical channel sequence — the common case (a value change on the same filter set).
+            if (SameChannelSequence(from, to))
             {
                 var paired = new Channel[fromCount];
                 for (var k = 0; k < fromCount; k++)
@@ -253,15 +264,15 @@ namespace Velvet
                     {
                         return false;
                     }
-                    paired[k] = new Channel(f.type, Snapshot(f), Snapshot(t));
+                    paired[k] = new Channel(f.type, DefinitionOf(f), Snapshot(f), Snapshot(t));
                 }
                 channels = paired;
                 return true;
             }
 
-            // Different sequences: a filter was added or removed. Pairing by type is only unambiguous when each
-            // UITK type occurs at most once per list; otherwise (a repeated type) fall back to an instant write.
-            if (HasRepeatedType(from) || HasRepeatedType(to))
+            // Different sequences: a filter was added or removed. Pairing by channel is only unambiguous when
+            // each channel occurs at most once per list; otherwise (a repeat) fall back to an instant write.
+            if (HasRepeatedChannel(from) || HasRepeatedChannel(to))
             {
                 return false;
             }
@@ -274,17 +285,17 @@ namespace Velvet
                 {
                     var f = from![i];
                     var t = to![j];
-                    if (f.type == t.type)
+                    if (SameChannel(f, t))
                     {
                         if (f.parameterCount != t.parameterCount)
                         {
                             return false;
                         }
-                        merged.Add(new Channel(f.type, Snapshot(f), Snapshot(t)));
+                        merged.Add(new Channel(f.type, DefinitionOf(f), Snapshot(f), Snapshot(t)));
                         i++;
                         j++;
                     }
-                    else if (CanonicalRank(f.type) < CanonicalRank(t.type))
+                    else if (CanonicalRank(f) < CanonicalRank(t))
                     {
                         merged.Add(FadeOut(f));
                         i++;
@@ -312,10 +323,17 @@ namespace Velvet
 
         // A filter present only in the to-list fades IN from its neutral value; one present only in from fades
         // OUT to it. Matches CSS filter-list padding.
-        private static Channel FadeIn(FilterFunction f) => new Channel(f.type, IdentityParams(f), Snapshot(f));
-        private static Channel FadeOut(FilterFunction f) => new Channel(f.type, Snapshot(f), IdentityParams(f));
+        private static Channel FadeIn(FilterFunction f) => new Channel(f.type, DefinitionOf(f), IdentityParams(f), Snapshot(f));
+        private static Channel FadeOut(FilterFunction f) => new Channel(f.type, DefinitionOf(f), Snapshot(f), IdentityParams(f));
 
-        private static bool ContainsCustom(List<FilterFunction>? list)
+        // The definition to rebind when reconstructing a function each frame: the bound custom definition for a
+        // built-in custom, null for a native type (ApplyFrame rebuilds that by FilterFunctionType).
+        private static FilterFunctionDefinition? DefinitionOf(FilterFunction f)
+            => f.type == FilterFunctionType.Custom ? f.customDefinition : null;
+
+        // A USER custom (filter-[name:args]) forces an instant write; a first-party brightness/saturate custom
+        // does not, since it interpolates like a native float filter.
+        private static bool ContainsUserCustom(List<FilterFunction>? list)
         {
             if (list == null)
             {
@@ -323,7 +341,7 @@ namespace Velvet
             }
             foreach (var f in list)
             {
-                if (f.type == FilterFunctionType.Custom)
+                if (f.type == FilterFunctionType.Custom && !BuiltInFilterDefinitions.IsBuiltIn(f.customDefinition))
                 {
                     return true;
                 }
@@ -331,7 +349,19 @@ namespace Velvet
             return false;
         }
 
-        private static bool SameTypeSequence(List<FilterFunction>? a, List<FilterFunction>? b)
+        // Two functions share a channel when they are the same native filter type, or both the SAME first-party
+        // custom — brightness and saturate are distinct channels even though both are FilterFunctionType.Custom.
+        private static bool SameChannel(FilterFunction a, FilterFunction b)
+        {
+            if (a.type != b.type)
+            {
+                return false;
+            }
+            return a.type != FilterFunctionType.Custom
+                || ReferenceEquals(a.customDefinition, b.customDefinition);
+        }
+
+        private static bool SameChannelSequence(List<FilterFunction>? a, List<FilterFunction>? b)
         {
             var ac = a?.Count ?? 0;
             var bc = b?.Count ?? 0;
@@ -341,7 +371,7 @@ namespace Velvet
             }
             for (var k = 0; k < ac; k++)
             {
-                if (a![k].type != b![k].type)
+                if (!SameChannel(a![k], b![k]))
                 {
                     return false;
                 }
@@ -349,7 +379,7 @@ namespace Velvet
             return true;
         }
 
-        private static bool HasRepeatedType(List<FilterFunction>? list)
+        private static bool HasRepeatedChannel(List<FilterFunction>? list)
         {
             if (list == null || list.Count < 2)
             {
@@ -359,7 +389,7 @@ namespace Velvet
             {
                 for (var k = i + 1; k < list.Count; k++)
                 {
-                    if (list[i].type == list[k].type)
+                    if (SameChannel(list[i], list[k]))
                     {
                         return true;
                     }
@@ -368,19 +398,29 @@ namespace Velvet
             return false;
         }
 
-        // Canonical composition order of the UITK filter types (mirrors s_filterOrder in the resolver). Only
-        // consulted after repeated types are ruled out, so Grayscale mapping to one rank is unambiguous.
-        private static int CanonicalRank(FilterFunctionType type) => type switch
+        // Canonical composition order of the filter channels (mirrors s_filterOrder in the resolver): the two
+        // first-party customs slot by their definition — brightness right after blur, saturate right after
+        // invert — so an add/remove merge keeps the same order the resolver composes in. Only consulted after
+        // user customs and repeated channels are ruled out.
+        private static int CanonicalRank(FilterFunction f)
         {
-            FilterFunctionType.Blur => 0,
-            FilterFunctionType.Tint => 1,
-            FilterFunctionType.Contrast => 2,
-            FilterFunctionType.Grayscale => 3,
-            FilterFunctionType.HueRotate => 4,
-            FilterFunctionType.Invert => 5,
-            FilterFunctionType.Sepia => 6,
-            _ => 7,
-        };
+            if (f.type == FilterFunctionType.Custom)
+            {
+                return BuiltInFilterDefinitions.IsBrightness(f.customDefinition) ? 1
+                    : BuiltInFilterDefinitions.IsSaturate(f.customDefinition) ? 6
+                    : 8;
+            }
+            return f.type switch
+            {
+                FilterFunctionType.Blur => 0,
+                FilterFunctionType.Contrast => 2,
+                FilterFunctionType.Grayscale => 3,
+                FilterFunctionType.HueRotate => 4,
+                FilterFunctionType.Invert => 5,
+                FilterFunctionType.Sepia => 7,
+                _ => 8,
+            };
+        }
 
         private static FilterParameter[] Snapshot(FilterFunction f)
         {
@@ -393,19 +433,21 @@ namespace Velvet
             return arr;
         }
 
-        // The neutral parameters for a filter type — the value at which it is a no-op. Contrast is 1 (identity
-        // multiply); every other float filter (blur, grayscale/saturate, hue-rotate, invert, sepia) is off at
-        // 0; Tint (brightness) multiplies by a color, so its identity is white.
+        // The neutral parameters for a filter — the value at which it is a no-op. The multiplicative filters
+        // (contrast, and the first-party brightness/saturate customs) are off at 1; every other float filter
+        // (blur, grayscale, hue-rotate, invert, sepia) is off at 0; a color parameter's identity is white.
         private static FilterParameter[] IdentityParams(FilterFunction f)
         {
             var count = f.parameterCount;
             var arr = new FilterParameter[count];
+            var floatIdentity = f.type == FilterFunctionType.Contrast
+                || BuiltInFilterDefinitions.IsBuiltIn(f.customDefinition) ? 1f : 0f;
             for (var k = 0; k < count; k++)
             {
                 var p = f.GetParameter(k);
                 arr[k] = p.type == FilterParameterType.Color
                     ? new FilterParameter(Color.white)
-                    : new FilterParameter(f.type == FilterFunctionType.Contrast ? 1f : 0f);
+                    : new FilterParameter(floatIdentity);
             }
             return arr;
         }
