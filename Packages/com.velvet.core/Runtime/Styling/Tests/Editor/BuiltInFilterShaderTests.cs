@@ -32,34 +32,46 @@ namespace Velvet.Tests
             StyleArbitraryValueResolver.Apply(el, in style);
         }
 
-        [Test]
-        public void Given_ABrightnessBracketValue_When_Applied_Then_TheInlineFilterBindsTheBuiltInBrightnessDefinition()
+        // Parses and applies a token to a fresh element, returning its single resolved FilterFunction — or null
+        // when the token does not parse or does not resolve to exactly one filter. Callers ASSERT (not Assume)
+        // on the result, so a token the pre-shader parser rejected outright — it capped brightness/saturate at
+        // 1 — surfaces as a Failure rather than an Assume-driven Inconclusive, keeping the test a valid RED.
+        private static FilterFunction? ResolveSingle(string token)
         {
-            // Arrange
             var el = new VisualElement();
-
-            // Act
-            ApplyToken(el, "brightness-[1.5]");
-
-            // Assert
-            var f = el.style.filter.value;
-            Assert.That((f.Count, f[0].type, f[0].customDefinition, f[0].GetParameter(0).floatValue),
-                Is.EqualTo((1, FilterFunctionType.Custom, BuiltInFilterDefinitions.Brightness, 1.5f)));
+            if (!StyleArbitraryValueResolver.TryParse(token, out var style))
+            {
+                return null;
+            }
+            StyleArbitraryValueResolver.Apply(el, in style);
+            var list = el.style.filter.value;
+            return list is { Count: 1 } ? list[0] : (FilterFunction?)null;
         }
 
         [Test]
-        public void Given_ASaturateBracketValue_When_Applied_Then_TheInlineFilterBindsTheBuiltInSaturateDefinition()
+        public void Given_ABrightnessBracketValue_When_Resolved_Then_TheInlineFilterBindsTheBuiltInBrightnessDefinition()
         {
-            // Arrange
-            var el = new VisualElement();
+            // Act — an over-bright bracket value (N>1), a range the pre-shader parser rejected outright.
+            var fn = ResolveSingle("brightness-[1.5]");
 
-            // Act
-            ApplyToken(el, "saturate-[1.5]");
+            // Assert — resolves to exactly the built-in brightness Custom definition carrying the raw factor. RED
+            // against the pre-shader path two ways: it rejected N>1 at parse (fn stays null), and even a value it
+            // accepted bound the Tint filter, not this Custom definition.
+            Assert.That((fn?.type, fn?.customDefinition, fn?.GetParameter(0).floatValue),
+                Is.EqualTo((FilterFunctionType.Custom, BuiltInFilterDefinitions.Brightness, 1.5f)));
+        }
 
-            // Assert
-            var f = el.style.filter.value;
-            Assert.That((f.Count, f[0].type, f[0].customDefinition, f[0].GetParameter(0).floatValue),
-                Is.EqualTo((1, FilterFunctionType.Custom, BuiltInFilterDefinitions.Saturate, 1.5f)));
+        [Test]
+        public void Given_ASaturateBracketValue_When_Resolved_Then_TheInlineFilterBindsTheBuiltInSaturateDefinition()
+        {
+            // Act — an over-saturate bracket value (N>1), a range the pre-shader parser rejected outright.
+            var fn = ResolveSingle("saturate-[1.5]");
+
+            // Assert — resolves to exactly the built-in saturate Custom definition carrying the raw factor. RED
+            // against the pre-shader path two ways: it rejected N>1 at parse (fn stays null), and even a value it
+            // accepted bound the Grayscale filter, not this Custom definition.
+            Assert.That((fn?.type, fn?.customDefinition, fn?.GetParameter(0).floatValue),
+                Is.EqualTo((FilterFunctionType.Custom, BuiltInFilterDefinitions.Saturate, 1.5f)));
         }
 
         [Test]
@@ -118,29 +130,25 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ABrightnessValueAboveOne_When_Applied_Then_TheShaderParameterCarriesTheUnclampedValue()
+        public void Given_ABrightnessValueAboveOne_When_Resolved_Then_TheShaderParameterCarriesTheUnclampedValue()
         {
-            // Arrange — a value that could not even reach Apply before the parser widening.
-            var el = new VisualElement();
+            // Act — a value the pre-shader parser rejected outright (it capped brightness at 1).
+            var fn = ResolveSingle("brightness-[2]");
 
-            // Act
-            ApplyToken(el, "brightness-[2]");
-
-            // Assert
-            Assert.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(2f));
+            // Assert — the raw over-bright factor reaches the shader parameter unclamped. RED against the
+            // pre-shader parser, which rejected N>1 (fn stays null) instead of carrying 2.
+            Assert.That(fn?.GetParameter(0).floatValue, Is.EqualTo(2f));
         }
 
         [Test]
-        public void Given_ASaturateValueAboveOne_When_Applied_Then_TheShaderParameterCarriesTheUnclampedValue()
+        public void Given_ASaturateValueAboveOne_When_Resolved_Then_TheShaderParameterCarriesTheUnclampedValue()
         {
-            // Arrange
-            var el = new VisualElement();
+            // Act — a value the pre-shader parser rejected outright (it capped saturate at 1).
+            var fn = ResolveSingle("saturate-[2]");
 
-            // Act
-            ApplyToken(el, "saturate-[2]");
-
-            // Assert
-            Assert.That(el.style.filter.value[0].GetParameter(0).floatValue, Is.EqualTo(2f));
+            // Assert — the raw over-saturate factor reaches the shader parameter unclamped. RED against the
+            // pre-shader parser, which rejected N>1 (fn stays null) instead of carrying 2.
+            Assert.That(fn?.GetParameter(0).floatValue, Is.EqualTo(2f));
         }
 
         [Test]
