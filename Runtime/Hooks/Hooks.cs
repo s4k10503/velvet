@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -908,20 +909,43 @@ namespace Velvet
         /// per-frame data flows without touching component state (the escape hatch for
         /// simulation-driven visuals; setting state per frame would re-render the world every tick).
         /// Frames tick while the component's host is attached to a panel and pause while it is not.
+        /// <paramref name="priority"/> orders callbacks within the SAME panel — lower runs earlier,
+        /// equal priorities run in subscription (mount) order, and this stays true across a keyed
+        /// reorder of the host — r3f's <c>useFrame(callback, renderPriority)</c> parity. Unlike r3f, a
+        /// positive priority has no side effect beyond ordering: Unity's rendering is independent of
+        /// this scheduler, so there is no internal render call for it to take over. The latest render's
+        /// priority applies live, the same way <paramref name="onFrame"/> does — changing it does not
+        /// restart the subscription or move it among same-priority siblings.
         /// </summary>
         /// <param name="onFrame">Invoked once per frame with the elapsed time in seconds (always positive).</param>
-        public static void UseFrame(Action<float> onFrame)
+        /// <param name="priority">Lower runs earlier within the same panel this frame. Defaults to 0.</param>
+        public static void UseFrame(Action<float> onFrame, int priority = 0)
         {
             if (onFrame == null) throw new ArgumentNullException(nameof(onFrame));
             var fiber = Resolve("UseFrame");
-            // Every render overwrites the ref slot, and the tick below reads through it — that is what
-            // swaps in the latest closure without re-subscribing (the effect's empty deps never re-run).
-            // StrictMode's throwaway diagnostic pass must not swap the LIVE closure (its captures are
-            // the discarded pass's state), matching UseImperativeHandle's gate.
+            // Every render overwrites the ref slot, and the subscribed callback below reads through it —
+            // that is what swaps in the latest closure without re-subscribing (the effect's empty deps
+            // never re-run). StrictMode's throwaway diagnostic pass must not swap the LIVE closure (its
+            // captures are the discarded pass's state), matching UseImperativeHandle's gate.
             var latest = UseRef<Action<float>>();
+            // Kept live independent of whether a Subscription exists yet: a host that has not attached to
+            // a panel on its first several renders (an off-tree subtree, a not-yet-revealed Suspense
+            // branch) would otherwise lose every priority value except the very first one — EnsureSubscribed
+            // below has nothing else to fall back on once no live Subscription exists to mutate directly.
+            var latestPriority = UseMutableRef<int>(priority);
+            var subscriptionRef = UseRef<UseFrameDispatcher.Subscription>();
             if (!IsStrictDiagnosticPass(fiber))
             {
                 latest.Set(onFrame);
+                latestPriority.Current = priority;
+                // Applied directly to the live Subscription object (not deferred to the effect, which
+                // never re-runs for a priority-only change) — same "latest render wins" treatment as
+                // onFrame above, so a priority change takes effect next tick without disturbing this
+                // subscription's position among same-priority siblings.
+                if (subscriptionRef.Current != null)
+                {
+                    subscriptionRef.Current.Priority = priority;
+                }
             }
 
             UseEffect(() =>
@@ -933,65 +957,77 @@ namespace Velvet
                 {
                     return null;
                 }
-                UnityEngine.UIElements.IVisualElementScheduledItem? tick = null;
-                void StartTickIfNeeded()
+
+                UseFrameDispatcher? dispatcher = null;
+                UseFrameDispatcher.Subscription? subscription = null;
+
+                void EnsureSubscribed()
                 {
-                    if (tick != null)
+                    var panel = host.panel;
+                    if (panel == null)
                     {
                         return;
                     }
-                    tick = host.schedule.Execute((UnityEngine.UIElements.TimerState ts) =>
+                    var currentDispatcher = UseFrameDispatcher.GetOrCreate(panel);
+                    if (subscription != null && ReferenceEquals(dispatcher, currentDispatcher))
                     {
-                        // TimerState.start is the previous callback's time for a repeating item (or the
-                        // schedule time for the first firing), so deltaTime is already exactly the
-                        // elapsed interval — no separate "last tick" bookkeeping. A zero delta
-                        // (same-frame flush) is skipped so the callback only ever observes positive,
-                        // frame-sized seconds; a hitch spike is clamped the way Time.deltaTime clamps
-                        // its own, so a stall cannot teleport a user simulation by one giant step. The
-                        // zero interval fires on every scheduler update — once per frame — rather than
-                        // imposing a wall-clock floor that would skip frames on fast panels.
-                        var dt = ts.deltaTime / 1000f;
-                        if (dt <= 0f)
-                        {
-                            return;
-                        }
-                        dt = UnityEngine.Mathf.Min(dt, UnityEngine.Time.maximumDeltaTime);
+                        // Same panel as before a transient detach (a keyed reorder is the common case) —
+                        // resume the SAME slot instead of resubscribing, which is what keeps this
+                        // component's position stable relative to same-priority siblings instead of
+                        // migrating to the end of the group the way a plain per-element scheduled item
+                        // would (see UseFrameDispatcher's own remarks).
+                        subscription.Active = true;
+                        return;
+                    }
+                    // First attach, or a move to a genuinely different panel (rare, and not tracked as a
+                    // stable cross-panel identity): latestPriority.Current is always this render's value
+                    // regardless of whether a Subscription existed to carry it, so it is the correct
+                    // source here too — not just for the true-first-subscribe case.
+                    if (subscription != null)
+                    {
+                        dispatcher!.Unsubscribe(subscription);
+                    }
+                    dispatcher = currentDispatcher;
+                    subscription = dispatcher.Subscribe(latestPriority.Current, dt =>
+                    {
                         try
                         {
                             latest.Current?.Invoke(dt);
                         }
                         catch (Exception ex)
                         {
-                            // Contained like an effect exception: an escaped throw would abort the rest
-                            // of this panel's scheduled updates for the frame and re-fire every frame
-                            // thereafter (the scheduler never unschedules a throwing item), and the
-                            // nearest error boundary must receive user-callback failures either way.
+                            // Contained like an effect exception: an escaped throw must not stop the
+                            // dispatcher's tick from reaching the rest of this panel's subscribers, and
+                            // the nearest error boundary must receive user-callback failures either way.
                             ComponentBoundarySearch.PropagateException(fiber, ex);
                         }
-                    }).Every(0);
+                    });
+                    subscriptionRef.Set(subscription);
                 }
-                // A recurring item like this Every(0) tick survives a keyed reorder's detach/re-attach
-                // on its own: UI Toolkit's own per-item attach/detach handling pauses it when the host
-                // leaves the panel and reschedules the SAME item when the host returns (the detach and
-                // re-attach even cancel out in the scheduler's own bookkeeping when, as here, both land
-                // in a single pass), so nothing needs to re-arm it. A one-shot item has no such luck —
-                // its delay restarts in full on every re-attach. The tick is therefore only ever
-                // created once; an explicit Pause on every detach, as this hook used to do, would
-                // defeat that built-in survival and force a fresh item to be armed on every attach for
-                // no benefit.
-                UnityEngine.UIElements.EventCallback<UnityEngine.UIElements.AttachToPanelEvent> onAttach = _ => StartTickIfNeeded();
-                host.RegisterCallback(onAttach);
-                // The passive effect runs post-commit, so the host is ordinarily already attached and
-                // no AttachToPanelEvent is coming — arm the first tick directly.
-                if (host.panel != null)
+
+                EventCallback<AttachToPanelEvent> onAttach = _ => EnsureSubscribed();
+                EventCallback<DetachFromPanelEvent> onDetach = _ =>
                 {
-                    StartTickIfNeeded();
-                }
+                    if (subscription != null)
+                    {
+                        subscription.Active = false;
+                    }
+                };
+
+                host.RegisterCallback(onAttach);
+                host.RegisterCallback(onDetach);
+                // The passive effect runs post-commit, so the host is ordinarily already attached and no
+                // AttachToPanelEvent is coming — subscribe directly.
+                EnsureSubscribed();
+
                 return () =>
                 {
                     host.UnregisterCallback(onAttach);
-                    tick?.Pause();
-                    tick = null;
+                    host.UnregisterCallback(onDetach);
+                    if (subscription != null)
+                    {
+                        dispatcher!.Unsubscribe(subscription);
+                    }
                 };
             }, Array.Empty<object>());
         }
