@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `Hooks.UseFrame` gains a `priority` parameter — r3f's `useFrame(callback, renderPriority)` ordering
+  parity. Lower runs earlier within the same panel; equal priorities fall back to subscription (mount)
+  order. Backing this, per-frame callbacks now subscribe to a single per-panel dispatcher instead of
+  each scheduling their own engine tick, so firing order also stays stable across a keyed reorder of a
+  callback's host, which the previous per-element scheduling did not guarantee.
+
 ## [1.5.0] - 2026-07-19
 
 ### Added
