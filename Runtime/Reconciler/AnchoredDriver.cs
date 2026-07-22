@@ -15,6 +15,9 @@ namespace Velvet
         public IVisualElementScheduledItem? Tick;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public bool WarnedAboutUnsupportedPanel;
+        // Tracks whether THIS binding is the one currently holding element.style.scale, so it only ever
+        // clears a value it actually wrote — see AnchoredDriver.ClearAppliedScale.
+        public bool HasAppliedDistanceFactorScale;
 
         public AnchoredBinding(AnchoredSettings settings)
         {
@@ -30,8 +33,10 @@ namespace Velvet
     /// Toolkit resolves <c>position: absolute</c> <c>left</c>/<c>top</c> against the immediate parent, not the
     /// panel root, unlike CSS's nearest-positioned-ancestor walk), and writes the result as inline
     /// <c>left</c>/<c>top</c> — drei's
-    /// <c>&lt;Html&gt;</c> parity (screen-space projection, not depth-tested against scene geometry, unlike
-    /// <c>V.WorldSpace</c>). <c>RuntimePanelUtils.CameraTransformWorldToPanel</c> is correct here specifically
+    /// <c>&lt;Html&gt;</c> parity (screen-space projection; unlike <c>V.WorldSpace</c>, which renders content
+    /// INTO the 3D scene and is depth-tested for free, this is ordinary 2D UI with no inherent scene depth —
+    /// <see cref="AnchoredSettings.Occlude"/> opts into an explicit physics stand-in for that test).
+    /// <c>RuntimePanelUtils.CameraTransformWorldToPanel</c> is correct here specifically
     /// because the element lives in an ordinary screen-space (Overlay/Camera) panel: <c>PanelSettings.
     /// ApplyPanelSettings</c> only resolves the scale factor this API divides by (<c>ScreenToPanel</c>'s
     /// <c>screen / scale</c>) for non-WorldSpace render modes — the same API returns the input essentially
@@ -46,6 +51,12 @@ namespace Velvet
     {
         // Per-frame cadence, matching the sibling per-frame element drivers (SceneViewDriver, ParticlesDriver).
         internal const long TickIntervalMs = 16;
+
+        // Below this camera-to-target distance, distanceFactor / distance diverges toward whatever float
+        // range is left rather than anything a screen-space scale should read as — a real-world Unity
+        // scene can plausibly put a camera this close to a target (unlike Mathf.Epsilon, which only
+        // excludes an exact, near-impossible 0), so scale holds at 1 instead of ballooning.
+        private const float MinDistanceFactorDistance = 0.01f;
 
         public static AnchoredBinding Attach(VisualElement element, AnchoredSettings settings)
         {
@@ -88,13 +99,26 @@ namespace Velvet
                 binding.OnGeometryChanged = null;
             }
             // Release every inline style Attach/Sync forced, so a pooled element does not ghost a stale
-            // absolute position (or a display:none from having last synced behind the camera) onto whatever
-            // it is reused for next — the recurring pool-reuse footgun this codebase's own reset helpers
-            // (e.g. FiberElementPoolReset) exist to avoid.
+            // absolute position (or a display:none from having last synced behind the camera) onto
+            // whatever it is reused for next — the recurring pool-reuse footgun this codebase's own reset
+            // helpers (e.g. FiberElementPoolReset) exist to avoid.
             element.style.position = StyleKeyword.Null;
             element.style.left = StyleKeyword.Null;
             element.style.top = StyleKeyword.Null;
             element.style.display = StyleKeyword.Null;
+            ClearAppliedScale(element, binding);
+        }
+
+        // Clears element.style.scale ONLY when this binding is the one that last wrote it (distanceFactor
+        // was in effect) — an unconditional clear here would also stomp a scale value some OTHER system
+        // (a scale-* utility class, a Motion hover/tap/transition variant) is independently driving on the
+        // same element, since nothing about V.Anchored implies it owns that style slot unless
+        // distanceFactor actually opted it in.
+        private static void ClearAppliedScale(VisualElement element, AnchoredBinding binding)
+        {
+            if (!binding.HasAppliedDistanceFactorScale) return;
+            element.style.scale = StyleKeyword.Null;
+            binding.HasAppliedDistanceFactorScale = false;
         }
 
         private static void Sync(VisualElement element, AnchoredBinding binding)
@@ -103,6 +127,7 @@ namespace Velvet
             if (target == null)
             {
                 element.style.display = DisplayStyle.None;
+                ClearAppliedScale(element, binding);
                 return;
             }
 
@@ -120,6 +145,7 @@ namespace Velvet
                 // in the scene) — there is no sensible position to hold, so hide rather than freeze at a
                 // screen position that no longer corresponds to anything, mirroring the target==null branch.
                 element.style.display = DisplayStyle.None;
+                ClearAppliedScale(element, binding);
                 return;
             }
 
@@ -137,6 +163,7 @@ namespace Velvet
                 if (binding.Settings.HideWhenBehindCamera)
                 {
                     element.style.display = DisplayStyle.None;
+                    ClearAppliedScale(element, binding);
                 }
                 return;
             }
@@ -158,6 +185,22 @@ namespace Velvet
                         + "Hiding it instead of showing a stale or arbitrary position.");
                 }
                 element.style.display = DisplayStyle.None;
+                ClearAppliedScale(element, binding);
+                return;
+            }
+
+            // Opt-in physics stand-in for scene depth (drei's <Html occlude> parity): a solid collider
+            // between the camera and the target hides the element instead of painting it through scene
+            // geometry. Linecast's endpoint sits exactly at the target's own pivot, so a target whose own
+            // collider encloses that pivot will typically self-occlude — scope OccludeLayerMask to scene
+            // geometry that excludes the target's layer rather than trying to filter the target out of a
+            // hit result (RaycastAll's allocation is not worth paying for every tick of every binding).
+            // Triggers never occlude: they are gameplay volumes, not solid geometry.
+            if (binding.Settings.Occlude && Physics.Linecast(
+                    camera.transform.position, target.position, binding.Settings.OccludeLayerMask, QueryTriggerInteraction.Ignore))
+            {
+                element.style.display = DisplayStyle.None;
+                ClearAppliedScale(element, binding);
                 return;
             }
 
@@ -196,6 +239,28 @@ namespace Velvet
             var offset = binding.Settings.Offset;
             element.style.left = localPoint.x + offset.x;
             element.style.top = localPoint.y + offset.y;
+
+            var distanceFactor = binding.Settings.DistanceFactor;
+            if (distanceFactor.HasValue)
+            {
+                // drei's <Html distanceFactor> parity: flat screen-space content has no inherent size in
+                // the scene, so faking perspective falloff means scaling it inversely with camera distance
+                // — distanceFactor is the reference distance at which scale is exactly 1. toTarget (from the
+                // behind-camera test above) already holds camera-to-target; reused here rather than a
+                // second Vector3.Distance call.
+                var distance = toTarget.magnitude;
+                var scale = distance > MinDistanceFactorDistance ? distanceFactor.Value / distance : 1f;
+                element.style.scale = new Scale(new Vector2(scale, scale));
+                binding.HasAppliedDistanceFactorScale = true;
+            }
+            else
+            {
+                // Only clears a value THIS binding applied on an earlier tick (distanceFactor was set
+                // then, cleared now) — never touches style.scale when distanceFactor has never been set,
+                // so an Anchored element combined with a scale-* class or a Motion scale variant on the
+                // same element is left entirely to whichever of those systems is actually driving it.
+                ClearAppliedScale(element, binding);
+            }
         }
     }
 }
