@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   order. Backing this, per-frame callbacks now subscribe to a single per-panel dispatcher instead of
   each scheduling their own engine tick, so firing order also stays stable across a keyed reorder of a
   callback's host, which the previous per-element scheduling did not guarantee.
+- `V.Anchored` gains `occlude` and `distanceFactor`, closing two of drei `<Html>`'s parity gaps.
+  `occlude: true` hides the element while a solid (non-trigger) collider sits between the camera and
+  the target — an opt-in physics query every tick, off by default — via the new `occludeLayerMask`
+  (defaults to `Physics.DefaultRaycastLayers`). `distanceFactor` scales the element by that value
+  divided by its current camera distance, faking perspective size falloff for otherwise-flat
+  screen-space content; it is the reference distance at which scale is exactly 1 and must be positive.
 
 ## [1.5.0] - 2026-07-19
 

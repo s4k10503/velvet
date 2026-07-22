@@ -10,7 +10,10 @@ namespace Velvet.Tests
     /// the element out of flow (<c>position: absolute</c>), a target behind the camera hides the element
     /// (<c>display: none</c>) WITHOUT reaching the real screen-projection call (see the class remarks on why
     /// that matters for this fixture), unmounting releases the binding and every inline style it drove, and a
-    /// patched target updates the SAME binding rather than tearing down and recreating it.
+    /// patched target updates the SAME binding rather than tearing down and recreating it. Also specifies
+    /// <c>distanceFactor</c>'s numeric precondition: it must be positive and finite (rejecting <c>0</c>,
+    /// negative values, and <c>float.PositiveInfinity</c>) on every construction path — the settings record
+    /// directly, and the factory both with and without leaking a pooled props bag on the throwing path.
     /// </summary>
     /// <remarks>
     /// Deliberately does NOT assert the actual projected left/top for an in-front-of-camera target:
@@ -122,6 +125,62 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(element.style.display.value, Is.EqualTo(DisplayStyle.None));
+        }
+
+        [Test]
+        public void Given_ADirectlyConstructedSettings_When_TheDistanceFactorIsInvalid_Then_ItThrows()
+        {
+            // Arrange — the factory's fail-fast guard must hold for every construction path (fixtures and
+            // wrapper hosts can build the settings record directly too), or an invalid distanceFactor
+            // silently degrades to a degenerate scale instead of the documented exception.
+            // Act & Assert
+            Assert.Throws<ArgumentOutOfRangeException>(() => new AnchoredSettings(_targetGo.transform, distanceFactor: 0f));
+        }
+
+        [Test]
+        public void Given_AnInvalidDistanceFactor_When_TheFactoryRuns_Then_ItThrows()
+        {
+            // Act & Assert — an invalid required numeric factory argument fails fast at the call site, like
+            // the other factories with numeric preconditions (e.g. V.SceneView's resolutionScale).
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => V.Anchored(_targetGo.transform, distanceFactor: -1f));
+        }
+
+        [Test]
+        public void Given_APositiveInfinityDistanceFactor_When_TheFactoryRuns_Then_ItThrows()
+        {
+            // Arrange & Act & Assert — RequirePositiveFinite's negated `> 0f` comparison alone lets
+            // +Infinity through (Infinity > 0f is true); it needs its own explicit rejection, or the
+            // next Sync writes an Infinity scale straight into the live style system.
+            Assert.Throws<ArgumentOutOfRangeException>(
+                () => V.Anchored(_targetGo.transform, distanceFactor: float.PositiveInfinity));
+        }
+
+        [Test]
+        public void Given_AnInvalidDistanceFactor_When_TheFactoryThrows_Then_NoPooledPropsLeak()
+        {
+            // Arrange — the factory rents a pooled props bag; a throwing validation must not leave it
+            // stranded in the pool's ownership ledger (each failing render would leak one).
+            var ledger = typeof(VNodePool).GetField("s_ownedProps",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assume.That(ledger, Is.Not.Null, "Precondition: the pool ownership ledger exists");
+            var set = ledger.GetValue(null);
+            var count = set.GetType().GetProperty("Count");
+            Assume.That(count, Is.Not.Null, "Precondition: the ledger exposes a count");
+            var before = (int)count.GetValue(set);
+
+            // Act
+            try
+            {
+                V.Anchored(_targetGo.transform, distanceFactor: 0f);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+            }
+
+            // Assert
+            var after = (int)count.GetValue(set);
+            Assert.That(after, Is.EqualTo(before));
         }
 
         [Test]

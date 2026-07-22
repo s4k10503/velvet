@@ -1554,11 +1554,11 @@ namespace Velvet
 
         /// <summary>
         /// Screen-space element that tracks a 3D scene Transform's projected position every frame — drei's
-        /// <c>&lt;Html&gt;</c> parity (default screen-space projection mode). Not depth-tested against scene
-        /// geometry (unlike <see cref="WorldSpace"/>, which renders content INTO the 3D scene and can be
-        /// occluded by it): this is ordinary 2D UI, positioned dynamically. Forces <c>position: absolute</c>
-        /// inline (dynamic left/top positioning has no other way to work; see AnchoredDriver.Attach) — pass
-        /// layout classes for everything else.
+        /// <c>&lt;Html&gt;</c> parity (default screen-space projection mode). This is ordinary 2D UI with no
+        /// inherent scene depth (unlike <see cref="WorldSpace"/>, which renders content INTO the 3D scene and
+        /// is occluded by it for free) — <paramref name="occlude"/> opts into an explicit physics stand-in for
+        /// that test. Forces <c>position: absolute</c> inline (dynamic left/top positioning has no other way
+        /// to work; see AnchoredDriver.Attach) — pass layout classes for everything else.
         /// </summary>
         /// <param name="target">The Transform this element's screen position tracks. Null (or a Transform
         /// destroyed later) mounts an inert, hidden (display: none) element until a live target is supplied —
@@ -1570,12 +1570,29 @@ namespace Velvet
         /// <param name="offset">Pixel offset applied after projection (e.g. to center a label on the point).</param>
         /// <param name="hideWhenBehindCamera">When true (default), the element is hidden (display: none)
         /// while <paramref name="target"/> is behind the camera rather than jumping to a wrong on-screen spot.</param>
+        /// <param name="occlude">When true, a solid (non-trigger) collider between the camera and
+        /// <paramref name="target"/> hides the element — an extra physics query every tick, so it is off by
+        /// default rather than a standing cost every consumer pays. A target whose own collider sits on
+        /// <paramref name="occludeLayerMask"/> will typically occlude itself; scope the mask to scene geometry
+        /// that excludes it.</param>
+        /// <param name="occludeLayerMask">Which colliders count as occluders when <paramref name="occlude"/>
+        /// is true. Null (default) resolves to <see cref="Physics.DefaultRaycastLayers"/>.</param>
+        /// <param name="distanceFactor">When set, scales the element by this value divided by its current
+        /// distance to the camera — drei's <c>&lt;Html distanceFactor&gt;</c> parity, faking perspective size
+        /// falloff for otherwise-flat screen-space content. Null (default) leaves the element unscaled and
+        /// never touches <c>style.scale</c>, so it composes with a <c>scale-*</c> class or a Motion scale
+        /// variant on the same element; a non-null value OWNS that style slot every tick instead and will
+        /// fight either of those for it. Must be positive when supplied.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="distanceFactor"/> is &lt;= 0, NaN, or positive infinity.</exception>
         public static ElementNode Anchored(
             Transform? target,
             Camera? camera = null,
             Vector2? offset = null,
             bool hideWhenBehindCamera = true,
+            bool occlude = false,
+            LayerMask? occludeLayerMask = null,
+            float? distanceFactor = null,
             string? className = null,
             string? key = null,
             string? name = null,
@@ -1589,8 +1606,13 @@ namespace Velvet
             IReadOnlyDictionary<string, string>? data = null,
             IReadOnlyDictionary<string, string>? aria = null)
         {
+            // Validated BEFORE renting pooled props so a throwing call leaks nothing (mirrors V.SceneView):
+            // the settings constructor fail-fasts on an invalid distanceFactor for every construction path,
+            // this factory included.
+            var anchored = new AnchoredSettings(target, camera, offset ?? Vector2.zero, hideWhenBehindCamera,
+                occlude, occludeLayerMask, distanceFactor);
             var mergedProps = WithAttributes(props, data, aria) ?? VNodePool.RentProps();
-            mergedProps.Anchored = new AnchoredSettings(target, camera, offset ?? Vector2.zero, hideWhenBehindCamera);
+            mergedProps.Anchored = anchored;
 
             return new ElementNode
             {
