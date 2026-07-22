@@ -73,7 +73,7 @@ static VNode Hud()
 ```
 
 `Hooks.UseFrame(dt => …)` runs the callback once per frame with the elapsed seconds while
-the component stays mounted, and stops on unmount. Two properties define it:
+the component stays mounted, and stops on unmount. Three properties define it:
 
 - **The latest closure always runs.** A re-render swaps the callback without re-subscribing,
   so captured state is never stale. Under the default compiler memoization hooks always run
@@ -83,5 +83,13 @@ the component stays mounted, and stops on unmount. Two properties define it:
 - **No render per frame.** Per-frame data bypasses component state entirely; write to refs,
   imperative handles, or element styles from the callback. Setting state per frame would
   re-render the world every tick — that is the anti-pattern this hook exists to avoid.
+- **Ordered across components.** An optional second argument, `priority` (default 0), orders
+  callbacks within the same panel — lower runs earlier, equal priorities fall back to mount
+  order — for the rare case where one `UseFrame` callback needs to read what another already
+  wrote this same frame. Unlike r3f's `useFrame(callback, renderPriority)`, a positive priority
+  has no side effect beyond ordering; Unity's own rendering has no internal loop for it to take
+  over.
 
-Frames tick while the component's host is attached to a panel and pause while it is not.
+Frames tick while the component's host is attached to a panel and pause while it is not, and
+that stays true across a keyed reorder of the host — the component's position in the panel's
+firing order does not reshuffle just because its element moved.

@@ -221,5 +221,76 @@ namespace Velvet.Tests
             // exceptions do, instead of escaping into the panel's scheduler update.
             Assert.That(s_fallbackShown, Is.True);
         }
+
+        private static int s_siblingCalls;
+        private static bool s_siblingProbeShouldThrow;
+
+        [Component]
+        private static VNode SiblingFrameHost()
+        {
+            Hooks.UseFrame(_ => s_siblingCalls++);
+            return V.Div(className: "w-[10px] h-[10px]");
+        }
+
+        // A separately-gated thrower (distinct from ThrowingFrameHost, which always throws and is
+        // shared with the simpler test above): this one only throws once armed, so the test below can
+        // first prove the sibling is genuinely live before the boundary swap disposes it.
+        [Component]
+        private static VNode GatedThrowingFrameHost()
+        {
+            Hooks.UseFrame(_ =>
+            {
+                if (s_siblingProbeShouldThrow)
+                {
+                    throw new System.InvalidOperationException("frame boom (sibling probe)");
+                }
+            });
+            return V.Div(className: "w-[10px] h-[10px]");
+        }
+
+        // Mounted AFTER GatedThrowingFrameHost (left-to-right children order), so its UseFrame subscribes
+        // with a LATER sequence number and sorts after the thrower's in UseFrameDispatcher.Tick's
+        // per-update pass — the ordering this test needs to reach the thrower's boundary-triggering
+        // exception BEFORE its own entry in that same tick's snapshot.
+        [Component(IsErrorBoundary = true)]
+        private static VNode FrameBoundaryWithSibling()
+        {
+            Hooks.UseFallback(_ =>
+            {
+                s_fallbackShown = true;
+                return V.Div(name: "frame-fallback-with-sibling");
+            });
+            return V.Div(children: new VNode[]
+            {
+                V.Component(GatedThrowingFrameHost, key: "thrower"),
+                V.Component(SiblingFrameHost, key: "sibling"),
+            });
+        }
+
+        [UnityTest]
+        public IEnumerator Given_AThrowingFrameCallback_When_ALaterSiblingSharesTheSameTick_Then_TheSiblingNeverFiresPastTheBoundarySwap()
+        {
+            // Arrange — let both siblings tick normally first, proving the sibling is genuinely live and
+            // subscribed before the throw is armed (ruling out "it was never live to begin with" as an
+            // alternate explanation for its call count never moving afterward).
+            var root = CreatePanelRoot();
+            yield return null;
+            _mounted = V.Mount(root, V.Component(FrameBoundaryWithSibling, key: "root"));
+            yield return WaitRealtime(0.3);
+            Assume.That(s_siblingCalls, Is.GreaterThan(0),
+                "Precondition: the sibling ticks normally before the throw is armed");
+
+            // Act — arm the throw. The thrower's exception triggers a SYNCHRONOUS fallback swap (from
+            // inside UseFrameDispatcher.Tick's own foreach) that disposes the ENTIRE boundary subtree,
+            // including the still-pending sibling entry in that same tick's snapshot; settling further
+            // afterward confirms no zombie invocation on that tick or any later one (the sibling is fully
+            // removed from the dispatcher once truly unmounted).
+            s_siblingCalls = 0;
+            s_siblingProbeShouldThrow = true;
+            yield return WaitRealtime(0.5);
+
+            // Assert — the fallback swap happened, and the sibling never fired again afterward.
+            Assert.That((s_fallbackShown, s_siblingCalls), Is.EqualTo((true, 0)));
+        }
     }
 }
