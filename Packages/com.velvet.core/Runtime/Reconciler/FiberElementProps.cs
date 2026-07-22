@@ -232,7 +232,11 @@ namespace Velvet
     /// <summary>
     /// The 3D Transform an Anchored element's screen position tracks, plus the camera whose projection
     /// drives it (null resolves to <see cref="Camera.main"/> on every tick, so a scene's active camera
-    /// can change without a settings update) and a pixel offset applied after projection.
+    /// can change without a settings update), a pixel offset applied after projection, an opt-in physics
+    /// occlusion test, and an opt-in camera-distance scale factor. The constructor fail-fasts on a
+    /// non-positive or NaN <see cref="DistanceFactor"/> so every construction path (the factory, wrapper
+    /// hosts, direct construction) shares one guard; a <c>with</c> expression bypasses it like any record
+    /// init.
     /// </summary>
     public sealed record AnchoredSettings
     {
@@ -240,13 +244,25 @@ namespace Velvet
         public Camera? Camera { get; init; }
         public Vector2 Offset { get; init; }
         public bool HideWhenBehindCamera { get; init; } = true;
+        public bool Occlude { get; init; }
+        public LayerMask OccludeLayerMask { get; init; } = Physics.DefaultRaycastLayers;
+        public float? DistanceFactor { get; init; }
 
-        public AnchoredSettings(Transform? target, Camera? camera = null, Vector2 offset = default, bool hideWhenBehindCamera = true)
+        /// <exception cref="System.ArgumentOutOfRangeException"><paramref name="distanceFactor"/> is &lt;= 0, NaN, or positive infinity.</exception>
+        public AnchoredSettings(Transform? target, Camera? camera = null, Vector2 offset = default,
+            bool hideWhenBehindCamera = true, bool occlude = false, LayerMask? occludeLayerMask = null,
+            float? distanceFactor = null)
         {
             Target = target;
             Camera = camera;
             Offset = offset;
             HideWhenBehindCamera = hideWhenBehindCamera;
+            Occlude = occlude;
+            OccludeLayerMask = occludeLayerMask ?? Physics.DefaultRaycastLayers;
+            DistanceFactor = distanceFactor.HasValue
+                ? VelvetArgUtil.RequirePositiveFinite(distanceFactor.Value, nameof(distanceFactor),
+                    "distanceFactor must be positive; it is the reference distance at which scale is 1.")
+                : null;
         }
     }
 
@@ -256,8 +272,9 @@ namespace Velvet
     {
         internal static float RequirePositiveFinite(float value, string paramName, string message)
         {
-            // The negated > comparison catches NaN too.
-            if (!(value > 0f))
+            // The negated > comparison catches NaN and non-positive values; PositiveInfinity is > 0f so
+            // it slips past that check on its own and needs its own guard to actually be "finite".
+            if (!(value > 0f) || float.IsPositiveInfinity(value))
             {
                 throw new System.ArgumentOutOfRangeException(paramName, message);
             }
