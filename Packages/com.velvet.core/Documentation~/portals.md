@@ -150,9 +150,19 @@ navigation never crosses panels.
 drei's `<Html>` parity in its DEFAULT mode: a plain screen-space element whose `left`/`top`
 track a 3D scene Transform's projected position every frame, re-derived through
 `RuntimePanelUtils.CameraTransformWorldToPanel` on the target's own camera (or
-`Camera.main` when none is given). Not depth-tested — unlike `V.WorldSpace` above, this is
-ordinary 2D UI drawn in the normal screen-space paint order, so it is never occluded by scene
-geometry; it just sits wherever its target currently projects to.
+`Camera.main` when none is given). This is ordinary 2D UI drawn in the normal screen-space
+paint order, so it has no inherent scene depth on its own — it just sits wherever its target
+currently projects to, unlike `V.WorldSpace` above, which renders content INTO the 3D scene
+and is occluded by scene geometry for free. `occlude: true` opts into an explicit stand-in for
+that test instead: a physics `Linecast` between the camera and the target hides the element
+when a solid (non-trigger) collider sits between them, scoped by `occludeLayerMask` (a target
+whose own collider sits on that mask will typically occlude itself — scope the mask to scene
+geometry that excludes it). `distanceFactor` scales the element by itself divided by the
+current camera distance — a cheap fake for perspective size falloff on otherwise-flat content;
+it is the reference distance at which scale is exactly 1. Left unset, Anchored never touches
+the element's `scale` style at all, so it composes freely with a `scale-*` class or a Motion
+scale variant; setting it makes Anchored own that style slot every tick instead, so combining
+it with either of those is a straightforward conflict, not an integration.
 
 `V.Anchored` forces `position: absolute` inline (dynamic positioning has no other way to
 work), so pass layout classes for everything else — sizing, background, text, and so on —
@@ -173,6 +183,3 @@ without reflecting into an internal engine property — so it silently receives 
 near-raw-world-space values `RuntimePanelUtils.CameraTransformWorldToPanel` is documented to
 degrade to for a `V.WorldSpace` host (see above). `V.Anchored` targets an ordinary screen-space
 panel only.
-
-Raycast-based occlusion against scene geometry — drei's `<Html occlude>` opt-in — is not
-implemented: an explicit, documented scope cut for now, not an oversight.
