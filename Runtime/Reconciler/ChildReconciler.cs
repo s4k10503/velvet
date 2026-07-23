@@ -267,10 +267,26 @@ namespace Velvet
                         break;
                     }
                     case PortalNode registryPortal:
+                    {
                         // The target was resolved (non-null) at enqueue: the create path never
                         // queues a registry portal without one.
                         children = registryPortal.Children ?? Array.Empty<VNode>();
+                        // Same-panel synthetic-bubbling bridge: attached ONCE per resolved target,
+                        // guarded by SamePanelPortalBridges (see its own comment for why the guard
+                        // lives here rather than at a single creation call site — unlike a layer/
+                        // world-space host, a registry target is an ordinary, already-existing
+                        // element with no one-time "just created it" moment to hook). Never attached
+                        // from FiberPortalRegistry.Register itself: that registry is a bare global
+                        // static with no ReconcilerContext to guard duplicate attaches with or later
+                        // dispose the bridge through.
+                        var registryTarget = target!;
+                        if (!_ctx.SamePanelPortalBridges.ContainsKey(registryTarget))
+                        {
+                            _ctx.SamePanelPortalBridges[registryTarget] =
+                                FiberCrossPanelEventDispatcher.AttachBridge(registryTarget, _ctx);
+                        }
                         break;
+                    }
                     default:
                         // Only PortalNode / WorldSpaceNode enqueue deferred mounts; anything else is
                         // a missing branch for a new node kind and must fail loudly rather than
