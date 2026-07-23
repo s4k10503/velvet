@@ -624,6 +624,15 @@ namespace Velvet
             _ctx.ChildVariantManipulators.Clear();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
+            // Same-panel registry-portal targets are ordinary, user-owned elements that commonly
+            // outlive this reconciler (unlike the framework-owned hosts destroyed wholesale below), so
+            // each bridge is detached explicitly rather than left to die with a GameObject — see
+            // ReconcilerContext.SamePanelPortalBridges for the full rationale.
+            foreach (var unbind in _ctx.SamePanelPortalBridges.Values)
+            {
+                unbind();
+            }
+            _ctx.SamePanelPortalBridges.Clear();
             // Layer and world-space hosts are framework-owned GameObjects with runtime-created
             // panel assets: destroy them so a disposed tree leaves no hidden panels behind. The
             // unmount reconcile already removed their children; a still-live layer host with zero

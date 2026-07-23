@@ -1466,17 +1466,19 @@ namespace Velvet
         /// <paramref name="targetId"/> must reference an ID previously registered via <c>FiberPortalRegistry.Register</c>.
         /// </summary>
         /// <remarks>
-        /// Behavior boundary: context inheritance follows the LOGICAL tree (children inherit the
-        /// context enclosing the V.Portal call site), but EVENT BUBBLING does NOT. Velvet physically
-        /// reparents the children under the registered target element, so UI Toolkit bubbles their
-        /// pointer / click / change events up the target's PHYSICAL ancestor chain — not up the logical
-        /// ancestors of the V.Portal call site. A handler that must observe a portal child's event has to
-        /// be placed on the target element's own ancestor chain (or attached directly to the portal
-        /// children). The idealized model — where portal events also bubble through the logical tree — is
-        /// not reproducible here: UI Toolkit computes every event's propagation path from the physical
-        /// visual tree and exposes no API to redirect it along a logical chain, so faithful logical
-        /// bubbling would require re-implementing the dispatcher (which would double-fire handlers on
-        /// shared ancestors and could recurse across nested portals).
+        /// Context inheritance and event bubbling both follow the LOGICAL tree. Children inherit the
+        /// context enclosing the V.Portal call site, and an <c>events:</c> handler on a logical
+        /// ancestor of the call site also fires for a pointer / key / focus event raised on a portal
+        /// child: Velvet physically reparents the children under the registered target element (so UI
+        /// Toolkit's own native dispatch bubbles them up the target's PHYSICAL ancestor chain too),
+        /// then separately bridges the event synthetically to the logical ancestor chain outside the
+        /// call site. An element that happens to sit on BOTH chains — a physical ancestor of the
+        /// target AND a logical ancestor of the call site — still fires exactly once: the synthetic
+        /// walk detects that native bubbling already covers it and stops there rather than
+        /// double-firing. <c>Button</c>'s native click
+        /// (<c>ClickedBinding</c>) and field value-change (<c>ChangeEventBinding&lt;T&gt;</c>) stay
+        /// physical-tree-only in every portal form — neither has an underlying bubbling event object to
+        /// carry across a logical boundary. See the portals documentation for the full contract.
         /// </remarks>
         /// <param name="targetId">Portal target ID registered via <c>FiberPortalRegistry.Register</c>.</param>
         /// <param name="children">Descendant VNodes mounted into the resolved portal target.</param>
@@ -1496,11 +1498,13 @@ namespace Velvet
         /// Renders <paramref name="children"/> into a framework-managed screen-space layer panel
         /// sorted around the app's main panel — one host panel per layer per reconciler, created
         /// lazily and destroyed with the reconciler. Like every portal, the children stay part of the
-        /// LOGICAL tree (context and state cross the boundary) while attaching physically to the layer
-        /// panel — so event bubbling, relational <c>group-</c>/<c>peer-</c> variants and focus-within
-        /// do not cross, and responsive breakpoints evaluate against the layer panel's own width.
-        /// Screen-space layers always composite over the 3D scene; UI that must sit among scene
-        /// geometry is <see cref="WorldSpace"/>'s territory.
+        /// LOGICAL tree: context and state cross the boundary, and an <c>events:</c> handler on a
+        /// logical ancestor of the call site also fires for a pointer / key / focus event raised on a
+        /// child, bridged synthetically across the separate host Panel. Relational
+        /// <c>group-</c>/<c>peer-</c> variants and focus-within do NOT cross (they register their own
+        /// native callbacks directly, bypassing the bridge), and responsive breakpoints evaluate
+        /// against the layer panel's own width. Screen-space layers always composite over the 3D
+        /// scene; UI that must sit among scene geometry is <see cref="WorldSpace"/>'s territory.
         /// </summary>
         /// <param name="layer">The framework-managed layer panel to attach the children to.</param>
         /// <param name="children">Descendant VNodes mounted into the layer panel.</param>
@@ -1524,8 +1528,14 @@ namespace Velvet
         /// <c>&lt;Html&gt;</c> parity point), unlike the always-on-top screen-space layers. The host
         /// (GameObject + world-space panel) is created on mount, follows <paramref name="position"/> /
         /// <paramref name="rotation"/> updates, and is destroyed on unmount. Children stay part of the
-        /// logical tree (context and state cross; events do not — the panel boundary is physical).
-        /// Display-only: world-space input routing is not wired.
+        /// logical tree: context and state cross, and an <c>events:</c> handler on a logical ancestor
+        /// of the call site also fires for a pointer / key / focus event raised on a child, bridged
+        /// synthetically across the separate host Panel. Velvet does not arbitrate world-space pointer
+        /// DELIVERY itself the way it does screen-space layer picking order: a <c>BoxCollider</c> sized
+        /// to the panel is attached to the host, and Unity's own runtime input system drives picking
+        /// and delivery through it once a Play session is running (see the package's cross-panel input
+        /// routing docs). The event bridging above applies to whatever that system delivers, as well as
+        /// to a programmatically dispatched event (e.g. in tests).
         /// </summary>
         /// <param name="position">World position of the panel host.</param>
         /// <param name="rotation">World rotation of the panel host (identity when omitted).</param>

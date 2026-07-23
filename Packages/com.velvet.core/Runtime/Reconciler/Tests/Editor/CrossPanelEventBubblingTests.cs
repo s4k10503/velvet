@@ -171,6 +171,61 @@ namespace Velvet.Tests
             Assert.That((s_handlerFired, s_handlerEventTarget == portalTarget), Is.EqualTo((true, true)));
         }
 
+        [Component]
+        private static VNode StopPropagationPortalHostRender()
+        {
+            return V.Portal(UILayer.Overlay, children: new VNode[]
+            {
+                V.Component(StopPropagationPortalChildRender),
+            });
+        }
+
+        [Component]
+        private static VNode StopPropagationPortalChildRender() => V.Motion(name: "stop-portal-target");
+
+        [Test]
+        public void Given_AnInnerLogicalHandlerStopsPropagation_When_APointerDownInsideALayerPortal_Then_TheOuterLogicalHandlerDoesNotFire()
+        {
+            // Arrange — two logical ancestors stacked outward from the portal: "inner" stops
+            // propagation, so "outer" — reached only by a LATER hop of the same outward synthetic
+            // walk — must not fire. Pins the fix: Continue previously never checked
+            // evt.isPropagationStopped between hops, so a synthetic StopPropagation() had no effect
+            // on the rest of the walk.
+            var outerFired = false;
+            var innerFired = false;
+            var outerBinding = new PointerDownBinding { Handler = _ => outerFired = true };
+            var innerBinding = new PointerDownBinding
+            {
+                Handler = evt =>
+                {
+                    innerFired = true;
+                    evt.StopPropagation();
+                },
+            };
+            _mounted = V.Mount(_host.Root, V.Motion(
+                name: "outer",
+                events: new FiberEventBinding[] { outerBinding },
+                children: new VNode[]
+                {
+                    V.Motion(
+                        name: "inner",
+                        events: new FiberEventBinding[] { innerBinding },
+                        children: new VNode[] { V.Component(StopPropagationPortalHostRender) }),
+                }));
+
+            var hostDoc = FindHostDocumentContaining("stop-portal-target");
+            Assume.That(hostDoc, Is.Not.Null, "Precondition: the layer host panel exists");
+            var portalTarget = hostDoc.rootVisualElement.Q<VisualElement>("stop-portal-target");
+            Assume.That(portalTarget, Is.Not.Null, "Precondition: the portal's child mounted under the host");
+
+            // Act
+            using var evt = PointerDownEvent.GetPooled();
+            hostDoc.rootVisualElement.SimulateBubbledEvent(evt, portalTarget);
+
+            // Assert
+            Assert.That((innerFired, outerFired), Is.EqualTo((true, false)));
+        }
+
         private UIDocument FindHostDocumentContaining(string childName)
         {
             foreach (var doc in UnityEngine.Resources.FindObjectsOfTypeAll<UIDocument>())
