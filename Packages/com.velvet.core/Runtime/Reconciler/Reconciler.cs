@@ -42,6 +42,16 @@ namespace Velvet
 
         internal ReconcilerContext Context => _ctx;
 
+        /// <summary>
+        /// This Reconciler's own <see cref="ChildReconciler"/> instance. Exposed so
+        /// <see cref="FiberZLayerCoordinator.RebaseParkedSlotsForContainerChange"/> can tell whether a fiber
+        /// found via <see cref="ReconcilerContext.ParkedBaselineFibers"/> is the SAME fiber already being
+        /// rebased directly (the caller's own <c>current</c> parameter), rather than a genuinely different,
+        /// unrelated parked fiber — the two are otherwise indistinguishable by fiber identity alone from
+        /// inside that method, which never sees a fiber, only a ChildReconciler.
+        /// </summary>
+        internal ChildReconciler ChildReconciler => _childReconciler;
+
         public Reconciler()
             : this(new ReconcilerContext(), ownsContext: true)
         {
@@ -245,16 +255,29 @@ namespace Velvet
             if (_ctx.IsDisposed || !HasPendingWork) { return; }
             using var _ = s_continueReconcileMarker.Auto();
 
-            // A resume continues the same pass an earlier time-slice suspended; it is NOT a fresh
-            // top-level entry, so it must not run the top-level reset (abort / EffectiveKeys /
-            // portal drain) that Reconcile's isTopLevel finally performs — clearing those mid-pass
-            // would discard state sibling subtrees still need. That reset block lives only in
-            // Reconcile, so incrementing the shared depth here can never trigger it. The bracket
-            // exists so the reconcile-active probe (FiberBatchScheduler.FlushImmediate) reports
-            // SharedReconcileDepth > 0 while a resume is on the stack: a resume is scheduled via
-            // schedule.Execute, not through the batch Drain, so _draining is false during it, and
-            // without the probe a discrete event dispatched synchronously inside a slice would
-            // re-enter the reconciler on the stack.
+            // A resume continues the same pass an earlier time-slice suspended, so while genuinely
+            // nested inside an ancestor's still-unwinding pass (e.g. FiberCommitWork.DrainPendingWork
+            // force-completing a parked inline fiber from inside another fiber's live expansion) it must
+            // not run the top-level reset (abort / EffectiveKeys / DeclaringResolveMisses / portal drain)
+            // that Reconcile's own isTopLevel finally performs — clearing those mid-pass would discard
+            // state sibling subtrees still need, and the ancestor's own eventual top-level finally runs
+            // them once already. But a resume driven by the scheduler tick (FiberWorkLoop.ContinueReconcile,
+            // on its own frame-boundary callback) is NOT nested in anything, and any Portal / z-layer mount
+            // THIS slice enqueued needs the exact same safe post-pass drain a fresh top-level Reconcile call
+            // already gets — leaving it queued until some unrelated fiber's next top-level Reconcile happens
+            // to run would strand a z-managed element's real content (or a Portal's children) unattached
+            // for however long that takes. isTopLevel is the SAME "genuinely outermost" test Reconcile.
+            // Reconcile uses (SharedReconcileDepth read before this call's own increment), so the drain
+            // below is gated identically: it fires once per genuine completion and never while nested,
+            // so DrainPendingWork's own force-drain cannot double-fire it ahead of the ancestor's finally.
+            // The bracket around SharedReconcileDepth itself is unconditional regardless (both branches
+            // need it): it is what lets the reconcile-active probe (FiberBatchScheduler.FlushImmediate)
+            // report SharedReconcileDepth > 0 while a resume is on the stack — a resume is scheduled via
+            // schedule.Execute, not through the batch Drain, so _draining is false during it, and without
+            // the probe a discrete event dispatched synchronously inside a slice would re-enter the
+            // reconciler on the stack.
+            var isTopLevel = _ctx.SharedReconcileDepth == 0;
+
             _ctx.SharedReconcileDepth++;
             // A resume slice rents and returns pooled objects like the original pass, so it gets the
             // same release staging bracket (nested entries are depth-counted inside VNodePool).
@@ -274,8 +297,47 @@ namespace Velvet
             }
             finally
             {
-                VNodePool.EndReleaseScope();
                 _ctx.SharedReconcileDepth--;
+                if (isTopLevel)
+                {
+                    // Mirrors Reconcile's own top-level finally: consumed here, before the drain, so a
+                    // boundary caught earlier in THIS resumed slice cannot make the drain's own nested
+                    // Reconcile calls (fresh top-level entries themselves) see IsAborted already true and
+                    // silently no-op via ChildReconciler.Reconcile's own entry guard. Left unset (false) on
+                    // a nested resume — the ancestor's own eventual top-level finally is what consumes it.
+                    LastTopLevelWasAborted = _ctx.IsAborted;
+                    _ctx.IsAborted = false;
+                }
+                try
+                {
+                    if (isTopLevel)
+                    {
+                        _childReconciler.DrainPendingPortalMounts();
+                    }
+                }
+                finally
+                {
+                    // Mirrors Reconcile's own top-level finally, statement for statement: a continuation
+                    // that completes a pass IS that pass's genuine top-level boundary, so every per-pass
+                    // reset must happen here too or it leaks on the SHARED context until some unrelated
+                    // fiber's fresh Reconcile happens to run. IsAborted gets the same belt-and-suspenders
+                    // second reset (consuming an abort raised DURING this drain itself — a boundary inside
+                    // a Portal's / a z-layer mount's children); DeclaringResolveMisses stays scoped to one
+                    // pass so a late-arriving declaring panel is retried instead of staying permanently
+                    // unresolvable; EffectiveKeys entries registered by subtrees expanded in a resumed
+                    // slice (a new item's keyed Fragment) must not accumulate for the tree's lifetime; and
+                    // the deferred inline old-tree returns must reach the pool at the same boundary a
+                    // fresh pass would give them.
+                    if (isTopLevel)
+                    {
+                        _ctx.PendingPortalMounts.Clear();
+                        _ctx.IsAborted = false;
+                        _ctx.DeclaringResolveMisses.Clear();
+                        _ctx.EffectiveKeys.Clear();
+                        FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
+                    }
+                    VNodePool.EndReleaseScope();
+                }
             }
         }
 

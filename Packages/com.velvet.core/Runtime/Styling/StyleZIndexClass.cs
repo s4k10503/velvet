@@ -1,4 +1,3 @@
-using System;
 using System.Globalization;
 
 namespace Velvet
@@ -12,8 +11,9 @@ namespace Velvet
     internal static class StyleZIndexClass
     {
         // Cheap early-out gate: true when ANY class looks like a z-* utility (after stripping a leading "-").
-        // No parsing and no allocation — used to skip the full TryExtract scan on the vast majority of
-        // elements that carry no z class at all.
+        // Routed through StripImportant first (mirrors StyleFontClass.IsArbitraryFontClass) so this gate agrees
+        // with TryParse on what counts as "a z-* utility" — otherwise "!z-10" would fail this early-out and
+        // TryExtract would never even attempt it, silently leaving an important-modified z-* class unclassified.
         public static bool HasZIndexClass(string[] classNames)
         {
             if (classNames == null)
@@ -26,8 +26,13 @@ namespace Velvet
                 {
                     continue;
                 }
-                var offset = cls[0] == '-' ? 1 : 0;
-                if (cls.Length >= offset + 2 && cls[offset] == 'z' && cls[offset + 1] == '-')
+                var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+                if (string.IsNullOrEmpty(core))
+                {
+                    continue;
+                }
+                var offset = core[0] == '-' ? 1 : 0;
+                if (core.Length >= offset + 2 && core[offset] == 'z' && core[offset + 1] == '-')
                 {
                     return true;
                 }
@@ -65,6 +70,19 @@ namespace Velvet
         public static bool TryParse(string cls, out int z)
         {
             z = 0;
+            if (string.IsNullOrEmpty(cls))
+            {
+                return false;
+            }
+            // Stripped first (house convention — see StyleFontClass.IsArbitraryFontClass / StyleTextEffectClass's
+            // own leading-* parse / MotionSpringClassParser.TryParseAxisValue): "!z-10", "z-10!", "!z-[5]", and
+            // "z-[5]!" all classify like their bare form. The bang itself stays a no-op here regardless — z-index
+            // is a physical relocation, not a style-cascade layer !important arbitrates (StripImportant's own
+            // Scope comment already documents this for the array-scanned utility families) — this only makes the
+            // parser recognize the four bang'd spellings instead of silently dropping the element from z
+            // management. A dash embedded AFTER a leading "-" (e.g. "-!z-10") is not a shape StripImportant
+            // recognizes (it only strips a bang at the very first or very last character), so that stays rejected.
+            cls = StyleArbitraryValueResolver.StripImportant(cls, out _);
             if (string.IsNullOrEmpty(cls))
             {
                 return false;

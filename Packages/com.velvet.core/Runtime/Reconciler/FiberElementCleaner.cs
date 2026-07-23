@@ -464,9 +464,16 @@ namespace Velvet
                 return;
             }
 
-            var slotEnd = portalInfo.SlotStart + portalInfo.SlotLength;
+            // PortalState.SlotStart is stored LOGICAL (ChildReconciler.DrainPendingPortalMounts /
+            // FiberNodePatcher.PatchPortalChildren both keep it in that basis so Reconcile's own leading-offset
+            // entry gate folds it exactly once) — this walk indexes target's children PHYSICALLY and never goes
+            // through that entry gate, so it converts once here instead, re-deriving the live offset rather than
+            // trusting a stale copy (see FiberZLayerCoordinator.LeadingOffset's own doc on why it must always be
+            // read fresh).
+            var physicalSlotStart = portalInfo.SlotStart + FiberZLayerCoordinator.LeadingOffset(target);
+            var slotEnd = physicalSlotStart + portalInfo.SlotLength;
             if (slotEnd > target.childCount) slotEnd = target.childCount;
-            for (var i = slotEnd - 1; i >= portalInfo.SlotStart; i--)
+            for (var i = slotEnd - 1; i >= physicalSlotStart; i--)
             {
                 var child = target.ElementAt(i);
                 var poolable = PoolableOccupantOf(child);
@@ -531,6 +538,17 @@ namespace Velvet
             {
                 var child = element.ElementAt(i);
                 if (child == excluded)
+                {
+                    continue;
+                }
+
+                // A z-layer container's own members are z-managed REAL elements, each with a placeholder
+                // sitting elsewhere in this SAME child list (both are direct children of `element` whenever
+                // it is a stacking-context parent being torn down) — CleanupZLayerPlaceholder already reaches
+                // and fully cleans up every member via its placeholder in this very loop. Descending into the
+                // container here too would run the full CleanupElementResources + DisposeFibersUnder sequence
+                // on each member a second time.
+                if (FiberZLayerCoordinator.IsLayerContainer(child))
                 {
                     continue;
                 }

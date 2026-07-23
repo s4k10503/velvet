@@ -460,7 +460,7 @@ namespace Velvet
             NavigationMoveEvent evt, IPanel panel, VisualElement panelRoot, VisualElement focused, bool forward,
             ReconcilerContext ctx)
         {
-            var real = FindEnclosingZLayerReal(focused, ctx, out var placeholder);
+            var real = FindEnclosingZLayerReal(focused, ctx, out var placeholder, out var container);
             if (real == null)
             {
                 return false;
@@ -474,8 +474,32 @@ namespace Velvet
                 return false;
             }
 
+            // The placeholder's own physical ring-neighbour can BE the layer container itself (or a landing
+            // inside it, on ANY co-tenant's real — not only this element's own): a trailing front container
+            // sits right after its stacking parent's last ordinary slot, so when the z-managed element is
+            // that parent's logically LAST child (forward) — or, symmetrically, a leading back container's
+            // FIRST child (backward) — the very next ring step from the placeholder re-enters the container
+            // instead of escaping past it. With 2+ z-managed siblings sharing that container, this can land on
+            // a DIFFERENT member's real (physically adjacent within the same container) rather than this
+            // element's own, which the OLD "inside real's own subtree" test would wrongly accept as an escape
+            // — so the walk is scoped to the whole CONTAINER (any co-tenant's real), not just `real`. A
+            // landing on a NEIGHBOUR's PLACEHOLDER is unaffected: a placeholder lives in the stacking parent's
+            // own slot range, never as a child of the container (see InsertSorted / Place), so it is never
+            // "inside container" and the walk correctly stops there — the legitimate adjacent-sibling handoff
+            // (OnFocusIn forwards from a placeholder to its own real) that the existing backward test relies
+            // on. Keep walking past any container landing until it is genuinely outside the container
+            // entirely, bounded exactly like the SingleTabStop exit walk above so a pathological ring cannot
+            // spin this forever; a ring with nothing else reachable (every walk stays inside the container, or
+            // wraps back to the placeholder itself) falls through to "no valid exit".
             var landing = ring.GetNextFocusable(placeholder, direction) as VisualElement;
-            if (landing == null || ReferenceEquals(landing, placeholder) || !landing.canGrabFocus)
+            var guard = MaxRingWalk;
+            while (landing != null && (ReferenceEquals(landing, container) || container.Contains(landing)) && guard-- > 0)
+            {
+                landing = ring.GetNextFocusable(landing, direction) as VisualElement;
+            }
+
+            if (landing == null || ReferenceEquals(landing, placeholder) || !landing.canGrabFocus
+                || ReferenceEquals(landing, container) || container.Contains(landing))
             {
                 return false;
             }
@@ -484,20 +508,23 @@ namespace Velvet
         }
 
         // Walks UP from `element` (inclusive) for the nearest ancestor currently registered as a z-managed
-        // real element (ReconcilerContext.ZLayerMembers), returning it and its placeholder. Physical
-        // containment, mirroring FindEnclosingScopeRoot's own walk — robust across pool reuse and independent
-        // of any logical-tree bookkeeping.
-        private static VisualElement? FindEnclosingZLayerReal(VisualElement element, ReconcilerContext ctx, out VisualElement? placeholder)
+        // real element (ReconcilerContext.ZLayerMembers), returning it, its placeholder, and the layer
+        // container it currently lives in. Physical containment, mirroring FindEnclosingScopeRoot's own walk
+        // — robust across pool reuse and independent of any logical-tree bookkeeping.
+        private static VisualElement? FindEnclosingZLayerReal(
+            VisualElement element, ReconcilerContext ctx, out VisualElement? placeholder, out VisualElement? container)
         {
             for (var current = element; current != null; current = current.parent)
             {
                 if (ctx.ZLayerMembers.TryGetValue(current, out var member))
                 {
                     placeholder = member.Placeholder;
+                    container = member.Container;
                     return current;
                 }
             }
             placeholder = null;
+            container = null;
             return null;
         }
 

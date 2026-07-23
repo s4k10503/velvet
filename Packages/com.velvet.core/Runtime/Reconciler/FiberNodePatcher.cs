@@ -2323,13 +2323,20 @@ namespace Velvet
             // sibling index, not the wrapper's 1-child interior. On initial mount the element is not parented
             // yet, so the container post-children pass applies it once placed.
             var outer = ResolveOuter(element);
-            if (outer.parent != null)
+            // A z-managed outer's PHYSICAL parent is its layer container (its position there is relative to
+            // unrelated same-layer siblings, not this element's true siblings) — TryGetLogicalPosition
+            // resolves to the stacking parent + the placeholder's slot instead; an ordinary outer resolves to
+            // its own parent/index unchanged, same as the previous outer.parent / outer.parent.IndexOf(outer).
+            if (!FiberZLayerCoordinator.TryGetLogicalPosition(_ctx, outer, out var logicalParent, out var logicalIndex))
             {
-                // Exclude the trailing filter bounds-spacer(s) from the sibling count: they are internal
-                // render-bounds children, not part of the logical child list a first:/last:/nth match sees.
-                EvaluateStructural(element, outer.parent.IndexOf(outer),
-                    SilhouetteBoundsSpacer.NonSpacerChildCount(outer.parent), rules);
+                return;
             }
+            // Exclude the trailing filter bounds-spacer(s) AND a leading back z-layer container (either may
+            // be present) from the sibling count: neither is part of the logical child list a
+            // first:/last:/nth match sees.
+            var leadingOffset = FiberZLayerCoordinator.LeadingOffset(logicalParent!);
+            EvaluateStructural(element, logicalIndex - leadingOffset,
+                SilhouetteBoundsSpacer.NonSpacerChildCount(logicalParent!) - leadingOffset, rules);
         }
 
         // Applies / clears each structural rule's payload for an element at the given sibling position.
@@ -2357,11 +2364,21 @@ namespace Velvet
 
             // The trailing filter bounds-spacer(s) are internal render-bounds children, not logical siblings:
             // exclude them from the count and skip evaluating them so first:/last:/nth match the real children.
-            var count = SilhouetteBoundsSpacer.NonSpacerChildCount(container);
+            // A leading back z-layer container (FiberZLayerCoordinator), when present, is symmetrically
+            // excluded: NonSpacerChildCount only trims the trailing side, so the scan start and the count are
+            // both corrected by LeadingOffset here — otherwise every ordinary child's structural position
+            // computes one slot too high and the sibling count is inflated by one.
+            var leadingOffset = FiberZLayerCoordinator.LeadingOffset(container);
+            var count = SilhouetteBoundsSpacer.NonSpacerChildCount(container) - leadingOffset;
             for (var i = 0; i < count; i++)
             {
-                // The slot may hold a shadow / clip-path WRAPPER; the structural rules are keyed by the inner.
-                var inner = ResolveWrapped(container.ElementAt(i));
+                var slotOccupant = container.ElementAt(i + leadingOffset);
+                // A z-managed child's slot holds its PLACEHOLDER, not the element the rules were registered
+                // against (ApplyStructuralVariantConfig keys by the real element / its own wrapper) — resolve
+                // through the z-registry first, then the ordinary wrapper unwrap (the slot may ALSO hold a
+                // shadow / clip-path WRAPPER either way).
+                var inner = ResolveWrapped(
+                    _ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
                 if (_ctx.StructuralVariants.TryGetValue(inner, out var rules))
                 {
                     EvaluateStructural(inner, i, count, rules);
