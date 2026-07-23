@@ -303,6 +303,14 @@ namespace Velvet
                 DivideDashPainter.Detach(element, divideDashBinding);
                 _ctx.DivideDashBindings.Remove(element);
             }
+            if (_ctx.TextOverlineBindings.TryGetValue(element, out var overlineBinding))
+            {
+                // The overline rule is a generateVisualContent delegate, not a style property, so the pool
+                // reset cannot scrub it — detach unhooks the paint callback so a pooled element cannot ghost
+                // a painted rule onto its next consumer.
+                TextOverlineSilhouette.Detach(element, overlineBinding);
+                _ctx.TextOverlineBindings.Remove(element);
+            }
             if (_ctx.GradientBackgrounds.ContainsKey(element))
             {
                 // Clear the baked gradient background-image so a pooled element cannot ghost a prior

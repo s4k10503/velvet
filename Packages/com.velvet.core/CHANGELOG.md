@@ -39,6 +39,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   here). A `peer-` source that is itself z-managed is not found by a `peer-` consumer (its
   placeholder carries none of its marker classes) — the reverse, a z-managed consumer resolving an
   ordinary `peer-`/`group-` source, works.
+- `overline` (text-decoration), joining the existing `underline` / `line-through` / `no-underline`
+  decoration axis. UI Toolkit rich text has no overline tag, so unlike the other three (a string rewrite)
+  it is PAINTED: a solid rule stroked above the leaf `TextElement`'s first line via
+  `generateVisualContent`, colored from `resolvedStyle.color`, sized to the text's natural width (clamped
+  to the content box), and honoring both components of `-unity-text-align` — its horizontal start, and,
+  for a middle/lower vertical anchor, where that first line actually sits. It cascades and resets
+  through the same axis as the others (`no-underline` clears it too), but the axis stays single-valued by
+  this subsystem's pre-existing design, so `underline overline` on one element resolves to the last
+  token rather than both lines composing as CSS allows. v1 scope: one rule positioned above the first
+  line only — a wrapped label's later lines carry no rule of their own yet.
 - `text-balance` approximates CSS `text-wrap: balance` on a `TextElement` (Label / Button / …). UI
   Toolkit's text engine exposes no line-break hook, so `StyleTextBalanceManipulator` narrows the box
   instead: it binary-searches the public `TextElement.MeasureTextSize` — the same method the engine's own

@@ -547,6 +547,13 @@ namespace Velvet
                 DivideDashPainter.Detach(element, binding);
             }
             _ctx.DivideDashBindings.Clear();
+            // Overline rules are a generateVisualContent delegate (not a style property, so unscrubbed by the
+            // pool reset): detach each so a still-mounted text leaf at root disposal leaves no live delegate.
+            foreach (var (element, binding) in _ctx.TextOverlineBindings)
+            {
+                TextOverlineSilhouette.Detach(element, binding);
+            }
+            _ctx.TextOverlineBindings.Clear();
             // Gradient elements hold an inline background-image referencing a shared baked texture: clear
             // the inline image so a still-mounted element released at root disposal carries no residue
             // (the cached textures themselves are shared and outlive the reconciler).

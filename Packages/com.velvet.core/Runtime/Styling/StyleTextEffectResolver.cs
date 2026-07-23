@@ -4,16 +4,19 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Realises text-transform (uppercase / lowercase / capitalize / normal-case), text-decoration
-    // (underline / line-through), whitespace-pre-line, and leading-* (line-height) by mutating the displayed
-    // text — Unity UI Toolkit has no property for any of the four, so the string is upper/lower/title-cased,
-    // wrapped in the <u>/<s>/<line-height=X> rich-text tags UITK renders, and/or has its space/tab runs
-    // collapsed. CSS inherits all four; UITK does not (for text-transform / text-decoration / line-height
-    // there is no UITK property at all; white-space DOES natively inherit, but no enum value expresses
-    // pre-line's collapse, so the STRING rewrite still needs the same treatment — see the Whitespace remarks
-    // on TextEffect). So every axis cascades by walking ancestors (StyleTextEffectClass holds the pure parse
-    // + string ops; this owns the reconciler-side cascade and the per-element side-tables).
+    // (underline / line-through / overline), whitespace-pre-line, and leading-* (line-height) by mutating
+    // the displayed text — Unity UI Toolkit has no property for any of the four axes, so the string is
+    // upper/lower/title-cased, wrapped in the <u>/<s>/<line-height=X> rich-text tags UITK renders, and/or has
+    // its space/tab runs collapsed. Overline is the one value with no tag to wrap with (UI Toolkit's rich
+    // text vocabulary is <u>/<s> only), so instead of a string rewrite it attaches a PAINTED rule via a
+    // generateVisualContent binding — see the fourth side-table below and TextOverlineBinding. CSS inherits
+    // all four axes; UITK does not (for text-transform / text-decoration / line-height there is no UITK
+    // property at all; white-space DOES natively inherit, but no enum value expresses pre-line's collapse,
+    // so the STRING rewrite still needs the same treatment — see the Whitespace remarks on TextEffect). So
+    // every axis cascades by walking ancestors (StyleTextEffectClass holds the pure parse + string ops; this
+    // owns the reconciler-side cascade and the per-element side-tables).
     //
-    // Three per-element side-tables (all pure, on ReconcilerContext): TextEffects = an element's OWN parsed
+    // Three per-element side-tables are pure (on ReconcilerContext): TextEffects = an element's OWN parsed
     // effect (each axis nullable so an explicit reset — normal-case / no-underline / an explicit
     // whitespace-* class — is distinct from "inherit"; Leading has no reset form, see LeadingUnit, but is
     // still nullable the same way for "inherit" vs. "this element sets a real value"); TextRawText = the
@@ -21,9 +24,13 @@ namespace Velvet
     // can be re-applied idempotently (the element's live .text may already be transformed); TextWhitespaceOwned
     // = a set (Dictionary with a trivial value) of elements whose CURRENT inline `style.whiteSpace` was
     // written by THIS resolver — see the ownership discussion below ApplyToElement. All three ride element
-    // cleanup / pool reuse for free via ReconcilerContext.ClearElementSideTables. Leading needs no fourth
-    // table of its own: unlike PreLine it drives no separate inline style, only the SAME string rewrite
-    // TextEffects/TextRawText already carry, so it rides their existing cleanup for free too.
+    // cleanup / pool reuse for free via ReconcilerContext.ClearElementSideTables. Leading needs no table of
+    // its own: unlike PreLine it drives no separate inline style, only the SAME string rewrite
+    // TextEffects/TextRawText already carry, so it rides their existing cleanup for free too. A FOURTH table,
+    // TextOverlineBindings, is NOT pure: it owns a live generateVisualContent subscription (one per leaf with
+    // decoration == Overline), so FiberElementCleaner detaches it explicitly instead of riding the plain
+    // side-table sweep — see the Overline remarks below ApplyToElement and the table's own comment on
+    // ReconcilerContext.
     //
     // PreLine ALSO drives an inline `white-space: pre-wrap` write, so the preserved newlines render as
     // breaks and wrapping still works. That write happens in ApplyToElement (below), on EVERY text leaf
@@ -64,11 +71,21 @@ namespace Velvet
     // leaf that carried an owned inline PreWrap would keep it forever. FiberNodePatcher.PatchBaseElement
     // clears TextWhitespaceOwned at exactly that site; see the comment there.
     //
+    // Overline is likewise gated in ApplyToElement, off the SAME resolved Decoration value the string
+    // rewrite above just used: a leaf that resolves to Overline gets a TextOverlineBinding attached (a
+    // no-op if one is already tracked for it) and one that no longer does gets its existing binding
+    // detached — so the paint and the (absent) string change can never disagree about which axis is active.
+    // TextOverlineBindings is NOT a pure side-table (see its own comment on ReconcilerContext): the same
+    // still-MOUNTED-Text-prop-patched-to-null transition above would otherwise leak its generateVisualContent
+    // subscription forever (ClearElementSideTables never runs, and ApplyToElement can never run again to
+    // detach it either), so FiberNodePatcher.PatchBaseElement detaches it at that exact site too.
+    //
     // KNOWN LIMITATION: toggling a text-transform / text-decoration / whitespace-pre-line / leading-* class
     // on an ANCESTOR re-cascades to descendants only when that ancestor is re-rendered (its post-children
     // pass walks them). A descendant whose own text is unchanged and whose ancestor's class changed without
     // the ancestor re-patching keeps its prior effect — string AND, for PreLine, the inline `white-space`
-    // write alike — until its next text update; the common static case (effect set at mount) is fully correct.
+    // write AND, for Overline, the painted binding alike — until its next text update; the common static
+    // case (effect set at mount) is fully correct.
     internal static class StyleTextEffectResolver
     {
         // Captures the untransformed text for a text-bearing element at a text-set seam (TextNode create/patch,
@@ -150,6 +167,45 @@ namespace Velvet
                 else if (ctx.TextWhitespaceOwned.Remove(te))
                 {
                     te.style.whiteSpace = StyleKeyword.Null;
+                }
+
+                // Overline paint, off the SAME resolved decoration the string rewrite above just used (it
+                // left the string itself unchanged — see StyleTextEffectClass.ApplyDecoration): attach a
+                // binding the first time this leaf resolves to Overline, detach it the moment it no longer
+                // does. Unlike the whitespace write there is nothing to disagree with here (no other system
+                // ever attaches this binding), so no ownership gate is needed — presence in
+                // TextOverlineBindings IS the ownership.
+                if (decoration == TextDecorationKind.Overline)
+                {
+                    // Repaint belongs on the ATTACH transition only — Attach's own MarkDirtyRepaint already
+                    // covers a fresh subscription's first paint — NOT on a steady-state revisit where the
+                    // binding already exists, or every patch of every overlined leaf pays a full mesh regen
+                    // whether or not anything the paint reads actually changed. This is safe because every
+                    // value Draw reads is already dirtied through its OWN native channel by the time it
+                    // changes: TextElement's text setter always raises Repaint (SetValueWithoutNotify diffs
+                    // the string and calls IncrementVersion(Layout|Repaint) or Repaint); font-size and
+                    // -unity-text-align are both explicit Repaint-raising properties in UI Toolkit's own
+                    // ComputedStyle diff (ComputedStyle.CompareChanges); and contentRect only ever moves as
+                    // the result of a resolved layout change, which the layout pass itself always pairs with
+                    // Repaint the moment a box's resolved size actually changes (VisualTreeLayoutUpdater.
+                    // UpdateSubTree raises Size and Repaint together, unconditionally, no fast path). The one
+                    // real gap found: a resolvedStyle.color-ONLY change raises
+                    // VersionChangeType.Color, not Repaint, and an element that opts into the native
+                    // UsageHints.DynamicColor perf hint can patch that color in place without a full repaint
+                    // (RenderEvents.OnColorChanged's dynamic-color fast path) — Velvet itself never sets that
+                    // hint, so closing it here would mean paying an unconditional repaint on every visit to
+                    // guard a combination this framework never produces; left as a documented, self-correcting
+                    // gap (any OTHER later change on the element still repaints it) rather than gated.
+                    if (!ctx.TextOverlineBindings.TryGetValue(te, out var overline))
+                    {
+                        overline = TextOverlineSilhouette.Attach(te);
+                        ctx.TextOverlineBindings[te] = overline;
+                    }
+                }
+                else if (ctx.TextOverlineBindings.TryGetValue(te, out var overline))
+                {
+                    TextOverlineSilhouette.Detach(te, overline);
+                    ctx.TextOverlineBindings.Remove(te);
                 }
             }
         }
