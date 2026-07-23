@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   via `maxWidth` rather than only moving line breaks within a fixed box) — the full deviation writeup is
   in `Documentation~/fonts.md`. Needs a wrapping white-space (`text-wrap` / `whitespace-normal`, …)
   alongside it — Velvet's `Label` default is `nowrap`, so `text-balance` alone is a no-op there.
+- `V.Portal(targetId:)` (the same-panel registry portal) now bubbles `events:` handlers to the
+  logical ancestor chain outside the call site, matching the synthetic bubbling
+  `V.Portal(layer:)`/`V.WorldSpace` already had. `PointerDown`/`Up`/`Move`/`Enter`/`Leave`,
+  `Wheel`, `KeyDown`/`Up`, and `FocusIn`/`Out` bindings on an `events:` prop now reach a logical
+  ancestor's handler the same way in all three portal forms; an element that is both a physical
+  ancestor of the resolved target and a logical ancestor of the call site still fires exactly
+  once (native bubbling already covers it, so the synthetic walk stops there instead of
+  double-firing). `ClickedBinding`/`ChangeEventBinding<T>` (no underlying bubbling event object)
+  and `FocusEvent`/`BlurEvent` (UI Toolkit dispatches them target-only, never bubbling to a
+  bridge listener) stay physical-tree-only, as documented.
 - `Hooks.UseFrame` gains a `priority` parameter — r3f's `useFrame(callback, renderPriority)` ordering
   parity. Lower runs earlier within the same panel; equal priorities fall back to subscription (mount)
   order. Backing this, per-frame callbacks now subscribe to a single per-panel dispatcher instead of
@@ -44,6 +54,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `underline` do. An explicit `whitespace-*` class on the same element wins over `whitespace-pre-line`
   there, and — like `normal-case` / `no-underline` — also blocks a farther ancestor's
   `whitespace-pre-line` from reaching that subtree.
+- `leading-none`…`leading-loose` and `leading-[Npx]` (line-height). USS has no line-height property, so
+  these realise it through UI Toolkit's rich-text `<line-height=X>` tag instead: the named presets emit
+  their Tailwind multiplier verbatim as `<line-height=1.625em>`, which the text engine itself resolves
+  against whatever font size is in effect at that point in the string — unlike `tracking-*`'s em scale,
+  which had to be pre-baked to px at a fixed 16px root, this composes correctly with any `text-*` size at
+  any value, with no lookup table. `leading-[Npx]` emits an absolute `<line-height=Npx>`; only the `px`
+  unit is accepted inside the bracket, and a malformed or unsupported-unit value is silently ignored.
+  Inherits and cascades the same way `uppercase` / `underline` / `whitespace-pre-line` do, with no reset
+  form of its own — Tailwind has no `leading-auto`, and every preset (`leading-none` included) is already a
+  real value rather than a sentinel.
+
+### Fixed
+
+- `V.Portal(layer:)`/`V.WorldSpace` synthetic event bubbling now stops when a handler calls
+  `StopPropagation()` partway up the logical ancestor chain, instead of continuing to invoke
+  every remaining ancestor regardless. Also fixes nested portals/world-space (one mounted inside
+  another's content): the outward walk now escapes every enclosing boundary to reach the
+  outermost logical ancestor, instead of stopping at the inner boundary's own physical
+  target/host root.
+- `V.Portal(targetId:)`/`V.Portal(layer:)`/`V.WorldSpace` children added by a patch AFTER the
+  portal's first mount now bubble `events:` handlers to the logical ancestor chain too — e.g. a
+  `V.Portal` that renders no children until some later state flips true. Previously this only
+  worked for children present at the very first mount (or, for `V.Portal(targetId:)`, a registry
+  target's one-time late-registration heal); anything mounted by a later patch of an
+  already-mounted portal reached its physical ancestors but never its logical ones.
 
 ## [1.5.0] - 2026-07-19
 
