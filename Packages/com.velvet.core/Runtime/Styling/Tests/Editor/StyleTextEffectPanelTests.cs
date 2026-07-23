@@ -33,6 +33,9 @@ namespace Velvet.Tests
         private static StateUpdater<string> s_setLeadingAncestorClass;
         private static StateUpdater<string> s_setLeadingText;
         private static StateUpdater<string> s_setLeadingPoolReuseState;
+        private static StateUpdater<string> s_setOverlineClass;
+        private static StateUpdater<string> s_setOverlinePoolReuseState;
+        private static StateUpdater<string> s_setOverlineText;
 
         protected override Rect WindowSize => new Rect(0, 0, 400, 400);
 
@@ -49,6 +52,9 @@ namespace Velvet.Tests
             s_setLeadingAncestorClass = default;
             s_setLeadingText = default;
             s_setLeadingPoolReuseState = default;
+            s_setOverlineClass = default;
+            s_setOverlinePoolReuseState = default;
+            s_setOverlineText = default;
             base.SetUp();
         }
 
@@ -483,6 +489,99 @@ namespace Velvet.Tests
             Assert.That(_window.rootVisualElement.Q<Label>("leaf").text, Is.EqualTo("there"));
         }
 
+        [Test]
+        public void Given_OverlineOnLabelItself_When_Mounted_Then_BindingIsRegisteredForTheLeaf()
+        {
+            var label = MountAndFindLabel(V.Label(className: "overline", text: "hi"));
+
+            Assert.That(_mounted.Root.Reconciler.Context.TextOverlineBindings.ContainsKey(label), Is.True);
+        }
+
+        [Test]
+        public void Given_OverlineOnParent_When_Mounted_Then_ChildTextLeafBindingIsRegistered()
+        {
+            // The text leaf has no class of its own; the binding cascades from the parent, mirroring how
+            // transform/decoration cascade onto a class-less V.Text leaf.
+            var label = MountAndFindLabel(V.Div(className: "overline", V.Text("hi")));
+
+            Assert.That(_mounted.Root.Reconciler.Context.TextOverlineBindings.ContainsKey(label), Is.True);
+        }
+
+        [Test]
+        public void Given_OverlineAndNoUnderlineOnSameElement_When_Mounted_Then_NoBindingIsRegistered()
+        {
+            // no-underline resolves the SAME axis to None (see StyleTextEffectClassTests), so the leaf must
+            // never attach a binding at all — not attach-then-immediately-detach.
+            var label = MountAndFindLabel(V.Label(className: "overline no-underline", text: "hi"));
+
+            Assert.That(_mounted.Root.Reconciler.Context.TextOverlineBindings.ContainsKey(label), Is.False);
+        }
+
+        [Test]
+        public void Given_OverlineClassRemoved_When_Patched_Then_BindingIsDetached()
+        {
+            Mount(V.Component(RenderOverlineToggle));
+            var ctx = _mounted.Root.Reconciler.Context;
+            var label = _window.rootVisualElement.Q<Label>("leaf");
+            Assume.That(ctx.TextOverlineBindings.ContainsKey(label), Is.True,
+                "Precondition: the overline binding attached at mount");
+
+            s_setOverlineClass.Invoke("");
+            ctx.BatchScheduler.DrainImmediateForTest();
+
+            Assert.That(ctx.TextOverlineBindings.ContainsKey(label), Is.False);
+        }
+
+        [Test]
+        public void Given_OverlineTextPropPatchedToNull_When_Patched_Then_BindingIsDetached()
+        {
+            // The overline class stays; only the Text prop patches to null (the label stays mounted — no
+            // pool cycle, so ClearElementSideTables never runs for it). FiberNodePatcher drops the
+            // TextRawText entry for that transition, which stops ApplyToElement from ever running for this
+            // element again — the leak this pins: without an explicit detach at that same site, the
+            // generateVisualContent subscription it left behind would survive forever instead of clearing
+            // along with the text (mirrors the PreLine inline-whitespace sibling case for the same transition).
+            Mount(V.Component(RenderOverlineTextPropToggle));
+            var ctx = _mounted.Root.Reconciler.Context;
+            var label = _window.rootVisualElement.Q<Label>("leaf");
+            Assume.That(ctx.TextOverlineBindings.ContainsKey(label), Is.True,
+                "Precondition: the overline binding attached at mount");
+
+            s_setOverlineText.Invoke((string)null);
+            ctx.BatchScheduler.DrainImmediateForTest();
+
+            Assert.That(ctx.TextOverlineBindings.ContainsKey(label), Is.False);
+        }
+
+        [Test]
+        public void Given_LabelPooledWithOverlineState_When_RentedAgainWithoutTheClass_Then_NewLabelHasNoBinding()
+        {
+            // Arrange — mount an overline Label, then hide it (a Label -> Div swap removes it, returning it
+            // to VNodePool while it still carries the binding), then show a different, unrelated plain
+            // label. VNodePool's Label pool is LIFO and nothing else rents a Label in between, so this
+            // deterministically hands the same instance back, mirroring the PreLine/Leading pool-reuse tests.
+            Mount(V.Component(RenderOverlinePoolReuseHost));
+            var ctx = _mounted.Root.Reconciler.Context;
+            var scheduler = ctx.BatchScheduler;
+            var firstLabel = _window.rootVisualElement.Q<Label>("leaf");
+            Assume.That(ctx.TextOverlineBindings.ContainsKey(firstLabel), Is.True,
+                "Precondition: the first label carries an overline binding");
+            s_setOverlinePoolReuseState.Invoke("hidden");
+            scheduler.DrainImmediateForTest();
+            Assume.That(_window.rootVisualElement.Q<Label>("leaf"), Is.Null, "Precondition: the label is pooled while hidden");
+
+            // Act — an unrelated plain label rents the pooled instance back.
+            s_setOverlinePoolReuseState.Invoke("plain");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — genuinely the SAME recycled instance (not a coincidentally-unbound new one), carrying
+            // no leftover binding from the previous consumer.
+            var recycled = _window.rootVisualElement.Q<Label>("leaf");
+            Assert.That(
+                (ReferenceEquals(recycled, firstLabel), ctx.TextOverlineBindings.ContainsKey(recycled)),
+                Is.EqualTo((true, false)));
+        }
+
         private void Mount(VNode tree)
         {
             _mounted = V.Mount(_window.rootVisualElement, tree);
@@ -618,6 +717,42 @@ namespace Velvet.Tests
                 return V.Label(name: "leaf", text: "there");
             }
             return V.Div(name: "placeholder");
+        }
+
+        [Component]
+        private static VNode RenderOverlineToggle()
+        {
+            var (cls, setCls) = Hooks.UseState("overline");
+            s_setOverlineClass = setCls;
+            return V.Label(name: "leaf", className: cls, text: "hi");
+        }
+
+        [Component]
+        private static VNode RenderOverlinePoolReuseHost()
+        {
+            var (state, setState) = Hooks.UseState("overline");
+            s_setOverlinePoolReuseState = setState;
+            if (state == "overline")
+            {
+                return V.Label(name: "leaf", className: "overline", text: "hi");
+            }
+            if (state == "plain")
+            {
+                return V.Label(name: "leaf", text: "there");
+            }
+            return V.Div(name: "placeholder");
+        }
+
+        [Component]
+        private static VNode RenderOverlineTextPropToggle()
+        {
+            // Unlike RenderOverlineToggle (which toggles the CLASS), this toggles the Text PROP itself while
+            // overline stays on the class list throughout — exercising the Text->null transition on a still-
+            // mounted element, the one path where the live generateVisualContent subscription must be
+            // detached without an unmount or pool cycle ever running (see FiberNodePatcher.PatchBaseElement).
+            var (text, setText) = Hooks.UseState("hi");
+            s_setOverlineText = setText;
+            return V.Label(name: "leaf", className: "overline", text: text);
         }
     }
 }

@@ -109,7 +109,7 @@ them (not a Velvet decision).
 `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
 `text-wrap` / `text-nowrap` / `text-balance` / `truncate` / `text-ellipsis` / `text-clip`
 (`text-overflow: ellipsis | clip`) / text color / `uppercase` `lowercase` `capitalize` `normal-case`
-(text-transform) / `underline` `line-through` `no-underline` (text-decoration).
+(text-transform) / `underline` `line-through` `overline` `no-underline` (text-decoration).
 
 **Text-transform / text-decoration are realised by mutating the displayed text** (UI Toolkit has no property
 for either): the string is upper/lower/title-cased, and underline / line-through wrap it in the `<u>` / `<s>`
@@ -119,6 +119,26 @@ the one cascade-freshness caveat (an ancestor's class toggled without that ances
 element turns `enableRichText` off, the `<u>` / `<s>` markup is not interpreted — it shows up as literal text
 in the label instead, like any other rich-text tag on that element (`leading-*`'s `<line-height=X>` tag,
 below, has the identical caveat).
+
+**`overline` is the one decoration value that cannot be a string rewrite:** UI Toolkit's rich text has no
+overline tag (only `<u>` / `<s>`), so instead of wrapping the string, `overline` **paints** a solid rule above
+the text via `generateVisualContent` on the leaf `TextElement` (`TextOverlinePainter` / `TextOverlineBinding`)
+— the string itself passes through unchanged. The stroke color tracks `resolvedStyle.color`, its thickness is
+~1/16th of the font size (floored at 1px, matching a typical browser ratio), and it follows `-unity-text-align`'s
+vertical component for where the FIRST line sits — top-aligned under an `upper-*` anchor, vertically centered
+under a `middle-*` anchor (the default for `text-left|center|right|start|end`, and UI Toolkit's own unstyled
+default), bottom-aligned under a `lower-*` anchor — then nudges down a small, documented fraction of the font
+size from that line's own top edge as an approximation of CSS's ascent-line placement (UI Toolkit exposes no
+public, synchronously-reachable ascent metric to place it exactly). It still joins the
+SAME decoration axis as `underline` / `line-through` / `no-underline` — cascade, inheritance, and the
+`no-underline` reset all apply to it for free — but the axis stays single-valued by this subsystem's
+pre-existing design: CSS lets `text-decoration-line` combine multiple lines (`underline overline` shows
+both), Velvet's decoration axis resolves exactly one value, last-token-wins, so `underline overline` on one
+element renders only the overline, not both. **v1 scope:** one rule, positioned above the FIRST line only and
+sized to the text's natural single-line-equivalent width (clamped to the content width) — per-line metrics of
+wrapped text are not publicly reachable in a way usable synchronously from `generateVisualContent`, so a
+multi-line label shows the rule above its top line only; a documented limitation, with per-line placement
+left as future work.
 
 **`white-space`** has four native USS values, and `whitespace-normal`, `whitespace-nowrap`,
 `whitespace-pre`, and `whitespace-pre-wrap` map directly onto them — no C# involved.
@@ -216,7 +236,6 @@ scrollbar toggling) — a narrower edge case than the ancestor-resize gap the pa
 
 | Tailwind | Why omitted |
 |---|---|
-| `overline` (text-decoration) | UI Toolkit rich text has no overline tag (`<u>` / `<s>` only) |
 | `antialiased` / `subpixel-antialiased` (font-smoothing) | Text renders as SDF alpha-blend only — no antialiasing-mode axis to switch |
 | `font-stretch-*` | No variable-font / width-axis support |
 | `tabular-nums` etc. (font-variant-numeric) | No OpenType feature-substitution slot in the runtime font pipeline |
