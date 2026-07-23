@@ -136,6 +136,27 @@ namespace Velvet
         {
             if (_ctx.IsAborted) return;
 
+            // A back z-layer container, when present, is parent's own leading child (physically preceding
+            // the ordinary children it must paint behind) — the one structural asymmetry against every other
+            // reconciler-invisible child (SilhouetteBoundsSpacer's own spacer, and the front z-layer
+            // container, are both trailing). Every caller's incoming slotStart/slotLimit is computed in
+            // purely logical terms (0 for a fresh range, or a sum of PRECEDING SIBLING FIBERS' own rendered
+            // counts for a shared-parent inline tenant) — entirely blind to this leading child — so folding
+            // the offset in ONCE here, at the single choke point every fresh (non-resumed) entry funnels
+            // through, corrects every downstream absolute-index computation without touching any of them
+            // individually (symmetrical to how NonSpacerChildCount centralizes the trailing side). A resumed
+            // time-sliced pass (ContinueIndexed/ContinueKeyed) never re-enters here — its saved slotStart
+            // already has this baked in from when it first ran — so this can never double-apply.
+            if (parent != null)
+            {
+                var leadingOffset = FiberZLayerCoordinator.LeadingOffset(parent);
+                if (leadingOffset != 0)
+                {
+                    slotStart += leadingOffset;
+                    if (slotLimit != int.MaxValue) slotLimit += leadingOffset;
+                }
+            }
+
             // New entries discard any prior suspended state. ContinueXxx calls ReconcileXxxFrom
             // directly and bypasses this path, so discarding here does not break a Continue run.
             // Nested calls entered via PatchNode during ContinueXxx also pass through here, but at
@@ -287,6 +308,15 @@ namespace Velvet
                         }
                         break;
                     }
+                    case ZLayerMountNode zLayerMount:
+                        // Not a host mount: the real element is already fully built (CreateElement / a
+                        // patch-time none-to-z transition ran its whole child reconcile inline, under live
+                        // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
+                        // because placeholder.parent (the stacking parent) is only knowable now. No target
+                        // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
+                        // and move on to the next queued entry.
+                        FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
+                        continue;
                     default:
                         // Only PortalNode / WorldSpaceNode enqueue deferred mounts; anything else is
                         // a missing branch for a new node kind and must fail loudly rather than
@@ -353,6 +383,9 @@ namespace Velvet
                 var slotLength = SilhouetteBoundsSpacer.NonSpacerChildCount(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, slotStart, slotLength);
             }
+            // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
+            // last member this pass tears down here, never synchronously mid-diff.
+            FiberZLayerCoordinator.DrainTeardowns(_ctx);
         }
 
         // Resumes a suspended IndexedReconcile.

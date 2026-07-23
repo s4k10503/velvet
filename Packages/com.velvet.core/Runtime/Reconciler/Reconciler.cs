@@ -630,6 +630,12 @@ namespace Velvet
             _ctx.ChildVariantManipulators.Clear();
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
+            // ZLayerHosts/ZLayerMembers are pure side-tables (dropped by ClearAllSideTables below); these two
+            // are not — a placeholder->real entry always accompanies a live container membership, and a
+            // pending teardown check references a container that may still be attached — so both are dropped
+            // explicitly here, mirroring PortalState/PendingPortalMounts above.
+            _ctx.ZLayerPlaceholders.Clear();
+            _ctx.PendingZLayerTeardownChecks.Clear();
             // Same-panel registry-portal targets are ordinary, user-owned elements that commonly
             // outlive this reconciler (unlike the framework-owned hosts destroyed wholesale below), so
             // each bridge is detached explicitly rather than left to die with a GameObject — see

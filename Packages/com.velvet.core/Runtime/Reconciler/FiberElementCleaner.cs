@@ -500,6 +500,23 @@ namespace Velvet
             PanelHostFactory.Destroy(record);
         }
 
+        // Tears down the real element owned by a departing z-layer placeholder — mirrors CleanupPortal: the
+        // real element is not a DOM descendant of the placeholder (it lives in a layer container elsewhere
+        // under the same stacking parent), so the ordinary CleanupDescendants walk below would never reach
+        // it on its own. A no-op when element is not (or no longer) a z-layer placeholder.
+        private void CleanupZLayerPlaceholder(VisualElement element)
+        {
+            var real = FiberZLayerCoordinator.TakeReal(_ctx, element);
+            if (real == null)
+            {
+                return;
+            }
+            var poolable = PoolableOccupantOf(real);
+            CleanupElement(real);
+            // TakeReal already detached `real` from its layer container; nothing left to remove from the DOM.
+            ReturnOccupantToPool(real, poolable);
+        }
+
         // Recursively cleans up the descendants of an element. DOM operations are the caller's
         // responsibility. Applies the same processing order as CleanupElement to each
         // child, preventing silent bugs caused by asymmetric wrapper handling.
@@ -552,6 +569,7 @@ namespace Velvet
             RescueFocusFromWorldSpaceHost(element);
             CleanupPortal(element);
             CleanupWorldSpaceHost(element);
+            CleanupZLayerPlaceholder(element);
             CleanupDescendants(element, innerElement);
         }
 

@@ -91,9 +91,15 @@ namespace Velvet
             }
         }
 
-        // True when child is a bounds-spacer (the internal, reconciler-invisible render-bounds child).
+        // True when child is a bounds-spacer (the internal, reconciler-invisible render-bounds child) OR a
+        // z-index layer container (FiberZLayerCoordinator's front/back containers, which are equally
+        // reconciler-invisible — a z-marked absolute child's real element lives inside one instead of at its
+        // logical slot). NonSpacerChildCount below is the single centralized consumer every "real child"
+        // count/index site already goes through, so broadening this one predicate makes the whole reconciler
+        // treat both z-layer containers as invisible without touching any of those call sites.
         internal static bool IsSpacer(VisualElement child)
-            => child != null && child.ClassListContains(MarkerClass);
+            => child != null
+                && (child.ClassListContains(MarkerClass) || FiberZLayerCoordinator.IsLayerContainer(child));
 
         // True when spacer is a child of caster and no RENDERED (non-spacer) child follows it — the placement
         // invariant that keeps it outside the child reconciler's [0, renderedChildCount) index range.

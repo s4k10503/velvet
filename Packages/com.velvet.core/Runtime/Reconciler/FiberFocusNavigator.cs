@@ -306,6 +306,17 @@ namespace Velvet
                 return;
             }
 
+            // Same-panel counterpart: focus sits inside a z-relocated element's subtree (its real element
+            // physically lives in a layer container, elsewhere in the same panel) and this move would leave
+            // that subtree — redirect to the panel-ring neighbour of its PLACEHOLDER (its declared position)
+            // instead of wherever the layer container happens to sit physically. Reached only when neither
+            // Contain nor SingleTabStop claims this focus (both returned above), mirroring the chained escape's
+            // own scope precedence.
+            if (TryZLayerExit(evt, panel!, panelRoot, focused, forward, ctx))
+            {
+                return;
+            }
+
             // Entering a SingleTabStop scope from outside: the group is one tab stop, so the move lands on
             // the member last used, else the group's first member — from either direction (the WAI-ARIA
             // composite contract; a backward move's raw prediction would be the group's ring-LAST).
@@ -438,6 +449,58 @@ namespace Velvet
             return null;
         }
 
+        // Same-panel counterpart to TryChainedEscape. `focused` sits inside a z-relocated real element's
+        // subtree, so the engine's own ring prediction reflects where that element physically paints (its
+        // layer container), not its declared position. A prediction that STAYS inside the real element's own
+        // subtree is left alone (moving between two focusables both inside it never crosses its boundary);
+        // only a prediction that would LEAVE it gets redirected, to the panel ring's neighbour of the
+        // element's PLACEHOLDER — its logical position — instead. No panel hop (same panel throughout), so
+        // this redirects synchronously, unlike the cross-panel chained escape.
+        private static bool TryZLayerExit(
+            NavigationMoveEvent evt, IPanel panel, VisualElement panelRoot, VisualElement focused, bool forward,
+            ReconcilerContext ctx)
+        {
+            var real = FindEnclosingZLayerReal(focused, ctx, out var placeholder);
+            if (real == null)
+            {
+                return false;
+            }
+
+            var direction = ToRingDirection(forward);
+            var ring = new VisualElementFocusRing(panelRoot);
+            var predicted = ring.GetNextFocusable(focused, direction) as VisualElement;
+            if (predicted != null && real.Contains(predicted))
+            {
+                return false;
+            }
+
+            var landing = ring.GetNextFocusable(placeholder, direction) as VisualElement;
+            if (landing == null || ReferenceEquals(landing, placeholder) || !landing.canGrabFocus)
+            {
+                return false;
+            }
+            Redirect(evt, panel, ResolveScopeEntryTarget(landing, ctx));
+            return true;
+        }
+
+        // Walks UP from `element` (inclusive) for the nearest ancestor currently registered as a z-managed
+        // real element (ReconcilerContext.ZLayerMembers), returning it and its placeholder. Physical
+        // containment, mirroring FindEnclosingScopeRoot's own walk — robust across pool reuse and independent
+        // of any logical-tree bookkeeping.
+        private static VisualElement? FindEnclosingZLayerReal(VisualElement element, ReconcilerContext ctx, out VisualElement? placeholder)
+        {
+            for (var current = element; current != null; current = current.parent)
+            {
+                if (ctx.ZLayerMembers.TryGetValue(current, out var member))
+                {
+                    placeholder = member.Placeholder;
+                    return current;
+                }
+            }
+            placeholder = null;
+            return null;
+        }
+
         private static void OnFocusIn(FocusInEvent evt, ReconcilerContext ctx)
         {
             if (evt.target is not VisualElement target)
@@ -469,6 +532,31 @@ namespace Velvet
                     {
                         ResolveScopeEntryTarget(entry, ctx).Focus();
                     }
+                }
+                return;
+            }
+
+            // z-layer placeholder forwarding: Tab reached the proxy stand-in at a z-relocated element's
+            // logical position — same panel, so no host-panel hop is needed, just the chained case's
+            // forwarding shape minus the panel-boundary machinery. Contain snap-back is checked first for the
+            // same reason the chained branch above checks it first.
+            if (ctx.ZLayerPlaceholders.TryGetValue(target, out var real))
+            {
+                if (TrySnapBackToContainScope(target, evt.relatedTarget as VisualElement, ctx))
+                {
+                    return;
+                }
+                if (real.canGrabFocus)
+                {
+                    ResolveScopeEntryTarget(real, ctx).Focus();
+                    return;
+                }
+                var backward = evt.direction == VisualElementFocusChangeDirection.left;
+                var entry = new VisualElementFocusRing(real).GetNextFocusable(null,
+                    backward ? VisualElementFocusChangeDirection.left : VisualElementFocusChangeDirection.right) as VisualElement;
+                if (entry != null)
+                {
+                    ResolveScopeEntryTarget(entry, ctx).Focus();
                 }
                 return;
             }

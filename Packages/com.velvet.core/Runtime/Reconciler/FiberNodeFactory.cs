@@ -186,28 +186,44 @@ namespace Velvet
                         _patcher.Appliers.ApplyDragOverlay(element, elementNode.Props.DragOverlay);
                     }
 
+                    VisualElement outer;
                     if (elementNode.WrapElement != null)
                     {
                         var wrapper = elementNode.WrapElement(element);
                         if (wrapper != null && wrapper != element)
                         {
                             _ctx.WrapperToInnerMap[wrapper] = element;
-                            return wrapper;
+                            outer = wrapper;
                         }
-                        return element;
+                        else
+                        {
+                            outer = element;
+                        }
+                    }
+                    else
+                    {
+                        // No explicit wrapElement: a clip-path-* class auto-wraps the element in a stencil-
+                        // masking container, else a ring-* class wraps it in a native-border overlay
+                        // container. Clip takes precedence: the two are mutually exclusive (one structural
+                        // wrapper per element). The shadow is NOT here — it is a wrapper-less paint attached
+                        // above (a clipped element renders no shadow because the shadow paint self-suppresses
+                        // on an active clip).
+                        var clipWrapped = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
+                        outer = !ReferenceEquals(clipWrapped, element)
+                            ? clipWrapped
+                            : _patcher.Appliers.ApplyRingOnCreate(element, elementNode.ClassNames);
                     }
 
-                    // No explicit wrapElement: a clip-path-* class auto-wraps the element in a stencil-
-                    // masking container, else a ring-* class wraps it in a native-border overlay container.
-                    // Clip takes precedence: the two are mutually exclusive (one structural wrapper per
-                    // element). The shadow is NOT here — it is a wrapper-less paint attached above (a clipped
-                    // element renders no shadow because the shadow paint self-suppresses on an active clip).
-                    var clipWrapped = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
-                    if (!ReferenceEquals(clipWrapped, element))
+                    // z-* scope gate: only an ALSO-absolute element with an explicit z-* class routes into a
+                    // layer container; everything else (the overwhelming majority) returns `outer` unchanged
+                    // at the cost of one cheap prefix scan. Gated on the OUTERMOST element — a clip-path-*/
+                    // ring/wrapElement wrapper is what physically occupies the slot, so it (not the inner
+                    // `element`) is what must relocate.
+                    if (FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, elementNode.Props, out var resolvedZ))
                     {
-                        return clipWrapped;
+                        return FiberZLayerCoordinator.EnqueueMount(_ctx, outer, resolvedZ);
                     }
-                    return _patcher.Appliers.ApplyRingOnCreate(element, elementNode.ClassNames);
+                    return outer;
                 }
                 case MotionNode motionNode:
                 {
