@@ -1254,7 +1254,11 @@ namespace Velvet
                             _ctx.StyleAnimationScheduler.CancelExit(anchor);
                             if (presence.Mode == AnimatePresenceMode.PopLayout)
                             {
-                                RestorePopLayoutChildToFlow(anchor, motion?.ClassNames);
+                                // The anchor's OWN class list, not motion's: PinExitingChildOutOfFlow pinned
+                                // `anchor` (this keyed child's own top-level element), which for a Div wrapping
+                                // a Motion (the z-managed shape) is a DIFFERENT element — with a different
+                                // class list — than the nested Motion FindFirstMotionDescendant resolved.
+                                RestorePopLayoutChildToFlow(anchor, (node as BaseElementNode)?.ClassNames);
                             }
                         }
 
@@ -1436,11 +1440,14 @@ namespace Velvet
         // Nulling width/height erases whatever geometry a resolver-applied arbitrary-value class (w-[..],
         // h-[..]) owns — those live in the SAME inline slots this method clears and have no USS rule to fall
         // back to, unlike a named utility (w-full) whose class rule keeps applying underneath. classNames is
-        // the re-added Motion's OWN class array (not anchor.GetClasses(): arbitrary-value tokens resolve
+        // the re-added ANCHOR's OWN class array (not anchor.GetClasses(): arbitrary-value tokens resolve
         // straight to inline style and are deliberately never added to the USS class list, so the element's
-        // class list itself never contains them). The caller resolves it from the CURRENT node — already
-        // patched by EmitPresenceChild, which runs before this restore — so a re-add that also changed props
-        // re-applies the new value rather than a stale pre-pin one.
+        // class list itself never contains them) — the anchor's own declared classes, not necessarily the
+        // Motion's: PinExitingChildOutOfFlow always pins the ANCHOR (the keyed child's own top-level
+        // element), which for a z-managed presence child wrapping a Motion in a Div is the Div, with its own,
+        // separate class list from the nested Motion's. The caller resolves it from the CURRENT node —
+        // already patched by EmitPresenceChild, which runs before this restore — so a re-add that also
+        // changed props re-applies the new value rather than a stale pre-pin one.
         //
         // CancelExit (the caller's previous statement) deliberately leaves transition-property: all /
         // transition-duration active on this exact element so the variant's OWN reversal (e.g. opacity
@@ -1535,7 +1542,20 @@ namespace Velvet
 
             if (commit != null && commit.NewElements.Count > startIdx)
             {
-                return commit.NewElements[startIdx].element;
+                var committed = commit.NewElements[startIdx].element;
+                // A z-managed keyed child's first committed element is its PLACEHOLDER — the real content's
+                // own layer-container placement is deferred to the post-pass drain (FiberZLayerCoordinator),
+                // which has not run yet at this exact synchronous point — every caller of this method
+                // dispatches enter/exit animation and PopLayout pinning against the returned anchor, so
+                // resolving through the registry here, once, means the REAL element is what actually tweens
+                // (and what PinExitingChildOutOfFlow pins) instead of a zero-size proxy that visibly does
+                // nothing. This resolves correctly even for a BRAND-NEW mount reached this same synchronous
+                // pass: FiberZLayerCoordinator.EnqueueMount (and RelocateFromOrdinarySlot's own deferred
+                // branch) register the placeholder->real pair the instant the placeholder is created — well
+                // before the drain that alone would place the real element in its layer container — precisely
+                // so this lookup never has to fall back to the placeholder for a child this method's own
+                // caller is about to explicitly animate.
+                return _ctx.ZLayerPlaceholders.TryGetValue(committed, out var real) ? real : committed;
             }
             return null;
         }

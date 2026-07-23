@@ -656,5 +656,40 @@ namespace Velvet.Tests
         }
 
         #endregion
+
+        #region Target already carries a z-layer container
+
+        [Test]
+        public void Given_APortalTargetThatAlreadyHasABackZLayerContainer_When_KeyedChildrenMount_Then_TheyLandAtTheCorrectPhysicalIndices()
+        {
+            // Arrange — the target already carries a leading back z-layer container (as a negative-z absolute
+            // element relocated directly under it would leave behind), so NonSpacerChildCount(target) already
+            // counts it: the drain's own slotStart computation is already physically correct and must not be
+            // folded a second time by Reconcile's leading-offset entry gate, or a keyed tail-add indexes past
+            // childCount and throws.
+            var target = new VisualElement();
+            var backContainer = new VisualElement();
+            backContainer.AddToClassList(FiberZLayerCoordinator.BackMarkerClass);
+            target.Add(backContainer);
+            FiberPortalRegistry.Register("z-managed-target", target);
+            var children = new VNode[]
+            {
+                V.Portal("z-managed-target", children: new VNode[]
+                {
+                    V.Label(key: "a", text: "A"),
+                    V.Label(key: "b", text: "B"),
+                }),
+            };
+
+            // Act — without the fix, this throws (List.Insert index > Count) before ever reaching the assert.
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), children);
+
+            // Assert — both keyed labels land right after the back container, in declared order.
+            Assert.That(
+                (target.childCount, ((Label)target.ElementAt(1)).text, ((Label)target.ElementAt(2)).text),
+                Is.EqualTo((3, "A", "B")));
+        }
+
+        #endregion
     }
 }

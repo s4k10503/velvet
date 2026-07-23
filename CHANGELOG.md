@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `z-0`…`z-50`, `z-[N]`, and their negative forms (`-z-10`, `z-[-5]`) — each also accepting the
+  important modifier (`!z-10`, `z-10!`, `!z-[5]`, `z-[5]!`, itself a no-op for this utility) —
+  bring CSS `z-index` to `absolute` descendants, compared among siblings sharing one direct parent.
+  UI Toolkit ties paint order, pointer-pick order, and Yoga flex placement to a single physical
+  child list, so physically reordering children for paint would also reorder their layout and
+  corrupt the reconciler's own diff of every other sibling on the very next render. Instead, a
+  z-marked absolute element's real content relocates into a lazily-created per-stacking-parent
+  layer container — one for non-negative z (painted last) and one for negative z (painted first, so
+  it still sits behind ordinary siblings, though never behind its own parent's background, which is
+  a genuine engine dead end: UI Toolkit has one paint traversal, and a child can only paint after
+  its own parent's background) — while a hidden, zero-footprint placeholder holds the element's
+  declared slot for the reconciler, structural variants (`first:`/`last:`/`odd:`/`even:`/`nth-child`),
+  and Tab order, reusing the Portal placeholder pipeline and `SilhouetteBoundsSpacer`'s
+  reconciler-invisible-child convention; a resort's own detach-and-reinsert (a mount-order tie, a
+  sign flip, or a patch-time z change) rescues and restores focus when the moving element holds it,
+  so interacting with a focused element never silently drops focus. `z-*` on an in-flow
+  (non-`absolute`) element is a documented no-op — Yoga has no flex `order` analog, so reordering an
+  in-flow child for paint would also reorder its layout position — and so is `z-*` on `V.Motion`
+  (now with a warning): a Motion's create path never relocates it, since the element identity its
+  own enter/exit tween is bound to must stay put — wrap it in a z-managed `Div` instead, which an
+  `AnimatePresence` keyed child built that way (an animated, top-most modal) can do: its enter,
+  `PopLayout` exit pin, and exit-cancel all target the real, relocated element for its whole
+  lifetime, not a placeholder standing in its declared slot. The `variants` enter/exit classes still
+  resolve only when the direct presence child is the Motion itself, not this wrapped shape — only
+  the transition's timing and its `onEnterComplete` callback are guaranteed for a wrapped Motion
+  today. Comparison is scoped to direct siblings under one immediate parent only; there is no CSS
+  stacking-context nesting (opacity, transform, filter, and isolation do not open a new context
+  here). A `peer-` source that is itself z-managed is not found by a `peer-` consumer (its
+  placeholder carries none of its marker classes) — the reverse, a z-managed consumer resolving an
+  ordinary `peer-`/`group-` source, works.
 - `overline` (text-decoration), joining the existing `underline` / `line-through` / `no-underline`
   decoration axis. UI Toolkit rich text has no overline tag, so unlike the other three (a string rewrite)
   it is PAINTED: a solid rule stroked above the leaf `TextElement`'s first line via

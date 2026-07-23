@@ -208,7 +208,7 @@ namespace Velvet
             var sourceClass = StyleRelationalVariantManipulator.SourceClassFor(!isGroup, _innerName);
             var source = isGroup
                 ? StyleRelationalVariantManipulator.FindAncestorWithClass(target, sourceClass)
-                : StyleRelationalVariantManipulator.FindPrevSiblingWithClass(target, sourceClass);
+                : StyleRelationalVariantManipulator.FindPrevSiblingWithClass(target, sourceClass, _ctx);
             if (source == null)
             {
                 return;

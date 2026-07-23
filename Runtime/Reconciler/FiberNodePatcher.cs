@@ -57,7 +57,22 @@ namespace Velvet
             switch (oldNode)
             {
                 case ElementNode oldElem when newNode is ElementNode newElem:
-                    PatchElement(element, oldElem, newElem);
+                    // z-* candidacy is a runtime property of the CLASS LIST, not the VNode type (unlike
+                    // Portal/WorldSpace, which dispatch on a distinct type below) — CanPatch already says
+                    // "patch in place" for any two ElementNodes of the same ElementType/wrapper-presence
+                    // regardless of z-classes, so the four transitions (still z / z-to-none / none-to-z /
+                    // z-changed) must be intercepted HERE, before the ordinary element patch, or `element`
+                    // (a z-managed slot's PLACEHOLDER, whenever oldElem was z-managed) would be patched as if
+                    // it were the real content.
+                    if (!FiberZLayerCoordinator.TryClassify(oldElem.ClassNames, oldElem.Props, out _)
+                        && !FiberZLayerCoordinator.TryClassify(newElem.ClassNames, newElem.Props, out _))
+                    {
+                        PatchElement(element, oldElem, newElem);
+                    }
+                    else
+                    {
+                        PatchZLayerElement(element, oldElem, newElem);
+                    }
                     break;
                 case TextNode oldText when newNode is TextNode newText:
                     // Invariant: TextNode is always mapped to Label by CreateElement.
@@ -273,6 +288,58 @@ namespace Velvet
             // are mutually exclusive — one wrapper per element). The shadow is now a paint, so a ring composes
             // with it rather than competing for the wrapper.
             _appliers.ApplyRingOnPatch(element, newNode.ClassNames, suppress: clipActive, allowWrap: true);
+        }
+
+        // Applies the oldNode -> newNode diff when EITHER side is z-managed (FiberZLayerCoordinator.
+        // TryClassify), covering the three reachable transitions (the caller already excludes "neither side is
+        // z-managed", which falls through to the ordinary PatchElement):
+        //   still z-managed (z -> z, possibly a different resolved value): `element` is the PLACEHOLDER;
+        //     the real element is patched normally, then repositioned only if its resolved z (or front/back
+        //     sign) actually changed.
+        //   z -> none: `element` is the PLACEHOLDER; the real element is patched normally, then relocated
+        //     back into the placeholder's own slot, replacing it.
+        //   none -> z: `element` IS the real, still-ordinary element; it is patched normally in place, then
+        //     relocated out into its layer, leaving a fresh placeholder at its old slot.
+        // Every branch patches the REAL element (props/children/styles) before any relocation, so a size or
+        // content change that a coordinate-neutral reposition depends on is already reflected.
+        // Contract-preserving: exactly like PatchElement, the net effect on `element`'s own parent's
+        // childCount/order is zero in every branch — a same-index swap (mirroring PatchNode's own MemoNode-
+        // branch precedent) or a pure container-membership move — so ProcessKeyedNode / CommitLeaf's post-
+        // patch re-fetch at the same slot (already written to tolerate a WrapElement-style reference swap)
+        // picks up the new occupant without any change to those call sites.
+        private void PatchZLayerElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
+        {
+            var oldIsZ = FiberZLayerCoordinator.TryClassify(oldNode.ClassNames, oldNode.Props, out _);
+            var newIsZ = FiberZLayerCoordinator.TryClassify(newNode.ClassNames, newNode.Props, out var newResolvedZ);
+
+            if (!oldIsZ)
+            {
+                // none -> z: `element` is still the ordinary, in-flow element.
+                PatchElement(element, oldNode, newNode);
+                FiberZLayerCoordinator.RelocateFromOrdinarySlot(_ctx, element, newResolvedZ);
+                return;
+            }
+
+            // `element` is the placeholder for both remaining branches (oldIsZ is true): the real element
+            // lives elsewhere and must be resolved before it can be patched.
+            if (!_ctx.ZLayerPlaceholders.TryGetValue(element, out var real))
+            {
+                // Defensive: a live tree should never reach a z-managed placeholder with no registered real
+                // element. Patching the placeholder itself would be wrong (it is not the declared content),
+                // so at minimum do not silently drop the node's props/children.
+                PatchElement(element, oldNode, newNode);
+                return;
+            }
+
+            PatchElement(real, oldNode, newNode);
+            if (newIsZ)
+            {
+                FiberZLayerCoordinator.Reposition(_ctx, element, real, newResolvedZ);
+            }
+            else
+            {
+                FiberZLayerCoordinator.RelocateToOrdinarySlot(_ctx, element, real);
+            }
         }
 
         // The ordered post-children effect-pass sequence shared by PatchElement and PatchMotion, kept in
@@ -2265,13 +2332,20 @@ namespace Velvet
             // sibling index, not the wrapper's 1-child interior. On initial mount the element is not parented
             // yet, so the container post-children pass applies it once placed.
             var outer = ResolveOuter(element);
-            if (outer.parent != null)
+            // A z-managed outer's PHYSICAL parent is its layer container (its position there is relative to
+            // unrelated same-layer siblings, not this element's true siblings) — TryGetLogicalPosition
+            // resolves to the stacking parent + the placeholder's slot instead; an ordinary outer resolves to
+            // its own parent/index unchanged, same as the previous outer.parent / outer.parent.IndexOf(outer).
+            if (!FiberZLayerCoordinator.TryGetLogicalPosition(_ctx, outer, out var logicalParent, out var logicalIndex))
             {
-                // Exclude the trailing filter bounds-spacer(s) from the sibling count: they are internal
-                // render-bounds children, not part of the logical child list a first:/last:/nth match sees.
-                EvaluateStructural(element, outer.parent.IndexOf(outer),
-                    SilhouetteBoundsSpacer.NonSpacerChildCount(outer.parent), rules);
+                return;
             }
+            // Exclude the trailing filter bounds-spacer(s) AND a leading back z-layer container (either may
+            // be present) from the sibling count: neither is part of the logical child list a
+            // first:/last:/nth match sees.
+            var leadingOffset = FiberZLayerCoordinator.LeadingOffset(logicalParent!);
+            EvaluateStructural(element, logicalIndex - leadingOffset,
+                SilhouetteBoundsSpacer.NonSpacerChildCount(logicalParent!) - leadingOffset, rules);
         }
 
         // Applies / clears each structural rule's payload for an element at the given sibling position.
@@ -2299,11 +2373,21 @@ namespace Velvet
 
             // The trailing filter bounds-spacer(s) are internal render-bounds children, not logical siblings:
             // exclude them from the count and skip evaluating them so first:/last:/nth match the real children.
-            var count = SilhouetteBoundsSpacer.NonSpacerChildCount(container);
+            // A leading back z-layer container (FiberZLayerCoordinator), when present, is symmetrically
+            // excluded: NonSpacerChildCount only trims the trailing side, so the scan start and the count are
+            // both corrected by LeadingOffset here — otherwise every ordinary child's structural position
+            // computes one slot too high and the sibling count is inflated by one.
+            var leadingOffset = FiberZLayerCoordinator.LeadingOffset(container);
+            var count = SilhouetteBoundsSpacer.NonSpacerChildCount(container) - leadingOffset;
             for (var i = 0; i < count; i++)
             {
-                // The slot may hold a shadow / clip-path WRAPPER; the structural rules are keyed by the inner.
-                var inner = ResolveWrapped(container.ElementAt(i));
+                var slotOccupant = container.ElementAt(i + leadingOffset);
+                // A z-managed child's slot holds its PLACEHOLDER, not the element the rules were registered
+                // against (ApplyStructuralVariantConfig keys by the real element / its own wrapper) — resolve
+                // through the z-registry first, then the ordinary wrapper unwrap (the slot may ALSO hold a
+                // shadow / clip-path WRAPPER either way).
+                var inner = ResolveWrapped(
+                    _ctx.ZLayerPlaceholders.TryGetValue(slotOccupant, out var real) ? real : slotOccupant);
                 if (_ctx.StructuralVariants.TryGetValue(inner, out var rules))
                 {
                     EvaluateStructural(inner, i, count, rules);

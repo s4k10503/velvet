@@ -136,6 +136,27 @@ namespace Velvet
         {
             if (_ctx.IsAborted) return;
 
+            // A back z-layer container, when present, is parent's own leading child (physically preceding
+            // the ordinary children it must paint behind) — the one structural asymmetry against every other
+            // reconciler-invisible child (SilhouetteBoundsSpacer's own spacer, and the front z-layer
+            // container, are both trailing). Every caller's incoming slotStart/slotLimit is computed in
+            // purely logical terms (0 for a fresh range, or a sum of PRECEDING SIBLING FIBERS' own rendered
+            // counts for a shared-parent inline tenant) — entirely blind to this leading child — so folding
+            // the offset in ONCE here, at the single choke point every fresh (non-resumed) entry funnels
+            // through, corrects every downstream absolute-index computation without touching any of them
+            // individually (symmetrical to how NonSpacerChildCount centralizes the trailing side). A resumed
+            // time-sliced pass (ContinueIndexed/ContinueKeyed) never re-enters here — its saved slotStart
+            // already has this baked in from when it first ran — so this can never double-apply.
+            if (parent != null)
+            {
+                var leadingOffset = FiberZLayerCoordinator.LeadingOffset(parent);
+                if (leadingOffset != 0)
+                {
+                    slotStart += leadingOffset;
+                    if (slotLimit != int.MaxValue) slotLimit += leadingOffset;
+                }
+            }
+
             // New entries discard any prior suspended state. ContinueXxx calls ReconcileXxxFrom
             // directly and bypasses this path, so discarding here does not break a Continue run.
             // Nested calls entered via PatchNode during ContinueXxx also pass through here, but at
@@ -287,6 +308,18 @@ namespace Velvet
                         }
                         break;
                     }
+                    case ZLayerMountNode zLayerMount:
+                        // Not a host mount: the real element is already fully built (CreateElement / a
+                        // patch-time none-to-z transition ran its whole child reconcile inline, under live
+                        // context, like any ordinary sibling) — only its CONTAINER placement was deferred,
+                        // because placeholder.parent (the stacking parent) is only knowable now. No target
+                        // resolution, no nested Reconcile, no PortalState entry: resolve the layer placement
+                        // and move on to the next queued entry. `this` is passed through so a first-of-its-
+                        // sign container creation can rebase a park THIS SAME instance's Reconcile() call just
+                        // captured (see RebasePendingSlotStartIfTargeting) — invisible to any other lookup
+                        // until this whole top-level call returns.
+                        FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount, this);
+                        continue;
                     default:
                         // Only PortalNode / WorldSpaceNode enqueue deferred mounts; anything else is
                         // a missing branch for a new node kind and must fail loudly rather than
@@ -298,8 +331,19 @@ namespace Velvet
                 var resolvedTarget = target!;
                 // Exclude a trailing filter bounds-spacer (a skewed / shadowed + filtered target carries one):
                 // portal children must land BEFORE it so it stays last and the recorded slot start does not
-                // drift when the spacer self-heals to the end.
-                var slotStart = SilhouetteBoundsSpacer.NonSpacerChildCount(resolvedTarget);
+                // drift when the spacer self-heals to the end. NonSpacerChildCount is a PHYSICAL count (it still
+                // counts a leading back z-layer container, if the target already carries one from an earlier
+                // relocation directly under it) — Reconcile's own entry point (this method's caller for an
+                // ordinary child list, and every subsequent patch of this same slot range) always re-adds
+                // LeadingOffset to convert a LOGICAL slotStart into a physical one, so passing the already-
+                // physical value here would fold the offset a second time and misplace every child after the
+                // first (a keyed insert can even index past childCount and throw). Subtracting it back out here,
+                // once, is the single point every consumer of the stored PortalState.SlotStart agrees on: a
+                // LOGICAL basis, re-derived fresh at each use (LeadingOffset reads the target's live physical
+                // structure, never a cached copy) so it stays correct even if the target's own leading container
+                // appears or disappears between this mount and a later patch.
+                var physicalSlotStart = SilhouetteBoundsSpacer.NonSpacerChildCount(resolvedTarget);
+                var slotStart = physicalSlotStart - FiberZLayerCoordinator.LeadingOffset(resolvedTarget);
                 // Restore the context that enclosed the Portal's tree position (captured at enqueue) so the
                 // children mount under their enclosing Providers / MotionContext rather than an empty cursor.
                 // The children's own reconcile pushes/pops on top of these and balances out, so popping the
@@ -350,9 +394,17 @@ namespace Velvet
                         f.DetachedMountContext = detachedContext;
                     }
                 }
-                var slotLength = SilhouetteBoundsSpacer.NonSpacerChildCount(resolvedTarget) - slotStart;
+                // The growth this mount contributed, in PHYSICAL terms (both operands share that basis, so the
+                // leading offset — constant across this call, since a nested z-layer mount targeting this same
+                // resolvedTarget only ever ENQUEUES here rather than resolving inline — cancels out of the
+                // difference either way); slotStart itself is stored LOGICAL, per the comment above.
+                var slotLength = SilhouetteBoundsSpacer.NonSpacerChildCount(resolvedTarget) - physicalSlotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, slotStart, slotLength);
             }
+            // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
+            // last member this pass tears down here, never synchronously mid-diff. `this` mirrors
+            // ResolveQueuedMount's own reason above (a self-caused park from THIS instance's own pass).
+            FiberZLayerCoordinator.DrainTeardowns(_ctx, this);
         }
 
         // Resumes a suspended IndexedReconcile.
@@ -411,6 +463,35 @@ namespace Velvet
         // is preserved unshifted.
         private static int ShiftSlotLimit(int slotLimit, int delta)
             => slotLimit == int.MaxValue ? slotLimit : slotLimit + delta;
+
+        // Rebases this instance's own parked state by delta, but only when its captured Parent is `parent` —
+        // called by FiberZLayerCoordinator when a back z-layer container is created or torn down (see
+        // FiberZLayerCoordinator.RebaseParkedSlotsForContainerChange). That mutation runs from
+        // DrainPendingPortalMounts, itself called from THIS instance's own top-level finally — Reconciler.
+        // Reconcile's on a fiber's first suspension, or Reconciler.ContinueReconcile's on a later resume tick
+        // that re-parks in the same tick it drains — so a park this SAME call just captured (its own
+        // placeholder insert queued the very mount this drain now resolves) is still sitting on this
+        // instance. On a first suspension that is also invisible to any cross-fiber sweep:
+        // ReconcilerContext.ParkedBaselineFibers only gains this fiber once Reconcile() itself has fully
+        // returned (FiberCommitWork.ReturnOldTreeAfterReconcile), strictly AFTER that drain finishes. On a
+        // later resume tick the fiber may ALREADY be registered there too (nothing removes it until
+        // HasPendingWork goes false) — RebaseParkedSlotsForContainerChange's own loop excludes this instance
+        // by identity so the two call sites never double-apply to the same captured state. Unlike
+        // RebasePendingSlotStart (which the caller already knows targets this instance's parked parent, from
+        // the inline-sibling walk), this call site has no such guarantee — a parked state here may belong to
+        // an unrelated parent entirely — so the Parent match is checked first.
+        internal void RebasePendingSlotStartIfTargeting(VisualElement parent, int delta)
+        {
+            if (delta == 0) return;
+            if (PendingIndexedState.HasValue && ReferenceEquals(PendingIndexedState.Value.Parent, parent))
+            {
+                RebasePendingSlotStart(delta);
+            }
+            else if (PendingKeyedState != null && ReferenceEquals(PendingKeyedState.Parent, parent))
+            {
+                RebasePendingSlotStart(delta);
+            }
+        }
 
         // Discards a suspended KeyedReconcile state and returns the held Pool buffers.
         // Invoked on a new Reconcile or during Dispose.
