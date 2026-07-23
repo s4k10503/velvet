@@ -26,8 +26,8 @@ namespace Velvet
         // so its '!' is accepted but inert. Returns the input unchanged when no modifier is present.
         //
         // Scope: this is wired into the per-class dispatch (USS-class + inline-layer utilities). The
-        // array-scanned subsystem utilities (shadow-*, font-*, gap-*, divide-*, clip-path-*) do NOT
-        // participate in the USS/inline cascade that !important arbitrates — they are custom-drawn or
+        // array-scanned subsystem utilities (shadow-*, font-*, gap-*, divide-*, clip-path-*, leading-*) do
+        // NOT participate in the USS/inline cascade that !important arbitrates — they are custom-drawn or
         // resolved to inline that already wins — so the important form is not recognized for them; use the
         // plain form. (Adding the bang there would be a no-op elevation by definition.)
         public static string StripImportant(string className, out bool important)

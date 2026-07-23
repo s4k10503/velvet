@@ -66,6 +66,12 @@ namespace Velvet.Tests
             yield return new TestCaseData("font-[550]", true)
                 .SetName("Given_BracketWeight_When_CheckedForArbitraryFontClass_Then_True");
 
+            // The important-modifier bang must not defeat this guard: StripImportant strips it at the 3
+            // guard call sites AFTER this check runs, so the predicate itself has to recognize the bang'd
+            // form or the bare bracket token leaks into the USS class list once the bang is gone.
+            yield return new TestCaseData("!font-[weight:550]", true)
+                .SetName("Given_BangPrefixedBracketWeight_When_CheckedForArbitraryFontClass_Then_True");
+
             // Non-bracket font classes stay in the list as the USS fallback; non-font brackets are unrelated.
             yield return new TestCaseData("font-bold", false)
                 .SetName("Given_FontBold_When_CheckedForArbitraryFontClass_Then_False");

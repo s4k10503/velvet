@@ -95,9 +95,23 @@ namespace Velvet
         /// style), so the reconciler must keep them out of the USS class list — unlike the non-bracket
         /// font classes (<c>font-bold</c>, <c>font-sans</c>, …) which stay in the list as the USS fallback.
         /// Single source of truth for the AddClass / RemoveClass / ApplyClassNames exclusion checks.
+        /// Routed through <see cref="StyleArbitraryValueResolver.StripImportant"/> first so an
+        /// important-modifier bang (<c>!font-[…]</c> / <c>font-[…]!</c>) is tolerated: the 3 call sites
+        /// above run THIS check before their own <c>StripImportant</c> call, so a bang'd token that only
+        /// matched the un-prefixed form would fall through, have its bang stripped downstream, and leak the
+        /// bare bracket core into the class list as a dead token. The modifier itself stays a no-op for
+        /// this family either way (see <c>StripImportant</c>'s own Scope comment) — this only makes the
+        /// classlist guard agree with the stripper on what counts as "this family".
         /// </summary>
-        public static bool IsArbitraryFontClass(string cls) =>
-            !string.IsNullOrEmpty(cls) && cls.StartsWith("font-[", StringComparison.Ordinal);
+        public static bool IsArbitraryFontClass(string cls)
+        {
+            if (string.IsNullOrEmpty(cls))
+            {
+                return false;
+            }
+            var core = StyleArbitraryValueResolver.StripImportant(cls, out _);
+            return core.StartsWith("font-[", StringComparison.Ordinal);
+        }
 
         /// <summary>
         /// Scans <paramref name="classNames"/> and folds every font utility into one
