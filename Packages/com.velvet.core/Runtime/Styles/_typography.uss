@@ -71,12 +71,18 @@
 .text-top-center { -unity-text-align: upper-center; }
 .text-top-left { -unity-text-align: upper-left; }
 
-/* White Space */
+/* White Space. UnityEngine.UIElements.WhiteSpace has four members — normal / nowrap / pre / pre-wrap —
+   all reachable directly from USS. whitespace-pre-line has no rule here: CSS pre-line (collapse
+   space/tab runs, keep newlines) has no matching enum member, so it is realised in C# instead — a
+   display-string rewrite plus an inline `white-space: pre-wrap` write — see StyleTextEffectResolver.cs. */
 .whitespace-normal { white-space: normal; }
 .whitespace-nowrap { white-space: nowrap; }
+.whitespace-pre { white-space: pre; }
+.whitespace-pre-wrap { white-space: pre-wrap; }
 
-/* Text wrap aliases (Tailwind: text-wrap / text-nowrap). UI Toolkit's white-space only has the
-   normal/nowrap axis, so text-balance / text-pretty have no equivalent and are intentionally omitted. */
+/* Text wrap aliases (Tailwind: text-wrap / text-nowrap). text-balance / text-pretty are browser
+   line-breaking HEURISTICS (best-fit paragraph shaping), not a white-space value, so UI Toolkit's text
+   generator has nothing to opt into and they are intentionally omitted regardless of white-space's range. */
 .text-wrap { white-space: normal; }
 .text-nowrap { white-space: nowrap; }
 

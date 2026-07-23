@@ -20,6 +20,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (defaults to `Physics.DefaultRaycastLayers`). `distanceFactor` scales the element by that value
   divided by its current camera distance, faking perspective size falloff for otherwise-flat
   screen-space content; it is the reference distance at which scale is exactly 1 and must be positive.
+- `whitespace-pre`, `whitespace-pre-wrap`, and `whitespace-pre-line` utilities, filling out the previous
+  `whitespace-normal` / `whitespace-nowrap`-only pair. The first two map directly onto
+  `UnityEngine.UIElements.WhiteSpace`'s two other native values. `whitespace-pre-line` has no matching
+  engine value, so it is realised the same way as `uppercase` / `underline` — a display-string rewrite
+  (collapse space/tab runs to one space, keep newlines, drop whitespace sitting at a line edge — a CRLF
+  pair or a lone CR counts as a newline too, per CSS's segment-break normalization) plus an inline
+  `white-space: pre-wrap` write on every text leaf whose resolved axis is pre-line (not just once on the
+  class-bearing element — `Label`/`TextElement`'s own default theme rule for `white-space` always beats an
+  inherited value, so only a per-leaf write reaches a descendant Label) so the preserved newlines still
+  render as breaks and the text still wraps — and it inherits/cascades the same way `uppercase` /
+  `underline` do. An explicit `whitespace-*` class on the same element wins over `whitespace-pre-line`
+  there, and — like `normal-case` / `no-underline` — also blocks a farther ancestor's
+  `whitespace-pre-line` from reaching that subtree.
 
 ## [1.5.0] - 2026-07-19
 
