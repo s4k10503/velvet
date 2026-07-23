@@ -81,8 +81,11 @@
 .whitespace-pre-wrap { white-space: pre-wrap; }
 
 /* Text wrap aliases (Tailwind: text-wrap / text-nowrap). text-balance / text-pretty are browser
-   line-breaking HEURISTICS (best-fit paragraph shaping), not a white-space value, so UI Toolkit's text
-   generator has nothing to opt into and they are intentionally omitted regardless of white-space's range. */
+   line-breaking HEURISTICS (best-fit paragraph shaping), not a white-space value, so there is no rule
+   for either here. text-pretty has no UI Toolkit hook and is intentionally omitted. text-balance DOES
+   have a class-facing effect, but not through USS: StyleTextBalanceManipulator approximates it in C# by
+   binary-searching TextElement.MeasureTextSize for the narrowest inline maxWidth that keeps the same
+   line count — see StyleTextBalanceManipulator.cs and Documentation~/fonts.md. */
 .text-wrap { white-space: normal; }
 .text-nowrap { white-space: nowrap; }
 

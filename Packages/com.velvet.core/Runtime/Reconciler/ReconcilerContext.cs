@@ -256,6 +256,9 @@ namespace Velvet
         public Dictionary<VisualElement, StyleGapManipulator> GapManipulators { get; } = new();
         public Dictionary<VisualElement, StyleDivideManipulator> DivideManipulators { get; } = new();
         public Dictionary<VisualElement, StyleGridManipulator> GridManipulators { get; } = new();
+        // text-balance's per-element measure-and-narrow manipulator. Mirrors GapManipulators /
+        // GridManipulators; removed on cleanup / dispose.
+        public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
 
         // Per-divided-child dashed / dotted divider paint (divide-dashed / divide-dotted), keyed by the CHILD
         // element (not the container) — the divider is painted on the child's own generateVisualContent, since
