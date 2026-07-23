@@ -107,9 +107,9 @@ them (not a Velvet decision).
 `text-xs`…`text-4xl` (font-size) / `text-left|center|right|start|end` (`-unity-text-align`) /
 `tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
 `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
-`text-wrap` / `text-nowrap` / `truncate` / `text-ellipsis` / `text-clip` (`text-overflow: ellipsis | clip`) /
-text color / `uppercase` `lowercase` `capitalize` `normal-case` (text-transform) /
-`underline` `line-through` `overline` `no-underline` (text-decoration).
+`text-wrap` / `text-nowrap` / `text-balance` / `truncate` / `text-ellipsis` / `text-clip`
+(`text-overflow: ellipsis | clip`) / text color / `uppercase` `lowercase` `capitalize` `normal-case`
+(text-transform) / `underline` `line-through` `overline` `no-underline` (text-decoration).
 
 **Text-transform / text-decoration are realised by mutating the displayed text** (UI Toolkit has no property
 for either): the string is upper/lower/title-cased, and underline / line-through wrap it in the `<u>` / `<s>`
@@ -177,6 +177,61 @@ Tailwind defines no `leading-auto` below `leading-none`, and every preset — `l
 included — is already a real value, so there is nothing for a descendant to reset back to the way
 `normal-case` / `no-underline` / an explicit `whitespace-*` class do.
 
+**`text-balance`** approximates CSS `text-wrap: balance` even though UI Toolkit's text engine exposes no
+line-break hook at all (there is no way to influence *where* a line wraps). `StyleTextBalanceManipulator`
+sidesteps that by not touching line breaks: it binary-searches the public
+`TextElement.MeasureTextSize(text, width, widthMode, height, heightMode)` — the same method the engine's
+own autosize pass already calls — for the **narrowest inline `maxWidth`** that keeps the measured height
+at or under the height a normal (unbalanced) layout would take at the element's available width. Since
+font metrics are constant across candidates, comparing heights stands in for comparing line counts: a
+width narrow enough to add a line always measures taller and is rejected. The result reads more evenly
+than a near-empty last line, the same visual goal as the real CSS feature.
+
+Two deviations from CSS, both documented on the manipulator itself and worth knowing before reaching for
+this class:
+
+- **The box can shrink.** Real `text-wrap: balance` never resizes the element — only where its lines
+  break. This approximation instead narrows the box via `maxWidth`, so anything sized from that box (a
+  background, alignment relative to it) reads against a smaller box than an unbalanced sibling would
+  have. Applied only when the text actually wraps to 2+ lines (see below), so a single-line label's box
+  is never touched.
+- **`maxWidth` is measured against the PARENT's content width**, not the element's own — reading the
+  element's own already-narrowed width back would ratchet it narrower every pass instead of converging.
+  This is exact when the element is its parent's sole / stretch-to-fill child (the common
+  paragraph/heading usage) and an over-estimate when siblings share the row or the element carries its
+  own narrower `max-w-*`. An over-estimate only makes balancing less aggressive (it never widens the box
+  past what normal layout already gives it), so the deviation is a conservative under-balance, never a
+  wrong one. `text-balance` otherwise owns the element's inline `maxWidth` outright while its class is
+  present — a co-present `max-w-*` utility on the same element is overwritten, the same ownership rule
+  `grid-cols-*` applies to a column's width — and that ownership is enforced every patch (not just once at
+  attach), so a `max-w-*` value that changes in the same render as a still-present `text-balance` is
+  re-overwritten before the render ends. Removing the `text-balance` class instead RESTORES a co-present
+  `max-w-*` utility's own value rather than leaving `maxWidth` cleared.
+
+**Prerequisite — needs a wrapping white-space too:** Velvet's `Label` ships with no bundled base
+white-space rule, so its engine default is `nowrap`. `text-balance` alone is therefore a **silent no-op**
+on a default `Label` — pair it with `text-wrap` / `whitespace-normal` (or another wrapping white-space)
+for it to have any effect.
+
+**Single-line gate:** CSS balance is a no-op on one line, and since this approximation instead shrinks the
+box, applying it to single-line text would shrink that box for no CSS-parity benefit. The manipulator
+only writes a narrower `maxWidth` when the natural height at the available width exceeds the text's
+unconstrained single-line height (2+ lines); otherwise any previously-applied `maxWidth` is cleared. An
+element with `white-space: nowrap` reaches the same "single line" outcome through this same comparison
+(`MeasureTextSize` already measures against the element's own resolved white-space), so no separate check
+is needed for it — this is also why the prerequisite above is silent rather than a thrown error: nowrap
+text always measures as "single line" and the gate above clears (or never writes) a `maxWidth` for it.
+
+**Staleness:** the manipulator re-derives on attach; on its own `GeometryChangedEvent`; on a listener on
+the PARENT's `GeometryChangedEvent` (needed because the manipulator's own `maxWidth` write pins the
+element's resolved size, so an ancestor WIDENING never changes the element's own rect and would otherwise
+never re-fire the search — listening on the parent directly, the same element the available width is read
+from, closes that gap); and on the `ChangeEvent<string>` UI Toolkit raises whenever `.text` is reassigned
+on a live element (covers a text swap that happens to keep the same wrapped box size, and therefore raises
+no geometry event, from going stale). What's left uncovered: a resize confined entirely to a `ScrollView`
+parent's own content viewport with no accompanying change to the `ScrollView`'s own outer rect (e.g. a
+scrollbar toggling) — a narrower edge case than the ancestor-resize gap the parent listener closes.
+
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**
 
 | Tailwind | Why omitted |
@@ -184,7 +239,7 @@ included — is already a real value, so there is nothing for a descendant to re
 | `antialiased` / `subpixel-antialiased` (font-smoothing) | Text renders as SDF alpha-blend only — no antialiasing-mode axis to switch |
 | `font-stretch-*` | No variable-font / width-axis support |
 | `tabular-nums` etc. (font-variant-numeric) | No OpenType feature-substitution slot in the runtime font pipeline |
-| `text-balance` / `text-pretty` | Browser line-breaking heuristics (best-fit paragraph shaping); UI Toolkit's text generator has no such heuristic to opt into |
+| `text-pretty` | Also a browser line-breaking heuristic, and a distinct one from `balance` (avoids orphans without redistributing every line) — not aliased to `text-balance` since the two have different goals; unsupported for now |
 
 None of the font-smoothing / font-stretch / font-variant-numeric rows above are reproducible at runtime by
 any class or `refCallback` — there is no engine hook to flip. Where the *look* matters (tabular figures in a

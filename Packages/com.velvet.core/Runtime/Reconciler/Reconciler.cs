@@ -623,6 +623,12 @@ namespace Velvet
             }
 
             _ctx.GridManipulators.Clear();
+            foreach (var (element, manipulator) in _ctx.TextBalanceManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.TextBalanceManipulators.Clear();
             foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
             {
                 element.RemoveManipulator(manipulator);

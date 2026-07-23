@@ -286,6 +286,9 @@ namespace Velvet
         //   margins (-gap/2) — and so it re-applies against the current child set (a child add / remove
         //   re-spaces even when the className did not change). Divide / grid follow at the same timing
         //   for the same child-set reason.
+        // - text-balance follows at the same slot for consistency (every per-element style manipulator
+        //   attaches from one place), though its own ordering is not load-bearing: it measures the
+        //   element's own text, not a shared child edge or the child set.
         // - Structural variants (first:/last:/nth) re-derive every child's position-based match from the
         //   final sibling order.
         // - has-[.class]: re-evaluated with the element AS subject (its descendants drive its own payload),
@@ -310,6 +313,10 @@ namespace Velvet
             ApplyGapManipulator(element, classNames);
             ApplyDivideManipulator(element, classNames);
             ApplyGridManipulator(element, classNames);
+            // text-balance reads no shared child edge and no child set at all (it measures the element's
+            // OWN text), so its position relative to the trio above is not load-bearing — attached here
+            // only to keep every per-element style manipulator wired from one place.
+            ApplyTextBalanceManipulator(element, classNames);
             ApplyStructuralVariants(element);
             ApplyHasClassVariants(element);
             ApplyHasVariantManipulators(element);
@@ -2474,6 +2481,47 @@ namespace Velvet
                 var manipulator = new StyleGridManipulator(spec);
                 element.AddManipulator(manipulator);
                 _ctx.GridManipulators[element] = manipulator;
+            }
+        }
+
+        // Configures the element's StyleTextBalanceManipulator from the `text-balance` token in
+        // classNames. Unlike Gap/Grid/Divide, text-balance carries no per-element spec value to diff (it
+        // is a bare flag the manipulator re-derives entirely from its own events) — but it still needs an
+        // "update existing manipulator" branch that runs every patch: Refresh() forces a full re-derive so
+        // text-balance re-wins its inline maxWidth slot even when a co-present max-w-* utility's inline
+        // write — applied earlier in this SAME patch by DiffClassList/ApplyClassNames — changed value
+        // without anything the manipulator's own events would otherwise catch. Mirrors
+        // ApplyGapManipulator's timing — call AFTER the container's children have been reconciled
+        // (harmless here since text-balance does not read children, but keeps every per-element style
+        // manipulator attached at the same, single, well-known point in the pass).
+        internal void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)
+        {
+            // Fast early-out for the ~99% of elements with no text-balance class and no existing manipulator.
+            if (!StyleTextBalanceClass.HasTextBalanceClass(classNames))
+            {
+                if (_ctx.TextBalanceManipulators.TryGetValue(element, out var stale))
+                {
+                    element.RemoveManipulator(stale);
+                    _ctx.TextBalanceManipulators.Remove(element);
+                    // Detach unconditionally nulls the shared maxWidth slot text-balance owned while
+                    // present; restore a co-present max-w-* utility's own value the same way a detached
+                    // Hue/Pulse motion's shared inline slot is restored
+                    // (FiberWrapperElementAppliers.RestoreSharedInlineSlot) — otherwise removing JUST the
+                    // text-balance token would also erase an unrelated max-width the element still carries.
+                    ReapplyArbitraryValues(element, classNames);
+                }
+                return;
+            }
+
+            if (_ctx.TextBalanceManipulators.TryGetValue(element, out var existing))
+            {
+                existing.Refresh();
+            }
+            else
+            {
+                var manipulator = new StyleTextBalanceManipulator();
+                element.AddManipulator(manipulator);
+                _ctx.TextBalanceManipulators[element] = manipulator;
             }
         }
 
