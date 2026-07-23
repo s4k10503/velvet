@@ -10,6 +10,7 @@ For the package overview and installation instructions, see the repository root 
 | [react-migration.md](react-migration.md) | Naming alignment and API mapping for developers coming from React |
 | [memoization.md](memoization.md) | The `[Memoize]` attribute — usage, constraints, and diagnostic IDs (Source Generator-driven partial-method memoization) |
 | [styling-flexbox-and-gap.md](styling-flexbox-and-gap.md) | Flexbox direction (`flex` defaults to column, not row) and `gap-*` gotchas (single-axis, trailing margin) vs Tailwind |
+| [styling-z-index.md](styling-z-index.md) | `z-*` stacking for `absolute` descendants — the layer-container + placeholder mechanism, sibling-scope-only comparison, and the in-flow/negative-z/`peer-` deviations from CSS |
 | [styling-variants.md](styling-variants.md) | The variant set (state / theme `dark:` / responsive `sm:`…`2xl:` / relational `group-`·`peer-` / stacked) and container queries (`@container`, the `container-type: inline-size` equivalent) |
 | [styling-filters.md](styling-filters.md) | Filter utilities (`blur-*` … `sepia-*`, the shader-backed full-range `brightness-*`/`saturate-*`) and the `VelvetFilters` custom filter registry (`filter-[name:args]`) |
 | [scene-view.md](scene-view.md) | `V.SceneView` — a camera's output as an element (`<canvas>` parity): the framework-owned RenderTexture contract, styling composition, live sampling |

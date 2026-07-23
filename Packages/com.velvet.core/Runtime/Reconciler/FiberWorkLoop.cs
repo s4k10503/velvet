@@ -321,9 +321,14 @@ namespace Velvet
                 // stale against the rows this slice just inserted / removed.
                 if (fiber.IsInlineMounted)
                 {
-                    var beforeChildCount = fiber.MountPoint?.childCount ?? 0;
+                    // Logical (container-blind) count, not raw childCount: this same ContinueReconcile call
+                    // now also drains any Portal / z-layer mount this slice enqueued (see Reconciler.
+                    // ContinueReconcile), and a first-of-its-sign container the drain creates or removes would
+                    // otherwise leak its own +-1 into this fiber's delta exactly like FiberCommitWork.
+                    // ReconcileIntoSlotRange's own measurement — see LogicalMountPointChildCount.
+                    var beforeChildCount = FiberCommitWork.LogicalMountPointChildCount(fiber.MountPoint);
                     fiber.Reconciler.ContinueReconcile(fiber.PendingReconcileBudgetMs);
-                    var afterChildCount = fiber.MountPoint?.childCount ?? 0;
+                    var afterChildCount = FiberCommitWork.LogicalMountPointChildCount(fiber.MountPoint);
                     FiberCommitWork.PropagateInlineSlotShift(fiber, afterChildCount - beforeChildCount);
                 }
                 else

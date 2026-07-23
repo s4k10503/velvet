@@ -91,9 +91,15 @@ namespace Velvet
             }
         }
 
-        // True when child is a bounds-spacer (the internal, reconciler-invisible render-bounds child).
+        // True when child is a bounds-spacer (the internal, reconciler-invisible render-bounds child) OR a
+        // z-index layer container (FiberZLayerCoordinator's front/back containers, which are equally
+        // reconciler-invisible — a z-marked absolute child's real element lives inside one instead of at its
+        // logical slot). NonSpacerChildCount below is the single centralized consumer every "real child"
+        // count/index site already goes through, so broadening this one predicate makes the whole reconciler
+        // treat both z-layer containers as invisible without touching any of those call sites.
         internal static bool IsSpacer(VisualElement child)
-            => child != null && child.ClassListContains(MarkerClass);
+            => child != null
+                && (child.ClassListContains(MarkerClass) || FiberZLayerCoordinator.IsLayerContainer(child));
 
         // True when spacer is a child of caster and no RENDERED (non-spacer) child follows it — the placement
         // invariant that keeps it outside the child reconciler's [0, renderedChildCount) index range.
@@ -117,10 +123,27 @@ namespace Velvet
         // The container's child count excluding the trailing bounds-spacer(s). The spacers are always kept
         // last, so the real children occupy [0, this) — the range the child reconciler and structural
         // variants must treat as the whole child list.
+        // Floored at the LEADING run of z-layer containers (FiberZLayerCoordinator's own back container is the
+        // one reconciler-invisible child ever placed leading, never trailing): IsSpacer also recognizes a layer
+        // container, so an unguarded trailing trim would eat it too whenever it is (even transiently, mid-diff)
+        // the parent's LAST child — e.g. the instant an interspersed ordinary sibling's own placeholder is
+        // removed and the back container is momentarily all that is left. Once eaten from the count, an
+        // ordinary insert clamped against that undercount lands BEFORE the back container instead of after it,
+        // permanently misplacing it (it stops being the parent's leading child, corrupting LeadingOffset for
+        // this parent from then on). Scanning the leading run first — not calling into the reconciler layer —
+        // keeps the Styling -> Reconciler dependency direction this file already has via IsLayerContainer, one
+        // level further. A front (trailing) container reached by this same leading scan only when it happens to
+        // be the parent's OWN sole child protects it identically; every other trailing case (the ordinary,
+        // overwhelming majority) is unaffected since the floor is 0 there.
         internal static int NonSpacerChildCount(VisualElement container)
         {
             var n = container.childCount;
-            while (n > 0 && IsSpacer(container[n - 1]))
+            var floor = 0;
+            while (floor < n && FiberZLayerCoordinator.IsLayerContainer(container[floor]))
+            {
+                floor++;
+            }
+            while (n > floor && IsSpacer(container[n - 1]))
             {
                 n--;
             }

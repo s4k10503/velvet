@@ -472,9 +472,16 @@ namespace Velvet
                 return;
             }
 
-            var slotEnd = portalInfo.SlotStart + portalInfo.SlotLength;
+            // PortalState.SlotStart is stored LOGICAL (ChildReconciler.DrainPendingPortalMounts /
+            // FiberNodePatcher.PatchPortalChildren both keep it in that basis so Reconcile's own leading-offset
+            // entry gate folds it exactly once) — this walk indexes target's children PHYSICALLY and never goes
+            // through that entry gate, so it converts once here instead, re-deriving the live offset rather than
+            // trusting a stale copy (see FiberZLayerCoordinator.LeadingOffset's own doc on why it must always be
+            // read fresh).
+            var physicalSlotStart = portalInfo.SlotStart + FiberZLayerCoordinator.LeadingOffset(target);
+            var slotEnd = physicalSlotStart + portalInfo.SlotLength;
             if (slotEnd > target.childCount) slotEnd = target.childCount;
-            for (var i = slotEnd - 1; i >= portalInfo.SlotStart; i--)
+            for (var i = slotEnd - 1; i >= physicalSlotStart; i--)
             {
                 var child = target.ElementAt(i);
                 var poolable = PoolableOccupantOf(child);
@@ -508,6 +515,23 @@ namespace Velvet
             PanelHostFactory.Destroy(record);
         }
 
+        // Tears down the real element owned by a departing z-layer placeholder — mirrors CleanupPortal: the
+        // real element is not a DOM descendant of the placeholder (it lives in a layer container elsewhere
+        // under the same stacking parent), so the ordinary CleanupDescendants walk below would never reach
+        // it on its own. A no-op when element is not (or no longer) a z-layer placeholder.
+        private void CleanupZLayerPlaceholder(VisualElement element)
+        {
+            var real = FiberZLayerCoordinator.TakeReal(_ctx, element);
+            if (real == null)
+            {
+                return;
+            }
+            var poolable = PoolableOccupantOf(real);
+            CleanupElement(real);
+            // TakeReal already detached `real` from its layer container; nothing left to remove from the DOM.
+            ReturnOccupantToPool(real, poolable);
+        }
+
         // Recursively cleans up the descendants of an element. DOM operations are the caller's
         // responsibility. Applies the same processing order as CleanupElement to each
         // child, preventing silent bugs caused by asymmetric wrapper handling.
@@ -522,6 +546,17 @@ namespace Velvet
             {
                 var child = element.ElementAt(i);
                 if (child == excluded)
+                {
+                    continue;
+                }
+
+                // A z-layer container's own members are z-managed REAL elements, each with a placeholder
+                // sitting elsewhere in this SAME child list (both are direct children of `element` whenever
+                // it is a stacking-context parent being torn down) — CleanupZLayerPlaceholder already reaches
+                // and fully cleans up every member via its placeholder in this very loop. Descending into the
+                // container here too would run the full CleanupElementResources + DisposeFibersUnder sequence
+                // on each member a second time.
+                if (FiberZLayerCoordinator.IsLayerContainer(child))
                 {
                     continue;
                 }
@@ -560,6 +595,7 @@ namespace Velvet
             RescueFocusFromWorldSpaceHost(element);
             CleanupPortal(element);
             CleanupWorldSpaceHost(element);
+            CleanupZLayerPlaceholder(element);
             CleanupDescendants(element, innerElement);
         }
 

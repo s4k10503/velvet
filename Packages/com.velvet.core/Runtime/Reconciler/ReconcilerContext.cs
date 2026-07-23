@@ -51,6 +51,22 @@ namespace Velvet
         }
     }
 
+    // The front (non-negative z) and back (negative z) layer containers a stacking-context parent lazily
+    // grows, one of each on first use. Either may be null (no member of that sign has mounted yet).
+    internal sealed class ZLayerHostRecord
+    {
+        public VisualElement? Front;
+        public VisualElement? Back;
+    }
+
+    // Per-z-managed-element bookkeeping: which placeholder stands in its logical slot, which layer container
+    // currently holds it, the stacking parent both are scoped to, its last resolved z, and the monotonic
+    // mount-order tiebreak for same-z siblings (assigned once, at first entry, then stable — re-sorting on
+    // every patch would contradict "no periodic resort"). Keyed by the REAL element in
+    // ReconcilerContext.ZLayerMembers; the reverse index (placeholder -> real) is ZLayerPlaceholders.
+    internal readonly record struct ZLayerMember(
+        VisualElement Placeholder, VisualElement Container, VisualElement StackingParent, int ResolvedZ, ulong Order);
+
     // Shared helpers for maintaining the multi-Portal slot range invariant.
     internal static class PortalSlotTracker
     {
@@ -482,6 +498,43 @@ namespace Velvet
         public Queue<(VisualElement Placeholder, VNode Node, VisualElement? Target,
             List<KeyValuePair<object, object>> ContextSnapshot, ComponentFiber? LogicalParent)> PendingPortalMounts { get; } = new();
 
+        // Per-stacking-context-parent z-layer containers (FiberZLayerCoordinator), lazily created on first
+        // z-marked absolute child. NOT a pure side-table: the record's Front/Back reference live VisualElement
+        // containers that are ordinary (if empty) children of the key until FiberZLayerCoordinator.DrainTeardowns
+        // removes them — but the dictionary ENTRY itself is dropped exactly like a pure side-table (a plain
+        // Remove) once both containers are gone, since the containers' own subtree teardown already runs
+        // through the ordinary recursive cleanup that reaches them as ordinary children of a departing parent.
+        public Dictionary<VisualElement, ZLayerHostRecord> ZLayerHosts { get; } = new();
+
+        // Placeholder -> real element, for a z-managed slot currently routed into its layer container. Mirrors
+        // PortalState's placeholder-keyed role: FiberElementCleaner's CleanupZLayerPlaceholder consults this
+        // (keyed by the PLACEHOLDER, which is what a normal slot removal or subtree teardown physically
+        // reaches) to find and tear down the real element living elsewhere in the tree. NOT a pure side-table
+        // — removing an entry here always accompanies detaching the real element from its container.
+        public Dictionary<VisualElement, VisualElement> ZLayerPlaceholders { get; } = new();
+
+        // Real element -> its z-layer bookkeeping. A pure side-table (its own teardown is a plain Remove — the
+        // container detach and placeholder bookkeeping live in ZLayerPlaceholders/ZLayerHosts instead), so it
+        // is enrolled in _pureElementSideTables: a departing real element (however it is reached — its own
+        // placeholder's cleanup, or the ordinary recursive walk into its layer container) drops its entry the
+        // same way MotionAppliedClasses/TextEffects/etc. do.
+        public Dictionary<VisualElement, ZLayerMember> ZLayerMembers { get; } = new();
+
+        // Layer containers whose membership changed this pass and so need an emptiness re-check once the pass
+        // is over. Container PRESENCE changes (creating one for the first time, or removing one once its last
+        // member left) touch the stacking parent's OWN child list — safe only from the same post-pass drain
+        // context DrainPendingPortalMounts already runs from, never synchronously mid-diff (a mid-pass removal
+        // of a LEADING back container would shift every ordinary sibling index a live Common/Keyed loop is
+        // still iterating by absolute position). Pure membership changes within an ALREADY-EXISTING container
+        // never touch this set — they run synchronously, from anywhere. Drained (and cleared) by
+        // FiberZLayerCoordinator.DrainTeardowns, called from the same Reconciler.Reconcile top-level finally as
+        // DrainPendingPortalMounts.
+        public HashSet<VisualElement> PendingZLayerTeardownChecks { get; } = new();
+
+        // Monotonic tiebreak counter for same-resolved-z siblings under one layer container, handed out once
+        // per element at its first entry into a layer (see ZLayerMember.Order).
+        internal ulong NextZOrder;
+
         // Guards FiberCrossPanelPointerRouter.AttachToMainPanel against attaching twice on the same
         // main panel — V.Mount is idempotent-safe to call from a component's own render (uncommon but
         // not disallowed) and the router's TrickleDown listeners must not stack.
@@ -898,6 +951,8 @@ namespace Velvet
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,
+                ZLayerHosts,
+                ZLayerMembers,
             };
         }
     }

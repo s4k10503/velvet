@@ -171,18 +171,23 @@ namespace Velvet
             return null;
         }
 
-        internal static VisualElement? FindPrevSiblingWithClass(VisualElement element, string cls)
+        // ctx resolves the LOGICAL search origin for a z-relocated consumer (FiberZLayerCoordinator.
+        // TryGetLogicalPosition): a z-managed element's physical parent is its layer container, whose
+        // "preceding siblings" are unrelated same-layer members, not this element's declared siblings — the
+        // search must walk from its PLACEHOLDER's position instead. An ordinary element resolves to its own
+        // parent/index unchanged. Does NOT cover the reverse direction (the peer/group SOURCE itself being
+        // z-relocated): a relocated source's placeholder carries none of its marker classes and this search
+        // only ever inspects physical siblings, so that case is a documented gap, not fixed here.
+        internal static VisualElement? FindPrevSiblingWithClass(VisualElement element, string cls, ReconcilerContext ctx)
         {
-            var parent = element.parent;
-            if (parent == null)
+            if (!FiberZLayerCoordinator.TryGetLogicalPosition(ctx, element, out var parent, out var index))
             {
                 return null;
             }
 
-            var index = parent.IndexOf(element);
             for (var i = index - 1; i >= 0; i--)
             {
-                var sibling = parent.ElementAt(i);
+                var sibling = parent!.ElementAt(i);
                 if (sibling.ClassListContains(cls))
                 {
                     return sibling;
@@ -238,7 +243,7 @@ namespace Velvet
                 if (_aChecked) { _aChecked = false; Apply(_checked, false, StyleLayerPriority.PeerChecked); }
 
                 var source = _isPeer
-                    ? FindPrevSiblingWithClass(target, SourceClass)
+                    ? FindPrevSiblingWithClass(target, SourceClass, _owner._ctx)
                     : FindAncestorWithClass(target, SourceClass);
                 if (source == null || !HasAnyState())
                 {

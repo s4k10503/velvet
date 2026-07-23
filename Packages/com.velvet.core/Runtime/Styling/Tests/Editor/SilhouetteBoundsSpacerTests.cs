@@ -113,6 +113,55 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ALeadingBackZLayerContainerIsMomentarilyTheOnlyOtherChildBesidesATrailingSpacer_When_Counted_Then_TheBackContainerIsNotAlsoTrimmedAwayAsASpacer()
+        {
+            // Arrange — a leading back z-layer container (FiberZLayerCoordinator's own convention: the ONE
+            // reconciler-invisible child ever placed leading, never trailing) immediately followed by a
+            // trailing bounds-spacer, with no ordinary child between them — the exact transient shape the
+            // leading floor guards against (every ordinary sibling's own placeholder momentarily absent).
+            // IsSpacer recognizes BOTH kinds of reconciler-invisible child, so an unguarded trailing trim would
+            // walk straight through the back container too and return 0, undercounting it out of the physical
+            // range entirely (a later ordinary insert clamped against that undercount would land BEFORE the
+            // back container instead of after it, permanently misplacing it).
+            var container = new VisualElement();
+            var back = new VisualElement();
+            back.AddToClassList(FiberZLayerCoordinator.BackMarkerClass);
+            container.Add(back);
+            var spacer = new VisualElement();
+            spacer.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
+            container.Add(spacer);
+
+            // Act / Assert — only the trailing spacer is excluded; the back container itself still counts.
+            Assert.That(SilhouetteBoundsSpacer.NonSpacerChildCount(container), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ABackContainerAndAFrontContainerAndATrailingBoundsSpacerAllCoexist_When_Counted_Then_OnlyTheTwoTrailingReconcilerInvisibleChildrenAreExcluded()
+        {
+            // Arrange — the full 3-way combo a stacking parent carrying both z-layer containers AND a
+            // filtered caster's own bounds-spacer can reach simultaneously: a leading back container (never
+            // trimmed — it stays counted by its own contract), one ordinary rendered child, then the two
+            // TRAILING reconciler-invisible children (front container, bounds-spacer), deliberately in THIS
+            // relative order since GetOrCreateContainer's own comment notes the two trailing spacers
+            // tolerate either order between them.
+            var container = new VisualElement();
+            var back = new VisualElement();
+            back.AddToClassList(FiberZLayerCoordinator.BackMarkerClass);
+            container.Add(back);
+            container.Add(new VisualElement());
+            var front = new VisualElement();
+            front.AddToClassList(FiberZLayerCoordinator.FrontMarkerClass);
+            container.Add(front);
+            var spacer = new VisualElement();
+            spacer.AddToClassList(SilhouetteBoundsSpacer.MarkerClass);
+            container.Add(spacer);
+
+            // Act / Assert — the back container and the ordinary child stay counted; both trailing
+            // reconciler-invisible children (front container, bounds-spacer) are excluded: 2 total.
+            Assert.That(SilhouetteBoundsSpacer.NonSpacerChildCount(container), Is.EqualTo(2));
+        }
+
+        [Test]
         public void Given_AllSidesScaleBorder_When_InsetParsed_Then_LeftMatchesTheScale()
         {
             SilhouetteBoundsSpacer.BorderInset(new[] { "border-8" }, out var left, out _);

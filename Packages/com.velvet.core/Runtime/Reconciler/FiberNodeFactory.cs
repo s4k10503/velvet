@@ -186,28 +186,44 @@ namespace Velvet
                         _patcher.Appliers.ApplyDragOverlay(element, elementNode.Props.DragOverlay);
                     }
 
+                    VisualElement outer;
                     if (elementNode.WrapElement != null)
                     {
                         var wrapper = elementNode.WrapElement(element);
                         if (wrapper != null && wrapper != element)
                         {
                             _ctx.WrapperToInnerMap[wrapper] = element;
-                            return wrapper;
+                            outer = wrapper;
                         }
-                        return element;
+                        else
+                        {
+                            outer = element;
+                        }
+                    }
+                    else
+                    {
+                        // No explicit wrapElement: a clip-path-* class auto-wraps the element in a stencil-
+                        // masking container, else a ring-* class wraps it in a native-border overlay
+                        // container. Clip takes precedence: the two are mutually exclusive (one structural
+                        // wrapper per element). The shadow is NOT here — it is a wrapper-less paint attached
+                        // above (a clipped element renders no shadow because the shadow paint self-suppresses
+                        // on an active clip).
+                        var clipWrapped = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
+                        outer = !ReferenceEquals(clipWrapped, element)
+                            ? clipWrapped
+                            : _patcher.Appliers.ApplyRingOnCreate(element, elementNode.ClassNames);
                     }
 
-                    // No explicit wrapElement: a clip-path-* class auto-wraps the element in a stencil-
-                    // masking container, else a ring-* class wraps it in a native-border overlay container.
-                    // Clip takes precedence: the two are mutually exclusive (one structural wrapper per
-                    // element). The shadow is NOT here — it is a wrapper-less paint attached above (a clipped
-                    // element renders no shadow because the shadow paint self-suppresses on an active clip).
-                    var clipWrapped = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
-                    if (!ReferenceEquals(clipWrapped, element))
+                    // z-* scope gate: only an ALSO-absolute element with an explicit z-* class routes into a
+                    // layer container; everything else (the overwhelming majority) returns `outer` unchanged
+                    // at the cost of one cheap prefix scan. Gated on the OUTERMOST element — a clip-path-*/
+                    // ring/wrapElement wrapper is what physically occupies the slot, so it (not the inner
+                    // `element`) is what must relocate.
+                    if (FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, elementNode.Props, out var resolvedZ))
                     {
-                        return clipWrapped;
+                        return FiberZLayerCoordinator.EnqueueMount(_ctx, outer, resolvedZ);
                     }
-                    return _patcher.Appliers.ApplyRingOnCreate(element, elementNode.ClassNames);
+                    return outer;
                 }
                 case MotionNode motionNode:
                 {
@@ -347,6 +363,17 @@ namespace Velvet
                         FiberLogger.LogWarning("Motion",
                             "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit "
                             + "(same constraint as shadow-*). Wrap the Motion around a clipped Div instead.");
+                    }
+                    // z-* is ignored on a Motion: this create path never consults FiberZLayerCoordinator at all
+                    // (only the ElementNode case above does), so a Motion never relocates into a layer container
+                    // — TryClassify's out-of-flow half runs off the declared class list / Anchored prop alone
+                    // (no live element needed), so it can be evaluated here for diagnostics purposes even though
+                    // this path never acts on it. Warn like the shadow-*/clip-path-* gates above.
+                    if (FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out _))
+                    {
+                        FiberLogger.LogWarning("Motion",
+                            "A z-* utility on a Motion is ignored: z-* does not apply to Motion elements. "
+                            + "Wrap the Motion around a z-managed Div instead.");
                     }
                     // Exit tweens are scheduled only by the AnimatePresence expansion — something has to defer
                     // the unmount for a removal to animate against, and AnimatePresence is what does that — so
@@ -720,8 +747,8 @@ namespace Velvet
         }
 
         // Walks node and returns the first MotionNode descendant
-        // reachable through transparent wrappers — ContextProviderNode and
-        // FragmentNode. Returns the node itself when it is already a MotionNode, or
+        // reachable through transparent wrappers — ContextProviderNode, FragmentNode, and a z-managed
+        // ElementNode. Returns the node itself when it is already a MotionNode, or
         // null when no MotionNode exists in this transparent-wrapper chain. Used by
         // ResolveAnimatePresenceMotion and AnimatePresence's else-branch
         // (Initial=false) where no warning should be emitted — so a Provider-wrapped Motion
@@ -734,11 +761,22 @@ namespace Velvet
             {
                 return motion;
             }
-            // The only transparent wrappers whose children can carry the Motion: a Provider or a Fragment.
+            // The transparent wrappers whose children can carry the Motion: a Provider, a Fragment, or a
+            // z-managed ElementNode. The z-managed case is a narrow, deliberate carve-out — z-* is a
+            // documented no-op on a Motion itself (FiberNodeFactory's own create-time warning), so the ONLY
+            // way to combine z-* with an AnimatePresence-driven Motion is to wrap it in a z-managed Div; that
+            // wrapper exists purely to satisfy the out-of-flow scope gate, not as an opaque animation
+            // boundary the author intended, so treating it like Provider/Fragment for this walk is exactly
+            // the same "structurally forced, not a user choice" reasoning. An ORDINARY (non-z) ElementNode is
+            // deliberately NOT walked into: unlike Provider/Fragment it emits its own real DOM element, so
+            // silently treating any Motion nested anywhere inside it as the presence anchor would surprise a
+            // caller who wrapped a Motion in a plain structural Div for unrelated styling reasons.
             var children = node switch
             {
                 ContextProviderNode provider => provider.Children,
                 FragmentNode fragment => fragment.Children,
+                ElementNode elementNode when FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, elementNode.Props, out _)
+                    => elementNode.Children,
                 _ => null,
             };
             if (children != null)
