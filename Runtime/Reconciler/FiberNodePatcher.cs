@@ -183,6 +183,17 @@ namespace Velvet
                 else
                 {
                     _ctx.TextRawText.Remove(element);
+                    // The element stays MOUNTED across this transition (no pool cycle), so
+                    // ReconcilerContext.ClearElementSideTables never runs for it, and with no raw text left
+                    // to resolve from, StyleTextEffectResolver.ApplyToElement can never run for it again
+                    // either — nothing would otherwise clear a resolver-owned inline PreWrap this element
+                    // was carrying, leaking it forever. Mirrors FiberElementPoolReset's unconditional
+                    // whiteSpace null on the pool-RETURN path, scoped to just the element the resolver
+                    // actually wrote to (see StyleTextEffectResolver's type comment for the ownership rule).
+                    if (_ctx.TextWhitespaceOwned.Remove(element))
+                    {
+                        element.style.whiteSpace = StyleKeyword.Null;
+                    }
                 }
             }
             // After DiffProps (and the class-driven config it follows): re-sync the data-/aria- attribute
