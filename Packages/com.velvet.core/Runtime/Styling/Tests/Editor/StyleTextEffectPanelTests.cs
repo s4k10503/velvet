@@ -30,6 +30,9 @@ namespace Velvet.Tests
         private static StateUpdater<string> s_setPreLineText;
         private static StateUpdater<string> s_setUppercaseRefText;
         private static StateUpdater<string> s_setCascadeParentClass;
+        private static StateUpdater<string> s_setLeadingAncestorClass;
+        private static StateUpdater<string> s_setLeadingText;
+        private static StateUpdater<string> s_setLeadingPoolReuseState;
 
         protected override Rect WindowSize => new Rect(0, 0, 400, 400);
 
@@ -43,6 +46,9 @@ namespace Velvet.Tests
             s_setPreLineText = default;
             s_setUppercaseRefText = default;
             s_setCascadeParentClass = default;
+            s_setLeadingAncestorClass = default;
+            s_setLeadingText = default;
+            s_setLeadingPoolReuseState = default;
             base.SetUp();
         }
 
@@ -381,6 +387,102 @@ namespace Velvet.Tests
             Assert.That((recycled.style.whiteSpace.keyword, recycled.text), Is.EqualTo((StyleKeyword.Null, "c   d")));
         }
 
+        [Test]
+        public void Given_LeadingRelaxedOnParent_When_Mounted_Then_ChildTextLeafGetsTheLineHeightTag()
+        {
+            // Arrange & Act — the text leaf has no class; leading cascades from the parent, mirroring how
+            // transform/decoration cascade from an ancestor onto a class-less V.Text leaf.
+            var label = MountAndFindLabel(V.Div(className: "leading-relaxed", V.Text("hi")));
+
+            // Assert
+            Assert.That(label.text, Is.EqualTo("<line-height=1.625em>hi</line-height>"));
+        }
+
+        [Test]
+        public void Given_NearerAncestorLeadingOverridesFartherAncestorLeading_When_Mounted_Then_ChildLeafUsesNearerValue()
+        {
+            // Arrange & Act — outer leading-loose (2), inner leading-tight (1.25) — the nearer ancestor's
+            // own token wins, mirroring how a nearer normal-case overrides a farther uppercase.
+            var label = MountAndFindLabel(
+                V.Div(className: "leading-loose", V.Div(className: "leading-tight", V.Text("hi"))));
+
+            // Assert
+            Assert.That(label.text, Is.EqualTo("<line-height=1.25em>hi</line-height>"));
+        }
+
+        [Test]
+        public void Given_LeafOwnLeadingUnderAncestorLeading_When_Mounted_Then_LeafOwnValueWins()
+        {
+            // Arrange & Act — the Label itself carries leading-none while its ancestor carries
+            // leading-loose; ResolveEffective starts its walk at the leaf itself, so the leaf's own token
+            // is the first (and winning) one found, exactly like Transform/Decoration's own-vs-inherited
+            // precedence.
+            var label = MountAndFindLabel(
+                V.Div(className: "leading-loose", V.Label(className: "leading-none", text: "hi")));
+
+            // Assert
+            Assert.That(label.text, Is.EqualTo("<line-height=1em>hi</line-height>"));
+        }
+
+        [Test]
+        public void Given_AncestorLeadingClassRemoved_When_DescendantTextUnchanged_Then_DescendantRevertsToRaw()
+        {
+            // Mirrors the same gate Transform/Whitespace pin above: a patch that removes the LAST
+            // effect-bearing class from an ancestor (its own effect goes from non-empty to empty) must
+            // still re-walk descendants — a leaf whose own text prop is unchanged is never re-resolved by
+            // anything else (PatchText only calls OnTextSet when the text prop itself changes), so without
+            // the walk it would keep showing the stale line-height tag forever.
+            Mount(V.Component(RenderLeadingAncestorToggle));
+            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=1.625em>hi</line-height>"),
+                "Precondition: initial leading");
+
+            s_setLeadingAncestorClass.Invoke("");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("hi"));
+        }
+
+        [Test]
+        public void Given_LeadingParent_When_TextChanges_Then_NewTextCarriesTheTag()
+        {
+            // A text change must re-cascade leading onto the leaf, from the new raw value, mirroring how
+            // Transform re-wraps a changed leaf (Given_UppercaseParent_When_TextChanges_...).
+            Mount(V.Component(RenderLeadingCard));
+            Assume.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=1.625em>hi</line-height>"),
+                "Precondition: initial leading");
+
+            s_setLeadingText.Invoke("there");
+            _mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            Assert.That(_window.rootVisualElement.Q<Label>().text, Is.EqualTo("<line-height=1.625em>there</line-height>"));
+        }
+
+        [Test]
+        public void Given_LabelPooledWithLeadingState_When_RentedAgainWithoutTheClass_Then_NewLabelHasNoLineHeightTag()
+        {
+            // Arrange — mount a leading-loose Label, then hide it (a Label -> Div swap removes it,
+            // returning it to VNodePool while its text still carries the <line-height> tag), then show a
+            // different, unrelated plain label. VNodePool's Label pool is LIFO and nothing else rents a
+            // Label in between, so this deterministically hands the same instance back, mirroring the
+            // PreLine pool-reuse mechanism.
+            Mount(V.Component(RenderLeadingPoolReuseHost));
+            var scheduler = _mounted.Root.Reconciler.Context.BatchScheduler;
+            Assume.That(_window.rootVisualElement.Q<Label>("leaf").text, Is.EqualTo("<line-height=2em>hi</line-height>"),
+                "Precondition: the first label carries the line-height tag");
+            s_setLeadingPoolReuseState.Invoke("hidden");
+            scheduler.DrainImmediateForTest();
+            Assume.That(_window.rootVisualElement.Q<Label>("leaf"), Is.Null, "Precondition: the label is pooled while hidden");
+
+            // Act — an unrelated plain label rents the pooled instance back.
+            s_setLeadingPoolReuseState.Invoke("plain");
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the recycled instance carries no leftover line-height tag from the previous
+            // consumer's side-table entry (a ghosted TextEffects/TextRawText row would still show a
+            // wrapped tag here, not the fixture's raw "there").
+            Assert.That(_window.rootVisualElement.Q<Label>("leaf").text, Is.EqualTo("there"));
+        }
+
         private void Mount(VNode tree)
         {
             _mounted = V.Mount(_window.rootVisualElement, tree);
@@ -479,6 +581,41 @@ namespace Velvet.Tests
             if (state == "plain")
             {
                 return V.Label(name: "leaf", text: "c   d");
+            }
+            return V.Div(name: "placeholder");
+        }
+
+        [Component]
+        private static VNode RenderLeadingAncestorToggle()
+        {
+            // Unlike a same-element toggle, the class-bearing element and the text leaf are DIFFERENT
+            // elements (a Div ancestor, a separate V.Text child) — the shape ApplyToDescendants guards,
+            // mirroring RenderPreLineAncestorToggle / RenderUppercaseAncestorToggle above.
+            var (cls, setCls) = Hooks.UseState("leading-relaxed");
+            s_setLeadingAncestorClass = setCls;
+            return V.Div(className: cls, V.Text("hi"));
+        }
+
+        [Component]
+        private static VNode RenderLeadingCard()
+        {
+            var (text, setText) = Hooks.UseState("hi");
+            s_setLeadingText = setText;
+            return V.Div(className: "leading-relaxed", V.Text(text));
+        }
+
+        [Component]
+        private static VNode RenderLeadingPoolReuseHost()
+        {
+            var (state, setState) = Hooks.UseState("leading");
+            s_setLeadingPoolReuseState = setState;
+            if (state == "leading")
+            {
+                return V.Label(name: "leaf", className: "leading-loose", text: "hi");
+            }
+            if (state == "plain")
+            {
+                return V.Label(name: "leaf", text: "there");
             }
             return V.Div(name: "placeholder");
         }
