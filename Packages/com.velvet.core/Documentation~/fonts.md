@@ -105,9 +105,10 @@ them (not a Velvet decision).
 
 **Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` /
 `text-xs`…`text-4xl` (font-size) / `text-left|center|right|start|end` (`-unity-text-align`) /
-`tracking-*` (`letter-spacing`) / `whitespace-normal|nowrap` / `text-wrap` / `text-nowrap` /
-`truncate` / `text-ellipsis` / `text-clip` (`text-overflow: ellipsis | clip`) / text color /
-`uppercase` `lowercase` `capitalize` `normal-case` (text-transform) / `underline` `line-through` `no-underline` (text-decoration).
+`tracking-*` (`letter-spacing`) / `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
+`text-wrap` / `text-nowrap` / `truncate` / `text-ellipsis` / `text-clip` (`text-overflow: ellipsis | clip`) /
+text color / `uppercase` `lowercase` `capitalize` `normal-case` (text-transform) /
+`underline` `line-through` `no-underline` (text-decoration).
 
 **Text-transform / text-decoration are realised by mutating the displayed text** (UI Toolkit has no property
 for either): the string is upper/lower/title-cased, and underline / line-through wrap it in the `<u>` / `<s>`
@@ -115,16 +116,39 @@ rich-text tags UITK renders (`enableRichText` is on by default). Both **inherit*
 an ancestor and the descendant text leaves pick it up (`StyleTextEffectResolver` walks ancestors). See it for
 the one cascade-freshness caveat (an ancestor's class toggled without that ancestor re-rendering).
 
+**`white-space`** has four native USS values, and `whitespace-normal`, `whitespace-nowrap`,
+`whitespace-pre`, and `whitespace-pre-wrap` map directly onto them — no C# involved.
+**`whitespace-pre-line`** is the exception:
+there is no matching engine value, so it is realised the same way as text-transform / text-decoration — a
+display-string rewrite (collapse runs of spaces/tabs to one space, keep newlines, and drop whitespace that
+sits right at a line edge) plus an inline `white-space: pre-wrap` write on every text leaf whose resolved
+whitespace axis is pre-line, so the preserved newlines still render as breaks and the text still wraps. The
+write is per-leaf rather than written once on the class-bearing element: `Label`/`TextElement` carries its
+own element-level `white-space` rule from the default theme/USS, and an element's own matching rule always
+beats an INHERITED value in the cascade, so a write on an ancestor alone would never reach a descendant
+Label. It inherits and cascades the same way text-transform / text-decoration do: an explicit
+`whitespace-*` class always wins on the SAME element (a single-purpose, literal utility taking precedence
+over a text-mutating one is the less surprising outcome), and — exactly like how `normal-case` /
+`no-underline` stop an inherited transform / decoration — it also blocks a farther ancestor's
+`whitespace-pre-line` from reaching that subtree at all, rather than merely leaving the collapse unapplied
+on that one element.
+
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**
 
 | Tailwind | Why omitted |
 |---|---|
 | `leading-*` (line-height) | USS has no `line-height` (`-unity-paragraph-spacing` is paragraph gap, not line-height) |
 | `overline` (text-decoration) | UI Toolkit rich text has no overline tag (`<u>` / `<s>` only) |
-| `antialiased` / `subpixel-antialiased` (font-smoothing) | No USS property |
-| `font-stretch-*` | No USS property |
-| `tabular-nums` etc. (font-variant-numeric) | Not exposed in USS |
-| `whitespace-pre` / `pre-wrap` / `text-balance` / `text-pretty` | `white-space` only accepts `normal` / `nowrap` |
+| `antialiased` / `subpixel-antialiased` (font-smoothing) | Text renders as SDF alpha-blend only — no antialiasing-mode axis to switch |
+| `font-stretch-*` | No variable-font / width-axis support |
+| `tabular-nums` etc. (font-variant-numeric) | No OpenType feature-substitution slot in the runtime font pipeline |
+| `text-balance` / `text-pretty` | Browser line-breaking heuristics (best-fit paragraph shaping); UI Toolkit's text generator has no such heuristic to opt into |
+
+None of the font-smoothing / font-stretch / font-variant-numeric rows above are reproducible at runtime by
+any class or `refCallback` — there is no engine hook to flip. Where the *look* matters (tabular figures in a
+price list, a condensed headline face, …), register a purpose-built Font Asset for that face through the
+same `font-family` mechanism (`VelvetFonts.Register`) and select it with `font-<name>`; that reaches the
+visual result directly instead of trying to toggle a feature the text stack does not expose.
 
 UI Toolkit *does* expose `word-spacing`, `-unity-paragraph-spacing`, and `-unity-text-outline-*`,
 but none has a standard Tailwind utility, so Velvet leaves them to arbitrary inline styles via
