@@ -4,23 +4,26 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Realises text-transform (uppercase / lowercase / capitalize / normal-case), text-decoration
-    // (underline / line-through), and whitespace-pre-line by mutating the displayed text — Unity UI Toolkit
-    // has no property for any of the three, so the string is upper/lower/title-cased, wrapped in the <u>/<s>
-    // rich-text tags UITK renders, and/or has its space/tab runs collapsed. CSS inherits all three; UITK does
-    // not (for text-transform / text-decoration there is no UITK property at all; white-space DOES natively
-    // inherit, but no enum value expresses pre-line's collapse, so the STRING rewrite still needs the same
-    // treatment — see the Whitespace remarks on TextEffect). So every axis cascades by walking ancestors
-    // (StyleTextEffectClass holds the pure parse + string ops; this owns the reconciler-side cascade and the
-    // per-element side-tables).
+    // (underline / line-through), whitespace-pre-line, and leading-* (line-height) by mutating the displayed
+    // text — Unity UI Toolkit has no property for any of the four, so the string is upper/lower/title-cased,
+    // wrapped in the <u>/<s>/<line-height=X> rich-text tags UITK renders, and/or has its space/tab runs
+    // collapsed. CSS inherits all four; UITK does not (for text-transform / text-decoration / line-height
+    // there is no UITK property at all; white-space DOES natively inherit, but no enum value expresses
+    // pre-line's collapse, so the STRING rewrite still needs the same treatment — see the Whitespace remarks
+    // on TextEffect). So every axis cascades by walking ancestors (StyleTextEffectClass holds the pure parse
+    // + string ops; this owns the reconciler-side cascade and the per-element side-tables).
     //
     // Three per-element side-tables (all pure, on ReconcilerContext): TextEffects = an element's OWN parsed
     // effect (each axis nullable so an explicit reset — normal-case / no-underline / an explicit
-    // whitespace-* class — is distinct from "inherit"); TextRawText = the untransformed text last seen for a
-    // text-bearing element, captured at the text-set seams so the effect can be re-applied idempotently (the
-    // element's live .text may already be transformed); TextWhitespaceOwned = a set (Dictionary with a
-    // trivial value) of elements whose CURRENT inline `style.whiteSpace` was written by THIS resolver — see
-    // the ownership discussion below ApplyToElement. All three ride element cleanup / pool reuse for free via
-    // ReconcilerContext.ClearElementSideTables.
+    // whitespace-* class — is distinct from "inherit"; Leading has no reset form, see LeadingUnit, but is
+    // still nullable the same way for "inherit" vs. "this element sets a real value"); TextRawText = the
+    // untransformed text last seen for a text-bearing element, captured at the text-set seams so the effect
+    // can be re-applied idempotently (the element's live .text may already be transformed); TextWhitespaceOwned
+    // = a set (Dictionary with a trivial value) of elements whose CURRENT inline `style.whiteSpace` was
+    // written by THIS resolver — see the ownership discussion below ApplyToElement. All three ride element
+    // cleanup / pool reuse for free via ReconcilerContext.ClearElementSideTables. Leading needs no fourth
+    // table of its own: unlike PreLine it drives no separate inline style, only the SAME string rewrite
+    // TextEffects/TextRawText already carry, so it rides their existing cleanup for free too.
     //
     // PreLine ALSO drives an inline `white-space: pre-wrap` write, so the preserved newlines render as
     // breaks and wrapping still works. That write happens in ApplyToElement (below), on EVERY text leaf
@@ -61,11 +64,11 @@ namespace Velvet
     // leaf that carried an owned inline PreWrap would keep it forever. FiberNodePatcher.PatchBaseElement
     // clears TextWhitespaceOwned at exactly that site; see the comment there.
     //
-    // KNOWN LIMITATION: toggling a text-transform / text-decoration / whitespace-pre-line class on an
-    // ANCESTOR re-cascades to descendants only when that ancestor is re-rendered (its post-children pass
-    // walks them). A descendant whose own text is unchanged and whose ancestor's class changed without the
-    // ancestor re-patching keeps its prior effect — string AND, for PreLine, the inline `white-space` write
-    // alike — until its next text update; the common static case (effect set at mount) is fully correct.
+    // KNOWN LIMITATION: toggling a text-transform / text-decoration / whitespace-pre-line / leading-* class
+    // on an ANCESTOR re-cascades to descendants only when that ancestor is re-rendered (its post-children
+    // pass walks them). A descendant whose own text is unchanged and whose ancestor's class changed without
+    // the ancestor re-patching keeps its prior effect — string AND, for PreLine, the inline `white-space`
+    // write alike — until its next text update; the common static case (effect set at mount) is fully correct.
     internal static class StyleTextEffectResolver
     {
         // Captures the untransformed text for a text-bearing element at a text-set seam (TextNode create/patch,
@@ -132,8 +135,8 @@ namespace Velvet
         {
             if (element is TextElement te && ctx.TextRawText.TryGetValue(te, out var raw))
             {
-                var (transform, decoration, whitespace) = ResolveEffective(ctx, te);
-                te.text = StyleTextEffectClass.Apply(raw, transform, decoration, whitespace);
+                var (transform, decoration, whitespace, leading) = ResolveEffective(ctx, te);
+                te.text = StyleTextEffectClass.Apply(raw, transform, decoration, whitespace, leading);
                 // Per-leaf inline pre-wrap write, off the SAME resolved value that just drove the string
                 // collapse above, so the two can never disagree for this leaf. Ownership-gated (see the type
                 // comment / TextWhitespaceOwned): PreLine writes-and-marks; a non-PreLine resolve clears ONLY
@@ -165,18 +168,21 @@ namespace Velvet
         }
 
         // The cascade: the nearest ancestor-or-self that sets each axis wins (each axis resolved
-        // independently), mirroring CSS inheritance of text-transform / text-decoration / white-space. A null
-        // axis on every ancestor means no effect on that axis. An explicit None on an axis (normal-case /
-        // no-underline / an explicit whitespace-* class) also wins and stops the walk for THAT axis — it is a
-        // real resolved value, not "no token" — so it blocks a farther ancestor's non-None value from
-        // reaching this element. Feeds BOTH the string rewrite and, for Whitespace, the inline pre-wrap style
-        // write in ApplyToElement — one resolve, two writes off the same value, so they can never disagree.
-        private static (TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace) ResolveEffective(
+        // independently), mirroring CSS inheritance of text-transform / text-decoration / white-space /
+        // line-height. A null axis on every ancestor means no effect on that axis. An explicit None on
+        // Transform/Decoration/Whitespace (normal-case / no-underline / an explicit whitespace-* class) also
+        // wins and stops the walk for THAT axis — it is a real resolved value, not "no token" — so it blocks
+        // a farther ancestor's non-None value from reaching this element; Leading has no such explicit-reset
+        // value (see LeadingUnit), so its walk only ever stops on a real leading-* token or the tree's root.
+        // Feeds BOTH the string rewrite and, for Whitespace, the inline pre-wrap style write in
+        // ApplyToElement — one resolve, N writes off the same value, so they can never disagree.
+        private static (TextTransformKind? transform, TextDecorationKind? decoration, WhitespaceCollapseKind? whitespace, LeadingValue? leading) ResolveEffective(
             ReconcilerContext ctx, VisualElement element)
         {
             TextTransformKind? transform = null;
             TextDecorationKind? decoration = null;
             WhitespaceCollapseKind? whitespace = null;
+            LeadingValue? leading = null;
             for (var e = element; e != null; e = e.hierarchy.parent)
             {
                 if (!ctx.TextEffects.TryGetValue(e, out var eff))
@@ -186,12 +192,13 @@ namespace Velvet
                 transform ??= eff.Transform;
                 decoration ??= eff.Decoration;
                 whitespace ??= eff.Whitespace;
-                if (transform != null && decoration != null && whitespace != null)
+                leading ??= eff.Leading;
+                if (transform != null && decoration != null && whitespace != null && leading != null)
                 {
                     break;
                 }
             }
-            return (transform, decoration, whitespace);
+            return (transform, decoration, whitespace, leading);
         }
     }
 }

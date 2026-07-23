@@ -1128,6 +1128,15 @@ namespace Velvet
                 return;
             }
 
+            // leading-[...] arbitrary line-height classes are resolved from the whole class array by
+            // StyleTextEffectResolver and folded into the rich-text tag it wraps the display string in;
+            // like font-[...] they must not enter the USS class list, regardless of whether the bracket
+            // value itself parses.
+            if (StyleTextEffectClass.IsArbitraryLeadingClass(cls))
+            {
+                return;
+            }
+
             // Important modifier (!utility / utility!): strip the bang; when present, elevate the
             // inline-resolved utility to the Important layer. A class-only utility's bang is inert.
             var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
@@ -1194,6 +1203,14 @@ namespace Velvet
             // font-[...] arbitrary font classes never entered the class list (see AddClass); the inline
             // style they drove is cleared by StyleFontResolver on the class change, not here.
             if (StyleFontClass.IsArbitraryFontClass(cls))
+            {
+                return;
+            }
+
+            // leading-[...] arbitrary line-height classes never entered the class list (see AddClass); the
+            // rich-text tag they drove is cleared by StyleTextEffectResolver re-resolving on the class
+            // change, not here.
+            if (StyleTextEffectClass.IsArbitraryLeadingClass(cls))
             {
                 return;
             }

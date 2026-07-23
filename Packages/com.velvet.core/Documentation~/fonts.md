@@ -105,7 +105,8 @@ them (not a Velvet decision).
 
 **Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` /
 `text-xs`…`text-4xl` (font-size) / `text-left|center|right|start|end` (`-unity-text-align`) /
-`tracking-*` (`letter-spacing`) / `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
+`tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
+`whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
 `text-wrap` / `text-nowrap` / `truncate` / `text-ellipsis` / `text-clip` (`text-overflow: ellipsis | clip`) /
 text color / `uppercase` `lowercase` `capitalize` `normal-case` (text-transform) /
 `underline` `line-through` `no-underline` (text-decoration).
@@ -114,7 +115,10 @@ text color / `uppercase` `lowercase` `capitalize` `normal-case` (text-transform)
 for either): the string is upper/lower/title-cased, and underline / line-through wrap it in the `<u>` / `<s>`
 rich-text tags UITK renders (`enableRichText` is on by default). Both **inherit** like CSS — put the class on
 an ancestor and the descendant text leaves pick it up (`StyleTextEffectResolver` walks ancestors). See it for
-the one cascade-freshness caveat (an ancestor's class toggled without that ancestor re-rendering).
+the one cascade-freshness caveat (an ancestor's class toggled without that ancestor re-rendering). If an
+element turns `enableRichText` off, the `<u>` / `<s>` markup is not interpreted — it shows up as literal text
+in the label instead, like any other rich-text tag on that element (`leading-*`'s `<line-height=X>` tag,
+below, has the identical caveat).
 
 **`white-space`** has four native USS values, and `whitespace-normal`, `whitespace-nowrap`,
 `whitespace-pre`, and `whitespace-pre-wrap` map directly onto them — no C# involved.
@@ -133,11 +137,30 @@ over a text-mutating one is the less surprising outcome), and — exactly like h
 `whitespace-pre-line` from reaching that subtree at all, rather than merely leaving the collapse unapplied
 on that one element.
 
+**`leading-*` (line-height)** has no USS property either — `-unity-paragraph-spacing` only affects explicit
+`\n` breaks, not the per-line advance a real line-height changes — so it is realised through UI Toolkit's
+rich-text `<line-height=X>` tag instead. Both text engines (the standard generator and the Advanced Text
+Generator) implement the tag natively, feeding it into the line-advance math at every line-break site; a
+following `</line-height>` restores the natural metric. The named presets (`leading-none` 1 · `leading-tight`
+1.25 · `leading-snug` 1.375 · `leading-normal` 1.5 · `leading-relaxed` 1.625 · `leading-loose` 2) emit their
+multiplier verbatim as `<line-height=1.625em>…</line-height>`; `leading-[Npx]` emits an absolute
+`<line-height=Npx>` — only the `px` unit is accepted inside the bracket for now, any other unit (or a
+malformed value) is silently ignored, like a malformed value on any other bracketed utility.
+Unlike `tracking-*`, whose em scale had to be **baked to px at Tailwind's 16px root font** (USS
+`letter-spacing` has no `em` unit — see `_typography.uss` — so `tracking-wide`'s 0.4px is only really 0.025em
+at exactly 16px, drifting off-ratio at any other size), `leading-*`'s em form is resolved by the **text engine
+itself** against whichever font size is actually in effect at that point in the string. It composes correctly
+with any `text-*` size — or one inherited from further up the tree — at any value, with no lookup table to
+keep in sync. `leading-*` inherits and cascades exactly like text-transform / text-decoration (a nearer
+ancestor's `leading-*` overrides a farther one's). It has no reset utility, unlike the other three axes:
+Tailwind defines no `leading-auto` below `leading-none`, and every preset — `leading-none`'s multiplier of 1
+included — is already a real value, so there is nothing for a descendant to reset back to the way
+`normal-case` / `no-underline` / an explicit `whitespace-*` class do.
+
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**
 
 | Tailwind | Why omitted |
 |---|---|
-| `leading-*` (line-height) | USS has no `line-height` (`-unity-paragraph-spacing` is paragraph gap, not line-height) |
 | `overline` (text-decoration) | UI Toolkit rich text has no overline tag (`<u>` / `<s>` only) |
 | `antialiased` / `subpixel-antialiased` (font-smoothing) | Text renders as SDF alpha-blend only — no antialiasing-mode axis to switch |
 | `font-stretch-*` | No variable-font / width-axis support |

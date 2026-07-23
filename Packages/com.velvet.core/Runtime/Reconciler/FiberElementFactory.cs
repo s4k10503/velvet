@@ -188,6 +188,14 @@ namespace Velvet
                     continue;
                 }
 
+                // leading-[...] arbitrary line-height classes are owned by StyleTextEffectResolver (folded
+                // into the rich-text tag it wraps the display string in); like font-[...] they must not
+                // enter the USS class list, regardless of whether the bracket value itself parses.
+                if (StyleTextEffectClass.IsArbitraryLeadingClass(className))
+                {
+                    continue;
+                }
+
                 // Important modifier (!utility / utility!): strip the bang and, when present,
                 // elevate the inline-resolved utility to the Important layer so it wins over every other
                 // layer. A class-only utility has no inline form to elevate, so its bang is inert.

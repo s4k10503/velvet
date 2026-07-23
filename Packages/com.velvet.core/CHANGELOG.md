@@ -43,6 +43,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `underline` do. An explicit `whitespace-*` class on the same element wins over `whitespace-pre-line`
   there, and — like `normal-case` / `no-underline` — also blocks a farther ancestor's
   `whitespace-pre-line` from reaching that subtree.
+- `leading-none`…`leading-loose` and `leading-[Npx]` (line-height). USS has no line-height property, so
+  these realise it through UI Toolkit's rich-text `<line-height=X>` tag instead: the named presets emit
+  their Tailwind multiplier verbatim as `<line-height=1.625em>`, which the text engine itself resolves
+  against whatever font size is in effect at that point in the string — unlike `tracking-*`'s em scale,
+  which had to be pre-baked to px at a fixed 16px root, this composes correctly with any `text-*` size at
+  any value, with no lookup table. `leading-[Npx]` emits an absolute `<line-height=Npx>`; only the `px`
+  unit is accepted inside the bracket, and a malformed or unsupported-unit value is silently ignored.
+  Inherits and cascades the same way `uppercase` / `underline` / `whitespace-pre-line` do, with no reset
+  form of its own — Tailwind has no `leading-auto`, and every preset (`leading-none` included) is already a
+  real value rather than a sentinel.
 
 ### Fixed
 
