@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `overline` (text-decoration), joining the existing `underline` / `line-through` / `no-underline`
+  decoration axis. UI Toolkit rich text has no overline tag, so unlike the other three (a string rewrite)
+  it is PAINTED: a solid rule stroked above the leaf `TextElement`'s first line via
+  `generateVisualContent`, colored from `resolvedStyle.color`, sized to the text's natural width (clamped
+  to the content box), and honoring both components of `-unity-text-align` — its horizontal start, and,
+  for a middle/lower vertical anchor, where that first line actually sits. It cascades and resets
+  through the same axis as the others (`no-underline` clears it too), but the axis stays single-valued by
+  this subsystem's pre-existing design, so `underline overline` on one element resolves to the last
+  token rather than both lines composing as CSS allows. v1 scope: one rule positioned above the first
+  line only — a wrapped label's later lines carry no rule of their own yet.
 - `V.Portal(targetId:)` (the same-panel registry portal) now bubbles `events:` handlers to the
   logical ancestor chain outside the call site, matching the synthetic bubbling
   `V.Portal(layer:)`/`V.WorldSpace` already had. `PointerDown`/`Up`/`Move`/`Enter`/`Leave`,

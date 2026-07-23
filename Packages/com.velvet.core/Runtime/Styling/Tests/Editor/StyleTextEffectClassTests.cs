@@ -41,6 +41,34 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_Overline_When_Parsed_Then_DecorationIsOverline()
+        {
+            Assert.That(StyleTextEffectClass.Parse(new[] { "overline" }).Decoration, Is.EqualTo(TextDecorationKind.Overline));
+        }
+
+        [Test]
+        public void Given_UnderlineThenOverline_When_Parsed_Then_LastTokenWinsWithOverline()
+        {
+            // The decoration axis is single-valued by this subsystem's pre-existing design — CSS lets
+            // text-decoration-line combine multiple lines, but Velvet resolves exactly one value per
+            // element — so two decoration tokens on the same element resolve last-token-wins like every
+            // other axis, not a combined underline+overline.
+            Assert.That(
+                StyleTextEffectClass.Parse(new[] { "underline", "overline" }).Decoration,
+                Is.EqualTo(TextDecorationKind.Overline));
+        }
+
+        [Test]
+        public void Given_OverlineThenNoUnderline_When_Parsed_Then_DecorationResetsToNone()
+        {
+            // no-underline is CSS's text-decoration-line: none sentinel for the WHOLE axis, so it clears an
+            // overline set earlier on the same element too, not just underline/line-through.
+            Assert.That(
+                StyleTextEffectClass.Parse(new[] { "overline", "no-underline" }).Decoration,
+                Is.EqualTo(TextDecorationKind.None));
+        }
+
+        [Test]
         public void Given_TransformAndDecoration_When_Parsed_Then_BothAxesSet()
         {
             var e = StyleTextEffectClass.Parse(new[] { "uppercase", "underline" });
@@ -71,6 +99,14 @@ namespace Velvet.Tests
         public void Given_LineThrough_When_Applied_Then_WrappedInSTag()
         {
             Assert.That(StyleTextEffectClass.Apply("hi", null, TextDecorationKind.LineThrough), Is.EqualTo("<s>hi</s>"));
+        }
+
+        [Test]
+        public void Given_Overline_When_Applied_Then_TextIsUnchanged()
+        {
+            // UI Toolkit rich text has no overline tag, so unlike Underline/LineThrough this leaves the
+            // string alone — the leaf paints a rule instead (StyleTextEffectResolver.ApplyToElement).
+            Assert.That(StyleTextEffectClass.Apply("hi", null, TextDecorationKind.Overline), Is.EqualTo("hi"));
         }
 
         [Test]
@@ -554,6 +590,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(result, Is.EqualTo("<line-height=1.625em><u>HI THERE</u></line-height>"));
+        }
+
+        [Test]
+        public void Given_OverlineUppercaseAndLeadingCombined_When_Applied_Then_StringCarriesCaseAndLeadingButNoDecorationTag()
+        {
+            // Arrange — overline has no rich-text tag (UI Toolkit has none), so the resolved string must
+            // carry exactly what Transform + Leading alone would produce: uppercase and the line-height
+            // wrap, but no <u>/<s> pair anywhere — unlike Underline/LineThrough, which always add one.
+            var classNames = new[] { "overline", "uppercase", "leading-tight" };
+
+            // Act
+            var effect = StyleTextEffectClass.Parse(classNames);
+            var result = StyleTextEffectClass.Apply(
+                "hi", effect.Transform, effect.Decoration, effect.Whitespace, effect.Leading);
+
+            // Assert
+            Assert.That(result, Is.EqualTo("<line-height=1.25em>HI</line-height>"));
         }
     }
 }
