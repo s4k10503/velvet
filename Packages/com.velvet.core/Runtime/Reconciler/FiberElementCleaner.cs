@@ -441,6 +441,10 @@ namespace Velvet
         // have their slotStart shifted by -slotLength so subsequent patches stay
         // correctly addressed. Entry removal happens before target mutation to prevent double
         // processing via CleanupDescendants recursion.
+        // Deliberately does NOT touch ReconcilerContext.SamePanelPortalBridges: a same-panel target's
+        // synthetic-bubbling bridge (if this was a registry portal) stays attached even once this is
+        // the last Portal on that target — see that field's own comment for why leaving it is both
+        // correct (a harmless no-op) and simpler than reference-counting per-target attaches.
         private void CleanupPortal(VisualElement element)
         {
             if (!_ctx.PortalState.TryGetValue(element, out var portalInfo))

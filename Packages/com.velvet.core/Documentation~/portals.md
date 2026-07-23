@@ -17,19 +17,25 @@ all three forms:
 
 - **Context crosses.** A `V.Provider` above the portal call site is visible to the children.
 - **Stores cross.** `UseStore` subscriptions are independent of panels.
-- **`events:` handlers cross for `V.Portal(layer:)`/`V.WorldSpace`, not for
-  `V.Portal(targetId:)`.** UI Toolkit computes native propagation from the physical tree, so a
-  logical ancestor's handler never sees a same-panel portal child's events by itself
-  (`V.Portal(targetId:)` reparents within the SAME panel, and there is no API to redirect UI
-  Toolkit's own dispatcher along a logical chain there — documented deviation). But a
-  `V.Portal(layer:)`/`V.WorldSpace` host is a wholly separate Panel, where native bubbling
-  cannot cross the boundary at all (no physical ancestor to bubble into) — so Velvet bridges it
-  itself: `PointerDown`/`Up`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDown`/`Up`, and
-  `FocusIn`/`Out`/`Focus`/`Blur` bindings on an `events:` prop bubble synthetically to the
-  logical ancestor chain outside the host panel (mirrors React's own root-level event
-  delegation — walking the logical parent chain, not the DOM). `ClickedBinding` (`Button`'s
-  native click) and `ChangeEventBinding<T>` (field value-change) stay panel-local for now — see
-  "Cross-panel input routing" below.
+- **`events:` handlers cross in all three portal forms**, through the same synthetic-bubbling
+  mechanism: `PointerDown`/`Up`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDown`/`Up`, and
+  `FocusIn`/`Out` bindings on an `events:` prop bubble to the logical ancestor chain outside the
+  portal boundary (mirrors React's own root-level event delegation — walking the logical parent
+  chain, not the DOM). For `V.Portal(layer:)`/`V.WorldSpace`, the host is a wholly separate Panel
+  where native bubbling cannot cross the boundary at all (no physical ancestor to bubble into) —
+  Velvet's bridge is the only way a logical ancestor ever sees the event. For
+  `V.Portal(targetId:)` (same panel, no separate Panel object involved), the target's own
+  physical ancestors already receive the event through ordinary native bubbling; the bridge adds
+  the LOGICAL ancestor chain on top of that, and an element that happens to be both — a physical
+  ancestor of the target AND a logical ancestor of the call site — still fires exactly once (the
+  synthetic walk detects that native bubbling already covers it and stops there rather than
+  double-firing). `ClickedBinding` (`Button`'s native click has no underlying event object to
+  carry across a boundary) and `ChangeEventBinding<T>` (field value-change, same reason) stay
+  physical-tree-only in every form — as do `FocusEvent`/`BlurEvent`, which, unlike
+  `FocusInEvent`/`FocusOutEvent`, UI Toolkit dispatches target-only with no bubble, so a bridge
+  listener can never observe one raised on a descendant in the first place. See "Cross-panel
+  input routing" below for the two gaps specific to `V.Portal(layer:)`/`V.WorldSpace` (picking
+  order and focus hand-off) that this same-mechanism story does not cover.
 - **Physical-walk styling does not cross, anywhere.** Relational `group-`/`peer-` variants and
   focus-within variants (`has-[:focus]:`, `group-focus-within:`) resolve against the physical
   tree in every portal form, including `V.Portal(layer:)`/`V.WorldSpace` — they register their

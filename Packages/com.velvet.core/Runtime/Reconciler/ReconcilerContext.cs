@@ -488,6 +488,34 @@ namespace Velvet
         // reconciler disposal.
         public Dictionary<VisualElement, PanelHostRecord> WorldSpaceBindings { get; } = new();
 
+        // Same-panel registry-portal (V.Portal(targetId:)) resolved TARGET elements that already carry
+        // FiberCrossPanelEventDispatcher's synthetic-bubbling bridge, mapped to the delegate that
+        // detaches it. Doubles as the attach-once guard: ChildReconciler's registry-portal drain branch
+        // checks this before calling AttachBridge, since multiple Portals — or repeated mounts of the
+        // same Portal — commonly resolve to the SAME target (see PortalSlotInfo's own multi-Portal-per-
+        // target contract), and re-attaching would stack duplicate callbacks. The guard is scoped to
+        // this one context: a second, independently mounted reconciler whose own Portal resolves to the
+        // same registered target attaches its own bridge through its own instance of this dictionary,
+        // since it has no way to see this one. Harmless — Continue's ancestor walk itself is ctx-agnostic
+        // (it reads userData off the shared VisualElement, not off ctx), but the invocation at the end of
+        // that walk goes through THIS ctx's own EventManager, whose bindings table only ever learned
+        // about elements this context itself bound; a chain resolved via the other context's fibers has
+        // no matching entry there, so the second listener never double-invokes a handler — just redundant
+        // scanning on every event that reaches the shared target.
+        // Deliberately NOT cleared when the one Portal that triggered the attach unmounts:
+        // FiberElementCleaner.CleanupPortal only removes THAT Portal's own slot range from the target's
+        // children (a registry target is always user-owned and outlives any one Portal mounted into
+        // it), so a bridge with no remaining DetachedMountContext-tagged descendant under the target is
+        // a harmless no-op the next time an event reaches it (Continue's own ancestor scan finds
+        // nothing and returns immediately) — and staying attached lets a LATER Portal mount (the same
+        // id re-registered, or the same Portal remounting) skip re-attaching for free.
+        // Reconciler.Dispose is therefore the only teardown point: a registry target commonly outlives
+        // this reconciler (the app owns it independently of any one mounted tree), so leaving the
+        // callbacks attached past disposal would leak a closure over a now-dead ReconcilerContext onto
+        // still-live app UI — mirroring NavigatorAttachments' identical "panel roots... can outlive
+        // this reconciler" teardown rationale.
+        public Dictionary<VisualElement, System.Action> SamePanelPortalBridges { get; } = new();
+
         // The declaring panel's driving UIDocument per panel, filled by
         // PanelHostFactory.ResolveDeclaring so each distinct declaring panel costs one
         // FindObjectsOfTypeAll scan per reconciler instead of one per host mount. Only the document
