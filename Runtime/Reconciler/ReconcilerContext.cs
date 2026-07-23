@@ -163,6 +163,16 @@ namespace Velvet
         public Dictionary<VisualElement, string> TextRawText { get; } = new();
         public Dictionary<VisualElement, bool> TextWhitespaceOwned { get; } = new();
 
+        // A FOURTH table for the same subsystem, backing the Decoration axis's Overline value specifically:
+        // UI Toolkit rich text has no overline tag (unlike Underline/LineThrough, which rewrite the string
+        // with <u>/<s>), so Overline is realised as a generateVisualContent PAINT binding on the leaf
+        // TextElement instead — see TextOverlineBinding / TextOverlineSilhouette. Unlike the three pure
+        // tables above, an entry here owns a live delegate subscription (like ShadowBindings / SkewBindings
+        // / BorderStyleBindings below), so it is deliberately NOT enrolled in _pureElementSideTables —
+        // FiberElementCleaner detaches the callback explicitly before an element is torn down or returned to
+        // the pool, mirroring exactly how those three paint bindings are swept.
+        public Dictionary<VisualElement, TextOverlineBinding> TextOverlineBindings { get; } = new();
+
         // The per-element "pure" side-tables (structural / has-[.class]: / data-/aria- rules + their attribute
         // store / supports- / Motion applied-classes) — those whose teardown is a plain Remove(element): no
         // manipulator to detach and no resource (a shader Material, a baked VectorImage, an event subscription,

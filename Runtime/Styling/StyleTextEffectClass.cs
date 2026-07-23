@@ -16,13 +16,21 @@ namespace Velvet
         Capitalize,  // capitalize (title-case: first letter of each word)
     }
 
-    // The text-decoration an element requests. None is the EXPLICIT reset (no-underline); unset is a null
-    // TextDecorationKind? in TextEffect. UI Toolkit text has no overline rich-text tag, so overline is omitted.
+    // The text-decoration an element requests. None is the EXPLICIT reset (no-underline, which clears
+    // Overline too — mirroring CSS's text-decoration-line: none clearing every line); unset is a null
+    // TextDecorationKind? in TextEffect. UI Toolkit rich text has no overline tag (only <u>/<s>), so unlike
+    // Underline/LineThrough, Overline is never realised as a string rewrite — StyleTextEffectClass.Apply
+    // passes the string through unchanged for it, and the leaf paints a rule instead (see
+    // StyleTextEffectResolver.ApplyToElement / TextOverlineBinding). It still shares this single axis with
+    // Underline/LineThrough/None (last-token-wins on one element, cascades/resets the same way) rather than
+    // getting its own axis, even though CSS lets text-decoration-line combine multiple lines — see the Why
+    // comment in Parse.
     internal enum TextDecorationKind
     {
         None,        // no-underline
-        Underline,   // underline   -> <u>
+        Underline,   // underline    -> <u>
         LineThrough, // line-through -> <s>
+        Overline,    // overline     -> painted, no tag
     }
 
     // The whitespace-collapse an element requests. None is the EXPLICIT reset: every direct, literal
@@ -80,7 +88,10 @@ namespace Velvet
     // line-height have no UITK property at all — so Velvet realises all four the same way regardless, by
     // mutating the displayed text: uppercasing/title-casing the string, wrapping it in the rich-text
     // <u>/<s>/<line-height=X> tags UI Toolkit renders (enableRichText is on by default), and/or collapsing
-    // space/tab runs.
+    // space/tab runs. Decoration's Overline value is the one exception to the string-mutation story: UI
+    // Toolkit rich text has no overline tag to wrap with, so it cascades through this SAME struct/axis (it
+    // is still just a TextDecorationKind value) but is realised as a PAINTED rule on the leaf instead — see
+    // StyleTextEffectResolver.ApplyToElement and TextOverlineBinding.
     //
     // Whitespace still needs the same manual cascade walk as Transform/Decoration despite white-space
     // natively inheriting: no UITK enum member expresses CSS pre-line's collapse, so a C# string mutation is
@@ -138,6 +149,12 @@ namespace Velvet
         // see below). Returns an empty TextEffect (every axis null) when no recognised token is present.
         // Leading follows the same last-token-wins rule as Transform/Decoration: it has no reset form (see
         // LeadingUnit), so there is nothing analogous to Whitespace's cross-family override to special-case.
+        // Decoration's last-token-wins rule also covers Overline: CSS's text-decoration-line can combine
+        // multiple lines in one declaration (underline overline both render), but this axis resolves to
+        // exactly ONE TextDecorationKind value per element by pre-existing design (predating Overline) — so
+        // "underline overline" here picks the LAST token (Overline), it does not compose both onto the
+        // element the way CSS would. Documented as a deviation in fonts.md; not re-litigated by adding
+        // Overline.
         public static TextEffect Parse(string[] classNames)
         {
             TextTransformKind? transform = null;
@@ -159,6 +176,7 @@ namespace Velvet
                     case "normal-case": transform = TextTransformKind.None; break;
                     case "underline": decoration = TextDecorationKind.Underline; break;
                     case "line-through": decoration = TextDecorationKind.LineThrough; break;
+                    case "overline": decoration = TextDecorationKind.Overline; break;
                     case "no-underline": decoration = TextDecorationKind.None; break;
                     case "whitespace-pre-line": whitespace = WhitespaceCollapseKind.PreLine; break;
                     case "whitespace-normal":
@@ -298,6 +316,11 @@ namespace Velvet
             {
                 case TextDecorationKind.Underline: return "<u>" + text + "</u>";
                 case TextDecorationKind.LineThrough: return "<s>" + text + "</s>";
+                // Overline has no rich-text tag to wrap with (UI Toolkit's markup vocabulary is <u>/<s>
+                // only) — spelled out rather than left to fall through to default, so a reader does not
+                // mistake the no-op for an oversight. The leaf paints a rule instead; see
+                // StyleTextEffectResolver.ApplyToElement.
+                case TextDecorationKind.Overline: return text;
                 default: return text; // None / null
             }
         }

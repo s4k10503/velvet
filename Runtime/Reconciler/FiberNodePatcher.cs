@@ -194,6 +194,15 @@ namespace Velvet
                     {
                         element.style.whiteSpace = StyleKeyword.Null;
                     }
+                    // Same leak, same fix, for the Overline paint binding (see StyleTextEffectResolver's
+                    // type comment): with no raw text left, ApplyToElement can never run again to detach it,
+                    // so a generateVisualContent subscription this element carried would otherwise survive
+                    // forever on an element that no longer has any text to decorate at all.
+                    if (_ctx.TextOverlineBindings.TryGetValue(element, out var overlineBinding))
+                    {
+                        TextOverlineSilhouette.Detach(element, overlineBinding);
+                        _ctx.TextOverlineBindings.Remove(element);
+                    }
                 }
             }
             // After DiffProps (and the class-driven config it follows): re-sync the data-/aria- attribute
