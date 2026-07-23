@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `text-balance` approximates CSS `text-wrap: balance` on a `TextElement` (Label / Button / …). UI
+  Toolkit's text engine exposes no line-break hook, so `StyleTextBalanceManipulator` narrows the box
+  instead: it binary-searches the public `TextElement.MeasureTextSize` — the same method the engine's own
+  autosize pass already calls — for the narrowest inline `maxWidth` that keeps the measured height at or
+  under a normal (unbalanced) layout's height at the same available width, so the existing line count
+  redistributes more evenly instead of leaving a near-empty last line. Applied only when the text actually
+  wraps to 2+ lines; a single-line label's box is left untouched, matching CSS balance being a no-op
+  there. Unlike real `text-wrap: balance`, this approximation can shrink the element's own box (narrowing
+  via `maxWidth` rather than only moving line breaks within a fixed box) — the full deviation writeup is
+  in `Documentation~/fonts.md`. Needs a wrapping white-space (`text-wrap` / `whitespace-normal`, …)
+  alongside it — Velvet's `Label` default is `nowrap`, so `text-balance` alone is a no-op there.
 - `Hooks.UseFrame` gains a `priority` parameter — r3f's `useFrame(callback, renderPriority)` ordering
   parity. Lower runs earlier within the same panel; equal priorities fall back to subscription (mount)
   order. Backing this, per-frame callbacks now subscribe to a single per-panel dispatcher instead of
