@@ -31,10 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   own enter/exit tween is bound to must stay put — wrap it in a z-managed `Div` instead, which an
   `AnimatePresence` keyed child built that way (an animated, top-most modal) can do: its enter,
   `PopLayout` exit pin, and exit-cancel all target the real, relocated element for its whole
-  lifetime, not a placeholder standing in its declared slot. The `variants` enter/exit classes still
-  resolve only when the direct presence child is the Motion itself, not this wrapped shape — only
-  the transition's timing and its `onEnterComplete` callback are guaranteed for a wrapped Motion
-  today. Comparison is scoped to direct siblings under one immediate parent only; there is no CSS
+  lifetime, not a placeholder standing in its declared slot. The `variants` enter/exit classes
+  resolve against the wrapped Motion's own element, so the wrapped shape animates identically to a
+  direct Motion child. Comparison is scoped to direct siblings under one immediate parent only; there is no CSS
   stacking-context nesting (opacity, transform, filter, and isolation do not open a new context
   here). A `peer-` source that is itself z-managed is not found by a `peer-` consumer (its
   placeholder carries none of its marker classes) — the reverse, a z-managed consumer resolving an
@@ -107,6 +106,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.Motion` nested under a transparent wrapper inside an `AnimatePresence` keyed child — a
+  z-managed `Div` (the animated top-most modal shape, since `z-*` is a documented no-op on a
+  Motion itself) or a `ContextProvider` — now has its named `variants` enter/exit classes applied,
+  resolved against the Motion's own element, where the resting `variants[animate]` classes live.
+  Previously variant resolution required the keyed child itself to be the Motion, so only the
+  transition's timing and `onEnterComplete` were honored for the wrapped shape: a wrapped modal
+  faded/scaled only when its transition carried timing-preset classes, never its declared
+  variants. Exit-cancel (the key re-added mid-exit) likewise restores the resting variant on the
+  Motion's own element now. Deliberate consequence: a wrapped Motion no longer also plays the
+  classic preset alongside a variant enter/exit — a variant-driven animation manages its state
+  through variant classes alone, exactly as a direct Motion child always has (a configuration
+  without an `exit` label keeps its classic preset exit on the wrapper, same as before). Style the
+  Motion, not the wrapper, for anything that should animate with the variants.
 - `V.Portal(layer:)`/`V.WorldSpace` synthetic event bubbling now stops when a handler calls
   `StopPropagation()` partway up the logical ancestor chain, instead of continuing to invoke
   every remaining ancestor regardless. Also fixes nested portals/world-space (one mounted inside
