@@ -231,6 +231,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AsyncStartTransitionAwaitingBeforeAnyUpdate_When_ACleanFiberFlushFires_Then_IsPendingStaysTrue()
+        {
+            // Arrange — the action awaits BEFORE its first setState, so the fiber has no pending lane at
+            // all while the transition is in flight.
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                await gate.Task;
+                s_transitionSetValue.Invoke(1);
+            };
+            s_transitionStarter.Invoke(asyncUpdates);
+            Assume.That(s_transitionFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
+
+            // Act — a drain callback armed earlier can legitimately fire on this now-clean fiber (e.g.
+            // the delayed-tier callback left over after a starvation promotion drained every lane); the
+            // not-dirty flush must not read the empty lane queue as this transition having settled.
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.IsTrue(s_transitionFiber.IsTransitionPending,
+                "A flush on a clean fiber must not wipe an awaiting async transition's pending flag");
+        }
+
+        [Test]
         public void Given_AsyncStartTransition_When_TaskCompletesAndFlushes_Then_IsPendingClears()
         {
             // Arrange

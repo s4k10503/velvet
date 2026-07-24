@@ -131,6 +131,16 @@ namespace Velvet
         internal static void SettleSubsumedFiber(ComponentFiber fiber)
         {
             fiber.LaneQueue?.Clear();
+            // The subsuming render committed the fiber's latest (eagerly-written) state, so any
+            // starvation-promoted work is satisfied too — a marker left true on the now-clean fiber
+            // would mis-time a LATER transition's settle (its sweep would be skipped while other lanes
+            // queue). Direct field access: the proxy setter's EnsureLanes would allocate a LaneState
+            // for the lane-less majority of subsumed fibers (every non-memoized child re-render lands
+            // here), defeating the documented lazy-allocation invariant.
+            if (fiber.Lanes != null)
+            {
+                fiber.Lanes.HasPromotedTransition = false;
+            }
             fiber.IsDirty = false;
             fiber.ClearAllTransitionPending();
             fiber.Reconciler?.Context.BatchScheduler.Remove(fiber);
@@ -200,7 +210,7 @@ namespace Velvet
             // but removing here keeps the pending set from retaining a dead fiber reference until drain.
             fiber.Reconciler?.Context.BatchScheduler.Remove(fiber);
             // For components whose LaneState has not been allocated (Lane never used), do not call Clear() to
-            // preserve zero-allocation. LaneState.Clear initializes all four queue/transition-related fields.
+            // preserve zero-allocation. LaneState.Clear initializes every queue/transition-related field.
             fiber.Lanes?.Clear();
 
             // A mid-pass unmount takes its own deferred inline baselines with it: the end-of-pass

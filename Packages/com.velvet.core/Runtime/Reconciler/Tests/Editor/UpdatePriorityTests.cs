@@ -17,7 +17,8 @@ namespace Velvet.Tests
     /// Transition enroll on the delayed tier. Each tier's drain flushes only its own lanes.</item>
     /// <item>An Urgent lane drains and clears the dirty flag; once the queue is empty a further flush is a no-op.</item>
     /// <item>Deferred updates require a delayed flush and coalesce on the same fiber; Transition updates require a
-    /// flush and coalesce, and a starved Transition lane is eventually promoted and processed.</item>
+    /// flush and coalesce, and a starved Transition lane is promoted to Normal — and drained — by the flush that
+    /// reaches the starvation threshold, however often the lane was re-scheduled while pending.</item>
     /// <item>A fiber's lane queue drains lowest-value-first, one lane per flush; an Urgent update added to an
     /// already-Deferred fiber also enrolls it on the immediate tier so a synchronous immediate flush can commit it.</item>
     /// <item>A render-phase setState re-runs Render() synchronously within the same commit, leaves no pending
@@ -329,11 +330,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_StarvedTransition_When_NormalUpdatesExceedThreshold_Then_TransitionIsPromotedAndProcessed()
+        public void Given_StarvedTransition_When_NormalUpdatesReachThreshold_Then_TransitionIsPromotedAndDrainedInThatFlush()
         {
             // Arrange
             s_simpleInitial = "initial";
             using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            Assume.That(s_simpleRenderCount, Is.EqualTo(1), "Precondition: the mount rendered once");
             s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
             const int threshold = 30;
             for (var i = 0; i < threshold - 1; i++)
@@ -341,16 +343,159 @@ namespace Velvet.Tests
                 s_simpleSetValue.Invoke($"normal-{i}");
                 mounted.FlushStateForTest();
             }
-            s_simpleSetValue.Invoke($"normal-{threshold - 1}");
-            mounted.FlushStateForTest();
             var renderCountBeforeFinal = s_simpleRenderCount;
 
-            // Act
+            // Act — the flush that reaches the threshold promotes the starved lane to Normal and drains
+            // it in the same pass; a mere hand-off to another still-outranked lane would keep losing to
+            // the sustained Normal traffic.
+            s_simpleSetValue.Invoke($"normal-{threshold - 1}");
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.Greater(s_simpleRenderCount, renderCountBeforeFinal,
-                "After starvation promotion, the Transition lane is processed and Render runs");
+            Assert.AreEqual((renderCountBeforeFinal + 1, false), (s_simpleRenderCount, s_simpleFiber.IsDirty),
+                "The threshold flush renders once (the promoted lane coalesces with the preempting Normal) "
+                + "and leaves no lane pending");
+        }
+
+        [Test]
+        public void Given_SustainedTransitionRescheduling_When_NormalPreemptionReachesThreshold_Then_TransitionLaneIsPromoted()
+        {
+            // Arrange
+            s_simpleInitial = "initial";
+            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            Assume.That(s_simpleRenderCount, Is.EqualTo(1), "Precondition: the mount rendered once");
+            const int threshold = 30;
+
+            // Act — the first pass genuinely enrols the Transition lane; every later pass re-signals
+            // transition intent as a coalesced re-add onto the still-pending lane, while a fresh Normal
+            // update preempts each flush, so the Transition lane never drains on its own. The starvation
+            // clock measures continuous pendency, so the coalesced re-adds must not restart it: the
+            // threshold flush must still promote and drain the starved lane.
+            for (var i = 0; i < threshold; i++)
+            {
+                s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke($"transition-{i}"));
+                s_simpleSetValue.Invoke($"normal-{i}");
+                mounted.FlushStateForTest();
+            }
+
+            // Assert — the threshold flush promoted the starved lane to Normal and drained it in the
+            // same pass, leaving nothing pending (a promote that merely re-queued it on a still-outranked
+            // lane would keep starving under the sustained Normal traffic).
+            Assert.AreEqual((false, false),
+                (s_simpleFiber.LaneQueue.Contains(FiberUpdatePriority.Transition), s_simpleFiber.IsDirty),
+                "Sustained Transition re-scheduling under Normal preemption must not defeat the "
+                + "starvation promotion — the threshold flush drains the starved lane");
+        }
+
+        [Test]
+        public void Given_StarvedTransitionUnderDeferredPreemption_When_ThresholdReached_Then_PromotedLaneOutranksThePreemptor()
+        {
+            // Arrange — starve the Transition lane behind a re-added Deferred lane each pass (Deferred
+            // outranks Transition, so each flush drains the Deferred preemptor and Transition survives).
+            s_simpleInitial = "initial";
+            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            Assume.That(s_simpleRenderCount, Is.EqualTo(1), "Precondition: the mount rendered once");
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
+            const int threshold = 30;
+            for (var i = 0; i < threshold - 1; i++)
+            {
+                s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+                mounted.FlushStateForTest();
+            }
+
+            // Act — the threshold flush must drain the PROMOTED lane, which now outranks the re-added
+            // Deferred preemptor; the preemptor is what stays pending.
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+            mounted.FlushStateForTest();
+
+            // Assert — distinguishes a genuine promotion from a drop of the starved lane: a drop would
+            // let this flush drain the Deferred preemptor instead, emptying the queue.
+            Assert.AreEqual((true, true),
+                (s_simpleFiber.LaneQueue.Contains(FiberUpdatePriority.Deferred), s_simpleFiber.IsDirty),
+                "The promoted lane outranks the Deferred preemptor — the threshold flush drains the "
+                + "promoted Normal and leaves the preemptor pending");
+        }
+
+        [Test]
+        public void Given_StarvedTransitionUnderDeferredPreemption_When_ThePromotedLaneDrains_Then_IsPendingClearsDespiteThePendingPreemptor()
+        {
+            // Arrange — same starvation shape as the preemptor-ordering test above.
+            s_simpleInitial = "initial";
+            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            Assume.That(s_simpleRenderCount, Is.EqualTo(1), "Precondition: the mount rendered once");
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
+            const int threshold = 30;
+            for (var i = 0; i < threshold - 1; i++)
+            {
+                s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+                mounted.FlushStateForTest();
+            }
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Deferred);
+
+            // Act — the threshold flush promotes and drains the starved lane while the Deferred
+            // preemptor stays queued.
+            mounted.FlushStateForTest();
+
+            // Assert — the promoted marker must retire with the drain that committed its content: a
+            // marker left set would skip the settle sweep for as long as any other lane stays queued,
+            // holding isPending past its own commit.
+            Assert.IsFalse(s_simpleFiber.IsTransitionPending,
+                "isPending clears at the promoted drain even while the Deferred preemptor is still queued");
+        }
+
+        [Test]
+        public void Given_StarvedTransitionPromotedBehindUrgent_When_ThresholdFlushDrainsUrgent_Then_IsPendingSurvives()
+        {
+            // Arrange
+            s_simpleInitial = "initial";
+            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            Assume.That(s_simpleRenderCount, Is.EqualTo(1), "Precondition: the mount rendered once");
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
+            const int threshold = 30;
+            for (var i = 0; i < threshold - 1; i++)
+            {
+                s_simpleSetValue.Invoke($"normal-{i}");
+                mounted.FlushStateForTest();
+            }
+
+            // Act — the threshold flush finds an Urgent co-pending: promotion erases the Transition label
+            // (relabelling the lane to Normal), the flush drains Urgent first, and the promoted work stays
+            // queued one more pass.
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
+            mounted.FlushStateForTest();
+
+            // Assert — the settle sweep must not read the erased Transition label as settled: isPending
+            // survives until the commit that renders the promoted content.
+            Assert.AreEqual((true, true),
+                (s_simpleFiber.IsTransitionPending, s_simpleFiber.LaneQueue.Contains(FiberUpdatePriority.Normal)),
+                "isPending survives the Urgent drain while the promoted lane is still queued");
+        }
+
+        [Test]
+        public void Given_StarvedTransitionPromotedBehindUrgent_When_ThePromotedLaneDrains_Then_IsPendingClears()
+        {
+            // Arrange — same shape as the survival test above, driven one flush further.
+            s_simpleInitial = "initial";
+            using var mounted = V.Mount(_root, V.Component(SimpleRender, key: "simple"));
+            Assume.That(s_simpleRenderCount, Is.EqualTo(1), "Precondition: the mount rendered once");
+            s_simpleStartTransition.Invoke(() => s_simpleSetValue.Invoke("transition-update"));
+            const int threshold = 30;
+            for (var i = 0; i < threshold - 1; i++)
+            {
+                s_simpleSetValue.Invoke($"normal-{i}");
+                mounted.FlushStateForTest();
+            }
+            s_simpleFiber.ScheduleRerenderForTest(FiberUpdatePriority.Urgent);
+            mounted.FlushStateForTest();
+            Assume.That(s_simpleFiber.IsTransitionPending, Is.True,
+                "Precondition: isPending survived the Urgent drain");
+
+            // Act — drain the promoted lane: this is the commit that renders the promoted content.
+            mounted.FlushStateForTest();
+
+            // Assert — the promoted marker retires with its drain; the sweep must not skip forever.
+            Assert.IsFalse(s_simpleFiber.IsTransitionPending,
+                "isPending clears at the commit that drains the promoted lane");
         }
 
         #endregion

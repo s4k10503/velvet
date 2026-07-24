@@ -183,7 +183,11 @@ namespace Velvet
                     // lanes are dropped: a fiber can be queued this deep with an unrelated
                     // Transition/Deferred lane still pending (the
                     // runaway's commits may write bystanders each pass), and wiping that lane would
-                    // strand its delayed-tier work (a StartTransition left isPending forever).
+                    // strand its delayed-tier work (a StartTransition left isPending forever). A
+                    // Transition lane that starvation-promoted to Normal DURING the runaway (the cap
+                    // exceeds the starvation threshold) is dropped with it — acceptable: state slots are
+                    // written eagerly, so the last committed render already showed the transition's
+                    // values, and the pending-flag sweep below spares an async action still in flight.
                     FiberLogger.LogError("Scheduler",
                         "Maximum update depth exceeded. A component repeatedly schedules state"
                         + " updates from its commit phase (a callback ref or an effect writing a"
@@ -197,6 +201,9 @@ namespace Velvet
                         var dropped = _drainBuffer[i];
                         dropped.LaneQueue?.Remove(FiberUpdatePriority.Urgent);
                         dropped.LaneQueue?.Remove(FiberUpdatePriority.Normal);
+                        // The promoted marker retires with the dropped Normal it rode, or it would keep
+                        // skipping the settle sweep for as long as any surviving lane stays queued.
+                        dropped.HasPromotedTransition = false;
                         if (dropped.LaneQueue == null || dropped.LaneQueue.Count == 0)
                         {
                             dropped.IsDirty = false;
