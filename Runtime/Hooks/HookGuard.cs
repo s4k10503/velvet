@@ -4,8 +4,6 @@ namespace Velvet
 {
     internal static class HookGuard
     {
-        // Throws when a hook is invoked outside of a Render() context.
-        // Called from the Hooks static class.
         // fiber == null means there is no Current on FiberAmbientStack, i.e. we are outside Render().
         // The gate is the render-phase WINDOW (the body on the stack), not the whole flush: the
         // commit phase legitimately runs user code (callback refs) with the ambient fiber still
