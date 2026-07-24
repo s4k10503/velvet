@@ -9,7 +9,6 @@ namespace Velvet
     /// synchronous subscribers notified on every change.
     /// </summary>
     /// <remarks>
-    /// <para>Equivalent to a Zustand store for users migrating from Zustand.</para>
     /// Threading: a store is single-threaded. All reads, mutations (<see cref="SetState"/> /
     /// <see cref="Mutate"/>), and subscription changes must occur on the Unity main thread
     /// (PlayerLoop). The store performs no internal locking; it assumes a single-threaded model.
@@ -48,12 +47,14 @@ namespace Velvet
         #region Infrastructure
 
         /// <summary>
-        /// Logger. null suppresses logs.
+        /// Logger captured from <see cref="StoreLogger.Default"/> at construction. See <see cref="StoreLogger"/>
+        /// to suppress output in tests.
         /// </summary>
         protected StoreLogger Logger { get; }
 
         /// <summary>
-        /// CancellationToken for async operations.
+        /// Cancelled when the store is disposed. Subclasses can thread this through async work so
+        /// in-flight operations observe disposal.
         /// </summary>
         protected CancellationToken CancellationToken
             => _cancellationTokenSource.Token;
@@ -97,14 +98,14 @@ namespace Velvet
         protected bool SetState(Func<TState, TState> updater)
             => TryApply(updater, force: false);
 
-        // The single write path through the state cell: guards disposal, applies the updater, and notifies.
-        // When force is false an Object.is-unchanged result is suppressed; when true it always notifies.
-        // Returns whether a notification was raised.
+        // Sole write path into the state cell: SetState and Mutate both funnel through here, so the
+        // disposal guard and equality check apply to every mutation.
         //
-        // Disposal-order race guard: VContainer / V.Mount cleanup paths can call setState from a UseEffect
-        // cleanup that runs after the store has been disposed (e.g. app shutdown where the singleton store is
-        // disposed before AppRouterInitializer tears down the mounted tree). A state update on an unmounted
-        // component is treated as a no-op, so a setState after disposal is silently ignored rather than throwing.
+        // Disposal-order race guard: during app shutdown, a DI container's LIFO singleton teardown can
+        // dispose this store before the code that tears down the mounted tree runs, so a V.Mount UseEffect
+        // cleanup can still call setState on an already-disposed store. A state update on an unmounted
+        // component is treated as a no-op, so a setState after disposal is silently ignored rather than
+        // throwing.
         //
         // Reference (Object.is) equality is used deliberately: a value-equal but distinct record instance must
         // still notify subscribers. EqualityComparer<T>.Default would invoke record value-equality and suppress
@@ -227,8 +228,8 @@ namespace Velvet
         /// when the store has been disposed; concrete stores implement <see cref="ResetCore"/>.
         /// </summary>
         /// <remarks>
-        /// During app shutdown / scene unload, VContainer disposes singletons LIFO, so a child
-        /// store can be disposed before a parent store's Reset chain reaches it. The same disposal
+        /// During app shutdown / scene unload, a DI container's LIFO singleton teardown can dispose a child
+        /// store before a parent store's Reset chain reaches it. The same disposal
         /// race also fires when V.Mount's UseEffect cleanup runs after the store has been disposed.
         /// Centralizing the guard here ensures every <see cref="Store{TState}"/> subclass — including
         /// those whose <see cref="ResetCore"/> touches disposable internal resources — is automatically
@@ -250,7 +251,7 @@ namespace Velvet
         #region Dispose
 
         /// <summary>
-        /// Releases resources in the order: CTS cancel → state notifier.
+        /// Releases resources in the order: CTS cancel → state notifier → OnDispose.
         /// </summary>
         public void Dispose()
         {

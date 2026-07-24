@@ -4,8 +4,9 @@ namespace Velvet
 {
     /// <summary>
     /// Shallow equality comparers for selector return values that are sequences.
-    /// Reference-equal elements at matching positions and matching
-    /// lengths are considered equal; deep equality is intentionally not performed.
+    /// Elements are compared with <c>Object.is</c> semantics (see <see cref="Sequence{T}"/> for the
+    /// exact per-type rules) at matching positions with matching lengths; deep equality is
+    /// intentionally not performed.
     /// </summary>
     /// <remarks>
     /// Use this for selectors that return an array/list slice, where a fresh list instance with the
@@ -19,8 +20,9 @@ namespace Velvet
         /// <summary>
         /// Returns a comparer that treats two <see cref="IReadOnlyList{T}"/> as equal when their
         /// lengths match and each element pair is <c>Object.is</c>-equal: reference identity for reference
-        /// types, bit-pattern equality for float/double, and boxed value equality for other value types.
-        /// A fresh-but-value-equal reference-type element therefore counts as changed.
+        /// types (strings compare by ordinal value instead), bit-pattern equality for float/double, and
+        /// boxed value equality for other value types. A fresh-but-value-equal reference-type element
+        /// (other than a string) therefore counts as changed.
         /// </summary>
         public static IEqualityComparer<IReadOnlyList<T>> Sequence<T>() => SequenceComparer<T>.Instance;
 
