@@ -1276,7 +1276,9 @@ namespace Velvet
                         // path — dispose them via the tracked anchor before re-pairing, else this same-render
                         // re-entry resurrects them as a zombie. A cancel-exit instead reproduces the SAME still-
                         // attached element (anchor == the stale one), so just drop the now-current reference.
-                        if (state.ExitAnchors.TryGetValue(key, out var staleAnchor) && !ReferenceEquals(staleAnchor, anchor))
+                        var freshReplacement =
+                            state.ExitAnchors.TryGetValue(key, out var staleAnchor) && !ReferenceEquals(staleAnchor, anchor);
+                        if (freshReplacement)
                         {
                             DisposeExitedGhostFibers(state, key);
                         }
@@ -1300,6 +1302,39 @@ namespace Velvet
                                 // a Motion (the z-managed shape) is a DIFFERENT element — with a different
                                 // class list — than the nested Motion FindFirstMotionDescendant resolved.
                                 RestorePopLayoutChildToFlow(anchor, (node as BaseElementNode)?.ClassNames);
+                            }
+                        }
+                        else if (wasExitComplete)
+                        {
+                            // A COMPLETED exit's re-entry (the drop render was preempted) reproduces a
+                            // still-attached element that nothing downstream un-parks: there is no pending
+                            // animation left to cancel, so the interruption restores the wasExiting branch
+                            // handles never run. Reverse the exit-time mutations here so the enter branches
+                            // start from the same state a fresh mount would.
+                            if (presence.Mode == AnimatePresenceMode.PopLayout && !freshReplacement)
+                            {
+                                // The out-of-flow pin outlives its exit (only the drop would have removed the
+                                // element). Skipped for a fresh replacement: the pin lives on the discarded
+                                // ghost, and nulling a never-pinned element's geometry slots would erase
+                                // resolver-applied inline values a transparent-wrapper child cannot re-resolve.
+                                RestorePopLayoutChildToFlow(anchor, (node as BaseElementNode)?.ClassNames);
+                            }
+                            if (motionElement != null)
+                            {
+                                // The completed swap left the element AT variants[exit] with the resting
+                                // variants[animate] stripped; the no-initial enter branch below plays nothing
+                                // and the class diff cannot help (MotionAppliedClasses still records the
+                                // resting set as applied). Resolved from the RE-ADDED node's variants — the
+                                // ghost node is already retired, so the exact applied arrays are gone; a
+                                // re-add that also changed the variants map may leave the old exit class
+                                // behind, or skip this restoration entirely when the exit label no longer
+                                // resolves — the same staleness any heuristic over the new declaration has.
+                                var completedExit = TryResolveVariantExit(motion);
+                                if (completedExit != null)
+                                {
+                                    StyleAnimationClassUtils.RemoveClasses(motionElement, completedExit.ExitToClasses);
+                                    StyleAnimationClassUtils.AddClasses(motionElement, completedExit.ExitFromClasses);
+                                }
                             }
                         }
 

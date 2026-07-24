@@ -106,6 +106,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A variant Motion's resting `variants[animate]` classes now survive both presence interruption
+  windows that used to strip them. Cancelling an in-flight variant enter (an exit starting
+  mid-enter) restores the resting classes the enter's strip had removed — previously a
+  configuration without an `exit` label played its classic exit on an element missing its resting
+  variant. And a re-entry landing after a completed variant exit's class swap but before its drop
+  render found the still-attached element parked at `variants[exit]` with nothing restoring it;
+  the re-entry now puts the resting pose back — including un-pinning a `PopLayout` exit's
+  out-of-flow geometry — before the enter branches run, so it starts from the same state a fresh
+  mount would. A completed tween exit also clears its inline `transition-*` styles now (as the
+  enter completion always has), so an element that outlives its drop no longer tweens unrelated
+  later class changes through the exit's leftover timing.
 - A `V.Motion` nested under a transparent wrapper inside an `AnimatePresence` keyed child — a
   z-managed `Div` (the animated top-most modal shape, since `z-*` is a documented no-op on a
   Motion itself) or a `ContextProvider` — now has its named `variants` enter/exit classes applied,
