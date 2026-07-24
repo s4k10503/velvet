@@ -43,10 +43,8 @@ namespace Velvet
         }
 
 #if UNITY_EDITOR
-        // Picks a human-readable DevTools label for a mounted root. The root fiber's own Body is the
-        // V.Mount lambda (an unnamed closure), so the label is derived from the supplied tree instead:
-        // the root component's function name, else the root element's name, else the target's name,
-        // else a generic fallback.
+        // The root fiber's own Body is the V.Mount lambda (an unnamed closure), so the label is
+        // derived from the supplied tree instead.
         private static string ResolveDevToolsLabel(VNode tree, VisualElement target)
         {
             if (tree is ComponentNode component)

@@ -56,7 +56,7 @@ namespace Velvet
         #region Host element factories
 
         /// <summary>
-        /// Creates a VisualElement (generic container). Equivalent to HTML's div.
+        /// Creates a VisualElement (generic container).
         /// Long form: every prop is a named optional parameter. For the shorthand
         /// <c>V.Div("class", child1, child2)</c> form, see the <c>params</c> overload.
         /// </summary>
@@ -1400,7 +1400,7 @@ namespace Velvet
         /// memoizes a function-style component by props equality.
         /// </summary>
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached VNode is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared via <see cref="ObjectIs.AreEqualDeps"/> — reference-type elements by identity, strings and primitives by value, floats by raw bit pattern), the cached VNode is reused.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
         public static MemoNode Memoized(Func<VNode> factory, params object?[]? deps)
         {
@@ -1524,8 +1524,8 @@ namespace Velvet
 
         /// <summary>
         /// Renders <paramref name="children"/> into a framework-owned world-space panel positioned by
-        /// a scene transform — UI that lives among 3D content and is depth-tested against it (the drei
-        /// <c>&lt;Html&gt;</c> parity point), unlike the always-on-top screen-space layers. The host
+        /// a scene transform — UI that lives among 3D content and is depth-tested against it, unlike
+        /// the always-on-top screen-space layers. The host
         /// (GameObject + world-space panel) is created on mount, follows <paramref name="position"/> /
         /// <paramref name="rotation"/> updates, and is destroyed on unmount. Children stay part of the
         /// logical tree: context and state cross, and an <c>events:</c> handler on a logical ancestor
@@ -1563,8 +1563,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Screen-space element that tracks a 3D scene Transform's projected position every frame — drei's
-        /// <c>&lt;Html&gt;</c> parity (default screen-space projection mode). This is ordinary 2D UI with no
+        /// Screen-space element that tracks a 3D scene Transform's projected position every frame (the
+        /// default screen-space projection mode). This is ordinary 2D UI with no
         /// inherent scene depth (unlike <see cref="WorldSpace"/>, which renders content INTO the 3D scene and
         /// is occluded by it for free) — <paramref name="occlude"/> opts into an explicit physics stand-in for
         /// that test. Forces <c>position: absolute</c> inline (dynamic left/top positioning has no other way
@@ -1588,7 +1588,7 @@ namespace Velvet
         /// <param name="occludeLayerMask">Which colliders count as occluders when <paramref name="occlude"/>
         /// is true. Null (default) resolves to <see cref="Physics.DefaultRaycastLayers"/>.</param>
         /// <param name="distanceFactor">When set, scales the element by this value divided by its current
-        /// distance to the camera — drei's <c>&lt;Html distanceFactor&gt;</c> parity, faking perspective size
+        /// distance to the camera, faking perspective size
         /// falloff for otherwise-flat screen-space content. Null (default) leaves the element unscaled and
         /// never touches <c>style.scale</c>, so it composes with a <c>scale-*</c> class or a Motion scale
         /// variant on the same element; a non-null value OWNS that style slot every tick instead and will
@@ -1642,8 +1642,8 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Container element whose subtree is a focus scope — React Aria's FocusScope. Deviation
-        /// (documented): Aria's scope is renderless (sentinel spans); Velvet's is a real VisualElement,
+        /// Container element whose subtree is a focus scope. Deviation
+        /// (documented): a renderless, sentinel-span scope is common elsewhere; Velvet's is a real VisualElement,
         /// because UI Toolkit containment needs a subtree root for the scoped focus ring and the
         /// membership test. Any existing container can be a scope via props
         /// (<see cref="FiberElementProps.FocusScope"/>) — this factory is convenience for when no
@@ -1698,7 +1698,7 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Drag-and-drop scope — dnd-kit's DndContext. A real container element (the FocusScope
+        /// Drag-and-drop scope. A real container element (the FocusScope
         /// precedent: the element is the stable scope identity and cleanup anchor). Draggables and
         /// droppables pair with their nearest ancestor scope at event time; one drag may be active per
         /// mounted tree at a time. Any existing container can be a scope via props
@@ -1756,7 +1756,7 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Drag source — dnd-kit's useDraggable. The element itself is the drag node; it must sit (at
+        /// Drag source. The element itself is the drag node; it must sit (at
         /// any depth) under a <see cref="DndContext"/> scope.
         /// </summary>
         /// <param name="id">Identity reported to the scope callbacks. An element that is both draggable
@@ -1812,16 +1812,15 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Drop target — dnd-kit's useDroppable. Collides with the active drag's rect under the scope's
-        /// collision strategy; accept-filtering stays app logic in the scope callbacks (dnd-kit core
-        /// behavior).
+        /// Drop target. Collides with the active drag's rect under the scope's
+        /// collision strategy; accept-filtering stays app logic in the scope callbacks.
         /// </summary>
         /// <param name="id">Identity reported to the scope callbacks.</param>
         /// <param name="dropData">Arbitrary payload carried into the callbacks.</param>
         /// <param name="disabled">A disabled droppable never collides.</param>
         /// <param name="whileOverClass">Classes applied while this target is the winning collision.</param>
         /// <param name="whileDragActiveClass">Classes applied to every enabled candidate while any drag
-        /// is live in scope (dnd-kit's droppable "active" cue).</param>
+        /// is live in scope.</param>
         /// <returns>The created <see cref="ElementNode"/>.</returns>
         public static ElementNode Droppable(
             string id,
@@ -1864,11 +1863,11 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Portal-rendered drag preview — dnd-kit's DragOverlay. Expands to
+        /// Portal-rendered drag preview. Expands to
         /// <c>V.Portal(UILayer.Overlay)</c> hosting a framework-positioned, picking-ignored positioner
         /// that is sized to the drag source at activation and tracks the pointer while a drag is active
         /// (hidden otherwise). Render preview content conditionally from state set in
-        /// <c>onDragStart</c>/<c>onDragEnd</c> — dnd-kit's activeId recipe. Inherits
+        /// <c>onDragStart</c>/<c>onDragEnd</c>. Inherits
         /// <c>V.Portal(layer:)</c>'s editor-context degradation.
         /// </summary>
         /// <param name="children">The preview content.</param>
@@ -1955,8 +1954,6 @@ namespace Velvet
         /// <remarks>
         /// AnimatePresence emits no element of its own — its keyed children expand directly into the parent.
         /// Put flex / wrap / gap on the <em>parent</em> element.
-        /// Equivalent to Framer Motion's <c>AnimatePresence</c> (with <c>mode="wait"</c> and
-        /// <c>onExitComplete</c>) for users migrating from Framer Motion.
         /// </remarks>
         public static AnimatePresenceNode AnimatePresence(
             VNode?[]? children = null,
@@ -2024,19 +2021,14 @@ namespace Velvet
         /// <param name="initial">Mount-time starting variant label. When this Motion also sets
         /// <paramref name="animate"/> + <paramref name="variants"/>, the enter starts at <c>variants[initial]</c>
         /// and transitions to <c>variants[animate]</c> (its persistent resting state) using this Motion's
-        /// transition timing — whether this Motion is the DIRECT child of an AnimatePresence or mounts standalone
-        /// (Framer parity: <c>initial</c>/<c>animate</c> apply to any motion.* component).</param>
+        /// transition timing — whether this Motion is the DIRECT child of an AnimatePresence or mounts
+        /// standalone.</param>
         /// <param name="exit">Exit variant label. When this Motion is the DIRECT child of an
         /// AnimatePresence and also sets <paramref name="animate"/> + <paramref name="variants"/>, removal animates
         /// from <c>variants[animate]</c> to <c>variants[exit]</c> (using this Motion's transition timing) before the
         /// element unmounts. Unlike <paramref name="initial"/>, this needs AnimatePresence to defer the unmount —
         /// set outside one, it is inert and logs a warning.</param>
         /// <returns>The created <see cref="MotionNode"/>.</returns>
-        /// <remarks>
-        /// Equivalent to Framer Motion's <c>motion.&lt;tag&gt;</c> component (with its <c>variants</c>,
-        /// <c>initial</c>, <c>animate</c>, and <c>exit</c> props, and parent→child context propagation) for
-        /// users migrating from Framer Motion.
-        /// </remarks>
         public static MotionNode Motion(
             string? className = null,
             string? key = null,

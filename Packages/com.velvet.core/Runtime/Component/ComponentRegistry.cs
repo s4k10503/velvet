@@ -4,7 +4,6 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Component instance management.
     // Within the Reconciler, manages creation / reuse / disposal of ComponentNode.
     // The cache key is (VisualElement anchor, object slotKey, object identity). Two
     // mounting modes share this key:
@@ -59,7 +58,7 @@ namespace Velvet
             return GetOrCreateCore(node, wrapper, positionKey: null, mountPoint: wrapper, slotStart: 0, isInline: false);
         }
 
-        // Inline-mounted GetOrCreate. Fiber identity is anchored on its parent parentFiber
+        // Fiber identity is anchored on its parent parentFiber
         // by tree position (positionKey) — independent of any VisualElement, so the same
         // fiber resolves regardless of which host container its output lands in (a child
         // fiber's identity is (parent fiber, key, position)). The fiber's rendered output occupies the
@@ -278,7 +277,7 @@ namespace Velvet
         }
 
         // Disposes an inline-mounted fiber identified by reference and removes its registry entry.
-        // Called by ChildReconciler when its per-call old/new fiber-set diff detects
+        // Called by GeneralPathReconciler.SweepOrphans when its per-call old/new fiber-set diff detects
         // an orphan (ComponentNode present on the old side but absent on the new side). The orphan
         // fiber's rendered VEs were already removed from anchor.children by the reconcile's
         // Remove ops; this method releases fiber-side resources (effects, ref cleanups, hook state).
@@ -319,7 +318,7 @@ namespace Velvet
             => _wrapperIndex.TryGetValue(wrapper, out var fiber) ? fiber : null;
 
         // Inline-mounted lookup by tree-position key (parent fiber, position key, identity). Used by
-        // the old-side walk in ChildReconciler to read the previously rendered
+        // the old-side walk in GeneralPathReconciler to read the previously rendered
         // ComponentFiber.PreviousTree without triggering a re-render.
         internal ComponentFiber? TryGetFiberForInlineKey(ComponentFiber? parentFiber, object positionKey, object identity)
         {
