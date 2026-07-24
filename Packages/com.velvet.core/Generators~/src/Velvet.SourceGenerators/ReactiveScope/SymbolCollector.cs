@@ -11,7 +11,7 @@ namespace Velvet.SourceGenerators.ReactiveScope
     /// Visits the IOperation tree and collects referenced symbols relevant to Render() (parameter / field / property / local).
     /// On entering a lambda / local function / foreach scope, pushes the scope-local set onto a stack so locals and parameters
     /// that belong to it are excluded from the final result.
-    /// readonly static fields and consts are treated as immutable and excluded.
+    /// readonly fields and consts are treated as immutable and excluded.
     /// </summary>
     internal sealed class SymbolCollector : OperationWalker
     {

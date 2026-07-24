@@ -406,8 +406,8 @@ namespace Velvet.CodeGen
 
             // Injecting a raw `Ret` for the cache-hit path or wrapping a `Ret` inside
             // a `try`/`finally`/`catch` would bypass the `Leave` protocol that CLR
-            // requires for protected regions, producing invalid IL. Bail out and let
-            // the SG (or a future Leave-aware weaver) handle these shapes.
+            // requires for protected regions, producing invalid IL. Bail out; a future
+            // Leave-aware version of this weaver could handle these shapes instead.
             if (body.HasExceptionHandlers
                 && IsInsideAnyHandler(body, lastHookBoundary, returns))
             {

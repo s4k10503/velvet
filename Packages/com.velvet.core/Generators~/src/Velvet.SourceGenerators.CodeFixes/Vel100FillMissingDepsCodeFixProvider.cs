@@ -15,10 +15,11 @@ namespace Velvet.SourceGenerators.CodeFixes
 {
     /// <summary>
     /// Quick fix for VEL100: appends the missing closure-captured local to the deps array literal of a
-    /// deps-comparing hook (<c>UseEffect</c> / <c>UseLayoutEffect</c> / <c>UseCallback</c> /
-    /// <c>UseImperativeHandle</c>). Only handles the simple <c>new[]</c> / <c>new T[] { ... }</c> deps
-    /// initializer forms that the analyzer flags (loose <c>params</c> deps are left untouched). Preserves the
-    /// leading trivia of the previous element so multi-line deps stay aligned.
+    /// deps-comparing hook (<c>UseEffect</c> / <c>UseLayoutEffect</c> / <c>UseCallback</c> / <c>UseMemo</c> /
+    /// <c>UseImperativeHandle</c>, or the V DSL's <c>V.Memoized</c> / <c>V.MemoizedWithKey</c>). Only handles
+    /// the simple <c>new[]</c> / <c>new T[] { ... }</c> deps initializer forms that the analyzer flags (loose
+    /// <c>params</c> deps are left untouched). Preserves the leading trivia of the previous element so
+    /// multi-line deps stay aligned.
     /// </summary>
     [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(Vel100FillMissingDepsCodeFixProvider))]
     [Shared]

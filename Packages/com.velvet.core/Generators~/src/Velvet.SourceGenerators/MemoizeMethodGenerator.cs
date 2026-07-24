@@ -485,7 +485,7 @@ namespace Velvet.SourceGenerators
             {
                 return hintName;
             }
-            // Build the suffix from the upper 4 bytes (32 bits) of SHA256. The collision probability within the same trunk is 1/2^32,
+            // Build the suffix from the first 4 bytes (32 bits) of SHA256. The collision probability within the same trunk is 1/2^32,
             // which is negligible in practice. If a collision still happens, the Add failure has no effect on the outcome, so we ignore the return value.
             var hash = ComputeShortHash(content);
             var dotIndex = hintName.IndexOf('.');
