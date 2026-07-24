@@ -6,7 +6,7 @@ namespace Velvet
     // comparison. Reference types compare by reference; value types compare by value, with the
     // special-number handling described below.
     // Reference types are compared by object.ReferenceEquals, EXCEPT
-    // string, which compares by value (ordinal) — JS Object.is treats strings as primitives,
+    // string, which compares by value (ordinal) — strings are treated as primitives,
     // so a content-equal but freshly-built string bails. float and double are compared by raw
     // bit pattern so that NaN equals itself and +0 does not equal -0. Other value types
     // fall back to EqualityComparer<T>.Default because their boxed identity is unstable on
@@ -33,10 +33,10 @@ namespace Velvet
 
             if (typeof(T) == typeof(string))
             {
-                // Strings are primitives under JS Object.is (Object.is("a","a") === true), so compare by value —
-                // otherwise a dynamically-built but content-equal string (interpolation / concat / Format) would
-                // never bail and a UseState / UseStore / Provider holding it would re-render every time. This
-                // matches the boxed AreEqualObjects path. Handles nulls (string.Equals(null, null) is true).
+                // Strings are treated as primitives, so compare by value — otherwise a dynamically-built but
+                // content-equal string (interpolation / concat / Format) would never bail and a UseState /
+                // UseStore / Provider holding it would re-render every time. This matches the boxed
+                // AreEqualObjects path. Handles nulls (string.Equals(null, null) is true).
                 return string.Equals((string?)(object?)a, (string?)(object?)b, System.StringComparison.Ordinal);
             }
 
@@ -94,8 +94,8 @@ namespace Velvet
             {
                 // Strings are treated as primitive values: two content-equal strings are equal regardless of
                 // instance identity. C# strings are reference types, so compare by value (otherwise a
-                // dynamically-built but content-equal string prop would never bail). This MATCHES JS
-                // `Object.is("a","a") === true` (strings are primitives there) and the generic AreEqual<string>.
+                // dynamically-built but content-equal string prop would never bail). This matches the
+                // generic AreEqual<string> path.
                 return string.Equals((string)a, (string)b, System.StringComparison.Ordinal);
             }
 

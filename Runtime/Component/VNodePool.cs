@@ -271,7 +271,6 @@ namespace Velvet
             return label;
         }
 
-        // Returns a Label to the pool after resetting its UIToolkit-side state.
         // Called by FiberElementCleaner after the label has been removed from the DOM
         // hierarchy and Velvet-managed resources have been released.
         public static void ReturnLabel(Label label) => s_labelPool.Return(label);
@@ -286,7 +285,6 @@ namespace Velvet
 
         public static Button RentButton() => s_buttonPool.Rent();
 
-        // Returns a Button to the pool after resetting its UIToolkit-side state.
         // Called by FiberElementCleaner after the button has been removed from the DOM
         // hierarchy and Velvet-managed resources (event bindings, gesture manipulators) have been released.
         public static void ReturnButton(Button button) => s_buttonPool.Return(button);
@@ -326,7 +324,6 @@ namespace Velvet
 
         public static TextField RentTextField() => s_textFieldPool.Rent();
 
-        // Returns a TextField to the pool after resetting its security-critical input state.
         public static void ReturnTextField(TextField textField) => s_textFieldPool.Return(textField);
 
         #endregion
