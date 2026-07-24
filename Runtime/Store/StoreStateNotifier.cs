@@ -3,11 +3,10 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    // Holds the current state value and a hand-rolled set of listeners (not an observable stream). Listeners
-    // registered through Subscribe are notified of each value pushed through
-    // Notify; the current value is not replayed on subscribe (subsequent-only).
-    // Callers that need the current value read Value directly, and callers that need
-    // immediate delivery invoke their listener themselves before subscribing.
+    // Hand-rolled listener set, not an observable stream (no operators/buffering). Subscribe only
+    // receives values pushed by later Notify calls; the current value is not replayed at subscribe
+    // time — callers that need it read Value directly, and callers that need immediate delivery
+    // invoke their listener themselves before subscribing.
     // Notification iterates an immutable snapshot of the listener set, rebuilt only when the set
     // changes (copy-on-write), so Notify allocates nothing in the steady state. A
     // listener that subscribes or unsubscribes re-entrantly during a notification does not
@@ -18,7 +17,6 @@ namespace Velvet
     // Single-threaded: no internal locking. All calls (Notify / Subscribe /
     // Dispose) must occur on the owning Store<TState>'s thread (the Unity
     // main thread).
-    // T: State value type.
     internal sealed class StoreStateNotifier<T> : IDisposable
     {
         private readonly List<Action<T>> _listeners = new();
@@ -32,7 +30,7 @@ namespace Velvet
 
         public T Value { get; private set; }
 
-        // Updates the current value and notifies every listener. No-op after disposal.
+        // No-op after disposal.
         public void Notify(T value)
         {
             if (_disposed) return;
@@ -48,8 +46,7 @@ namespace Velvet
             }
         }
 
-        // Registers a listener for subsequent values; the current value is not replayed. Returns a
-        // disposable that removes the listener.
+        // Returns a no-op disposable after disposal instead of throwing.
         public IDisposable Subscribe(Action<T> listener)
         {
             if (_disposed) return NoopDisposable.Instance;
@@ -58,7 +55,7 @@ namespace Velvet
             return new Subscription(this, listener);
         }
 
-        // Clears all listeners. Subsequent Notify calls are no-ops.
+        // Subsequent Notify calls are no-ops.
         public void Dispose()
         {
             if (_disposed) return;
