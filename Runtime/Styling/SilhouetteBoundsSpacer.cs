@@ -306,7 +306,6 @@ namespace Velvet
             return new Rect(aabbLocal.xMin - borderLeft, aabbLocal.yMin - borderTop, aabbLocal.width, aabbLocal.height);
         }
 
-        // Axis-aligned union of two rects.
         internal static Rect Union(Rect a, Rect b)
         {
             var xMin = Mathf.Min(a.xMin, b.xMin);

@@ -22,16 +22,16 @@ namespace Velvet
     // last point back to point 0 (a full border); an open polyline leaves the raw ends (a divide edge).
     internal static class DashedBorderPainter
     {
-        private const float DashLengthFactor = 3f; // dash run ≈ 3× the line width
-        private const float DashGapFactor = 2f;    // gap between dashes ≈ 2× the line width
-        private const float DotSpacingFactor = 2f; // centre-to-centre dot spacing ≈ 2× the line width
+        private const float DashLengthFactor = 3f;
+        private const float DashGapFactor = 2f;
+        private const float DotSpacingFactor = 2f;
 
         // Reused across draws so a steady-state repaint allocates nothing. UI Toolkit generateVisualContent
         // callbacks run sequentially on the main thread, so a single shared buffer is safe (no re-entrancy).
         private static readonly List<(Vector2 From, Vector2 To)> s_segments = new();
 
-        // Walks the polyline and strokes the dashes / dots onto the painter. A no-op for Solid (the native
-        // border draws that), a transparent color, or a degenerate width.
+        // A no-op for Solid (the native border already draws that), a near-transparent color, or a
+        // hairline width — callers do not pre-filter for the latter two.
         public static void StrokeDashed(Painter2D painter, IReadOnlyList<Vector2> polyline, bool closed,
             float lineWidth, Color color, BorderLineStyle style)
         {

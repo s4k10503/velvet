@@ -10,7 +10,6 @@ namespace Velvet
     /// in a <see cref="VelvetFontFamily"/>. When no such asset exists Velvet folds the weight to the
     /// nearest binary value (<c>&gt;= 600</c> → bold, otherwise normal); see <see cref="VelvetFonts"/>.
     /// </summary>
-    /// <remarks>Equivalent to Tailwind CSS's <c>font-weight</c> utility scale for users migrating from Tailwind.</remarks>
     public enum VelvetFontWeight
     {
         Thin = 100,

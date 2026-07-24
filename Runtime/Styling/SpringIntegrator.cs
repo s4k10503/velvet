@@ -15,8 +15,8 @@ namespace Velvet
     /// Retargeting mid-flight (calling <see cref="Step"/> with a different <c>target</c> than the previous
     /// call) is intentionally just a normal call: <see cref="Value"/> / <see cref="Velocity"/> are never reset
     /// between calls, so the SAME instance keeps its current value and velocity — the physical continuity an
-    /// interrupted spring needs (e.g. an AnimatePresence exit that gets cancelled hands off to a reversal
-    /// spring built from wherever the exit currently was, not from a fresh rest state).
+    /// interrupted spring needs (e.g. a cancelled exit transition hands off to a reversal spring built from
+    /// wherever the exit currently was, not from a fresh rest state).
     /// <para>
     /// A mutable struct, not a class: <see cref="SpringChannel"/> embeds one inline (as a plain, non-readonly
     /// field — see its own doc) instead of holding a separate heap reference, so a spring channel costs one
@@ -69,9 +69,9 @@ namespace Velvet
 
         /// <summary>
         /// True once the spring is close enough to <paramref name="target"/>, in both position and speed, to
-        /// treat as settled. The default epsilons (Framer Motion's own defaults) suit a roughly 0..1-scale value
-        /// (opacity, a uniform scale factor); a caller animating a pixel or degree-scale channel should pass a
-        /// larger, scale-appropriate pair (see <see cref="MotionSpringDriver"/>'s per-channel epsilons).
+        /// treat as settled. The default epsilons (0.01) suit a roughly 0..1-scale value (opacity, a uniform
+        /// scale factor); a caller animating a pixel or degree-scale channel should pass a larger,
+        /// scale-appropriate pair (see <see cref="MotionSpringDriver"/>'s per-channel epsilons).
         /// </summary>
         public bool IsSettled(float target, float restDelta = 0.01f, float restSpeed = 0.01f)
         {

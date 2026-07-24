@@ -10,7 +10,6 @@ namespace Velvet
     /// Set <see cref="IsDark"/> from your app (e.g. on a settings toggle); every mounted element with
     /// a <c>dark:</c> variant re-evaluates its payload when the value changes.
     /// </summary>
-    /// <remarks>Equivalent to Tailwind CSS's class-based dark-mode strategy for users migrating from Tailwind.</remarks>
     public static class VelvetTheme
     {
         private static bool _isDark;

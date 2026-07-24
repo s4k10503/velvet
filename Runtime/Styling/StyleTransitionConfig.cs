@@ -39,26 +39,23 @@ namespace Velvet
         /// tween whose easing is an EXACT numeric cubic-bezier curve (<see cref="TransitionType.Bezier"/>). See
         /// <see cref="TransitionType"/> for the full contract, including what each does and does not animate.
         /// </summary>
-        /// <remarks>Equivalent to setting Framer Motion's <c>transition.type</c> to <c>"tween"</c> / <c>"spring"</c>
-        /// for users migrating from Framer Motion — except Velvet defaults to <c>Tween</c> where Framer defaults
-        /// transform-like values to a spring; spring is opt-in here.</remarks>
         public TransitionType Type { get; init; } = TransitionType.Tween;
 
         /// <summary>
         /// Spring stiffness (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
-        /// Higher values snap toward the target faster. Framer Motion's default (100).
+        /// Higher values snap toward the target faster.
         /// </summary>
         public float Stiffness { get; init; } = 100f;
 
         /// <summary>
         /// Spring damping (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
-        /// Higher values settle with less oscillation. Framer Motion's default (10).
+        /// Higher values settle with less oscillation.
         /// </summary>
         public float Damping { get; init; } = 10f;
 
         /// <summary>
         /// Spring mass (only meaningful when <see cref="Type"/> is <see cref="TransitionType.Spring"/>).
-        /// Higher values feel heavier / slower to accelerate. Framer Motion's default (1).
+        /// Higher values feel heavier / slower to accelerate.
         /// </summary>
         public float Mass { get; init; } = 1f;
 
@@ -67,7 +64,7 @@ namespace Velvet
         /// CSS <c>cubic-bezier(x1,y1,x2,y2)</c> parameter order. X must stay in [0,1] (a timing function must be
         /// monotone in time); a value outside that range is invalid per the <c>cubic-bezier()</c> spec and
         /// degrades to the default curve below with a one-shot warning, rather than being silently clamped.
-        /// Defaults to Tailwind's own default curve, <c>cubic-bezier(0.4, 0, 0.2, 1)</c> — the exact curve the
+        /// Defaults to <c>cubic-bezier(0.4, 0, 0.2, 1)</c> — the exact curve the
         /// bundled USS only approximates with the <c>ease-in-out</c> keyword.
         /// </summary>
         public float BezierX1 { get; init; } = 0.4f;
@@ -156,19 +153,16 @@ namespace Velvet
         /// (<c>V.AnimatePresence(staggerSec:)</c>), this orchestrates a PLAIN parent → child label propagation —
         /// no AnimatePresence boundary is required; toggling this Motion's <c>animate</c> prop is enough. A
         /// descendant with its OWN explicit <c>animate</c> opts out of both the label inheritance and this
-        /// stagger — it is driven by its own render, not this propagation (matching Framer Motion, where an
-        /// explicit <c>animate</c> override disconnects a component from its parent's variant propagation). The
+        /// stagger — it is driven by its own render, not this propagation. The
         /// stagger index is transitive: an inheriting descendant with no stagger config of its own passes this
         /// orchestration through to ITS OWN inheriting children, who continue claiming from the SAME sequence.
         /// </summary>
-        /// <remarks>Equivalent to Framer Motion's <c>transition.staggerChildren</c> for users migrating from Framer Motion.</remarks>
         public float StaggerChildrenSec { get; init; }
 
         /// <summary>
         /// A fixed delay (seconds) added before any inheriting descendant's staggered delay — see
         /// <see cref="StaggerChildrenSec"/> for the full propagation contract. 0 (default) means no fixed delay.
         /// </summary>
-        /// <remarks>Equivalent to Framer Motion's <c>transition.delayChildren</c> for users migrating from Framer Motion.</remarks>
         public float DelayChildrenSec { get; init; }
 
         /// <summary>
@@ -176,7 +170,6 @@ namespace Velvet
         /// <see cref="StaggerChildrenSec"/>) when its active label changes. Defaults to
         /// <see cref="TransitionWhen.Together"/>.
         /// </summary>
-        /// <remarks>Equivalent to Framer Motion's <c>transition.when</c> for users migrating from Framer Motion.</remarks>
         public TransitionWhen When { get; init; } = TransitionWhen.Together;
 
         /// <summary>
@@ -372,7 +365,6 @@ namespace Velvet
     /// Sequences a Motion's own class swap against its inheriting descendants' swaps — see
     /// <see cref="StyleTransitionConfig.When"/> and <see cref="StyleTransitionConfig.StaggerChildrenSec"/>.
     /// </summary>
-    /// <remarks>Equivalent to Framer Motion's <c>transition.when</c> for users migrating from Framer Motion.</remarks>
     public enum TransitionWhen
     {
         /// <summary>
@@ -392,7 +384,7 @@ namespace Velvet
         BeforeChildren,
 
         /// <summary>
-        /// In Framer Motion, this Motion's own transition would wait for every inheriting descendant to finish
+        /// The name implies this Motion's own transition would wait for every inheriting descendant to finish
         /// first. Not implemented: Velvet applies this Motion's own class swap before its descendants are even
         /// visited during the reconcile walk, so the descendant count / durations needed to delay THIS swap are
         /// not known in time. Setting this value logs a warning and behaves like <see cref="Together"/> (no

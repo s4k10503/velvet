@@ -6,20 +6,17 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Manages the animation lifecycle for AnimatePresenceNode.
-    // schedule.Execute-based class swapping plus timeout management.
-    // transition-duration and transition-timing-function are set as inline styles, with C# as the
-    // Single Source of Truth.
+    // transition-duration and transition-timing-function are set as inline styles rather than in USS, with
+    // C# as the Single Source of Truth for every play's timing.
     internal sealed class StyleAnimationScheduler
     {
-        // Grace time after a CSS transition completes (ms).
         // UIToolkit's schedule.Execute runs on the next frame, so 50ms is set to absorb the
         // 60fps (16ms) - 30fps (33ms) frame delay.
         private const long AnimationGraceMs = 50;
         private const float MaxDurationSec = 10f;
         private const int MaxPoolSize = 16;
 
-        // Static cache from EasingMode to List<EasingFunction>. EasingMode values are finite, so caching is safe.
+        // EasingMode values are finite, so caching is safe.
         private static readonly Dictionary<EasingMode, List<EasingFunction>> s_easingCache = new();
 
 #if UNITY_EDITOR
@@ -34,14 +31,9 @@ namespace Velvet
         private readonly Stack<List<TimeValue>> _durationPool = new();
         private readonly Stack<List<TimeValue>> _delayPool = new();
 
-        // Starts the mount animation.
-        // 1. Adds EnterFromClass and sets duration / easing as inline styles.
-        // 2. On the next frame, removes EnterFromClass and adds EnterToClass (firing the CSS transition).
-        // 3. After the duration, removes EnterToClass and clears inline styles (clean state).
-        // additionalDelaySec:
-        // Extra delay (seconds) added on top of the StyleTransitionConfig delay.
-        // Used by AnimatePresenceNode.StaggerSec to sequentially delay child elements.
-        // 0 (default) means no extra delay.
+        // The next-frame class swap (EnterFromClass -> EnterToClass) is what fires the CSS transition.
+        // additionalDelaySec: extra delay (seconds) added on top of the StyleTransitionConfig delay, used by
+        // AnimatePresenceNode.StaggerSec to sequentially delay child elements. 0 (default) means no extra delay.
         public void PlayEnter(VisualElement? element, StyleTransitionConfig? config, Action? onComplete = null, float additionalDelaySec = 0f)
         {
             if (element == null || config == null)
@@ -103,8 +95,8 @@ namespace Velvet
         // type/stiffness/damping/mass: the enclosing StyleTransitionConfig's spring knobs (Tween/100/10/1 by
         // default — the caller passes the config's own values through, since this overload takes the
         // already-unpacked timing primitives rather than the config itself).
-        // bezierX1/bezierY1/bezierX2/bezierY2: the config's cubic-bezier control points (Tailwind's own default
-        // curve by default), meaningful only when type is Bezier — passed through the same way.
+        // bezierX1/bezierY1/bezierX2/bezierY2: the config's cubic-bezier control points (cubic-bezier(0.4, 0,
+        // 0.2, 1) by default), meaningful only when type is Bezier — passed through the same way.
         public void PlayVariantEnter(VisualElement? element, string[]? fromClasses, string[]? toClasses,
             float durationSec, EasingMode easing, float delaySec, Action? onComplete = null, float additionalDelaySec = 0f,
             IReadOnlyList<StylePropertyTransition>? propertyOverrides = null,
@@ -281,18 +273,14 @@ namespace Velvet
             }
         }
 
-        // Starts the unmount animation.
-        // 1. Adds ExitFromClass and sets duration / easing as inline styles.
-        // 2. On the next frame, removes ExitFromClass and adds ExitToClass (firing the CSS transition).
-        // 3. After the duration, invokes onComplete (the element is removed).
-        // restoreFromOnCancel:
-        // When true, the exit's FromClasses are the persistent resting state (a variant exit's
-        // variants[animate]); cancelling the exit (the key is re-added mid-exit) re-applies them so the
+        // The next-frame class swap (ExitFromClass -> ExitToClass) is what fires the CSS transition; onComplete
+        // runs after the duration (the caller removes the element).
+        // restoreFromOnCancel: when true, the exit's FromClasses are the persistent resting state (a variant
+        // exit's variants[animate]); cancelling the exit (the key is re-added mid-exit) re-applies them so the
         // element returns to its resting variant instead of being left without it. Default false (preset exits,
         // whose FromClasses are transient).
-        // additionalDelaySec:
-        // Extra delay before the exit transition fires, on top of config.DelaySec. Used for exit
-        // staggering (each removed child delayed by stagger × its index), mirroring the enter stagger.
+        // additionalDelaySec: extra delay before the exit transition fires, on top of config.DelaySec. Used for
+        // exit staggering (each removed child delayed by stagger × its index), mirroring the enter stagger.
         public void PlayExit(VisualElement? element, StyleTransitionConfig? config, Action? onComplete,
             bool restoreFromOnCancel = false, float additionalDelaySec = 0f)
         {
@@ -940,7 +928,6 @@ namespace Velvet
             return false;
         }
 
-        // Sets transition-duration and transition-timing-function as inline styles.
         // C# becomes the Single Source of Truth, so they need not be defined in USS.
         // GC tuning: the EasingFunction list is cached statically per EasingMode; TimeValue lists are
         // reused via per-instance pools.
@@ -1367,8 +1354,7 @@ namespace Velvet
 
         private void ClearTransitionStyles(VisualElement element)
         {
-            // Cleared via the implicit conversion from StyleKeyword to StyleList<T>.
-            // The clear releases UIElements' internal list reference, making pool return safe.
+            // Releases UIElements' internal list reference, making pool return safe.
             element.style.transitionDuration = StyleKeyword.Null;
             element.style.transitionTimingFunction = StyleKeyword.Null;
             element.style.transitionDelay = StyleKeyword.Null;
@@ -1435,8 +1421,7 @@ namespace Velvet
             }
         }
 
-        // State of an in-progress animation. Fields are sufficient since this is a private sealed class.
-        // Created and referenced only inside StyleAnimationScheduler.
+        // Fields are sufficient since this is a private sealed class.
         private sealed class PendingAnimation
         {
             public IVisualElementScheduledItem? ScheduledItem;

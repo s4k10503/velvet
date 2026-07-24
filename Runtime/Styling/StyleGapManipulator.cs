@@ -178,8 +178,8 @@ namespace Velvet
                 return;
             }
 
-            // Reset any previously-margined element that is no longer a current child before re-applying,
-            // so a child moved or removed out of this container drops its inline gap margin.
+            // Must run before _margined.Clear() (inside ApplyHalfMargin / ApplyLeading below): it reads the
+            // pre-clear _margined list to find children that left the container.
             ResetStaleMargined(container);
 
             if (wrap)
