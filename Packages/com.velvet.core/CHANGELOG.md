@@ -119,6 +119,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   worked for children present at the very first mount (or, for `V.Portal(targetId:)`, a registry
   target's one-time late-registration heal); anything mounted by a later patch of an
   already-mounted portal reached its physical ancestors but never its logical ones.
+- A time-sliced (`Transition`/`Deferred` priority) reconcile that enqueues a `V.Portal`/`V.WorldSpace`
+  mount and then pauses on budget exhaustion no longer has that paused state destroyed by its own
+  same-pass drain. The drain resolves the portal's target children through the very same reconciler
+  instance, whose entry unconditionally cleared any paused state as though it were leftover from a
+  finished pass — silently truncating the list (the remaining rows were never created, with no error)
+  instead of resuming once drained.
 
 ## [1.5.0] - 2026-07-19
 

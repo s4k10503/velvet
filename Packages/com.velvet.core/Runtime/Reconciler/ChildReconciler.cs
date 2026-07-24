@@ -370,6 +370,30 @@ namespace Velvet
                         childFibersBefore.Add(f);
                     }
                 }
+                // The nested Reconcile below re-enters ChildReconciler.Reconcile on THIS SAME instance, whose
+                // entry unconditionally discards PendingIndexedState/PendingKeyedState as stale state left by a
+                // finished pass — correct for a genuine fresh top-level call, but wrong here: this drain runs
+                // from the OUTER pass's own top-level finally (Reconciler.Reconcile / Reconciler.ContinueReconcile),
+                // so when that outer pass just parked (budget exhausted mid-list, with a Portal enqueued right
+                // before parking), the entry-clear below would destroy the park before the caller ever observes
+                // HasPendingWork — the continuation then never resumes and the remaining rows silently never
+                // commit. Move the parked state out of the instance fields first — never through
+                // DiscardPendingKeyedState, which returns PendingKeyedState's pooled buffers to the shared pool;
+                // a nested keyed Pass 2 below can rent the exact same pool types and would be handed back, and
+                // mutate, the very buffers this parked state still owns — so the nested entry-clear becomes a
+                // no-op, then restore both fields verbatim once this one nested call returns. Always safe to
+                // restore unconditionally: the call below never carries a frameBudgetMs argument (defaults to 0),
+                // and at budget 0 ReconcileIndexedFrom's `budgeted` gate is false while ReconcileKeyed routes to
+                // the fully synchronous ReconcileKeyedSync — neither can ever set new pending state of its own, so
+                // there is nothing legitimate from the nested call itself to preserve instead. Scoped to just this
+                // call (not the whole drain loop) so FiberZLayerCoordinator's own rebase of a self-caused park
+                // (RebaseParkedSlotsForContainerChange, triggered only between loop iterations or after the loop
+                // via DrainTeardowns, never while this call is on the stack) still sees the real parked state
+                // everywhere else in the drain.
+                var parkedIndexed = PendingIndexedState;
+                var parkedKeyed = PendingKeyedState;
+                PendingIndexedState = null;
+                PendingKeyedState = null;
                 try
                 {
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
@@ -383,6 +407,8 @@ namespace Velvet
                             stack.PopRaw(contextSnapshot[s].Key);
                         }
                     }
+                    PendingIndexedState = parkedIndexed;
+                    PendingKeyedState = parkedKeyed;
                 }
                 if (drainAnchor != null)
                 {
