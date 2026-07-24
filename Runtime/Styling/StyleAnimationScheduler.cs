@@ -110,9 +110,11 @@ namespace Velvet
 
             if (type == TransitionType.Spring)
             {
+                // restingClasses mirrors the tween path's variant-enter pending: the to-classes are the
+                // persistent resting state, and a cancel must restore them (see PlayEnterInternal).
                 StartSpringVariant(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
                     delaySec, stiffness, damping, mass, onComplete, additionalDelaySec,
-                    restingClasses: null, isExit: false);
+                    restingClasses: toClasses ?? System.Array.Empty<string>(), isExit: false);
                 return;
             }
 
@@ -120,7 +122,7 @@ namespace Velvet
             {
                 StartBezierVariant(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
                     delaySec, bezierX1, bezierY1, bezierX2, bezierY2, durationSec, onComplete, additionalDelaySec,
-                    restingClasses: null, isExit: false);
+                    restingClasses: toClasses ?? System.Array.Empty<string>(), isExit: false);
                 return;
             }
 
@@ -159,6 +161,11 @@ namespace Velvet
             {
                 FromClasses = fromClasses,
                 ToClasses = toClasses,
+                // A variant enter's to-classes ARE the persistent resting state the strip above just
+                // removed — a cancel (an exit starting mid-enter, a teardown) must put them back, or the
+                // element is left without its resting variant for whatever follows (a classic exit with no
+                // variant from-classes to re-add them would play out on a stripped element).
+                RestingClasses = variantMode ? toClasses : null,
                 DurationList = durationList,
                 DelayList = delayList,
                 AnimatingElement = element,
@@ -404,6 +411,12 @@ namespace Velvet
                         if (_pendingExits.Remove(element, out var completed))
                         {
                             EndShadowCoFade(completed);
+                            // Clear BEFORE returning the lists (mirrors the enter completion): the inline
+                            // slots retain the list references, and a completed exit's element can outlive
+                            // its drop (a re-entry preempting the drop render) — leaving them set would make
+                            // later class changes tween unexpectedly, and a re-rented list would silently
+                            // mutate this element's timing through the retained reference.
+                            ClearTransitionStyles(element);
                             ReturnDurationList(completed.DurationList);
                             ReturnDelayList(completed.DelayList);
                             onComplete?.Invoke();
@@ -467,7 +480,9 @@ namespace Velvet
         // touches (opacity / translate / scale / rotate) into a from/to pair each, and a per-frame physics tick
         // (StartSpringTick) drives them via inline styles until they settle — replacing the tween's fixed-
         // duration completion timeout with a dynamic settle check.
-        // restingClasses: non-null only for a variant exit (restoreFromOnCancel) — see PendingAnimation.RestingClasses.
+        // restingClasses: the persistent resting set a cancel must restore — a variant exit's from-classes
+        // (restoreFromOnCancel) or a variant enter's to-classes; null for preset plays, whose classes are
+        // all transient. See PendingAnimation.RestingClasses.
         // isExit: selects both the exit-shaped self-cancel (mirrors calling the PUBLIC CancelExit rather than
         // CancelEnter below) and which bookkeeping map (_pendingExits / _pendingEnters) this play registers
         // into — a separate map parameter would only ever repeat that same choice, so isExit alone decides it.
@@ -1428,10 +1443,11 @@ namespace Velvet
             public IVisualElementScheduledItem? TimeoutItem;
             public string[]? FromClasses;
             public string[]? ToClasses;
-            // Classes to RE-ADD when this animation is cancelled (interrupted). Set for a variant-driven exit
-            // whose FromClasses ARE the persistent resting state (variants[animate]): cancelling such an exit
-            // must return the element to its resting variant (interrupt behavior), not strip it. Null for
-            // preset exits / enters, whose FromClasses are transient and correctly removed on cancel.
+            // Classes to RE-ADD when this animation is cancelled (interrupted). Set for variant-driven
+            // plays, whose class set includes the persistent resting state (variants[animate]) — an exit's
+            // FromClasses, an enter's ToClasses: cancelling such a play must return the element to its
+            // resting variant (interrupt behavior), not strip it. Null for preset exits / enters, whose
+            // classes are all transient and correctly removed on cancel.
             public string[]? RestingClasses;
             public List<TimeValue>? DurationList;
             public List<TimeValue>? DelayList;
