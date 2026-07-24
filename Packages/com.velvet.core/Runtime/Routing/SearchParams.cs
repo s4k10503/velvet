@@ -11,7 +11,6 @@ namespace Velvet
     /// returns to the previous query) — pass <see cref="NavigationMode.Replace"/> to overwrite the current
     /// entry instead.
     /// </summary>
-    /// <remarks>Equivalent to React Router's <c>setSearchParams(nextInit, navigateOptions)</c> for users migrating from React Router.</remarks>
     public sealed class SearchParamsSetter
     {
         internal static readonly SearchParamsSetter Shared = new();

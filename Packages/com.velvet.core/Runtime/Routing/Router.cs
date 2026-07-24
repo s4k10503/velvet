@@ -10,7 +10,6 @@ namespace Velvet
     /// Navigation controller: matches paths against a route tree, runs guards / blockers / loaders, and
     /// maintains a history stack with Back/Forward. The active instance is exposed as <see cref="Current"/>.
     /// </summary>
-    /// <remarks>Models the same navigation controller role as React Router for users migrating from React Router.</remarks>
     public sealed class Router : IDisposable
     {
         private readonly RouteTree _routeTree;
@@ -334,9 +333,8 @@ namespace Velvet
             }
 
             #region Provisional history index for Back/Forward
-            // Apply the index provisionally before the Guard/Blocker checks.
-            // Required so a Guard redirect (Replace) overwrites the correct entry.
-            // Roll it back if blocked by a Blocker.
+            // The index must move before the Guard/Blocker checks so a Guard redirect (Replace)
+            // overwrites the correct entry; rolled back below if the Blocker check rejects the attempt.
             var savedHistoryIndex = _historyIndex;
             if (mode == NavigationMode.Back)
             {
@@ -413,8 +411,8 @@ namespace Velvet
             #region Blocker check
             var currentPath = CurrentLocation?.Path ?? "";
             var attempt = new NavigationAttempt { CurrentPath = currentPath, NextPath = path, NavigationMode = mode };
-            // Auto-reset the previous block state. By design, a different navigation lifts the block
-            // even if Proceed() was not called (intentional).
+            // By design, a different navigation lifts the previous block even if Proceed() was not
+            // called (intentional).
             _blockerManager.ResetAllBlocked();
 
             var blocked = await _blockerManager.CheckAsync(attempt, cancellationToken);
@@ -439,7 +437,6 @@ namespace Velvet
             #endregion
 
             #region Loading
-            // For Back/Forward navigation, skip loading when cached loader data is already in the history.
             var cachedLoaderData = (mode == NavigationMode.Back || mode == NavigationMode.Forward)
                 ? _history[_historyIndex].loaderData
                 : null;
@@ -626,7 +623,8 @@ namespace Velvet
             _history.Add((path, matches, loaderData, loaderErrors));
             _historyIndex = _history.Count - 1;
 
-            // FIFO: drop the head entry when we exceed the cap.
+            // Evicting the head entry when the cap is exceeded shifts every remaining index down by
+            // one, so _historyIndex must decrement too to keep pointing at the same logical entry.
             if (_history.Count > MaxHistoryEntries)
             {
                 _history.RemoveAt(0);
