@@ -113,6 +113,12 @@ namespace Velvet
     internal sealed class HookTransitionSlot
     {
         public bool IsPending;
+        // An awaiting async StartTransition may hold IsPending=true on a fiber with NO pending lane (its
+        // setState calls come after the await), and a drain callback armed earlier can legitimately fire
+        // on that clean fiber — the settle-time sweep (ClearAllTransitionPending) must not read the empty
+        // lane queue as "the transition settled" and wipe the flag mid-flight. Only the async completion
+        // path clears IsPending while this is set.
+        public bool IsAsyncInFlight;
         public TransitionStarter Starter = default!;
     }
 
