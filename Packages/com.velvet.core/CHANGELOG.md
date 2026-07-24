@@ -107,6 +107,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `Transition`-lane re-render can no longer be starved indefinitely by sustained higher-priority
+  work, on either of two fronts. The anti-starvation clock — which promotes a Transition lane once
+  its 30th flush pass still finds it pending — used to restart on every schedule, including a
+  coalesced re-add onto the already-pending lane, so a component that kept re-signalling
+  transition intent (e.g. a per-frame transition-tier update) kept resetting it and the promotion
+  never fired; the clock now starts once when the lane first becomes pending and runs until the
+  lane flushes, and only a genuine re-enrol after a drain restarts it. And the promotion itself
+  used to hand the lane to `Deferred`, which a sustained stream of `Normal` updates still
+  outranks — promoted work could go right back to starving; a starved lane is now promoted to
+  `Normal`, draining in the flush that reaches the threshold or right after any co-pending
+  Urgent drains, so `useTransition`'s `isPending` also clears at (not before) the commit that
+  renders the transition's content — including across that Urgent parking window, which the
+  settle sweep used to misread as the transition having settled once promotion erased the
+  Transition label. An `isPending` flag held by an **async** `startTransition`
+  still awaiting its action is additionally no longer wiped when a drain callback fires on the
+  fiber while no lane is pending (the awaiting action has not scheduled its updates yet, so an
+  empty lane queue does not mean the transition settled).
 - `V.Portal(layer:)`/`V.WorldSpace` synthetic event bubbling now stops when a handler calls
   `StopPropagation()` partway up the logical ancestor chain, instead of continuing to invoke
   every remaining ancestor regardless. Also fixes nested portals/world-space (one mounted inside

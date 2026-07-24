@@ -12,12 +12,18 @@ namespace Velvet
         public SortedSet<FiberUpdatePriority>? Queue;
         public bool IsInTransition;
         public int TransitionStarvationCounter;
+        // The settle sweep keys off the Transition label's presence, which starvation promotion erases
+        // (relabelling the lane to Normal) while the promoted work may still be queued — e.g. parked
+        // behind a co-pending Urgent drain. Without this marker the sweep would read the erased label
+        // as "settled" and clear isPending before the promoted content commits.
+        public bool HasPromotedTransition;
 
         public void Clear()
         {
             Queue?.Clear();
             IsInTransition = false;
             TransitionStarvationCounter = 0;
+            HasPromotedTransition = false;
         }
     }
 
@@ -254,7 +260,12 @@ namespace Velvet
             }
         }
 
-        /// <summary>Clears the pending flag on every transition slot (called when the transition lane settles).</summary>
+        /// <summary>
+        /// Clears the pending flag on every settled transition slot (called when the transition lane
+        /// settles). A slot whose async action is still in flight is skipped: its awaiting action has not
+        /// scheduled its updates yet, so an empty lane queue does not mean that transition settled — its
+        /// own completion path clears the flag once the task finishes.
+        /// </summary>
         internal void ClearAllTransitionPending()
         {
             if (TransitionSlots == null)
@@ -263,6 +274,10 @@ namespace Velvet
             }
             foreach (var slot in TransitionSlots)
             {
+                if (slot.IsAsyncInFlight)
+                {
+                    continue;
+                }
                 slot.IsPending = false;
             }
         }
@@ -277,6 +292,12 @@ namespace Velvet
         {
             get => Lanes?.TransitionStarvationCounter ?? 0;
             set => EnsureLanes().TransitionStarvationCounter = value;
+        }
+
+        internal bool HasPromotedTransition
+        {
+            get => Lanes?.HasPromotedTransition ?? false;
+            set => EnsureLanes().HasPromotedTransition = value;
         }
 
         // Per-hook-kind counts from the previous render, compared against this render's counts to enforce a

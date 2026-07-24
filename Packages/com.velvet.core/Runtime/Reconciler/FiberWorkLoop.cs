@@ -14,7 +14,8 @@ namespace Velvet
         // Delay (milliseconds) for the Deferred priority.
         private const int DeferredDelayMs = 100;
 
-        // Number of FlushState invocations before promoting the Transition Lane to Deferred.
+        // The FlushState invocation at which a continuously-pending Transition lane is promoted
+        // (see PromoteStarvedTransitionLane); it survives threshold-1 preempted flushes.
         private const int TransitionStarvationThreshold = 30;
 
         // Set while a discrete user-input event handler (click, change, pointer down/up, key down/up, focus/blur)
@@ -95,10 +96,15 @@ namespace Velvet
             // If the same Lane already exists, Add returns false (coalesced).
             var prevHighest = FiberLane.GetHighestPendingPriority(fiber);
 
-            fiber.LaneQueue.Add(priority);
+            var enrolled = fiber.LaneQueue.Add(priority);
 
-            // When adding the Transition Lane, reset the starvation counter (also on a coalesced re-add).
-            if (priority == FiberUpdatePriority.Transition)
+            // A coalesced re-add must NOT restart the starvation clock: it measures how long the lane
+            // has been continuously pending, so sustained re-scheduling (e.g. a per-frame
+            // transition-tier update) cannot indefinitely defeat the promotion while higher-priority
+            // work keeps preempting the flush. The genuine-enrol reset is still required: without it a
+            // lane that drained normally would inherit the previous cycle's residual count and promote
+            // early.
+            if (priority == FiberUpdatePriority.Transition && enrolled)
             {
                 fiber.TransitionStarvationCounter = 0;
             }
@@ -228,6 +234,13 @@ namespace Velvet
                 flushBudget = FiberLane.BudgetForLane(flushingLane);
                 fiber.LaneQueue.Remove(flushingLane);
 
+                // The promoted marker retires at the drain that commits its content — a
+                // starvation-promoted lane rides the Normal label (see HasPromotedTransition).
+                if (flushingLane == FiberUpdatePriority.Normal)
+                {
+                    fiber.HasPromotedTransition = false;
+                }
+
                 if (fiber.LaneQueue.Count > 0)
                 {
                     ScheduleFlush(fiber, fiber.LaneQueue.Min);
@@ -237,7 +250,11 @@ namespace Velvet
                     fiber.IsDirty = false;
                 }
 
-                if (fiber.LaneQueue == null || fiber.LaneQueue.Count == 0 || !fiber.LaneQueue.Contains(FiberUpdatePriority.Transition))
+                // The Transition label alone is not the settled signal — starvation promotion erases it
+                // while the promoted work is still queued (possibly parked behind an Urgent drain), so
+                // the promoted marker must ALSO be clear before the pending flags may sweep.
+                if (fiber.LaneQueue == null || fiber.LaneQueue.Count == 0
+                    || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
                 {
                     fiber.ClearAllTransitionPending();
                 }
@@ -392,13 +409,19 @@ namespace Velvet
 
             if (fiber.TransitionStarvationCounter >= TransitionStarvationThreshold)
             {
+                // Promote to Normal — not Deferred — so the starved work coalesces with the very traffic
+                // that kept preempting it and drains in this flush (the caller drains the queue's minimum
+                // next; co-pending Urgent drains still go first, parking the promoted lane on the
+                // immediate tier, not back behind the sustained stream that starved it). A Deferred
+                // promotion would stay below a sustained stream of Normal updates and the lane would
+                // starve on exactly as before; an expired lane must instead flush synchronously,
+                // abandoning time-slicing, so starvation is bounded no matter how relentless the
+                // higher-priority traffic is. The promoted marker keeps the settle sweep honest about
+                // the erased Transition label (see HasPromotedTransition), so isPending still clears at
+                // (not before) the commit that renders the promoted content.
                 fiber.LaneQueue.Remove(FiberUpdatePriority.Transition);
-
-                if (!fiber.LaneQueue.Contains(FiberUpdatePriority.Deferred))
-                {
-                    fiber.LaneQueue.Add(FiberUpdatePriority.Deferred);
-                }
-
+                fiber.LaneQueue.Add(FiberUpdatePriority.Normal);
+                fiber.HasPromotedTransition = true;
                 fiber.TransitionStarvationCounter = 0;
             }
         }
@@ -413,6 +436,15 @@ namespace Velvet
         public static void StartTransition(ComponentFiber fiber, HookTransitionSlot slot, Action updates)
         {
             if (updates == null) throw new ArgumentNullException(nameof(updates));
+
+            // Leave the slot's pending lifecycle alone on a disposed fiber: disposal forced IsDirty
+            // false, so the finally below would treat the transition as settled and clobber flags a
+            // still-in-flight async owner on this same slot relies on.
+            if (fiber.IsDisposed)
+            {
+                updates();
+                return;
+            }
 
             // Re-entrant call: join the outer transition. IsInTransition is already set, so the updates run
             // at Transition priority; the outer call owns the pending lifecycle (this slot's flag is left to
@@ -452,6 +484,13 @@ namespace Velvet
         {
             if (asyncUpdates == null) throw new ArgumentNullException(nameof(asyncUpdates));
 
+            // Same disposed guard as the sync overload: run the action, leave the slot's lifecycle alone.
+            if (fiber.IsDisposed)
+            {
+                await asyncUpdates();
+                return;
+            }
+
             // Re-entrant async call: join the outer transition. The outer call owns the pending lifecycle.
             if (fiber.IsInTransition)
             {
@@ -460,6 +499,10 @@ namespace Velvet
             }
 
             slot.IsPending = true;
+            // While the action is awaiting (before its setState calls land) the fiber can be entirely
+            // clean, and a drain callback armed earlier that fires on that clean fiber must not read the
+            // empty lane queue as this transition having settled (see ClearAllTransitionPending).
+            slot.IsAsyncInFlight = true;
             fiber.IsInTransition = true;
             try
             {
@@ -470,9 +513,14 @@ namespace Velvet
             finally
             {
                 fiber.IsInTransition = false;
+                slot.IsAsyncInFlight = false;
+                // The promoted marker joins the Transition-label check for the same reason the settle
+                // sweep consults it: promotion erases the label while the promoted work may still be
+                // queued, and completing the async action inside that window must not clear isPending
+                // ahead of the commit that renders the transition's content.
                 if (fiber.IsDisposed
                     || fiber.LaneQueue == null
-                    || !fiber.LaneQueue.Contains(FiberUpdatePriority.Transition))
+                    || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
                 {
                     slot.IsPending = false;
                 }
