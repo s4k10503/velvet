@@ -15,8 +15,6 @@ namespace Velvet
         // updates; an unconditional render-phase setState would otherwise loop forever.
         internal const int RenderPhaseUpdateLimit = 25;
 
-        // Reads state via hooks and invokes the function body that declares the VNode tree.
-        // The body is stored in ComponentFiber.Body.
         internal static VNode Render(ComponentFiber fiber) => fiber.Body!();
 
         internal static void ResetHookIndex(ComponentFiber fiber)
@@ -120,7 +118,6 @@ namespace Velvet
         // discarded attempt cannot break callback referential stability or force a memo rebuild.
         internal static void CommitSettledHookDeps(ComponentFiber fiber)
         {
-            // The settled attempt's context reads become the committed dependency list (list swap).
             fiber.CommitStagedDependencies();
             HookEffectExecutor.CommitEffectDeps(fiber.LayoutEffects);
             HookEffectExecutor.CommitEffectDeps(fiber.InsertionEffects);

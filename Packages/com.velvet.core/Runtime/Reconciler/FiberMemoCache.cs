@@ -12,7 +12,6 @@ namespace Velvet
         // Convenience overload for callers that don't need the cache-hit flags.
         public VNode GetOrCompute(string cacheKey, MemoNode memo) => GetOrComputeWithHitInfo(cacheKey, memo).result;
 
-        // Returns the cached VNode or computes a new one, along with cache-hit information.
         // Used by PatchNode to skip child-tree rebuilds on a cache hit.
         public (VNode result, bool wasHit, VNode? previousCached) GetOrComputeWithHitInfo(string cacheKey, MemoNode memo)
         {
@@ -52,10 +51,9 @@ namespace Velvet
 
         public void Clear() => _cache.Clear();
 
-        // Returns every cached inner tree to the VNode pool, then clears. Called at reconciler
-        // disposal: the whole mounted tree is torn down with it, so there is no committed successor
-        // to spare (a cached inner shared with an already-retired committed tree is a harmless
-        // overlap — pool returns are idempotent).
+        // Called at reconciler disposal: the whole mounted tree is torn down with it, so there is no
+        // committed successor to spare (a cached inner shared with an already-retired committed tree is
+        // a harmless overlap — pool returns are idempotent).
         public void DisposeAndReturnCachedTrees()
         {
             foreach (var entry in _cache.Values)

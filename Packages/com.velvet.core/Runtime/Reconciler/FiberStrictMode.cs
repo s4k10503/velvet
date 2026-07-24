@@ -10,7 +10,6 @@ namespace Velvet
     /// surface impure renders and non-symmetric effect cleanup. Exposed as a single editor-wide switch and
     /// compiled out of player builds entirely.
     /// </summary>
-    /// <remarks>Equivalent to React's StrictMode for users migrating from React.</remarks>
     public static class FiberStrictMode
     {
         /// <summary>

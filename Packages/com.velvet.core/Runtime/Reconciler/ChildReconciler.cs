@@ -93,17 +93,16 @@ namespace Velvet
         //     explains why: an inline fiber under a torn-down host is otherwise invisible to the
         //     normal orphan sweep and "would survive to be re-paired as a zombie on a same-key
         //     re-entry" — which is exactly what create-then-remove reintroduces.
-        //   newElement is ALWAYS inserted, abort or not (#48): _ctx.IsAborted only ever becomes true
+        //   newElement is ALWAYS inserted, abort or not: _ctx.IsAborted only ever becomes true
         //     via FiberErrorBoundary.TryCatch -> SetAborted, which fires exclusively on TryShowFallback's
         //     SUCCESS path (fiber.Reconciler.Reconcile(fiber.MountPoint, ..., fallbackTree) returned
         //     without throwing and FallbackContentFailed is false) — i.e. by the time CreateElement
         //     returns, newElement already holds a fully, successfully rendered subtree (the boundary's
         //     fallback content in place of whatever threw beneath it), not a half-built one. Discarding
-        //     it and leaving the slot empty was strictly worse than what React does: an error boundary
-        //     that catches never leaves the DOM with nothing where its fallback should be (render never
-        //     touches the committed tree — see ReactFiberThrow.js's throwException, which only tags
-        //     fibers for the commit phase to later process; Velvet has no such phase split, so the
-        //     nearest equivalent is "don't throw away content the boundary already finished building").
+        //     it and leaving the slot empty would be strictly worse: an error boundary that catches must
+        //     never leave the DOM with nothing where its fallback should be. Velvet has no render/commit
+        //     phase split that could defer this decision, so the nearest equivalent is "don't throw away
+        //     content the boundary already finished building".
         //     checkAbortAfterCreate's true meaning is narrower: stop scanning further siblings in THIS
         //     pass, because the boundary already resolved the failure and any later slot's patch/replace
         //     would be racing a reconcile the caller no longer owns end-to-end.

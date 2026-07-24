@@ -31,7 +31,7 @@ namespace Velvet
         public VisualElement? LastFocusedMember;
         public VisualElement? RestoreTarget;
         public bool RestoreCaptured;
-        // AutoFocus is mount-once, matching React: the latch is set on the scope's FIRST attach no matter
+        // AutoFocus is mount-once: the latch is set on the scope's FIRST attach no matter
         // what the setting held then, so neither a keyed reorder's re-attach nor a post-mount settings
         // flip can ever fire it again.
         public bool AutoFocusFired;
@@ -591,7 +591,7 @@ namespace Velvet
             // Contain snap-back: focus left a contained scope through a path the sequential interception
             // cannot see (a spatial 2D move, or a pointer press outside) — pull it back inside within the
             // same event flush. A landing INSIDE any contain scope stands instead: the scope receiving
-            // focus claims it (React Aria's newest-scope activation — a stacked dialog must be able to
+            // focus claims it (the newest scope wins — a stacked dialog must be able to
             // take focus from the modal underneath), and because a snap-back's own landing is by
             // construction inside a contain scope, the recursion is structurally terminal — no re-entrancy
             // flag needed (one would not work anyway: UI Toolkit QUEUES focus events raised from inside a
@@ -836,7 +836,7 @@ namespace Velvet
             binding.OnAttach = _ =>
             {
                 FiberFocusNavigator.EnsureAttached(element, ctx);
-                // Mount-once, matching React's autoFocus (it acts on mount, never again): the latch is
+                // Mount-once (it acts on mount, never again): the latch is
                 // taken on the FIRST attach regardless of the setting's value at that moment, so a
                 // post-mount settings flip cannot re-arm it for a later physical re-attach (a keyed
                 // reorder moves the subtree via RemoveAt + Insert, whose transient detach also clears

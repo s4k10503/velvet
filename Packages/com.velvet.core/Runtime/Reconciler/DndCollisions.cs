@@ -4,16 +4,15 @@ using UnityEngine;
 namespace Velvet
 {
     /// <summary>
-    /// The built-in collision strategies — dnd-kit's <c>rectIntersection</c> / <c>closestCenter</c> /
-    /// <c>pointerWithin</c>. All are pure functions over a <see cref="DndCollisionQuery"/> (no panel
-    /// access), returning a single winning id or null. Documented deviation from dnd-kit: a strategy
-    /// returns one winner, not a ranked collision list — the context only ever consumes the first
-    /// collision anyway, and the delegate's return can be extended compatibly later. None of them
-    /// consider occlusion (dnd-kit parity — its strategies are rect-based too).
+    /// The built-in collision strategies: <see cref="RectIntersection"/>, <see cref="ClosestCenter"/>, and
+    /// <see cref="PointerWithin"/>. All are pure functions over a <see cref="DndCollisionQuery"/> (no panel
+    /// access), returning a single winning id or null rather than a ranked collision list — the context
+    /// only ever consumes the first collision anyway, and the delegate's return can be extended compatibly
+    /// later. None of them consider occlusion; all are rect-based only.
     /// </summary>
     public static class DndCollisions
     {
-        /// <summary>Largest ActiveRect-droppable intersection area wins (the dnd-kit default). Ties
+        /// <summary>Largest ActiveRect-droppable intersection area wins. Ties
         /// resolve by registration order (first candidate wins).</summary>
         public static readonly DndCollisionDetection RectIntersection = (in DndCollisionQuery query) =>
         {

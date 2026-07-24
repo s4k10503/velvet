@@ -32,8 +32,7 @@ namespace Velvet
     /// the element's own PARENT-relative space (subtracting <c>element.parent.worldBound.position</c> — UI
     /// Toolkit resolves <c>position: absolute</c> <c>left</c>/<c>top</c> against the immediate parent, not the
     /// panel root, unlike CSS's nearest-positioned-ancestor walk), and writes the result as inline
-    /// <c>left</c>/<c>top</c> — drei's
-    /// <c>&lt;Html&gt;</c> parity (screen-space projection; unlike <c>V.WorldSpace</c>, which renders content
+    /// <c>left</c>/<c>top</c> — a screen-space projection (unlike <c>V.WorldSpace</c>, which renders content
     /// INTO the 3D scene and is depth-tested for free, this is ordinary 2D UI with no inherent scene depth —
     /// <see cref="AnchoredSettings.Occlude"/> opts into an explicit physics stand-in for that test).
     /// <c>RuntimePanelUtils.CameraTransformWorldToPanel</c> is correct here specifically
@@ -149,7 +148,7 @@ namespace Velvet
                 return;
             }
 
-            // View-space depth test (drei's own isObjectBehindCamera equivalent): a target behind the camera
+            // View-space depth test: a target behind the camera
             // plane projects through WorldToScreenPoint with its x/y mirrored, which CameraTransformWorldToPanel
             // would otherwise turn into a wildly wrong on-screen position rather than an obviously-off-screen
             // one — including when HideWhenBehindCamera is false, so that opt-out does not attempt this
@@ -189,7 +188,7 @@ namespace Velvet
                 return;
             }
 
-            // Opt-in physics stand-in for scene depth (drei's <Html occlude> parity): a solid collider
+            // Opt-in physics stand-in for scene depth: a solid collider
             // between the camera and the target hides the element instead of painting it through scene
             // geometry. Linecast's endpoint sits exactly at the target's own pivot, so a target whose own
             // collider encloses that pivot will typically self-occlude — scope OccludeLayerMask to scene
@@ -243,7 +242,7 @@ namespace Velvet
             var distanceFactor = binding.Settings.DistanceFactor;
             if (distanceFactor.HasValue)
             {
-                // drei's <Html distanceFactor> parity: flat screen-space content has no inherent size in
+                // Flat screen-space content has no inherent size in
                 // the scene, so faking perspective falloff means scaling it inversely with camera distance
                 // — distanceFactor is the reference distance at which scale is exactly 1. toTarget (from the
                 // behind-camera test above) already holds camera-to-target; reused here rather than a

@@ -5,7 +5,6 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Manages event registration / unregistration.
     // Uses an "unbind all → bind all" diff strategy. Event count is typically 1-3, so this is lightweight enough.
     // Unity internally reuses functor pools, so GC pressure is also low.
     internal sealed class FiberEventBindingManager
@@ -140,8 +139,6 @@ namespace Velvet
             _bindingsByElement.Remove(element);
         }
 
-        // Checks whether the bindings already registered on the element match the new event array.
-        // If they match, re-binding is not necessary.
         // Order-sensitive: assumes the insertion order of _boundDelegates matches newEvents.
         // Currently only called from PatchCommon, where Bind invocation order guarantees this.
         public bool HasSameBindings(VisualElement element, FiberEventBinding[] newEvents)
@@ -179,7 +176,6 @@ namespace Velvet
             return true;
         }
 
-        // Unbinds every event from every element.
         public void Clear()
         {
             foreach (var kvp in _unbindActions)
