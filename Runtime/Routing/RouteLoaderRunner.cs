@@ -5,9 +5,8 @@ using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
-    // Runner that manages execution of route loaders.
-    // LoaderMode.Await loaders must complete synchronously, while
-    // LoaderMode.Suspend loaders run asynchronously in the background.
+    // LoaderMode.Await loaders must complete synchronously; LoaderMode.Suspend loaders run
+    // asynchronously in the background.
     internal sealed class RouteLoaderRunner : IDisposable
     {
         private CancellationTokenSource? _cts;
@@ -37,9 +36,8 @@ namespace Velvet
         // This counter therefore tracks "all live tasks across rounds", not "tasks of the current round".
         internal int ActiveSuspendTaskCount => _activeSuspendTaskCount;
 
-        // Runs loaders for the given matches. Await loaders must complete synchronously; Suspend loaders
-        // are started in the background. On error, the error is recorded per-route in Errors; the caller
-        // is expected to inspect Errors.
+        // Per-route errors are recorded in Errors rather than the return value; the caller is expected
+        // to inspect Errors after this returns.
         public (Dictionary<string?, object> results, bool allCompleted) RunLoadersSync(
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken)
@@ -148,8 +146,7 @@ namespace Velvet
             }
         }
 
-        // Cancels the loaders that are currently in progress. Also runs automatically on the next
-        // RunLoadersSync call.
+        // This also runs automatically at the start of the next RunLoadersSync call.
         public void CancelPending()
         {
             if (_cts != null)
@@ -163,7 +160,7 @@ namespace Velvet
             // If the loader honors the CancellationToken, the awaited task ends with
             // OperationCanceledException and the counter naturally returns to 0.
             // If the loader ignores the ct, the async state machine remains alive and the counter
-            // does not drop (see the OnSuspendLoaderCompleted XmlDoc).
+            // does not drop until it eventually completes (see the ActiveSuspendTaskCount comment).
         }
 
         public void Dispose() => CancelPending();
