@@ -3,8 +3,8 @@ using System;
 
 namespace Velvet
 {
-    // Which effect an AnimationSequenceStep carries. Internal: callers only ever construct a step through
-    // the public static factories below, never read Kind directly.
+    // Internal: callers construct a step only through the public static factories below, never by
+    // reading Kind directly.
     internal enum AnimationSequenceStepKind
     {
         To,
@@ -81,9 +81,8 @@ namespace Velvet
         /// <summary>
         /// Fires <paramref name="callback"/> synchronously on arrival, then advances immediately — never holds
         /// the cursor. Step 0's callback re-fires under the Editor's StrictMode mount double-invoke diagnostic
-        /// (same expectation as any <c>UseEffect</c> mount factory with a non-idempotent body): write it to
-        /// tolerate running twice if the sequence's own mount matters, exactly as React's own StrictMode
-        /// guidance recommends for an effect that isn't naturally idempotent.
+        /// (same expectation as any <c>UseEffect</c> mount factory with a non-idempotent body), so write it to
+        /// tolerate running twice if the sequence's own mount matters.
         /// </summary>
         /// <param name="callback">The callback to invoke. Must not be null.</param>
         public static AnimationSequenceStep Call(Action callback)

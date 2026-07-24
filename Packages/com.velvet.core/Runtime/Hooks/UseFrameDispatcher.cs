@@ -11,11 +11,9 @@ namespace Velvet
     /// One dispatcher per panel: a single stable scheduled tick, hosted on the panel's own root element
     /// (never itself subject to a keyed reorder), fanning out every frame to every live
     /// <see cref="Hooks.UseFrame(System.Action{float}, int)"/> subscriber in that panel, in
-    /// <c>priority</c> order (ties broken by subscription order) — r3f's
-    /// <c>useFrame(callback, renderPriority)</c> ordering parity. A positive priority carries no other
-    /// side effect here (unlike r3f, where it also hands the caller manual control of the render loop):
-    /// Unity's own rendering is independent of this scheduler, so there is no internal render call to
-    /// take over.
+    /// <c>priority</c> order (ties broken by subscription order). Priority affects only this ordering:
+    /// Unity's own rendering is independent of this scheduler, so a higher priority does not grant the
+    /// caller any control over the render loop itself.
     /// </summary>
     /// <remarks>
     /// Subscribing per-PANEL rather than per-component-HOST (the one scheduled item per component this

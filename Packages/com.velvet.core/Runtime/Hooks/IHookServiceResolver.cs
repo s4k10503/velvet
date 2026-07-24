@@ -2,7 +2,7 @@ namespace Velvet
 {
     /// <summary>
     /// Resolver abstraction that fetches services from the host DI container.
-    /// Decouples DI-framework-specific implementations (such as VContainer) from the framework core.
+    /// Decouples DI-framework-specific implementations from the framework core.
     /// </summary>
     public interface IHookServiceResolver
     {

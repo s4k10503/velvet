@@ -11,15 +11,9 @@ namespace Velvet
     // PropagateException falls back to Debug.LogException, preserving the prior log-only behavior.
     internal static class HookEffectExecutor
     {
-        // Runs every entry in the pending list with a 2-pass strategy.
-        // Pass 1: invoke all cleanups. Pass 2: invoke all factories and set the new cleanup.
-        // fiber: the owning fiber, used to route an effect throw to its nearest Error Boundary.
-        // pending: Effect slots whose factory should run this commit.
-        // mountDoubleInvoke:
-        // When true and StrictMode is enabled, runs an extra cleanup -> setup cycle after the initial setup.
-        // Set only on the mount commit; update commits pass false. The diagnostic
-        // doubles effects on mount only, so doubling on update would tear down and re-establish external
-        // resources (subscriptions / sockets) of a deps-changed effect mid-frame.
+        // mountDoubleInvoke must be false on update commits: doubling there would tear down and re-establish
+        // external resources (subscriptions / sockets) of a deps-changed effect mid-frame, not just exercise
+        // the mount-only diagnostic.
         internal static void RunPendingEffects(ComponentFiber fiber, List<HookEffectSlot>? pending, bool mountDoubleInvoke = false)
         {
             if (pending == null || pending.Count == 0) return;
@@ -28,9 +22,8 @@ namespace Velvet
             RunFactoriesAndClear(fiber, pending, mountDoubleInvoke);
         }
 
-        // Runs the factory (setup) pass for every pending slot, then clears the list. Split out from
-        // RunPendingEffects so the passive-effect drain can run a tree-wide cleanup phase
-        // across every fiber FIRST, then a tree-wide setup phase — without re-running the cleanups that
+        // Split out from RunPendingEffects so the passive-effect drain can run a tree-wide cleanup phase across
+        // every fiber FIRST, then a tree-wide setup phase — without re-running the cleanups that
         // RunPendingEffects bundles in. Callers that want the single-fiber cleanup→setup
         // pair should call RunPendingEffects instead.
         internal static void RunFactoriesAndClear(ComponentFiber fiber, List<HookEffectSlot>? pending, bool mountDoubleInvoke = false)
@@ -67,16 +60,14 @@ namespace Velvet
                 catch (Exception ex)
                 {
                     ComponentBoundarySearch.PropagateException(fiber, ex);
-                    // An error boundary's fallback can synchronously unmount fiber as part of handling ex
-                    // (the same re-entrancy HookEffectExecutor's own class comment already calls out for
-                    // RunCleanups). Stop running the remaining factories on it rather than standing up new
-                    // resources whose cleanup pass already ran and will never run again.
+                    // An error boundary's fallback can synchronously unmount fiber (the same re-entrancy
+                    // RunCleanups guards against below). Stop running the remaining factories on it rather than
+                    // standing up new resources whose cleanup pass already ran and will never run again.
                     if (fiber.IsDisposed) return;
                 }
             }
         }
 
-        // Runs only the cleanups for every entry in the pending list. Factories are not invoked.
         internal static void RunCleanups(ComponentFiber fiber, List<HookEffectSlot>? entries)
         {
             if (entries == null) return;
@@ -101,9 +92,8 @@ namespace Velvet
             }
         }
 
-        // Promotes each slot's staged HookEffectSlot.NextDeps to HookEffectSlot.LastDeps.
-        // Called once after the render-phase loop settles so the committed comparison baseline reflects the final
-        // (settled) attempt's deps rather than a discarded intermediate attempt.
+        // Called once after the render-phase loop settles, so the committed comparison baseline reflects the
+        // final (settled) attempt's deps rather than a discarded intermediate attempt.
         internal static void CommitEffectDeps(List<HookEffectSlot>? effects)
         {
             if (effects == null) return;
@@ -114,8 +104,7 @@ namespace Velvet
             }
         }
 
-        // Full cleanup: runs the cleanup for every entry in all and clears both lists.
-        // Usable for both UseLayoutEffect and UseEffect on Unmount.
+        // The unmount path for both UseLayoutEffect and UseEffect.
         internal static void CleanupAll(ComponentFiber fiber, List<HookEffectSlot>? all, List<HookEffectSlot>? pending)
         {
             if (all == null) return;

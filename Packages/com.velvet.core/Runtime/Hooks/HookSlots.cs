@@ -1,5 +1,5 @@
-// Hook slot storage mirrors React fiber hook state: committed vs staged fields, and nullable deps
-// arrays where null means "always re-run" (UseEffect with no deps array).
+// Hook slot storage keeps committed vs staged fields separate, with a null deps array meaning
+// "always re-run" (UseEffect with no deps array).
 #nullable enable
 using System;
 using System.Collections.Generic;
@@ -168,7 +168,7 @@ namespace Velvet
 
     internal abstract class HookStateSlot
     {
-        // The committed state value when it is a VNode root (React's element-in-state pattern) —
+        // The committed state value when it is a VNode root (element-in-state caching) —
         // see HookSlotRecycleProbe.
         public abstract object? RecycleMarkRoot { get; }
     }
