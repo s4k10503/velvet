@@ -2,10 +2,8 @@ using System;
 
 namespace Velvet
 {
-    // Helper that builds setter / dispatcher closures for UseState / UseReducer.
     internal static class HookSetterFactory
     {
-        // Builds a setter closure for UseState.
         // Equal-value updates do not request a re-render (identity-based bailout).
         // The caller must invoke this exactly once when the slot is created and cache the resulting
         // delegate. Calling it on every render would keep producing unnecessary closures.
@@ -23,7 +21,6 @@ namespace Velvet
             };
         }
 
-        // Builds a dispatch closure for UseReducer.
         // The reducer is updated via the slot on every render, so the latest function is always used.
         // Bailout uses identity semantics (NaN equals itself, ±0 distinguished, reference equality
         // for objects) so a record/struct reducer that returns a new instance with identical content still propagates.

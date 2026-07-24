@@ -5,10 +5,10 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     /// <summary>
-    /// Focus state of the element carrying <see cref="Ref"/>, returned by <c>Hooks.UseFocusRing</c> —
-    /// React Aria's <c>useFocusRing</c> parity. Rides the same element-local focus-visible heuristic as the
-    /// <c>focus-visible:</c> styling variant (a pointer press on the element suppresses the visible state
-    /// for the focus it causes), so the two surfaces cannot drift.
+    /// Focus state of the element carrying <see cref="Ref"/>, returned by <c>Hooks.UseFocusRing</c>.
+    /// Rides the same element-local focus-visible heuristic as the <c>focus-visible:</c> styling variant
+    /// (a pointer press on the element suppresses the visible state for the focus it causes), so the two
+    /// surfaces cannot drift.
     /// </summary>
     public readonly struct FocusRing
     {

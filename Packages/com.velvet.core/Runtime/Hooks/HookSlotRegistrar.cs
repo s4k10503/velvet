@@ -5,21 +5,18 @@ using System.Collections.Generic;
 
 namespace Velvet
 {
-    // Generic helper for the "render-guard -> null-coalesce -> bump index -> new-or-existing branch" pattern.
-    // Centralizes the logic shared by position-based slot registrations such as UseLayoutEffect / UseEffect.
+    // Centralizes the slot-registration logic shared by position-based hooks such as UseLayoutEffect / UseEffect.
     internal static class HookSlotRegistrar
     {
-        // Registers an effect slot with deps comparison.
         // The current render's deps are staged on HookEffectSlot.NextDeps and compared against the
         // committed HookEffectSlot.LastDeps; HookEffectSlot.LastDeps is promoted only
         // once the render-phase loop settles (FiberRenderer calls HookEffectExecutor.CommitEffectDeps). A
         // render-phase state-update re-run discards intermediate attempts, so leaving the baseline at the committed
         // render is what lets the settled attempt's deps be compared against the committed render rather than a
         // discarded attempt.
-        // When deduplicatePending is true, skips adding to pendingEffects
-        // if the slot is already present. Both UseEffect and UseLayoutEffect require this: the pending
-        // list persists across a render-phase state-update re-run (it is cleared once per RenderAndReconcile,
-        // not per re-run), so a slot whose deps change between attempts could otherwise be added twice.
+        // Both UseEffect and UseLayoutEffect require deduplicatePending: the pending list persists across a
+        // render-phase state-update re-run (it is cleared once per RenderAndReconcile, not per re-run), so a
+        // slot whose deps change between attempts could otherwise be added twice.
         internal static void RegisterEffect(
             ref List<HookEffectSlot>? effects,
             ref List<HookEffectSlot>? pendingEffects,

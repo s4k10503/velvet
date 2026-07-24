@@ -105,9 +105,8 @@ namespace Velvet
             return (typed.Value, typed.Setter);
         }
 
-        // Slot lookup shared by the eager and lazy overloads. Pass a non-null <paramref name="initialFactory"/>
-        // when the caller wants lazy initialization (the factory is invoked once on the first render).
-        // Otherwise the eager <paramref name="initial"/> seeds the slot.
+        // initialFactory is always null at the current call site (the eager UseState(T) overload above);
+        // UseState(Func<T>) is served by the separate UseStateFromFactory above instead of this branch.
         private static (T value, StateUpdater<T> setValue) UseStateInternalCore<T>(
             Func<T>? initialFactory, T initial, string hookName)
         {
@@ -327,8 +326,8 @@ namespace Velvet
             fiber.CallbackSlots ??= new List<HookCallbackSlot>();
             var index = fiber.Indices.HookIndex++;
 
-            // No-deps overload: returns this render's callback as-is (no memoization). Stage into Next* like the
-            // deps overload so the render-phase settle commit treats every callback slot uniformly.
+            // Stages into Next* like the deps overload, so the render-phase settle commit treats every
+            // callback slot uniformly even though this overload never memoizes.
             if (index >= fiber.CallbackSlots.Count)
             {
                 fiber.CallbackSlots.Add(new HookCallbackSlot
@@ -414,8 +413,8 @@ namespace Velvet
             fiber.MemoValueSlots ??= new List<HookMemoValueSlot>();
             var index = fiber.Indices.MemoValueHookIndex++;
 
-            // No-deps overload: recompute every render (no memoization). Stage into Next* like the deps
-            // overload so the render-phase settle commit treats every memo slot uniformly.
+            // Stages into Next* like the deps overload, so the render-phase settle commit treats every memo
+            // slot uniformly even though this overload never memoizes.
             var value = factory();
             if (index >= fiber.MemoValueSlots.Count)
             {
@@ -911,11 +910,10 @@ namespace Velvet
         /// Frames tick while the component's host is attached to a panel and pause while it is not.
         /// <paramref name="priority"/> orders callbacks within the SAME panel — lower runs earlier,
         /// equal priorities run in subscription (mount) order, and this stays true across a keyed
-        /// reorder of the host — r3f's <c>useFrame(callback, renderPriority)</c> parity. Unlike r3f, a
-        /// positive priority has no side effect beyond ordering: Unity's rendering is independent of
-        /// this scheduler, so there is no internal render call for it to take over. The latest render's
-        /// priority applies live, the same way <paramref name="onFrame"/> does — changing it does not
-        /// restart the subscription or move it among same-priority siblings.
+        /// reorder of the host. A positive priority has no side effect beyond ordering: Unity's
+        /// rendering is independent of this scheduler, so there is no internal render call for it to
+        /// take over. The latest render's priority applies live, the same way <paramref name="onFrame"/>
+        /// does — changing it does not restart the subscription or move it among same-priority siblings.
         /// </summary>
         /// <param name="onFrame">Invoked once per frame with the elapsed time in seconds (always positive).</param>
         /// <param name="priority">Lower runs earlier within the same panel this frame. Defaults to 0.</param>
@@ -1039,8 +1037,8 @@ namespace Velvet
         /// <summary>
         /// Plays an ordered <see cref="AnimationSequenceStep"/> array over time, exposing the active step's
         /// label/transition to feed straight into a coordinator <c>V.Motion(animate:, transition:)</c>.
-        /// Velvet's timeline primitive (Framer Motion's <c>useAnimate</c> parity target): the hook owns the
-        /// clock (via <see cref="UseFrame"/>) and the step walk, so a caller never hand-rolls
+        /// Velvet's timeline primitive: the hook owns the clock (via <see cref="UseFrame"/>) and the step
+        /// walk, so a caller never hand-rolls
         /// <see cref="UseEffect(Func{Action},object[])"/> plus a timer plus <see cref="UseState{T}(T)"/> to
         /// sequence a multi-stage animation. Descendant <c>V.Motion</c> nodes with no own <c>animate</c>
         /// inherit the coordinator's label exactly as they already do for any hand-toggled label change; "one
@@ -1118,7 +1116,7 @@ namespace Velvet
         #region UseFocusRing
 
         /// <summary>
-        /// React Aria's <c>useFocusRing</c> parity: exposes an element's focus state — and specifically
+        /// Exposes an element's focus state — and specifically
         /// keyboard/gamepad-visible focus, as distinct from pointer focus — as re-rendering component
         /// state. Pass <see cref="FocusRing.Ref"/> as the target element's <c>refCallback:</c>. For pure
         /// styling, the <c>focus-visible:</c> class variant already covers the same distinction without a
@@ -1128,8 +1126,8 @@ namespace Velvet
         /// When composing <see cref="FocusRing.Ref"/> with other per-element work in one callback,
         /// wrap the composed lambda in <c>Hooks.UseCallback</c>: a per-render lambda is a fresh
         /// identity each render, so every patch would cycle the ref (cleanup on a still-focused
-        /// element, then re-setup) — the same re-render feedback an inline ref writing state
-        /// produces in React.
+        /// element, then re-setup) — the same re-render feedback an inline ref that writes state on
+        /// every render would produce.
         /// </para>
         /// </summary>
         public static FocusRing UseFocusRing()
@@ -1345,8 +1343,8 @@ namespace Velvet
             // check and the handle is not part of the render output signature.
             if (IsStrictDiagnosticPass(fiber)) return;
 
-            // No-deps: refresh every render. Stage the factory / ref; the handle is built and the parent ref is
-            // written at the render-phase settle so a discarded attempt cannot expose a throwaway handle.
+            // Stages the factory / ref; the handle is built and the parent ref is written at the render-phase
+            // settle so a discarded attempt cannot expose a throwaway handle.
             if (index >= fiber.ImperativeHandleSlots.Count)
             {
                 fiber.ImperativeHandleSlots.Add(new HookImperativeHandleSlot
@@ -1666,7 +1664,6 @@ namespace Velvet
         ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose
         ///   <c>isPending</c> stays true across awaits. Nested calls join the outer transition.
         /// </returns>
-        /// <remarks>Equivalent to React's <c>useTransition</c> (<c>[isPending, startTransition]</c>) for users migrating from React.</remarks>
         public static (bool isPending, TransitionStarter startTransition) UseTransition()
         {
             var fiber = Resolve("UseTransition");
@@ -1817,8 +1814,7 @@ namespace Velvet
             catch (Exception ex)
             {
                 // Superseded (a newer call replaced slot.Cts) or the owner was disposed: the result is stale, so
-                // neither deliver onError nor mutate the slot. mutateAsync still rejects so its awaiter observes
-                // the failure; fire-and-forget mutate swallows (no awaiter — a rethrow would leak unobserved).
+                // neither deliver onError nor mutate the slot.
                 if (slot.Cts != cts || fiber.IsDisposed)
                 {
                     if (rethrowOnFailure) throw;
@@ -1828,8 +1824,6 @@ namespace Velvet
                 slot.Result.Status = MutationStatus.Error;
                 slot.OnError?.Invoke(ex, variables);
                 RequestRender(fiber);
-                // mutate() reports failures via onError / the Error status only and never raises an unhandled
-                // rejection; mutateAsync() rejects so the awaiter can catch it.
                 if (rethrowOnFailure) throw;
                 return default!;
             }
@@ -2029,11 +2023,11 @@ namespace Velvet
         #region Memoization (component-level)
 
         /// <summary>
-        /// Memoization slot accessor used exclusively by SG-generated code for
-        /// <c>[Component(Memoize = true)]</c>.
+        /// Memoization slot accessor woven in by the build-time compiler transform for
+        /// <c>[Component(Compiler = true)]</c> (the default).
         /// On each Render, advances <see cref="HookIndexTable.MemoHookIndex"/> to allocate a slot in
         /// Fiber.MemoSlots; returns the cached VNode when the previous deps are equal.
-        /// Do not call by hand (the slot index convention is a position-based API fixed by SG).
+        /// Do not call by hand (the slot index convention is a position-based API fixed by the weaver).
         /// When the return value is <c>false</c>, <paramref name="cached"/> is undefined.
         /// </summary>
         /// <param name="deps">Dependency values for this slot. Must not be null.</param>
@@ -2045,9 +2039,8 @@ namespace Velvet
         {
             if (deps == null) throw new ArgumentNullException(nameof(deps));
             var fiber = Resolve("TryGetMemoizedVNode");
-            // SG-emitted code is contracted to call this exactly once per render, so Count is at most
+            // The weaver is contracted to call this exactly once per render, so Count is at most
             // slotIndex or slotIndex+1.
-            // Append a single entry to allocate the slot at the end of the list.
             slotIndex = fiber.Indices.MemoHookIndex++;
             fiber.MemoSlots ??= new List<HookMemoSlot>();
             if (fiber.MemoSlots.Count <= slotIndex)
@@ -2075,7 +2068,7 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Slot writer API called by SG-generated code on the miss path of <see cref="TryGetMemoizedVNode"/>.
+        /// Slot writer API woven in on the miss path of <see cref="TryGetMemoizedVNode"/>.
         /// The <paramref name="slotIndex"/> argument must be the value returned by the immediately
         /// preceding <see cref="TryGetMemoizedVNode"/> call.
         /// </summary>

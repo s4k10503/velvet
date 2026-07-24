@@ -17,7 +17,7 @@ namespace Velvet
         // must be ONE delegate instance — a method group (`refCallback: _ref.SetElement`) would
         // convert to a fresh delegate every render, so the reconciler's ref-identity gate (a ref
         // cycles only when its identity changes) could never recognize the same Ref across patches
-        // and would cycle it per render, React's object-ref contract broken by a C# conversion detail.
+        // and would cycle it per render — a C# delegate-conversion detail breaking object-ref stability.
         private readonly Action _clearAction;
         private readonly Func<VisualElement, Action> _setElement;
 
@@ -45,8 +45,7 @@ namespace Velvet
         /// Callback ref setter. Used as <c>V.Button(refCallback: _ref.SetElement)</c>.
         /// Stores the element into <see cref="Current"/>; the returned <c>Action</c> is the cleanup that
         /// resets <c>Current = null</c> on detach. The same delegate instance is returned for the
-        /// Ref's lifetime, so a patch that passes it again leaves the installed ref untouched
-        /// (React's object-ref stability).
+        /// Ref's lifetime, so a patch that passes it again leaves the installed ref untouched.
         /// For T values not derived from VisualElement, <c>element as T</c> is always null, so this is
         /// primarily used for Element-node refs.
         /// </summary>
