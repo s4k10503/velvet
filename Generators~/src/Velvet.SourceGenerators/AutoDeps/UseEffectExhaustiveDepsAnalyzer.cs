@@ -16,7 +16,8 @@ namespace Velvet.SourceGenerators.AutoDeps
     /// Compares closure-captured values (locals, instance fields, and properties) inside a deps-comparing
     /// hook's lambda factory against the elements listed in the hook's <c>deps</c> argument and reports
     /// <see cref="MemoizeDiagnostics.Vel100UseEffectMissingDep"/> when a captured value is missing.
-    /// Covers <c>UseEffect</c> / <c>UseLayoutEffect</c> / <c>UseCallback</c> / <c>UseImperativeHandle</c>.
+    /// Covers <c>UseEffect</c> / <c>UseLayoutEffect</c> / <c>UseCallback</c> / <c>UseMemo</c> /
+    /// <c>UseImperativeHandle</c>, and the V DSL's <c>V.Memoized</c> / <c>V.MemoizedWithKey</c>.
     /// </summary>
     /// <remarks>
     /// The match is conservative: only <c>new[] { ... }</c> / <c>new T[] { ... }</c> deps initializers and
@@ -135,7 +136,7 @@ namespace Velvet.SourceGenerators.AutoDeps
                 // collapse to `a` and the missing `a.b.c` goes unreported. Closing that gap needs
                 // path-sensitive analysis, which risks warning on correct code (false positives). A lint must
                 // prioritise precision (zero false positives) over completeness, so the conservative
-                // root-collapse is kept on purpose rather than matching ESLint's exact path-tracking.
+                // root-collapse is kept on purpose rather than adding exact path-tracking.
                 if (element is MemberAccessExpressionSyntax memberAccess)
                 {
                     var current = memberAccess;

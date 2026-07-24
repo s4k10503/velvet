@@ -30,7 +30,9 @@ namespace Velvet.SourceGenerators.ReactiveScope
 
         /// <summary>
         /// Recursively expands any <see cref="ILocalSymbol"/>s in the input symbol set into base symbols.
-        /// Cycles are cut by a visited set; the cycling local passes through unexpanded.
+        /// Cycles are cut by a visited set: a local already being expanded on the current path is skipped
+        /// rather than re-expanded, so every member of a self- or mutually-referential assignment chain
+        /// contributes nothing to the result instead of looping forever.
         /// </summary>
         public ImmutableArray<ISymbol> Resolve(ImmutableArray<ISymbol> symbols)
         {

@@ -8,12 +8,12 @@ using Unity.CompilationPipeline.Common.ILPostProcessing;
 
 namespace Velvet.CodeGen
 {
-    // ILPostProcessor host that delegates to CompilerWeaver, which weaves inner
-    // auto-memoization into analyzable [Component] bodies. The assembly is rewritten only when the
-    // weaver reports a change; otherwise the original assembly is passed through untouched.
-    // The ILPostProcessor runs in the external Unity.ILPP.Runner process,
-    // so UnityEngine.Debug.Log is unavailable. All diagnostics are
-    // surfaced through DiagnosticMessage.
+    // ILPostProcessor host that delegates to CompilerWeaver (inner auto-memoization of analyzable
+    // [Component] bodies) and MetadataRegistrationWeaver (Error Boundary / props-bail / DisplayName
+    // registration calls). The assembly is rewritten only when either weaver reports a change;
+    // otherwise the original assembly is passed through untouched. The ILPostProcessor runs in the
+    // external Unity.ILPP.Runner process, so UnityEngine.Debug.Log is unavailable. All diagnostics
+    // are surfaced through DiagnosticMessage.
     internal sealed class VelvetCompilerILPostProcessor : ILPostProcessor
     {
         private const string VelvetAssemblyName = "Velvet";

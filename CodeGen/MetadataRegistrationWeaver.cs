@@ -9,8 +9,8 @@ namespace Velvet.CodeGen
     // Build-time transform that injects Velvet.ComponentMethodRegistry registration calls into the
     // module initializer (<Module>.cctor) for every [Component] method that opts into
     // Error Boundary, the props-bail, or a DisplayName override. This replaces the Roslyn source
-    // generator's [ModuleInitializer] hook: the epic decision is that everything expressible in IL moves
-    // to the ILPostProcessor, leaving the Source Generator to API generation and analyzers only.
+    // generator's [ModuleInitializer] hook: everything expressible in IL belongs in the
+    // ILPostProcessor, leaving the Source Generator to API generation and analyzers only.
     // The registry is a process-global, IL2CPP / metadata-stripping-resilient string map keyed on
     // (DeclaringType.FullName, MethodName). The declaring type name is emitted in the runtime
     // Type.FullName form — '+' between an outer type and a nested one, and the Cecil `{arity}
@@ -177,8 +177,8 @@ namespace Velvet.CodeGen
         private static string RuntimeFullName(TypeReference type)
             => type.FullName.Replace('/', '+');
 
-        // Returns the last ret in body, or null when none exists. Registration calls
-        // are inserted before it so a pre-existing module-initializer body keeps its own ending.
+        // Registration calls are inserted before the returned ret, so a pre-existing
+        // module-initializer body keeps its own ending.
         private static Instruction? FindLastReturn(MethodBody body)
         {
             for (var i = body.Instructions.Count - 1; i >= 0; i--)
