@@ -19,8 +19,10 @@ namespace Velvet.SourceGenerators.RulesOfHooks
     /// Two passes: a syntax-ancestor walk flags hooks inside a control-flow construct, and a control-flow
     /// analysis pass (<see cref="TryReportConditionalEarlyExit"/>) flags a hook that follows a conditional early
     /// return (<c>if (x) return; UseState(...);</c>) — a case the syntax walk cannot see. A conditional
-    /// <c>throw</c> is not treated as a skip (it aborts the render rather than skipping the hook). The
-    /// MemoizeMethod codegen's transitive scan handles custom-hook detection at compile time.
+    /// <c>throw</c> is not treated as a skip (it aborts the render rather than skipping the hook). This
+    /// analyzer's naming-convention check is a syntax-only signal; the auto-memoization IL weaver
+    /// (CompilerWeaver, under CodeGen/) is what actually verifies a called method transitively composes
+    /// a hook.
     /// </remarks>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     internal sealed class RulesOfHooksAnalyzer : DiagnosticAnalyzer

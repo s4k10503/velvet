@@ -84,8 +84,8 @@ namespace Velvet.SourceGenerators.ReactiveScope
         /// </summary>
         /// <remarks>
         /// <see cref="ISymbol"/> references <see cref="Compilation"/>, so placing it directly onto an <c>IncrementalValuesProvider</c>
-        /// would pin the Compilation and break the cache.
-        /// Convert to a cache-safe value type (e.g. (DisplayString, SymbolKind, ContainingType)) before propagating it through the pipeline.
+        /// would pin the Compilation and break the cache. <see cref="ReactiveScopeAnalyzer.GetAccessPath"/> converts each symbol
+        /// into the cache-safe <see cref="DependencyAccessPath"/> before propagating it through a pipeline.
         /// </remarks>
         public ImmutableArray<ISymbol>? Dependencies { get; }
 

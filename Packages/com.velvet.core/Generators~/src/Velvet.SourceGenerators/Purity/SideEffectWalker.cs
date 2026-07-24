@@ -220,9 +220,9 @@ namespace Velvet.SourceGenerators.PurityAnalysis
                 return;
             }
 
-            // Call-graph propagation: recurse into the callee body when budget remains.
-            // Pure callees absorb silently. Impure callees propagate as KnownImpureCall.
-            // Unknown callees fall through to UnknownCall so the caller still sees at least one reason.
+            // The switch below only returns for Pure/Impure; an Unknown callee result falls through to the
+            // UnknownCall add at the bottom, so the caller always sees at least one reason when propagation
+            // through the callee is inconclusive.
             if (_remainingDepth > 0 && _compilation is not null && _visited is not null)
             {
                 _visited.Add(target);

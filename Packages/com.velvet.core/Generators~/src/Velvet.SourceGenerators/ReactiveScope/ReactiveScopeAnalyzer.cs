@@ -236,7 +236,8 @@ namespace Velvet.SourceGenerators.ReactiveScope
         }
 
         /// <summary>
-        /// Enumerates the sub-expressions we want to analyze (returns / assignments / member accesses, etc.).
+        /// Enumerates the sub-expressions we want to analyze: return values, invocations, object creations,
+        /// conditional/switch expressions, and binary operations.
         /// We pick meaningful units rather than leaf nodes so that cache slots are sliced per expression.
         /// </summary>
         private static IEnumerable<IOperation> EnumerateInterestingOperations(IOperation root)
@@ -267,8 +268,10 @@ namespace Velvet.SourceGenerators.ReactiveScope
         }
 
         /// <summary>
-        /// Checks the given expression for calls where <see cref="PurityAnalyzer"/> returns Impure / Unknown,
-        /// or for virtual / abstract / dynamic paths.
+        /// Checks the given expression for anything that would make treating it as a pure function of its
+        /// dependencies unsound: calls where <see cref="PurityAnalyzer"/> returns Impure / Unknown, virtual /
+        /// abstract / dynamic dispatch, and directly observable side effects (field/property/array/ref-out
+        /// assignment, event subscription, lock, await).
         /// Returns the conservative fallback reason set if any are found; otherwise null.
         /// </summary>
         private static ImmutableArray<ScopeDiagnostic>? CheckExpressionPurity(

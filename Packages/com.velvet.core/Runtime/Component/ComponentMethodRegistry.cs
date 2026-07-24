@@ -8,9 +8,9 @@ namespace Velvet
 {
     /// <summary>
     /// Process-global registry of methods annotated with <c>[Component(IsErrorBoundary = true)]</c>
-    /// and <c>[Component(DisplayName = "...")]</c>. Populated by Source-Generator-emitted
-    /// <c>[ModuleInitializer]</c> hooks at startup; consumed by <c>V.Component</c> on every render
-    /// and by hook-rule violation paths.
+    /// and <c>[Component(DisplayName = "...")]</c>. Populated at startup by registration calls
+    /// <c>MetadataRegistrationWeaver</c> injects into the assembly's module initializer at build time;
+    /// consumed by <c>V.Component</c> on every render and by hook-rule violation paths.
     /// </summary>
     /// <remarks>
     /// The registry keys on <c>(declaringTypeFullName, methodName)</c>. Component's contract is
@@ -27,12 +27,13 @@ namespace Velvet
         private static readonly ConcurrentDictionary<MethodInfo, bool> s_memoizeCache = new();
 
         /// <summary>
-        /// Registers a component method as an Error Boundary. Invoked from generator-emitted <c>[ModuleInitializer]</c> hooks.
+        /// Registers a component method as an Error Boundary. Invoked from the module-initializer calls
+        /// <c>MetadataRegistrationWeaver</c> injects at build time.
         /// Idempotent: re-registering the same method is a no-op.
         /// </summary>
         /// <param name="declaringTypeFullName">Fully qualified type name of the class containing the component method.</param>
         /// <param name="methodName">Name of the static <c>[Component(IsErrorBoundary = true)]</c> method.</param>
-        // Hidden from IntelliSense: this entry point is for source-generator emitted code, not user code.
+        // Hidden from IntelliSense: this entry point is for weaver-injected code, not user code.
         [EditorBrowsable(EditorBrowsableState.Never)]
         public static void RegisterErrorBoundary(string declaringTypeFullName, string methodName)
         {
@@ -40,9 +41,9 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Registers the <c>DisplayName</c> override for a component method. Invoked from generator-emitted
-        /// <c>[ModuleInitializer]</c> hooks only when the <c>[Component]</c> attribute supplies a non-empty
-        /// <c>DisplayName</c>. Idempotent: re-registering the same method overwrites the previous value.
+        /// Registers the <c>DisplayName</c> override for a component method. Invoked from the module-initializer
+        /// calls <c>MetadataRegistrationWeaver</c> injects, only when the <c>[Component]</c> attribute supplies a
+        /// non-empty <c>DisplayName</c>. Idempotent: re-registering the same method overwrites the previous value.
         /// </summary>
         /// <param name="declaringTypeFullName">Fully qualified type name of the class containing the component method.</param>
         /// <param name="methodName">Name of the static <c>[Component(DisplayName = "...")]</c> method.</param>
@@ -55,9 +56,9 @@ namespace Velvet
 
         /// <summary>
         /// Registers a component method as props-bail-opted-in (<c>[Component(Memoize = true)]</c>). Invoked
-        /// from generator-emitted <c>[ModuleInitializer]</c> hooks. Idempotent: re-registering is a no-op.
-        /// This is the IL2CPP / metadata-stripping-resilient path for <see cref="IsMemoized"/>; when present
-        /// it is preferred over the reflection fallback.
+        /// from the module-initializer calls <c>MetadataRegistrationWeaver</c> injects. Idempotent: re-registering
+        /// is a no-op. This is the IL2CPP / metadata-stripping-resilient path for <see cref="IsMemoized"/>; when
+        /// present it is preferred over the reflection fallback.
         /// </summary>
         /// <param name="declaringTypeFullName">Fully qualified type name of the class containing the component method.</param>
         /// <param name="methodName">Name of the static <c>[Component(Memoize = true)]</c> method.</param>
@@ -78,11 +79,12 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Returns <c>true</c> if <paramref name="method"/> was registered as an Error Boundary by an emitted module initializer.
+        /// Returns <c>true</c> if <paramref name="method"/> was registered as an Error Boundary via the woven module initializer.
         /// </summary>
         // MethodInfo-keyed cache layered on top of the string-keyed registry: the string form is required
-        // because the SG cannot reference MethodInfo at compile time, but per-render lookups against MethodInfo
-        // identity are O(1) on a RuntimeMethodHandle compare and avoid two ordinal string-equals on every hit.
+        // because the weaver only has IL-level type metadata to work with, not a runtime MethodInfo, but
+        // per-render lookups against MethodInfo identity are O(1) on a RuntimeMethodHandle compare and avoid
+        // two ordinal string-equals on every hit.
         internal static bool IsErrorBoundary(MethodInfo? method)
         {
             if (method is null) return false;
@@ -92,10 +94,10 @@ namespace Velvet
 
         /// <summary>
         /// Returns <c>true</c> if <paramref name="method"/> carries <c>[Component(Memoize = true)]</c>
-        /// (props-bail opt-in). Prefers the SG-emitted string registry (<see cref="RegisterMemoize"/>) — the
+        /// (props-bail opt-in). Prefers the weaver-populated string registry (<see cref="RegisterMemoize"/>) — the
         /// IL2CPP / metadata-stripping-resilient path, matching how <see cref="IsErrorBoundary"/> resolves —
         /// and falls back to reflecting <see cref="ComponentAttribute"/> off the method when the registry has
-        /// no entry (e.g. before the generator has been rebuilt to emit Memoize registrations). The result is
+        /// no entry (e.g. before the assembly has been rewoven to include Memoize registrations). The result is
         /// cached per <see cref="MethodInfo"/> so the lookup cost is paid once per component method, not per render.
         /// </summary>
         internal static bool IsMemoized(MethodInfo? method)
@@ -112,7 +114,7 @@ namespace Velvet
             });
         }
 
-        // Shared key resolution: tries the live `Type.FullName` first, then falls back to the SG-emitted
+        // Shared key resolution: tries the live `Type.FullName` first, then falls back to the weaver-emitted
         // open form for closed generics where `FullName` either gains a type-arg suffix or returns null.
         private static bool TryLookupByMethod<TValue>(
             MethodInfo method,
@@ -132,7 +134,7 @@ namespace Velvet
                 return true;
             }
 
-            // Closed generic fallback: SG-emitted keys always use the open form (`Foo`1`, `Outer`1+Inner`).
+            // Closed generic fallback: weaver-emitted keys always use the open form (`Foo`1`, `Outer`1+Inner`).
             // At runtime, `Type.FullName` returns either:
             //   - closed instantiation: `Foo`1[[System.Int32, ...]]` (suffix mismatch)
             //   - any closed generic in declaring chain: `null` (BCL quirk for nested-in-generic)
@@ -159,7 +161,7 @@ namespace Velvet
             return false;
         }
 
-        // Reconstructs the SG-style open-form FullName by walking DeclaringType: each generic segment uses its
+        // Reconstructs the weaver's open-form FullName by walking DeclaringType: each generic segment uses its
         // open-definition MetadataName (e.g. `Foo`1`), nested types are joined with `+`, namespace from outermost.
         private static string BuildOpenFormFullName(Type t)
         {

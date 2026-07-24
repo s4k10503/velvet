@@ -57,8 +57,8 @@ namespace Velvet.SourceGenerators.AutoDeps
                     descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 0, depsArgIndex: 1, depsAreParams: true);
                     return true;
                 case VelvetWellKnownNames.UseMemoMethodName:
-                    // UseMemo(Func<T> factory, params object[] deps) — the value-memoization hook. Its factory
-                    // is parameterless, so it flows through the deps-comparison pipeline like UseCallback.
+                    // UseMemo's factory is parameterless, so it flows through the deps-comparison
+                    // pipeline the same way UseCallback's does.
                     descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 0, depsArgIndex: 1, depsAreParams: true);
                     return true;
                 case VelvetWellKnownNames.UseImperativeHandleMethodName:
