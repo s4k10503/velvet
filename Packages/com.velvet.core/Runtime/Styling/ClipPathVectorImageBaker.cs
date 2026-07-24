@@ -152,8 +152,7 @@ namespace Velvet
             }
         }
 
-        // Resolves circle()/ellipse() center and per-axis radii. A circle is an ellipse with
-        // rx == ry; its single radius lives in the spec's X slot.
+        // A circle is an ellipse with rx == ry; its single radius lives in the spec's X slot.
         private static void ResolveRadialGeometry(ClipPathSpec spec, float width, float height,
             out float cx, out float cy, out float rx, out float ry)
         {

@@ -33,9 +33,9 @@ namespace Velvet
         // bisection instead of taking a wild step.
         private const float MinSlope = 1e-6f;
 
-        // The fallback curve for an invalid x1/x2 — Tailwind's own default, and the same default
-        // StyleTransitionConfig.BezierX1..Y2 already carry, so a rejected value degrades to what an
-        // unconfigured Motion would have played anyway rather than an arbitrary hardcoded curve.
+        // The fallback curve for an invalid x1/x2 is the same default StyleTransitionConfig.BezierX1..Y2
+        // already carry, so a rejected value degrades to what an unconfigured Motion would have played
+        // anyway rather than an arbitrary hardcoded curve.
         private const float DefaultX1 = 0.4f;
         private const float DefaultY1 = 0f;
         private const float DefaultX2 = 0.2f;

@@ -4,21 +4,19 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Framer Motion's layoutId parity: FLIP (First-Last-Invert-Play) shared-element layout animation.
-    // When a V.Motion(layoutId:) patches at a resolved layout rect different from the rect the SAME id
-    // last settled at — including across a DIFFERENT physical element entirely, e.g. after a same-key
-    // type flip or a move to a different parent — it tweens from the old rect to the new one instead of
-    // jump-cutting: capture the OLD rect, let this frame's layout settle at the NEW one, compute the
-    // delta, apply it as an inline inverse transform (Invert), then spring that inverse back to zero
-    // (Play). Reuses MotionSpringDriver's existing panel-independent physics channels (translate x/y,
-    // uniform scale) — the same machinery every other spring-driven Motion transition already shares —
-    // rather than building a second driver.
+    // Shared-element layout animation via FLIP (First-Last-Invert-Play). When a V.Motion(layoutId:)
+    // patches at a resolved layout rect different from the rect the SAME id last settled at —
+    // including across a DIFFERENT physical element entirely, e.g. after a same-key type flip or a
+    // move to a different parent — it tweens from the old rect to the new one instead of jump-cutting:
+    // capture the OLD rect, let this frame's layout settle at the NEW one, compute the delta, apply it
+    // as an inline inverse transform (Invert), then spring that inverse back to zero (Play). Reuses
+    // MotionSpringDriver's existing panel-independent physics channels (translate x/y, uniform scale)
+    // — the same machinery every other spring-driven Motion transition already shares — rather than
+    // building a second driver.
     //
-    // Scope: uniform scale only. MotionSpringDriver.SpringChannel.Scale drives a single Vector2(v, v);
-    // a non-uniform rect change (width and height scale by different factors) averages the two axis
-    // scale factors instead of distorting the element on two independent axes — Framer Motion itself
-    // falls back to the same kind of approximation (via `layout="preserve-aspect"` guidance) when an
-    // element's own aspect ratio changes across the animated rects.
+    // Scope: uniform scale only. MotionSpringDriver.SpringChannel.Scale drives a single Vector2(v, v),
+    // so a non-uniform rect change (width and height scale by different factors) averages the two axis
+    // scale factors into one uniform factor instead of distorting the element on two independent axes.
     internal static class MotionLayoutIdDriver
     {
         // Called from FiberNodePatcher.PatchMotion for a MotionNode carrying a LayoutId, once the

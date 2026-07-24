@@ -11,8 +11,6 @@ namespace Velvet
     /// (the curated <c>disabled-*</c> utilities). Responsive (<c>sm:</c>/<c>md:</c>), <c>dark:</c>, and
     /// <c>group</c>/<c>peer</c> are tracked separately (they need a breakpoint / theme / structural
     /// signal source).
-    /// <para/>
-    /// Equivalent to Tailwind CSS's state-variant prefixes for users migrating from Tailwind.
     /// </remarks>
     public enum StyleVariantKind
     {

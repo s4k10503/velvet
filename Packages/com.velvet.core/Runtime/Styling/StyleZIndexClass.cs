@@ -4,8 +4,8 @@ namespace Velvet
 {
     // Parses Velvet's z-* utility classes into a resolved stacking value for FiberZLayerCoordinator. Mirrors
     // StyleGapClass/StyleGridClass: a cheap prefix-scan gate (HasZIndexClass) before the full TryExtract parse.
-    // Supports the fixed Tailwind scale (z-0/10/20/30/40/50), its negated form (-z-10 … -z-50, Tailwind's
-    // negative-value convention: the sign prefixes the whole class), and the arbitrary bracket form (z-[999],
+    // Supports the fixed named scale (z-0/10/20/30/40/50), its negated form (-z-10 … -z-50, the
+    // sign prefixes the whole class), and the arbitrary bracket form (z-[999],
     // z-[-5] — the bracket already carries a signed integer, so no outer "-" is recognized for it: z-index has
     // no separate magnitude/direction split the way a length utility does).
     internal static class StyleZIndexClass
@@ -63,7 +63,7 @@ namespace Velvet
             return found;
         }
 
-        // z-0/10/20/30/40/50 (Tailwind's fixed named scale), -z-0/10/20/30/40/50 (the negated form), or
+        // z-0/10/20/30/40/50 (the fixed named scale), -z-0/10/20/30/40/50 (the negated form), or
         // z-[<int>] (arbitrary, the bracket's own sign — z-[-5] is how a negative arbitrary value is spelled,
         // not -z-[5]). Anything else (including a non-numeric bracket, or a bare "z-" prefix that is not one
         // of these three shapes) returns false.
@@ -110,8 +110,8 @@ namespace Velvet
             return true;
         }
 
-        // The fixed non-arbitrary levels Tailwind's z-index utility defines. Anything outside this set needs
-        // the z-[N] bracket form (mirrors real Tailwind — z-15 is not a thing, z-[15] is).
+        // The fixed non-arbitrary levels the z-index utility scale defines. Anything outside this set needs
+        // the z-[N] bracket form (z-15 is not a thing, z-[15] is).
         private static bool TryNamedLevel(string suffix, out int level)
         {
             switch (suffix)

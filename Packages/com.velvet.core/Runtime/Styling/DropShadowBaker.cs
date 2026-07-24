@@ -96,12 +96,12 @@ namespace Velvet
                 Mathf.RoundToInt(skewXDeg * 100f));
             if (s_silhouetteCache.TryGetValue(key, out var tex) && tex != null)
             {
-                TouchSilhouette(key); // bump recency on a cache hit
+                TouchSilhouette(key);
                 return tex;
             }
 
             tex = BakeSilhouetteTexture(mat, corner, blur, spread, targetWidth, targetHeight, skewXDeg);
-            StoreSilhouette(key, tex); // insert + evict-if-over-cap (a null bake is not cached)
+            StoreSilhouette(key, tex);
             return tex;
         }
 
