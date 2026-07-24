@@ -457,6 +457,14 @@ namespace Velvet
 
         private void PatchMotion(VisualElement element, MotionNode oldNode, MotionNode newNode)
         {
+            // Mirror the create path's anchor-element recording: a presence keyed child that REUSES its
+            // element (a ghost's old-side reproduction, a cancelled exit's re-entry) reaches its Motion
+            // through this patch, and the expansion still needs the Motion's own element to dispatch
+            // variant enter/exit against.
+            if (ReferenceEquals(newNode, _ctx.PresenceAnchorMotion))
+            {
+                _ctx.PresenceAnchorMotionElement = element;
+            }
             // Effective label = own Animate, else the inherited MotionContext label (read BEFORE we push this
             // node's label for its own children).
             var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
@@ -563,13 +571,14 @@ namespace Velvet
             // identity — that field is set for every current AnimatePresence child, including a plain
             // PERSISTING one this swap must still drive when its ambient label changes, e.g. a coordinator
             // orchestrating a presence-managed child). A Motion's own resolved variant only actually changes
-            // (the precondition above) while ReferenceEquals(node, motion) && Variants != null, which is
-            // exactly GeneralPathReconciler's own isVariantMotion — and its explicit enter dispatch for that
-            // shape either runs on a fresh CREATE (never reaches PatchMotion) or, for a still-exiting /
-            // cancelled-exit reproduction, plays no competing animation of its own (CancelExit's reversal, or
-            // no-op) — so the one real overlap is a GHOST re-patched on a LATER render while still exiting
-            // (skipping the ghost dispatch's own CancelEnter, which only runs the FIRST time
-            // state.Exiting.Add(key) succeeds): IsExiting catches exactly that window.
+            // (the precondition above) while it carries Variants of its own — the shape whose enter/exit
+            // GeneralPathReconciler dispatches explicitly against this very element (isVariantMotion; a
+            // wrapped anchor Motion's dispatch also lands here, on the Motion's own element, not on its
+            // wrapper) — and that explicit dispatch either runs on a fresh CREATE (never reaches PatchMotion)
+            // or, for a still-exiting / cancelled-exit reproduction, plays no competing animation of its own
+            // (CancelExit's reversal, or no-op) — so the one real overlap is a GHOST re-patched on a LATER
+            // render while still exiting (skipping the ghost dispatch's own CancelEnter, which only runs the
+            // FIRST time state.Exiting.Add(key) succeeds): IsExiting catches exactly that window.
             if (newNode.Transition != null && !_ctx.StyleAnimationScheduler.IsExiting(element)
                 && !SequenceEqual(oldVariantClasses, newVariantClasses))
             {

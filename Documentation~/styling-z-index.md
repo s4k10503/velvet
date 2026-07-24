@@ -72,9 +72,10 @@ physically reorders the declaring children list itself. Instead:
   this way (the common "animated, top-most modal" shape) enters and exits against the *real*,
   relocated element for its whole lifetime, including a `PopLayout` exit's out-of-flow pin; a
   cancelled exit (the key re-added mid-animation) restores it the same way an ordinary, non-`z-*`
-  presence child does. The `variants` enter/exit *classes* still resolve only when the direct
-  presence child *is* the Motion itself (not this wrapped shape) — only the transition's timing and
-  its `onEnterComplete` callback are guaranteed for a wrapped Motion today.
+  presence child does. The `variants` enter/exit *classes* resolve against the wrapped Motion's own
+  element — the same element its resting `variants[animate]` classes live on — so the wrapped shape
+  animates identically to a direct Motion child. Style the Motion, not the wrapper, for anything
+  that should animate with the variants: the wrapper itself does not fade with a variant swap.
 - **Negative z never escapes the element's own parent's background.** UI Toolkit has exactly one
   paint traversal; a child can only paint after its own parent's background within that walk.
   Escaping "behind the parent" would mean hoisting the child to become the parent's own preceding

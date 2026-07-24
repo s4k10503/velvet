@@ -778,6 +778,14 @@ namespace Velvet
             // explicitly via DisposeFibersUnder — otherwise a same-key re-entry restores a zombie fiber whose
             // local state updates never re-render.
             public readonly Dictionary<string, VisualElement> ExitAnchors = new();
+
+            // The anchor Motion's OWN element per live key — the target its variant enter/exit classes land
+            // on. A ghost's emission reproduces the SAME committed node instance on both diff sides, so the
+            // patch that would re-record the element (PresenceAnchorMotionElement) bails on reference
+            // equality and never runs; this per-key memo, written whenever an emission DOES record the
+            // element, is what the ghost's exit dispatch falls back to. Entries retire with their key
+            // (exit-complete drop / instant removal) so a pooled element is never resurrected as a target.
+            public readonly Dictionary<string, VisualElement> MotionElements = new();
         }
 
         // Keyed by (boundary fiber, parent element, scoped position key). The parent element is part of the
@@ -805,6 +813,15 @@ namespace Velvet
         // deeper, sitting under a non-anchor wrapper, or a sibling keyed child) is not presence-managed at all
         // and must keep its own mount enter.
         internal MotionNode? PresenceAnchorMotion;
+
+        // The live element CreateElement / PatchMotion resolved for PresenceAnchorMotion during the
+        // current EmitPresenceChild expansion (same set/restore discipline). Needed because variant
+        // enter/exit classes must land on the Motion's OWN element — where the resting
+        // variants[animate] classes live — not on the keyed child's top-level anchor: for a wrapped
+        // Motion (a z-managed Div or a Provider between the presence and the Motion) those are
+        // different elements, and classes applied to the wrapper would double-apply against the
+        // Motion's resting set and be clobbered by the wrapper's own class patching.
+        internal VisualElement? PresenceAnchorMotionElement;
 
         // Removes all DOM-less AnimatePresence state keyed by boundary. Invoked from
         // ComponentRegistry when the boundary fiber is unregistered, so a boundary that

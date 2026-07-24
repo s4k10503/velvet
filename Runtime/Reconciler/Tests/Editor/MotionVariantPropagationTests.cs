@@ -158,11 +158,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_AMotionWithExit_When_ResolvingExitTransition_Then_ItAnimatesFromAnimateToExitVariant()
         {
-            // Arrange — a direct Motion child with an `exit` label.
+            // Arrange — a Motion with an `exit` label.
             MotionNode motion = V.Motion(variants: Fade, animate: "visible", exit: "hidden");
 
-            // Act — resolve the exit transition (node == motion: the direct-child case).
-            var cfg = GeneralPathReconciler.TryResolveVariantExit(motion, motion);
+            // Act
+            var cfg = GeneralPathReconciler.TryResolveVariantExit(motion);
 
             // Assert — it leaves the resting variants[animate] and animates to variants[exit].
             Assert.That((cfg.ExitFromClass, cfg.ExitToClass), Is.EqualTo(("opacity-100", "opacity-0")));
