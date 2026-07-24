@@ -232,6 +232,13 @@ namespace Velvet
                     var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
                     var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out var variantClasses);
                     var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
+                    // The presence expansion dispatches this anchor Motion's variant enter/exit against the
+                    // Motion's OWN element (the resting variant classes live here, not on a wrapper) — record
+                    // it for the expansion that is emitting this keyed child right now.
+                    if (ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
+                    {
+                        _ctx.PresenceAnchorMotionElement = element;
+                    }
                     // See the ElementNode case's comment on this same assignment (reserved userData
                     // slot for cross-panel synthetic event dispatch's VE-to-logical-fiber reverse index).
                     element.userData = _ctx.FiberStack.Current;

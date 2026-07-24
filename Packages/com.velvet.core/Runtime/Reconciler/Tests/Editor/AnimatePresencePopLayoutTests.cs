@@ -32,6 +32,7 @@ namespace Velvet.Tests
 
         private static SetStore s_store;
         private static AnimatePresenceMode s_mode;
+        private static bool s_classicTransition;
         private static readonly Dictionary<string, string> s_fade = new()
         {
             ["visible"] = "opacity-100",
@@ -48,6 +49,7 @@ namespace Velvet.Tests
             _window.Show();
             s_store = null;
             s_mode = AnimatePresenceMode.PopLayout;
+            s_classicTransition = false;
         }
 
         [TearDown]
@@ -102,13 +104,16 @@ namespace Velvet.Tests
             var children = new List<VNode>();
             foreach (var key in keys)
             {
+                // A classic preset when the test asks for one (its enter/exit dispatches against the keyed
+                // child's anchor — the shape that pins anchor-resolution regressions), else the variant
+                // trio (whose class swaps dispatch against the Motion's own element instead).
+                var motion = s_classicTransition
+                    ? V.Motion(className: "w-[60px] h-[24px]", transition: StyleTransition.Fade)
+                    : V.Motion(className: "w-[60px] h-[24px]",
+                        variants: s_fade, animate: "visible", exit: "hidden",
+                        transition: new StyleTransitionConfig { DurationSec = 0.3f });
                 children.Add(V.Div(name: "item-" + key, key: key.ToString(), className: "absolute z-10",
-                    children: new VNode[]
-                    {
-                        V.Motion(className: "w-[60px] h-[24px]",
-                            variants: s_fade, animate: "visible", exit: "hidden",
-                            transition: new StyleTransitionConfig { DurationSec = 0.3f }),
-                    }));
+                    children: new VNode[] { motion }));
             }
             return V.Div(name: "presence-host", className: "relative", children: new VNode[]
             {
@@ -180,6 +185,10 @@ namespace Velvet.Tests
             // Arrange — mount with "b" absent (its own Div/Motion never render this pass), mirroring the
             // "modal added to an already-mounted AnimatePresence" shape — the single most common
             // AnimatePresence+z use case — where the Initial flag's first-mount suppression does not apply.
+            // A CLASSIC preset drives the enter so the dispatch targets the keyed child's anchor — the
+            // very resolution this test pins (a variant Motion's enter targets the Motion's own element
+            // instead, sidestepping the anchor entirely).
+            s_classicTransition = true;
             using var store = new SetStore();
             s_store = store;
             store.Set("ac");

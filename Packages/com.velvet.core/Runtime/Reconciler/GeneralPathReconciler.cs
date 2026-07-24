@@ -969,7 +969,8 @@ namespace Velvet
                     {
                         EmitPresenceChildAsAnchor(node, FiberNodeFactory.FindFirstMotionDescendant(node),
                             key, presenceKey, result, isNewSide: false, parent, slotStart,
-                            oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
+                            oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit,
+                            out _);
                     }
                 }
                 return;
@@ -1082,6 +1083,10 @@ namespace Velvet
                             // (other retirements must spare live ghosts), and a still-listed entry would spare
                             // this sweep's own target. prevCommitted is a copy, so the loop is unaffected.
                             RemovePresenceCommittedEntry(state.Committed, key);
+                            // The key's leaves are leaving the DOM for good — its memoized Motion element
+                            // must retire with them, or a pooled element could be resurrected as a later
+                            // dispatch target.
+                            state.MotionElements.Remove(key);
                             FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundaryFiber);
                             continue;
                         }
@@ -1095,13 +1100,24 @@ namespace Velvet
                             removedInstantThisRender = true;
                             // Same as the finished-exit drop above: leave the committed set, then retire.
                             RemovePresenceCommittedEntry(state.Committed, key);
+                            // Same memoized-element retirement as the finished-exit drop above.
+                            state.MotionElements.Remove(key);
                             FiberTreeReturn.ReturnRetiredTree(FiberTreeReturn.NormalizeToArray(node), boundaryFiber);
                             continue;
                         }
 
                         var ghostAnchor = EmitPresenceChildAsAnchor(node, ghostMotionNode, key, presenceKey, result,
                             isNewSide: true, parent, slotStart,
-                            oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
+                            oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit,
+                            out var ghostMotionElement);
+                        // A ghost reproduces the SAME committed node on both diff sides, so the patch that
+                        // would re-record the Motion's element bails on reference equality — fall back to
+                        // the per-key memo the live emissions kept (see PresenceBoundaryState.MotionElements).
+                        if (commit != null)
+                        {
+                            if (ghostMotionElement != null) state.MotionElements[key!] = ghostMotionElement;
+                            else state.MotionElements.TryGetValue(key!, out ghostMotionElement);
+                        }
 
                         // Track the live ghost anchor so the drop path (exit complete) can dispose the subtree
                         // fibers under it — see DisposeExitedGhostFibers.
@@ -1110,6 +1126,12 @@ namespace Velvet
                         if (commit != null && ghostAnchor != null && state.Exiting.Add(key))
                         {
                             _ctx.StyleAnimationScheduler.CancelEnter(ghostAnchor);
+                            // A wrapped Motion's variant enter ran on its own element, not the anchor —
+                            // cancel there too (idempotent when both are the same element).
+                            if (ghostMotionElement != null && !ReferenceEquals(ghostMotionElement, ghostAnchor))
+                            {
+                                _ctx.StyleAnimationScheduler.CancelEnter(ghostMotionElement);
+                            }
                             if (presence.Mode == AnimatePresenceMode.PopLayout)
                             {
                                 PinExitingChildOutOfFlow(ghostAnchor);
@@ -1118,10 +1140,15 @@ namespace Velvet
                             var capturedState = state;
                             var capturedBoundary = boundaryFiber;
                             var capturedOnExitComplete = presence.OnExitComplete;
-                            // `exit`: when the direct Motion child declares an exit variant label, animate from the
-                            // resting variants[animate] to variants[exit]; otherwise use the transition's ExitFrom/ExitTo.
-                            var variantExit = TryResolveVariantExit(node, ghostMotionNode);
+                            // `exit`: when the resolved Motion declares an exit variant label, animate from the
+                            // resting variants[animate] to variants[exit]; otherwise use the transition's
+                            // ExitFrom/ExitTo. The variant swap targets the Motion's OWN element (where the
+                            // resting variant classes live), which for a wrapped Motion is not the anchor —
+                            // without a resolved element the variant path is unavailable and the classic,
+                            // anchor-targeted transition plays instead.
+                            var variantExit = ghostMotionElement != null ? TryResolveVariantExit(ghostMotionNode) : null;
                             var exitTransition = variantExit ?? ghostTransition;
+                            var exitTarget = variantExit != null ? ghostMotionElement! : ghostAnchor;
                             // For a variant exit the From classes ARE the resting variants[animate]; if this exit is
                             // cancelled (the key is re-added before it finishes) the element must return to that resting
                             // variant rather than be left without it (interrupt handling).
@@ -1183,7 +1210,7 @@ namespace Velvet
                                         + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
                                 }
                             }
-                            _ctx.StyleAnimationScheduler.PlayExit(ghostAnchor, exitTransition, () =>
+                            _ctx.StyleAnimationScheduler.PlayExit(exitTarget, exitTransition, () =>
                             {
                                 // See passSettled's own comment above the loop: a synchronous completion (fired
                                 // from inside this very PlayExit call) is queued instead of run inline.
@@ -1214,7 +1241,15 @@ namespace Velvet
                     var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
                     var anchor = EmitPresenceChildAsAnchor(node, motion, key, presenceKey, result, isNewSide: true,
                         parent, slotStart, oldFibers, newFibers, providers, oldProvidersForPairing,
-                        ref newProviderIndex, commit);
+                        ref newProviderIndex, commit, out var motionElement);
+                    // Same memo discipline as the ghost path: record when this emission resolved the
+                    // element (create or genuine patch), fall back to the memo when a no-op re-render's
+                    // reference-equal patch bailed before recording.
+                    if (commit != null)
+                    {
+                        if (motionElement != null) state.MotionElements[key!] = motionElement;
+                        else state.MotionElements.TryGetValue(key!, out motionElement);
+                    }
 
                     if (commit != null && anchor != null)
                     {
@@ -1252,6 +1287,12 @@ namespace Velvet
                         if (wasExiting)
                         {
                             _ctx.StyleAnimationScheduler.CancelExit(anchor);
+                            // A wrapped Motion's variant exit ran on its own element, not the anchor — the
+                            // cancel (whose reversal restores the resting variant) must land there too.
+                            if (motionElement != null && !ReferenceEquals(motionElement, anchor))
+                            {
+                                _ctx.StyleAnimationScheduler.CancelExit(motionElement);
+                            }
                             if (presence.Mode == AnimatePresenceMode.PopLayout)
                             {
                                 // The anchor's OWN class list, not motion's: PinExitingChildOutOfFlow pinned
@@ -1271,13 +1312,16 @@ namespace Velvet
                                 // very first mount; later additions always animate.
                                 if (!firstRender || presence.Initial)
                                 {
-                                    // A variant Motion (direct child carrying variants + animate) manages its resting
-                                    // state through variant classes: variants[animate] is applied at mount and restored
-                                    // by CancelExit on an exit-cancel. So it only ever plays a VARIANT enter (when an
-                                    // `initial` label is declared) and must NOT fall through to the classic preset
-                                    // enter — the default StyleTransition.Fade would replay a fade-in on top of the
-                                    // resting variant on every add / interrupt.
-                                    var isVariantMotion = ReferenceEquals(node, motion)
+                                    // A variant Motion (carrying variants + animate) manages its resting state
+                                    // through variant classes: variants[animate] is applied at mount and restored
+                                    // by CancelExit on an exit-cancel. So it only ever plays a VARIANT enter (when
+                                    // an `initial` label is declared) and must NOT fall through to the classic
+                                    // preset enter — the default StyleTransition.Fade would replay a fade-in on
+                                    // top of the resting variant on every add / interrupt. The variant swap
+                                    // targets the Motion's OWN element (where those resting classes live), which
+                                    // for a wrapped Motion is not the anchor; without a resolved element the
+                                    // variant path is unavailable and the classic enter plays on the anchor.
+                                    var isVariantMotion = motionElement != null
                                         && motion.Variants != null && motion.Animate != null;
                                     // A cancelled exit reproduces the SAME still-attached element —
                                     // not a first mount — so `initial` does not reapply: CancelExit
@@ -1291,7 +1335,7 @@ namespace Velvet
                                         // `initial`: enter from variants[initial] to variants[animate]
                                         // (kept as the persistent resting state).
                                         var t = motion.Transition;
-                                        _ctx.StyleAnimationScheduler.PlayVariantEnter(anchor, fromClasses, toClasses,
+                                        _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
                                             t, motion.OnEnterComplete, presence.StaggerDelaySec(visualIndex, newKeyed.Count));
                                     }
                                     else if (isVariantMotion)
@@ -1570,6 +1614,11 @@ namespace Velvet
         // Saved and RESTORED (not just cleared) around the call so a nested AnimatePresence inside this keyed
         // child's own subtree — which sets its own anchor for ITS keyed children — does not leave the outer
         // anchor cleared once its own expansion returns and this child's subtree keeps unwinding.
+        // anchorMotionElement: the anchor Motion's own live element, as recorded by CreateElement /
+        // PatchMotion during this very expansion — the target the caller's variant enter/exit classes must
+        // land on (the resting variant classes live there, not on a wrapper anchor). Null when the emission
+        // did not reach the Motion (or there is none); callers fall back to the classic, anchor-targeted
+        // transition then.
         private VisualElement? EmitPresenceChildAsAnchor(
             VNode? node,
             MotionNode? anchorMotion,
@@ -1584,18 +1633,24 @@ namespace Velvet
             List<ContextProviderNode>? providers,
             List<ContextProviderNode>? oldProvidersForPairing,
             ref int newProviderIndex,
-            GeneralCommitState? commit)
+            GeneralCommitState? commit,
+            out VisualElement? anchorMotionElement)
         {
             var previousAnchor = _ctx.PresenceAnchorMotion;
+            var previousAnchorElement = _ctx.PresenceAnchorMotionElement;
             _ctx.PresenceAnchorMotion = anchorMotion;
+            _ctx.PresenceAnchorMotionElement = null;
             try
             {
-                return EmitPresenceChild(node, key, presenceScope, result, isNewSide, parent, slotStart,
+                var emitted = EmitPresenceChild(node, key, presenceScope, result, isNewSide, parent, slotStart,
                     oldFibers, newFibers, providers, oldProvidersForPairing, ref newProviderIndex, commit);
+                anchorMotionElement = _ctx.PresenceAnchorMotionElement;
+                return emitted;
             }
             finally
             {
                 _ctx.PresenceAnchorMotion = previousAnchor;
+                _ctx.PresenceAnchorMotionElement = previousAnchorElement;
             }
         }
 
@@ -1623,12 +1678,13 @@ namespace Velvet
 
         // Builds the exit transition for an `exit` variant: the element animates from its resting
         // variants[Animate] (ExitFromClass) to variants[Exit] (ExitToClass), keeping this Motion's
-        // transition timing, before unmount. Returns null (caller falls back to the classic transition) unless this
-        // is the direct Motion child (node == motion, so anchor IS its element) and it sets its own
-        // Exit + Animate + Variants with a non-empty exit class.
-        internal static StyleTransitionConfig? TryResolveVariantExit(VNode? node, MotionNode? motion)
+        // transition timing, before unmount. Returns null (caller falls back to the classic transition)
+        // unless the Motion sets its own Exit + Animate + Variants with a non-empty exit class. The caller
+        // supplies the element the swap targets — the Motion's own, so a wrapped Motion's exit variant
+        // animates the same element its resting variant classes live on.
+        internal static StyleTransitionConfig? TryResolveVariantExit(MotionNode? motion)
         {
-            if (!ReferenceEquals(node, motion) || motion?.Exit == null || motion.Animate == null || motion.Variants == null
+            if (motion?.Exit == null || motion.Animate == null || motion.Variants == null
                 || !motion.Variants.TryGetValue(motion.Exit, out var exitClass) || string.IsNullOrEmpty(exitClass))
             {
                 return null;
