@@ -77,7 +77,7 @@ namespace Velvet
 
         /// <summary>
         /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense boundary that
-        /// is currently showing its fallback. Set by <c>ChildReconciler.ExpandSuspenseInline</c> when
+        /// is currently showing its fallback. Set by <c>GeneralPathReconciler.ExpandSuspenseInline</c> when
         /// the boundary suspends and cleared when it reveals. <see cref="FiberWorkLoop.FlushState"/>'s
         /// offscreen guard defers a lane flush for offscreen fibers (their slot is occupied by the
         /// fallback) while still allowing the visible fallback subtree to flush (the
@@ -218,7 +218,6 @@ namespace Velvet
 
         /// <summary>
         /// Scheduling state holding the Lane queue / Transition state.
-        /// A minimal model of the per-fiber and per-subtree pending-update lane bitsets.
         /// Allocated only on demand (lazy init preserves zero-allocation for most components).
         /// </summary>
         internal LaneState? Lanes { get; set; }
@@ -341,7 +340,7 @@ namespace Velvet
         /// inline-mounted mode (<see cref="IsInlineMounted"/>=true) it is a parent VE shared with
         /// sibling fibers, with the sub-range
         /// <c>[<see cref="MountSlotStart"/>, <see cref="MountSlotStart"/> + <see cref="MountSlotCount"/>)</c>
-        /// owned by this fiber. The host VisualElement backing this fiber.
+        /// owned by this fiber.
         /// </summary>
         internal UnityEngine.UIElements.VisualElement? MountPoint { get; set; }
 

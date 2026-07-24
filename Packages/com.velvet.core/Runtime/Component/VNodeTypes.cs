@@ -71,7 +71,6 @@ namespace Velvet
 
         /// <summary>
         /// Function that wraps the element with a wrapper container.
-        /// Input: the created VisualElement → output: the wrapper VisualElement.
         /// The Reconciler places the wrapper in the DOM and tracks the inner real element in a dictionary for patching.
         /// Primary use case: wrapping a button with a DropShadow container.
         /// </summary>
@@ -93,8 +92,9 @@ namespace Velvet
         /// <summary>
         /// Callback invoked when the enter animation completes.
         /// Fires for a variant <see cref="Initial"/>/<see cref="Animate"/> enter whether this Motion sits under
-        /// AnimatePresence or mounts standalone. Invoked immediately when StyleTransitionConfig.None.
-        /// When initial=false, fires synchronously inside CreateElement.
+        /// AnimatePresence or mounts standalone. Invoked immediately when StyleTransitionConfig.None,
+        /// and also synchronously inside Reconcile when the enter animation is skipped entirely (a
+        /// presence-suppressed first mount, or a variant Motion with no resolvable initial state).
         /// On asynchronous animation completion via schedule.Execute, called outside of Reconcile, so SetState()
         /// is safe.
         /// </summary>
@@ -117,7 +117,7 @@ namespace Velvet
         /// <see cref="Variants"/>, the enter starts the element at <c>variants[Initial]</c> and transitions to
         /// <c>variants[Animate]</c> (which it then rests at, persistently) using the <see cref="Transition"/>
         /// timing. Works the same whether this Motion is the direct child of an AnimatePresence or mounts
-        /// standalone — Framer parity: <c>initial</c>/<c>animate</c> apply to any motion.* component; AnimatePresence
+        /// standalone — <c>initial</c>/<c>animate</c> apply to any Motion node; AnimatePresence
         /// is only required for <see cref="Exit"/>. Null = no variant initial state.
         /// </summary>
         public string? Initial { get; init; }
@@ -133,7 +133,7 @@ namespace Velvet
         public string? Exit { get; init; }
 
         /// <summary>
-        /// Shared-element layout animation identity (Framer Motion's <c>layoutId</c> parity). When a Motion
+        /// Shared-element layout animation identity. When a Motion
         /// carrying this same string patches at a resolved layout rect (position and/or size) different from
         /// the rect the SAME id last settled at — including a different physical element entirely, e.g. after
         /// a same-key type flip or a move to a different parent — it tweens from the old rect to the new one
@@ -245,7 +245,7 @@ namespace Velvet
         public required Func<VNode> Factory { get; init; }
 
         /// <summary>
-        /// Dependency array. Compared element-wise with <c>Object.is</c> semantics
+        /// Dependency array. Compared element-wise with identity-equality semantics
         /// (<see cref="ObjectIs.AreEqualDeps"/>): reference-type elements by identity (a fresh-but-equal record
         /// counts as changed), strings/primitives by value, floats by raw bit pattern. NOT a structural
         /// <c>SequenceEqual</c> — there is no recursion into element contents.
@@ -342,7 +342,6 @@ namespace Velvet
     /// <summary>
     /// How an <see cref="AnimatePresenceNode"/> sequences exit and enter when its keyed children change.
     /// </summary>
-    /// <remarks>Equivalent to Framer Motion's <c>AnimatePresence mode</c> prop for users migrating from Framer Motion.</remarks>
     public enum AnimatePresenceMode
     {
         /// <summary>
@@ -400,14 +399,12 @@ namespace Velvet
         /// A fixed delay (seconds) added before ANY child animates. Combined with
         /// the per-child stagger: child i is delayed by <c>DelayChildrenSec + StaggerSec * staggerIndex(i)</c>.
         /// </summary>
-        /// <remarks>Equivalent to Framer Motion's <c>delayChildren</c> for users migrating from Framer Motion.</remarks>
         public float DelayChildrenSec { get; init; }
 
         /// <summary>
         /// Direction the stagger sweeps. <c>1</c> (default) staggers
         /// first-to-last; <c>-1</c> staggers last-to-first (the last child animates first).
         /// </summary>
-        /// <remarks>Equivalent to Framer Motion's <c>staggerDirection</c> for users migrating from Framer Motion.</remarks>
         public int StaggerDirection { get; init; } = 1;
 
         /// <summary>
@@ -433,7 +430,6 @@ namespace Velvet
         /// Not fired when an exit is cancelled by the key re-entering,
         /// nor for children removed without an exit animation.
         /// </summary>
-        /// <remarks>Equivalent to Framer Motion's <c>onExitComplete</c> for users migrating from Framer Motion.</remarks>
         public Action? OnExitComplete { get; init; }
     }
 
