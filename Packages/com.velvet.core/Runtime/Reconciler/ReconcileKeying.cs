@@ -87,9 +87,6 @@ namespace Velvet
         // CanPatch decision — whether an old and new node share enough identity to patch the existing
         // element in place rather than remove + recreate. Shared by the keyed/indexed fast path and the
         // general-path CommitLeaf.
-        // Same type (both ElementNode) AND same ElementType AND matching wrapper presence → true.
-        // Same type (both TextNode) → true.
-        // Otherwise → false.
         internal static bool CanPatch(VNode? oldNode, VNode? newNode)
         {
             if (oldNode == null || newNode == null)

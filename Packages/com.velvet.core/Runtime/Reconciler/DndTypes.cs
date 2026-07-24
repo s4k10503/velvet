@@ -20,11 +20,10 @@ namespace Velvet
     /// <summary>
     /// Constraint before a press becomes a drag, so clicks keep working on draggable elements.
     /// <see cref="Distance"/> is panel px of travel before activation. A <see cref="DelaySec"/> &gt; 0
-    /// switches to hold-to-drag mode (dnd-kit's either/or): activation happens after the hold, aborted if
-    /// the observed travel exceeds <see cref="Tolerance"/> first. The default is Distance = 4 — a
-    /// documented deviation from dnd-kit's unconstrained PointerSensor default, because a zero threshold
-    /// would race UI Toolkit's own Clickable capture-at-down and kill clicks on draggable buttons;
-    /// <see cref="None"/> restores the raw dnd-kit behavior.
+    /// switches from distance-based to hold-to-drag activation: activation happens after the hold,
+    /// aborted if the observed travel exceeds <see cref="Tolerance"/> first. The default is Distance = 4,
+    /// not 0, because a zero threshold would race UI Toolkit's own Clickable capture-at-down and kill
+    /// clicks on draggable buttons; <see cref="None"/> restores unconstrained (zero-threshold) activation.
     /// </summary>
     public sealed record DragActivation(float Distance = 4f, float DelaySec = 0f, float Tolerance = 5f)
     {
@@ -79,8 +78,8 @@ namespace Velvet
     public readonly struct DndCollisionQuery
     {
         /// <summary>The source's activation-time <c>worldBound</c> translated by the current pointer
-        /// delta (dnd-kit's translated-initial-rect semantics) — correct even under
-        /// <see cref="DragMovement.None"/>, where the source element itself never moves.</summary>
+        /// delta — correct even under <see cref="DragMovement.None"/>, where the source element itself
+        /// never moves.</summary>
         public Rect ActiveRect { get; }
         /// <summary>Current pointer position, panel space.</summary>
         public Vector2 PointerPosition { get; }
@@ -99,7 +98,7 @@ namespace Velvet
     public delegate string? DndCollisionDetection(in DndCollisionQuery query);
 
     /// <summary>
-    /// Drag-and-drop scope configuration — dnd-kit's <c>DndContext</c> props. All callbacks are optional;
+    /// Drag-and-drop scope configuration. All callbacks are optional;
     /// <see cref="CollisionDetection"/> null means <see cref="DndCollisions.RectIntersection"/>;
     /// <see cref="Activation"/> is the scope-wide default a per-draggable override wins over.
     /// </summary>
@@ -111,7 +110,7 @@ namespace Velvet
         DndCollisionDetection? CollisionDetection = null,
         DragActivation? Activation = null);
 
-    /// <summary>Drag-source configuration — dnd-kit's <c>useDraggable</c> options. The element carrying
+    /// <summary>Drag-source configuration. The element carrying
     /// the setting is the drag node itself.</summary>
     public sealed record DraggableSettings(
         string Id,
@@ -121,10 +120,10 @@ namespace Velvet
         DragActivation? Activation = null,
         string? WhileDraggingClass = null);
 
-    /// <summary>Drop-target configuration — dnd-kit's <c>useDroppable</c> options.
+    /// <summary>Drop-target configuration.
     /// <see cref="WhileOverClass"/> applies while this target is the winning collision;
     /// <see cref="WhileDragActiveClass"/> applies to every enabled candidate while any drag is live in
-    /// scope (dnd-kit's droppable <c>active</c> cue).</summary>
+    /// scope.</summary>
     public sealed record DroppableSettings(
         string Id,
         object? Data = null,

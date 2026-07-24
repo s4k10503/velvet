@@ -17,8 +17,6 @@ namespace Velvet
             _ctx = ctx;
         }
 
-        // Returns the inner real element when the input is a wrapper container.
-        // Otherwise returns the input unchanged.
         internal VisualElement ResolveWrapped(VisualElement domElement)
             => _ctx.WrapperToInnerMap.GetValueOrDefault(domElement, domElement);
 
@@ -49,7 +47,7 @@ namespace Velvet
         // are paint-only; this wrapper is not): only flexGrow/flexShrink are forwarded — an inner
         // with a percentage width in a row parent, or one relying on the parent's default
         // cross-axis stretch, sizes against the wrapper instead of the real parent and can
-        // shrink-wrap. Documented in the velvet-ui skill; fixing it for one layer must fix both.
+        // shrink-wrap. Both wrapper layers share this limitation, so fixing it for one must fix both.
         internal static VisualElement CreatePassthroughWrapper(string ussClass)
         {
             var wrapper = new VisualElement
@@ -80,8 +78,8 @@ namespace Velvet
                 return;
             }
             var index = parent.IndexOf(wrapper);
-            element.RemoveFromHierarchy(); // out of the wrapper
-            wrapper.RemoveFromHierarchy(); // wrapper leaves the parent
+            element.RemoveFromHierarchy();
+            wrapper.RemoveFromHierarchy();
             parent.Insert(index, element);
         }
 

@@ -68,7 +68,7 @@ namespace Velvet
 
         #endregion
 
-        #region For DOM-less AnimatePresence (ChildReconciler.ExpandAnimatePresenceInline) + BuildKeyedMapCopy
+        #region For DOM-less AnimatePresence (GeneralPathReconciler.ExpandAnimatePresenceInline) + BuildKeyedMapCopy
 
         private readonly ClearablePool<List<(string key, VNode node)>> _presenceListPool = new(l => l.Clear());
         private readonly ClearablePool<HashSet<string>> _presenceKeyPool = new(s => s.Clear());

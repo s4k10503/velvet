@@ -3,8 +3,8 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Responsible for removing DOM elements and releasing their resources.
-    // Recursively cleans up event bindings, components, animations, and descendants.
+    // Element-exit teardown: every path that removes an element from the DOM funnels through here so
+    // the ~25 per-element resource categories are released exactly once (see CleanupElementResources).
     internal sealed class FiberElementCleaner
     {
         private readonly ReconcilerContext _ctx;
@@ -151,7 +151,6 @@ namespace Velvet
             }
         }
 
-        // Recursively cleans up the element's events, components, animations, and descendants.
         // DOM operations (RemoveAt / RemoveFromHierarchy) are performed by the caller.
         public void CleanupElement(VisualElement element)
         {

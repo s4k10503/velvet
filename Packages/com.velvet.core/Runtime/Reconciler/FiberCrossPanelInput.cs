@@ -44,12 +44,13 @@ namespace Velvet
     //     is an ordinary, already-live user element that normally outlives this reconciler, unlike a
     //     framework-owned host root.
     //
-    // Mirrors React's own root-level event delegation (a single listener per event type at the DOM
-    // root, walking Fiber.return instead of the DOM to build the dispatch order — see
-    // DOMPluginEventSystem.js's accumulateSinglePhaseListeners) with one deliberate adaptation: Velvet
-    // does NOT move every event to root-level delegation. Ordinary same-panel bubbling stays exactly as
-    // UI Toolkit's own native dispatch already does it (FiberEventBindingManager.Bind's direct
-    // RegisterCallback<T> registrations on each element), since that already agrees with the logical
+    // Uses a single root-level listener per event type that walks the physical parent chain,
+    // redirecting through a fiber's logical parent only at a nested portal / world-space boundary
+    // (see NextLogicalAncestor), to build its dispatch order, but with one
+    // deliberate adaptation: Velvet does NOT move every event to root-level delegation. Ordinary
+    // same-panel bubbling stays exactly as UI Toolkit's own native dispatch already does it
+    // (FiberEventBindingManager.Bind's direct RegisterCallback<T> registrations on each element),
+    // since that already agrees with the logical
     // tree everywhere except at a portal/world-space boundary. This dispatcher only takes over at the
     // seams where physical bubbling structurally cannot reach the logical chain: a host panel's root
     // (nothing physical above it at all), and a same-panel registry target (something physical above

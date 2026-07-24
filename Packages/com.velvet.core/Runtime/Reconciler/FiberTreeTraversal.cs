@@ -8,8 +8,6 @@ namespace Velvet
     // reliably even across memoized subtrees.
     internal static class FiberTreeTraversal
     {
-        // Generic visitor that walks fibers under root via iterative DFS and applies
-        // visitor to each fiber.
         // Uses an explicit Stack rather than recursion to avoid StackOverflowException on deeply nested
         // component trees. root itself is also visited.
         // Sibling nodes are processed in reverse order due to Stack LIFO, but all current callers
@@ -32,10 +30,8 @@ namespace Velvet
             }
         }
 
-        // Walks fibers under root and schedules every consumer that registered a
-        // dependency on contextKey (via UseContext) for re-render.
-        // Only fibers that read the changed context are
-        // scheduled. Each scheduled consumer re-renders later (setState lane) and reads the new value LIVE
+        // Schedules for re-render every fiber that registered a dependency on contextKey (via UseContext).
+        // Each scheduled consumer re-renders later (setState lane) and reads the new value LIVE
         // from the context cursor — the spine of enclosing Providers is reconstructed onto the cursor by
         // FiberContextSpine before its body runs — so no per-fiber snapshot is distributed
         // here. The reconstruction always reflects the nearest Provider, so an inner Provider that masks

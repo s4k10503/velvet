@@ -53,8 +53,8 @@ namespace Velvet
             // re-run; the state slot already holds the new value by the time this is called. The
             // gate is the render-phase window, NOT IsRendering: a write landing later in the same
             // flush (a callback ref invoked during the patch, an event dispatched from a detach) is
-            // a commit-phase update that falls through to the regular schedule below — React's
-            // "setState in a commit schedules a follow-up pass" — where the flag would be consumed
+            // a commit-phase update that falls through to the regular schedule below (a state update
+            // issued during commit schedules a follow-up pass) — where the flag would be consumed
             // by nobody and cleared, silently dropping the write. A setter for a *different* fiber
             // that fires during this fiber's render also falls through.
             if (fiber.IsInRenderPhase && ReferenceEquals(FiberAmbientStack.Current, fiber))
@@ -97,7 +97,7 @@ namespace Velvet
 
             fiber.LaneQueue.Add(priority);
 
-            // When adding the Transition Lane anew, reset the starvation counter.
+            // When adding the Transition Lane, reset the starvation counter (also on a coalesced re-add).
             if (priority == FiberUpdatePriority.Transition)
             {
                 fiber.TransitionStarvationCounter = 0;

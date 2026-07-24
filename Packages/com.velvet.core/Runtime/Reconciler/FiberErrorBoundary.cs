@@ -10,19 +10,14 @@ namespace Velvet
     // plumbing it relies on stays on FiberRenderer (the render core) and is called back into here.
     internal static class FiberErrorBoundary
     {
-        // Hook for when an exception occurs during Render() or Reconcile.
-        // Walks up the Fiber tree to find the nearest Error Boundary and attempts to catch.
-        // If no boundary catches it, logs via Debug.LogException.
-        // Error Boundaries catch only errors in their child subtree.
-        // A fiber's own Render() exception is not caught by itself, and is delegated to a parent (or higher) boundary.
+        // Error Boundaries catch only errors in their child subtree — a fiber's own Render() exception is
+        // not caught by itself, and is delegated to a parent (or higher) boundary instead.
         internal static void OnRenderError(ComponentFiber fiber, Exception exception)
             => ComponentBoundarySearch.PropagateException(fiber, exception);
 
-        // Fallback path for a function-style Error Boundary. Invokes the factory registered via
-        // Hooks.UseFallback within the Render of a [Component(IsErrorBoundary = true)]
-        // component and returns the fallback VNode. Builds an ErrorInfo with the
-        // throwing fiber's ComponentStack. Returns null if no factory is registered,
-        // propagating to a higher boundary.
+        // Fallback path for a function-style Error Boundary: invokes the factory registered via
+        // Hooks.UseFallback within the Render of a [Component(IsErrorBoundary = true)] component.
+        // Returns null when no factory is registered, so the caller keeps propagating to a higher boundary.
         private static VNode? RenderFallback(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception)
         {
             if (fiber?.FallbackFactory == null) return null;
@@ -109,16 +104,13 @@ namespace Velvet
 
         // Attempts to display a fallback UI via this fiber's own RenderFallback; returns true on success.
         // Delegation to a parent boundary is performed by the caller (ComponentBoundarySearch.PropagateException)
-        // by walking the Fiber tree.
-        // Opt-in contract: only components with IsErrorBoundary=true are eligible to catch.
-        // Returns false unless the candidate fiber has IsErrorBoundary=true.
+        // by walking the Fiber tree. Opt-in contract: only a fiber with IsErrorBoundary=true is eligible
+        // to catch — every other candidate returns false immediately, even if reached via some other path.
         // fiber: Candidate Error Boundary fiber.
         // exception: Exception thrown by a descendant render that should be caught.
         // True when the fallback was rendered successfully and the exception is consumed; false to continue propagation.
         public static bool TryCatch(ComponentFiber fiber, ComponentFiber? throwingFiber, Exception exception)
         {
-            // Opt-in contract: even if a Fiber returning IsErrorBoundary=false has TryCatch invoked through some
-            // path, it does not catch.
             if (!fiber.IsErrorBoundary || fiber.Reconciler == null) return false;
             // A fiber whose own fallback content throws re-enters here (the content's per-fiber render
             // catch routes back to this same boundary via ComponentBoundarySearch.PropagateException).

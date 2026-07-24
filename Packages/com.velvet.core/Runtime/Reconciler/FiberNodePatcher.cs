@@ -556,9 +556,9 @@ namespace Velvet
             // Runtime variant swap: PatchBaseElement above already synced the class list to the final resting
             // state (appliedNew) via a plain, instant diff. When the effective label actually changed WHICH
             // variant classes are applied AND this Motion declares a Transition, replay that same swap as a
-            // VISUAL tween on the scheduler instead — Framer applies `transition` to every animate update, not
-            // just the first. A null Transition keeps today's plain, instant diff (Velvet does not imitate
-            // Framer's implicit default transition).
+            // VISUAL tween on the scheduler instead — a transition should apply to every animate update, not
+            // just the first. A null Transition keeps today's plain, instant diff (Velvet applies no implicit
+            // default transition).
             // Gated off an element the scheduler already treats as EXITING (not off PresenceAnchorMotion
             // identity — that field is set for every current AnimatePresence child, including a plain
             // PERSISTING one this swap must still drive when its ambient label changes, e.g. a coordinator
@@ -589,12 +589,12 @@ namespace Velvet
             // (absent by this rule) binding.
             _appliers.ApplyRingOnPatch(element, appliedNew, suppress: false, allowWrap: false);
 
-            // Shared-element layout animation (Framer's layoutId): independent of the variant swap
+            // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so
             // it fires whether or not this patch also changed Variants/Animate. Falls back to
             // StyleTransitionConfig's own documented spring defaults (Stiffness 100 / Damping 10 /
             // Mass 1) when this Motion declares no Transition, since a layoutId tween needs SOME spring
-            // shape to animate with and Velvet does not imitate Framer's implicit default transition
+            // shape to animate with and Velvet applies no implicit default transition
             // for the variant swap either.
             if (newNode.LayoutId != null)
             {
@@ -929,7 +929,7 @@ namespace Velvet
         // FiberNodeFactory.CreateElement's ContextProviderNode case. Used when the
         // Provider is reached as a node-typed keyed entry (e.g. inside an AnimatePresence subtree,
         // or as a MemoNode's resolved inner) — paths where
-        // ChildReconciler.ExpandInlineRecursive's inline Provider expansion does not apply.
+        // GeneralPathReconciler.ExpandInlineRecursive's inline Provider expansion does not apply.
         internal void PatchContextProvider(VisualElement wrapper, ContextProviderNode oldNode, ContextProviderNode newNode)
         {
             newNode.PushContext(_ctx.ComponentContextStack);
