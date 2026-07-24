@@ -9,16 +9,13 @@ namespace Velvet
 {
 
     // Parses utility-class arbitrary-value syntax (e.g. h-[15%], min-w-[60px], -mt-[20px],
-    // text-[#fff], bg-[#1e1e1e]) and applies the result as an inline style.
-    // Uses inline styles instead of USS classes to reduce reliance on USS files.
-    // text-[...] is overloaded: a color value sets the text color, otherwise the
+    // text-[#fff], bg-[#1e1e1e]) and applies the result as an inline style. Resolved to inline (not USS
+    // classes) because an arbitrary bracket value is unbounded — there is no USS selector that could be
+    // pre-declared for it. text-[...] is overloaded: a color value sets the text color, otherwise the
     // value is a font size. bg-[#color] sets the background color (the bg-[addr:...] image
     // form is handled by StyleBackgroundImageResolver).
     internal static class StyleArbitraryValueResolver
     {
-        // Determines whether className matches an arbitrary-value pattern (prefix-[value]) and returns the parsed result.
-        // Negative values (-mt-[20px]) are also supported.
-        // Parses using IndexOf + string operations rather than regex for speed.
         // Strips the important modifier and reports whether it was present: a leading '!' (!bg-red-500)
         // or a trailing '!' (bg-red-500!). The bare core is returned so the caller routes
         // it normally; when important, the caller elevates the (inline-resolvable) utility to the Important
@@ -66,6 +63,7 @@ namespace Velvet
         public static bool IsInlineResolved(string core)
             => core.IndexOf('[') >= 0 || StyleColorValueParser.HasColorOpacityModifier(core) || MayBeStaticScale(core);
 
+        // Parses using IndexOf + string operations rather than regex — a per-class hot path.
         public static bool TryParse(string className, out ArbitraryStyle result)
         {
             result = default;
@@ -105,7 +103,6 @@ namespace Velvet
                 return false; // prefix is at least 2 chars (e.g. "h-").
             }
 
-            // The last character must be ']'.
             if (className.Length < bracketStart + 2 || className[className.Length - 1] != ']')
             {
                 return false;
@@ -934,8 +931,6 @@ namespace Velvet
         // skipped. An empty result clears the inline filter.
         private static readonly ArbitraryProperty[] s_filterOrder =
         {
-            // Canonical CSS filter order (blur, brightness, contrast, grayscale, hue-rotate, invert,
-            // saturate, sepia) so stacked filters compose identically to the browser.
             ArbitraryProperty.FilterBlur,
             ArbitraryProperty.FilterBrightness,
             ArbitraryProperty.FilterContrast,
@@ -1453,7 +1448,6 @@ namespace Velvet
             }
             else
             {
-                // No unit suffix → Pixel.
                 parsed = float.TryParse(
                     valueStr,
                     NumberStyles.Float,

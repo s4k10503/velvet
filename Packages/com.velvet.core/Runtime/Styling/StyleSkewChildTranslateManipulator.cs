@@ -146,7 +146,6 @@ namespace Velvet
                 return;
             }
 
-            // Relinquish any tracked child the manipulator no longer owns before re-seating the rest.
             DropUnmanaged(container);
 
             var count = container.childCount;

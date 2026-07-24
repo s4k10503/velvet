@@ -118,7 +118,8 @@ namespace Velvet
                 return;
             }
 
-            // Reset any previously-bordered element that is no longer a current child before re-applying.
+            // Must run before _bordered.Clear() below: it reads the pre-clear _bordered list to find children
+            // that left the container.
             ResetStaleBordered(container);
 
             var edge = _spec.Axis == DivideAxis.Horizontal ? Edge.Left : Edge.Top;
@@ -237,7 +238,6 @@ namespace Velvet
             }
         }
 
-        // Detaches (and drops) a child's dashed-divider paint, if any.
         private void DetachDash(VisualElement child)
         {
             if (_ctx.DivideDashBindings.TryGetValue(child, out var binding))

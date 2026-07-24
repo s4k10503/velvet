@@ -46,7 +46,7 @@ namespace Velvet
         // The DEFAULT ring is 3px blue-500; the bare `ring` and a width-only `ring-2` use it (color applied at
         // 0.5 alpha, see DefaultRingColor). An explicit `ring-<color>` is opaque and does not go through here.
         private const float DefaultRingWidth = 3f;
-        // The default ring's alpha. Tailwind renders a ring with no explicit color at blue-500 / 0.5, not full
+        // The default ring's alpha. A ring with no explicit color renders at blue-500 / 0.5, not full
         // opacity; an explicit ring color stays opaque, and the outline default (below) is unaffected.
         private const float DefaultRingAlpha = 0.5f;
         // Bare `outline` (outline-style: solid) — Velvet picks a thin default width; outline-{N} overrides.
@@ -71,7 +71,7 @@ namespace Velvet
             return s_blue500;
         }
 
-        // A color-less ring: blue-500 at 0.5 alpha (Tailwind's default --tw-ring-color).
+        // A color-less ring: blue-500 at 0.5 alpha.
         private static Color DefaultRingColor()
         {
             var c = DefaultBandColor();

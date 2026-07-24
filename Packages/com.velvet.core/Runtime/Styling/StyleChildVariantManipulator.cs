@@ -126,8 +126,8 @@ namespace Velvet
                 return;
             }
 
-            // Reset any previously-applied element that is no longer a current child before re-applying, so a
-            // child moved or removed out of this container drops the class / inline style it carried.
+            // Must run before _applied.Clear() below: it reads the pre-clear _applied list to find children
+            // that left the container.
             ResetStaleApplied(container);
             _applied.Clear();
 

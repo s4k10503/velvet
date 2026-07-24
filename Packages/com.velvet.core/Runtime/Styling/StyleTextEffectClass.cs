@@ -47,12 +47,12 @@ namespace Velvet
     // Which unit a resolved Leading value carries: Em multiplies whatever font-size is in effect at the
     // point the rich-text tag is generated (every named leading-* preset); Pixel is an absolute length
     // (leading-[Npx]). Unlike TextTransformKind/TextDecorationKind/WhitespaceCollapseKind, this axis has
-    // deliberately no explicit-reset member: Tailwind defines no leading-auto utility below leading-none, and
-    // every named preset — including leading-none's own multiplier of 1 — is already a real, meaningful
-    // value rather than a sentinel standing in for "reset to nothing" the way normal-case / no-underline /
-    // an explicit whitespace-* class are. A None member here would have no Parse case that ever produces it
-    // and no caller that would ever need it, so it is left out rather than added purely for symmetry with
-    // the other three axes.
+    // deliberately no explicit-reset member: the leading-* utility scale defines no reset value below
+    // leading-none, and every named preset — including leading-none's own multiplier of 1 — is already a
+    // real, meaningful value rather than a sentinel standing in for "reset to nothing" the way normal-case /
+    // no-underline / an explicit whitespace-* class are. A None member here would have no Parse case that
+    // ever produces it and no caller that would ever need it, so it is left out rather than added purely
+    // for symmetry with the other three axes.
     internal enum LeadingUnit
     {
         Em,
@@ -131,7 +131,7 @@ namespace Velvet
     // owns the per-element side-tables and the cascade (walking ancestors for the nearest non-null axis).
     internal static class StyleTextEffectClass
     {
-        // leading-* named presets -> em multiplier (Tailwind's own scale). Applied verbatim as the rich-text
+        // leading-* named presets -> em multiplier. Applied verbatim as the rich-text
         // tag's <line-height=Nem> value — the ENGINE resolves the em against whatever font-size is in effect
         // at that point in the string, so this table needs no font-size-aware pre-baking the way
         // tracking-*'s em scale does in _typography.uss (see fonts.md).

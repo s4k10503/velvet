@@ -64,9 +64,9 @@ namespace Velvet
     /// </summary>
     internal static class MotionSpringDriver
     {
-        // Rest epsilons, chosen per channel's natural scale (Framer Motion's own defaults — 0.01 — are tuned for
-        // a roughly 0..1 range; a channel in pixels or degrees needs a proportionally larger pair or it would
-        // spend many extra (imperceptible) ticks converging on a threshold far tighter than the value's scale).
+        // Rest epsilons, chosen per channel's natural scale (a 0.01 threshold is tuned for a roughly 0..1 range;
+        // a channel in pixels or degrees needs a proportionally larger pair or it would spend many extra
+        // (imperceptible) ticks converging on a threshold far tighter than the value's scale).
         private const float NormalizedRestDelta = 0.001f; // opacity / uniform scale (~0..1 / ~1 range)
         private const float NormalizedRestSpeed = 0.001f;
         private const float PixelRestDelta = 0.1f; // translate x/y (pixels)

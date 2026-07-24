@@ -41,19 +41,18 @@ namespace Velvet
             ["0"] = 0f, ["15"] = 15f, ["30"] = 30f, ["60"] = 60f, ["90"] = 90f, ["180"] = 180f,
         };
 
-        // brightness multiplier presets (the full Tailwind scale). brightness renders through a first-party
-        // custom-filter shader that multiplies unclamped, so the over-bright values (105/110/125/150/200)
-        // genuinely brighten — the whole point of the shader over the old Tint approximation, which could
-        // never exceed identity.
+        // brightness multiplier presets. brightness renders through a first-party custom-filter shader that
+        // multiplies unclamped, so the over-bright values (105/110/125/150/200) genuinely brighten — the
+        // whole point of the shader over the old Tint approximation, which could never exceed identity.
         private static readonly Dictionary<string, float> s_brightnessPreset = new()
         {
             ["0"] = 0f, ["50"] = 0.5f, ["75"] = 0.75f, ["90"] = 0.9f, ["95"] = 0.95f, ["100"] = 1f,
             ["105"] = 1.05f, ["110"] = 1.1f, ["125"] = 1.25f, ["150"] = 1.5f, ["200"] = 2f,
         };
 
-        // saturate presets as a saturation fraction (the full Tailwind scale). saturate renders through a
-        // first-party custom-filter shader that lerps toward luminance unclamped, so the over-saturate values
-        // (150 / 200) push past the original colour, which the old grayscale(1-N) approximation could not do.
+        // saturate presets as a saturation fraction. saturate renders through a first-party custom-filter
+        // shader that lerps toward luminance unclamped, so the over-saturate values (150 / 200) push past
+        // the original colour, which the old grayscale(1-N) approximation could not do.
         private static readonly Dictionary<string, float> s_saturatePreset = new()
         {
             ["0"] = 0f, ["50"] = 0.5f, ["100"] = 1f, ["150"] = 1.5f, ["200"] = 2f,
