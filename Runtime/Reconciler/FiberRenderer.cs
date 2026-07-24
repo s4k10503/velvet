@@ -75,7 +75,7 @@ namespace Velvet
 
         // Inline-mount variant for wrapper-less fibers. The fiber's render output is held on the
         // fiber's ComponentFiber.PreviousTree for the caller (typically
-        // ChildReconciler.ExpandInlineRecursive) to incorporate into the parent expansion;
+        // GeneralPathReconciler.ExpandInlineRecursive) to incorporate into the parent expansion;
         // no Reconcile is issued from the fiber itself. The caller is responsible for placing the
         // output VEs into parent.children at slotStart.
         // Subsequent setState-triggered re-renders use the fiber's own Reconciler with slot-range
@@ -147,7 +147,7 @@ namespace Velvet
         // ComponentNode's fiber.Parent stays null even though ComponentRegistry itself is unambiguously
         // running inside a real, non-orphaned context. Falling back to bootstrapping a fresh, unrelated
         // Reconciler+ReconcilerContext there silently detaches the fiber from the caller's registries /
-        // FiberStack / IsAborted flag (see #51). Left null only by V.Mount's direct root-fiber path,
+        // FiberStack / IsAborted flag. Left null only by V.Mount's direct root-fiber path,
         // which has no context to join and must bootstrap its own (this fiber becomes the owner).
         private static void SetupMount(ComponentFiber fiber, VisualElement? mountPoint, ReconcilerContext? sharedContext = null)
         {

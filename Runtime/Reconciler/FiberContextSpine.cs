@@ -16,7 +16,7 @@ namespace Velvet
     // spine fiber — WITHOUT re-running any ancestor body (that is the bailout: clean ancestors contribute
     // their committed Provider values for free). The target then renders with a correct live cursor and
     // Hooks.UseContext<T> reads the top of the stack.
-    // The provider-enclosure search mirrors ChildReconciler.ExpandInlineRecursive: position keys
+    // The provider-enclosure search mirrors GeneralPathReconciler.ExpandInlineRecursive: position keys
     // for unkeyed ComponentNodes are per-identity counters within one reconcile scope (a fiber body
     // output, or one element's children reconcile), Fragment/Provider continue the current scope, an
     // element node opens a fresh scope for its children, and a Memo resolves to its committed inner.
@@ -368,7 +368,7 @@ namespace Velvet
 
                     case AnimatePresenceNode presence:
                     {
-                        // AnimatePresence is DOM-less: ChildReconciler.ExpandAnimatePresenceInline expands each
+                        // AnimatePresence is DOM-less: GeneralPathReconciler.ExpandAnimatePresenceInline expands each
                         // keyed child directly into the parent's slot range, each under its own PresenceChildScope
                         // with a FRESH position counter (EmitPresenceChild rents one per child). A wrapper-hosted
                         // spine child therefore registers under THIS ancestor by its own slotKey, exactly like an

@@ -6,8 +6,8 @@ namespace Velvet
     // Ambient context that holds the currently rendering ComponentFiber in a thread-static stack.
     // A component calls Push at the start of Render and Pop at the end.
     // The Hooks static class resolves the fiber via this stack's Current.
-    // Distinct in role from ReconcilerContext.FiberStack (used for parent/child tracking); intentionally
-    // separated for separation of concerns.
+    // Distinct in role from ReconcilerContext.FiberStack, which tracks parent/child relationships rather
+    // than the ambient current-fiber lookup Hooks needs.
     internal static class FiberAmbientStack
     {
         [ThreadStatic]

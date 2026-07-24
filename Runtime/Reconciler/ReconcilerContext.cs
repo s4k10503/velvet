@@ -688,7 +688,7 @@ namespace Velvet
 
         // Callback-ref bookkeeping per element (BaseElementNode.RefCallback): the callback identity
         // that installed the current ref plus its returned cleanup. The identity is stored so a
-        // patch can tell a STABLE ref apart from a swapped one — matching React, a ref cycles
+        // patch can tell a STABLE ref apart from a swapped one — a ref cycles
         // (cleanup, then setup) only when its identity changes or the element remounts. The cleanup
         // fires when the element detaches from the DOM, releasing resources such as resetting
         // Ref<T>.Current to null.
@@ -731,7 +731,7 @@ namespace Velvet
         // the boundary's re-render, which re-attempts the primary subtree and commits the reveal in one pass
         // (a resolved resource schedules the boundary itself, not the suspended child — committing
         // the child independently would write into the slot range the fallback occupies). Maintained by
-        // ChildReconciler.ExpandSuspenseInline; read by FiberWorkLoop.FlushState.
+        // GeneralPathReconciler.ExpandSuspenseInline; read by FiberWorkLoop.FlushState.
         internal HashSet<ComponentFiber> SuspendedBoundaries { get; } = new();
 
         // Removes all wrapper-less Suspense boundary state keyed by boundary.

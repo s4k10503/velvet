@@ -76,7 +76,7 @@ namespace Velvet
                     if (elementNode.Children != null)
                     {
                         var childContainer = FiberNodePatcher.GetChildContainer(element);
-                        // ReconcileChildren (= ChildReconciler.ExpandInlineRecursive) inline-expands
+                        // ReconcileChildren (= GeneralPathReconciler.ExpandInlineRecursive) inline-expands
                         // ComponentNode / ContextProviderNode / FragmentNode so children appear as
                         // direct siblings under <paramref name="childContainer"/>. These node kinds
                         // produce no DOM element of their own. The same path is used
@@ -379,8 +379,8 @@ namespace Velvet
                     // the unmount for a removal to animate against, and AnimatePresence is what does that — so
                     // exit outside one is genuinely inert. Warn like the shadow-*/clip-path-* gates above. Initial
                     // is NOT warned here (see the standalone enter below): unlike exit, a mount-time enter needs
-                    // no deferred unmount to play against, so it works on any Motion, matching Framer parity
-                    // (initial/animate apply to any motion.* component; only AnimatePresence is exit-only).
+                    // no deferred unmount to play against, so it works on any Motion (initial/animate apply
+                    // anywhere; only exit is AnimatePresence-only).
                     if (_ctx.PresenceExpansionDepth == 0 && motionNode.Exit != null)
                     {
                         FiberLogger.LogWarning("Motion",
@@ -423,7 +423,7 @@ namespace Velvet
                                 + "enter. An inherited animate label does not yet drive one.");
                         }
                     }
-                    // Shared-element layout animation (Framer's layoutId) on a freshly-created element —
+                    // Shared-element layout animation (layoutId) on a freshly-created element —
                     // the same-key-type-flip case PatchMotion's own registration cannot reach (a type
                     // flip tears down the OLD element and creates a genuinely NEW one for the SAME id,
                     // never routing through PatchMotion at all). MotionLayoutIdDriver.OnPatched already
@@ -440,7 +440,7 @@ namespace Velvet
                 }
                 case AnimatePresenceNode:
                     // AnimatePresence is DOM-less: it never becomes a single element.
-                    // ChildReconciler.ExpandAnimatePresenceInline expands its keyed children directly into
+                    // GeneralPathReconciler.ExpandAnimatePresenceInline expands its keyed children directly into
                     // the parent's slot range, so CreateElement is never invoked on it.
                     throw new System.InvalidOperationException(
                         "[FiberNodeFactory] AnimatePresenceNode is DOM-less and must be inline-expanded, not created as an element.");
@@ -528,7 +528,7 @@ namespace Velvet
                     // resolved inner is a ComponentNode, or a ComponentNode that is a direct child of
                     // an AnimatePresence keyed entry. ComponentNodes reached during a
                     // ChildReconciler.Reconcile pass (top-level or nested under an element) are
-                    // inline-mounted (no wrapper VE) by ChildReconciler.ExpandInlineRecursive, so this
+                    // inline-mounted (no wrapper VE) by GeneralPathReconciler.ExpandInlineRecursive, so this
                     // case is unreachable for them.
                     // A Component does not emit a DOM element; its rendered tree attaches
                     // directly to the parent. Velvet needs an anchor element for fiber tracking,
@@ -547,7 +547,7 @@ namespace Velvet
                     // list reached through MemoNode's resolved inner) tracks for this Provider entry —
                     // the wrapper element is a deliberate choice, as documented on ContextProviderNode.
                     //
-                    // ChildReconciler.ExpandInlineRecursive expands Provider inline (no wrapper) during
+                    // GeneralPathReconciler.ExpandInlineRecursive expands Provider inline (no wrapper) during
                     // a Reconcile pass, so this case is unreachable for slot-based reconciliation; it is
                     // reached only when CreateElement is invoked directly on a Provider VNode — e.g. a
                     // MemoNode resolved inner.

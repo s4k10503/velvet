@@ -175,7 +175,7 @@ namespace Velvet
             }
             else if (_activation.Distance <= 0f)
             {
-                // Unconstrained (DragActivation.None): dnd-kit's raw PointerSensor — the press IS the drag.
+                // Unconstrained (DragActivation.None): the press IS the drag.
                 Activate();
                 return;
             }
@@ -393,8 +393,8 @@ namespace Velvet
             _appliedActiveClasses.Add((element, binding.ActiveClasses));
         }
 
-        // Candidacy pairs a droppable with its NEAREST enclosing DndContext (dnd-kit keeps nested
-        // contexts isolated): subtree containment alone would leak an inner scope's droppables into an
+        // Candidacy pairs a droppable with its NEAREST enclosing DndContext, keeping nested contexts
+        // isolated: subtree containment alone would leak an inner scope's droppables into an
         // outer scope's drag, handing the outer callbacks drop ids they never registered.
         private bool IsCollisionCandidate(VisualElement element, DndDroppableBinding binding)
             => !binding.Settings.Disabled

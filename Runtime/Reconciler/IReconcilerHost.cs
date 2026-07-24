@@ -24,7 +24,7 @@ namespace Velvet
         // propagated snapshot reflects it. Used by FiberNodePatcher's
         // ContextProviderNode case when the keyed Provider entry's value changes
         // between renders (e.g. inside an AnimatePresence subtree, where the Provider stays in the
-        // keyed map rather than being inline-expanded by ChildReconciler.ExpandInlineRecursive).
+        // keyed map rather than being inline-expanded by GeneralPathReconciler.ExpandInlineRecursive).
         void NotifyContextValueChange(ContextProviderNode newProvider);
 
         // Implementations must always invoke ChildReconciler.Reconcile with

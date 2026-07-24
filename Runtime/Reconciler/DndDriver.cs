@@ -194,8 +194,8 @@ namespace Velvet
             positioner.style.height = StyleKeyword.Null;
         }
 
-        // One overlay per mounted tree: the first registered positioner wins (dnd-kit renders one
-        // DragOverlay per DndContext; several in one Velvet tree would fight over one pointer).
+        // One overlay per mounted tree: the first registered positioner wins — several in one
+        // Velvet tree would fight over one pointer.
         public static DndOverlayBinding? FindOverlay(ReconcilerContext ctx, out VisualElement? positioner)
         {
             foreach (var (element, binding) in ctx.DragOverlayBindings)

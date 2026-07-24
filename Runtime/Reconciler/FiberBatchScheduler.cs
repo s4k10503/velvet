@@ -16,7 +16,7 @@ namespace Velvet
     // preserved — only the scheduler-callback count collapses to one per tier.
     internal sealed class FiberBatchScheduler
     {
-        // Cap on the drain-until-quiet passes one DrainImmediate performs — React's
+        // Cap on the drain-until-quiet passes one DrainImmediate performs — the
         // "Maximum update depth exceeded" limit (one initial pass plus this many nested ones):
         // each pass exists for commit-phase writes (a callback ref or an event dispatched during
         // a commit re-enqueues its fiber mid-drain), and a component whose commit writes a NEW
@@ -65,8 +65,7 @@ namespace Velvet
         private Action<bool>? _onDrainBegin;
         private Action? _onDrainEnd;
         // Flushes any pending passive effects from a prior commit, wired by the owning Reconciler. Run before a
-        // synchronous discrete-event drain so those effects commit before the new update's render — React's
-        // flushPassiveEffects-before-update.
+        // synchronous discrete-event drain so those effects commit before the new update's render.
         private Action? _flushPassiveEffects;
 
         // True when an immediate drain has just established snapshot pins that a pending delayed drain should
@@ -119,8 +118,8 @@ namespace Velvet
             _onDrainEnd = onDrainEnd;
         }
 
-        // Registers the pending-passive-effect flush run before a synchronous discrete-event drain (React's
-        // flushPassiveEffects-before-update). Called once by the owning Reconciler.
+        // Registers the pending-passive-effect flush run before a synchronous discrete-event drain.
+        // Called once by the owning Reconciler.
         internal void SetPassiveEffectFlush(Action flush) => _flushPassiveEffects = flush;
 
         // Enqueues fiber for a batched flush at the next frame boundary
@@ -164,8 +163,8 @@ namespace Velvet
             // Commit-phase state writes (a callback ref invoked during the patch, an event
             // dispatched from a detach) re-enqueue their fiber mid-drain. Keep draining until the
             // queue is quiet so the follow-up render commits before this frame callback yields —
-            // React's "setState during the commit schedules a follow-up pass before paint". Each
-            // pass opens a fresh tearing-guard wave (a commit write moved state forward, so its
+            // a state update issued during the commit still schedules a follow-up pass before paint.
+            // Each pass opens a fresh tearing-guard wave (a commit write moved state forward, so its
             // first UseStore read re-pins the now-current snapshot). _immediateScheduled stays SET
             // for the whole loop: the loop itself consumes every mid-drain enqueue, so registering
             // another frame callback for one would only fire an empty drain next frame (dead
@@ -176,12 +175,13 @@ namespace Velvet
             {
                 if (totalPasses > NestedUpdateLimit)
                 {
-                    // Runaway commit-phase loop (a component writing a NEW value on every pass).
-                    // React throws here; a throw from the frame callback cannot reach an error
-                    // boundary and would only re-arm next frame, burning the full cap every frame
-                    // forever — so the runaway update is DROPPED instead and the UI keeps the last
-                    // committed state. Only the IMMEDIATE-tier lanes are dropped: a fiber can be
-                    // queued this deep with an unrelated Transition/Deferred lane still pending (the
+                    // Runaway commit-phase loop (a component writing a NEW value on every pass) — the
+                    // kind of bug that would ordinarily deserve a hard failure, but a throw from the
+                    // frame callback cannot reach an error boundary and would only re-arm next frame,
+                    // burning the full cap every frame forever — so the runaway update is DROPPED
+                    // instead and the UI keeps the last committed state. Only the IMMEDIATE-tier
+                    // lanes are dropped: a fiber can be queued this deep with an unrelated
+                    // Transition/Deferred lane still pending (the
                     // runaway's commits may write bystanders each pass), and wiping that lane would
                     // strand its delayed-tier work (a StartTransition left isPending forever).
                     FiberLogger.LogError("Scheduler",
@@ -357,10 +357,10 @@ namespace Velvet
             DrainImmediate();
         }
 
-        // Flushes a prior commit's pending passive effects (React's flushPassiveEffects-before-update), driven
-        // by the discrete-event boundary so an effect runs before that event's render — NOT from the mount /
-        // commit-phase FlushImmediate callers, which must leave passive effects pending for the scheduler tick.
-        // Gated like FlushImmediate so it never re-enters a live drain / reconcile.
+        // Flushes a prior commit's pending passive effects, driven by the discrete-event boundary so an
+        // effect runs before that event's render — NOT from the mount / commit-phase FlushImmediate
+        // callers, which must leave passive effects pending for the scheduler tick. Gated like
+        // FlushImmediate so it never re-enters a live drain / reconcile.
         internal void FlushPendingPassiveEffects()
         {
             if (_draining || (_reconcileActiveProbe?.Invoke() ?? false)) return;

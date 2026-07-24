@@ -58,7 +58,7 @@ namespace Velvet
         private bool? _delegatesFocus;
 
         /// <summary>
-        /// Focus-scope behavior for this container element (React Aria's FocusScope parity). Attachable to
+        /// Focus-scope behavior for this container element. Attachable to
         /// ANY container — the modal Div you already have can be the scope; <c>V.FocusScope</c> is sugar for
         /// when no container exists yet.
         /// </summary>
@@ -66,18 +66,18 @@ namespace Velvet
         private FocusScopeSettings? _focusScope;
 
         /// <summary>
-        /// Drag-and-drop scope configuration for this container element (dnd-kit's DndContext parity).
+        /// Drag-and-drop scope configuration for this container element.
         /// Draggables and droppables pair with their nearest ancestor scope at event time.
         /// </summary>
         public DndContextSettings? DndContext { get => _dndContext; set { ThrowIfReadOnly(); _dndContext = value; } }
         private DndContextSettings? _dndContext;
 
-        /// <summary>Drag-source configuration (dnd-kit's useDraggable parity) — the element carrying it
+        /// <summary>Drag-source configuration — the element carrying it
         /// is the drag node itself.</summary>
         public DraggableSettings? Draggable { get => _draggable; set { ThrowIfReadOnly(); _draggable = value; } }
         private DraggableSettings? _draggable;
 
-        /// <summary>Drop-target configuration (dnd-kit's useDroppable parity).</summary>
+        /// <summary>Drop-target configuration.</summary>
         public DroppableSettings? Droppable { get => _droppable; set { ThrowIfReadOnly(); _droppable = value; } }
         private DroppableSettings? _droppable;
 
@@ -204,8 +204,8 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Focus-management behavior for a container subtree — React Aria's FocusScope parity:
-    /// <see cref="Contain"/>/<see cref="RestoreFocus"/>/<see cref="AutoFocus"/> map 1:1;
+    /// Focus-management behavior for a container subtree: <see cref="Contain"/>, <see cref="RestoreFocus"/>,
+    /// and <see cref="AutoFocus"/> are straightforward toggles;
     /// <see cref="SingleTabStop"/> is the WAI-ARIA composite-widget (roving) contract adapted to UI Toolkit,
     /// where arrow/dpad movement inside the group is already engine-native 2D navigation. Record structural
     /// equality simplifies DiffProps.
@@ -218,7 +218,7 @@ namespace Velvet
     /// it first entered the scope (skipped if that element is gone, detached, or cannot grab focus).</param>
     /// <param name="AutoFocus">On mount (the scope's FIRST attach-to-panel, never a re-attach such as a
     /// keyed reorder's), focus the scope's first focusable descendant (skipped when focus is already
-    /// inside the scope) — matching React's mount-once autoFocus.</param>
+    /// inside the scope).</param>
     /// <param name="SingleTabStop">The subtree behaves as one Tab stop: Tab from inside exits past the
     /// remaining members (wrapping within the nearest containing scope, if any); Tab entering from outside
     /// — in either direction — lands on the last-focused member, else the scope's first. Members keep

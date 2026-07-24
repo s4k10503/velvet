@@ -46,15 +46,15 @@ namespace Velvet
 
         private static void CommitSubtreeEffectsNow(ComponentFiber fiber, bool mountDoubleInvoke)
         {
-            // React commits ALL layout-effect cleanups (the mutation phase) across a whole subtree before ANY
+            // Commit ALL layout-effect cleanups (the mutation phase) across a whole subtree before ANY
             // layout-effect setup (the layout phase). This root fiber and the inline children MountInline
             // deferred onto the drain stack form one subtree, so their layout effects run as one cleanup pass
             // then one setup pass with the root interleaved between: the root's cleanup runs before a child's
             // setup, so a child setup that writes shared state can no longer be observed by the root's cleanup —
-            // React's [child.cleanup, root.cleanup, child.setup, root.setup]. Committing each child fully before
+            // [child.cleanup, root.cleanup, child.setup, root.setup]. Committing each child fully before
             // the root began (the child's setup ahead of the root's cleanup) inverted that pair. Imperative
             // handles and layout setups belong to the setup pass; insertion effects run in the cleanup pass
-            // (React runs them during mutation).
+            // (they belong to the mutation phase too).
             var stack = fiber.Reconciler?.Context.DeferredInlineLayoutEffectFibers;
             List<(ComponentFiber Fiber, bool IsMount)>? inlineBatch = null;
             if (stack is { Count: > 0 })
@@ -70,8 +70,8 @@ namespace Velvet
             HookEffectExecutor.RunFactoriesAndClear(fiber, fiber.PendingLayoutEffects, mountDoubleInvoke);
 
             // A setup (a child's or this root's) that mounted more inline children pushed them onto the drain
-            // stack: they are a subsequent pass, committed after this root's layout phase — React runs
-            // effect-mounted work in a follow-up commit, not the current one.
+            // stack: they are a subsequent pass, committed after this root's layout phase — work newly
+            // mounted from inside an effect commits in a follow-up commit, not the current one.
             DrainDeferredInlineLayoutEffects(fiber);
             ScheduleRunEffects(fiber, mountDoubleInvoke);
         }
@@ -111,7 +111,8 @@ namespace Velvet
         // batch interleaved with its own root, then calls this to pick up any fibers a setup mounted. The outer
         // loop re-drains because an inline setup can synchronously push MORE deferred fibers (e.g. a
         // UseLayoutEffect that mounts another inline child) — each such push is a fresh subtree, committed after
-        // the one that mounted it, matching how React runs effect-mounted work in a follow-up commit.
+        // the one that mounted it, the same follow-up-commit treatment as any other work mounted from inside
+        // an effect.
         private static void DrainDeferredInlineLayoutEffects(ComponentFiber rootFiber)
         {
             var stack = rootFiber.Reconciler?.Context.DeferredInlineLayoutEffectFibers;
@@ -128,7 +129,7 @@ namespace Velvet
         // parents), and runs the layout-effect CLEANUP pass over that order into `ordered` — per fiber, its
         // insertion effects then its layout-effect cleanups. The caller feeds the same `ordered` list to
         // RunInlineLayoutSetups for the SETUP pass; splitting the two lets CommitSubtreeEffectsNow interleave
-        // its root fiber's own cleanup/setup between them, so React's all-cleanups-before-all-setups holds
+        // its root fiber's own cleanup/setup between them, so the all-cleanups-before-all-setups invariant holds
         // across the root/child boundary and not just within the child batch. Ordering off a snapshot and
         // running after is equivalent to running mid-walk: an effect that synchronously pushes MORE deferred
         // fibers lands on the stack and is picked up by the caller's re-drain, not this already-captured batch.
@@ -162,7 +163,7 @@ namespace Velvet
             OrderByNearestStagedAncestorPostOrder(deduped, pushedSet, static e => e.Fiber, ordered);
             bufferPool.ReturnFiberSet(pushedSet);
 
-            // Cleanup pass — React's mutation phase. Running every cleanup before any setup is the point of the
+            // Cleanup pass — the mutation phase. Running every cleanup before any setup is the point of the
             // split: a later fiber's cleanup must not observe state an earlier fiber's setup wrote. Insertion
             // effects belong to the mutation phase too; imperative handles and layout setups defer to the setup
             // pass so a parent setup can observe a child's already-committed handle.
@@ -430,8 +431,8 @@ namespace Velvet
         }
 
         // Context overload: the batch scheduler drives this before a synchronous discrete-event flush so a
-        // prior commit's pending passive effects run before the new update's render — React's
-        // flushPassiveEffects-before-update. A no-op when nothing is pending.
+        // prior commit's pending passive effects run before the new update's render. A no-op when nothing
+        // is pending.
         internal static void FlushPendingPassiveEffects(ReconcilerContext context)
         {
             // An effect setup may setState and stage a fresh batch synchronously; drain until quiescent.
