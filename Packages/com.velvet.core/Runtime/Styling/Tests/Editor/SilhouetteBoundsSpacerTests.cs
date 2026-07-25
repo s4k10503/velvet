@@ -5,9 +5,14 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the pure geometry of the filter bounds-spacer: the sheared silhouette AABB, the shear growth
-    /// applied to a shadow quad, the axis-aligned union, and the trailing-spacer child count. GWT, one assert
-    /// each; these need no panel.
+    /// Specifies the pure geometry of the filter bounds-spacer — the sheared silhouette AABB, the shear growth
+    /// applied to a shadow quad, the axis-aligned union, and the trailing-spacer child count — alongside two
+    /// related silhouette-layer contracts: <see cref="SilhouetteFaceStash"/>'s <c>includeBackground</c> flag
+    /// (the skew / drop-shadow layers own the whole face and suppress both background and border, while the
+    /// border-dashed layer restyles only the border and must never touch the background), and that the skew
+    /// silhouette's suppression-sentinel test is BIT-EXACT rather than Unity's approximate <c>Color</c> equality
+    /// (epsilon ~1e-5), so a genuine authored color that merely lands in the narrow band around the sentinel is
+    /// not misclassified. GWT, one assert each; these need no panel.
     /// </summary>
     [TestFixture]
     internal sealed class SilhouetteBoundsSpacerTests
@@ -259,6 +264,83 @@ namespace Velvet.Tests
             var shifted = SilhouetteBoundsSpacer.ShiftToPaddingBox(new Rect(-10f, -6f, 120f, 60f), 8f, 4f);
 
             Assert.That(shifted.width, Is.EqualTo(120f).Within(1e-4f));
+        }
+
+        private static readonly Color Fill = new(0.2f, 0.4f, 0.6f, 1f);
+        private static readonly Color Border = new(1f, 0f, 0f, 1f);
+
+        private static VisualElement ColoredElement()
+        {
+            var element = new VisualElement();
+            element.style.backgroundColor = Fill;
+            element.style.borderLeftColor = Border;
+            return element;
+        }
+
+        [Test]
+        public void Given_ABorderOnlyStash_When_Stashed_Then_TheBackgroundIsUntouched()
+        {
+            // Arrange — a border-only stash (the border-dashed layer's shape).
+            var element = ColoredElement();
+            var stash = new SilhouetteFaceStash(includeBackground: false);
+
+            // Act — off-panel with an inline border, TryStash captures + suppresses the border color only.
+            stash.TryStash(element);
+
+            // Assert — the authored fill survives (a dashed outline composes with the background, never hides it).
+            Assert.That(element.style.backgroundColor.value, Is.EqualTo(Fill));
+        }
+
+        [Test]
+        public void Given_ABorderOnlyStash_When_Stashed_Then_TheBorderColorIsSuppressed()
+        {
+            // Arrange
+            var element = ColoredElement();
+            var stash = new SilhouetteFaceStash(includeBackground: false);
+
+            // Act
+            stash.TryStash(element);
+
+            // Assert — the native border color is masked with the sentinel so only our repaint shows.
+            Assert.That(SilhouetteFace.IsSentinel(element.style.borderLeftColor.value), Is.True);
+        }
+
+        [Test]
+        public void Given_ADefaultStash_When_Stashed_Then_BothBackgroundAndBorderAreSuppressed()
+        {
+            // Arrange — the default (includeBackground:true) stash pins SkewBinding / DropShadowBinding's
+            // existing behavior: it owns the whole face.
+            var element = ColoredElement();
+            var stash = new SilhouetteFaceStash();
+
+            // Act
+            stash.TryStash(element);
+
+            // Assert
+            Assert.That(
+                (SilhouetteFace.IsSentinel(element.style.backgroundColor.value),
+                    SilhouetteFace.IsSentinel(element.style.borderLeftColor.value)),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_AColorInTheEpsilonBandAroundTheSentinel_When_Tested_Then_ItIsNotTheSentinel()
+        {
+            // Arrange — a real authored color a hair off the sentinel alpha, inside Unity's approximate == band.
+            var sentinel = SkewSilhouette.SuppressedColor;
+            var nearButReal = new Color(sentinel.r, sentinel.g, sentinel.b, sentinel.a + 5e-6f);
+            Assume.That(nearButReal == sentinel, Is.True,
+                "Precondition: Unity's approximate == misreads this near color as the sentinel");
+
+            // Act / Assert — the bit-exact test keeps it as a real color.
+            Assert.That(SkewSilhouette.IsSentinel(nearButReal), Is.False);
+        }
+
+        [Test]
+        public void Given_TheExactSentinelColor_When_Tested_Then_ItIsTheSentinel()
+        {
+            // Arrange/Act/Assert — the real suppression write must still be recognized.
+            Assert.That(SkewSilhouette.IsSentinel(SkewSilhouette.SuppressedColor), Is.True);
         }
     }
 }
