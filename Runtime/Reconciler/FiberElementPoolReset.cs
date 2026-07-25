@@ -32,25 +32,42 @@ namespace Velvet
         // USS class (see Unity reference TextElement.cs:178). Passing the base classes in
         // constructor-call order (base first, subclass last) keeps the resulting class list identical
         // to a freshly constructed instance.
+        // Fixed-arity overloads cover every call shape in this codebase (two USS classes for
+        // Label/Button/Toggle, three for Slider/TextField, whose constructor chains run one field
+        // class deeper). Do not collapse them into a `params` signature: this runs once per recycled
+        // element on the reconciler's steady-state hot path, and a params array would put a heap
+        // allocation on every widget pool-return.
         // element: Pooled element to reset. Null is a no-op.
-        // baseUssClasses: USS classes required by Unity built-in styling. Order is preserved.
-        public static void ResetClassListAndCommon(VisualElement element, params string[] baseUssClasses)
+        public static void ResetClassListAndCommon(VisualElement element, string ussClassA, string ussClassB)
         {
             if (element == null) return;
 
             element.ClearClassList();
-            if (baseUssClasses != null)
-            {
-                foreach (var ussClass in baseUssClasses)
-                {
-                    if (!string.IsNullOrEmpty(ussClass))
-                    {
-                        element.AddToClassList(ussClass);
-                    }
-                }
-            }
+            AddClassIfNotEmpty(element, ussClassA);
+            AddClassIfNotEmpty(element, ussClassB);
 
             ResetCommonState(element);
+        }
+
+        // element: Pooled element to reset. Null is a no-op.
+        public static void ResetClassListAndCommon(VisualElement element, string ussClassA, string ussClassB, string ussClassC)
+        {
+            if (element == null) return;
+
+            element.ClearClassList();
+            AddClassIfNotEmpty(element, ussClassA);
+            AddClassIfNotEmpty(element, ussClassB);
+            AddClassIfNotEmpty(element, ussClassC);
+
+            ResetCommonState(element);
+        }
+
+        private static void AddClassIfNotEmpty(VisualElement element, string ussClass)
+        {
+            if (!string.IsNullOrEmpty(ussClass))
+            {
+                element.AddToClassList(ussClass);
+            }
         }
 
         // Resets the element's UIToolkit-side state shared by all pooled widgets.

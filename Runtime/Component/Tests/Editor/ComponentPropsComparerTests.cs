@@ -25,6 +25,30 @@ namespace Velvet.Tests
         private sealed record SimpleProps(string Id, int Value);
         private sealed record RefMemberProps(object Handle);
         private sealed record FloatProps(float X);
+        private sealed record NullableFloatProps(float? X);
+
+        private readonly struct Point
+        {
+            public Point(int x, int y)
+            {
+                X = x;
+                Y = y;
+            }
+
+            public int X { get; }
+            public int Y { get; }
+        }
+
+        private sealed record StructMemberProps(Point Location);
+
+        // A record's own EqualityContract getter is synthesized as non-public, so it never reaches
+        // the comparer's reflected member set through BindingFlags.Public alone; this type carries a
+        // public member of the same name to exercise the comparer's explicit name-based exclusion.
+        private sealed class ExplicitEqualityContractMember
+        {
+            public int Value { get; init; }
+            public string EqualityContract { get; init; } = string.Empty;
+        }
 
         [Test]
         public void Given_SameReference_When_ShallowEquals_Then_IsEqual()
@@ -148,6 +172,110 @@ namespace Velvet.Tests
 
             // Act + Assert
             Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False);
+        }
+
+        [Test]
+        public void Given_StructMemberWithEqualValues_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — distinct struct instances with equal field values
+            var a = new StructMemberProps(new Point(1, 2));
+            var b = new StructMemberProps(new Point(1, 2));
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True);
+        }
+
+        [Test]
+        public void Given_StructMemberWithDifferentValues_When_ShallowEquals_Then_IsNotEqual()
+        {
+            // Arrange
+            var a = new StructMemberProps(new Point(1, 2));
+            var b = new StructMemberProps(new Point(1, 3));
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False);
+        }
+
+        [Test]
+        public void Given_MembersDifferOnlyInEqualityContract_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — the EqualityContract member is excluded by name, so it must not affect the outcome
+            var a = new ExplicitEqualityContractMember { Value = 1, EqualityContract = "A" };
+            var b = new ExplicitEqualityContractMember { Value = 1, EqualityContract = "B" };
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True);
+        }
+
+        [Test]
+        public void Given_ObjectMemberHoldingEqualValueBoxedFloatsInDistinctBoxes_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — two separate boxing conversions of the same float value
+            var a = new RefMemberProps(1.5f);
+            var b = new RefMemberProps(1.5f);
+            Assume.That(ReferenceEquals(a.Handle, b.Handle), Is.False, "Precondition: the boxed floats are distinct instances");
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
+                "An object-declared member holding a boxed float compares by unboxed value, not by box identity");
+        }
+
+        [Test]
+        public void Given_ObjectMemberHoldingEqualContentDistinctStringInstances_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — distinct string instances with equal content, held in an object-declared member
+            var a = new RefMemberProps(string.Concat("i", "d"));
+            var b = new RefMemberProps(string.Concat("i", "d"));
+            Assume.That(ReferenceEquals(a.Handle, b.Handle), Is.False, "Precondition: the string instances are distinct");
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
+                "An object-declared member holding a string compares by content, matching the reflection path");
+        }
+
+        [Test]
+        public void Given_ObjectMemberHoldingBoxedFloatNaNBothSides_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange — two separate boxing conversions of NaN
+            var a = new RefMemberProps(float.NaN);
+            var b = new RefMemberProps(float.NaN);
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True,
+                "An object-declared member holding boxed NaN is Object.is-equal to itself, matching the reflection path");
+        }
+
+        [Test]
+        public void Given_NullableFloatMemberPositiveZeroVsNegativeZero_When_ShallowEquals_Then_IsNotEqual()
+        {
+            // Arrange — Object.is distinguishes +0 from -0 through a Nullable<float> member
+            var a = new NullableFloatProps(0f);
+            var b = new NullableFloatProps(-0f);
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.False);
+        }
+
+        [Test]
+        public void Given_NullableFloatMemberBothNull_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange
+            var a = new NullableFloatProps(null);
+            var b = new NullableFloatProps(null);
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True);
+        }
+
+        [Test]
+        public void Given_NullableFloatMemberNaNBothSides_When_ShallowEquals_Then_IsEqual()
+        {
+            // Arrange
+            var a = new NullableFloatProps(float.NaN);
+            var b = new NullableFloatProps(float.NaN);
+
+            // Act + Assert
+            Assert.That(ComponentPropsComparer.ShallowEquals(a, b), Is.True);
         }
     }
 }

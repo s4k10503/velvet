@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Recycling a pooled primitive widget (`Label`/`Button`/`Toggle`/`Slider`/`TextField`) no longer
+  allocates a class-list array on every pool return; the element reset path now uses fixed-arity
+  overloads so steady-state list churn stays allocation-free.
+- `UseFrame` dispatch no longer allocates a snapshot array every ticked frame; the dispatcher reuses
+  a grow-only buffer guarded against re-entrant ticks, so a panel with stable subscribers ticks with
+  zero allocations.
+- The `Memoize` props-bail comparison compiles a cached, typed per-props-type comparer on JIT
+  platforms instead of reading members through reflection, removing the per-render boxing of
+  value-type props while preserving `Object.is` member semantics exactly — including members declared
+  as `object`/interfaces holding boxed values, and the sign-of-zero distinction for nullable floats.
+  IL2CPP (AOT) players keep the reflection implementation.
+
 ## [1.6.0] - 2026-07-25
 
 ### Added
