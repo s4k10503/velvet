@@ -1,21 +1,30 @@
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.UIElements.TestFramework;
+using UnityEditor.UIElements.TestFramework;
 
 namespace Velvet.Tests
 {
     /// <summary>
     /// The drop shadow is painted as a baked quad in the caster's own generateVisualContent and does NOT honor
-    /// UI Toolkit opacity, so a FadeSlideUp / Fade enter would show the full-strength shadow through the
-    /// still-translucent target as a dark box. To match a CSS box-shadow the scheduler instead CO-FADES every
-    /// descendant shadow with its element: it registers the animation as a driver and samples the caster's
-    /// opacity each frame into the binding's <see cref="DropShadowBinding.ShadowOpacity"/> multiplier (the paint
-    /// scales the shadow alpha by it). Overlapping drivers compose multiplicatively, and the shadow returns to
-    /// full only when the last driver ends. Panel-free — <c>PlayEnter</c> applies the from-state and registers
-    /// the driver at the from-value synchronously (only the per-frame tick is deferred, and the EditMode
-    /// PlayerLoop does not tick it), so these assert the synchronous values and the pure driver composition.
-    /// GWT, one assert per case.
+    /// UI Toolkit opacity, so a fading enter/exit — whether a CSS-transition-style tween or a spring-driven
+    /// Motion animation writing its opacity as a per-frame inline style tick — would show the full-strength
+    /// shadow through the still-translucent target as a dark box. To match a CSS box-shadow the scheduler
+    /// instead CO-FADES every descendant shadow with its element: it registers the animation as a driver and
+    /// samples the caster's opacity each frame into the binding's <see cref="DropShadowBinding.ShadowOpacity"/>
+    /// multiplier (the paint scales the shadow alpha by it) — the tick does not care what is driving the opacity,
+    /// so the tween and spring paths share the same wiring. Overlapping drivers compose multiplicatively, and
+    /// the shadow returns to full only when the last driver ends.
     /// </summary>
+    /// <remarks>
+    /// The tween-path coverage is panel-free — <c>PlayEnter</c> applies the from-state and registers the driver
+    /// at the from-value synchronously (only the per-frame tick is deferred, and the EditMode PlayerLoop does not
+    /// tick it), so those cases assert the synchronous values and the pure driver composition. The spring-path
+    /// coverage needs a real (simulated) panel instead: its co-fade tick samples <c>resolvedStyle.opacity</c>,
+    /// which the panel-free setup cannot resolve — exactly why a missing co-fade wire on the spring path was
+    /// invisible there. GWT, one assert per case.
+    /// </remarks>
     [TestFixture]
     internal sealed class ShadowAnimationVisibilityTests
     {
@@ -29,6 +38,29 @@ namespace Velvet.Tests
             target.Add(child);
             return DropShadowSilhouette.Attach(child, Spec, classNames: System.Array.Empty<string>(), skewXDeg: 0f);
         }
+
+        private EditorPanelSimulator _sim;
+        private StyleAnimationScheduler _scheduler;
+
+        [SetUp]
+        public void SetUp()
+        {
+            PanelSimulator.ResetCurrentTime();
+            _sim = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
+            _sim.ResetTimePerSimulatedFrameToDefault();
+            _scheduler = new StyleAnimationScheduler();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _sim?.Dispose();
+            _sim = null;
+        }
+
+        private VisualElement Root => _sim.rootVisualElement;
+
+        private void Tick() => _sim.FrameUpdateMs(16);
 
         [Test]
         public void Given_ShadowedElement_When_EnterStarts_Then_DescendantShadowStartsTransparent()
@@ -84,6 +116,64 @@ namespace Velvet.Tests
             // Assert: the shadow stays driven by the still-running outer fade (back to that fade's 0.5), not
             // snapped to full — otherwise the opacity-blind shadow would show through the outer target.
             Assert.That(binding.ShadowOpacity, Is.EqualTo(0.5f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_AShadowedSpringEnter_When_APanelTickRunsMidFlight_Then_TheDescendantShadowIsCoFading()
+        {
+            // Arrange — a spring-driven enter (opacity 0 -> 100) on a target carrying a shadow-painted child.
+            var target = new VisualElement();
+            Root.Add(target);
+            var binding = AttachShadowChild(target);
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring,
+                Stiffness = 200f,
+                Damping = 26f,
+                EnterFromClass = "opacity-0",
+                EnterToClass = "opacity-100",
+            };
+
+            // Act — a few ticks start the spring and let it climb without fully settling.
+            _scheduler.PlayEnter(target, config);
+            Tick();
+            Tick();
+            Tick();
+            Assume.That(target.resolvedStyle.opacity, Is.LessThan(1f),
+                "Precondition: the caster is still mid-climb, not yet settled at full opacity");
+
+            // Assert — an un-cofaded shadow would sit stuck at its resting full strength; the co-fade tick must
+            // have already pulled it down alongside the still-translucent caster.
+            Assert.That(binding.ShadowOpacity, Is.LessThan(1f));
+        }
+
+        [Test]
+        public void Given_AShadowedSpringExit_When_APanelTickRunsMidFlight_Then_TheDescendantShadowIsCoFading()
+        {
+            // Arrange — a spring-driven exit (opacity 100 -> 0) on a target carrying a shadow-painted child.
+            var target = new VisualElement();
+            Root.Add(target);
+            var binding = AttachShadowChild(target);
+            target.AddToClassList("opacity-100");
+            var config = new StyleTransitionConfig
+            {
+                Type = TransitionType.Spring,
+                Stiffness = 200f,
+                Damping = 26f,
+                ExitFromClass = "opacity-100",
+                ExitToClass = "opacity-0",
+            };
+
+            // Act
+            _scheduler.PlayExit(target, config, onComplete: null);
+            Tick();
+            Tick();
+            Tick();
+            Assume.That(target.resolvedStyle.opacity, Is.GreaterThan(0f),
+                "Precondition: the caster is still mid-fade, not yet settled at zero opacity");
+
+            // Assert — the shadow must be following the caster's fade down, not sitting untouched at full.
+            Assert.That(binding.ShadowOpacity, Is.LessThan(1f));
         }
     }
 }

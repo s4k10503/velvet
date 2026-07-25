@@ -10,7 +10,7 @@ namespace Velvet.Tests
     /// The runtime layout proof for leading-* (line-height): a wrapped Label's MEASURED height depends on
     /// the native text generator actually running a multi-line layout pass keyed off the
     /// <c>&lt;line-height=X&gt;</c> tag — unlike the box-model reads other EditMode panel fixtures force via
-    /// the panel's ApplyStyles/UpdateForRepaint reflection helpers (<c>FlexDefaultDirectionParityTests</c>,
+    /// the panel's ApplyStyles/UpdateForRepaint reflection helpers (<c>SizingFlexUssTests</c>,
     /// <c>ResponsiveBreakpointPanelTests</c>), no existing EditMode fixture in this codebase has ever
     /// exercised that measurement (the whitespace-* resolved-style fixtures only assert the
     /// <c>WhiteSpace</c> enum, never a measured height), so there is no precedent that the reflection trick
