@@ -22,11 +22,17 @@ namespace Velvet.Tests
     /// forwarded ref's type matches the requested handle type; and returns null when the forwarded ref's type
     /// does not match (the retrieval is a typed cast, never a coercion).</item>
     /// </list>
+    /// Also covers <see cref="Ref{T}"/> itself as a plain reference holder, independent of rendering: the type
+    /// parameter accepts any <c>class</c> (not just <see cref="VisualElement"/>), a freshly constructed ref starts
+    /// at <c>null</c>, <see cref="Ref{T}.SetElement"/> preserves instance identity, and the type-erased
+    /// <see cref="IHookRefSetter"/> facade publishes/clears <see cref="Ref{T}.Current"/> without knowing the
+    /// concrete type — this is how the core drives a ref during commit.
     /// </summary>
     /// <remarks>
     /// Uses the <c>[Component] static VNode</c> + <c>V.Mount</c> + static-field exposure pattern. Per-region
     /// static fields are reset together in <see cref="SetUp"/> via <c>Reset{Region}()</c> helpers; the deps-change
-    /// region resets inside its own test because it tracks a call count that the test asserts from zero.
+    /// region resets inside its own test because it tracks a call count that the test asserts from zero. The
+    /// <see cref="Ref{T}"/> unit tests need no render and no <see cref="SetUp"/> participation.
     /// </remarks>
     [TestFixture]
     internal sealed class ComponentRefForwardingTests
@@ -307,6 +313,78 @@ namespace Velvet.Tests
             s_capturingMyHandle = Hooks.ForwardedRef<IMyHandle>();
             s_capturingOtherHandle = Hooks.ForwardedRef<IOtherHandle>();
             return V.Label(text: "x");
+        }
+
+        #endregion
+
+        #region Ref<T> unit tests (pure reference-holder contract, no render)
+
+        private interface IFakeHandle
+        {
+            void Focus();
+        }
+
+        private sealed class FakeHandle : IFakeHandle
+        {
+            public void Focus() { }
+        }
+
+        [Test]
+        public void Given_NonVisualElementHandleType_When_Constructed_Then_CurrentIsNull()
+        {
+            // Act
+            var handleRef = new Ref<IFakeHandle>();
+
+            // Assert
+            Assert.That(handleRef.Current, Is.Null,
+                "A ref over a non-VisualElement handle type is valid and starts empty");
+        }
+
+        [Test]
+        public void Given_VisualElementType_When_SetElementCalled_Then_CurrentHoldsSameInstance()
+        {
+            // Arrange
+            var elementRef = new Ref<TextField>();
+            var element = new TextField();
+
+            // Act
+            elementRef.SetElement(element);
+
+            // Assert
+            Assert.That(elementRef.Current, Is.SameAs(element),
+                "SetElement publishes the VisualElement-derived value by identity");
+        }
+
+        [Test]
+        public void Given_RefViewedAsSetter_When_SetWithValue_Then_CurrentHoldsThatValue()
+        {
+            // Arrange
+            var handleRef = new Ref<IFakeHandle>();
+            IHookRefSetter setter = handleRef;
+            var fake = new FakeHandle();
+
+            // Act
+            setter.Set(fake);
+
+            // Assert
+            Assert.That(handleRef.Current, Is.SameAs(fake),
+                "The type-erased setter publishes the value into Current");
+        }
+
+        [Test]
+        public void Given_RefHoldingValue_When_SetNullViaSetter_Then_CurrentIsCleared()
+        {
+            // Arrange
+            var handleRef = new Ref<IFakeHandle>();
+            IHookRefSetter setter = handleRef;
+            setter.Set(new FakeHandle());
+            Assume.That(handleRef.Current, Is.Not.Null, "Precondition: the ref holds a value before clearing");
+
+            // Act
+            setter.Set(null);
+
+            // Assert
+            Assert.That(handleRef.Current, Is.Null, "Set(null) through the setter clears Current");
         }
 
         #endregion

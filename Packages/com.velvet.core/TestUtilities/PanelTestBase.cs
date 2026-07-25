@@ -1,15 +1,14 @@
+#if UNITY_EDITOR
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
-using Velvet.TestUtilities;
 
-namespace Velvet.Tests
+namespace Velvet.TestUtilities
 {
     /// <summary>
     /// Shared scaffold for Styling fixtures that need a real <see cref="EditorWindow"/> panel so layout resolves
-    /// and <c>resolvedStyle</c> / pointer-and-geometry events behave like production. It absorbs the boilerplate
-    /// the panel fixtures duplicate: the headless guard, host-window creation/teardown, and the reflective
+    /// and <c>resolvedStyle</c> / pointer-and-geometry events behave like production. It owns the shared harness pieces: the headless guard, host-window creation/teardown, and the reflective
     /// "force a layout pass" helper.
     /// </summary>
     /// <remarks>
@@ -102,3 +101,4 @@ namespace Velvet.Tests
         private sealed class TestHostWindow : EditorWindow { }
     }
 }
+#endif

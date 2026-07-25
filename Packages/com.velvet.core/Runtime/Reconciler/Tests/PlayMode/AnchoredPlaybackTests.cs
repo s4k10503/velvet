@@ -1,7 +1,6 @@
 #if UNITY_EDITOR
 using System.Collections;
 using NUnit.Framework;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
@@ -71,10 +70,7 @@ namespace Velvet.Tests
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss");
-            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
-            doc.rootVisualElement.styleSheets.Add(sheet);
+            doc.rootVisualElement.LoadBundledStyleUtilitiesForTest();
 
             _cameraGo = new GameObject("AnchoredPlaybackCamera");
             s_camera = _cameraGo.AddComponent<Camera>();

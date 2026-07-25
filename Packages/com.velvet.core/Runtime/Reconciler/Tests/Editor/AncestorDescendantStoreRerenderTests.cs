@@ -67,9 +67,6 @@ namespace Velvet.Tests
             s_store = null;
         }
 
-        private static FiberBatchScheduler Scheduler(MountedTree mounted)
-            => mounted.Root.Reconciler.Context.BatchScheduler;
-
         private static int CountByName(VisualElement root, string name)
         {
             var n = root.name == name ? 1 : 0;
@@ -84,7 +81,7 @@ namespace Velvet.Tests
         private void DriveBusyTrueViaFrameDrain()
         {
             _store.Apply(s => s with { Busy = true });
-            Scheduler(_mounted).DrainImmediateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
         // A typical async loading/result flow: Busy true -> Busy false + result Message -> Message cleared.
@@ -93,11 +90,11 @@ namespace Velvet.Tests
         private void DriveFullBusyMessageCycle()
         {
             _store.Apply(s => s with { Busy = true });
-            Scheduler(_mounted).DrainImmediateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
             _store.Apply(s => s with { Busy = false, Message = "+1200" });
-            Scheduler(_mounted).DrainImmediateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
             _store.Apply(s => s with { Message = null });
-            Scheduler(_mounted).DrainImmediateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
         // The intermediate state of the cycle: Busy cleared and the result Message set. Asserting here proves
@@ -105,16 +102,16 @@ namespace Velvet.Tests
         private void DriveBusyClearedWithMessage()
         {
             _store.Apply(s => s with { Busy = true });
-            Scheduler(_mounted).DrainImmediateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
             _store.Apply(s => s with { Busy = false, Message = "+1200" });
-            Scheduler(_mounted).DrainImmediateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
         // Mirror the click handler: the first toggle takes the Urgent lane inside a discrete event and is
         // flushed synchronously when the handler returns (FlushImmediate), not by a frame drain.
         private void DriveBusyTrueInDiscreteEvent()
         {
-            var scheduler = Scheduler(_mounted);
+            var scheduler = _mounted.GetSchedulerForTest();
             FiberWorkLoop.IsInDiscreteEvent = true;
             try
             {
@@ -132,7 +129,7 @@ namespace Velvet.Tests
         // toast-clear on the Normal lane.
         private void DriveRepeatedClickResultCycles()
         {
-            var scheduler = Scheduler(_mounted);
+            var scheduler = _mounted.GetSchedulerForTest();
             for (var i = 0; i < 4; i++)
             {
                 FiberWorkLoop.IsInDiscreteEvent = true;
@@ -487,9 +484,6 @@ namespace Velvet.Tests
             ResetAll();
         }
 
-        private static FiberBatchScheduler Scheduler(MountedTree mounted)
-            => mounted.Root.Reconciler.Context.BatchScheduler;
-
         [Test]
         public void Given_ChildDirtiedBeforeParent_When_BatchDrained_Then_ChildRendersExactlyOnce()
         {
@@ -501,7 +495,7 @@ namespace Velvet.Tests
             s_setParent.Invoke("p-updated");
 
             // Act — single coalesced drain.
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert — exactly one re-render each (count == 2 = mount + one batch render). The bug renders
             // the child twice (its own isolated slot flush + the parent's re-expansion), giving 3.
@@ -516,14 +510,14 @@ namespace Velvet.Tests
             using var mounted = MountParentChild();
             s_setChild.Invoke("c-updated");
             s_setParent.Invoke("p-updated");
-            Assume.That(Scheduler(mounted).ImmediatePendingCount, Is.EqualTo(2),
+            Assume.That(mounted.GetSchedulerForTest().ImmediatePendingCount, Is.EqualTo(2),
                 "Precondition: both fibers pending on the immediate tier");
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.AreEqual(0, Scheduler(mounted).ImmediatePendingCount,
+            Assert.AreEqual(0, mounted.GetSchedulerForTest().ImmediatePendingCount,
                 "The whole batch is drained — no fiber lingers in the pending set after the coalesced pass");
         }
 
@@ -537,7 +531,7 @@ namespace Velvet.Tests
             using var mounted = MountParentChild();
             s_childFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_parentFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
-            var scheduler = Scheduler(mounted);
+            var scheduler = mounted.GetSchedulerForTest();
             Assume.That((scheduler.ImmediatePendingCount, scheduler.DelayedPendingCount), Is.EqualTo((1, 1)),
                 "Precondition: parent on the immediate tier, child on the delayed tier");
 
@@ -563,8 +557,8 @@ namespace Velvet.Tests
             s_parentFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
 
             // Act — immediate drain (parent) then delayed drain (would re-flush a stranded child).
-            Scheduler(mounted).DrainImmediateForTest();
-            Scheduler(mounted).DrainDelayedForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert — exactly one re-render of the child across both drains.
             Assert.AreEqual(2, s_renderCountChild,

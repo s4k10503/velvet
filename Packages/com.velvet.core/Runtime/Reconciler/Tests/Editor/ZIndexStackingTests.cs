@@ -673,7 +673,7 @@ namespace Velvet.Tests
         public void Given_AMotionWithAnAbsoluteAndZClass_When_Mounted_Then_ItWarnsThatZIsIgnored()
         {
             // Arrange — the warning is expected (LogAssert fails the test if it never fires). A plain Regex
-            // (no IgnoreCase) mirrors ShadowWrapTests / ClipPathWrapTests' own Motion-incompatibility pins.
+            // (no IgnoreCase) mirrors PaintBindingPatchTests / ClipPathWrapTests' own Motion-incompatibility pins.
             UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Warning,
                 new System.Text.RegularExpressions.Regex(@"z-\* utility on a Motion is ignored"));
 
