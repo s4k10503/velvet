@@ -1,21 +1,37 @@
+using System.Reflection;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the bezier-driven variant enter/exit (<c>StyleTransitionConfig.Type == Bezier</c>): the from→to class
-    /// swap lands at rest IMMEDIATELY (no CSS-transition-triggering frame boundary), the per-frame tick
-    /// (<see cref="BezierTweenDriver.Step"/>) moves the inline style along the exact cubic-bezier curve and
-    /// reports done once elapsed reaches the fixed duration, and an exit-cancel retarget
-    /// (<see cref="BezierTweenDriver.Retarget"/>) restarts a fresh full-duration reversal from the current value.
+    /// Pins the bezier-driven variant enter/exit path end to end: the pure CSS <c>cubic-bezier(x1,y1,x2,y2)</c>
+    /// evaluation (<see cref="CubicBezierEvaluator.Evaluate"/>) — boundary clamps, the linear/identity fast path,
+    /// an exact front-loaded reference point no keyword easing could reproduce, unclamped overshoot, solver
+    /// monotonicity, and the reject-and-fall-back-to-default-curve path (with its one-shot warning) for an
+    /// out-of-range or non-finite control point; validation of user-supplied bezier parameters
+    /// (<c>StyleTransitionConfig.Type == Bezier</c>) mirroring the spring path's guard, since a non-finite control
+    /// point would propagate into every inline style write and never reach the target, leaving the completion
+    /// callback that removes a presence exit's ghost never firing; that a custom curve survives the config's copy
+    /// builders unchanged, since forgetting one of the four <c>Bezier*</c> fields in an object-initializer rebuild
+    /// would silently reset a caller's curve to the default; and the driven tween itself
+    /// (<see cref="BezierTweenDriver.Step"/>), which moves the inline style along the exact curve and reports done
+    /// once elapsed reaches the fixed duration, with an exit-cancel retarget
+    /// (<see cref="BezierTweenDriver.Retarget"/>) restarting a fresh full-duration reversal from the current value.
     /// </summary>
     /// <remarks>
     /// Panel-free by design, exactly like <see cref="MotionSpringDriverTests"/>: the scheduler's bezier path never
     /// reads <c>resolvedStyle</c> (numeric from/to values come from <see cref="MotionSpringClassParser"/>'s
     /// class-name parsing), and the recurring tick it registers needs a live panel clock the EditMode PlayerLoop
     /// never drives — so the tick's own math is exercised by calling <see cref="BezierTweenDriver.Step"/> directly
-    /// in a loop. GWT, one assert per case (Assume for preconditions).
+    /// in a loop. The reference midpoint (0.7756) was computed independently with a Python implementation of the
+    /// same WebKit UnitBezier Newton/bisection algorithm every browser's <c>cubic-bezier()</c> is built on. The
+    /// warn-once static is reset before/after every test (reflection, mirroring DropShadowBakeTests) so the
+    /// out-of-range cases stay deterministic regardless of run order or of another fixture having already tripped
+    /// the same one-shot flag. GWT, one assert per case (Assume for preconditions).
     /// </remarks>
     [TestFixture]
     internal sealed class BezierTweenDriverTests
@@ -27,6 +43,16 @@ namespace Velvet.Tests
         private const float Y1 = 0f;
         private const float X2 = 0.2f;
         private const float Y2 = 1f;
+
+        private const BindingFlags Priv = BindingFlags.NonPublic | BindingFlags.Static;
+        private static readonly MethodInfo ResetWarnOnceMethod =
+            typeof(CubicBezierEvaluator).GetMethod("ResetWarnOnceState", Priv);
+
+        [SetUp]
+        public void SetUp() => ResetWarnOnceMethod?.Invoke(null, null);
+
+        [TearDown]
+        public void TearDown() => ResetWarnOnceMethod?.Invoke(null, null);
 
         [Test]
         public void Given_ABezierVariantEnter_When_Started_Then_ClassesLandAtRestWithInlineOpacityAtTheFromValue()
@@ -186,6 +212,249 @@ namespace Velvet.Tests
 
             // Assert — the inline value momentarily exceeds the target (1), i.e. it actually overshoots.
             Assert.That(element.style.opacity.value, Is.GreaterThan(1f));
+        }
+
+        [Test]
+        public void Given_TInputZero_When_Evaluated_Then_ReturnsZero()
+        {
+            // Arrange / Act — the lower boundary short-circuits regardless of the curve.
+            var output = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_TInputOne_When_Evaluated_Then_ReturnsOne()
+        {
+            // Arrange / Act — the upper boundary short-circuits regardless of the curve.
+            var output = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 1f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_TheLinearIdentityCurve_When_EvaluatedAtAnArbitraryT_Then_TheOutputEqualsTheInput()
+        {
+            // Arrange / Act — cubic-bezier(0,0,1,1) is the identity curve: the fast path returns t directly.
+            var output = CubicBezierEvaluator.Evaluate(0f, 0f, 1f, 1f, 0.37f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(0.37f).Within(1e-4f));
+        }
+
+        [Test]
+        public void Given_TailwindsDefaultCurve_When_EvaluatedAtItsMidpoint_Then_ItFrontLoadsPastTheLinearMidpoint()
+        {
+            // Arrange / Act — Tailwind's own default curve, cubic-bezier(0.4,0,0.2,1). The whole reason this
+            // exists: at the temporal midpoint the eased progress is ~0.776, NOT the 0.5 the closest keyword
+            // (ease-in-out, symmetric) would give — an exact curve no EasingMode keyword can express.
+            var output = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(0.7756f).Within(0.001f));
+        }
+
+        [Test]
+        public void Given_AnOvershootCurve_When_EvaluatedPastItsPeak_Then_TheOutputExceedsOne()
+        {
+            // Arrange / Act — a back/anticipate curve whose control points push y past 1; the evaluator leaves
+            // y1/y2 unclamped, so the eased output genuinely overshoots its target mid-curve.
+            var output = CubicBezierEvaluator.Evaluate(0.34f, 1.56f, 0.64f, 1f, 0.6f);
+
+            // Assert
+            Assert.That(output, Is.GreaterThan(1f));
+        }
+
+        [Test]
+        public void Given_AMonotonicEaseCurve_When_EvaluatedAtIncreasingInputs_Then_TheOutputNeverDecreases()
+        {
+            // Arrange — a solver-robustness sweep (independent of any hand-computed value): a well-behaved ease
+            // curve must map increasing time to non-decreasing output across the whole range.
+            var nonDecreasing = true;
+            var previous = float.NegativeInfinity;
+
+            // Act — step-0.05 sweep folded into one boolean.
+            for (var t = 0f; t <= 1f + 1e-4f; t += 0.05f)
+            {
+                var output = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, t);
+                if (output < previous - 1e-5f)
+                {
+                    nonDecreasing = false;
+                }
+                previous = output;
+            }
+
+            // Assert
+            Assert.That(nonDecreasing, Is.True);
+        }
+
+        [Test]
+        public void Given_AnX1AboveOne_When_Evaluated_Then_TheOutputMatchesTheDefaultCurveInsteadOfClamping()
+        {
+            // Arrange — an x1 above 1 is invalid (a timing function's x must stay monotone); silently clamping
+            // it to 1 would evaluate a DIFFERENT curve, cubic-bezier(1,0,0.2,1), not the default one. The
+            // reference is a valid call, so it logs nothing.
+            var expected = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
+            LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
+
+            // Act
+            var output = CubicBezierEvaluator.Evaluate(2f, 0f, 0.2f, 1f, 0.5f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ANaNXControlPoint_When_Evaluated_Then_TheOutputMatchesTheDefaultCurveInsteadOfPassingNaNThrough()
+        {
+            // Arrange — a NaN control point is not caught by an ordinary out-of-range comparison (every
+            // comparison against NaN is false), so without an explicit finiteness check the NaN would flow
+            // straight into the solver and poison the output; the finite fallback must degrade it to the default
+            // curve exactly like an out-of-range value. The reference is a valid call, so it logs nothing.
+            var expected = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
+            LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
+
+            // Act
+            var output = CubicBezierEvaluator.Evaluate(float.NaN, 0f, 0.2f, 1f, 0.5f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ANaNYControlPoint_When_Evaluated_Then_TheOutputMatchesTheDefaultCurveInsteadOfPassingNaNThrough()
+        {
+            // Arrange — a NaN in y1/y2 survives the x-axis range/finiteness test (its x's are valid) but still
+            // poisons SampleCurve(y1,y2,s) into a NaN output, so the finiteness guard has to cover every
+            // coordinate, not just the two x's. With a valid x pair here, only guarding y catches this — it must
+            // degrade to the default curve and warn exactly like any other invalid control point. The reference
+            // is a valid call, so it logs nothing.
+            var expected = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.5f);
+            LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
+
+            // Act
+            var output = CubicBezierEvaluator.Evaluate(0.4f, float.NaN, 0.2f, 1f, 0.5f);
+
+            // Assert
+            Assert.That(output, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ASecondInvalidCall_When_Evaluated_Then_ItStaysSilentButStillFallsBack()
+        {
+            // Arrange — Evaluate runs on every tick of a running tween (up to 60/sec); the first invalid call
+            // consumes the one-shot warning so a whole animation's worth of subsequent ticks does not spam it.
+            // No LogAssert.Expect is registered for the second call below, so an unexpected repeat warning would
+            // fail this test under the project's strict LogAssert mode.
+            LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
+            CubicBezierEvaluator.Evaluate(2f, 0f, 0.2f, 1f, 0.3f);
+            var expected = CubicBezierEvaluator.Evaluate(0.4f, 0f, 0.2f, 1f, 0.6f);
+
+            // Act
+            var output = CubicBezierEvaluator.Evaluate(2f, 0f, 0.2f, 1f, 0.6f);
+
+            // Assert — the fallback still applies even though the diagnostic stays silent the second time.
+            Assert.That(output, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void Given_ANaNBezierControlPoint_When_AVariantEnterPlays_Then_ItWarnsAndCompletesImmediately()
+        {
+            // Arrange
+            var scheduler = new StyleAnimationScheduler();
+            var element = new VisualElement();
+            var completed = false;
+            LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
+
+            // Act — a NaN control point would propagate NaN into every style write.
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                0.3f, EasingMode.Linear, 0f, onComplete: () => completed = true,
+                additionalDelaySec: 0f, propertyOverrides: null,
+                type: TransitionType.Bezier, bezierX1: float.NaN, bezierY1: 0f, bezierX2: 0.2f, bezierY2: 1f);
+
+            // Assert — the play degrades to an immediate completion instead of a forever-tick.
+            Assert.That(completed, Is.True);
+        }
+
+        [Test]
+        public void Given_ANegativeBezierDuration_When_AVariantEnterPlays_Then_ItWarnsAndCompletesImmediately()
+        {
+            // Arrange
+            var scheduler = new StyleAnimationScheduler();
+            var element = new VisualElement();
+            var completed = false;
+            LogAssert.Expect(LogType.Warning, new Regex("[Bb]ezier"));
+
+            // Act — a negative duration is out of the accepted range (unlike a zero, which is intentional).
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                -1f, EasingMode.Linear, 0f, onComplete: () => completed = true,
+                additionalDelaySec: 0f, propertyOverrides: null,
+                type: TransitionType.Bezier, bezierX1: 0.4f, bezierY1: 0f, bezierX2: 0.2f, bezierY2: 1f);
+
+            // Assert
+            Assert.That(completed, Is.True);
+        }
+
+        [Test]
+        public void Given_AZeroBezierDuration_When_AVariantEnterPlays_Then_ItCompletesImmediatelyWithoutWarning()
+        {
+            // Arrange — no LogAssert.Expect: a zero duration is an intentional no-animation, so any warning here
+            // would fail the test under NUnit's strict LogAssert mode.
+            var scheduler = new StyleAnimationScheduler();
+            var element = new VisualElement();
+            var completed = false;
+
+            // Act — a zero duration degrades exactly like StyleTransitionConfig.None: silent immediate complete.
+            scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                0f, EasingMode.Linear, 0f, onComplete: () => completed = true,
+                additionalDelaySec: 0f, propertyOverrides: null,
+                type: TransitionType.Bezier, bezierX1: 0.4f, bezierY1: 0f, bezierX2: 0.2f, bezierY2: 1f);
+
+            // Assert
+            Assert.That(completed, Is.True);
+        }
+
+        // A deliberately non-default curve, so a reset back to the (0.4,0,0.2,1) default would be visible.
+        private static StyleTransitionConfig CustomBezier() => new()
+        {
+            Type = TransitionType.Bezier,
+            DurationSec = 0.3f,
+            BezierX1 = 0.11f,
+            BezierY1 = 0.22f,
+            BezierX2 = 0.33f,
+            BezierY2 = 0.44f,
+        };
+
+        [Test]
+        public void Given_ACustomBezierConfig_When_WithIsCalled_Then_TheCurveSurvivesUnchanged()
+        {
+            // Arrange
+            var config = CustomBezier();
+
+            // Act — With() only tunes the top-level timing; the curve must pass through untouched.
+            var result = config.With(durationSec: 0.5f);
+
+            // Assert
+            Assert.That(
+                (result.BezierX1, result.BezierY1, result.BezierX2, result.BezierY2),
+                Is.EqualTo((0.11f, 0.22f, 0.33f, 0.44f)));
+        }
+
+        [Test]
+        public void Given_ACustomBezierConfig_When_WithExitClassesIsCalled_Then_TheCurveSurvivesUnchanged()
+        {
+            // Arrange
+            var config = CustomBezier();
+
+            // Act — WithExitClasses() replaces only the exit class pair; the curve must pass through untouched.
+            var result = config.WithExitClasses("opacity-100", "opacity-0");
+
+            // Assert
+            Assert.That(
+                (result.BezierX1, result.BezierY1, result.BezierX2, result.BezierY2),
+                Is.EqualTo((0.11f, 0.22f, 0.33f, 0.44f)));
         }
     }
 }

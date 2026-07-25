@@ -312,4 +312,173 @@ namespace Velvet.Tests
             }
         }
     }
+
+    /// <summary>
+    /// Behavioural coverage for stacked variants (<c>dark:hover:</c>, <c>hover:dark:</c>), driven by REAL UI
+    /// events and the <see cref="VelvetTheme"/> toggle. A stacked leaf applies iff ALL of its conditions hold
+    /// simultaneously and clears when any turns off, order-independently. Two-deep is the certified path
+    /// (deeper nesting falls out of the same recursion but is documented best-effort). This also pins that an
+    /// edge-based inner state (hover/focus/active) survives the outer condition closing and reopening: the
+    /// outer-gate close used to detach and drop the stacked manipulator for every inner kind, and on reopen a
+    /// fresh instance started with the inner off, while pointer/focus signals fire only on state EDGES — so a
+    /// pointer that never left the element could not re-apply <c>dark:hover:*</c> until a physical re-hover. In
+    /// real CSS the oracle is a continuously-tracked :hover pseudo-class, unaffected by an ancestor class
+    /// toggling. Level-based inners (dark, responsive) still detach on close: they re-derive their truth on
+    /// re-attach, and dark's process-wide theme subscription must release immediately. GWT, one assert each.
+    /// </summary>
+    [TestFixture]
+    internal sealed class StackedVariantBehaviorTests
+    {
+        private VisualElement _root;
+        private bool _darkBefore;
+        private MountedTree _mounted;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            _darkBefore = VelvetTheme.IsDark;
+            VelvetTheme.IsDark = false;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _mounted?.Dispose();
+            _mounted = null;
+            VelvetTheme.IsDark = _darkBefore;
+        }
+
+        private Label MountLeaf(string className)
+        {
+            _mounted = V.Mount(_root, V.Label(name: "leaf", className: className, text: "x"));
+            return _root.Q<Label>("leaf");
+        }
+
+        [Test]
+        public void Given_DarkHoverLeaf_When_DarkThenHover_Then_PayloadApplied()
+        {
+            // Arrange — dark:hover:bg-hot; flip dark on so the outer gate opens but hover (inner) is still off.
+            var leaf = MountLeaf("dark:hover:bg-hot");
+            VelvetTheme.IsDark = true;
+            Assume.That(leaf.ClassListContains("bg-hot"), Is.False, "Precondition: dark alone does not apply (hover off)");
+
+            // Act — the pointer goes over (inner gate opens too).
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+
+            // Assert — the leaf applies because BOTH dark and hover hold.
+            Assert.IsTrue(leaf.ClassListContains("bg-hot"));
+        }
+
+        [Test]
+        public void Given_DarkHoverLeafApplied_When_ThemeFlipsToLight_Then_PayloadRemoved()
+        {
+            // Arrange — applied while dark AND hovered.
+            var leaf = MountLeaf("dark:hover:bg-hot");
+            VelvetTheme.IsDark = true;
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+            Assume.That(leaf.ClassListContains("bg-hot"), Is.True, "Precondition: applied while dark AND hovered");
+
+            // Act — the outer (dark) gate closes.
+            VelvetTheme.IsDark = false;
+
+            // Assert — the leaf clears (the AND no longer holds).
+            Assert.IsFalse(leaf.ClassListContains("bg-hot"));
+        }
+
+        [Test]
+        public void Given_DarkHoverLeafApplied_When_PointerLeaves_Then_PayloadRemoved()
+        {
+            // Arrange — applied while dark AND hovered.
+            var leaf = MountLeaf("dark:hover:bg-hot");
+            VelvetTheme.IsDark = true;
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+            Assume.That(leaf.ClassListContains("bg-hot"), Is.True, "Precondition: applied while dark AND hovered");
+
+            // Act — the inner (hover) gate closes.
+            using (var evt = PointerOutEvent.GetPooled()) leaf.SimulateEvent(evt);
+
+            // Assert — the leaf clears.
+            Assert.IsFalse(leaf.ClassListContains("bg-hot"));
+        }
+
+        [Test]
+        public void Given_DarkHoverLeaf_When_HoveredButNotDark_Then_PayloadNotApplied()
+        {
+            // Arrange — dark:hover:bg-hot in the light theme (outer gate closed).
+            var leaf = MountLeaf("dark:hover:bg-hot");
+
+            // Act — only the inner (hover) signal fires.
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+
+            // Assert — hover alone never lights a dark:hover: leaf (the AND withholds it).
+            Assert.IsFalse(leaf.ClassListContains("bg-hot"));
+        }
+
+        [Test]
+        public void Given_HoverDarkLeaf_When_HoverThenDark_Then_PayloadApplied()
+        {
+            // Arrange — hover:dark:bg-hot (the reverse order); hover first opens the outer gate, dark still off.
+            var leaf = MountLeaf("hover:dark:bg-hot");
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+            Assume.That(leaf.ClassListContains("bg-hot"), Is.False, "Precondition: hover alone does not apply (dark off)");
+
+            // Act — the theme flips to dark (inner gate opens).
+            VelvetTheme.IsDark = true;
+
+            // Assert — applies, proving stacking is order-independent (hover:dark: == dark:hover:).
+            Assert.IsTrue(leaf.ClassListContains("bg-hot"));
+        }
+
+        [Test]
+        public void Given_HoverWithStaticScalePayload_When_Hovered_Then_InlineNegativeMarginApplied()
+        {
+            // Arrange — hover:-mt-2; the payload -mt-2 has no '[' and is a static-scale name, so the variant
+            // apply gate must route it to the inline resolver rather than add it as a (never-matching) class.
+            var leaf = MountLeaf("hover:-mt-2");
+
+            // Act
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+
+            // Assert — the inline margin-top is the negated --space-2 (8px).
+            Assert.That(leaf.style.marginTop.value.value, Is.EqualTo(-8f));
+        }
+
+        [Test]
+        public void Given_DarkHoverLeafApplied_When_DarkTogglesOffAndBackOnWithoutRehover_Then_PayloadReapplies()
+        {
+            // Arrange — applied while dark AND hovered, then the outer (dark) gate closes while the
+            // pointer never leaves the element.
+            var leaf = MountLeaf("dark:hover:bg-hot");
+            VelvetTheme.IsDark = true;
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+            Assume.That(leaf.ClassListContains("bg-hot"), Is.True, "Precondition: applied while dark AND hovered");
+            VelvetTheme.IsDark = false;
+            Assume.That(leaf.ClassListContains("bg-hot"), Is.False, "Precondition: cleared while light");
+
+            // Act — dark returns; no new pointer event has fired.
+            VelvetTheme.IsDark = true;
+
+            // Assert — the continuously-held hover still counts, matching CSS's live :hover.
+            Assert.IsTrue(leaf.ClassListContains("bg-hot"));
+        }
+
+        [Test]
+        public void Given_DarkHoverLeafReopenedWhileHovered_When_ThePointerFinallyLeaves_Then_PayloadClears()
+        {
+            // Arrange — the close/reopen cycle above, payload re-applied via the retained hover.
+            var leaf = MountLeaf("dark:hover:bg-hot");
+            VelvetTheme.IsDark = true;
+            using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+            VelvetTheme.IsDark = false;
+            VelvetTheme.IsDark = true;
+            Assume.That(leaf.ClassListContains("bg-hot"), Is.True, "Precondition: re-applied after reopen");
+
+            // Act — the pointer leaves for real.
+            using (var evt = PointerOutEvent.GetPooled()) leaf.SimulateEvent(evt);
+
+            // Assert — the retained manipulator still tracks the live edge and clears.
+            Assert.IsFalse(leaf.ClassListContains("bg-hot"));
+        }
+    }
 }

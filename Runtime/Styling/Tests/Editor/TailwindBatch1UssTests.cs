@@ -12,7 +12,14 @@ namespace Velvet.Tests
     /// color classes (<c>_typography.uss</c>/<c>_backgrounds.uss</c>/<c>_borders.uss</c>), the numeric
     /// <c>duration-{ms}</c> scale (<c>_state_variants.uss</c>), the static position scale
     /// (<c>_layout.uss</c>), and the extended spacing/sizing scale plus <c>border-8</c>
-    /// (<c>_spacing.uss</c>/<c>_sizing.uss</c>/<c>_borders.uss</c>). Each mounts a leaf in a real
+    /// (<c>_spacing.uss</c>/<c>_sizing.uss</c>/<c>_borders.uss</c>); the font-size scale in
+    /// <c>_tokens.uss</c> (the FRAMEWORK default with only the bundled stylesheet attached — the demo pins its
+    /// own larger scale separately); the border-radius scale values in <c>_tokens.uss</c>; the spacing-scale
+    /// steps 11 (2.75rem = 44px) and 28 (7rem = 112px), the only two standard steps missing across every
+    /// family, verified at all three layers that consume the scale (the bundled USS, the arbitrary-value
+    /// resolver's static-scale dict, and the gap polyfill's scale dict); and the tracking-* (letter-spacing)
+    /// scale, pinned to Tailwind's em values baked at the 16px root font size (UI Toolkit letter-spacing has no
+    /// em unit, so the scale is fixed px, exact at the default text size). Each mounts a leaf in a real
     /// <see cref="EditorWindow"/> panel with the bundled <c>StyleUtilities.uss</c>, forces a layout pass,
     /// then reads <c>resolvedStyle</c>. GWT, one assert per case.
     /// </summary>
@@ -34,6 +41,22 @@ namespace Velvet.Tests
         {
             _mounted = V.Mount(_window.rootVisualElement,
                 V.Div(className: parentClassName, V.Div(name: "leaf", className: childClassName)));
+            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
+            ForcePanelUpdate(leaf.panel);
+            return leaf;
+        }
+
+        private VisualElement MountLabelAndResolve(string className)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "leaf", className: className, text: "x"));
+            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
+            ForcePanelUpdate(leaf.panel);
+            return leaf;
+        }
+
+        private VisualElement MountLeaf(string className)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "leaf", className: className));
             var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
             ForcePanelUpdate(leaf.panel);
             return leaf;
@@ -293,6 +316,150 @@ namespace Velvet.Tests
             var leaf = MountAndResolve("duration-[400ms]");
 
             Assert.That(leaf.resolvedStyle.transitionDuration.First().value, Is.EqualTo(0.4f).Within(1e-5f));
+        }
+
+        [Test]
+        public void Given_TextLgClass_When_Resolved_Then_FontSizeIs18()
+        {
+            // Arrange / Act — text-lg == 1.125rem == 18px (Velvet previously baked 20px).
+            var leaf = MountLabelAndResolve("text-lg");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.fontSize, Is.EqualTo(18f));
+        }
+
+        [Test]
+        public void Given_Text2xlClass_When_Resolved_Then_FontSizeIs24()
+        {
+            // Arrange / Act — text-2xl == 1.5rem == 24px (Velvet previously baked 30px).
+            var leaf = MountLabelAndResolve("text-2xl");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.fontSize, Is.EqualTo(24f));
+        }
+
+        [Test]
+        public void Given_Text4xlClass_When_Resolved_Then_FontSizeIs36()
+        {
+            // Arrange / Act — text-4xl == 2.25rem == 36px (Velvet previously baked 42px).
+            var leaf = MountLabelAndResolve("text-4xl");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.fontSize, Is.EqualTo(36f));
+        }
+
+        [Test]
+        public void Given_TextXsClass_When_Resolved_Then_FontSizeIs12()
+        {
+            // Arrange / Act — text-xs == 0.75rem == 12px (Velvet previously baked 11px).
+            var leaf = MountLabelAndResolve("text-xs");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.fontSize, Is.EqualTo(12f));
+        }
+
+        [Test]
+        public void Given_RoundedLgClass_When_Resolved_Then_BorderRadiusIs8()
+        {
+            // Arrange/Act — rounded-lg == 0.5rem == 8px (Velvet previously baked 16px).
+            var leaf = MountAndResolve("rounded-lg");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(8f));
+        }
+
+        [Test]
+        public void Given_Rounded3xlClass_When_Resolved_Then_BorderRadiusIs24()
+        {
+            // Arrange/Act — rounded-3xl == 1.5rem == 24px (Velvet previously baked 45px).
+            var leaf = MountAndResolve("rounded-3xl");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(24f));
+        }
+
+        [Test]
+        public void Given_BareRoundedClass_When_Resolved_Then_BorderRadiusIs4()
+        {
+            // Arrange/Act — the bare `rounded` DEFAULT (0.25rem == 4px) had no Velvet class before.
+            var leaf = MountAndResolve("rounded");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_BareRoundedTClass_When_Resolved_Then_TopLeftRadiusIs4()
+        {
+            // Arrange/Act — the bare per-side `rounded-t` DEFAULT sets the two top corners to 4px.
+            var leaf = MountAndResolve("rounded-t");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.borderTopLeftRadius, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_P11Class_When_Resolved_Then_PaddingIs44()
+        {
+            // p-11 == 2.75rem == 44px.
+            var leaf = MountAndResolve("p-11");
+
+            Assert.That(leaf.resolvedStyle.paddingTop, Is.EqualTo(44f));
+        }
+
+        [Test]
+        public void Given_P28Class_When_Resolved_Then_PaddingIs112()
+        {
+            // p-28 == 7rem == 112px.
+            var leaf = MountAndResolve("p-28");
+
+            Assert.That(leaf.resolvedStyle.paddingTop, Is.EqualTo(112f));
+        }
+
+        [Test]
+        public void Given_W11Class_When_Resolved_Then_WidthIs44()
+        {
+            var leaf = MountAndResolve("w-11");
+
+            Assert.That(leaf.resolvedStyle.width, Is.EqualTo(44f));
+        }
+
+        [Test]
+        public void Given_NegativeMargin11_When_Parsed_Then_ResolvesMarginTopNegative44()
+        {
+            // The static-scale resolver path (negative margins / translate presets) must know step 11.
+            var ok = StyleArbitraryValueResolver.TryParse("-mt-11", out var s);
+
+            Assume.That(ok, Is.True, "Precondition: -mt-11 resolves on the static scale");
+            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.MarginTop, -44f)));
+        }
+
+        [Test]
+        public void Given_Gap28_When_Parsed_Then_ResolvesHundredTwelvePx()
+        {
+            // The gap polyfill's scale dict must also know step 28.
+            var ok = StyleGapClass.TryParse("gap-28", out var gap, out _);
+
+            Assume.That(ok, Is.True, "Precondition: gap-28 resolves in the gap polyfill");
+            Assert.That(gap, Is.EqualTo(112f));
+        }
+
+        [Test]
+        public void Given_TrackingWidest_When_Resolved_Then_ItIsPointOneEmAtTheSixteenPxRoot()
+        {
+            // Tailwind tracking-widest is 0.1em; at the 16px root that is 1.6px.
+            var leaf = MountLeaf("tracking-widest");
+
+            Assert.That(leaf.resolvedStyle.letterSpacing, Is.EqualTo(1.6f).Within(1e-3f));
+        }
+
+        [Test]
+        public void Given_TrackingTight_When_Resolved_Then_ItIsNegativePointZeroTwoFiveEm()
+        {
+            // Tailwind tracking-tight is -0.025em; at the 16px root that is -0.4px.
+            var leaf = MountLeaf("tracking-tight");
+
+            Assert.That(leaf.resolvedStyle.letterSpacing, Is.EqualTo(-0.4f).Within(1e-3f));
         }
     }
 }

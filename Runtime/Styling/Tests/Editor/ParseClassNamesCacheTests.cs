@@ -14,6 +14,15 @@ namespace Velvet.Tests
     /// <item>When the cache reaches its size bound the next distinct key logs a warning and clears the cache,
     /// then caches the triggering key, so previously cached keys re-parse to fresh instances afterward.</item>
     /// </list>
+    /// Also specifies the contract of the <see cref="StyleClassNames"/> class-name builder
+    /// (<see cref="StyleClassNames.Class"/> joins its parts with a single space, skips <c>null</c>/empty parts,
+    /// and <see cref="StyleClassNames.When"/> returns the class name when its condition is true and
+    /// <c>null</c> when false, so it composes directly as a part of <c>Class</c>), and the underscore-for-space
+    /// arbitrary-value convention for functional color notation: a className string splits on spaces, so a
+    /// bracketed value embeds its spaces as underscores, and the rgb()/rgba() grammar must restore them before
+    /// parsing — without the substitution the underscore form of a copy-pasted "rgb(0, 128, 255)" fails byte
+    /// parsing on its "_128"/"_255" channels, the class silently falls back to a no-op USS class, and the color
+    /// is never applied.
     /// </summary>
     /// <remarks>
     /// The cache is process-wide static, so <see cref="SetUp"/> drains it via
@@ -139,6 +148,136 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(firstAfterOverflow, Is.Not.SameAs(firstBeforeOverflow));
+        }
+
+        #endregion
+
+        #region StyleClassNames.Class
+
+        [Test]
+        public void Given_NoParts_When_ClassBuilt_Then_ReturnsEmptyString()
+        {
+            // Act
+            var result = StyleClassNames.Class();
+
+            // Assert
+            Assert.That(result, Is.EqualTo(""));
+        }
+
+        [Test]
+        public void Given_SinglePart_When_ClassBuilt_Then_ReturnsThatPart()
+        {
+            // Act
+            var result = StyleClassNames.Class("btn");
+
+            // Assert
+            Assert.That(result, Is.EqualTo("btn"));
+        }
+
+        [Test]
+        public void Given_MultipleParts_When_ClassBuilt_Then_JoinsWithSingleSpace()
+        {
+            // Act
+            var result = StyleClassNames.Class("btn", "btn--primary", "btn--lg");
+
+            // Assert
+            Assert.That(result, Is.EqualTo("btn btn--primary btn--lg"));
+        }
+
+        [Test]
+        public void Given_NullParts_When_ClassBuilt_Then_SkipsNullParts()
+        {
+            // Act
+            var result = StyleClassNames.Class("btn", null, "btn--primary");
+
+            // Assert
+            Assert.That(result, Is.EqualTo("btn btn--primary"));
+        }
+
+        [Test]
+        public void Given_EmptyParts_When_ClassBuilt_Then_SkipsEmptyParts()
+        {
+            // Act
+            var result = StyleClassNames.Class("btn", "", "btn--primary");
+
+            // Assert
+            Assert.That(result, Is.EqualTo("btn btn--primary"));
+        }
+
+        [Test]
+        public void Given_AllNullOrEmptyParts_When_ClassBuilt_Then_ReturnsEmptyString()
+        {
+            // Act
+            var result = StyleClassNames.Class(null, "", null, "");
+
+            // Assert
+            Assert.That(result, Is.EqualTo(""));
+        }
+
+        #endregion
+
+        #region StyleClassNames.When
+
+        [Test]
+        public void Given_TrueCondition_When_WhenEvaluated_Then_ReturnsClassName()
+        {
+            // Act
+            var result = StyleClassNames.When(true, "active");
+
+            // Assert
+            Assert.That(result, Is.EqualTo("active"));
+        }
+
+        [Test]
+        public void Given_FalseCondition_When_WhenEvaluated_Then_ReturnsNull()
+        {
+            // Act
+            var result = StyleClassNames.When(false, "active");
+
+            // Assert
+            Assert.That(result, Is.Null);
+        }
+
+        #endregion
+
+        #region StyleClassNames integration
+
+        [Test]
+        public void Given_WhenResultsAsParts_When_ClassBuilt_Then_KeepsOnlyTrueConditionedClasses()
+        {
+            // Act
+            var result = StyleClassNames.Class(
+                "btn",
+                StyleClassNames.When(true, "btn--active"),
+                StyleClassNames.When(false, "btn--disabled"));
+
+            // Assert
+            Assert.That(result, Is.EqualTo("btn btn--active"));
+        }
+
+        #endregion
+
+        #region Color underscore convention
+
+        [Test]
+        public void Given_RgbWithUnderscoreSpacing_When_Parsed_Then_ResolvesChannels()
+        {
+            // Act — the underscore form of "rgb(0, 128, 255)".
+            var ok = StyleArbitraryValueResolver.TryParse("bg-[rgb(0,_128,_255)]", out var s);
+
+            // Assert — recognized as an arbitrary background color with the spaced channels resolved.
+            Assert.That((ok, s.Property, s.Color.g, s.Color.b),
+                Is.EqualTo((true, ArbitraryProperty.BackgroundColor, 128f / 255f, 1f)));
+        }
+
+        [Test]
+        public void Given_RgbaWithUnderscoreSpacing_When_Parsed_Then_ResolvesAlpha()
+        {
+            // Act — the underscore form of "rgba(255, 0, 0, 0.5)".
+            var ok = StyleArbitraryValueResolver.TryParse("bg-[rgba(255,_0,_0,_0.5)]", out var s);
+
+            // Assert — the alpha channel survives the underscore substitution.
+            Assert.That((ok, s.Color.r, s.Color.a), Is.EqualTo((true, 1f, 0.5f)));
         }
 
         #endregion
