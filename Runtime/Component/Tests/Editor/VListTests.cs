@@ -1,13 +1,15 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEngine.UIElements;
 using Velvet;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies the contract of <see cref="V.List{T}"/>, which projects a source collection into a keyed
-    /// VNode array.
+    /// VNode array, and its inline-composition sibling <see cref="V.ListFragment{T}(IReadOnlyList{T}, System.Func{T, string}, System.Func{T, VNode}, string)"/>.
     /// <list type="bullet">
     /// <item>A null or empty source yields an empty array.</item>
     /// <item>A non-empty source yields one slot per item, in source order.</item>
@@ -17,13 +19,24 @@ namespace Velvet.Tests
     /// reconciliation owns the null-filtering decision.</item>
     /// <item>The indexed overload passes the zero-based position to both the selector and the renderer, in
     /// ascending order.</item>
+    /// <item><c>V.ListFragment</c> returns a single VNode that expands inline, so a header, the mapped items,
+    /// and a footer land under one parent in declared order without an extra wrapper element; <c>V.List</c>
+    /// used as the sole children argument keeps materializing its items directly under the parent.</item>
     /// </list>
-    /// This fixture is the sole owner of the V.List contract; VNodeBuilderTests intentionally carries no
-    /// V.List cases.
+    /// This fixture is the sole owner of the V.List / V.ListFragment contract; VNodeBuilderTests intentionally
+    /// carries no V.List cases.
     /// </summary>
     [TestFixture]
     internal sealed class VListTests
     {
+        private VisualElement _root;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+        }
+
         #region Single-argument renderer
 
         [Test]
@@ -179,6 +192,58 @@ namespace Velvet.Tests
             Assert.That(result[0], Is.Null);
             Assume.That(result[1], Is.Not.Null, "Precondition: the non-null item still produced a node");
         }
+
+        #endregion
+
+        #region Inline composition (V.ListFragment among siblings)
+
+        private static readonly List<string> Items = new() { "i0", "i1", "i2" };
+
+        [Test]
+        public void Given_ListFragmentAmongSiblings_When_Mounted_Then_HeaderItemsFooterInOrder()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SiblingListHostRender, key: "host"));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assume.That(_root.childCount, Is.EqualTo(1), "Precondition: the host renders a single container");
+            var container = _root.ElementAt(0);
+            Assume.That(container.childCount, Is.EqualTo(Items.Count + 2),
+                "Precondition: header + every item + footer land directly under the container, no extra wrapper");
+            var texts = new List<string>();
+            for (var i = 0; i < container.childCount; i++)
+            {
+                texts.Add(((Label)container.ElementAt(i)).text);
+            }
+            Assert.That(texts, Is.EqualTo(new[] { "Header", "i0", "i1", "i2", "Footer" }),
+                "The list expands inline among its siblings in declared order");
+        }
+
+        [Test]
+        public void Given_ListAsSoleChildrenArgument_When_Mounted_Then_ItemsMaterializeUnderParent()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SoleListHostRender, key: "host"));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assume.That(_root.childCount, Is.EqualTo(1), "Precondition: the host renders a single container");
+            var container = _root.ElementAt(0);
+            Assert.That(container.childCount, Is.EqualTo(Items.Count),
+                "V.List as the sole children argument still spreads each item under the container");
+        }
+
+        [Component]
+        private static VNode SiblingListHostRender()
+            => V.Div("c",
+                V.Label(text: "Header"),
+                V.ListFragment(Items, s => s, s => V.Label(text: s)),
+                V.Label(text: "Footer"));
+
+        [Component]
+        private static VNode SoleListHostRender()
+            => V.Div("c", V.List(Items, s => s, s => V.Label(text: s)));
 
         #endregion
     }
