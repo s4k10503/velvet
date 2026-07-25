@@ -26,7 +26,11 @@ namespace Velvet.Tests
     /// GeometryChanged feedback its own writes provoke does not re-churn), and the RUNTIME axis flip: an
     /// Auto-axis gap resolves its edge from the direction class marker off-panel, so a re-render that swaps
     /// <c>flex-row</c> ↔ <c>flex-col</c> must move the inter-child margin to the new edge AND clear the edge it
-    /// abandoned.
+    /// abandoned. Also specifies the <c>space-x-*</c> / <c>space-y-*</c> alias onto the same gap machinery
+    /// (<c>space-*</c> is CSS's own inter-child-margin selector, <c>&gt; * + *</c>, which UITK has no equivalent
+    /// for) — the alias maps onto <see cref="GapAxis"/> and the <c>--space-*</c> scale exactly like <c>gap-x-*</c>
+    /// / <c>gap-y-*</c>, and the cheap <see cref="StyleGapClass.HasGapClass"/> gate must recognize it too, or it
+    /// never reaches the manipulator — plus the <c>gap-x-[…]</c> / <c>gap-[…]</c> JIT arbitrary-value form.
     /// </summary>
     /// <remarks>
     /// The manipulator writes INLINE margins (resolved to pixels from the same scale as <c>_tokens.uss</c>), so
@@ -647,6 +651,133 @@ namespace Velvet.Tests
 
             // Assert — the stale horizontal margin is cleared (no leftover from the abandoned axis).
             Assert.AreEqual(StyleKeyword.Null, _root.Q<Label>("b").style.marginLeft.keyword);
+        }
+
+        // --- space-x-*/space-y-* alias onto the gap machinery, plus the gap-x-[...] arbitrary-value form ---
+        //
+        // space-* is an inter-child margin (> * + *); UITK has no such selector, and StyleGapManipulator already
+        // writes exactly that leading margin on every child but the first, so space-x-N maps to
+        // GapAxis.Horizontal + the same --space-* scale and space-y-N to GapAxis.Vertical. The cheap
+        // StyleGapClass.HasGapClass gate (the patcher's early-out) must also recognize the alias or it never
+        // reaches the manipulator.
+
+        [Test]
+        public void Given_SpaceX4Class_When_Parsed_Then_MapsToHorizontalGapAxis()
+        {
+            // Act
+            var ok = StyleGapClass.TryParse("space-x-4", out var gap, out var axis);
+
+            // Assert
+            Assume.That(ok, Is.True, "Precondition: recognized as a gap utility");
+            Assert.That((gap, axis), Is.EqualTo((Space4, GapAxis.Horizontal)));
+        }
+
+        [Test]
+        public void Given_SpaceY2Class_When_Parsed_Then_MapsToVerticalGapAxis()
+        {
+            // Act
+            var ok = StyleGapClass.TryParse("space-y-2", out var gap, out var axis);
+
+            // Assert
+            Assume.That(ok, Is.True, "Precondition: recognized as a gap utility");
+            Assert.That((gap, axis), Is.EqualTo((8f, GapAxis.Vertical)));
+        }
+
+        [Test]
+        public void Given_SpaceXClass_When_HasGapClassProbed_Then_GateReturnsTrue()
+        {
+            // Act — the FiberNodePatcher early-out depends on this gate recognizing the alias.
+            var has = StyleGapClass.HasGapClass(new[] { "space-x-4" });
+
+            // Assert
+            Assert.That(has, Is.True);
+        }
+
+        [Test]
+        public void Given_UnknownSpaceSuffix_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act — a suffix outside the --space-* scale is not a recognized gap utility.
+            var ok = StyleGapClass.TryParse("space-x-999", out _, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_FlexRowSpaceX4_When_Reconciled_Then_LeadingMarginBetweenChildren()
+        {
+            // Arrange — mirrors the gap-x-4 parity test: the alias must drive the manipulator end-to-end.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row space-x-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = scope.Root[0];
+
+            // Assert — 2nd child carries the gap; the first has no leading margin.
+            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_FlexRowSpaceX4_When_ClassRemovedByPatch_Then_StaleMarginsCleared()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row space-x-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            Assume.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(Space4), "Precondition: gap applied");
+
+            // Act — patch the same container without the space class.
+            var tree2 = new VNode[] { Row("flex flex-row", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the manipulator's leading margin is cleared (no ghost via the shared gap path).
+            Assert.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_SpaceXReverse_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act — space-x-reverse has no gap analog; it is an intentional no-op (locked here).
+            var ok = StyleGapClass.TryParse("space-x-reverse", out _, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_GapXArbitraryPixel_When_Parsed_Then_ResolvesPixelGapOnHorizontalAxis()
+        {
+            // Act — JIT arbitrary value: gap-x-[12px].
+            var ok = StyleGapClass.TryParse("gap-x-[12px]", out var gap, out var axis);
+
+            // Assert
+            Assume.That(ok, Is.True, "Precondition: recognized as a gap utility");
+            Assert.That((gap, axis), Is.EqualTo((12f, GapAxis.Horizontal)));
+        }
+
+        [Test]
+        public void Given_GapArbitraryPercent_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act — gap is a pixel inter-child margin; a percentage is not meaningful.
+            var ok = StyleGapClass.TryParse("gap-[50%]", out _, out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_FlexRowGapArbitrary_When_Reconciled_Then_AppliesPixelGap()
+        {
+            // Arrange — the arbitrary form must drive the manipulator end-to-end, like the presets.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row gap-x-[12px]", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+
+            // Assert
+            Assert.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(12f));
         }
     }
 }

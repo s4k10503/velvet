@@ -1,8 +1,6 @@
 using System;
 using System.Linq;
 using NUnit.Framework;
-using UnityEditor;
-using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -29,40 +27,22 @@ namespace Velvet.Tests
     /// GWT, one assert each.
     /// </summary>
     [TestFixture]
-    internal sealed class FilterSpacerTests
+    internal sealed class FilterSpacerTests : PanelTestBase
     {
         private const string SkewFilter = "w-[200px] -skew-x-6 hue-rotate-90 flex flex-col";
         private const string SkewNoFilter = "w-[200px] -skew-x-6 flex flex-col";
         private const string ShadowFilter = "w-[200px] h-[80px] shadow-lg hue-rotate-90";
         private const string ShadowNoFilter = "w-[200px] h-[80px] shadow-lg";
 
-        private EditorWindow _window;
-        private MountedTree _mounted;
         private static StateUpdater<string[]> s_setItems;
         private static StateUpdater<string> s_setClass;
 
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
-            TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
+            base.SetUp();
             s_setItems = default;
             s_setClass = default;
-            _window = ScriptableObject.CreateInstance<TestHostWindow>();
-            _window.position = new Rect(0, 0, 800, 600);
-            _window.Show();
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            _mounted?.Dispose();
-            _mounted = null;
-            if (_window != null)
-            {
-                _window.Close();
-                UnityEngine.Object.DestroyImmediate(_window);
-                _window = null;
-            }
         }
 
         [Component]
@@ -84,7 +64,6 @@ namespace Velvet.Tests
             return V.Div(className: cls, name: "card");
         }
 
-        private FiberBatchScheduler Scheduler => _mounted.Root.Reconciler.Context.BatchScheduler;
         private VisualElement Box => _window.rootVisualElement.Q<VisualElement>("box");
         private VisualElement Card => _window.rootVisualElement.Q<VisualElement>("card");
 
@@ -119,13 +98,13 @@ namespace Velvet.Tests
         private void SetItems(string[] items)
         {
             s_setItems.Invoke(items);
-            Scheduler.DrainImmediateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
         private void SetClass(string cls)
         {
             s_setClass.Invoke(cls);
-            Scheduler.DrainImmediateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
         [Test]
@@ -300,7 +279,5 @@ namespace Velvet.Tests
 
             Assert.That(ShadowSpacerCount(), Is.EqualTo(1));
         }
-
-        private sealed class TestHostWindow : EditorWindow { }
     }
 }

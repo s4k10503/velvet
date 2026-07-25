@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEngine.UIElements.TestFramework;
@@ -71,10 +70,7 @@ namespace Velvet.Tests
             // The spring case reads resolvedStyle across the swap, so the utility classes the
             // variants name must actually resolve (opacity-0 -> 0); the inline-slot and class-list
             // assertions elsewhere don't care, and no element here declares transition utilities.
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss");
-            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
-            _sim.rootVisualElement.styleSheets.Add(sheet);
+            _sim.rootVisualElement.LoadBundledStyleUtilitiesForTest();
             _reconciler = new Reconciler();
             s_labelStore = null;
             s_keyStore = null;

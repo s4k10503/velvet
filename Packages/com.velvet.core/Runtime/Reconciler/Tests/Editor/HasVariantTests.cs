@@ -45,9 +45,6 @@ namespace Velvet.Tests
             s_store = null;
         }
 
-        private static FiberBatchScheduler Scheduler(MountedTree mounted)
-            => mounted.Root.Reconciler.Context.BatchScheduler;
-
         private static VisualElement Parent(ReconcilerScope scope) => scope.Root.Q<VisualElement>("parent");
 
         private static VisualElement Parent(VisualElement root) => root.Q<VisualElement>("parent");
@@ -417,7 +414,7 @@ namespace Velvet.Tests
 
             // Act — only the child re-renders (the parent does not subscribe), switching its class to `active`.
             store.SetActive(true);
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert — the settled-flush sweep re-derives the parent from its live subtree even though the has-
             // element itself never re-rendered.
@@ -435,7 +432,7 @@ namespace Velvet.Tests
 
             // Act — only the deep child re-renders (its region is two levels below the has- ancestor).
             store.SetActive(true);
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert — the dirty-scoped sweep walks up the full ancestor chain from the child's region and
             // re-derives the grandparent even though no element between them reconciled.
@@ -454,7 +451,7 @@ namespace Velvet.Tests
             // Act — only the child re-renders, applying value=true via SetValueWithoutNotify (no ChangeEvent
             // the has- manipulator could catch).
             store.SetActive(true);
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert — the settled-flush sweep re-scans the manipulator's subtree, so the payload lights despite
             // the absent event.

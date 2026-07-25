@@ -1,7 +1,6 @@
 using System;
 using System.Reflection;
 using NUnit.Framework;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -19,7 +18,7 @@ namespace Velvet.Tests
     /// reached by reflection) rather than through a registry scan, so these tests do not depend on — or trip the
     /// diagnostics of — the other preview fixtures sharing this test assembly.
     /// </remarks>
-    internal sealed class VelvetPreviewHostTests
+    internal sealed class VelvetPreviewHostTests : PanelTestBase
     {
         private const string Marker = "preview-host-marker";
 
@@ -27,25 +26,13 @@ namespace Velvet.Tests
         private static VNode NullStory() => null;                                  // idiomatic render-nothing
         private static VNode ThrowingStory() => throw new InvalidOperationException("boom");
 
-        private EditorWindow _window;
-
-        [SetUp]
-        public void SetUp()
-        {
-            TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
-            _window = ScriptableObject.CreateInstance<HostWindow>();
-            _window.position = new Rect(0, 0, 400, 300);
-            _window.Show();
-        }
+        protected override Rect WindowSize => new Rect(0, 0, 400, 300);
 
         [TearDown]
-        public void TearDown()
+        public override void TearDown()
         {
             VelvetStyleHints.PreviewStyleSheet = null;
-            if (_window == null) return;
-            _window.Close();
-            UnityEngine.Object.DestroyImmediate(_window);
-            _window = null;
+            base.TearDown();
         }
 
         // Builds a VelvetPreviewStory around a named method on this fixture without going through discovery.
@@ -117,7 +104,5 @@ namespace Velvet.Tests
             // Assert
             Assert.That(host.Story, Is.Null);
         }
-
-        private sealed class HostWindow : EditorWindow { }
     }
 }

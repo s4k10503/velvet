@@ -45,15 +45,12 @@ namespace Velvet.Tests
             ResetAll();
         }
 
-        private static FiberBatchScheduler Scheduler(MountedTree mounted)
-            => mounted.Root.Reconciler.Context.BatchScheduler;
-
         [Test]
         public void Given_SettersOnThreeFibers_When_OneEventHandler_Then_SchedulesSingleDrainCallback()
         {
             // Arrange
             using var mounted = MountThree();
-            var scheduler = Scheduler(mounted);
+            var scheduler = mounted.GetSchedulerForTest();
             var callbacksBefore = scheduler.ScheduledCallbackCount;
 
             // Act — one synchronous event handler touching three different fibers
@@ -78,7 +75,7 @@ namespace Velvet.Tests
             s_setC.Invoke("c-updated");
 
             // Assert
-            Assert.AreEqual(3, Scheduler(mounted).ImmediatePendingCount,
+            Assert.AreEqual(3, mounted.GetSchedulerForTest().ImmediatePendingCount,
                 "All three dirty fibers are queued on the same next-frame batch");
         }
 
@@ -110,7 +107,7 @@ namespace Velvet.Tests
             s_setC.Invoke("c-updated");
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.AreEqual((2, 2, 2), (s_renderCountA, s_renderCountB, s_renderCountC),
@@ -127,7 +124,7 @@ namespace Velvet.Tests
             s_setC.Invoke("c-updated");
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.AreEqual(("a-updated", "b-updated", "c-updated"), (s_lastA, s_lastB, s_lastC));
@@ -143,10 +140,10 @@ namespace Velvet.Tests
             s_setC.Invoke("c-updated");
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
-            Assert.AreEqual(0, Scheduler(mounted).ImmediatePendingCount, "The batch set is empty after draining");
+            Assert.AreEqual(0, mounted.GetSchedulerForTest().ImmediatePendingCount, "The batch set is empty after draining");
         }
 
         [Test]
@@ -160,7 +157,7 @@ namespace Velvet.Tests
             s_setA.Invoke("a-2");
 
             // Assert
-            Assert.AreEqual(1, Scheduler(mounted).ImmediatePendingCount,
+            Assert.AreEqual(1, mounted.GetSchedulerForTest().ImmediatePendingCount,
                 "Repeated setState on the same fiber enqueues it once");
         }
 
@@ -173,7 +170,7 @@ namespace Velvet.Tests
             s_setA.Invoke("a-2");
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.AreEqual((2, "a-2"), (s_renderCountA, s_lastA),
@@ -191,7 +188,7 @@ namespace Velvet.Tests
             s_startTransitionB.Invoke(() => s_setB.Invoke("b-transition"));
 
             // Assert
-            var scheduler = Scheduler(mounted);
+            var scheduler = mounted.GetSchedulerForTest();
             Assert.AreEqual((1, 1), (scheduler.ImmediatePendingCount, scheduler.DelayedPendingCount),
                 "The Normal-lane fiber sits on the immediate tier and the Transition-lane fiber on the delayed tier");
         }
@@ -205,7 +202,7 @@ namespace Velvet.Tests
             s_startTransitionB.Invoke(() => s_setB.Invoke("b-transition"));
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.AreEqual((2, 1), (s_renderCountA, s_renderCountB),
@@ -219,10 +216,10 @@ namespace Velvet.Tests
             using var mounted = MountThree();
             s_setA.Invoke("a-normal");
             s_startTransitionB.Invoke(() => s_setB.Invoke("b-transition"));
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Act
-            Scheduler(mounted).DrainDelayedForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
             Assert.AreEqual((2, "b-transition"), (s_renderCountB, s_lastB),
@@ -238,13 +235,13 @@ namespace Velvet.Tests
             Assume.That(fiberA, Is.Not.Null, "Precondition: the lead fiber is mounted");
             s_setA.Invoke("a-updated");
             s_setB.Invoke("b-updated");
-            Assume.That(Scheduler(mounted).ImmediatePendingCount, Is.EqualTo(2), "Precondition: both fibers are pending");
+            Assume.That(mounted.GetSchedulerForTest().ImmediatePendingCount, Is.EqualTo(2), "Precondition: both fibers are pending");
 
             // Act
             FiberRenderer.Unmount(fiberA);
 
             // Assert
-            Assert.AreEqual(1, Scheduler(mounted).ImmediatePendingCount,
+            Assert.AreEqual(1, mounted.GetSchedulerForTest().ImmediatePendingCount,
                 "The unmounted lead fiber is removed from the pending batch");
         }
 
@@ -265,7 +262,7 @@ namespace Velvet.Tests
             FiberRenderer.Unmount(fiberA);
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.AreEqual((2, "b-updated"), (s_renderCountB, s_lastB),
@@ -282,7 +279,7 @@ namespace Velvet.Tests
             s_setChild.Invoke("c-updated");
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.AreEqual(new[] { "parent", "child" }, s_orderLog.ToArray(),
@@ -307,7 +304,7 @@ namespace Velvet.Tests
             s_reentrantHostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
 
             // Act
-            Scheduler(mounted).DrainDelayedForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert — exactly one boundary commit: the mid-drain FlushImmediate did not run it re-entrantly
             // (that would have flushed against a half-committed host), the drain tail did.
@@ -324,11 +321,11 @@ namespace Velvet.Tests
             s_reentrantHostFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
 
             // Act
-            Scheduler(mounted).DrainDelayedForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert — the boundary commit consumed the queue: a next-frame callback would find nothing,
             // so the committed UI and the state slots agree within the same frame that wrote them.
-            Assert.AreEqual(0, Scheduler(mounted).ImmediatePendingCount,
+            Assert.AreEqual(0, mounted.GetSchedulerForTest().ImmediatePendingCount,
                 "The delayed drain's tail leaves no immediate-tier remainder");
         }
 
@@ -339,7 +336,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = MountThree();
-            var scheduler = Scheduler(mounted);
+            var scheduler = mounted.GetSchedulerForTest();
             var gate = new UniTaskCompletionSource();
             RunAfterAwait(gate, () => { s_setA.Invoke("a-async"); s_setB.Invoke("b-async"); });
             var callbacksBefore = scheduler.ScheduledCallbackCount;
@@ -365,7 +362,7 @@ namespace Velvet.Tests
             gate.TrySetResult();
 
             // Assert — post-await updates take the Normal lane (immediate tier), not the delayed/Transition tier
-            Assert.AreEqual((2, 0), (Scheduler(mounted).ImmediatePendingCount, Scheduler(mounted).DelayedPendingCount),
+            Assert.AreEqual((2, 0), (mounted.GetSchedulerForTest().ImmediatePendingCount, mounted.GetSchedulerForTest().DelayedPendingCount),
                 "Post-await setStates enqueue on the immediate tier, not the delayed tier");
         }
 
@@ -395,7 +392,7 @@ namespace Velvet.Tests
             gate.TrySetResult();
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.AreEqual((2, 2), (s_renderCountA, s_renderCountB),
@@ -412,7 +409,7 @@ namespace Velvet.Tests
             gate.TrySetResult();
 
             // Act
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
 
             // Assert
             Assert.AreEqual(("a-async", "b-async"), (s_lastA, s_lastB));

@@ -5,7 +5,7 @@ namespace Velvet
     // slot via its own HookIndexTable index, plus custom hooks that consume one transitively
     // (e.g. UseService via UseContext).
     // CompilerWeaver reads this list directly (same assembly), so there is no second copy to keep in
-    // sync. PositionalHookNamesLockstepTests pins the set against accidental edits.
+    // sync. WeaverReflectionProbeTests pins the set against accidental edits.
     internal static class PositionalHookNames
     {
         internal static readonly string[] All =

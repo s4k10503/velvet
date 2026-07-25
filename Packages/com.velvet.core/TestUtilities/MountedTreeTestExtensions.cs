@@ -6,6 +6,14 @@ namespace Velvet.TestUtilities
     public static class MountedTreeTestExtensions
     {
         /// <summary>
+        /// Reaches the tree-wide <see cref="FiberBatchScheduler"/> behind a mounted tree — every fixture that
+        /// drains a tier (DrainImmediateForTest/DrainDelayedForTest) or inspects pending counts needs this same
+        /// accessor path. Test-only.
+        /// </summary>
+        internal static FiberBatchScheduler GetSchedulerForTest(this MountedTree mounted)
+            => mounted.Root.Reconciler.Context.BatchScheduler;
+
+        /// <summary>
         /// Immediately flushes the dirty state after a hook setter fires and triggers a re-render.
         /// Iteratively walks the entire tree produced by V.Mount along the fiber tree and calls
         /// FiberWorkLoop.FlushState on each fiber.

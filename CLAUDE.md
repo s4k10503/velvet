@@ -62,7 +62,7 @@ Tests are **colocated** with the code: `Runtime/<Area>/Tests/Editor/` and `.../T
 
 - `SimulateClick()` / `SimulateChange()` / `SimulateEvent<TEvent>()` — fire events through an element's callback registry without a live panel (the only way to exercise the discrete-event commit path, e.g. `button.SimulateClick()` which runs the handler + a synchronous `FlushImmediate`).
 - `DrainImmediateForTest()` (on `FiberBatchScheduler` via `mounted.Root.Reconciler.Context.BatchScheduler`) and `FlushEffectsForTest()` / `FlushStateForTest()` — the EditMode scheduler/PlayerLoop does not tick, so flush manually.
-- EditMode batchmode does not run layout; force it via the panel's `ApplyStyles`/`UpdateForRepaint` (reflection) when a test reads `resolvedStyle` (see `SizingFlexUssTests`, `ResponsiveBreakpointPanelTests`).
+- EditMode batchmode does not run layout; force it via the panel's `ApplyStyles`/`UpdateForRepaint` (reflection) when a test reads `resolvedStyle` (see `StyleUtilitiesUssTests`, `ResponsiveBreakpointPanelTests`).
 
 **Test convention for this repo:** Given/When/Then naming (`Given_..._When_..._Then_...`) for method names, with `// Arrange`/`// Act`/`// Assert` sections in the body, **exactly one assert per test**, and `Assume.That` for preconditions. Verify a regression test is RED without the fix and GREEN with it. Test fixtures are `internal sealed class` (the Unity Test Framework discovers internal fixtures; bases are `internal`/`public abstract`). Comments must not carry issue/PR numbers — state the reason in terms of behavior so it is self-contained. Templates: `ButtonChildPoolReuseTests.cs`, `ClickDrivenHookLifecycleTests.cs`.
 

@@ -1,7 +1,5 @@
 using System;
 using NUnit.Framework;
-using UnityEditor;
-using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -14,37 +12,19 @@ namespace Velvet.Tests
     /// 200% oversize after a gradient re-bake clobbers the background size. GWT, one assert each.
     /// </summary>
     [TestFixture]
-    internal sealed class AnimateMotionPatchTests
+    internal sealed class AnimateMotionPatchTests : PanelTestBase
     {
         private const string GradientBase = "w-[100px] h-[40px] bg-gradient-to-r to-blue-500";
 
-        private EditorWindow _window;
-        private MountedTree _mounted;
         private static StateUpdater<int> s_setStep;
         private static Func<int, string> s_classFor;
 
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
-            TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
+            base.SetUp();
             s_setStep = default;
             s_classFor = _ => GradientBase;
-            _window = ScriptableObject.CreateInstance<TestHostWindow>();
-            _window.position = new Rect(0, 0, 800, 600);
-            _window.Show();
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            _mounted?.Dispose();
-            _mounted = null;
-            if (_window != null)
-            {
-                _window.Close();
-                UnityEngine.Object.DestroyImmediate(_window);
-                _window = null;
-            }
         }
 
         // The card's className is chosen by the current step, so a test seeds s_classFor then advances the step
@@ -57,7 +37,6 @@ namespace Velvet.Tests
             return V.Div(className: s_classFor(step), name: "card");
         }
 
-        private FiberBatchScheduler Scheduler => _mounted.Root.Reconciler.Context.BatchScheduler;
         private VisualElement Card => _window.rootVisualElement[0];
         private bool HasBinding => _mounted.Root.Reconciler.Context.AnimationBindings.ContainsKey(Card);
         private StyleAnimateBinding Binding => _mounted.Root.Reconciler.Context.AnimationBindings[Card];
@@ -71,7 +50,7 @@ namespace Velvet.Tests
         private void Step(int n)
         {
             s_setStep.Invoke(n);
-            Scheduler.DrainImmediateForTest();
+            _mounted.GetSchedulerForTest().DrainImmediateForTest();
         }
 
         [Test]
@@ -165,8 +144,5 @@ namespace Velvet.Tests
 
             Assert.That(Card.style.opacity.value, Is.EqualTo(0.3f).Within(1e-5f));
         }
-
-        /// <summary>Minimal EditorWindow host that supplies a real panel so the reconcile patch runs end-to-end.</summary>
-        private sealed class TestHostWindow : EditorWindow { }
     }
 }

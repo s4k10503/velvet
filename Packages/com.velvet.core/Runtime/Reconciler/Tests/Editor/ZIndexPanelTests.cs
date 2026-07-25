@@ -1,5 +1,4 @@
 using NUnit.Framework;
-using UnityEditor;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -57,10 +56,7 @@ namespace Velvet.Tests
         // the sheet this fixture would relocate elements that never really were absolute.
         private void Mount(System.Func<VNode> body)
         {
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss");
-            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
-            _host.Root.styleSheets.Add(sheet);
+            _host.Root.LoadBundledStyleUtilitiesForTest();
             _mounted = V.Mount(_host.Root, V.Component(body, key: "root"));
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }

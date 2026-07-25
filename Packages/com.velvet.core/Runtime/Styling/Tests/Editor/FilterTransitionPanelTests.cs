@@ -3,6 +3,7 @@ using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {

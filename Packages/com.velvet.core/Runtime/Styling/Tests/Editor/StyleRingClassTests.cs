@@ -2,6 +2,7 @@ using System;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
