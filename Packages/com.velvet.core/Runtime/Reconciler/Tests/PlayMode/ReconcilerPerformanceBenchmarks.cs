@@ -208,6 +208,39 @@ namespace Velvet.Tests.Performance
 
         #endregion
 
+        #region B-1-d: Pooled-widget recycle (mount -> unmount -> remount)
+
+        // Pins the primitive-element pool's recycle path: VNodePool.ReturnLabel / ReturnButton (invoked
+        // when RemoveElement/RemoveElementDirect reclaims an unmounted Label/Button) run
+        // FiberLabelPoolHelper/FiberButtonPoolHelper's ResetXForReuse, which calls
+        // FiberElementPoolReset.ResetClassListAndCommon on every single recycle — a per-recycle heap
+        // allocation anywhere on that path is what this measurement exists to catch. Held at 10 of each (well under
+        // either pool's own 32-instance cap) so every element genuinely round-trips through
+        // Rent/Return across the measured region instead of being dropped uncounted by a full pool.
+        [Test, Performance]
+        public void PooledWidgetRecycle_LabelsAndButtons_10Elements()
+        {
+            var nodes = BenchmarkHelpers.BuildLabelAndButtonNodes(10);
+            var empty = Array.Empty<VNode>();
+
+            // Warms both pools first so the measured region only ever rents/returns already-pooled
+            // instances, not the `new Label()` / `new Button()` construction cost of filling them.
+            _reconciler.Reconcile(_root, empty, nodes);
+            _reconciler.Reconcile(_root, nodes, empty);
+
+            Measure.Method(() =>
+            {
+                _reconciler.Reconcile(_root, empty, nodes);
+                _reconciler.Reconcile(_root, nodes, empty);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        #endregion
+
         #region Helpers
 
         /// <summary>
