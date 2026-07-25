@@ -1,6 +1,5 @@
 using System;
 using NUnit.Framework;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
@@ -26,7 +25,7 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// Uses a real, live-dispatched <see cref="PointerDownEvent"/> (<c>VisualElement.SendEvent</c> under a
-    /// real <see cref="EditorWindow"/> panel) rather than <c>CrossPanelEventBubblingTests</c>'
+    /// real <see cref="UnityEditor.EditorWindow"/> panel) rather than <c>CrossPanelEventBubblingTests</c>'
     /// <c>SimulateBubbledEvent</c> reflection helper: a same-panel target's remaining physical ancestors
     /// genuinely keep bubbling in the SAME live dispatch once this bridge's BubbleUp callback returns (see
     /// <c>FiberCrossPanelEventDispatcher.Continue</c>'s own comment), so exercising that interaction for
@@ -42,22 +41,17 @@ namespace Velvet.Tests
     /// <see cref="TearDown"/> so registrations never leak.
     /// </remarks>
     [TestFixture]
-    internal sealed class SamePanelPortalBubblingTests
+    internal sealed class SamePanelPortalBubblingTests : PanelTestBase
     {
-        private EditorWindow _window;
         private Reconciler _reconciler;
-        private MountedTree _mounted;
         private VisualElement _root;
         private VisualElement _logicalAncestor;
         private VisualElement _portalTarget;
 
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
-            TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
-
-            _window = ScriptableObject.CreateInstance<TestHostWindow>();
-            _window.Show();
+            base.SetUp();
             _reconciler = new Reconciler();
             FiberPortalRegistry.Clear();
 
@@ -82,18 +76,11 @@ namespace Velvet.Tests
         }
 
         [TearDown]
-        public void TearDown()
+        public override void TearDown()
         {
-            _mounted?.Dispose();
-            _mounted = null;
             _reconciler.Dispose();
             FiberPortalRegistry.Clear();
-            if (_window != null)
-            {
-                _window.Close();
-                UnityEngine.Object.DestroyImmediate(_window);
-                _window = null;
-            }
+            base.TearDown();
         }
 
         // Pooled-event dispatch is the canonical EditMode way to fire a real bubbling event without a
@@ -629,8 +616,5 @@ namespace Velvet.Tests
         }
 
         #endregion
-
-        /// <summary>Minimal EditorWindow host that supplies a real panel with an event controller.</summary>
-        private sealed class TestHostWindow : EditorWindow { }
     }
 }

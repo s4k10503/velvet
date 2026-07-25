@@ -5,6 +5,18 @@ using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
+    // Shared by ButtonChildPoolReuseTests and WrappedWidgetPoolReclaimTests below: both drive a mounted subtree
+    // through a single show/hide toggle to force the pool-return / pool-rent path, so both declared an
+    // identically-shaped Store<bool> — hoisted here once rather than duplicated per fixture.
+    internal readonly record struct ToggleState(bool Show);
+
+    internal sealed class ToggleStore : Store<ToggleState>
+    {
+        public ToggleStore() : base(new ToggleState(true)) { }
+        public void Set(bool show) => SetState(_ => new ToggleState(show));
+        protected override void ResetCore() => SetState(_ => new ToggleState(true));
+    }
+
     /// <summary>
     /// Regression coverage for a pooled-element reuse bug: navigating
     /// from a screen with a footer (a V.List of buttons that each hold child labels) to another screen and back
@@ -59,15 +71,6 @@ namespace Velvet.Tests
         }
 
         // Integration: recreate buttons-with-children from the pool
-
-        private readonly record struct ToggleState(bool Show);
-
-        private sealed class ToggleStore : Store<ToggleState>
-        {
-            public ToggleStore() : base(new ToggleState(true)) { }
-            public void Set(bool show) => SetState(_ => new ToggleState(show));
-            protected override void ResetCore() => SetState(_ => new ToggleState(true));
-        }
 
         private static ToggleStore s_store;
         private static readonly string[] s_items = { "a", "b", "c" };
@@ -225,15 +228,6 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class WrappedWidgetPoolReclaimTests
     {
-        private readonly record struct ToggleState(bool Show);
-
-        private sealed class ToggleStore : Store<ToggleState>
-        {
-            public ToggleStore() : base(new ToggleState(true)) { }
-            public void Set(bool show) => SetState(_ => new ToggleState(show));
-            protected override void ResetCore() => SetState(_ => new ToggleState(true));
-        }
-
         private static ToggleStore s_store;
 
         private VisualElement _root;

@@ -221,10 +221,10 @@ namespace Velvet.Tests
 
             // Act — the immediate tier commits the ancestor; the store then mutates inside the window before
             // the delayed tier commits the descendant.
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             var ancestorAfterImmediate = s_ancestorValue;
             store.SetValue(1);
-            Scheduler(mounted).DrainDelayedForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert — the descendant observes the same snapshot the ancestor committed in this wave, not the
             // newer live store.Current. Without the tearing guard the descendant reads 1 while the ancestor
@@ -244,16 +244,16 @@ namespace Velvet.Tests
             using var mounted = MountAncestorDescendant();
             s_ancestorFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             s_descendantFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            Scheduler(mounted).DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
             store.SetValue(1);
-            Scheduler(mounted).DrainDelayedForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
             Assume.That((s_ancestorValue, s_descendantValue), Is.EqualTo((0, 0)),
                 "Precondition: this wave stayed pinned to the old snapshot");
 
             // Act — the mutation re-scheduled both readers; the next immediate drain opens a fresh wave that
             // re-pins to the now-current snapshot.
-            Scheduler(mounted).DrainImmediateForTest();
-            Scheduler(mounted).DrainDelayedForTest();
+            mounted.GetSchedulerForTest().DrainImmediateForTest();
+            mounted.GetSchedulerForTest().DrainDelayedForTest();
 
             // Assert
             Assert.AreEqual((1, 1), (s_ancestorValue, s_descendantValue),
@@ -408,9 +408,6 @@ namespace Velvet.Tests
             s_ancestorFiber = null;
             s_descendantFiber = null;
         }
-
-        private static FiberBatchScheduler Scheduler(MountedTree mounted)
-            => mounted.Root.Reconciler.Context.BatchScheduler;
 
         private MountedTree MountAncestorDescendant()
         {

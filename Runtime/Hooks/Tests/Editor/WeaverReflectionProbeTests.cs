@@ -10,10 +10,9 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies two independent contracts of the CompilerWeaver / MetadataRegistrationWeaver ILPPs, both probed
-    /// through reflection against synthetic Cecil modules (the weavers live in the editor-only
-    /// <c>Unity.Velvet.CodeGen</c> assembly and are internal, so this test asmdef cannot reference them
-    /// directly):
+    /// Specifies three independent, no-render contracts probed through reflection/Cecil against the compile-time
+    /// weavers and their canonical inputs (the weavers live in the editor-only <c>Unity.Velvet.CodeGen</c>
+    /// assembly and are internal, so this test asmdef cannot reference them directly):
     /// <list type="bullet">
     /// <item>Resolution-failure diagnostics: when a Velvet runtime type the weaver injects calls to cannot be
     /// resolved from the processed module, the weaver surfaces a diagnostic warning naming the assembly instead
@@ -24,6 +23,15 @@ namespace Velvet.Tests
     /// whether its own declaring assembly references Velvet, because an override reaching a hook can be declared
     /// in a third assembly that does. The two private classifier methods
     /// (<c>ReachesNonSafeHook</c>/<c>CallsHookTransitively</c>) must agree on this classification.</item>
+    /// <item>Metadata-registration E2E: the woven <c>&lt;Module&gt;.cctor</c> of THIS test assembly carries the
+    /// <c>ComponentMethodRegistry.Register*</c> calls the weaver actually injected for the
+    /// <c>[Component(...)]</c>-flagged methods declared below, keyed by the declaring type's runtime
+    /// <c>Type.FullName</c> (including the nested-type <c>'+'</c> form and the generic-type backtick-arity
+    /// form), and a flagless <c>[Component]</c> emits no registration of any kind.</item>
+    /// <item><see cref="PositionalHookNames.All"/> pin: the canonical set of hook names that allocate a
+    /// positional slot is exactly the expected names (no more, no fewer, no duplicates), and structurally, every
+    /// public <c>Use*</c> hook whose implementation allocates a positional slot is present in that list — the
+    /// ILPP weaver reads the list directly, so an omission is silently invisible to it rather than caught here.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -189,6 +197,289 @@ namespace Velvet.Tests
                 $"Precondition: {CompilerWeaverTypeFullName} exposes a private static {methodName} method");
             var cache = new Dictionary<string, bool>();
             return method!.Invoke(null, new object[] { callee, cache })!;
+        }
+
+        // --- Metadata-registration weaver E2E: <Module>.cctor of THIS assembly, woven for real ---
+
+        private const string RegistryFullName = "Velvet.ComponentMethodRegistry";
+
+        [Component(IsErrorBoundary = true)]
+        public static VNode ErrorBoundaryComponent() => V.Label(text: "eb");
+
+        [Component(Memoize = true)]
+        public static VNode MemoizeComponent() => V.Label(text: "memo");
+
+        [Component(DisplayName = "CustomDisplayName")]
+        public static VNode DisplayNameComponent() => V.Label(text: "named");
+
+        // No flags: the metadata weaver must not register it. It also has no hook, so the memo weaver bails too.
+        [Component]
+        public static VNode PlainComponent() => V.Label(text: "plain");
+
+        public static class NestedHost
+        {
+            [Component(IsErrorBoundary = true)]
+            public static VNode Render() => V.Label(text: "nested");
+        }
+
+        public static class GenericHost<T>
+        {
+            [Component(Memoize = true)]
+            public static VNode Render() => V.Label(text: "generic");
+        }
+
+        [Test]
+        public void Given_ErrorBoundaryComponent_When_Woven_Then_RegistersErrorBoundary()
+        {
+            // Arrange
+            var cctor = LoadModuleInitializer();
+
+            // Act + Assert
+            Assert.That(RegistersTwoArg(cctor, "RegisterErrorBoundary",
+                    typeof(WeaverReflectionProbeTests).FullName, nameof(ErrorBoundaryComponent)),
+                Is.True, "[Component(IsErrorBoundary = true)] registers an Error Boundary in <Module>.cctor");
+        }
+
+        [Test]
+        public void Given_MemoizeComponent_When_Woven_Then_RegistersMemoize()
+        {
+            // Arrange
+            var cctor = LoadModuleInitializer();
+
+            // Act + Assert
+            Assert.That(RegistersTwoArg(cctor, "RegisterMemoize",
+                    typeof(WeaverReflectionProbeTests).FullName, nameof(MemoizeComponent)),
+                Is.True, "[Component(Memoize = true)] registers the props-bail gate in <Module>.cctor");
+        }
+
+        [Test]
+        public void Given_DisplayNameComponent_When_Woven_Then_RegistersDisplayName()
+        {
+            // Arrange
+            var cctor = LoadModuleInitializer();
+
+            // Act + Assert
+            Assert.That(RegistersThreeArg(cctor, "RegisterComponentDisplayName",
+                    typeof(WeaverReflectionProbeTests).FullName, nameof(DisplayNameComponent),
+                    "CustomDisplayName"),
+                Is.True, "[Component(DisplayName = ...)] registers the display name in <Module>.cctor");
+        }
+
+        [Test]
+        public void Given_FlaglessComponent_When_Woven_Then_IsNotRegisteredAsErrorBoundary()
+        {
+            // Arrange
+            var cctor = LoadModuleInitializer();
+            var typeName = typeof(WeaverReflectionProbeTests).FullName;
+
+            // Act + Assert
+            Assert.That(RegistersTwoArg(cctor, "RegisterErrorBoundary", typeName, nameof(PlainComponent)), Is.False,
+                "A flagless [Component] is not registered as an Error Boundary");
+        }
+
+        [Test]
+        public void Given_FlaglessComponent_When_Woven_Then_IsNotRegisteredAsMemoize()
+        {
+            // Arrange
+            var cctor = LoadModuleInitializer();
+            var typeName = typeof(WeaverReflectionProbeTests).FullName;
+
+            // Act + Assert
+            Assert.That(RegistersTwoArg(cctor, "RegisterMemoize", typeName, nameof(PlainComponent)), Is.False,
+                "A flagless [Component] is not registered as a props-bail gate");
+        }
+
+        [Test]
+        public void Given_NestedDeclaringType_When_Woven_Then_RegistersUnderRuntimeFullName()
+        {
+            // Arrange — typeof(NestedHost).FullName is the reflection form ('+' between outer and nested type).
+            var cctor = LoadModuleInitializer();
+
+            // Act + Assert
+            Assert.That(RegistersTwoArg(cctor, "RegisterErrorBoundary", typeof(NestedHost).FullName, "Render"),
+                Is.True, "A nested declaring type registers under its '+'-separated runtime FullName");
+        }
+
+        [Test]
+        public void Given_GenericDeclaringType_When_Woven_Then_RegistersUnderRuntimeFullName()
+        {
+            // Arrange — typeof(GenericHost<>).FullName carries the `1 arity suffix.
+            var cctor = LoadModuleInitializer();
+
+            // Act + Assert
+            Assert.That(RegistersTwoArg(cctor, "RegisterMemoize", typeof(GenericHost<>).FullName, "Render"),
+                Is.True, "A generic declaring type registers under its `arity-suffixed runtime FullName");
+        }
+
+        private static MethodDefinition LoadModuleInitializer()
+        {
+            var assemblyPath = typeof(WeaverReflectionProbeTests).Assembly.Location;
+            var assembly = AssemblyDefinition.ReadAssembly(assemblyPath);
+            var moduleType = assembly.MainModule.GetType("<Module>");
+            Assume.That(moduleType, Is.Not.Null, "Precondition: the <Module> type exists in the assembly");
+            var cctor = moduleType.Methods.SingleOrDefault(m => m.Name == ".cctor");
+            Assume.That(cctor, Is.Not.Null, "Precondition: <Module>.cctor is injected when the assembly has metadata components");
+            return cctor;
+        }
+
+        // A 2-arg Register call is injected as `ldstr type; ldstr method; call`, so the two ldstr operands
+        // immediately precede the call. The weaver emits no other instructions between them.
+        private static bool RegistersTwoArg(MethodDefinition cctor, string registerMethod, string typeFullName, string methodName)
+        {
+            var instrs = cctor.Body.Instructions;
+            for (var i = 2; i < instrs.Count; i++)
+            {
+                if (IsRegistryCall(instrs[i], registerMethod)
+                    && IsLdstr(instrs[i - 2], typeFullName)
+                    && IsLdstr(instrs[i - 1], methodName))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // A 3-arg Register call is injected as `ldstr type; ldstr method; ldstr displayName; call`.
+        private static bool RegistersThreeArg(MethodDefinition cctor, string registerMethod, string typeFullName, string methodName, string displayName)
+        {
+            var instrs = cctor.Body.Instructions;
+            for (var i = 3; i < instrs.Count; i++)
+            {
+                if (IsRegistryCall(instrs[i], registerMethod)
+                    && IsLdstr(instrs[i - 3], typeFullName)
+                    && IsLdstr(instrs[i - 2], methodName)
+                    && IsLdstr(instrs[i - 1], displayName))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool IsRegistryCall(Instruction instr, string methodName)
+            => instr.OpCode == OpCodes.Call
+                && instr.Operand is MethodReference mr
+                && mr.Name == methodName
+                && mr.DeclaringType.FullName == RegistryFullName;
+
+        private static bool IsLdstr(Instruction instr, string value)
+            => instr.OpCode == OpCodes.Ldstr && (string)instr.Operand == value;
+
+        // --- PositionalHookNames.All canonical pin ---
+
+        private static readonly string[] Expected =
+        {
+            "UseEffect",
+            "UseLayoutEffect",
+            "UseInsertionEffect",
+            "UseCallback",
+            "UseMemo",
+            "UseBlocker",
+            "UseState",
+            "UseReducer",
+            "UseOptimistic",
+            "UseStore",
+            "UseContext",
+            "UseRef",
+            "UseMutableRef",
+            "UseImperativeHandle",
+            "UseTransition",
+            "UseId",
+            "UseDeferredValue",
+            "UseMutation",
+            "UseService",
+            "UseFallback",
+            "Use",
+            "UseFrame",
+        };
+
+        [Test]
+        public void Given_CanonicalSet_When_Inspected_Then_MatchesTheExpectedNames()
+        {
+            // Act + Assert
+            Assert.That(PositionalHookNames.All, Is.EquivalentTo(Expected),
+                "PositionalHookNames.All drifted from the canonical set. If the change is intentional, update the" +
+                " Expected list here; the ILPP weaver reads PositionalHookNames.All directly.");
+        }
+
+        [Test]
+        public void Given_CanonicalSet_When_Inspected_Then_HasNoDuplicates()
+        {
+            // Act + Assert
+            Assert.That(PositionalHookNames.All, Is.Unique);
+        }
+
+        [Test]
+        public void Given_HooksAssembly_When_PositionalSlotConsumersAreEnumerated_Then_EveryOneIsInTheCanonicalList()
+        {
+            // Arrange
+            using var assembly = AssemblyDefinition.ReadAssembly(typeof(Hooks).Assembly.Location);
+            var hooksType = assembly.MainModule.GetType(typeof(Hooks).FullName);
+            Assume.That(hooksType, Is.Not.Null, "Precondition: Velvet.Hooks is present in the Velvet assembly");
+
+            // Act
+            var slotConsumers = EnumeratePositionalSlotConsumers(hooksType);
+
+            // Assert
+            Assert.That(slotConsumers, Is.SubsetOf(PositionalHookNames.All),
+                "Every public hook that allocates a positional slot (a HookIndexTable cursor or an async" +
+                " resource slot) must be listed in PositionalHookNames.All, or the ILPP weaver silently" +
+                " treats its calls as non-hook plumbing and may skip or mis-anchor them.");
+        }
+
+        // Enumerates the public Use* hooks whose implementation allocates a positional slot: the method's
+        // body — or the body of a non-hook Hooks helper it calls, transitively — touches a HookIndexTable
+        // cursor field or advances the fiber's async resource slot cursor. Descent deliberately stops at
+        // other public Use* hooks: those allocate their own slot and are enumerated independently, while a
+        // hook that merely composes them (e.g. UseNavigation over UseState) is tracked transitively by the
+        // weaver and does not need a list entry of its own.
+        private static IReadOnlyCollection<string> EnumeratePositionalSlotConsumers(TypeDefinition hooksType)
+        {
+            var consumers = new SortedSet<string>(System.StringComparer.Ordinal);
+            foreach (var method in hooksType.Methods)
+            {
+                if (!IsPublicHookMethod(method)) continue;
+                if (AllocatesPositionalSlot(method, hooksType, new HashSet<string>()))
+                {
+                    consumers.Add(method.Name);
+                }
+            }
+            return consumers;
+        }
+
+        private static bool IsPublicHookMethod(MethodDefinition method)
+            => method.IsPublic
+                && method.IsStatic
+                && method.Name.StartsWith("Use", System.StringComparison.Ordinal);
+
+        private static bool AllocatesPositionalSlot(
+            MethodDefinition method, TypeDefinition hooksType, HashSet<string> visited)
+        {
+            if (!method.HasBody || !visited.Add(method.FullName)) return false;
+            foreach (var instruction in method.Body.Instructions)
+            {
+                if (instruction.Operand is FieldReference field
+                    && field.DeclaringType.FullName == "Velvet.HookIndexTable")
+                {
+                    return true;
+                }
+                if (instruction.Operand is not MethodReference callee) continue;
+                if (callee.Name == "NextAsyncSlotIndex")
+                {
+                    return true;
+                }
+                // Only same-type helpers are followed, so resolution never leaves the already-loaded
+                // module (resolving foreign references would require an assembly resolver).
+                if (callee.DeclaringType.FullName != hooksType.FullName) continue;
+                var calleeDefinition = callee.Resolve();
+                if (calleeDefinition == null) continue;
+                if (IsPublicHookMethod(calleeDefinition)) continue;
+                if (AllocatesPositionalSlot(calleeDefinition, hooksType, visited))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
     }
 }

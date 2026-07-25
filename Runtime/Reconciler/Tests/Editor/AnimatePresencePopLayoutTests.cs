@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
-using UnityEditor;
 using UnityEditor.UIElements.TestFramework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -18,11 +17,11 @@ namespace Velvet.Tests
     /// cancelled exit (the key re-added before the animation finishes) can simply clear those five inline
     /// styles to rejoin normal flow. Under <see cref="AnimatePresenceMode.Sync"/> (the default) none of this
     /// applies — an exiting child keeps participating in flow exactly as it did before this mode existed.
-    /// Mounted in a real <see cref="EditorWindow"/> panel with a forced layout pass, because the pin only
+    /// Mounted in a real <see cref="UnityEditor.EditorWindow"/> panel with a forced layout pass, because the pin only
     /// applies when the child's resolved rect is already finite (an un-laid-out panel leaves it NaN).
     /// </summary>
     [TestFixture]
-    internal sealed class AnimatePresencePopLayoutTests
+    internal sealed class AnimatePresencePopLayoutTests : PanelTestBase
     {
         private readonly record struct SetState(string Keys);
 
@@ -42,28 +41,13 @@ namespace Velvet.Tests
             ["hidden"] = "opacity-0",
         };
 
-        private EditorWindow _window;
-
         [SetUp]
-        public void SetUp()
+        public override void SetUp()
         {
-            TestGraphics.IgnoreIfHeadless("an EditorWindow panel");
-            _window = ScriptableObject.CreateInstance<TestHostWindow>();
-            _window.Show();
+            base.SetUp();
             s_store = null;
             s_mode = AnimatePresenceMode.PopLayout;
             s_classicTransition = false;
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            if (_window != null)
-            {
-                _window.Close();
-                UnityEngine.Object.DestroyImmediate(_window);
-                _window = null;
-            }
         }
 
         [Component]
@@ -129,10 +113,7 @@ namespace Velvet.Tests
         // real usage (see ZIndexPanelTests.Mount's own comment on this same attach).
         private MountedTree MountZManagedLaidOut()
         {
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(
-                "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss");
-            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
-            _window.rootVisualElement.styleSheets.Add(sheet);
+            _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
             var mounted = V.Mount(_window.rootVisualElement, V.Component(ZManagedPresenceList, key: "list"));
             EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
             return mounted;
@@ -336,9 +317,6 @@ namespace Velvet.Tests
             Assert.That(_window.rootVisualElement.Q<VisualElement>("item-b").style.position.keyword,
                 Is.EqualTo(StyleKeyword.Null));
         }
-
-        /// <summary>Minimal EditorWindow host that supplies a real panel so layout resolves.</summary>
-        private sealed class TestHostWindow : EditorWindow { }
     }
 
     /// <summary>

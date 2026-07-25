@@ -3,28 +3,57 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Resolved-style coverage for the USS additions that have no C# parse path: the
-    /// <c>mx-auto</c>/<c>my-auto</c> centering margins (<c>_spacing.uss</c>), the <c>white</c>/<c>black</c>
-    /// color classes (<c>_typography.uss</c>/<c>_backgrounds.uss</c>/<c>_borders.uss</c>), the numeric
-    /// <c>duration-{ms}</c> scale (<c>_state_variants.uss</c>), the static position scale
-    /// (<c>_layout.uss</c>), and the extended spacing/sizing scale plus <c>border-8</c>
-    /// (<c>_spacing.uss</c>/<c>_sizing.uss</c>/<c>_borders.uss</c>); the font-size scale in
-    /// <c>_tokens.uss</c> (the FRAMEWORK default with only the bundled stylesheet attached — the demo pins its
-    /// own larger scale separately); the border-radius scale values in <c>_tokens.uss</c>; the spacing-scale
-    /// steps 11 (2.75rem = 44px) and 28 (7rem = 112px), the only two standard steps missing across every
-    /// family, verified at all three layers that consume the scale (the bundled USS, the arbitrary-value
-    /// resolver's static-scale dict, and the gap polyfill's scale dict); and the tracking-* (letter-spacing)
-    /// scale, pinned to Tailwind's em values baked at the 16px root font size (UI Toolkit letter-spacing has no
-    /// em unit, so the scale is fixed px, exact at the default text size). Each mounts a leaf in a real
-    /// <see cref="EditorWindow"/> panel with the bundled <c>StyleUtilities.uss</c>, forces a layout pass,
-    /// then reads <c>resolvedStyle</c>. GWT, one assert per case.
+    /// Resolved-style coverage for USS-only utility presets that have no C# parse path, spanning three
+    /// concerns that share the same harness (a leaf mounted in a real
+    /// <see cref="EditorWindow"/> panel with the bundled <c>StyleUtilities.uss</c> attached, a forced layout
+    /// pass, then a <c>resolvedStyle</c> read):
+    /// <list type="bullet">
+    /// <item>The Tailwind-parity batch: the <c>mx-auto</c>/<c>my-auto</c> centering margins
+    /// (<c>_spacing.uss</c>), the <c>white</c>/<c>black</c> color classes
+    /// (<c>_typography.uss</c>/<c>_backgrounds.uss</c>/<c>_borders.uss</c>), the numeric <c>duration-{ms}</c>
+    /// scale (<c>_state_variants.uss</c>), the static position scale (<c>_layout.uss</c>), and the extended
+    /// spacing/sizing scale plus <c>border-8</c> (<c>_spacing.uss</c>/<c>_sizing.uss</c>/<c>_borders.uss</c>);
+    /// the font-size scale in <c>_tokens.uss</c> (the FRAMEWORK default with only the bundled stylesheet
+    /// attached — the demo pins its own larger scale separately); the border-radius scale values in
+    /// <c>_tokens.uss</c>; the spacing-scale steps 11 (2.75rem = 44px) and 28 (7rem = 112px), the only two
+    /// standard steps missing across every family, verified at all three layers that consume the scale (the
+    /// bundled USS, the arbitrary-value resolver's static-scale dict, and the gap polyfill's scale dict); and
+    /// the tracking-* (letter-spacing) scale, pinned to Tailwind's em values baked at the 16px root font size
+    /// (UI Toolkit letter-spacing has no em unit, so the scale is fixed px, exact at the default text
+    /// size).</item>
+    /// <item>The reverse flex utilities (<c>_layout.uss</c>), the larger font sizes (<c>_typography.uss</c>),
+    /// the <c>size-*</c> width+height shorthand and <c>basis-*</c> flex-basis presets (<c>_sizing.uss</c> /
+    /// <c>_layout.uss</c>), and the <c>origin-*</c> transform-origin utilities (<c>_transforms.uss</c>); the
+    /// object-fit utilities (<c>_effects.uss</c>), mapped onto the modern <c>background-size</c> property for
+    /// an element showing an image as background-image; the plain transform utilities
+    /// (<c>_transforms.uss</c>) and the <c>.transition-transform</c> fix (<c>_effects.uss</c>) — UITK 6.x
+    /// cannot transition the combined <c>transform</c>, so the animatable transform is the independent
+    /// <c>translate</c> / <c>scale</c> / <c>rotate</c> properties, which is what <c>.transition-transform</c>
+    /// must enumerate; the whitespace-pre / whitespace-pre-wrap utilities (<c>_typography.uss</c>, the two
+    /// whitespace-* values that map straight onto a <see cref="WhiteSpace"/> enum member — whitespace-pre-line
+    /// is NOT covered here, since it has no USS rule of its own); and the default-direction contract for the
+    /// bare <c>flex</c> utility — in CSS, <c>flex</c> implies <c>flex-direction: row</c>, but UI Toolkit's Yoga
+    /// layout defaults a flex container to <c>column</c>, so a bare <c>flex</c> must resolve to Row to lay
+    /// children out HORIZONTALLY.</item>
+    /// <item>That the transition-* property utilities work standalone, like their Tailwind counterparts: each
+    /// bundles a default transition-duration and timing-function alongside its transition-property. UI
+    /// Toolkit's initial transition-duration is 0s, so a property-only utility (e.g. <c>transition-opacity</c>
+    /// plus a hover-driven value change) never visibly animated until the developer also added a duration-*
+    /// class — while the sibling <c>transition-transform</c> already bundled its own duration, leaving one of
+    /// six utilities functional standalone. Explicit duration-*/ease-* classes still override (declared later
+    /// in the same sheet). These assertions read only <c>transitionDuration</c> /
+    /// <c>transitionTimingFunction</c>, never layout geometry, so they are unaffected by the shared 600x600
+    /// window size below.</item>
+    /// </list>
+    /// GWT, one assert per case.
     /// </summary>
     [TestFixture]
-    internal sealed class TailwindBatch1UssTests : PanelTestBase
+    internal sealed class StyleUtilitiesUssTests : PanelTestBase
     {
         private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
 
@@ -35,6 +64,14 @@ namespace Velvet.Tests
             var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetPath);
             Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
             _window.rootVisualElement.styleSheets.Add(sheet);
+        }
+
+        private Label MountAndResolveLabel(string className)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Label(name: "leaf", className: className, text: "x"));
+            var leaf = _window.rootVisualElement.Q<Label>("leaf");
+            ForcePanelUpdate(leaf.panel);
+            return leaf;
         }
 
         private VisualElement MountChildAndResolve(string parentClassName, string childClassName)
@@ -61,6 +98,8 @@ namespace Velvet.Tests
             ForcePanelUpdate(leaf.panel);
             return leaf;
         }
+
+        // --- Tailwind-parity scale batch ---
 
         // --- B-1a: mx-auto / my-auto centering ---
 
@@ -460,6 +499,301 @@ namespace Velvet.Tests
             var leaf = MountLeaf("tracking-tight");
 
             Assert.That(leaf.resolvedStyle.letterSpacing, Is.EqualTo(-0.4f).Within(1e-3f));
+        }
+
+        // --- Sizing / flex / transform USS-only presets ---
+
+        [Test]
+        public void Given_FlexRowReverseClass_When_Resolved_Then_SetsRowReverseDirection()
+        {
+            // Arrange/Act
+            var leaf = MountAndResolve("flex flex-row-reverse");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.RowReverse));
+        }
+
+        [Test]
+        public void Given_FlexColReverseClass_When_Resolved_Then_SetsColumnReverseDirection()
+        {
+            // Arrange/Act
+            var leaf = MountAndResolve("flex flex-col-reverse");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.ColumnReverse));
+        }
+
+        [Test]
+        public void Given_FlexWrapReverseClass_When_Resolved_Then_SetsWrapReverse()
+        {
+            // Arrange/Act
+            var leaf = MountAndResolve("flex flex-wrap-reverse");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.flexWrap, Is.EqualTo(Wrap.WrapReverse));
+        }
+
+        [Test]
+        public void Given_Text5xlClass_When_Resolved_Then_FontSizeIs48()
+        {
+            // Arrange/Act — Velvet's token (48px), already referenced by sample screens.
+            var leaf = MountAndResolve("text-5xl");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.fontSize, Is.EqualTo(48f));
+        }
+
+        [Test]
+        public void Given_Text7xlClass_When_Resolved_Then_FontSizeIs72()
+        {
+            // Arrange/Act
+            var leaf = MountAndResolve("text-7xl");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.fontSize, Is.EqualTo(72f));
+        }
+
+        [Test]
+        public void Given_Size8Class_When_Resolved_Then_WidthAndHeightAre32()
+        {
+            // Arrange/Act — --space-8 == 32px; size-* writes both axes.
+            var leaf = MountAndResolve("size-8");
+
+            // Assert
+            Assert.That((leaf.resolvedStyle.width, leaf.resolvedStyle.height), Is.EqualTo((32f, 32f)));
+        }
+
+        [Test]
+        public void Given_Basis24Class_When_Resolved_Then_FlexBasisIs96()
+        {
+            // Arrange/Act — --space-24 == 96px.
+            var leaf = MountAndResolve("basis-24");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.flexBasis.value, Is.EqualTo(96f));
+        }
+
+        [Test]
+        public void Given_BasisPxClass_When_Resolved_Then_FlexBasisIs1px()
+        {
+            // Arrange/Act — --space-px == 1px (off the larger Velvet token curve).
+            var leaf = MountAndResolve("basis-px");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.flexBasis.value, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_SizeHalfFractionClass_When_Resolved_Then_WidthIsHalfTheParent()
+        {
+            // Arrange — a 200px parent so the 50% fraction resolves to a stable 100px.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "w-[200px] h-[200px]",
+                    V.Div(name: "leaf", className: "size-1/2")));
+            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
+            ForcePanelUpdate(leaf.panel);
+
+            // Assert — size-1/2 sets both axes to 50% (= 100px of the 200px parent).
+            Assert.That((leaf.resolvedStyle.width, leaf.resolvedStyle.height), Is.EqualTo((100f, 100f)));
+        }
+
+        [Test]
+        public void Given_HeightTwoThirdsFractionClass_When_Resolved_Then_HeightIsTwoThirdsOfParent()
+        {
+            // Arrange — a 300px-tall parent so the single-axis h-2/3 fraction resolves to a stable 200px.
+            // (size-1/2 above proves the Size fan-out path; this pins the standalone Height setter + Percent.)
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(className: "w-[300px] h-[300px]",
+                    V.Div(name: "leaf", className: "h-2/3")));
+            var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
+            ForcePanelUpdate(leaf.panel);
+
+            // Assert — h-2/3 == 66.667% of 300px == 200px.
+            Assert.That(leaf.resolvedStyle.height, Is.EqualTo(200f).Within(0.5f));
+        }
+
+        [Test]
+        public void Given_OriginTopRightClass_When_Resolved_Then_TransformOriginIsAtTheTopEdge()
+        {
+            // Arrange/Act — origin-top-right -> `right top`; the y component resolves to the top edge (0),
+            // which is height-independent and reliably readable.
+            var leaf = MountAndResolve("size-8 origin-top-right");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.transformOrigin.y, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_AspectVideoClass_When_Resolved_Then_AspectRatioIs16By9()
+        {
+            // Arrange/Act — the USS-only aspect-video preset (16/9, stored as the reduced decimal).
+            var leaf = MountAndResolve("aspect-video");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.aspectRatio.value, Is.EqualTo(16f / 9f).Within(0.001f));
+        }
+
+        [Test]
+        public void Given_ObjectContain_When_Resolved_Then_BackgroundSizeIsContain()
+        {
+            var leaf = MountAndResolve("object-contain");
+
+            Assert.That(leaf.resolvedStyle.backgroundSize.sizeType, Is.EqualTo(BackgroundSizeType.Contain));
+        }
+
+        [Test]
+        public void Given_ObjectCover_When_Resolved_Then_BackgroundSizeIsCover()
+        {
+            var leaf = MountAndResolve("object-cover");
+
+            Assert.That(leaf.resolvedStyle.backgroundSize.sizeType, Is.EqualTo(BackgroundSizeType.Cover));
+        }
+
+        [Test]
+        public void Given_ObjectFill_When_Resolved_Then_BackgroundSizeStretchesBothAxesToFull()
+        {
+            var leaf = MountAndResolve("object-fill");
+
+            Assert.That((leaf.resolvedStyle.backgroundSize.x.value, leaf.resolvedStyle.backgroundSize.y.value),
+                Is.EqualTo((100f, 100f)));
+        }
+
+        [Test]
+        public void Given_Scale105Class_When_Resolved_Then_SetsUniformScale()
+        {
+            // Arrange / Act
+            var leaf = MountAndResolveLabel("scale-105");
+
+            // Assert
+            Assert.That((leaf.resolvedStyle.scale.value.x, leaf.resolvedStyle.scale.value.y),
+                Is.EqualTo((1.05f, 1.05f)));
+        }
+
+        [Test]
+        public void Given_TransitionTransformClass_When_Resolved_Then_TransitionsIndependentTransformProperties()
+        {
+            // Arrange / Act
+            var leaf = MountAndResolveLabel("transition-transform");
+            var properties = leaf.resolvedStyle.transitionProperty.Select(p => p.ToString()).ToArray();
+
+            // Assert — the independent transform properties are transitioned, not the (non-animatable) `transform`.
+            Assert.That(properties, Is.EquivalentTo(new[] { "translate", "scale", "rotate" }));
+        }
+
+        [Test]
+        public void Given_WhitespacePre_When_Resolved_Then_WhiteSpaceIsPre()
+        {
+            var leaf = MountAndResolve("whitespace-pre");
+
+            Assert.That(leaf.resolvedStyle.whiteSpace, Is.EqualTo(WhiteSpace.Pre));
+        }
+
+        [Test]
+        public void Given_WhitespacePreWrap_When_Resolved_Then_WhiteSpaceIsPreWrap()
+        {
+            var leaf = MountAndResolve("whitespace-pre-wrap");
+
+            Assert.That(leaf.resolvedStyle.whiteSpace, Is.EqualTo(WhiteSpace.PreWrap));
+        }
+
+        [Test]
+        public void Given_BareFlexClass_When_StylesResolved_Then_FlexDirectionIsRow()
+        {
+            var host = _window.rootVisualElement;
+
+            _mounted = V.Mount(host, V.Div(
+                "flex",
+                V.Div("a"),
+                V.Div("b")));
+
+            using var rowProbe = V.Mount(host, V.Div("flex flex-row"));
+
+            // EditMode batchmode never ticks the panel's update phases, so resolvedStyle stays at
+            // engine defaults until styling is applied explicitly. Force the style pass.
+            ForcePanelUpdate(host.panel);
+
+            // V.Mount renders the tree as children of the host; the "flex" div is host[0],
+            // the flex-row probe is host[1].
+            var flex = host[0];
+            Assert.That(flex.ClassListContains("flex"), Is.True,
+                "Expected the mounted element to carry the 'flex' class.");
+
+            // Guard: prove StyleUtilities.uss actually resolves against this panel — `flex-row`
+            // must yield Row. Column is also Yoga's default, so without this guard a missing
+            // sheet would be indistinguishable from a missing `flex-direction` on `.flex`.
+            Assert.That(host[1].resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.Row),
+                "StyleUtilities.uss did not resolve against the test panel (flex-row should be Row).");
+
+            Assert.That(flex.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.Row),
+                "Tailwind parity: a bare `flex` must resolve to flex-direction: row (horizontal), " +
+                "not Yoga's default column.");
+        }
+
+        // --- Transition-* default duration/timing-function ---
+        //
+        // Pins that the transition-* property utilities work standalone, like their Tailwind counterparts:
+        // each bundles a default transition-duration and timing-function alongside its transition-property.
+        // These assertions read only transitionDuration / transitionTimingFunction — size-independent, so the
+        // 600x600 WindowSize shared with the sections above is inert for them.
+
+        [Test]
+        public void Given_TransitionOpacityAlone_When_Resolved_Then_ItCarriesANonZeroDefaultDuration()
+        {
+            // Arrange / Act — the utility stands alone, with no duration-* class.
+            var leaf = MountLeaf("transition-opacity");
+
+            // Assert — the class animates by itself instead of resolving to the 0s initial value.
+            Assert.That(leaf.resolvedStyle.transitionDuration.First().value, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void Given_TransitionColorsAlone_When_Resolved_Then_ItCarriesANonZeroDefaultDuration()
+        {
+            // Arrange / Act
+            var leaf = MountLeaf("transition-colors");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.transitionDuration.First().value, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void Given_TransitionAllAlone_When_Resolved_Then_ItCarriesANonZeroDefaultDuration()
+        {
+            // Arrange / Act
+            var leaf = MountLeaf("transition-all");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.transitionDuration.First().value, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void Given_TransitionOpacityWithExplicitDurationZero_When_Resolved_Then_TheExplicitClassWins()
+        {
+            // Arrange / Act — duration-* is declared after the transition-* utilities, so an
+            // explicit opt-out still overrides the bundled default.
+            var leaf = MountLeaf("transition-opacity duration-0");
+
+            // Assert
+            Assert.That(leaf.resolvedStyle.transitionDuration.First().value, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_TransitionColorsAlone_When_Resolved_Then_ItsDefaultCurveEasesInAndOut()
+        {
+            // Tailwind's default transition timing is cubic-bezier(0.4, 0, 0.2, 1); UI Toolkit has no
+            // cubic-bezier, so the bundled default is its closest keyword, ease-in-out (not fast-start ease-out).
+            var leaf = MountLeaf("transition-colors");
+
+            Assert.That(leaf.resolvedStyle.transitionTimingFunction.First().mode, Is.EqualTo(EasingMode.EaseInOut));
+        }
+
+        [Test]
+        public void Given_AnExplicitEaseClass_When_Resolved_Then_ItStillOverridesTheDefaultCurve()
+        {
+            // The .ease-* utilities are declared after the transition-* defaults, so an explicit curve wins.
+            var leaf = MountLeaf("transition-colors ease-linear");
+
+            Assert.That(leaf.resolvedStyle.transitionTimingFunction.First().mode, Is.EqualTo(EasingMode.Linear));
         }
     }
 }
