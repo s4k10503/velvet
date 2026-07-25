@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -25,6 +26,9 @@ namespace Velvet.Tests
     /// <item>A re-attempt after being blocked resets the prior block and navigates.</item>
     /// <item><c>UseBlocker</c> registers the committed predicate at settle and survives a render-phase re-run
     /// without registering a discarded attempt's transient predicate.</item>
+    /// <item>A blocker's Block() side effect lands only for live registrations on a live attempt: an entry
+    /// disposed mid-pass (by its own check, or by an earlier blocker's decision) stays Idle, and a pass whose
+    /// attempt token is already cancelled flips no state at all.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -541,6 +545,71 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_blockerObservedDep, Is.EqualTo("settled"));
+        }
+
+        #endregion
+
+        #region Blocker liveness during CheckAsync mutation
+
+        [Test]
+        public void Given_ABlockerThatUnregistersItselfWhileBlocking_When_ThePassCompletes_Then_ItsStateStaysIdle()
+        {
+            // Arrange — the blocker's own check disposes its registration before answering true,
+            // the synchronous shape of an owner unmounting mid-check.
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            IDisposable registration = null;
+            registration = manager.Register(_ =>
+            {
+                registration.Dispose();
+                return true;
+            }, state);
+
+            // Act
+            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+
+            // Assert — a dead registration neither blocks the navigation nor strands its state.
+            Assert.That((blocked, state.Status), Is.EqualTo((false, RouteBlockerStatus.Idle)));
+        }
+
+        [Test]
+        public void Given_AnEarlierBlockerUnregistersALaterOne_When_ThePassContinues_Then_TheLaterStateStaysIdle()
+        {
+            // Arrange — the first blocker's decision tears down the second's registration (e.g. it
+            // unmounts the subtree owning it) before the snapshot loop reaches it.
+            var manager = new RouteBlockerManager();
+            var laterState = new RouteBlockerState();
+            IDisposable laterRegistration = null;
+            using var earlier = manager.Register(_ =>
+            {
+                laterRegistration.Dispose();
+                return false;
+            }, new RouteBlockerState());
+            laterRegistration = manager.Register(_ => true, laterState);
+
+            // Act
+            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That((blocked, laterState.Status), Is.EqualTo((false, RouteBlockerStatus.Idle)));
+        }
+
+        [Test]
+        public void Given_AnAlreadySupersededAttempt_When_ABlockerWouldBlock_Then_NoStateIsFlipped()
+        {
+            // Arrange — the attempt's token is already cancelled (a newer navigation took over);
+            // the caller is about to discard this result as Cancelled.
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            using var registration = manager.Register(_ => true, state);
+            using var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            // Act
+            manager.CheckAsync(Attempt(), cts.Token).GetAwaiter().GetResult();
+
+            // Assert — the abandoned attempt leaves no Blocked state behind.
+            Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
         }
 
         #endregion
