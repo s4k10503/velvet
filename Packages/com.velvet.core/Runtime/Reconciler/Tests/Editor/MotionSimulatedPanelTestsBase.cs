@@ -16,7 +16,7 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// Lifecycle methods are <c>virtual</c>; a subclass that needs its own additional per-test reset overrides
-    /// and calls <c>base</c> (see <see cref="MotionStandaloneEnterTests"/>), mirroring
+    /// and calls <c>base</c> (see <see cref="MotionScheduledMechanicsTests"/>), mirroring
     /// <c>Velvet.TestUtilities.ReconcilerScope</c>'s <c>ReconcilerTestFixture</c> base. A separate, in-asmdef
     /// base (rather than extending that one, or the Component-test assembly's own internal simulated-panel
     /// base) because neither exposes a panel-backed <c>Root</c> a Motion-enter fixture can attach to.
