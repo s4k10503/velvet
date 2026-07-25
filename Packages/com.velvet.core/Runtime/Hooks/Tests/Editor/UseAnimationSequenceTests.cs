@@ -54,7 +54,7 @@ namespace Velvet.Tests
         }
 
         // Mounts on the fake clock, flushes the mount effect (Reset + the resulting re-render) and arms
-        // UseFrame's own tick, mirroring UseFramePerFrameContractTests' own arm sequence.
+        // UseFrame's own tick, mirroring UseFrameDispatcherBehaviorTests' per-frame-contract arm sequence.
         private void Mount()
         {
             EditorPanelTestHelpers.SetPanelTimeFunction(_host.Panel, UseFrameFakeClockHost.ReadFakeClock);
