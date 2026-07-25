@@ -19,6 +19,9 @@ namespace Velvet.Tests.Editor
     /// <item>The same callback subscribed twice yields two independent registrations, each disposable on
     /// its own.</item>
     /// <item>A disposed subscription receives no further values.</item>
+    /// <item>A re-entrant <c>Notify</c> during delivery still hands every listener the value current at its
+    /// own call time, so the last delivery any listener receives across a re-entrant cascade matches the
+    /// store's true final state rather than the value captured when the outer pass began.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -275,6 +278,59 @@ namespace Velvet.Tests.Editor
             Assert.Throws<InvalidOperationException>(() => notifier.Notify(1));
             Assert.Throws<InvalidOperationException>(() => notifier.Notify(2));
             Assert.That(throwCount, Is.EqualTo(2));
+        }
+
+        private readonly record struct CounterState(int Value);
+
+        private sealed class CounterStore : Store<CounterState>
+        {
+            public CounterStore() : base(new CounterState(0)) { }
+            public void Set(int value) => SetState(_ => new CounterState(value));
+            protected override void ResetCore() => SetState(_ => new CounterState(0));
+        }
+
+        [Test]
+        public void Given_AnEarlierListenerReentrantlySetsState_When_Notified_Then_ALaterListenersFinalValueIsCurrent()
+        {
+            // Arrange — the first listener supersedes value 1 with 2 mid-pass; a later listener records.
+            using var store = new CounterStore();
+            var lastSeenByLater = -1;
+            using var reentrant = store.Subscribe(s =>
+            {
+                if (s.Value == 1)
+                {
+                    store.Set(2);
+                }
+            });
+            using var later = store.Subscribe(s => lastSeenByLater = s.Value);
+
+            // Act
+            store.Set(1);
+
+            // Assert — the later listener's final delivery matches Current, not the superseded 1.
+            Assert.AreEqual(store.Current.Value, lastSeenByLater);
+        }
+
+        [Test]
+        public void Given_AListenerReentrantlyNotifies_When_TheOuterPassResumes_Then_ItDeliversTheLiveValue()
+        {
+            // Arrange — listener one pushes 2 upon seeing 1; listener two records every delivery.
+            using var notifier = new StoreStateNotifier<int>(0);
+            var seenByTwo = new List<int>();
+            notifier.Subscribe(v =>
+            {
+                if (v == 1)
+                {
+                    notifier.Notify(2);
+                }
+            });
+            notifier.Subscribe(seenByTwo.Add);
+
+            // Act
+            notifier.Notify(1);
+
+            // Assert — the outer pass's resumed delivery carries the live value, not its stale parameter.
+            Assert.That(seenByTwo, Is.EqualTo(new[] { 2, 2 }));
         }
     }
 }
