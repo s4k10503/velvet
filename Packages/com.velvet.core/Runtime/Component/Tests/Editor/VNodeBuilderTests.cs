@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using Velvet;
 using UnityEngine.UIElements;
@@ -26,6 +27,10 @@ namespace Velvet.Tests
     /// by the render method identity.</item>
     /// <item><c>V.When</c> returns the built node when the condition holds and null otherwise (V.List is
     /// specified separately by VListTests).</item>
+    /// <item>The concise positional-className + params-children overloads parse the first positional argument
+    /// as the className and the trailing params arguments as the children, in order; an empty children array
+    /// produces an element node with the className applied and no children; and <c>V.Custom&lt;T&gt;</c>
+    /// preserves its generic type argument as the element type under the same shape.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -428,6 +433,83 @@ namespace Velvet.Tests
 
             // Assert — Identity is the render method's MethodInfo (MethodInfo equality is method identity)
             Assert.That(node.Identity, Is.EqualTo(((System.Func<VNode>)TestComponent.Render).Method));
+        }
+
+        #endregion
+
+        #region Params overloads (positional className + params children)
+
+        [Test]
+        public void Given_PositionalClassNameAndParamsChildren_When_Div_Then_AppliesClassNameAndChildren()
+        {
+            // Act
+            var node = V.Div("flex-col",
+                V.Label(text: "a"),
+                V.Label(text: "b"));
+
+            // Assert
+            Assert.That((node is ElementNode, node.ElementType, node.Children.Length),
+                Is.EqualTo((true, typeof(VisualElement), 2)));
+            Assert.That(node.ClassNames, Is.EqualTo(new[] { "flex-col" }));
+        }
+
+        [Test]
+        public void Given_PositionalClassNameAndEmptyChildren_When_Div_Then_AppliesClassNameWithNoChildren()
+        {
+            // Act
+            var node = V.Div("empty", Array.Empty<VNode>());
+
+            // Assert
+            Assert.That(node.ClassNames, Is.EqualTo(new[] { "empty" }));
+            Assert.That(node.Children.Length, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_PositionalClassNameAndParamsChildren_When_Custom_Then_PreservesGenericElementType()
+        {
+            // Act
+            var node = V.Custom<ScrollView>("custom-scroll",
+                V.Label(text: "child"));
+
+            // Assert
+            Assert.That((node.ElementType, node.Children.Length), Is.EqualTo((typeof(ScrollView), 1)));
+            Assert.That(node.ClassNames, Is.EqualTo(new[] { "custom-scroll" }));
+        }
+
+        [Test]
+        public void Given_PositionalClassNameAndParamsChildren_When_ScrollView_Then_AppliesScrollViewElementType()
+        {
+            // Act
+            var node = V.ScrollView("scroll",
+                V.Label(text: "x"));
+
+            // Assert
+            Assert.That((node.ElementType, node.Children.Length), Is.EqualTo((typeof(ScrollView), 1)));
+            Assert.That(node.ClassNames, Is.EqualTo(new[] { "scroll" }));
+        }
+
+        [Test]
+        public void Given_PositionalClassNameAndParamsChildren_When_Button_Then_AppliesButtonElementTypeAndChildren()
+        {
+            // Act — icon + label children, no onClick (decorative / handled elsewhere).
+            var node = V.Button("btn",
+                V.Label(text: "icon"),
+                V.Label(text: "label"));
+
+            // Assert
+            Assert.That((node.ElementType, node.Children.Length), Is.EqualTo((typeof(Button), 2)));
+            Assert.That(node.ClassNames, Is.EqualTo(new[] { "btn" }));
+        }
+
+        [Test]
+        public void Given_PositionalClassNameAndTextSecondArg_When_Button_Then_ResolvesToLongFormText()
+        {
+            // Act — a positional string second arg must bind the long-form `text` param (no implicit
+            // string→VNode exists), not the params-children overload.
+            var node = V.Button("btn", "press");
+
+            // Assert — no children; the overload resolution picked the long-form (text-bearing) Button.
+            Assert.That(node.Children.Length, Is.EqualTo(0));
         }
 
         #endregion

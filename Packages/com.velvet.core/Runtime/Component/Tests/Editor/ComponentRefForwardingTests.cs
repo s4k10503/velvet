@@ -17,6 +17,10 @@ namespace Velvet.Tests
     /// <item>A deps change on re-render re-invokes the factory, and the re-invoked factory still observes the
     /// attached child element ref.</item>
     /// <item>Unmounting the parent unmounts the child and null-clears the forwarded ref.</item>
+    /// <item><see cref="Hooks.ForwardedRef{T}"/>, the retrieval side of <c>componentRef:</c>, returns null for
+    /// every requested handle type when the parent forwards no ref; returns the exact ref instance when the
+    /// forwarded ref's type matches the requested handle type; and returns null when the forwarded ref's type
+    /// does not match (the retrieval is a typed cast, never a coercion).</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -35,6 +39,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             ResetParent();
             ResetChildRefForwarding();
+            ResetCapturing();
         }
 
         [Test]
@@ -133,6 +138,45 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_parentChildHandleRef.Current, Is.Null,
                 "Unmounting the parent unmounts the child and null-clears the forwarded ref");
+        }
+
+        [Test]
+        public void Given_NoRefForwarded_When_HandleRequested_Then_ReturnsNull()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(CapturingRender, key: "capture"));
+
+            // Assert
+            Assert.That(s_capturingMyHandle, Is.Null,
+                "ForwardedRef returns null when the parent forwarded no ref");
+        }
+
+        [Test]
+        public void Given_RefForwarded_When_RequestedTypeMatches_Then_ReturnsSameRefInstance()
+        {
+            // Arrange
+            var handleRef = new Ref<IMyHandle>();
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(CapturingRender, componentRef: handleRef, key: "capture"));
+
+            // Assert
+            Assert.That(s_capturingMyHandle, Is.SameAs(handleRef),
+                "ForwardedRef of the matching type returns the exact ref the parent forwarded");
+        }
+
+        [Test]
+        public void Given_RefForwarded_When_RequestedTypeMismatches_Then_ReturnsNull()
+        {
+            // Arrange
+            var handleRef = new Ref<IMyHandle>();
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(CapturingRender, componentRef: handleRef, key: "capture"));
+
+            // Assert
+            Assert.That(s_capturingOtherHandle, Is.Null,
+                "Requesting an incompatible handle type yields null because retrieval is a typed cast");
         }
 
         private interface IFocusable
@@ -239,6 +283,30 @@ namespace Velvet.Tests
                 },
                 new object[] { tick });
             return V.TextField(refCallback: s_depsChangeChildElementRef.SetElement);
+        }
+
+        #endregion
+
+        #region Capturing component (requests two unrelated handle types)
+
+        private interface IMyHandle { void Focus(); }
+        private interface IOtherHandle { void Scroll(); }
+
+        private static Ref<IMyHandle> s_capturingMyHandle;
+        private static Ref<IOtherHandle> s_capturingOtherHandle;
+
+        private static void ResetCapturing()
+        {
+            s_capturingMyHandle = null;
+            s_capturingOtherHandle = null;
+        }
+
+        [Component]
+        private static VNode CapturingRender()
+        {
+            s_capturingMyHandle = Hooks.ForwardedRef<IMyHandle>();
+            s_capturingOtherHandle = Hooks.ForwardedRef<IOtherHandle>();
+            return V.Label(text: "x");
         }
 
         #endregion
