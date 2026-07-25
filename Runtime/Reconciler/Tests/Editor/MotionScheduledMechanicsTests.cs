@@ -2,38 +2,110 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins <c>StyleTransitionConfig.StaggerChildrenSec</c> / <c>DelayChildrenSec</c> / <c>When</c>: PLAIN
-    /// parent → child variant-tree orchestration — no AnimatePresence involved, just a Motion's <c>animate</c>
-    /// label flipping while descendants inherit it via <c>variants</c> (see
-    /// <c>MotionVariantPropagationTests.Given_AChildInheritingHidden_...</c>). A descendant that follows the
-    /// ambient label (no own <c>animate</c>) claims a sequential slot — <c>DelayChildrenSec + StaggerChildrenSec
-    /// * index</c> (plus the parent's own <c>DurationSec</c> when <c>When == BeforeChildren</c>) — ADDED on top
-    /// of whatever it already declares via its own <c>Transition.DelaySec</c>. That claim rides as the
-    /// <c>StyleAnimationScheduler</c> runtime-swap play's <c>additionalDelaySec</c> (see
-    /// <c>FiberNodePatcher.PatchMotion</c> / <c>MotionRuntimeSwapTests</c>): the claim delays the SWAP itself —
-    /// the target classes land only once the slot elapses — rather than parking an inline
-    /// <c>transition-delay</c> for utility classes that may not even declare a transition. A descendant with
-    /// its OWN explicit <c>animate</c> opts out entirely (Framer parity: an explicit override disconnects a
-    /// component from its parent's variant propagation) — and, since its own resolved variant never changes
-    /// as a result, never plays a swap at all.
+    /// Pins the scheduled Motion mechanics that only run against a REAL (simulated) panel — their
+    /// scheduled swap-to-animate, deferred inline-style clears, and layout-driven FLIP inverse all run
+    /// through <c>schedule.Execute().ExecuteLater(ms)</c>, which only fires once a panel ticks its
+    /// scheduler against its own clock (the batchmode EditMode PlayerLoop never does). Three mechanics:
+    /// (1) <c>V.Motion(layoutId:)</c>'s FLIP behavior — when a Motion's resolved layout rect changes
+    /// across a re-render while carrying the same layoutId, MotionLayoutIdDriver applies an inverse
+    /// inline transform immediately after layout settles at the new rect, then springs it back to zero,
+    /// instead of jump-cutting straight to the new pose; (2) <c>StyleTransitionConfig.StaggerChildrenSec</c>
+    /// / <c>DelayChildrenSec</c> / <c>When</c> orchestration — a PLAIN parent → child variant-tree (no
+    /// AnimatePresence), where a descendant that follows the ambient label (no own <c>animate</c>) claims
+    /// a sequential slot ADDED on top of its own declared delay, riding the runtime-swap play's
+    /// <c>additionalDelaySec</c> so the claim delays the SWAP itself rather than parking an inline
+    /// <c>transition-delay</c>, while a descendant with its own explicit <c>animate</c> opts out entirely
+    /// (Framer parity); and (3) a standalone <c>V.Motion(variants:, initial:, animate:)</c> mounted with
+    /// NO AnimatePresence — Framer parity dictates <c>initial</c>/<c>animate</c> drive the mount enter on
+    /// any <c>motion.*</c> component regardless, with the scheduled swap to the resting
+    /// <c>variants[animate]</c> firing on the next tick and a later unrelated re-render never replaying
+    /// <c>initial</c>.
     /// </summary>
-    /// <remarks>
-    /// Needs a REAL (simulated) panel — see <see cref="MotionSimulatedPanelTestsBase"/> — for the orchestrated
-    /// swap, which only fires once a panel ticks its scheduler against its own clock (the batchmode EditMode
-    /// PlayerLoop never does).
-    /// </remarks>
     [TestFixture]
-    internal sealed class MotionOrchestrationTests : MotionSimulatedPanelTestsBase
+    internal sealed class MotionScheduledMechanicsTests : MotionSimulatedPanelTestsBase
     {
+        private const float DurationSec = 0.1f;
+
         private static readonly Dictionary<string, string> s_fade = new()
         {
             ["hidden"] = "opacity-0",
             ["visible"] = "opacity-100",
         };
+
+        private static StateUpdater<bool> s_setMoved;
+        private static Action<int> s_bump;
+
+        [SetUp]
+        public override void SetUp()
+        {
+            base.SetUp();
+            s_setMoved = default;
+            s_bump = null;
+        }
+
+        [Component]
+        private static VNode SharedBoxRender()
+        {
+            var (moved, setMoved) = Hooks.UseState(false);
+            s_setMoved = setMoved;
+            return V.Div(children: new VNode[]
+            {
+                V.Motion(
+                    name: "shared",
+                    layoutId: "shared-box",
+                    transition: new StyleTransitionConfig { Type = TransitionType.Spring, Stiffness = 100f, Damping = 10f, Mass = 1f },
+                    className: moved
+                        ? "absolute left-[200px] top-[0px] w-[100px] h-[100px]"
+                        : "absolute left-[0px] top-[0px] w-[100px] h-[100px]"),
+            });
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotion_When_ItsRectChangesAcrossARerender_Then_AnInverseTranslateAppliesImmediatelyAfterLayoutSettles()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(SharedBoxRender, key: "root"));
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            Assume.That(element, Is.Not.Null, "Precondition: the Motion mounted");
+
+            // Act — move the Motion 200px to the right; wait one tick for GeometryChangedEvent to fire and
+            // the driver to apply the inverse pose.
+            s_setMoved.Invoke(true);
+            mounted.FlushStateForTest();
+            Tick();
+
+            // Assert — the element is pinned at (roughly) its OLD screen position via an inline translate,
+            // even though the resolved layout already moved it 200px right (translate.x ~= -200).
+            Assert.That(element.style.translate.value.x.value, Is.LessThan(-50f));
+        }
+
+        [Test]
+        public void Given_ALayoutIdMotion_When_SeveralTicksElapseAfterARectChange_Then_TheInverseTranslateSettlesToZero()
+        {
+            // Arrange
+            using var mounted = V.Mount(Root, V.Component(SharedBoxRender, key: "root"));
+            Tick();
+            var element = Root.Q<VisualElement>("shared");
+            s_setMoved.Invoke(true);
+            mounted.FlushStateForTest();
+            Tick();
+            Assume.That(element.style.translate.value.x.value, Is.LessThan(-50f),
+                "Precondition: the inverse pose applied after the rect change");
+
+            // Act — let the spring settle.
+            AdvancePast(2f);
+
+            // Assert — the inline translate override is cleared once the spring settles (StyleKeyword.Null),
+            // reporting back to StyleKeyword.Auto / 0 the way MotionSpringDriver.ClearInlineOverrides always
+            // leaves a settled channel.
+            Assert.That(element.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
 
         // Builds a parent Motion (a PURE COORDINATOR: it declares no `variants` of its own, only `animate` +
         // `transition` — the orchestration must key off the label it PROPAGATES, not off its own resolved
@@ -246,6 +318,74 @@ namespace Velvet.Tests
 
             // Assert — the completion cleanup fired and released the inline transition styles.
             Assert.That(InlineDurationIsSet(c0), Is.False);
+        }
+
+        [Test]
+        public void Given_AStandaloneMotionWithInitial_When_Mounted_Then_ItStartsAtTheInitialVariant()
+        {
+            // Arrange / Act — no AnimatePresence anywhere: initial/animate must still drive the mount enter.
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(name: "m", variants: s_fade, initial: "hidden", animate: "visible",
+                    transition: new StyleTransitionConfig { DurationSec = DurationSec }),
+            });
+
+            // Assert — starts at variants[initial]=opacity-0; variants[animate]=opacity-100 is stripped during
+            // the from-frame (swapped back in, and kept on completion — see the next two tests).
+            var element = Root.Q<VisualElement>("m");
+            Assert.That((element.ClassListContains("opacity-0"), element.ClassListContains("opacity-100")),
+                Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_AStandaloneMotionWithoutInitial_When_Mounted_Then_ItStartsAtTheAnimateVariantWithNoTweenScheduled()
+        {
+            // Arrange / Act — no `initial` declared, so there is no starting pose to enter FROM.
+            _reconciler.Reconcile(Root, Array.Empty<VNode>(), new VNode[]
+            {
+                V.Motion(name: "m", variants: s_fade, animate: "visible",
+                    transition: new StyleTransitionConfig { DurationSec = DurationSec }),
+            });
+
+            // Assert — rests directly at variants[animate], and (unlike the `initial` case above) no transition
+            // was scheduled: no inline transition-duration was ever applied.
+            var element = Root.Q<VisualElement>("m");
+            Assert.That(
+                (element.ClassListContains("opacity-100"), element.style.transitionDuration.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Component]
+        private static VNode StandaloneHostRender()
+        {
+            var (_, bump) = Hooks.UseState(0);
+            s_bump = bump;
+            return V.Motion(name: "m", variants: s_fade, initial: "hidden", animate: "visible",
+                transition: new StyleTransitionConfig { DurationSec = DurationSec });
+        }
+
+        [Test]
+        public void Given_AStandaloneMotionThatFinishedEntering_When_AnUnrelatedStateChangeReRenders_Then_ItKeepsTheAnimateVariant()
+        {
+            // Arrange — mount under a component (so a self-contained state update can re-render it), and let
+            // the enter complete: it rests at variants[animate], persistently.
+            using var mounted = V.Mount(Root, V.Component(StandaloneHostRender, key: "host"));
+            AdvancePast(DurationSec);
+            var element = Root.Q<VisualElement>("m");
+            Assume.That(
+                (element.ClassListContains("opacity-100"), element.ClassListContains("opacity-0")),
+                Is.EqualTo((true, false)),
+                "Precondition: the enter completed and rests at variants[animate]");
+
+            // Act — an UNRELATED state change re-renders the same Motion node through PatchMotion (not
+            // CreateElement again), which resolves the applied classes from Animate/ambient only.
+            s_bump.Invoke(1);
+            Tick();
+
+            // Assert — the patch never replays `initial`: the element keeps resting at variants[animate].
+            Assert.That(
+                (element.ClassListContains("opacity-100"), element.ClassListContains("opacity-0")),
+                Is.EqualTo((true, false)));
         }
     }
 }

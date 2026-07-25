@@ -527,4 +527,342 @@ namespace Velvet.Tests
 
         #endregion
     }
+
+    /// <summary>
+    /// Specifies the commit-phase ordering across a batched drain: ALL fibers' mutations (renders) complete
+    /// before ANY fiber's layout effect runs, so a layout effect observes the already-committed output of the
+    /// other fibers flushed in the same batch — not a half-updated tree. Previously each fiber ran its layout
+    /// effects immediately after its own render, so an earlier sibling's layout effect fired before a later
+    /// sibling had even rendered.
+    /// </summary>
+    [TestFixture]
+    internal sealed class LayoutEffectDrainPhaseTests
+    {
+        private VisualElement _root;
+
+        private readonly record struct AppState(int Tick);
+
+        private sealed class TickStore : Store<AppState>
+        {
+            public TickStore() : base(new AppState(0)) { }
+            public void Bump() => SetState(s => new AppState(s.Tick + 1));
+            protected override void ResetCore() => SetState(_ => new AppState(0));
+        }
+
+        private static TickStore s_store;
+        private static List<string> s_log;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            s_store = null;
+            s_log = new List<string>();
+        }
+
+        // Sibling A: re-renders on the store tick and has a layout effect (keyed on the tick so it re-runs).
+        [Component]
+        private static VNode SiblingA()
+        {
+            var tick = Hooks.UseStore(s_store, s => s.Tick);
+            Hooks.UseLayoutEffect(() => { s_log.Add("A-layout"); return (Action)null; }, new object[] { tick });
+            return V.Label(name: "a", text: "A" + tick);
+        }
+
+        // Sibling B: re-renders on the store tick and logs its render. Enqueued AFTER A.
+        [Component]
+        private static VNode SiblingB()
+        {
+            var tick = Hooks.UseStore(s_store, s => s.Tick);
+            s_log.Add("B-render");
+            return V.Label(name: "b", text: "B" + tick);
+        }
+
+        [Component]
+        private static VNode Host()
+            => V.Div(children: new VNode[]
+            {
+                V.Component(SiblingA, key: "a"),
+                V.Component(SiblingB, key: "b"),
+            });
+
+        [Test]
+        public void Given_TwoSiblingsDirtiedInOneDrain_When_Drained_Then_AllRendersPrecedeAnyLayoutEffect()
+        {
+            // Arrange — both siblings subscribe to the store; one bump dirties both into the same drain.
+            using var store = new TickStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(Host, key: "host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            s_log.Clear();
+
+            // Act — one store update enqueues both A and B (A first); drain the batch.
+            store.Bump();
+            scheduler.DrainImmediateForTest();
+
+            // Assert — A's layout effect runs AFTER B has rendered (all mutations precede any layout effect).
+            // Per-fiber commit would run A-layout before B-render.
+            Assume.That(s_log, Does.Contain("A-layout").And.Contain("B-render"),
+                "Precondition: both the layout effect and the sibling render ran in this drain");
+            Assert.That(s_log.IndexOf("A-layout"), Is.GreaterThan(s_log.IndexOf("B-render")),
+                "All renders in a batch must complete before any layout effect runs (React commit-phase order)");
+        }
+    }
+
+    /// <summary>
+    /// Pins React's all-cleanups-before-all-setups for inline-effect commits: across the parent/inline-child
+    /// boundary (a parent cleanup that reads state an inline child's setup writes observes the pre-update value)
+    /// and across a batch of inline siblings (every sibling's cleanup precedes any sibling's setup). Committing
+    /// a fiber fully — its setup included — before a later fiber's cleanup ran would invert the pair.
+    /// </summary>
+    [TestFixture]
+    internal sealed class InlineChildLayoutEffectTwoPhaseTests
+    {
+        private VisualElement _root;
+        private static List<string> s_log;
+        private static Action<int> s_parentSet;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            s_log = new List<string>();
+            s_parentSet = null;
+        }
+
+        // Inline child: keyed on the tick prop so its layout effect re-runs when the parent re-renders. The
+        // setup logs; a null cleanup keeps the cleanup pass silent so only the parent's cleanup is recorded.
+        [Component]
+        private static VNode Child(int tick)
+        {
+            Hooks.UseLayoutEffect(() => { s_log.Add("child:setup"); return (Action)null; }, new object[] { tick });
+            return V.Label(name: "child", text: $"c{tick}");
+        }
+
+        // Parent: owns the tick state, passes it to the inline child, and has a layout effect whose CLEANUP
+        // logs. The parent's cleanup must land before the child's setup on the re-render commit.
+        [Component]
+        private static VNode Parent()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_parentSet = setTick;
+            Hooks.UseLayoutEffect(
+                () => (Action)(() => s_log.Add("parent:cleanup")),
+                new object[] { tick });
+            return V.Div(name: "parent", children: new VNode[]
+            {
+                V.Component(Child, tick, key: "child"),
+            });
+        }
+
+        [Test]
+        public void Given_ParentAndInlineChildLayoutEffectsRerun_When_Committed_Then_ParentCleanupPrecedesChildSetup()
+        {
+            // Arrange — mount, then discard the mount-phase log so only the update commit is measured.
+            using var mounted = V.Mount(_root, V.Component(Parent, key: "parent"));
+            s_log.Clear();
+
+            // Act — the parent re-renders and re-expands the child inline; both layout effects re-run.
+            s_parentSet.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — parent cleanup (mutation phase) runs before child setup (layout phase).
+            Assume.That(s_log, Does.Contain("parent:cleanup").And.Contain("child:setup"),
+                "Precondition: both the parent cleanup and the child setup ran on this commit");
+            Assert.That(s_log.IndexOf("parent:cleanup"), Is.LessThan(s_log.IndexOf("child:setup")),
+                "React commits all layout cleanups before all layout setups across the parent/inline-child boundary");
+        }
+
+        private static Action<int> s_siblingSet;
+
+        // Inline sibling: logs both its cleanup and setup, keyed on the tick prop so both re-run on the parent's
+        // re-render. Two siblings together pin that every sibling's cleanup precedes any sibling's setup.
+        [Component]
+        private static VNode SiblingA(int tick)
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_log.Add("a:setup");
+                return (Action)(() => s_log.Add("a:cleanup"));
+            }, new object[] { tick });
+            return V.Label(name: "a", text: $"a{tick}");
+        }
+
+        [Component]
+        private static VNode SiblingB(int tick)
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_log.Add("b:setup");
+                return (Action)(() => s_log.Add("b:cleanup"));
+            }, new object[] { tick });
+            return V.Label(name: "b", text: $"b{tick}");
+        }
+
+        [Component]
+        private static VNode SiblingParent()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_siblingSet = setTick;
+            return V.Div(name: "sibling-parent", children: new VNode[]
+            {
+                V.Component(SiblingA, tick, key: "a"),
+                V.Component(SiblingB, tick, key: "b"),
+            });
+        }
+
+        [Test]
+        public void Given_TwoInlineSiblingsLayoutEffectsRerun_When_Committed_Then_AllCleanupsPrecedeAllSetups()
+        {
+            // Arrange — mount, then discard the mount-phase log (setups only) so only the update commit counts.
+            using var mounted = V.Mount(_root, V.Component(SiblingParent, key: "sibling-parent"));
+            s_log.Clear();
+
+            // Act — the parent re-renders and re-expands both siblings inline; every layout effect re-runs.
+            s_siblingSet.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the last cleanup across the batch runs before the first setup (all cleanups, then all setups).
+            var lastCleanup = Math.Max(s_log.IndexOf("a:cleanup"), s_log.IndexOf("b:cleanup"));
+            var firstSetup = Math.Min(s_log.IndexOf("a:setup"), s_log.IndexOf("b:setup"));
+            Assume.That(s_log, Does.Contain("a:cleanup").And.Contain("b:setup"),
+                "Precondition: both siblings' cleanup and setup ran on this commit");
+            Assert.That(lastCleanup, Is.LessThan(firstSetup),
+                "Every inline sibling's layout cleanup commits before any sibling's layout setup (React mutation-before-layout)");
+        }
+    }
+
+    /// <summary>
+    /// Specifies the ordering contract for passive (UseEffect) effects across a re-render that
+    /// dirties both a parent and its child:
+    /// <list type="bullet">
+    /// <item>All passive cleanups run before any passive setup (tree-wide 2-phase commit).</item>
+    /// <item>Child passive effects run before parent passive effects (bottom-up / post-order), for both
+    /// cleanup and setup.</item>
+    /// </list>
+    /// Mirrors <see cref="EffectOrderTests"/> for layout / insertion effects.
+    /// </summary>
+    [TestFixture]
+    internal sealed class PassiveEffectOrderingParityTests
+    {
+        private VisualElement _root;
+        private static List<string> s_log;
+        private static Action<int> s_parentSet;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            s_log = new List<string>();
+            s_parentSet = null;
+            FiberStrictMode.Enabled = false;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            FiberStrictMode.Enabled = false;
+        }
+
+        [Component]
+        private static VNode RenderPassiveChild(int tick)
+        {
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add("setup:Child");
+                return (Action)(() => s_log.Add("cleanup:Child"));
+            }, new object[] { tick });
+            return V.Label(name: "passive-child", text: $"c{tick}");
+        }
+
+        [Component]
+        private static VNode RenderPassiveParent()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_parentSet = setTick;
+            Hooks.UseEffect(() =>
+            {
+                s_log.Add("setup:Parent");
+                return (Action)(() => s_log.Add("cleanup:Parent"));
+            }, new object[] { tick });
+            return V.Div(
+                name: "passive-parent",
+                children: new VNode[]
+                {
+                    V.Component(RenderPassiveChild, tick, key: "child"),
+                });
+        }
+
+        [Test]
+        public void Given_ParentAndChild_When_BothReRenderWithChangedDeps_Then_AllCleanupsRunBeforeAnySetup()
+        {
+            // Arrange — mount and settle the first round of passive setups.
+            using var mounted = V.Mount(_root, V.Component(RenderPassiveParent, key: "parent"));
+            mounted.FlushEffectsForTest();
+            Assume.That(s_log, Does.Contain("setup:Child").And.Contain("setup:Parent"),
+                "Precondition: the mount commit's passive setups ran");
+            s_log.Clear();
+
+            // Act — a re-render that changes the deps of both the parent and the child effect.
+            s_parentSet.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — ALL passive cleanups run before ANY passive setup.
+            var lastCleanup = Math.Max(s_log.IndexOf("cleanup:Child"), s_log.IndexOf("cleanup:Parent"));
+            var firstSetup = Math.Min(IndexOrMax(s_log, "setup:Child"), IndexOrMax(s_log, "setup:Parent"));
+            Assume.That(lastCleanup, Is.GreaterThanOrEqualTo(0), "Precondition: both passive cleanups ran");
+            Assert.That(lastCleanup, Is.LessThan(firstSetup),
+                $"All passive cleanups must run before any passive setup. Order: {string.Join(",", s_log)}");
+        }
+
+        [Test]
+        public void Given_ParentAndChild_When_BothReRenderWithChangedDeps_Then_ChildSetupRunsBeforeParentSetup()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RenderPassiveParent, key: "parent"));
+            mounted.FlushEffectsForTest();
+            s_log.Clear();
+
+            // Act
+            s_parentSet.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — passive setups commit bottom-up: the child's before the parent's.
+            var childSetup = s_log.IndexOf("setup:Child");
+            var parentSetup = s_log.IndexOf("setup:Parent");
+            Assume.That(childSetup, Is.GreaterThanOrEqualTo(0).And.LessThan(int.MaxValue),
+                "Precondition: both passive setups ran");
+            Assert.That(childSetup, Is.LessThan(parentSetup),
+                $"Child passive setup must run before parent passive setup. Order: {string.Join(",", s_log)}");
+        }
+
+        [Test]
+        public void Given_ParentAndChild_When_BothReRenderWithChangedDeps_Then_ChildCleanupRunsBeforeParentCleanup()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(RenderPassiveParent, key: "parent"));
+            mounted.FlushEffectsForTest();
+            s_log.Clear();
+
+            // Act
+            s_parentSet.Invoke(1);
+            mounted.FlushStateForTest();
+            mounted.FlushEffectsForTest();
+
+            // Assert — passive cleanups also commit bottom-up.
+            var childCleanup = s_log.IndexOf("cleanup:Child");
+            var parentCleanup = s_log.IndexOf("cleanup:Parent");
+            Assume.That(childCleanup, Is.GreaterThanOrEqualTo(0), "Precondition: both passive cleanups ran");
+            Assert.That(childCleanup, Is.LessThan(parentCleanup),
+                $"Child passive cleanup must run before parent passive cleanup. Order: {string.Join(",", s_log)}");
+        }
+
+        private static int IndexOrMax(List<string> log, string value)
+        {
+            var idx = log.IndexOf(value);
+            return idx < 0 ? int.MaxValue : idx;
+        }
+    }
 }
