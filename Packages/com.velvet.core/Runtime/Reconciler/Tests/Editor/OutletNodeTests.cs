@@ -24,6 +24,9 @@ namespace Velvet.Tests
     /// <item>An Outlet keeps resolving its matched route across a standalone setState re-render — both when the
     /// enclosing layout re-renders and when the route component itself re-renders — because the enclosing
     /// Provider spine is reconstructed from the committed tree for an isolated re-render.</item>
+    /// <item>Every Outlet mount registers its layout-passthrough container in a per-context identity set so the
+    /// context spine can identify Outlet hosts; unmounting the Outlet releases that registration too, so dead
+    /// containers do not accumulate across route changes over a long session.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -37,6 +40,7 @@ namespace Velvet.Tests
         {
             _reconciler = new Reconciler();
             _root = new VisualElement();
+            s_store = null;
         }
 
         [TearDown]
@@ -290,6 +294,50 @@ namespace Velvet.Tests
             Assert.That(scopeFactory.LastScope!.IsDisposed, Is.True);
 
             router.Dispose();
+        }
+
+        #endregion
+
+        #region Container release (per-element registration cleanup)
+
+        private readonly record struct ToggleState(bool Show);
+
+        private sealed class ToggleStore : Store<ToggleState>
+        {
+            public ToggleStore() : base(new ToggleState(true)) { }
+            public void Set(bool show) => SetState(_ => new ToggleState(show));
+            protected override void ResetCore() => SetState(_ => new ToggleState(true));
+        }
+
+        private static ToggleStore s_store;
+
+        [Component]
+        private static VNode App()
+        {
+            var show = Hooks.UseStore(s_store, s => s.Show);
+            return V.Div(name: "app", children: show
+                ? new VNode[] { V.Outlet() }
+                : Array.Empty<VNode>());
+        }
+
+        [Test]
+        public void Given_AMountedOutlet_When_ItUnmounts_Then_ItsContainerRegistrationIsReleased()
+        {
+            // Arrange — a mounted Outlet registers its container in the identity set.
+            using var store = new ToggleStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(App, key: "app"));
+            var context = mounted.Root.Reconciler.Context;
+            var scheduler = context.BatchScheduler;
+            Assume.That(context.OutletContainers.Count, Is.EqualTo(1),
+                "Precondition: the mounted Outlet's container is registered");
+
+            // Act — the Outlet unmounts.
+            store.Set(false);
+            scheduler.DrainImmediateForTest();
+
+            // Assert — the registration is gone, so dead containers cannot accumulate across route changes.
+            Assert.AreEqual(0, context.OutletContainers.Count);
         }
 
         #endregion

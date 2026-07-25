@@ -563,4 +563,292 @@ namespace Velvet.Tests
 
         #endregion
     }
+
+    /// <summary>
+    /// Specifies the contract of a function-component Error Boundary, declared as
+    /// <c>[Component(IsErrorBoundary = true)]</c> with a fallback factory registered inside Render via
+    /// <see cref="Hooks.UseFallback(System.Func{System.Exception, VNode})"/>.
+    /// <list type="bullet">
+    /// <item>A render exception propagates only to ancestor boundaries; the throwing fiber's own enclosing
+    /// boundary is the nearest ancestor that opted in via <c>IsErrorBoundary = true</c>.</item>
+    /// <item>When an ancestor boundary catches a child exception, its registered fallback factory runs and
+    /// receives the caught exception, and the fallback VNode replaces the boundary's subtree.</item>
+    /// <item>A boundary never catches an exception thrown by its own Render; that exception bubbles to an
+    /// enclosing boundary instead, so the boundary's own fallback factory does not run.</item>
+    /// <item>A boundary that does not register a fallback factory produces no fallback and lets the exception
+    /// bubble to an enclosing boundary.</item>
+    /// <item>When no enclosing boundary catches the exception, it is logged as an unhandled exception.</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>
+    /// Uses the <c>[Component] static VNode</c> + <c>V.Mount</c> + static-field exposure pattern. The fixture's
+    /// static observation fields are reset together in <see cref="SetUp"/> via <see cref="ResetBoundaryState"/>.
+    /// </remarks>
+    [TestFixture]
+    internal sealed class ExplicitErrorBoundaryTests
+    {
+        private VisualElement _root;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            ResetBoundaryState();
+        }
+
+        [Test]
+        public void Given_NoEnclosingBoundary_When_ComponentRenderThrows_Then_LogsException()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, "Exception: boom");
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(ThrowingParentRender, key: "parent"));
+
+            // Assert — LogAssert.Expect verifies the unhandled exception was logged
+        }
+
+        [Test]
+        public void Given_BoundaryWrappingThrowingChild_When_ChildRenderThrows_Then_FallbackFactoryRuns()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingThrowerRender, key: "boundary"));
+
+            // Assert
+            Assert.That(s_fallbackShown, Is.True,
+                "The factory registered via Hooks.UseFallback at the boundary fires on a child exception");
+        }
+
+        [Test]
+        public void Given_BoundaryWrappingThrowingChild_When_ChildRenderThrows_Then_FactoryReceivesCaughtException()
+        {
+            // Act
+            using var mounted = V.Mount(_root, V.Component(BoundaryWrappingThrowerRender, key: "boundary"));
+            Assume.That(s_fallbackShown, Is.True, "Precondition: the boundary caught the child exception");
+
+            // Assert
+            Assert.That(s_lastCaughtMessage, Is.EqualTo("boom-child"),
+                "The fallback factory receives the exact exception thrown by the child render");
+        }
+
+        [Test]
+        public void Given_BoundaryWhoseOwnRenderThrows_When_Mounted_Then_LogsException()
+        {
+            // Arrange — without an enclosing boundary, the un-self-caught exception is logged
+            LogAssert.Expect(LogType.Exception, "Exception: self-boom");
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SelfThrowingBoundaryRender, key: "self-throw"));
+
+            // Assert — LogAssert.Expect verifies the own-Render exception was not self-caught but logged
+        }
+
+        [Test]
+        public void Given_BoundaryWhoseOwnRenderThrows_When_Mounted_Then_OwnFallbackFactoryDoesNotRun()
+        {
+            // Arrange
+            LogAssert.Expect(LogType.Exception, "Exception: self-boom");
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(SelfThrowingBoundaryRender, key: "self-throw"));
+
+            // Assert
+            Assert.That(s_fallbackShown, Is.False,
+                "A boundary does not catch an exception thrown by its own Render");
+        }
+
+        [Test]
+        public void Given_BoundaryWithoutFallback_When_ChildRenderThrows_Then_ExceptionBubblesAndIsLogged()
+        {
+            // Arrange — the boundary opts in but registers no fallback factory, so the exception bubbles
+            // past it to an enclosing boundary; with none present it is logged as unhandled
+            LogAssert.Expect(LogType.Exception, "Exception: boom-child");
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(NoFallbackBoundaryRender, key: "no-fallback"));
+
+            // Assert — LogAssert.Expect verifies the un-caught child exception was logged
+        }
+
+        #region Boundary observation state
+
+        private static bool s_fallbackShown;
+        private static string s_lastCaughtMessage;
+
+        private static void ResetBoundaryState()
+        {
+            s_fallbackShown = false;
+            s_lastCaughtMessage = null;
+        }
+
+        #endregion
+
+        #region ThrowingParent component (no boundary; its own Render throws)
+
+        [Component]
+        private static VNode ThrowingParentRender() => throw new Exception("boom");
+
+        #endregion
+
+        #region BoundaryWrappingThrower component (boundary + Hooks.UseFallback wrapping a throwing child)
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode BoundaryWrappingThrowerRender()
+        {
+            Hooks.UseFallback(ex =>
+            {
+                s_fallbackShown = true;
+                s_lastCaughtMessage = ex.Message;
+                return V.Label(text: "caught");
+            });
+            return V.Fragment(new VNode[] { V.Component(ThrowingChildRender, key: "throwing-child") });
+        }
+
+        [Component]
+        private static VNode ThrowingChildRender() => throw new Exception("boom-child");
+
+        #endregion
+
+        #region SelfThrowingBoundary component (boundary whose own Render throws)
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode SelfThrowingBoundaryRender()
+        {
+            Hooks.UseFallback(ex =>
+            {
+                s_fallbackShown = true;
+                return V.Label(text: "should-not-self-catch");
+            });
+            throw new Exception("self-boom");
+        }
+
+        #endregion
+
+        #region NoFallbackBoundary component (boundary opt-in but no Hooks.UseFallback call)
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode NoFallbackBoundaryRender()
+            => V.Fragment(new VNode[] { V.Component(ThrowingChildRender, key: "throwing-child") });
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Specifies that error-boundary identity resolves through <see cref="ComponentMethodRegistry"/> even when the
+    /// boundary component is declared inside a closed generic class.
+    /// <list type="bullet">
+    /// <item>A boundary declared in a closed generic class catches a descendant's render exception, because the
+    /// registry rebuilds the open-form lookup key when the live type name carries a type-argument suffix.</item>
+    /// <item>A boundary declared in a type nested inside a closed generic class likewise catches, because the
+    /// registry walks the declaring chain to rebuild the open form when the live type name is null.</item>
+    /// </list>
+    /// </summary>
+    /// <remarks>
+    /// Uses the <c>[Component] static VNode</c> + <c>V.Mount</c> + static-field exposure pattern. The throw is
+    /// driven by a child-side <c>setTick</c> setter so it fires on an update.
+    /// </remarks>
+    [TestFixture]
+    internal sealed class GenericClassErrorBoundaryTests
+    {
+        private VisualElement _root;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _root = new VisualElement();
+            s_fallbackShown = false;
+            s_throwOnNextRender = false;
+            s_setTick = null;
+        }
+
+        [Test]
+        public void Given_BoundaryInClosedGenericClass_When_ChildThrows_Then_FallbackFires()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(GenericBoundary<int>.Render, key: "boundary"));
+            Assume.That(s_fallbackShown, Is.False, "Precondition: the initial mount renders the child without fallback");
+            Assume.That(s_setTick, Is.Not.Null, "Precondition: the child wired its setter on the initial mount");
+            s_throwOnNextRender = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_fallbackShown, Is.True,
+                "A boundary in a closed generic class resolves through the registry's open-form key and catches");
+        }
+
+        [Test]
+        public void Given_BoundaryInNestedTypeOfClosedGeneric_When_ChildThrows_Then_FallbackFires()
+        {
+            // Arrange — the live type name of a type nested in a closed generic is null, so the registry must
+            // walk the declaring chain to rebuild the open-form key.
+            using var mounted = V.Mount(_root, V.Component(GenericOuter<int>.NestedBoundary.Render, key: "boundary"));
+            Assume.That(s_fallbackShown, Is.False, "Precondition: the initial mount renders the child without fallback");
+            Assume.That(s_setTick, Is.Not.Null, "Precondition: the child wired its setter on the initial mount");
+            s_throwOnNextRender = true;
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_fallbackShown, Is.True,
+                "A boundary nested inside a closed generic resolves through the chain-walking open-form key and catches");
+        }
+
+        private static bool s_fallbackShown;
+        private static bool s_throwOnNextRender;
+        private static Action<int> s_setTick;
+
+        private static class GenericBoundary<T>
+        {
+            [Component(IsErrorBoundary = true)]
+            public static VNode Render()
+            {
+                Hooks.UseFallback(_ =>
+                {
+                    s_fallbackShown = true;
+                    return V.Label(text: "error");
+                });
+                return V.Component(ChildRender, key: "child");
+            }
+        }
+
+        private static class GenericOuter<T>
+        {
+            public static class NestedBoundary
+            {
+                [Component(IsErrorBoundary = true)]
+                public static VNode Render()
+                {
+                    Hooks.UseFallback(_ =>
+                    {
+                        s_fallbackShown = true;
+                        return V.Label(text: "error");
+                    });
+                    return V.Component(NestedChildRender, key: "child");
+                }
+            }
+        }
+
+        [Component]
+        private static VNode ChildRender()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            if (s_throwOnNextRender) throw new InvalidOperationException("Generic boundary throw");
+            return V.Label(text: "ok");
+        }
+
+        [Component]
+        private static VNode NestedChildRender()
+        {
+            var (_, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            if (s_throwOnNextRender) throw new InvalidOperationException("Nested generic boundary throw");
+            return V.Label(text: "ok");
+        }
+    }
 }

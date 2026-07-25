@@ -10,16 +10,19 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins the fuller synthetic-bubbling contract of <c>V.Portal(targetId:)</c>
-    /// (<see cref="FiberCrossPanelEventDispatcher"/>, attached per resolved target from
-    /// <c>ChildReconciler</c>'s registry-portal drain branch — see
-    /// <c>ReconcilerContext.SamePanelPortalBridges</c>): the truncation guard against a handler that is
-    /// both a physical AND a logical ancestor firing twice, <c>StopPropagation</c> mid-chain, nested
-    /// same-panel portals, and the <c>events:</c>-only scoping that also governs
-    /// <c>V.Portal(layer:)</c>/<c>V.WorldSpace</c>. The BASIC case (a plain logical-ancestor handler
-    /// firing at all) is pinned in <see cref="PortalEventBubblingTests"/> alongside the physical-bubbling
-    /// contract it shares a file with; this fixture is scoped to what is genuinely NEW about the
-    /// same-panel form specifically.
+    /// Pins the event-bubbling contract of <c>V.Portal(targetId:)</c> for a same-panel target — both the
+    /// PHYSICAL bubbling UI Toolkit's own native dispatch performs after a Portal reparents its children
+    /// under the registered target, and the SYNTHETIC bubbling Velvet bridges separately to the LOGICAL
+    /// ancestor chain of the <c>V.Portal</c> call site (<see cref="FiberCrossPanelEventDispatcher"/>,
+    /// attached per resolved target from <c>ChildReconciler</c>'s registry-portal drain branch — see
+    /// <c>ReconcilerContext.SamePanelPortalBridges</c>). The same mechanism <c>V.Portal(layer:)</c>/
+    /// <c>V.WorldSpace</c> already had for their separate host panels, extended to this same-panel form.
+    /// Beyond the BASIC case (a plain logical-ancestor handler firing at all, and physical bubbling still
+    /// working exactly as before), this pins: the truncation guard against a handler that is both a
+    /// physical AND a logical ancestor firing twice, <c>StopPropagation</c> mid-chain, nested same-panel
+    /// portals, late target registration healing, growth after an already-resolved patch, remount to the
+    /// same target, non-pointer events, dispatch on the target element itself, and the <c>events:</c>-only
+    /// scoping.
     /// </summary>
     /// <remarks>
     /// Uses a real, live-dispatched <see cref="PointerDownEvent"/> (<c>VisualElement.SendEvent</c> under a
@@ -28,18 +31,25 @@ namespace Velvet.Tests
     /// genuinely keep bubbling in the SAME live dispatch once this bridge's BubbleUp callback returns (see
     /// <c>FiberCrossPanelEventDispatcher.Continue</c>'s own comment), so exercising that interaction for
     /// real — rather than asserting against a single simulated hop — is what makes the truncation-guard
-    /// tests below trustworthy. This is unlike the cross-panel case, where two genuinely bubbling-connected
-    /// Panels cannot be constructed at all and simulation is the only option. Every mount goes through
-    /// <c>V.Mount</c> (not a bare <c>Reconciler.Reconcile</c> call): the synthetic bridge resolves the
-    /// logical ancestor from <c>DetachedMountContext</c>, which is stamped only while a real root fiber
-    /// stays current on <c>FiberStack</c> through the post-reconcile drain.
+    /// tests trustworthy. This is unlike the cross-panel case, where two genuinely bubbling-connected
+    /// Panels cannot be constructed at all and simulation is the only option. The physical-bubbling test
+    /// drives the reconciler directly (mirroring <see cref="PortalTests"/>), because the contract under
+    /// test there is only the physical reparenting the reconciler performs and needs no fiber machinery;
+    /// every other mount goes through <c>V.Mount</c> (not a bare <c>Reconciler.Reconcile</c> call), since
+    /// the synthetic bridge resolves the logical ancestor from <c>DetachedMountContext</c>, which is
+    /// stamped only while a real root fiber stays current on <c>FiberStack</c> through the post-reconcile
+    /// drain. The registry's static target table is cleared in <see cref="SetUp"/> and
+    /// <see cref="TearDown"/> so registrations never leak.
     /// </remarks>
     [TestFixture]
     internal sealed class SamePanelPortalBubblingTests
     {
         private EditorWindow _window;
+        private Reconciler _reconciler;
         private MountedTree _mounted;
         private VisualElement _root;
+        private VisualElement _logicalAncestor;
+        private VisualElement _portalTarget;
 
         [SetUp]
         public void SetUp()
@@ -48,10 +58,19 @@ namespace Velvet.Tests
 
             _window = ScriptableObject.CreateInstance<TestHostWindow>();
             _window.Show();
+            _reconciler = new Reconciler();
             FiberPortalRegistry.Clear();
 
             _root = new VisualElement();
             _window.rootVisualElement.Add(_root);
+
+            // Both hosts share the live panel: the logical ancestor holds the V.Portal call site, the target is
+            // where the children physically mount. A portal child's event bubbles up the target's chain only.
+            _logicalAncestor = new VisualElement();
+            _portalTarget = new VisualElement();
+            _window.rootVisualElement.Add(_logicalAncestor);
+            _window.rootVisualElement.Add(_portalTarget);
+            FiberPortalRegistry.Register("evt-target", _portalTarget);
 
             // Static fixture fields hold the latest StateUpdater from whichever test last rendered their
             // owning component; a stale reference left over from a previous test would invoke a setter
@@ -67,6 +86,7 @@ namespace Velvet.Tests
         {
             _mounted?.Dispose();
             _mounted = null;
+            _reconciler.Dispose();
             FiberPortalRegistry.Clear();
             if (_window != null)
             {
@@ -77,13 +97,85 @@ namespace Velvet.Tests
         }
 
         // Pooled-event dispatch is the canonical EditMode way to fire a real bubbling event without a
-        // player loop (mirrors PortalEventBubblingTests.DispatchPointerDown).
+        // player loop.
         private static void DispatchPointerDown(VisualElement el)
         {
             using var evt = PointerDownEvent.GetPooled();
             evt.target = el;
             el.SendEvent(evt);
         }
+
+        #region Physical bubbling and basic logical bubbling
+
+        [Component]
+        private static VNode LogicalAncestorPortalHostRender()
+        {
+            return V.Portal("evt-target", children: new VNode[] { V.Component(LogicalAncestorPortalChildRender) });
+        }
+
+        [Component]
+        private static VNode LogicalAncestorPortalChildRender() => V.Div(name: "pc");
+
+        [Test]
+        public void Given_PortalChildFiresPointerDown_When_HandlerOnLogicalAncestor_Then_HandlerInvoked()
+        {
+            // Arrange — the logical ancestor carries a Velvet PointerDownBinding; its child is a registry Portal
+            // whose content physically mounts under the target, off the ancestor's physical chain. Both the
+            // Portal call site and its content are wrapped in components (rather than bare elements) so the
+            // portal drain (ChildReconciler.DrainPendingPortalMounts) has top-level ComponentFibers to stamp
+            // DetachedMountContext onto — see FiberCrossPanelEventDispatcher's own comment on the bare-element
+            // limitation this mirrors from the layer/world-space case.
+            var bubbledToLogical = false;
+            var binding = new PointerDownBinding { Handler = _ => bubbledToLogical = true };
+            _mounted = V.Mount(_logicalAncestor, V.Motion(
+                name: "logical",
+                events: new FiberEventBinding[] { binding },
+                children: new VNode[] { V.Component(LogicalAncestorPortalHostRender) }));
+            var portalChild = _portalTarget.Q<VisualElement>("pc");
+            Assume.That(portalChild, Is.Not.Null, "Precondition: the portal child mounted physically under the target");
+
+            // Act — fire a pointer-down on the portal child; it bubbles up the target's physical chain and,
+            // separately, synthetically to the logical ancestor chain outside the call site.
+            DispatchPointerDown(portalChild);
+
+            // Assert
+            Assert.That(bubbledToLogical, Is.True,
+                "V.Portal(targetId:) events now bubble synthetically to the logical ancestor chain, mirroring V.Portal(layer:)/V.WorldSpace");
+        }
+
+        [Test]
+        public void Given_PortalChildFiresPointerDown_When_HandlerOnPhysicalTargetAncestor_Then_HandlerInvoked()
+        {
+            // Arrange — the same mount, plus a raw callback on the target (the portal child's physical ancestor).
+            // The portal content here is a BARE V.Div (no enclosing V.Component) and the mount goes through the
+            // bare reconciler (no root fiber), so the same-panel synthetic bridge that auto-attaches to
+            // _portalTarget on every registry-portal mount (see ReconcilerContext.SamePanelPortalBridges) finds
+            // no DetachedMountContext to resolve and is a no-op here — this test is unaffected and still pins
+            // ordinary native physical bubbling in isolation from the synthetic path.
+            var bubbledToPhysical = false;
+            EventCallback<PointerDownEvent> onTargetPointerDown = _ => bubbledToPhysical = true;
+            _portalTarget.RegisterCallback(onTargetPointerDown);
+            var children = new VNode[]
+            {
+                V.Div(name: "logical", children: new VNode[]
+                {
+                    V.Portal("evt-target", children: new VNode[] { V.Div(name: "pc") }),
+                }),
+            };
+            _reconciler.Reconcile(_logicalAncestor, Array.Empty<VNode>(), children);
+            var portalChild = _portalTarget.Q<VisualElement>("pc");
+            Assume.That(portalChild, Is.Not.Null, "Precondition: the portal child mounted physically under the target");
+
+            // Act
+            DispatchPointerDown(portalChild);
+            _portalTarget.UnregisterCallback(onTargetPointerDown);
+
+            // Assert
+            Assert.That(bubbledToPhysical, Is.True,
+                "Portal child events bubble up the physical target chain");
+        }
+
+        #endregion
 
         #region Basic
 
