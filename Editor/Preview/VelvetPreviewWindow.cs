@@ -21,8 +21,8 @@ namespace Velvet.Editor.Preview
     /// view, not a pixel-exact one.
     /// </para>
     /// <para>Open via Window &gt; Velvet &gt; Preview.</para>
-    /// <remarks>Equivalent to Storybook's component workshop with Fast-Refresh-style live updates, for users
-    /// migrating from those tools.</remarks>
+    /// <remarks>A standalone workshop for mounting and inspecting one <c>[VelvetPreview]</c> story at a time,
+    /// with live updates as its source changes.</remarks>
     /// </summary>
     public sealed class VelvetPreviewWindow : EditorWindow
     {
@@ -38,6 +38,11 @@ namespace Velvet.Editor.Preview
         private const string ViewportKey = "Velvet.Preview.Viewport";
         private const string ViewportWidthKey = "Velvet.Preview.ViewportW";
         private const string ViewportHeightKey = "Velvet.Preview.ViewportH";
+
+        // Fixed pane sizes for the two TwoPaneSplitViews: the story list sidebar's width, and the addons
+        // controls pane's min height in the stage/controls vertical split.
+        private const float SidebarWidthPx = 220f;
+        private const float ControlsPaneMinHeightPx = 160f;
 
         // Custom viewport W/H fields are clamped to this range — 1 keeps a story from collapsing to nothing, 8192
         // is generously above any real device or monitor so it never blocks an intentionally huge reference size.
@@ -75,10 +80,9 @@ namespace Velvet.Editor.Preview
         };
 
         // Simulated viewports. "Full" lets the canvas fill the stage (no scope) and is the menu's only entry —
-        // the fixed device presets (Mobile/Tablet/Desktop) were removed in favor of free-form entry: any reference
-        // size, including the old preset sizes, is reachable by typing into the W/H fields below. "Custom" is not
-        // in this list — it is entered via those fields and stores its size under
-        // ViewportWidthKey/ViewportHeightKey instead of a table entry.
+        // any reference size is reachable by typing into the W/H fields below, so a fixed preset table would
+        // only duplicate what free-form entry already covers. "Custom" is not in this list — it is entered via
+        // those fields and stores its size under ViewportWidthKey/ViewportHeightKey instead of a table entry.
         private const string ViewportFull = "Full";
         private const string ViewportCustom = "Custom";
         private static readonly (string Label, float Width, float Height)[] Viewports =
@@ -142,7 +146,7 @@ namespace Velvet.Editor.Preview
         {
             LoadViewPrefs();
 
-            var split = new TwoPaneSplitView(0, 220f, TwoPaneSplitViewOrientation.Horizontal);
+            var split = new TwoPaneSplitView(0, SidebarWidthPx, TwoPaneSplitViewOrientation.Horizontal);
             rootVisualElement.Add(split);
 
             split.Add(BuildSidebar());
@@ -169,10 +173,10 @@ namespace Velvet.Editor.Preview
 
             if (!IsKnownViewportLabel(_viewport))
             {
-                // A label persisted by a pre-rework session (e.g. an old preset that no longer exists) matches
-                // neither the current Viewports table nor Custom. Left as-is, ViewportSize() would silently fall
-                // back to (0, 0) while the toolbar kept showing the stale label — reset to Full so the label and
-                // the actual reference size agree again.
+                // A persisted label matching neither the current Viewports table nor Custom can reach here if the
+                // table changes or EditorPrefs is edited outside this window. Left as-is, ViewportSize() would
+                // silently fall back to (0, 0) while the toolbar kept showing the stale label — reset to Full so
+                // the label and the actual reference size agree again.
                 _viewport = ViewportFull;
                 EditorPrefs.SetString(ViewportKey, _viewport);
             }
@@ -242,15 +246,32 @@ namespace Velvet.Editor.Preview
             };
             column.Add(_statusLabel);
 
-            // Stage on top, controls below — a vertical split so the controls pane is resizable (a canvas above,
-            // addons panel below). The controls pane is the fixed-size second pane.
-            var vertical = new TwoPaneSplitView(1, 160f, TwoPaneSplitViewOrientation.Vertical) { style = { flexGrow = 1f } };
-            column.Add(vertical);
+            column.Add(BuildStageSplit());
 
-            // The stage is the fixed backdrop; it never shrinks or grows to match the canvas — instead a
-            // ScrollView inside it pans/scrolls to reach a zoom box larger than the stage. overflow: Hidden here
-            // only clips the checkerboard/overlay to the stage bounds; the scroll view supplies the real clip +
-            // scroll behavior for the zoomed content.
+            return column;
+        }
+
+        // Stage on top, controls below — a vertical split so the controls pane is resizable (a canvas above,
+        // addons panel below). The controls pane is the fixed-size second pane.
+        private VisualElement BuildStageSplit()
+        {
+            var vertical = new TwoPaneSplitView(1, ControlsPaneMinHeightPx, TwoPaneSplitViewOrientation.Vertical) { style = { flexGrow = 1f } };
+
+            vertical.Add(BuildStage());
+
+            _controls = new PreviewControlsPanel();
+            _controls.ArgsChanged += OnArgsChanged;
+            vertical.Add(_controls);
+
+            return vertical;
+        }
+
+        // The stage is the fixed backdrop; it never shrinks or grows to match the canvas — instead a
+        // ScrollView inside it pans/scrolls to reach a zoom box larger than the stage. overflow: Hidden here
+        // only clips the checkerboard/overlay to the stage bounds; the scroll view supplies the real clip +
+        // scroll behavior for the zoomed content.
+        private VisualElement BuildStage()
+        {
             _stage = new VisualElement
             {
                 style =
@@ -259,25 +280,42 @@ namespace Velvet.Editor.Preview
                     overflow = Overflow.Hidden,
                 },
             };
-            vertical.Add(_stage);
-
-            _controls = new PreviewControlsPanel();
-            _controls.ArgsChanged += OnArgsChanged;
-            vertical.Add(_controls);
 
             // Transparency grid behind the canvas, shown only for the Checkerboard background.
             _checkerboard = new CheckerboardBackground { style = { display = DisplayStyle.None } };
             _stage.Add(_checkerboard);
 
-            // Both scrollers are Auto: a zoom box that fits the stage shows no scroller (the common case), and one
-            // larger than the stage in either axis becomes pannable in that axis instead of clipping silently.
-            _stageScroll = new ScrollView(ScrollViewMode.VerticalAndHorizontal)
+            _stageScroll = BuildStageScroll();
+            _stage.Add(_stageScroll);
+
+            BuildZoomBoxAndCanvas();
+            _stageScroll.Add(_zoomBox);
+
+            // Inspection overlay (outline / measure) drawn above everything; non-interactive so it never steals
+            // the story's pointer events. It tracks the canvas subtree and re-draws when the stage resizes.
+            // The canvas must already exist here since PreviewInspectOverlay wraps it directly.
+            _overlay = new PreviewInspectOverlay(_canvas)
+            {
+                OutlineEnabled = _outline,
+                MeasureEnabled = _measure,
+            };
+            _stage.Add(_overlay);
+
+            WireStageGeometryHandlers();
+
+            return _stage;
+        }
+
+        // Both scrollers are Auto: a zoom box that fits the stage shows no scroller (the common case), and one
+        // larger than the stage in either axis becomes pannable in that axis instead of clipping silently.
+        private ScrollView BuildStageScroll()
+        {
+            var stageScroll = new ScrollView(ScrollViewMode.VerticalAndHorizontal)
             {
                 style = { flexGrow = 1f },
                 horizontalScrollerVisibility = ScrollerVisibility.Auto,
                 verticalScrollerVisibility = ScrollerVisibility.Auto,
             };
-            _stage.Add(_stageScroll);
 
             // Center the zoom box inside the scroll view's content container. A ScrollView's content container
             // does not center by default (it is sized to its content, like a normal document flow), so this
@@ -285,25 +323,30 @@ namespace Velvet.Editor.Preview
             // alignItems/justifyContent center the box within that filled space. When the zoom box is larger than
             // the viewport in an axis, centering has no visible effect there (there is no extra space to center
             // within) and the ScrollView's scrollers take over for that axis instead.
-            _stageScroll.contentContainer.style.flexGrow = 1f;
-            _stageScroll.contentContainer.style.alignItems = Align.Center;
-            _stageScroll.contentContainer.style.justifyContent = Justify.Center;
+            stageScroll.contentContainer.style.flexGrow = 1f;
+            stageScroll.contentContainer.style.alignItems = Align.Center;
+            stageScroll.contentContainer.style.justifyContent = Justify.Center;
             // Unity's default USS gives a VerticalAndHorizontal ScrollView's content container align-self:
             // flex-start, which overrides flexGrow along the cross axis and lets it shrink-wrap vertically — so
             // justifyContent: Center above had no vertical space to center within and a small story pinned to the
             // top. A percentage min-size (not a fixed size, so the container still grows past 100% when the zoom
             // box is larger than the stage) forces it to fill the viewport in both axes while still growing to fit.
-            _stageScroll.contentContainer.style.minHeight = Length.Percent(100);
-            _stageScroll.contentContainer.style.minWidth = Length.Percent(100);
+            stageScroll.contentContainer.style.minHeight = Length.Percent(100);
+            stageScroll.contentContainer.style.minWidth = Length.Percent(100);
 
-            // The zoom box: its LAYOUT size is the reference size times the zoom factor, so the scroll view's
-            // scrollable extent matches what is actually painted. flexShrink 0 keeps it from being compressed by
-            // the flex column above it (the original squeeze bug for a fixed-size story taller than the stage).
-            // The frame hugs the painted story at any zoom because the zoom box carries the post-zoom layout size
-            // (reference * factor) in unscaled px, so its border is a crisp 1px bezel around the simulated viewport.
-            // Border colors are left at their default here and set by ApplyBackground (called once from CreateGUI
-            // right after this element tree is built, and again on every background change) so the frame always
-            // matches the active backdrop.
+            return stageScroll;
+        }
+
+        // The zoom box: its LAYOUT size is the reference size times the zoom factor, so the scroll view's
+        // scrollable extent matches what is actually painted. flexShrink 0 keeps it from being compressed by
+        // the flex column above it (the original squeeze bug for a fixed-size story taller than the stage).
+        // The frame hugs the painted story at any zoom because the zoom box carries the post-zoom layout size
+        // (reference * factor) in unscaled px, so its border is a crisp 1px bezel around the simulated viewport.
+        // Border colors are left at their default here and set by ApplyBackground (called once from CreateGUI
+        // right after this element tree is built, and again on every background change) so the frame always
+        // matches the active backdrop.
+        private void BuildZoomBoxAndCanvas()
+        {
             _zoomBox = new VisualElement
             {
                 style =
@@ -312,7 +355,6 @@ namespace Velvet.Editor.Preview
                     borderTopWidth = 1f, borderRightWidth = 1f, borderBottomWidth = 1f, borderLeftWidth = 1f,
                 },
             };
-            _stageScroll.Add(_zoomBox);
 
             _canvas = new VisualElement
             {
@@ -326,28 +368,23 @@ namespace Velvet.Editor.Preview
                     flexGrow = 0f,
                     flexShrink = 0f,
                     // Scale about the top-left: the zoom box already carries the post-zoom layout size, so the
-                    // canvas's own paint transform must grow from the box's origin, not re-center over it (top-center
-                    // origin was the old fill-canvas convention and only made sense when zoom was paint-only).
+                    // canvas's own paint transform must grow from the box's origin, not re-center over it — a
+                    // center origin would double-count the zoom, offsetting the canvas from the box it sits in.
                     transformOrigin = new TransformOrigin(0f, 0f),
                 },
             };
             var utilities = AssetDatabase.LoadAssetAtPath<StyleSheet>(UtilitiesUssPath);
             if (utilities != null) _canvas.styleSheets.Add(utilities);
             _zoomBox.Add(_canvas);
+        }
 
-            // Inspection overlay (outline / measure) drawn above everything; non-interactive so it never steals
-            // the story's pointer events. It tracks the canvas subtree and re-draws when the stage resizes.
-            _overlay = new PreviewInspectOverlay(_canvas)
-            {
-                OutlineEnabled = _outline,
-                MeasureEnabled = _measure,
-            };
-            _stage.Add(_overlay);
-            // The scroll view pans by writing contentContainer.style.translate directly (a paint-time transform),
-            // which fires no GeometryChangedEvent — so without this, scrolling a zoomed-in story left the outline
-            // / measure overlay frozen at its pre-scroll position until some unrelated geometry event happened to
-            // fire. Subscribing to the scrollers' own valueChanged covers both drag-scrolling and programmatic
-            // scrolling.
+        // The scroll view pans by writing contentContainer.style.translate directly (a paint-time transform),
+        // which fires no GeometryChangedEvent — so without this, scrolling a zoomed-in story left the outline
+        // / measure overlay frozen at its pre-scroll position until some unrelated geometry event happened to
+        // fire. Subscribing to the scrollers' own valueChanged covers both drag-scrolling and programmatic
+        // scrolling.
+        private void WireStageGeometryHandlers()
+        {
             _stageScroll.horizontalScroller.valueChanged += _ => _overlay?.Refresh();
             _stageScroll.verticalScroller.valueChanged += _ => _overlay?.Refresh();
             // The stage resize is the only geometry source that can change a Full/fill story's reference size (the
@@ -365,8 +402,6 @@ namespace Velvet.Editor.Preview
             // here — the reference size is derived from the story metadata / viewport / stage, never from the
             // canvas's own resolved size — but the overlay still needs to redraw to track it.
             _canvas.RegisterCallback<GeometryChangedEvent>(_ => _overlay?.Refresh());
-
-            return column;
         }
 
         private Toolbar BuildViewToolbar()
@@ -523,13 +558,13 @@ namespace Velvet.Editor.Preview
             ApplyZoom();
         }
 
-        // Applies the current zoom factor to BOTH the zoom box's layout size and the canvas's paint scale. Scale
-        // alone (the pre-rework behavior) only repaints the canvas larger without changing the space it occupies,
-        // so the stage always centered the UNSCALED box: at 200% the painted content overflowed the stage's
-        // Hidden clip with nothing to scroll to, and at 50%/Fit the centered (but unscaled) box left dead space
-        // below a top-anchored paint. Driving the zoom box's layout size in step with the canvas's paint scale
-        // makes the two agree, so centering is correct at any factor and the ScrollView's scrollable extent
-        // matches what is actually painted.
+        // Applies the current zoom factor to BOTH the zoom box's layout size and the canvas's paint scale. Paint
+        // scale alone only repaints the canvas larger without changing the space it occupies, so the stage would
+        // center the UNSCALED box: at 200% the painted content would overflow the stage's Hidden clip with
+        // nothing to scroll to, and at 50%/Fit the centered (but unscaled) box would leave dead space below a
+        // top-anchored paint. Driving the zoom box's layout size in step with the canvas's paint scale makes the
+        // two agree, so centering is correct at any factor and the ScrollView's scrollable extent matches what is
+        // actually painted.
         private void ApplyZoom()
         {
             if (_canvas == null || _zoomBox == null) return;
@@ -744,7 +779,7 @@ namespace Velvet.Editor.Preview
 
         // Computes the canvas's reference size (pre-zoom, in px) purely from the story metadata / viewport /
         // stage — no field is written here, so callers can probe "what would the reference size be" without
-        // mutating state. Matches the pre-rework rule exactly:
+        // mutating state:
         // <list type="bullet">
         // <item>A story's explicit Width/Height ALWAYS wins: an authored card footprint is shown at its real size
         // and is NOT treated as a responsive container. If only one axis is authored, the OTHER axis falls back to
@@ -774,9 +809,9 @@ namespace Velvet.Editor.Preview
         }
 
         // Writes the canvas's reference size (pre-zoom, in px) as an EXPLICIT pixel size — never a percentage. A
-        // percentage reference was the root of the old zoom-box-less design's problems: it made the canvas's
-        // layout size a function of its unscaled parent, so there was no stable "100%" to multiply by a zoom
-        // factor. Also toggles the @container responsive-scope marker per ComputeReferenceSize's rule.
+        // percentage reference would make the canvas's layout size a function of its unscaled parent, leaving no
+        // stable "100%" to multiply by a zoom factor. Also toggles the @container responsive-scope marker per
+        // ComputeReferenceSize's rule.
         private void ApplyCanvasSize(VelvetPreviewStory story)
         {
             if (_canvas == null || _zoomBox == null) return;

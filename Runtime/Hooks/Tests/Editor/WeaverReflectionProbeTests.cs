@@ -199,6 +199,218 @@ namespace Velvet.Tests
             return method!.Invoke(null, new object[] { callee, cache })!;
         }
 
+        // --- CompilerWeaver hook-return consumption shape probes ---
+        //
+        // TryAnalyze recognizes exactly four ways a hook call's return value can be consumed: discarded via
+        // a bare Pop (bail — an uncaptured reactive input cannot be tracked), a direct stloc capture, an
+        // Item1-only tuple deconstruction (`var (v, _) = ...`), and a two-element tuple deconstruction
+        // (`var (v, setV) = ...`, the Dup shape). These probes hand-assemble one Cecil method body per shape
+        // and invoke the real CompilerWeaver.Weave through reflection, then inspect the resulting IL for the
+        // injected TryGetMemoizedVNode call — the only observable signature of a successful weave.
+        //
+        // "Velvet.Hooks" / "Velvet.VNode" and the TryGetMemoizedVNode / StoreMemoizedVNode registration
+        // surface are declared directly inside the probe module rather than imported from the real Velvet
+        // assembly, so WeaverContext.TryResolve succeeds without any assembly-resolver setup. Hook-safety
+        // classification in CompilerWeaver matches purely by name against the real, process-loaded
+        // Velvet.PositionalHookNames.All / SAFE allow-lists, so a same-named synthetic Hooks method is
+        // classified identically to the real one.
+
+        private static ModuleDefinition BuildHookShapeProbeModule(
+            string moduleName,
+            out MethodDefinition targetMethod,
+            out MethodReference useId,
+            out MethodReference useTransition,
+            out TypeReference transitionTuple)
+        {
+            var module = ModuleDefinition.CreateModule(moduleName, ModuleKind.Dll);
+
+            var vnodeType = new TypeDefinition("Velvet", "VNode",
+                Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
+            module.Types.Add(vnodeType);
+
+            var hooksType = new TypeDefinition("Velvet", "Hooks",
+                Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Abstract
+                | Mono.Cecil.TypeAttributes.Sealed | Mono.Cecil.TypeAttributes.Class, module.TypeSystem.Object);
+            module.Types.Add(hooksType);
+
+            // A non-generic 2-element ValueTuple return (matching Hooks.UseTransition's real shape) keeps the
+            // deconstruction probes free of generic-method-instantiation bookkeeping.
+            var valueTupleDef = module.ImportReference(typeof(System.ValueTuple<,>));
+            var tuple = new GenericInstanceType(valueTupleDef);
+            tuple.GenericArguments.Add(module.TypeSystem.Boolean);
+            tuple.GenericArguments.Add(module.TypeSystem.Object);
+            transitionTuple = tuple;
+
+            var useIdMethod = new MethodDefinition("UseId",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.String);
+            useIdMethod.Parameters.Add(new ParameterDefinition(
+                "prefix", Mono.Cecil.ParameterAttributes.None, module.TypeSystem.String));
+            hooksType.Methods.Add(useIdMethod);
+            useId = useIdMethod;
+
+            var useTransitionMethod = new MethodDefinition("UseTransition",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, tuple);
+            hooksType.Methods.Add(useTransitionMethod);
+            useTransition = useTransitionMethod;
+
+            var objectArrayType = new ArrayType(module.TypeSystem.Object);
+            var tryGetMethod = new MethodDefinition("TryGetMemoizedVNode",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Boolean);
+            tryGetMethod.Parameters.Add(new ParameterDefinition(
+                "deps", Mono.Cecil.ParameterAttributes.None, objectArrayType));
+            tryGetMethod.Parameters.Add(new ParameterDefinition(
+                "slotIndex", Mono.Cecil.ParameterAttributes.Out, new ByReferenceType(module.TypeSystem.Int32)));
+            tryGetMethod.Parameters.Add(new ParameterDefinition(
+                "cached", Mono.Cecil.ParameterAttributes.Out, new ByReferenceType(vnodeType)));
+            hooksType.Methods.Add(tryGetMethod);
+
+            var storeMethod = new MethodDefinition("StoreMemoizedVNode",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, module.TypeSystem.Void);
+            storeMethod.Parameters.Add(new ParameterDefinition(
+                "slotIndex", Mono.Cecil.ParameterAttributes.None, module.TypeSystem.Int32));
+            storeMethod.Parameters.Add(new ParameterDefinition(
+                "deps", Mono.Cecil.ParameterAttributes.None, objectArrayType));
+            storeMethod.Parameters.Add(new ParameterDefinition(
+                "result", Mono.Cecil.ParameterAttributes.None, vnodeType));
+            hooksType.Methods.Add(storeMethod);
+
+            var componentType = new TypeDefinition("Probe", "Fixture",
+                Mono.Cecil.TypeAttributes.Public | Mono.Cecil.TypeAttributes.Class
+                | Mono.Cecil.TypeAttributes.Abstract | Mono.Cecil.TypeAttributes.Sealed, module.TypeSystem.Object);
+            module.Types.Add(componentType);
+
+            targetMethod = new MethodDefinition("Component",
+                Mono.Cecil.MethodAttributes.Public | Mono.Cecil.MethodAttributes.Static, vnodeType);
+            var attributeType = new TypeReference("Velvet", "ComponentAttribute", module, module);
+            var attributeCtor = new MethodReference(".ctor", module.TypeSystem.Void, attributeType) { HasThis = true };
+            targetMethod.CustomAttributes.Add(new CustomAttribute(attributeCtor));
+            targetMethod.Body = new Mono.Cecil.Cil.MethodBody(targetMethod);
+            componentType.Methods.Add(targetMethod);
+
+            return module;
+        }
+
+        private static bool BodyCallsTryGetMemoizedVNode(MethodDefinition method)
+        {
+            foreach (var instr in method.Body.Instructions)
+            {
+                if ((instr.OpCode == OpCodes.Call || instr.OpCode == OpCodes.Callvirt)
+                    && instr.Operand is MethodReference mr && mr.Name == "TryGetMemoizedVNode")
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // A hand-built body's instructions carry no Offset (real offsets exist only for IL parsed from an
+        // actual compiled stream); TryAnalyze's return-after-hook-boundary check compares Offset, so a probe
+        // body must assign a strictly increasing Offset per instruction to reproduce real program order.
+        private static void AssignSequentialOffsets(MethodDefinition method)
+        {
+            var offset = 0;
+            foreach (var instr in method.Body.Instructions)
+            {
+                instr.Offset = offset++;
+            }
+        }
+
+        [Test]
+        public void Given_DirectStlocHookCapture_When_CompilerWeaverRuns_Then_MethodIsWoven()
+        {
+            // Arrange — `var id = Hooks.UseId(null);` lowers to call -> stloc.0.
+            using var module = BuildHookShapeProbeModule("DirectCaptureProbe",
+                out var method, out var useId, out _, out _);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.String));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "A directly stloc-captured hook result is a sound dep and must be woven");
+        }
+
+        [Test]
+        public void Given_Item1OnlyDeconstructionHookCapture_When_CompilerWeaverRuns_Then_MethodIsWoven()
+        {
+            // Arrange — `var (v, _) = Hooks.UseTransition();` lowers to call -> ldfld Item1 -> stloc.0.
+            using var module = BuildHookShapeProbeModule("Item1DeconstructionProbe",
+                out var method, out _, out var useTransition, out var tuple);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Boolean));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, useTransition));
+            il.Append(Instruction.Create(OpCodes.Ldfld, new FieldReference("Item1", module.TypeSystem.Boolean, tuple)));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "An Item1-only tuple deconstruction captures a sound dep and must be woven");
+        }
+
+        [Test]
+        public void Given_TwoElementDeconstructionHookCapture_When_CompilerWeaverRuns_Then_MethodIsWoven()
+        {
+            // Arrange — `var (v, setV) = Hooks.UseTransition();` lowers to
+            // call -> dup -> ldfld Item1 -> stloc.0 -> ldfld Item2 -> stloc.1.
+            using var module = BuildHookShapeProbeModule("TwoElementDeconstructionProbe",
+                out var method, out _, out var useTransition, out var tuple);
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Boolean));
+            method.Body.Variables.Add(new VariableDefinition(module.TypeSystem.Object));
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Call, useTransition));
+            il.Append(Instruction.Create(OpCodes.Dup));
+            il.Append(Instruction.Create(OpCodes.Ldfld, new FieldReference("Item1", module.TypeSystem.Boolean, tuple)));
+            il.Append(Instruction.Create(OpCodes.Stloc_0));
+            il.Append(Instruction.Create(OpCodes.Ldfld, new FieldReference("Item2", module.TypeSystem.Object, tuple)));
+            il.Append(Instruction.Create(OpCodes.Stloc_1));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.True,
+                "A two-element tuple deconstruction captures the value element as a sound dep and must be woven");
+        }
+
+        [Test]
+        public void Given_DiscardedHookResult_When_CompilerWeaverRuns_Then_MethodIsLeftUnwoven()
+        {
+            // Arrange — `Hooks.UseId(null);` as a bare statement lowers to call -> pop.
+            using var module = BuildHookShapeProbeModule("DiscardedResultProbe",
+                out var method, out var useId, out _, out _);
+            var il = method.Body.GetILProcessor();
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Call, useId));
+            il.Append(Instruction.Create(OpCodes.Pop));
+            il.Append(Instruction.Create(OpCodes.Ldnull));
+            il.Append(Instruction.Create(OpCodes.Ret));
+            AssignSequentialOffsets(method);
+
+            // Act
+            InvokeWeave("Velvet.CodeGen.CompilerWeaver", module);
+
+            // Assert
+            Assert.That(BodyCallsTryGetMemoizedVNode(method), Is.False,
+                "A discarded hook result is not captured in the deps array and must be left unwoven");
+        }
+
         // --- Metadata-registration weaver E2E: <Module>.cctor of THIS assembly, woven for real ---
 
         private const string RegistryFullName = "Velvet.ComponentMethodRegistry";

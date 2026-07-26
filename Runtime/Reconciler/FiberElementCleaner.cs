@@ -183,8 +183,23 @@ namespace Velvet
 
         // Releases resources for a single element (animations, events, components, gestures, VirtualList).
         // Performs no DOM operations. Shared logic between CleanupElement and
-        // CleanupDescendants.
+        // CleanupDescendants. Split into cohesive groups, called in their original sequence — see
+        // CleanupEffectAndStyleBindingResources' own note on why MotionLayoutIdDriver must run before
+        // ClearElementSideTables.
         private void CleanupElementResources(VisualElement element)
+        {
+            CleanupEffectAndStyleBindingResources(element);
+            CleanupPaintResources(element);
+            CleanupElementDriverResources(element);
+            CleanupFocusAndNavigationResources(element);
+            CleanupDndResources(element);
+            CleanupControllerResources(element);
+        }
+
+        // Refs, animation/layout scheduling, the event + component registries, and every
+        // manipulator-backed or pure side-table style binding (variants, gap/divide/grid/balance,
+        // arbitrary values).
+        private void CleanupEffectAndStyleBindingResources(VisualElement element)
         {
             if (_ctx.RefCallbacks.TryGetValue(element, out var installedRef))
             {
@@ -247,6 +262,12 @@ namespace Velvet
             // Drop the arbitrary-value layer stack so a pooled widget does not inherit a prior consumer's
             // base/variant layers (state ghosting across pool reuse).
             StyleArbitraryValueResolver.ClearAll(element);
+        }
+
+        // The generateVisualContent-driven paint bindings: shadow/clip/ring/skew/border/divide/overline
+        // silhouettes, the baked gradient background, and the animate/filter-transition tick drivers.
+        private void CleanupPaintResources(VisualElement element)
+        {
             if (_ctx.ShadowBindings.TryGetValue(element, out var shadowBinding))
             {
                 // Detach unhooks the paint + re-bake callbacks so a pooled element cannot ghost a prior
@@ -333,6 +354,12 @@ namespace Velvet
                 StyleFilterTransitionDriver.Detach(element, filterTransitionBinding);
                 _ctx.FilterTransitionBindings.Remove(element);
             }
+        }
+
+        // The GameObject/texture-backed element drivers: SceneView camera output, the particle
+        // simulation host, and the anchored-projection tick.
+        private void CleanupElementDriverResources(VisualElement element)
+        {
             if (_ctx.SceneViewBindings.TryGetValue(element, out var sceneViewBinding))
             {
                 // Release both ends of the camera-output pair: the geometry callback, the camera's target
@@ -355,6 +382,13 @@ namespace Velvet
                 AnchoredDriver.Detach(element, anchoredBinding);
                 _ctx.AnchoredBindings.Remove(element);
             }
+        }
+
+        // The focus-scope binding (incl. its restore-focus hand-off), the departing-element scrub
+        // across every surviving scope's remembered member/restore target, chained-placeholder
+        // ring-edge ownership hand-off, and any still-pending navigator attach hook.
+        private void CleanupFocusAndNavigationResources(VisualElement element)
+        {
             if (_ctx.FocusScopeBindings.Remove(element, out var focusScopeBinding))
             {
                 // The registry entry is dropped BEFORE the restore focus fires: the restore's own FocusIn
@@ -400,12 +434,16 @@ namespace Velvet
             {
                 FiberFocusNavigator.ReleasePendingAttachHooks(element, _ctx);
             }
-            // Drag-and-drop bindings: the draggable's pointer-down armer unregisters, and an element that
-            // is the active session's source or scope cancels that session teardown-flavored (synchronous
-            // scrub so the element reaches the pool clean, deferred user callback — an ARBITRARY user
-            // callback run mid-flush could read a half-mutated tree or re-enter the reconciler, so it
-            // waits for the flush like effect callbacks do; see DndActiveDrag. Plain state writes from
-            // mid-flush are safe — they schedule a follow-up render.)
+        }
+
+        // Drag-and-drop bindings: the draggable's pointer-down armer unregisters, and an element that
+        // is the active session's source or scope cancels that session teardown-flavored (synchronous
+        // scrub so the element reaches the pool clean, deferred user callback — an ARBITRARY user
+        // callback run mid-flush could read a half-mutated tree or re-enter the reconciler, so it
+        // waits for the flush like effect callbacks do; see DndActiveDrag. Plain state writes from
+        // mid-flush are safe — they schedule a follow-up render.)
+        private void CleanupDndResources(VisualElement element)
+        {
             if (_ctx.DndScopeBindings.ContainsKey(element))
             {
                 DndScopeDriver.Detach(element, _ctx);
@@ -426,6 +464,12 @@ namespace Velvet
                 DndOverlayDriver.Detach(element, _ctx);
                 _ctx.DragOverlayBindings.Remove(element);
             }
+        }
+
+        // The controller-owned bindings: VirtualList (disposes its own pooled buffer) and Outlet
+        // (disposes the route scope, then drops the identity-side container registration).
+        private void CleanupControllerResources(VisualElement element)
+        {
             if (_ctx.VirtualListControllers.TryGetValue(element, out var virtualListController))
             {
                 virtualListController.Dispose();
@@ -566,7 +610,8 @@ namespace Velvet
         // The single element-teardown core: wrapper → resources → portal → descendants recursion, with no
         // DOM operations. Shared by CleanupElement (the public entry, which additionally disposes inline
         // fibers under the subtree) and by CleanupDescendants (the recursive loop body), so the wrapper
-        // handling lives in exactly one place — an asymmetry between the two used to be a silent-bug source.
+        // handling lives in exactly one place — duplicating it into both callers would let their wrapper
+        // logic silently diverge.
         //
         // When a wrapper → inner link exists the inner element is a DOM child of the wrapper: it is fully
         // cleaned here and excluded from the element's CleanupDescendants so it is not processed twice (when
@@ -588,8 +633,8 @@ namespace Velvet
             CleanupElementResources(element);
             // Must run BEFORE CleanupPortal: UI Toolkit clears FocusController.focusedElement the
             // moment the focused element leaves its panel's visual tree, which CleanupPortal's own
-            // target.RemoveAt(i) triggers below — checking for a focused element afterward (as
-            // CleanupWorldSpaceHost used to) always observes null by then.
+            // target.RemoveAt(i) triggers below — checking for a focused element after that point
+            // always observes null.
             RescueFocusFromWorldSpaceHost(element);
             CleanupPortal(element);
             CleanupWorldSpaceHost(element);

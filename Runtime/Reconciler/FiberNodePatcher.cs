@@ -120,59 +120,62 @@ namespace Velvet
                     HandleComponentMount(element, newComp);
                     break;
                 case OutletNode oldOutlet when newNode is OutletNode newOutlet:
-                {
-                    if (!ResolveOutletMatch(out var routeElement, out var routeDepth, out var match)
-                        || routeElement == null)
-                    {
-                        break;
-                    }
-
-                    // The Outlet's container doubles as the route Component's fiber anchor.
-                    // RemoveIfDifferentIdentity detects route change and disposes the previous fiber.
-                    if (_ctx.ComponentRegistry.RemoveIfDifferentIdentity(element, routeElement.ResolvedIdentity))
-                    {
-                        element.Clear();
-
-                        oldOutlet.Scope?.Dispose();
-                        _ctx.OutletScopes.Remove(element);
-                        var scopeFactory = Router.Current?.ScopeFactory;
-                        if (scopeFactory != null)
-                        {
-                            newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
-                            _ctx.OutletScopes[element] = newOutlet.Scope;
-                        }
-                    }
-                    else if (_ctx.OutletScopes.TryGetValue(element, out var existingScope))
-                    {
-                        newOutlet.Scope = existingScope;
-                    }
-                    else
-                    {
-                        // First match: no fiber exists yet, and no scope is registered.
-                        var scopeFactory = Router.Current?.ScopeFactory;
-                        if (scopeFactory != null)
-                        {
-                            newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
-                            _ctx.OutletScopes[element] = newOutlet.Scope;
-                        }
-                    }
-
-                    // Mount the matched route Component with Depth+1 pushed live so the next nested
-                    // Outlet resolves the following route in the match chain.
-                    // The Outlet's context value is pushed too for Hooks.UseOutletContext.
-                    _ctx.ComponentContextStack.Push(RouterContext.Depth, routeDepth);
-                    _ctx.ComponentContextStack.Push(RouterContext.OutletContext, newOutlet.OutletContextValue);
-                    try
-                    {
-                        HandleComponentMount(element, routeElement);
-                    }
-                    finally
-                    {
-                        _ctx.ComponentContextStack.Pop(RouterContext.OutletContext);
-                        _ctx.ComponentContextStack.Pop(RouterContext.Depth);
-                    }
+                    PatchOutlet(element, oldOutlet, newOutlet);
                     break;
+            }
+        }
+
+        private void PatchOutlet(VisualElement element, OutletNode oldOutlet, OutletNode newOutlet)
+        {
+            if (!ResolveOutletMatch(out var routeElement, out var routeDepth, out var match)
+                || routeElement == null)
+            {
+                return;
+            }
+
+            // The Outlet's container doubles as the route Component's fiber anchor.
+            // RemoveIfDifferentIdentity detects route change and disposes the previous fiber.
+            if (_ctx.ComponentRegistry.RemoveIfDifferentIdentity(element, routeElement.ResolvedIdentity))
+            {
+                element.Clear();
+
+                oldOutlet.Scope?.Dispose();
+                _ctx.OutletScopes.Remove(element);
+                var scopeFactory = Router.Current?.ScopeFactory;
+                if (scopeFactory != null)
+                {
+                    newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
+                    _ctx.OutletScopes[element] = newOutlet.Scope;
                 }
+            }
+            else if (_ctx.OutletScopes.TryGetValue(element, out var existingScope))
+            {
+                newOutlet.Scope = existingScope;
+            }
+            else
+            {
+                // First match: no fiber exists yet, and no scope is registered.
+                var scopeFactory = Router.Current?.ScopeFactory;
+                if (scopeFactory != null)
+                {
+                    newOutlet.Scope = scopeFactory.CreateScope(match!.Route, null);
+                    _ctx.OutletScopes[element] = newOutlet.Scope;
+                }
+            }
+
+            // Mount the matched route Component with Depth+1 pushed live so the next nested
+            // Outlet resolves the following route in the match chain.
+            // The Outlet's context value is pushed too for Hooks.UseOutletContext.
+            _ctx.ComponentContextStack.Push(RouterContext.Depth, routeDepth);
+            _ctx.ComponentContextStack.Push(RouterContext.OutletContext, newOutlet.OutletContextValue);
+            try
+            {
+                HandleComponentMount(element, routeElement);
+            }
+            finally
+            {
+                _ctx.ComponentContextStack.Pop(RouterContext.OutletContext);
+                _ctx.ComponentContextStack.Pop(RouterContext.Depth);
             }
         }
 
@@ -665,96 +668,40 @@ namespace Velvet
         // This combination is forbidden by design (the target must not itself be a Reconcile subject).
         internal void PatchPortal(VisualElement placeholder, PortalNode oldNode, PortalNode newNode)
         {
-            VisualElement? target;
-            string describe;
-            // Non-null only when this call is healing a target that just registered (populated in the
-            // registry else-branch below). DrainPendingPortalMounts stamps DetachedMountContext on a
+            var (target, isHeal) = ResolvePortalTarget(placeholder, oldNode, newNode, out var describe);
+            if (target == null)
+            {
+                return;
+            }
+
+            // Non-null only when this call is healing a target that just registered (isHeal, set by
+            // ResolvePortalTarget's heal case). DrainPendingPortalMounts stamps DetachedMountContext on a
             // normal mount's newly-created top-level children so FiberCrossPanelEventDispatcher.Continue
             // can find its way from the target back to the logical chain; a heal instead creates those
             // children through this ordinary synchronous patch, which never runs that stamp. Snapshotting
             // here (before the shared PatchPortalChildren call below) and stamping after lets the heal
             // apply the same marker to whatever it just created, without touching the drain path or any
-            // other patch of an already-healthy Portal. Every OTHER path through this method (the layer
-            // branch below, and the already-resolved registry branch) needs the identical marker for the
-            // identical reason — see steadyStateDeclaringFiber further down, after target resolves either
-            // way. This one stays split out because it is the only branch cheap enough to afford a fresh
-            // HashSet outright: PatchPortalChildren permanently records the resolved target the first time
-            // it runs, so this branch never re-enters for the same placeholder again.
+            // other patch of an already-healthy Portal. Every OTHER path through this method
+            // (ResolvePortalTarget's layer case, and its already-resolved registry case) needs the
+            // identical marker for the identical reason — see steadyStateDeclaringFiber further down,
+            // after target resolves either way. This one stays split out because it is the only branch
+            // cheap enough to afford a fresh HashSet outright: PatchPortalChildren permanently records
+            // the resolved target the first time it runs, so this branch never re-enters for the same
+            // placeholder again.
             ComponentFiber? healingDeclaringFiber = null;
             HashSet<ComponentFiber>? healingChildFibersBefore = null;
-            if (newNode.Layer is { } layer)
+            if (isHeal)
             {
-                // The per-layer framework host was created when the mount drained and persists
-                // until reconciler disposal, so a patch resolves it from the table. A record whose
-                // GameObject a scene unload killed reads as dead here and counts as missing.
-                describe = layer.ToString();
-                if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost) || layerHost.Document == null)
-                {
-                    FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
-                    return;
-                }
-                // Recurring re-sync point for late declaring resolution and runtime drift.
-                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
-                target = layerHost.Document.rootVisualElement;
-                if (oldNode.FocusOrder != newNode.FocusOrder)
-                {
-                    FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
-                        newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
-                }
-            }
-            else
-            {
-                describe = newNode.TargetId!;
-                if (_ctx.PortalState.TryGetValue(placeholder, out var recorded) && recorded.Target != null)
-                {
-                    // A live portal keeps the target its children mounted into: re-registering the
-                    // id only points FUTURE portals elsewhere, and patching into a re-registered
-                    // element would diff this portal's slot range against another element's
-                    // children.
-                    target = recorded.Target;
-                }
-                else
-                {
-                    // Mounted before the id was registered (the mount warned and recorded no
-                    // target): resolve fresh so the first patch after registration heals the mount.
-                    target = FiberPortalRegistry.Get(describe);
-                    if (target == null)
-                    {
-                        FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
-                        return;
-                    }
-                    // The mount-time attach (ChildReconciler's registry-portal drain branch) never ran
-                    // for this target: CreateElement returned a hidden placeholder without enqueuing a
-                    // drain entry while the id was still unregistered, so this first healing patch is
-                    // this Portal's only chance to attach the same-panel synthetic-bubbling bridge.
-                    // Guarded exactly like that branch — a target another Portal already bridged is not
-                    // double-attached — and self-limiting to one run per heal even without the guard:
-                    // PatchPortalChildren below records this resolved target, so every later patch on
-                    // this placeholder takes the `if` branch above instead of ever re-entering here.
-                    if (!_ctx.SamePanelPortalBridges.ContainsKey(target))
-                    {
-                        _ctx.SamePanelPortalBridges[target] =
-                            FiberCrossPanelEventDispatcher.AttachBridge(target, _ctx);
-                    }
-                    // FiberStack.Current is genuinely the declaring fiber here (RenderAndReconcile keeps
-                    // it pushed for the whole patch of its own returned tree — unlike DrainPendingPortalMounts,
-                    // which runs later with the reconcile root current instead), so it doubles as both the
-                    // ComponentRegistry parent new children below will actually register under AND the
-                    // logical ancestor FiberCrossPanelEventDispatcher.Continue needs.
-                    healingDeclaringFiber = _ctx.FiberStack.Current;
-                    if (healingDeclaringFiber != null)
-                    {
-                        healingChildFibersBefore = new HashSet<ComponentFiber>();
-                        for (var f = healingDeclaringFiber.Child; f != null; f = f.Sibling)
-                        {
-                            healingChildFibersBefore.Add(f);
-                        }
-                    }
-                }
+                // FiberStack.Current is genuinely the declaring fiber here (RenderAndReconcile keeps
+                // it pushed for the whole patch of its own returned tree — unlike DrainPendingPortalMounts,
+                // which runs later with the reconcile root current instead), so it doubles as both the
+                // ComponentRegistry parent new children below will actually register under AND the
+                // logical ancestor FiberCrossPanelEventDispatcher.Continue needs.
+                healingDeclaringFiber = CaptureDeclaringChildFibers(pooled: false, out healingChildFibersBefore);
             }
 
-            // Every patch that reaches here WITHOUT healing (the layer branch above, or the
-            // already-resolved registry branch) still needs the same DetachedMountContext marker: a
+            // Every patch that reaches here WITHOUT healing (ResolvePortalTarget's layer case, or its
+            // already-resolved registry case) still needs the same DetachedMountContext marker: a
             // Portal can drain its first mount with ZERO top-level children (e.g. `V.Portal(id,
             // children: isOpen ? real : Array.Empty<VNode>())`) and gain its first ones on a LATER
             // patch — long after DrainPendingPortalMounts' own one-time stamp already ran with nothing
@@ -763,15 +710,11 @@ namespace Velvet
             // shared pool instead of freshly allocated — the walk itself is already cheap (a declaring
             // fiber's own direct children are typically a handful at most); pooling removes the one part
             // of it that would otherwise cost real GC pressure across many patches per frame.
-            var steadyStateDeclaringFiber = healingDeclaringFiber == null ? _ctx.FiberStack.Current : null;
+            ComponentFiber? steadyStateDeclaringFiber = null;
             HashSet<ComponentFiber>? steadyStateChildFibersBefore = null;
-            if (steadyStateDeclaringFiber != null)
+            if (healingDeclaringFiber == null)
             {
-                steadyStateChildFibersBefore = _ctx.BufferPool.RentFiberSet();
-                for (var f = steadyStateDeclaringFiber.Child; f != null; f = f.Sibling)
-                {
-                    steadyStateChildFibersBefore.Add(f);
-                }
+                steadyStateDeclaringFiber = CaptureDeclaringChildFibers(pooled: true, out steadyStateChildFibersBefore);
             }
             try
             {
@@ -793,6 +736,95 @@ namespace Velvet
                     _ctx.BufferPool.ReturnFiberSet(steadyStateChildFibersBefore);
                 }
             }
+        }
+
+        // Resolves the target VisualElement a Portal patch reconciles its slot range against, across
+        // the three ways a Portal can address one: an explicit Layer (host table lookup, plus re-chaining
+        // the placeholder when FocusOrder changed), an id already resolved by an earlier patch (the
+        // target its children are already mounted into — re-registering the id only points FUTURE
+        // portals elsewhere), or an id not yet healed (the mount warned and recorded no target; this is
+        // the first patch since registration, so it also attaches the same-panel synthetic-bubbling
+        // bridge the mount-time drain never got to run for this target). Returns a null target when
+        // resolution fails (already warned); the caller bails without patching. IsHeal tells the caller
+        // whether this pass took the not-yet-healed case, which needs a declaring-fiber snapshot from
+        // before this call for the DetachedMountContext stamp (see PatchPortal).
+        private (VisualElement? Target, bool IsHeal) ResolvePortalTarget(
+            VisualElement placeholder, PortalNode oldNode, PortalNode newNode, out string describe)
+        {
+            if (newNode.Layer is { } layer)
+            {
+                // The per-layer framework host was created when the mount drained and persists
+                // until reconciler disposal, so a patch resolves it from the table. A record whose
+                // GameObject a scene unload killed reads as dead here and counts as missing.
+                describe = layer.ToString();
+                if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost) || layerHost.Document == null)
+                {
+                    FiberLogger.LogWarning("Portal", $"Layer host for \"{describe}\" is missing. Children will not be rendered.");
+                    return (null, false);
+                }
+                // Recurring re-sync point for late declaring resolution and runtime drift.
+                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
+                var target = layerHost.Document.rootVisualElement;
+                if (oldNode.FocusOrder != newNode.FocusOrder)
+                {
+                    FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
+                        newNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+                }
+                return (target, false);
+            }
+
+            describe = newNode.TargetId!;
+            if (_ctx.PortalState.TryGetValue(placeholder, out var recorded) && recorded.Target != null)
+            {
+                // A live portal keeps the target its children mounted into: re-registering the
+                // id only points FUTURE portals elsewhere, and patching into a re-registered
+                // element would diff this portal's slot range against another element's
+                // children.
+                return (recorded.Target, false);
+            }
+
+            // Mounted before the id was registered (the mount warned and recorded no
+            // target): resolve fresh so the first patch after registration heals the mount.
+            var resolvedTarget = FiberPortalRegistry.Get(describe);
+            if (resolvedTarget == null)
+            {
+                FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
+                return (null, false);
+            }
+            // The mount-time attach (ChildReconciler's registry-portal drain branch) never ran
+            // for this target: CreateElement returned a hidden placeholder without enqueuing a
+            // drain entry while the id was still unregistered, so this first healing patch is
+            // this Portal's only chance to attach the same-panel synthetic-bubbling bridge.
+            // Guarded exactly like that branch — a target another Portal already bridged is not
+            // double-attached — and self-limiting to one run per heal even without the guard:
+            // PatchPortalChildren below records this resolved target, so every later patch on
+            // this placeholder takes the `if` branch above instead of ever re-entering here.
+            if (!_ctx.SamePanelPortalBridges.ContainsKey(resolvedTarget))
+            {
+                _ctx.SamePanelPortalBridges[resolvedTarget] =
+                    FiberCrossPanelEventDispatcher.AttachBridge(resolvedTarget, _ctx);
+            }
+            return (resolvedTarget, true);
+        }
+
+        // Captures declaringFiber's current direct children so a later diff against its children after
+        // a patch can tell which ones are new (see StampNewTopLevelChildren's own comment). pooled
+        // selects a rented set for the steady-state caller, which runs this on every patch of an
+        // already-mounted Portal/WorldSpace; the heal caller runs at most once per placeholder ever and
+        // never returns its set to the pool, so it takes a fresh allocation instead.
+        private ComponentFiber? CaptureDeclaringChildFibers(bool pooled, out HashSet<ComponentFiber>? childFibersBefore)
+        {
+            var declaringFiber = _ctx.FiberStack.Current;
+            childFibersBefore = null;
+            if (declaringFiber != null)
+            {
+                childFibersBefore = pooled ? _ctx.BufferPool.RentFiberSet() : new HashSet<ComponentFiber>();
+                for (var f = declaringFiber.Child; f != null; f = f.Sibling)
+                {
+                    childFibersBefore.Add(f);
+                }
+            }
+            return declaringFiber;
         }
 
         // Stamps DetachedMountContext on every top-level child of declaringFiber NOT present in
@@ -862,16 +894,7 @@ namespace Velvet
             // path uses (see its own comment): a world-space panel can likewise mount with zero
             // children and gain its first ones on a later patch, after the one-time drain stamp already
             // ran with nothing to mark.
-            var declaringFiber = _ctx.FiberStack.Current;
-            HashSet<ComponentFiber>? childFibersBefore = null;
-            if (declaringFiber != null)
-            {
-                childFibersBefore = _ctx.BufferPool.RentFiberSet();
-                for (var f = declaringFiber.Child; f != null; f = f.Sibling)
-                {
-                    childFibersBefore.Add(f);
-                }
-            }
+            var declaringFiber = CaptureDeclaringChildFibers(pooled: true, out var childFibersBefore);
             try
             {
                 PatchPortalChildren(placeholder, record.Document.rootVisualElement, oldNode.Children, newNode.Children, "world-space");
@@ -1167,13 +1190,15 @@ namespace Velvet
             }
         }
 
-        private static void AddClass(VisualElement element, string cls)
+        // Token families a manipulator (or a side-table config pass) owns outright: none of them ever
+        // enters the USS class list, on either the add or the remove side (see AddClass / RemoveClass).
+        private static bool IsManipulatorOwnedClass(string cls)
         {
             // State-variant tokens (hover:/focus:/active:) are not real classes; the variant
-            // manipulator (configured separately) owns them. Never add them to the class list.
+            // manipulator (configured separately) owns them.
             if (StyleVariantClass.IsVariant(cls))
             {
-                return;
+                return true;
             }
 
             // [&>*]: child-combinator tokens style the CONTAINER's children, never the container itself; the
@@ -1181,35 +1206,35 @@ namespace Velvet
             // token starts with '[' and would otherwise be mis-routed as an arbitrary value.
             if (StyleChildVariantClass.IsChildVariant(cls))
             {
-                return;
+                return true;
             }
 
             // Structural variants (first:/last:/[&:nth-child(N)]:) are owned by the reconciler's structural
             // pass (evaluated against sibling position); never added as classes.
             if (StyleStructuralVariantClass.IsStructural(cls))
             {
-                return;
+                return true;
             }
 
             // has-[...] variants (parent styled by a descendant condition) are owned by the has-variant
             // manipulator / the has-class post-children pass; never added as classes.
             if (StyleHasVariantClass.IsHas(cls))
             {
-                return;
+                return true;
             }
 
             // data-[...] / aria-[...] variants (element styled by its own carried attribute) are owned by
             // the attribute side-table; never added as classes.
             if (StyleAttributeVariantClass.IsAttribute(cls))
             {
-                return;
+                return true;
             }
 
             // supports-[...] feature-query variants (element styled when the engine supports a declaration)
             // are owned by the supports side-table (static / always-applied in UITK); never added as classes.
             if (StyleSupportsVariantClass.IsSupports(cls))
             {
-                return;
+                return true;
             }
 
             // font-[...] arbitrary font classes are resolved from the whole class array by
@@ -1217,7 +1242,7 @@ namespace Velvet
             // enter the USS class list.
             if (StyleFontClass.IsArbitraryFontClass(cls))
             {
-                return;
+                return true;
             }
 
             // leading-[...] arbitrary line-height classes are resolved from the whole class array by
@@ -1225,6 +1250,16 @@ namespace Velvet
             // like font-[...] they must not enter the USS class list, regardless of whether the bracket
             // value itself parses.
             if (StyleTextEffectClass.IsArbitraryLeadingClass(cls))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void AddClass(VisualElement element, string cls)
+        {
+            if (IsManipulatorOwnedClass(cls))
             {
                 return;
             }
@@ -1249,60 +1284,14 @@ namespace Velvet
             StyleArbitraryValueResolver.ApplyClassToken(element, core, priority);
         }
 
+        // None of IsManipulatorOwnedClass's token families ever entered the class list (see AddClass), so
+        // there is nothing here to remove for them; each family's applied payload is cleared elsewhere by
+        // its own owning pass on the class change instead (the variant manipulator; the child-variant /
+        // structural / has-variant / attribute / supports config passes; StyleFontResolver; or
+        // StyleTextEffectResolver re-resolving) — never by this method.
         private static void RemoveClass(VisualElement element, string cls)
         {
-            // State-variant tokens are owned by the variant manipulator, never the class list.
-            if (StyleVariantClass.IsVariant(cls))
-            {
-                return;
-            }
-
-            // [&>*]: child-combinator tokens never entered the class list (see AddClass); the child-variant
-            // manipulator clears the payloads it applied to children on the class change, not here.
-            if (StyleChildVariantClass.IsChildVariant(cls))
-            {
-                return;
-            }
-
-            // Structural variants never entered the class list (see AddClass); their applied payloads are
-            // cleared by the structural config pass on the class change, not here.
-            if (StyleStructuralVariantClass.IsStructural(cls))
-            {
-                return;
-            }
-
-            // has-[...] variants never entered the class list (see AddClass); their applied payloads are
-            // cleared by the has-variant config pass on the class change, not here.
-            if (StyleHasVariantClass.IsHas(cls))
-            {
-                return;
-            }
-
-            // data-[...] / aria-[...] variants never entered the class list (see AddClass); their applied
-            // payloads are cleared by the attribute config pass on the class change, not here.
-            if (StyleAttributeVariantClass.IsAttribute(cls))
-            {
-                return;
-            }
-
-            // supports-[...] feature-query variants never entered the class list (see AddClass); their
-            // applied payloads are cleared by the supports config pass on the class change, not here.
-            if (StyleSupportsVariantClass.IsSupports(cls))
-            {
-                return;
-            }
-
-            // font-[...] arbitrary font classes never entered the class list (see AddClass); the inline
-            // style they drove is cleared by StyleFontResolver on the class change, not here.
-            if (StyleFontClass.IsArbitraryFontClass(cls))
-            {
-                return;
-            }
-
-            // leading-[...] arbitrary line-height classes never entered the class list (see AddClass); the
-            // rich-text tag they drove is cleared by StyleTextEffectResolver re-resolving on the class
-            // change, not here.
-            if (StyleTextEffectClass.IsArbitraryLeadingClass(cls))
+            if (IsManipulatorOwnedClass(cls))
             {
                 return;
             }
@@ -2599,7 +2588,7 @@ namespace Velvet
                     // Detach unconditionally nulls the shared maxWidth slot text-balance owned while
                     // present; restore a co-present max-w-* utility's own value the same way a detached
                     // Hue/Pulse motion's shared inline slot is restored
-                    // (FiberWrapperElementAppliers.RestoreSharedInlineSlot) — otherwise removing JUST the
+                    // (FiberAnimateMotionApplier.RestoreSharedInlineSlot) — otherwise removing JUST the
                     // text-balance token would also erase an unrelated max-width the element still carries.
                     ReapplyArbitraryValues(element, classNames);
                 }

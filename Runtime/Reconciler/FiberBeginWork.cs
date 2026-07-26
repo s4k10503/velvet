@@ -192,9 +192,7 @@ namespace Velvet
         {
             if (prevCount != -1 && currentCount != prevCount)
             {
-                FiberLogger.LogError("Hooks",
-                    $"FiberRenderer: {hookName} call count differs between previous render ({prevCount})" +
-                    $" and current ({currentCount}). Hooks must not be called inside conditional branches (violation of the Rules of Hooks).");
+                FiberLogger.LogError("Hooks", FormatHookCountMismatch(hookName, prevCount, currentCount));
             }
         }
 #endif
@@ -206,10 +204,14 @@ namespace Velvet
         {
             if (prevCount != -1 && currentCount != prevCount)
             {
-                throw new InvalidOperationException(
-                    $"FiberRenderer: {hookName} call count differs between previous render ({prevCount})" +
-                    $" and current ({currentCount}). Hooks must not be called inside conditional branches (violation of the Rules of Hooks).");
+                throw new InvalidOperationException(FormatHookCountMismatch(hookName, prevCount, currentCount));
             }
         }
+
+        // Shared wording for both hook-count sentinels (the editor-only diagnostic log and the always-on
+        // throw) so the two surfaces cannot drift onto different phrasing for the same violation.
+        private static string FormatHookCountMismatch(string hookName, int prevCount, int currentCount)
+            => $"FiberRenderer: {hookName} call count differs between previous render ({prevCount})" +
+               $" and current ({currentCount}). Hooks must not be called inside conditional branches (violation of the Rules of Hooks).";
     }
 }

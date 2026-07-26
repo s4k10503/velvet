@@ -182,52 +182,67 @@ namespace Velvet
                 _ctx.SharedReconcileDepth--;
                 if (isTopLevel)
                 {
-                    LastTopLevelWasAborted = _ctx.IsAborted;
-                    // The abort flag stops sibling work inside the pass that just ended; the deferred
-                    // host mounts below are commit work for placeholders that SURVIVED it. A boundary
-                    // rollback detaches its failed subtree's placeholders (the drain's per-entry
-                    // liveness check skips those), while the fallback the boundary swapped in may have
-                    // enqueued live portals of its own in this same pass — so the flag is consumed
-                    // here rather than used to discard the queue wholesale, and the drain's nested
-                    // reconciles run unimpeded.
-                    _ctx.IsAborted = false;
                     try
                     {
-                        _childReconciler.DrainPendingPortalMounts();
+                        FinishTopLevelPass();
                     }
                     finally
                     {
-                        try
-                        {
-                            // Always clear the queue at top-level boundary so partially drained passes do
-                            // not leak placeholders into the next reconcile; an abort raised DURING the
-                            // drain (a boundary inside a portal's children) is consumed at this boundary
-                            // the same way.
-                            _ctx.PendingPortalMounts.Clear();
-                            _ctx.IsAborted = false;
-                            // Declaring-resolution misses are scoped to one top-level pass: retrying the
-                            // scan next pass is what lets a late-arriving declaring panel resolve.
-                            _ctx.DeclaringResolveMisses.Clear();
-                            // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
-                            // per render, so unconsumed entries would otherwise accumulate across renders.
-                            _ctx.EffectiveKeys.Clear();
-                            // Return the inline children's old trees (queued by RenderInlineForExpansion) to the
-                            // VNode pool now that the whole pass is done using them as patch baselines — deferred
-                            // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
-                            FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
-                        }
-                        finally
-                        {
-                            // Flush releases staged during the pass (AFTER the drain above, which stages
-                            // more). Guaranteed even if the drain throws (its mark pass can execute a user
-                            // IReadOnlyList via the slot probes): a skipped flush would wedge the pool in
-                            // staging mode for the process lifetime — every later return staged, never
-                            // flushed, pools starving — with no recovery outside the editor's domain reload.
-                            VNodePool.EndReleaseScope();
-                            profilerScope.Dispose();
-                        }
+                        // Flush releases staged during the pass (AFTER the drain above, which stages
+                        // more). Guaranteed even if the drain throws (its mark pass can execute a user
+                        // IReadOnlyList via the slot probes): a skipped flush would wedge the pool in
+                        // staging mode for the process lifetime — every later return staged, never
+                        // flushed, pools starving — with no recovery outside the editor's domain reload.
+                        VNodePool.EndReleaseScope();
+                        profilerScope.Dispose();
                     }
                 }
+            }
+        }
+
+        // Ends a top-level pass's shared bookkeeping: consumes IsAborted, drains pending portal
+        // mounts, clears the per-pass registries, and drains deferred inline old-tree returns. Called
+        // from both Reconcile's and ContinueReconcile's own top-level finally — a resumed slice IS a
+        // pass's genuine top-level boundary just as much as a fresh Reconcile call. Any new per-pass
+        // reset belongs here, or it leaks on the shared context until some unrelated fiber's next
+        // top-level Reconcile happens to run.
+        private void FinishTopLevelPass()
+        {
+            LastTopLevelWasAborted = _ctx.IsAborted;
+            // The abort flag stops sibling work inside the pass that just ended; the deferred
+            // host mounts below are commit work for placeholders that SURVIVED it. A boundary
+            // rollback detaches its failed subtree's placeholders (the drain's per-entry
+            // liveness check skips those), while the fallback the boundary swapped in may have
+            // enqueued live portals of its own in this same pass — so the flag is consumed
+            // here rather than used to discard the queue wholesale, and the drain's nested
+            // reconciles run unimpeded. Consuming it here, before the drain call below, also
+            // matters for a resumed slice (ContinueReconcile): a boundary caught earlier in that
+            // slice must not leave IsAborted true when the drain makes its own nested, fresh
+            // top-level Reconcile calls — those would otherwise see it already true and silently
+            // no-op via ChildReconciler.Reconcile's own entry guard.
+            _ctx.IsAborted = false;
+            try
+            {
+                _childReconciler.DrainPendingPortalMounts();
+            }
+            finally
+            {
+                // Always clear the queue at top-level boundary so partially drained passes do
+                // not leak placeholders into the next reconcile; an abort raised DURING the
+                // drain (a boundary inside a portal's children) is consumed at this boundary
+                // the same way.
+                _ctx.PendingPortalMounts.Clear();
+                _ctx.IsAborted = false;
+                // Declaring-resolution misses are scoped to one top-level pass: retrying the
+                // scan next pass is what lets a late-arriving declaring panel resolve.
+                _ctx.DeclaringResolveMisses.Clear();
+                // EffectiveKeys is scoped to one top-level pass. VNode references are fresh
+                // per render, so unconsumed entries would otherwise accumulate across renders.
+                _ctx.EffectiveKeys.Clear();
+                // Return the inline children's old trees (queued by RenderInlineForExpansion) to the
+                // VNode pool now that the whole pass is done using them as patch baselines — deferred
+                // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
+                FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
             }
         }
 
@@ -298,44 +313,18 @@ namespace Velvet
             finally
             {
                 _ctx.SharedReconcileDepth--;
-                if (isTopLevel)
-                {
-                    // Mirrors Reconcile's own top-level finally: consumed here, before the drain, so a
-                    // boundary caught earlier in THIS resumed slice cannot make the drain's own nested
-                    // Reconcile calls (fresh top-level entries themselves) see IsAborted already true and
-                    // silently no-op via ChildReconciler.Reconcile's own entry guard. Left unset (false) on
-                    // a nested resume — the ancestor's own eventual top-level finally is what consumes it.
-                    LastTopLevelWasAborted = _ctx.IsAborted;
-                    _ctx.IsAborted = false;
-                }
+                // Mirrors Reconcile's own top-level finally (see FinishTopLevelPass for why IsAborted
+                // must be consumed before the drain it runs). Left unset (false) on a nested resume —
+                // the ancestor's own eventual top-level finally is what consumes it.
                 try
                 {
                     if (isTopLevel)
                     {
-                        _childReconciler.DrainPendingPortalMounts();
+                        FinishTopLevelPass();
                     }
                 }
                 finally
                 {
-                    // Mirrors Reconcile's own top-level finally, statement for statement: a continuation
-                    // that completes a pass IS that pass's genuine top-level boundary, so every per-pass
-                    // reset must happen here too or it leaks on the SHARED context until some unrelated
-                    // fiber's fresh Reconcile happens to run. IsAborted gets the same belt-and-suspenders
-                    // second reset (consuming an abort raised DURING this drain itself — a boundary inside
-                    // a Portal's / a z-layer mount's children); DeclaringResolveMisses stays scoped to one
-                    // pass so a late-arriving declaring panel is retried instead of staying permanently
-                    // unresolvable; EffectiveKeys entries registered by subtrees expanded in a resumed
-                    // slice (a new item's keyed Fragment) must not accumulate for the tree's lifetime; and
-                    // the deferred inline old-tree returns must reach the pool at the same boundary a
-                    // fresh pass would give them.
-                    if (isTopLevel)
-                    {
-                        _ctx.PendingPortalMounts.Clear();
-                        _ctx.IsAborted = false;
-                        _ctx.DeclaringResolveMisses.Clear();
-                        _ctx.EffectiveKeys.Clear();
-                        FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
-                    }
                     VNodePool.EndReleaseScope();
                 }
             }

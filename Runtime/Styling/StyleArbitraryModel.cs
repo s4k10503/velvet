@@ -19,11 +19,16 @@ namespace Velvet
         // is a per-property SortedList set by an INDEXER, so reusing Base for a [&>*]: arbitrary payload would
         // let a child's own base arbitrary utility and this inherited one clobber the same slot.
         public const int ChildVariant = 5;
+
+        #region Structural
         // Structural (child-position) variants first:/last:/odd:/even:/nth-child:. Velvet orders these inline
         // layers by how strong / intentional the activating condition is; a position in the sibling list is
         // the WEAKEST condition, so it sits just above the base utility and yields to every layer below it
         // (the context gates, the element's own has-/attribute conditions, and its interaction state).
         public const int Structural = 10;
+        #endregion
+
+        #region Responsive and Supports
         // Responsive breakpoints: a larger min-width wins while active.
         public const int ResponsiveSm = 11;
         public const int ResponsiveMd = 12;
@@ -36,7 +41,13 @@ namespace Velvet
         // (always-applied when well-formed; see StyleSupportsVariantClass), so this layer never toggles
         // off at runtime; the priority only orders it against other layers on the same property.
         public const int Supports = 16;
+        #endregion
+
+        #region Theme and Context
         public const int Dark = 20;
+        #endregion
+
+        #region Has and Attribute
         // has-[...] (the element styled by a DESCENDANT condition — a descendant is checked / focused or
         // carries a class). A semantic condition on the element's own subtree, treated as a stronger intent
         // than the ambient context, so it wins over the base utility, the positional structural layer, and
@@ -48,6 +59,9 @@ namespace Velvet
         // likewise wins over the context gates, while still yielding to the relational group-/peer- and the
         // element's interaction state layers below.
         public const int Attribute = 26;
+        #endregion
+
+        #region Relational
         // group-*/peer-* states get DISTINCT priorities so two on the same property (e.g. group-hover +
         // group-active) occupy separate layers — clearing one must not remove the other.
         public const int GroupHover = 30;
@@ -59,6 +73,9 @@ namespace Velvet
         public const int GroupFocusWithin = 36;
         public const int PeerFocusWithin = 37;
         public const int PeerChecked = 38;
+        #endregion
+
+        #region Element state
         // Element-local interaction states. checked: ranks BELOW hover/focus/active on a same-property tie
         // — the reference cascade emits checked before the interaction states, and later-emitted wins a
         // tie — so a checked control's `checked:` value never beats a concurrent `hover:` / `focus:` /
@@ -68,12 +85,15 @@ namespace Velvet
         public const int Focus = 50;
         public const int FocusVisible = 55;
         public const int Active = 60;
+        #endregion
 
+        #region Important
         // The important modifier (!utility / utility!): the highest layer, so an important utility
         // wins over the base and every state/variant layer — the inline-style stand-in for CSS !important
         // (inline styles already beat USS class rules in UI Toolkit). A single shared layer, so stacking
         // two important utilities on the same property is last-wins (a documented edge).
         public const int Important = 100;
+        #endregion
 
         // The layer priority a stacked variant's inner kind contributes; a composed arbitrary leaf
         // (dark:hover:w-[200px]) layers at max(outer, inner) so it sits above either variant alone.

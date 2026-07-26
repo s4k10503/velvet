@@ -334,14 +334,7 @@ namespace Velvet
                 hash = hash * 31 + (int)_spec.Style;
                 var count = container.childCount;
                 hash = hash * 31 + count;
-                for (var i = 0; i < count; i++)
-                {
-                    var child = container[i];
-                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(child);
-                    // A child's in-flow / out-of-flow transition changes which children the divider walk
-                    // counts even though neither its identity nor the container's total count changed.
-                    hash = hash * 31 + (StyleOutOfFlowChild.IsOutOfFlow(child) ? 1 : 0);
-                }
+                hash = StyleOutOfFlowChild.HashChildSequence(hash, container);
                 return hash;
             }
         }

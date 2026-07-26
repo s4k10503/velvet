@@ -255,58 +255,14 @@ namespace Velvet
                 switch (node)
                 {
                     case PortalNode { Layer: { } layer } layerPortal:
-                    {
-                        if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost)
-                            || layerHost.Document == null)
-                        {
-                            // Also lands here when a scene unload killed a previously created host:
-                            // the dead record is replaced so new portals mount into a live panel.
-                            layerHost = PanelHostFactory.CreateLayerHost(layer, placeholder.panel, _ctx);
-                            _ctx.LayerHosts[layer] = layerHost;
-                        }
-                        else
-                        {
-                            // Recurring re-sync point for late declaring resolution and runtime
-                            // drift (see SyncDeclaring).
-                            PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
-                        }
-                        target = layerHost.Document.rootVisualElement;
-                        children = layerPortal.Children ?? Array.Empty<VNode>();
-                        FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
-                            layerPortal.FocusOrder == PanelFocusOrder.Chained, _ctx);
+                        (target, children) = ResolveLayerPortalTarget(placeholder, layerPortal, layer);
                         break;
-                    }
                     case WorldSpaceNode worldSpaceNode:
-                    {
-                        var record = PanelHostFactory.CreateWorldSpaceHost(worldSpaceNode, placeholder.panel, _ctx);
-                        _ctx.WorldSpaceBindings[placeholder] = record;
-                        target = record.Document.rootVisualElement;
-                        children = worldSpaceNode.Children ?? Array.Empty<VNode>();
-                        FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
-                            worldSpaceNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+                        (target, children) = ResolveWorldSpacePortalTarget(placeholder, worldSpaceNode);
                         break;
-                    }
                     case PortalNode registryPortal:
-                    {
-                        // The target was resolved (non-null) at enqueue: the create path never
-                        // queues a registry portal without one.
-                        children = registryPortal.Children ?? Array.Empty<VNode>();
-                        // Same-panel synthetic-bubbling bridge: attached ONCE per resolved target,
-                        // guarded by SamePanelPortalBridges (see its own comment for why the guard
-                        // lives here rather than at a single creation call site — unlike a layer/
-                        // world-space host, a registry target is an ordinary, already-existing
-                        // element with no one-time "just created it" moment to hook). Never attached
-                        // from FiberPortalRegistry.Register itself: that registry is a bare global
-                        // static with no ReconcilerContext to guard duplicate attaches with or later
-                        // dispose the bridge through.
-                        var registryTarget = target!;
-                        if (!_ctx.SamePanelPortalBridges.ContainsKey(registryTarget))
-                        {
-                            _ctx.SamePanelPortalBridges[registryTarget] =
-                                FiberCrossPanelEventDispatcher.AttachBridge(registryTarget, _ctx);
-                        }
+                        (target, children) = ResolveRegistryPortalTarget(target, registryPortal);
                         break;
-                    }
                     case ZLayerMountNode zLayerMount:
                         // Not a host mount: the real element is already fully built (CreateElement / a
                         // patch-time none-to-z transition ran its whole child reconcile inline, under live
@@ -430,6 +386,65 @@ namespace Velvet
             // last member this pass tears down here, never synchronously mid-diff. `this` mirrors
             // ResolveQueuedMount's own reason above (a self-caused park from THIS instance's own pass).
             FiberZLayerCoordinator.DrainTeardowns(_ctx, this);
+        }
+
+        private (VisualElement Target, VNode?[] Children) ResolveLayerPortalTarget(
+            VisualElement placeholder, PortalNode layerPortal, UILayer layer)
+        {
+            if (!_ctx.LayerHosts.TryGetValue(layer, out var layerHost)
+                || layerHost.Document == null)
+            {
+                // Also lands here when a scene unload killed a previously created host:
+                // the dead record is replaced so new portals mount into a live panel.
+                layerHost = PanelHostFactory.CreateLayerHost(layer, placeholder.panel, _ctx);
+                _ctx.LayerHosts[layer] = layerHost;
+            }
+            else
+            {
+                // Recurring re-sync point for late declaring resolution and runtime
+                // drift (see SyncDeclaring).
+                PanelHostFactory.SyncDeclaring(layerHost, layer, placeholder.panel, _ctx);
+            }
+            var target = layerHost.Document.rootVisualElement;
+            var children = layerPortal.Children ?? Array.Empty<VNode>();
+            FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, layerHost,
+                layerPortal.FocusOrder == PanelFocusOrder.Chained, _ctx);
+            return (target, children);
+        }
+
+        private (VisualElement Target, VNode?[] Children) ResolveWorldSpacePortalTarget(
+            VisualElement placeholder, WorldSpaceNode worldSpaceNode)
+        {
+            var record = PanelHostFactory.CreateWorldSpaceHost(worldSpaceNode, placeholder.panel, _ctx);
+            _ctx.WorldSpaceBindings[placeholder] = record;
+            var target = record.Document.rootVisualElement;
+            var children = worldSpaceNode.Children ?? Array.Empty<VNode>();
+            FiberFocusNavigator.ConfigureChainedPlaceholder(placeholder, record,
+                worldSpaceNode.FocusOrder == PanelFocusOrder.Chained, _ctx);
+            return (target, children);
+        }
+
+        private (VisualElement Target, VNode?[] Children) ResolveRegistryPortalTarget(
+            VisualElement? target, PortalNode registryPortal)
+        {
+            // The target was resolved (non-null) at enqueue: the create path never
+            // queues a registry portal without one.
+            var children = registryPortal.Children ?? Array.Empty<VNode>();
+            // Same-panel synthetic-bubbling bridge: attached ONCE per resolved target,
+            // guarded by SamePanelPortalBridges (see its own comment for why the guard
+            // lives here rather than at a single creation call site — unlike a layer/
+            // world-space host, a registry target is an ordinary, already-existing
+            // element with no one-time "just created it" moment to hook). Never attached
+            // from FiberPortalRegistry.Register itself: that registry is a bare global
+            // static with no ReconcilerContext to guard duplicate attaches with or later
+            // dispose the bridge through.
+            var registryTarget = target!;
+            if (!_ctx.SamePanelPortalBridges.ContainsKey(registryTarget))
+            {
+                _ctx.SamePanelPortalBridges[registryTarget] =
+                    FiberCrossPanelEventDispatcher.AttachBridge(registryTarget, _ctx);
+            }
+            return (registryTarget, children);
         }
 
         // Resumes a suspended IndexedReconcile.
@@ -788,8 +803,9 @@ namespace Velvet
 
         #region Keyed Pass — Sync
 
-        // Fully synchronous version of keyed reconciliation. Used when frameBudgetMs == 0.
-        // Preserves the original implementation to avoid state allocation.
+        // Fully synchronous version of keyed reconciliation, run when frameBudgetMs == 0: walks the diff to
+        // completion inline instead of allocating and driving a KeyedReconcileState, since a zero budget
+        // means there is nothing to resume later and the state machine's buffers would be pure overhead.
         private void ReconcileKeyedSync(VisualElement? parent, VNode?[] oldNodes, VNode?[] newNodes,
             int slotStart = 0, int slotLimit = int.MaxValue)
         {
@@ -1028,6 +1044,8 @@ namespace Velvet
 
         // State-machine dispatcher for keyed reconciliation.
         // Transitions through phases and returns buffers on yield (budget overrun) or bailout (exception).
+        // Pass2BuildMap resumes indexing from state.LinearEnd rather than 0: the common prefix Pass1Linear
+        // already matched 1:1 by position, so those entries need no key-map lookup in Pass 2.
         private void ReconcileKeyedFrom(KeyedReconcileState state, double frameBudgetMs)
         {
             // DOM-desync recovery at a fresh start (see ReconcileKeyedSync): when the live range is shorter than
@@ -1076,7 +1094,6 @@ namespace Velvet
 
         #region Pass 1
 
-        // Pass 1 linear scan. In-place patches the prefix where keys match.
         private bool Pass1Linear(KeyedReconcileState state, double frameBudgetMs)
         {
             var parent = state.Parent!;
@@ -1134,7 +1151,6 @@ namespace Velvet
             return true;
         }
 
-        // Pass 1 tail-add: only tail appends remain.
         private bool Pass1TailAdd(KeyedReconcileState state, double frameBudgetMs)
         {
             var parent = state.Parent!;
@@ -1156,7 +1172,6 @@ namespace Velvet
             return true;
         }
 
-        // Pass 1 tail-remove: only tail removals remain.
         private bool Pass1TailRemove(KeyedReconcileState state, double frameBudgetMs)
         {
             var parent = state.Parent!;
@@ -1179,7 +1194,6 @@ namespace Velvet
 
         #region Pass 2
 
-        // Pass 2 BuildMap: builds the oldKeyMap.
         private bool Pass2BuildMap(KeyedReconcileState state, double frameBudgetMs)
         {
             var oldNodes = state.OldNodes!;
@@ -1201,7 +1215,6 @@ namespace Velvet
             return true;
         }
 
-        // Pass 2 Process: walks newNodes and builds newElements.
         private bool Pass2Process(KeyedReconcileState state, double frameBudgetMs)
         {
             var parent = state.Parent!;
@@ -1235,7 +1248,10 @@ namespace Velvet
             return true;
         }
 
-        // Pass 2 Remove: removes unused old entries; runs LIS computation synchronously on completion.
+        // The LIS is computed synchronously right after this pass finishes, not time-sliced alongside it:
+        // ComputeLisAnchors maps each retained element onto its post-removal live DOM position, so every
+        // removal in this pass must have already happened or the mapped indices would reflect elements
+        // still occupying slots they are about to vacate.
         private bool Pass2Remove(KeyedReconcileState state, double frameBudgetMs)
         {
             var parent = state.Parent!;

@@ -8,9 +8,9 @@ namespace Velvet.CodeGen
 {
     // Build-time transform that injects Velvet.ComponentMethodRegistry registration calls into the
     // module initializer (<Module>.cctor) for every [Component] method that opts into
-    // Error Boundary, the props-bail, or a DisplayName override. This replaces the Roslyn source
-    // generator's [ModuleInitializer] hook: everything expressible in IL belongs in the
-    // ILPostProcessor, leaving the Source Generator to API generation and analyzers only.
+    // Error Boundary, the props-bail, or a DisplayName override. Everything expressible in IL is
+    // handled here rather than through a source-generated [ModuleInitializer] hook, keeping the
+    // Source Generator scoped to API generation and analyzers only.
     // The registry is a process-global, IL2CPP / metadata-stripping-resilient string map keyed on
     // (DeclaringType.FullName, MethodName). The declaring type name is emitted in the runtime
     // Type.FullName form — '+' between an outer type and a nested one, and the Cecil `{arity}
@@ -21,7 +21,6 @@ namespace Velvet.CodeGen
     internal static class MetadataRegistrationWeaver
     {
         private const string ComponentAttrFullName = "Velvet.ComponentAttribute";
-        private const string RegistryTypeFullName = "Velvet.ComponentMethodRegistry";
         private const string ModuleTypeName = "<Module>";
         private const string IsErrorBoundaryProperty = "IsErrorBoundary";
         private const string MemoizeProperty = "Memoize";
@@ -81,26 +80,30 @@ namespace Velvet.CodeGen
             {
                 if (entry.IsErrorBoundary)
                 {
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Ldstr, entry.TypeFullName));
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Ldstr, entry.MethodName));
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Call, context.RegisterErrorBoundary));
+                    EmitRegistrationCall(il, ret, context.RegisterErrorBoundary, entry.TypeFullName, entry.MethodName);
                 }
                 if (entry.Memoize)
                 {
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Ldstr, entry.TypeFullName));
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Ldstr, entry.MethodName));
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Call, context.RegisterMemoize));
+                    EmitRegistrationCall(il, ret, context.RegisterMemoize, entry.TypeFullName, entry.MethodName);
                 }
                 if (entry.DisplayName != null)
                 {
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Ldstr, entry.TypeFullName));
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Ldstr, entry.MethodName));
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Ldstr, entry.DisplayName));
-                    il.InsertBefore(ret, Instruction.Create(OpCodes.Call, context.RegisterDisplayName));
+                    EmitRegistrationCall(il, ret, context.RegisterDisplayName, entry.TypeFullName, entry.MethodName, entry.DisplayName);
                 }
             }
 
             return true;
+        }
+
+        // Shared IL shape for every registry call: push each string argument in order, then call the
+        // registration method, inserting immediately before the module initializer's ret.
+        private static void EmitRegistrationCall(ILProcessor il, Instruction insertBefore, MethodReference method, params string[] args)
+        {
+            foreach (var arg in args)
+            {
+                il.InsertBefore(insertBefore, Instruction.Create(OpCodes.Ldstr, arg));
+            }
+            il.InsertBefore(insertBefore, Instruction.Create(OpCodes.Call, method));
         }
 
         private static List<MetadataEntry> CollectEntries(ModuleDefinition module)

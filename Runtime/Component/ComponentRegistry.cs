@@ -96,71 +96,93 @@ namespace Velvet
 
             if (existingFiber != null)
             {
-                // Context is read live from the cursor (ComponentContextStack) during
-                // Render, so no per-fiber snapshot is pinned or merged here. The enclosing Providers
-                // are already pushed on the live stack by the current expansion walk; an isolated
-                // re-render reconstructs them via FiberContextSpine.
-                // The forwarded ref is part of the component's identity, not its props: a memoized component
-                // would otherwise bail on shallow-equal props and swallow a ref-instance change, so the new
-                // ref never re-runs UseImperativeHandle. Capture the identity change before overwriting and
-                // force a re-render below so RunImperativeHandleSlots adopts the new ref.
-                var refChanged = !ReferenceEquals(existingFiber.ExternalRef, node.ExternalRef);
-                existingFiber.ExternalRef = node.ExternalRef;
-                // V.Component<TProps> overload allocates a fresh closure each render that captures
-                // the latest props; sync Body so the next render sees the current values.
-                existingFiber.Body = node.Body;
-                // Only a memoized component bails a parent-driven re-render on
-                // shallow-equal props. A plain component re-renders whenever its parent does, so the
-                // props-equality bail is gated on opt-in memoization. Memoization is opted into either by
-                // [Component(Memoize = true)] (node.Memoize) or by V.Memo (custom areEqual, node.AreEqual).
-                // When NOT memoized, props are treated as changed so the component always re-renders.
-                bool isMemoized = node.Memoize || node.AreEqual != null;
-                bool propsChanged;
-                if (isMemoized)
-                {
-                    // Bail key: shallow per-property identity comparison of props (or a
-                    // custom areEqual predicate supplied via V.Memo). Record value-equality (Equals) is
-                    // intentionally NOT used — props are records whose deep structural equality is a
-                    // different memoization axis than the shallow per-key identity comparison.
-                    propsChanged = !PropsEqual(existingFiber.Props, node.Props, node.AreEqual);
-                }
-                else
-                {
-                    // Non-memo component: a parent re-render always re-renders the child,
-                    // so the props bail never applies. Props are still synced below for the next render.
-                    propsChanged = true;
-                }
-                if (propsChanged) existingFiber.Props = node.Props;
-
-                if (isInline)
-                {
-                    // The parent reconcile may have shifted this fiber's slot range; update before any
-                    // re-render. Synchronously re-render when props changed or the fiber is dirty
-                    // (setState / async resolve / context invalidation) so the caller's parent walk
-                    // observes the fresh PreviousTree. The shared ReconcilerContext keeps the registry /
-                    // FiberStack consistent across the root and descendant Reconcilers, so a synchronous
-                    // render here does not collide with a subsequent FlushState pass: clearing IsDirty
-                    // makes the later traversal short-circuit while the rendered output is already committed.
-                    existingFiber.MountSlotStart = slotStart;
-                    if (propsChanged || existingFiber.IsDirty || refChanged)
-                    {
-                        FiberRenderer.RenderInlineForExpansion(existingFiber);
-                        // This re-render subsumes the child into the parent's single batch pass: it ran with
-                        // the child's latest state, satisfying every pending lane at once (lane coalescing).
-                        // Settle the whole lane queue and drop the fiber from the batch scheduler so a later
-                        // drain does not redundantly re-render it or silently drop a stranded higher-priority
-                        // lane — merely clearing IsDirty would leave both behind.
-                        FiberRenderer.SettleSubsumedFiber(existingFiber);
-                    }
-                }
-                else if (propsChanged || refChanged)
-                {
-                    // Wrapper-mounted path keeps the legacy async scheduling.
-                    FiberWorkLoop.RequestRenderFromHook(existingFiber);
-                }
-                return existingFiber;
+                return ReconcileExistingFiber(existingFiber, node, isInline, mountPoint, slotStart);
             }
 
+            return CreateAndMountFiber(node, anchor, positionKey, identity, mountPoint, slotStart, isInline);
+        }
+
+        private ComponentFiber ReconcileExistingFiber(
+            ComponentFiber existingFiber,
+            ComponentNode node,
+            bool isInline,
+            VisualElement? mountPoint,
+            int slotStart)
+        {
+            // Context is read live from the cursor (ComponentContextStack) during
+            // Render, so no per-fiber snapshot is pinned or merged here. The enclosing Providers
+            // are already pushed on the live stack by the current expansion walk; an isolated
+            // re-render reconstructs them via FiberContextSpine.
+            // The forwarded ref is part of the component's identity, not its props: a memoized component
+            // would otherwise bail on shallow-equal props and swallow a ref-instance change, so the new
+            // ref never re-runs UseImperativeHandle. Capture the identity change before overwriting and
+            // force a re-render below so RunImperativeHandleSlots adopts the new ref.
+            var refChanged = !ReferenceEquals(existingFiber.ExternalRef, node.ExternalRef);
+            existingFiber.ExternalRef = node.ExternalRef;
+            // V.Component<TProps> overload allocates a fresh closure each render that captures
+            // the latest props; sync Body so the next render sees the current values.
+            existingFiber.Body = node.Body;
+            // Only a memoized component bails a parent-driven re-render on
+            // shallow-equal props. A plain component re-renders whenever its parent does, so the
+            // props-equality bail is gated on opt-in memoization. Memoization is opted into either by
+            // [Component(Memoize = true)] (node.Memoize) or by V.Memo (custom areEqual, node.AreEqual).
+            // When NOT memoized, props are treated as changed so the component always re-renders.
+            bool isMemoized = node.Memoize || node.AreEqual != null;
+            bool propsChanged;
+            if (isMemoized)
+            {
+                // Bail key: shallow per-property identity comparison of props (or a
+                // custom areEqual predicate supplied via V.Memo). Record value-equality (Equals) is
+                // intentionally NOT used — props are records whose deep structural equality is a
+                // different memoization axis than the shallow per-key identity comparison.
+                propsChanged = !PropsEqual(existingFiber.Props, node.Props, node.AreEqual);
+            }
+            else
+            {
+                // Non-memo component: a parent re-render always re-renders the child,
+                // so the props bail never applies. Props are still synced below for the next render.
+                propsChanged = true;
+            }
+            if (propsChanged) existingFiber.Props = node.Props;
+
+            if (isInline)
+            {
+                // The parent reconcile may have shifted this fiber's slot range; update before any
+                // re-render. Synchronously re-render when props changed or the fiber is dirty
+                // (setState / async resolve / context invalidation) so the caller's parent walk
+                // observes the fresh PreviousTree. The shared ReconcilerContext keeps the registry /
+                // FiberStack consistent across the root and descendant Reconcilers, so a synchronous
+                // render here does not collide with a subsequent FlushState pass: clearing IsDirty
+                // makes the later traversal short-circuit while the rendered output is already committed.
+                existingFiber.MountSlotStart = slotStart;
+                if (propsChanged || existingFiber.IsDirty || refChanged)
+                {
+                    FiberRenderer.RenderInlineForExpansion(existingFiber);
+                    // This re-render subsumes the child into the parent's single batch pass: it ran with
+                    // the child's latest state, satisfying every pending lane at once (lane coalescing).
+                    // Settle the whole lane queue and drop the fiber from the batch scheduler so a later
+                    // drain does not redundantly re-render it or silently drop a stranded higher-priority
+                    // lane — merely clearing IsDirty would leave both behind.
+                    FiberRenderer.SettleSubsumedFiber(existingFiber);
+                }
+            }
+            else if (propsChanged || refChanged)
+            {
+                // Wrapper-mounted path keeps the legacy async scheduling.
+                FiberWorkLoop.RequestRenderFromHook(existingFiber);
+            }
+            return existingFiber;
+        }
+
+        private ComponentFiber CreateAndMountFiber(
+            ComponentNode node,
+            object? anchor,
+            object? positionKey,
+            object identity,
+            VisualElement? mountPoint,
+            int slotStart,
+            bool isInline)
+        {
             var fiber = FiberRenderer.CreateChild(node.Body, node.IsErrorBoundary);
             _ctx.FiberStack.Current?.AppendChild(fiber);
             fiber.ExternalRef = node.ExternalRef;
@@ -191,7 +213,7 @@ namespace Velvet
             return fiber;
         }
 
-        // Props-bail comparison, reached only for memoized nodes (see GetOrCreateCore's isMemoized gate).
+        // Props-bail comparison, reached only for memoized nodes (see ReconcileExistingFiber's isMemoized gate).
         // With a custom areEqual predicate (V.Memo(component, props, areEqual)) the predicate decides equality;
         // otherwise props are compared by shallow per-property identity. Both-null props (a memoized props-less
         // overload) are trivially equal, so such a component bails unless dirty. Non-memo components never reach
