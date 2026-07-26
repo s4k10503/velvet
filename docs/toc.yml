@@ -1,4 +1,37 @@
 - name: Home
   href: index.md
+- name: Guides
+  href: guides/README.md
+  items:
+    - name: Overview
+      href: guides/README.md
+    - name: React → Velvet migration
+      href: guides/react-migration.md
+    - name: Memoization
+      href: guides/memoization.md
+    - name: Flexbox and gap
+      href: guides/styling-flexbox-and-gap.md
+    - name: Z-index stacking
+      href: guides/styling-z-index.md
+    - name: Variants
+      href: guides/styling-variants.md
+    - name: Filters
+      href: guides/styling-filters.md
+    - name: Drag and drop
+      href: guides/drag-and-drop.md
+    - name: Focus
+      href: guides/focus.md
+    - name: Scene view
+      href: guides/scene-view.md
+    - name: Portals
+      href: guides/portals.md
+    - name: Particles
+      href: guides/particles.md
+    - name: Motion
+      href: guides/motion.md
+    - name: Preview tooling
+      href: guides/preview-tooling.md
+    - name: Fonts
+      href: guides/fonts.md
 - name: API Reference
   href: api/

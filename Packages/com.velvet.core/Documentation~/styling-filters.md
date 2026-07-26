@@ -41,9 +41,11 @@ hue-rotate, invert, saturate, sepia) regardless of class order, matching how bro
 multi-function `filter` value.
 
 Filter utilities work everywhere other utilities do: under variants
-(`hover:blur-sm`, `dark:grayscale`), with the important modifier, and inside recipes. Because
-`filter` is an interpolable USS property, a `transition-all` / `duration-*` element tweens
-filter changes like any other property change.
+(`hover:blur-sm`, `dark:grayscale`), with the important modifier, and inside recipes. Unlike most
+inline properties, `filter` is **not** tweened by `transition-all` / `transition-property: filter`
+— UI Toolkit's native transition system cannot repaint an inline filter list at all, so those
+utilities leave a filter change snapping instead of animating. Animating a filter change needs the
+dedicated `transition-filter` opt-in described below.
 
 ## Custom filters: `VelvetFilters` + `filter-[name:args]`
 
@@ -92,15 +94,28 @@ unrecognized utility.
 
 ### Transitions
 
-UI Toolkit interpolates a `filter` change when the from/to lists match function-for-function —
-for a custom function that means the **same definition** on both sides, which the registry
-guarantees for a same-name argument change. So `transition-all duration-300` tweens
-`filter-[dissolve:0]` → `filter-[dissolve:1]` numerically; adding or removing a function
-(list shapes differ) snaps, matching CSS.
+UI Toolkit's native transition system cannot repaint an inline `filter` list at all — pinning
+`transition-property` to `filter` (or including it via `transition-all`) only applies the very
+first frame of a change and then stops repainting, an engine limitation, not a Velvet gap. So
+animating a filter change is a dedicated opt-in, not a side effect of the general `transition-*`
+utilities: add the `transition-filter` class. It deliberately sets only `transition-duration` /
+`transition-timing-function` (never `transition-property: filter`, which would just hit the same
+repaint bug) and a scheduler-driven tween (`StyleFilterTransitionDriver`) lerps the filter's
+parameters itself, writing a fresh inline list every frame so the engine actually repaints it.
+`duration-*` / `ease-*` still override the resolved duration/timing the class carries.
 
-Drive this through the `transition-*` utilities. Pinning an inline `transition-property` to
-`filter` alone makes 6000.3 stop applying further filter changes to the rendered output at all
-(engine quirk, observed on 6000.3.11f1) — `transition-all` does not have the problem.
+What interpolates under `transition-filter`: every native filter type (`blur`, `contrast`,
+`grayscale`, `hue-rotate`, `invert`, `sepia`) and the two first-party built-in customs
+(`brightness`, `saturate`) lerp their parameters — `transition-filter duration-300` tweens
+`blur-0` → `blur-md` (or `brightness-100` → `brightness-150`) smoothly. A filter present on only
+one side of the change fades in/out from its neutral (identity) value, matching CSS's implicit
+list padding, unless the same channel repeats within one list — an ambiguous pairing that falls
+back to an instant write, like CSS. A user-authored `filter-[name:args]` custom filter is the one
+exception: its parameters bind opaque shader material state, so it always snaps instantly — even
+under `transition-filter` — rather than cross-fading.
+
+`duration-0` (or any zero-duration resolution) and an off-panel change both write the target
+value instantly, matching CSS's zero-duration behavior.
 
 ### Contract
 

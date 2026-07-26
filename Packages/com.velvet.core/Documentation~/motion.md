@@ -67,11 +67,13 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   the ghost holds its slot until the exit completes (the default `Sync` mode).
 - Re-adding a key mid-exit cancels the exit and returns the element to its resting variant —
   including inline geometry the pose had overwritten.
-- **What an exit animates:** the same channels a Motion transition drives — `opacity` and the
-  `translate` / `scale` / `rotate` transform trio. UI Toolkit has no animatable `transform`
-  shorthand, so an exit pose expresses movement with those three utilities, not a combined
-  `transform`; a `skew-*` exit does not animate, because skew is a silhouette paint rather than a
-  transform.
+- **What an exit animates:** under the default Tween driver, any USS-transitionable property the
+  pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
+  fixed channel set. Spring and cubic-bezier exits are narrower, driving only `opacity` and the
+  `translate` / `scale` / `rotate` transform trio (see Springs and Cubic-bezier easing below); UI
+  Toolkit has no animatable `transform` shorthand, so those two drivers express movement with the
+  three transform utilities, not a combined `transform`. A `skew-*` exit never animates under any
+  driver, because skew is a silhouette paint rather than a transform.
 
 ### `PopLayout` mode
 
@@ -111,7 +113,8 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
 - The stagger counter runs in **tree order across the orchestrator's whole subtree** (a
   documented deviation from Framer, which numbers each parent's children independently).
 - `V.AnimatePresence(staggerSec: …, delayChildrenSec: …, staggerDirection: …)` provides the
-  presence-side equivalent for enter/exit plays, including `V.AnimatedList`'s `staggerSec`.
+  presence-side equivalent for enter/exit plays — the same stagger/delay knobs, scoped to a
+  list of children entering or exiting under one presence boundary.
 
 Orchestration delays each child's **swap itself**: once a child's slot elapses, the swap fires
 and tweens (or springs) on that child's own `StyleTransitionConfig`.

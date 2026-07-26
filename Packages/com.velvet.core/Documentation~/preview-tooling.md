@@ -169,11 +169,13 @@ capture harness both render the story at those defaults.
 
 ### Viewport
 
-The **Viewport** addon simulates responsive widths. "Full" lets the canvas fill the stage; a
-fixed preset (Mobile 375, Tablet 768, Desktop 1280 reference px) sizes the canvas to that
-width and makes it a **responsive scope** (it applies the `@container` marker) so the mounted
-story's `sm:`/`md:`/… breakpoints evaluate against the simulated width rather than the panel
-root. See [styling-variants.md](styling-variants.md) for container queries.
+The **Viewport** addon simulates responsive widths. "Full" (the default) lets the canvas fill
+the stage. Typing a size into the toolbar's width/height fields switches the viewport to
+**Custom** and sizes the canvas to that exact reference px, clamped to 1–8192 (the fields start
+at 1920×1080 the first time the window opens, and remember the last value entered). A sized
+(Custom) viewport makes the canvas a **responsive scope** (it applies the `@container` marker)
+so the mounted story's `sm:`/`md:`/… breakpoints evaluate against the simulated width rather
+than the panel root. See [styling-variants.md](styling-variants.md) for container queries.
 
 Two behaviors are worth knowing:
 
@@ -228,13 +230,15 @@ scale-accurate output use the headless capture path, which sets `referenceResolu
 
 ## Headless screenshot capture
 
-The same `[VelvetPreview]` registry drives a registry-based **visual-regression** capture: an
-editor-only harness discovers every story via `VelvetPreviewRegistry.DiscoverStories()`,
-mounts each through a `VelvetPreviewHost` (which runs the story's `[VelvetPreviewSetup]`
-environment), and renders it off-screen into a `RenderTexture`, writing one PNG per story. It
-runs at a real reference resolution on an instantiated `PanelSettings`, so the captured output
-is scale-accurate where the live window is not. Because both paths drive off one registry, the
-captured set and the interactively-previewed set stay in lock-step.
+The same `[VelvetPreview]` registry also works as the data source for a headless, off-screen
+**visual-regression** capture pattern that a consumer project can build on top of Velvet's public
+building blocks: discover every story via `VelvetPreviewRegistry.DiscoverStories()`, mount each
+through a `VelvetPreviewHost` (which runs the story's `[VelvetPreviewSetup]` environment), and
+render it into a `RenderTexture` on an instantiated `PanelSettings` with a real
+`referenceResolution`, writing one PNG per story — scale-accurate where the live window is not
+(see [Scale caveat](#scale-caveat) above). Velvet does not ship a prebuilt capture harness;
+`VelvetPreviewRegistry` and `VelvetPreviewHost` are the two public pieces it exposes for one, so
+that a hand-rolled harness and the live window drive off the same registry and never drift apart.
 
 ## Related tooling
 

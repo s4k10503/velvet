@@ -77,6 +77,9 @@ docs/api/
 docs/_site/
 docs/obj/
 docs/bin/
+# Disposable build-time copy of Packages/com.velvet.core/Documentation~ staged by docs/build.sh
+# so DocFX's TOC/xref resolution can see the guides; Documentation~ remains the single source.
+docs/guides/
 # The hand-authored DocFX project must be tracked despite the blanket *.csproj ignore above.
 !docs/Velvet.Docs.csproj
 

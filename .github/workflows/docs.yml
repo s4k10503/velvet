@@ -15,12 +15,14 @@ on:
   push:
     branches: [main]
     # Only rebuild the API site when something it actually renders changes.
-    # DocFX reads XML-doc comments from the package's Runtime sources plus the
-    # hand-authored docs/ project, so unrelated commits skip the ~8-minute Unity
-    # compile. Test sources are colocated under Runtime/ but never documented.
+    # DocFX reads XML-doc comments from the package's Runtime sources, the hand-authored guides
+    # under Documentation~ (staged into docs/guides/ as part of the build), and the hand-authored
+    # docs/ project, so unrelated commits skip the ~8-minute Unity compile. Test sources are
+    # colocated under Runtime/ but never documented.
     paths:
       - 'Packages/com.velvet.core/Runtime/**/*.cs'
       - '!Packages/com.velvet.core/Runtime/**/Tests/**'
+      - 'Packages/com.velvet.core/Documentation~/**'
       - 'docs/**'
       - '.github/workflows/docs.yml'
   release:
@@ -129,6 +131,11 @@ jobs:
             exit 1
           }
           cd docs
+          # Stage a disposable copy of the Documentation~ guides so DocFX's TOC/xref resolution
+          # can see them (see docs/build.sh for why this can't reference Documentation~ in place).
+          rm -rf guides
+          mkdir -p guides
+          cp ../Packages/com.velvet.core/Documentation~/*.md guides/
           docfx metadata docfx.json
           docfx build docfx.json
 

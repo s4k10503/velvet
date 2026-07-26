@@ -39,7 +39,7 @@ Velvet intentionally diverges from React only when **the improvement is clearly 
 
 - **C# language constraints**: PascalCase identifiers, JSX-less factory style, etc.
 - **Unity environment constraints**: `refCallback` for direct `VisualElement` access, bridging the UI Toolkit event model
-- **Type safety / GC-allocation reductions**: stricter constraints than React's spec when warranted, plus Source Generator-driven static expansion
+- **Type safety / GC-allocation reductions**: stricter constraints than React's spec when warranted, plus compile-time code generation (a Source Generator and ILPP weaving)
 
 "Names match but behaviour does not" is treated as **a trap to avoid**: any drift discovered is resolved in the direction of React's behaviour.
 
@@ -54,7 +54,7 @@ The UI is described as the pure-function output of state. The VNode tree may be 
 - **Reconciler**: diff patching plus Lane-based priority scheduling
 - **Hooks**: React's primary hooks exposed in C# PascalCase (see [Documentation~/](./Documentation~/) for details)
 - **Animation**: `V.Motion` / `V.AnimatePresence` model Framer Motion — variants with `initial` / `animate` / `exit` labels, standalone mount enters, `PopLayout` exits, `staggerChildren` / `delayChildren` orchestration, per-property transition overrides, and opt-in spring physics (see [Documentation~/motion.md](./Documentation~/motion.md)); `AnimatePresence` is DOM-less (it emits no wrapper, mirroring React/Framer). Lists are `V.AnimatePresence(children: V.List(items, key, (x, i) => V.Motion(...)))` — author the animated cell directly, exactly like Framer's `motion.div`
-- **Source Generator memoization**: `[Memoize]` for partial-method-level memoization, `[Component(Memoize = true)]` for whole-component `React.memo`-equivalent caching
+- **Compile-time memoization**: `[Memoize]` (a Roslyn source generator) for partial-method-level memoization; `[Component(Memoize = true)]` (an ILPP weaving pass, the same one driving `[Component(Compiler = true)]`'s auto-memoization) for whole-component `React.memo`-equivalent caching — see [Documentation~/memoization.md](./Documentation~/memoization.md)
 
 #### 2. Utility-first styling
 
@@ -108,46 +108,42 @@ Velvet is dedicated to the UI layer. Avatar control, camera, physics, and input 
 
 ## React API quick reference
 
-For full details see [Documentation~/react-migration.md](./Documentation~/react-migration.md). The tables below list only the most common mappings.
+The tables below are representative samples; each links to the complete mapping.
 
 ### Hooks
+
+A representative sample — see
+[Documentation~/react-migration.md §1](./Documentation~/react-migration.md#1-hooks-mapping) for
+the complete hook-by-hook mapping (all of `UseReducer` / `UseLayoutEffect` / `UseInsertionEffect` /
+`UseMemo` / `UseTransition` / `UseDeferredValue` / `UseOptimistic` / `UseId` /
+`UseImperativeHandle`, plus semantic-difference notes):
 
 | React | Velvet |
 |-------|--------|
 | `useState` | `UseState` |
-| `useReducer` | `UseReducer` |
 | `useEffect` (post-paint async) | `UseEffect` |
-| `useLayoutEffect` (pre-paint sync) | `UseLayoutEffect` |
-| `useCallback` | `UseCallback` |
-| `useMemo` | `UseMemo` |
 | `useContext` | `UseContext` |
-| `useTransition` | `UseTransition` |
-| `useDeferredValue` | `UseDeferredValue` |
-| `useId` | `UseId` |
 | `useRef` | Inside a component: `Hooks.UseRef<T>()` / Outside a component (orchestrator etc.): `new Ref<T>()` |
-| `useImperativeHandle` | `UseImperativeHandle` |
 
 #### Velvet-only hooks
 
-Hooks without a direct React core equivalent. These cover Unity / DI / async-mutation use cases that the React ecosystem typically handles via 3rd-party libraries (react-router, react-query).
-
-| Hook | Purpose |
-|------|--------|
-| `UseService<T>()` | Resolves a service via `HookServiceContext` (DI framework neutral) |
-| `UseBlocker(predicate, deps)` | Blocks navigation departures — sync and async overloads (mirrors React Router) |
-| `UseMutation<TVariables, TData>(options)` | Tracks the Idle/Pending/Success/Error lifecycle of an async mutation. Use `Velvet.Unit` for void variables or void return (mirrors react-query's `useMutation`) |
+Hooks with no direct React-core equivalent, covering Unity / DI / routing / async-mutation cases
+the React ecosystem usually hands to third-party libraries — `UseService<T>()` (DI resolution),
+`UseStore` (Zustand-style store subscription, see [Quick start](#quick-start) below), `UseBlocker`
+(React-Router-style navigation blocking), and `UseMutation` (react-query-style async-mutation
+lifecycle).
 
 ### JSX → V.\*
+
+A representative sample — see
+[Documentation~/react-migration.md §2](./Documentation~/react-migration.md#2-dsl-mapping--jsx--v)
+for the complete DSL mapping (`Fragment`, `Provider`, `Suspense`, `ErrorBoundary`, and more):
 
 | React (JSX) | Velvet |
 |-------------|--------|
 | `<div>` / `<button>` / `<input>` | `V.Div(...)` / `V.Button(...)` / `V.TextField(...)` |
 | `{cond && <X/>}` | `V.When(cond, () => V.X())` |
 | `items.map(x => <X key={x.id}/>)` | `V.List(items, x => x.id, x => V.X(...))` |
-| `<>{children}</>` | `V.Fragment(children)` |
-| `<Ctx.Provider value={v}>` | `V.Provider(ctx, v, ...children)` |
-| `<Suspense fallback={<X/>}>` | `V.Suspense(fallback, ...children)` |
-| `<ErrorBoundary fallback={...}>` | `V.ErrorBoundary(fallback, ...children)` |
 
 ---
 
@@ -180,26 +176,10 @@ VNode CounterApp() =>
 V.Mount(rootElement, CounterApp());
 ```
 
-### Store + UseStore (Zustand-style reactive binding)
-
-```csharp
-public sealed record CounterState(int Count);
-
-public sealed class CounterStore : Store<CounterState>
-{
-    public CounterStore() : base(new CounterState(Count: 0)) { }
-    public void Increment() => SetState(s => s with { Count = s.Count + 1 });
-}
-
-VNode CounterApp(CounterStore store) =>
-    V.Component(() =>
-    {
-        var count = UseStore(store, s => s.Count);
-        return V.Button(
-            text: $"Count: {count}",
-            onClick: store.Increment);
-    });
-```
+For the Zustand-style `Store` + `UseStore` example (shared state across components), see the
+repository root README's
+[Store (Zustand-style)](https://github.com/s4k10503/velvet/blob/main/README.md#store-zustand-style)
+section.
 
 ---
 
@@ -211,7 +191,7 @@ See [package.json](./package.json) for dependent packages. Velvet is a self-cont
 
 ## Documentation
 
-- [Documentation~/README.md](./Documentation~/README.md) — Velvet documentation index and quick reference
+- [Documentation~/README.md](./Documentation~/README.md) — Velvet documentation index
 - [Documentation~/react-migration.md](./Documentation~/react-migration.md) — In-depth guide for developers coming from React
 - [Documentation~/memoization.md](./Documentation~/memoization.md) — `[Memoize]` and component-level caching
 
