@@ -22,7 +22,8 @@ namespace Velvet.SourceGenerators.ReactiveScope
             var cfg = TryCreateCfg(methodBody);
             if (cfg is null)
             {
-                // When the CFG cannot be built, fall back to walking the raw IOperation tree.
+                // CFG construction can fail on incomplete ASTs or partial implementations in flux, so degrade
+                // gracefully by walking the raw operation tree instead of throwing out of the analyzer.
                 collector.Visit(methodBody);
                 return collector.GetDependencies();
             }
@@ -60,8 +61,6 @@ namespace Velvet.SourceGenerators.ReactiveScope
             }
             catch
             {
-                // CFG construction can fail on incomplete ASTs or partial implementations in flux.
-                // The caller handles this conservatively via the null fallback.
                 return null;
             }
         }

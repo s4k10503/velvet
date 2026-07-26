@@ -18,7 +18,8 @@ namespace Velvet.TestUtilities
         private static MethodInfo? s_invokeCallbacksMethod;
 
         /// <summary>
-        /// Directly invokes the clicked handler registered on a Button. Equivalent to React Testing Library's <c>fireEvent.click(button)</c>.
+        /// Directly invokes the clicked handler registered on a Button, synchronously calling straight into its
+        /// registered callback rather than routing a real pointer event through a panel.
         /// </summary>
         /// <remarks>
         /// In tests without a panel attached, SendEvent / NavigationSubmitEvent / ClickEvent are not routed, so Button.clicked never fires.
@@ -43,7 +44,8 @@ namespace Velvet.TestUtilities
         }
 
         /// <summary>
-        /// Directly invokes the registered ChangeEvent handler on an <see cref="INotifyValueChanged{T}"/>. Equivalent to React Testing Library's <c>fireEvent.change(input, { value })</c>.
+        /// Directly invokes the registered ChangeEvent handler on an <see cref="INotifyValueChanged{T}"/>, synchronously
+        /// firing the callback registry rather than routing a real change event through a panel.
         /// Updates the value via <see cref="INotifyValueChanged{T}.SetValueWithoutNotify"/> so the UI state stays consistent.
         /// </summary>
         /// <remarks>

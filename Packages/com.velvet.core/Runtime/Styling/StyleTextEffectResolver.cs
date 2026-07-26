@@ -35,30 +35,28 @@ namespace Velvet
     // PreLine ALSO drives an inline `white-space: pre-wrap` write, so the preserved newlines render as
     // breaks and wrapping still works. That write happens in ApplyToElement (below), on EVERY text leaf
     // whose EFFECTIVE (cascade-resolved) axis is PreLine — the same call, off the same resolved value, that
-    // already drives the string collapse. An earlier design instead wrote it ONCE, only on the element whose
-    // OWN class list carried whitespace-pre-line, and left native UI Toolkit inheritance of `white-space` to
-    // carry it to descendants; that cannot work for the primary use case (a class on a container Div, text
-    // in a descendant Label) because Label/TextElement carries its own element-level `white-space` rule from
-    // the default theme/USS, and an element's OWN matching USS rule always beats an INHERITED value in the
-    // cascade regardless of specificity — so the write never reached a descendant Label no matter how it
-    // got there. Writing per-leaf off the RESOLVED value sidesteps that: a leaf with its own explicit
+    // already drives the string collapse. Writing must happen per-leaf off the RESOLVED value rather than once
+    // on the class-carrying ancestor: UI Toolkit gives an element's OWN matching USS rule priority over an
+    // INHERITED value regardless of specificity, so a single ancestor-level write would never reach a
+    // descendant Label carrying its own default `white-space` rule from the theme/USS — the primary use case
+    // (a class on a container Div, text in a descendant Label) depends on this. A leaf with its own explicit
     // whitespace-{normal,nowrap,pre,pre-wrap} class resolves its own axis first in ResolveEffective (the
     // walk starts at the leaf itself), so it never receives the write and its own USS class governs
     // untouched — no separate "does this leaf opt itself out" check is needed, ResolveEffective already IS
-    // that check, and the write and the collapsed string now always agree for the same leaf by construction.
+    // that check, and the write and the collapsed string always agree for the same leaf by construction.
     //
     // The write's clear-when-not-PreLine (ApplyToElement) is OWNERSHIP-gated via TextWhitespaceOwned, not
     // unconditional: it clears style.whiteSpace back to StyleKeyword.Null only when this element is
     // CURRENTLY marked owned there (and then drops the mark); any other leaf — one this resolver never
-    // wrote to at all — is left completely untouched. An earlier design cleared unconditionally on every
-    // non-PreLine call, reasoning that no other Velvet system ever writes `style.whiteSpace` inline besides
-    // FiberElementPoolReset's pool-RETURN sweep (a real second writer, but one that only ever runs on a
-    // pooled element BETWEEN tenants, never on one that is still live) — that reasoning was wrong: a
-    // consumer's refCallback can write style.whiteSpace directly (a pattern the framework's own docs treat
-    // as legitimate, see ReconcilerContext.RefCallbacks), and the unconditional clear silently clobbered it
-    // on this element's very next mount-or-patch text-effect pass, whether or not PreLine was involved
-    // anywhere in the tree. Ownership-tracking fixes that: the resolver now only ever undoes its OWN prior
-    // write, so an element it never touched keeps whatever any other writer put there.
+    // wrote to at all — is left completely untouched. Ownership gating is required because a consumer's
+    // refCallback can legitimately write style.whiteSpace directly (a pattern the framework's own docs treat
+    // as legitimate, see ReconcilerContext.RefCallbacks); FiberElementPoolReset's pool-RETURN sweep is the
+    // only OTHER writer, and it only ever runs on a pooled element BETWEEN tenants, never on one still live,
+    // so it cannot explain away a live element's inline value. An unconditional clear on every non-PreLine
+    // call would silently clobber a refCallback's write on this element's very next mount-or-patch
+    // text-effect pass, whether or not PreLine was involved anywhere in the tree. Tracking ownership instead
+    // means the resolver only ever undoes its OWN prior write, so an element it never touched keeps whatever
+    // any other writer put there.
     //
     // TextWhitespaceOwned rides the same ClearElementSideTables sweep as TextEffects/TextRawText, so a
     // normal unmount or pool return scrubs it for free — FiberElementPoolReset's unconditional

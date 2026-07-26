@@ -11,8 +11,9 @@ using Velvet.SourceGenerators.ReactiveScope;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Helper for invoking <see cref="ReactiveScopeAnalyzer"/> from tests.
-    /// Reuses the same Velvet stub / reference resolution as <see cref="PurityAnalyzerTestHelper"/>.
+    /// Invokes <see cref="ReactiveScopeAnalyzer"/> directly against a Compilation so tests can assert on its
+    /// output in isolation, without running the full generator pipeline. Reuses the same Velvet stub and
+    /// reference resolution as <see cref="PurityAnalyzerTestHelper"/> so the two test doubles cannot drift apart.
     /// </summary>
     internal static class ReactiveScopeAnalyzerTestHelper
     {
@@ -25,8 +26,9 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         /// <summary>
-        /// Extracts the ReactiveScopeResult corresponding to the return statement's value within the given method.
-        /// Most of the 16 fixtures can be verified using this pattern.
+        /// Most of the 16 fixtures only need to assert on the analysis of Render's returned expression, not every
+        /// operation in the method body, so this extracts just the ReactiveScopeResult for that return statement's
+        /// value.
         /// </summary>
         public static ReactiveScopeResult AnalyzeReturnExpression(
             string source, string methodName, CancellationToken ct = default)
@@ -44,8 +46,9 @@ namespace Velvet.SourceGenerators.Tests
                 : new HashSet<string>();
 
         /// <summary>
-        /// For the sub-expression returned from Render, converts the dependency symbol list into AccessPath strings
-        /// and returns them. A fallback (null AccessPath) is represented as "&lt;fallback:reason&gt;".
+        /// Assertions need stable strings rather than ISymbol identity, so this converts the dependency list for
+        /// Render's returned sub-expression into AccessPath strings, encoding a fallback (null AccessPath) inline
+        /// as "&lt;fallback:reason&gt;" so a single assertion can cover both resolved and unresolved paths.
         /// </summary>
         public static ImmutableArray<string> ResolveAccessPaths(
             string source, string methodName, CancellationToken ct = default)

@@ -9,9 +9,9 @@ using Microsoft.CodeAnalysis.Diagnostics;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Helper for retrieving MemoizeMethodGenerator execution results.
     /// Since the Velvet Runtime cannot build to netstandard2.0, the test input embeds a minimal stub
-    /// of the required Velvet types to drive the generator.
+    /// of the required Velvet types to drive the generator. Helper for retrieving MemoizeMethodGenerator
+    /// execution results.
     /// </summary>
     internal static class GeneratorTestHelper
     {

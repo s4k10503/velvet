@@ -79,10 +79,10 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_BrightnessAboveOne_When_Rendered_Then_ThePixelIsBrighterThanIdentityBrightness()
         {
-            // Arrange — identity brightness renders the base gray. Under the old Tint path brightness-[2] was
-            // unparseable and even a parser-only widening would clamp to identity, so this pixel and the
-            // brightened one below would read identical; the strict increase needs BOTH the parser widening
-            // and the shader swap.
+            // Arrange — identity brightness renders the base gray. Detecting a strict increase at brightness-[2]
+            // requires BOTH the parser to accept N>1 without clamping AND the shader to multiply the factor
+            // unclamped — either alone still renders identity gray, so this pixel and the brightened one below
+            // would read identical.
             yield return MountFilteredFill("brightness-[1]");
             var identity = SampleCenterAverage(20);
             Assume.That(identity.r, Is.GreaterThan(10), "Precondition: the base fill rendered a non-black pixel");
@@ -115,10 +115,9 @@ namespace Velvet.Tests
         public IEnumerator Given_SaturateAboveOne_When_Rendered_Then_ThePixelChannelsSpreadWiderThanIdentity()
         {
             // Arrange — a partially saturated fill at identity saturation keeps its native channel spread.
-            // Over-saturation pushes the channels APART from their common luminance; grayscale(1-N) — the old
-            // path, capped at full desaturation — can only pull them together, and saturate-[2] was
-            // unparseable there, so a widening endpoint needs both the parser widening and the shader's
-            // unclamped luma lerp.
+            // Over-saturation pushes the channels APART from their common luminance, which requires BOTH the
+            // parser to accept N>1 and the shader's luma lerp to run unclamped past full desaturation — a lerp
+            // that only pulls channels together toward gray could never widen the spread this way.
             yield return MountFilteredFill("saturate-[1]", "#a06060");
             var identity = SampleCenterAverage(20);
             var identitySpread = ChannelSpread(identity);

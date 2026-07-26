@@ -7,8 +7,8 @@ namespace Velvet.TestUtilities
     /// <summary>
     /// Shared reflection helper for EditMode fixtures that mount onto a real editor panel: the batchmode
     /// PlayerLoop never ticks layout on its own, so a fixture that reads <c>resolvedStyle</c> must force a
-    /// layout/styles pass first. Previously duplicated across <c>PanelTestBase</c>,
-    /// <c>FocusLossDuringCommitTests</c>, and the preview window's zoom/layout fixture.
+    /// layout/styles pass first. Shared across <c>PanelTestBase</c>, <c>FocusLossDuringCommitTests</c>,
+    /// and the preview window's zoom/layout fixture so each does not duplicate this reflection.
     /// </summary>
     public static class EditorPanelTestHelpers
     {

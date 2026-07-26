@@ -35,6 +35,11 @@ namespace Velvet
         /// re-renders whenever its parent re-renders; only an opted-in component
         /// skips a re-render on equal props.
         /// </para>
+        /// <para>
+        /// Unrelated to <see cref="MemoizeAttribute"/>: that attribute drives per-method wrapping by the Source
+        /// Generator, while this property is the per-component props-bail flag at the reconcile boundary. The
+        /// two share a name but govern independent mechanisms.
+        /// </para>
         /// </summary>
         public bool Memoize { get; init; } = false;
 

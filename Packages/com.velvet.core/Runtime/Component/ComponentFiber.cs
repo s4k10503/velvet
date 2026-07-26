@@ -87,8 +87,9 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Auxiliary structure that represents the Lane scheduling state on a Fiber.
-    /// A minimal model of the per-fiber and per-subtree pending-update lane bitsets.
+    /// Lazily allocated via <see cref="ComponentFiber.EnsureLanes"/> so a fiber that never enrolls in a
+    /// lane pays no allocation for it. Holds only this fiber's own pending-lane queue
+    /// (<see cref="FiberLaneSet"/>) and transition state — never a per-subtree aggregate.
     /// </summary>
     internal sealed class LaneState
     {
@@ -546,7 +547,6 @@ namespace Velvet
             ImperativeHandleSlots.Clear();
         }
 
-        // Disposes every slot in the list and empties it; no-op when the list was never allocated.
         private static void DisposeAndClear<T>(List<T>? slots) where T : IDisposable
         {
             if (slots == null) return;

@@ -35,10 +35,9 @@ namespace Velvet.Tests
     /// <remarks>
     /// The manipulator writes INLINE margins (resolved to pixels from the same scale as <c>_tokens.uss</c>), so
     /// the produced spacing is observable via <c>element.style.margin*</c> without attaching to a panel or
-    /// ticking layout — wrap is likewise detected off-panel via the <c>flex-wrap</c> class marker. The OLD
-    /// <c>_gap.uss</c> (a <c>.gap-* &gt; *</c> USS child-selector that only resolves under a panel and also
-    /// margins the last child) produces no inline margins at all, so these assertions fail against it and pass
-    /// against the manipulator.
+    /// ticking layout — wrap is likewise detected off-panel via the <c>flex-wrap</c> class marker. A USS
+    /// child-selector approach to gap would resolve only under a live panel and produce no inline margins at
+    /// all, so these off-panel assertions are a meaningful discriminator against that class of implementation.
     /// </remarks>
     [TestFixture]
     internal sealed class GapParityTests
@@ -392,9 +391,10 @@ namespace Velvet.Tests
         // children are reconciled into — scrollView.contentContainer — not the ScrollView element itself.
         // The ScrollView indexer redirects to contentContainer, so the per-child leading margins look the
         // same either way; the load-bearing difference is the WRAP path's CONTAINER negative margin, which
-        // pre-fix lands on the ScrollView's OWN margin (wrong: shifts the whole scroller) and post-fix
-        // lands on the contentContainer. We assert both: content is spaced, and the container margin is on
-        // the contentContainer with the ScrollView's own margin left untouched.
+        // must land on the contentContainer (where the content lives), not the ScrollView's own margin —
+        // landing there would shift the whole scroller instead of just the content. We assert both: content
+        // is spaced, and the container margin is on the contentContainer with the ScrollView's own margin
+        // left untouched.
         [Test]
         public void Given_ScrollViewWrapGap4_When_Reconciled_Then_ContainerMarginOnContentNotScrollView()
         {
@@ -452,12 +452,13 @@ namespace Velvet.Tests
         }
 
         // Bug 2: off-panel, bare `flex gap-4` (Auto axis, no flex-row/flex-col) must resolve the ROW edge
-        // (margin-left), mirroring the new .flex=row default — NOT the old column fallback (margin-top).
+        // (margin-left): flex containers default to row, so the Auto axis's off-panel fallback must match
+        // that default rather than assuming column.
         [Test]
         public void Given_BareFlexGap4_When_ReconciledOffPanel_Then_ResolvesHorizontalEdge()
         {
             // Arrange — note: NO flex-row / flex-col class, so the Auto axis falls back to the off-panel
-            // class default. Pre-fix this defaulted to column; post-fix it defaults to row.
+            // class default, which resolves to row (flex's own default direction), not column.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { V.Div(className: "flex gap-4", children: Children(3)) };
 

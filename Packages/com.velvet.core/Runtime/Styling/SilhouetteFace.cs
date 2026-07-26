@@ -5,8 +5,9 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // A receiver for the rounded-rect outline segments the shared builder emits. Two implementations: a
-    // Painter2D passthrough (the skew / shadow fill + stroke path, byte-identical to the old inline builder)
-    // and a polyline flattener (the dashed-border path, which needs queryable points a Painter2D cannot give
+    // Painter2D passthrough (the skew / shadow fill + stroke path, whose call sequence must exactly match a
+    // direct Painter2D implementation so routing through this shared interface changes nothing visually) and
+    // a polyline flattener (the dashed-border path, which needs queryable points a Painter2D cannot give
     // back). Only the primitive path ops are exposed — BeginPath / ClosePath stay Painter2D-specific and the
     // dash marcher closes the loop itself with an explicit `closed` flag.
     internal interface IRoundedRectPathSink
@@ -52,8 +53,8 @@ namespace Velvet
 
         // Builds the element's rounded-rect path (inset on all sides) onto a Painter2D, shearing every point.
         // A thin wrapper over EmitShearedRoundedRectPath: BeginPath, emit the outline through a passthrough
-        // sink, ClosePath — byte-identical to the old inline builder, so skew / shadow fill + stroke are
-        // unchanged. tanX = tanY = 0 yields an upright rounded rect.
+        // sink, ClosePath, so skew / shadow fill + stroke rendering is unaffected by going through the shared
+        // sink abstraction. tanX = tanY = 0 yields an upright rounded rect.
         internal static void BuildShearedRoundedRect(Painter2D p, VisualElement ve, float inset,
             float w, float h, float tanX, float tanY)
         {

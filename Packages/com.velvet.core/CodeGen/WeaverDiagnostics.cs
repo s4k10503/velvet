@@ -5,8 +5,9 @@ namespace Velvet.CodeGen
     // Shared support for the two ILPP weavers (CompilerWeaver, MetadataRegistrationWeaver). Both hit the
     // identical resolution-failure shape when the Velvet runtime members they inject calls to cannot be
     // resolved from the processed module — a stale or duplicate copy of the Velvet assembly defeating the
-    // post-processor's resolver — and both fell back to the same remediation sentence and the same
-    // referenced-assembly type lookup before this was factored out.
+    // post-processor's resolver — so both route through this single formatter and lookup to keep the
+    // diagnostic wording and resolution behavior identical between them instead of drifting apart as two
+    // independent copies.
     internal static class WeaverDiagnostics
     {
         // Formats the warning a weaver emits when its TryResolve fails: the assembly name (so the outcome

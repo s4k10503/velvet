@@ -306,7 +306,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AMotionWithItsOwnAnimate_When_Mounted_Then_ItsElementCarriesTheResolvedVariantClass()
         {
-            // Arrange / Act — a standalone Motion resolving its own label (no longer baked at construction).
+            // Arrange / Act — a standalone Motion resolving its own label.
             using var scope = new ReconcilerScope();
             Mount(scope, new VNode[] { V.Motion("item", key: "m", variants: Fade, animate: "visible") });
 

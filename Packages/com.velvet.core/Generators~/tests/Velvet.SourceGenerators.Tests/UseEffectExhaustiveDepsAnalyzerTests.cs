@@ -606,9 +606,8 @@ namespace MyApp.Pages
         [Fact]
         public void Reports_When_UseState_ActionTyped_Value_Is_Missing_From_Deps()
         {
-            // Isolates the slot-position logic from the obsolete type-based exemption: the value element (slot 0)
-            // is typed System.Action, which the removed type-based exemption would have wrongly treated as stable.
-            // The slot-aware exemption must still flag it, so a regression back to type-based logic fails here.
+            // The exemption is slot-based, not type-based: the UseState value at slot 0 must be flagged regardless
+            // of its type, including when typed System.Action. A regression back to type-based logic fails here.
             const string source = @"
 namespace MyApp.Pages
 {

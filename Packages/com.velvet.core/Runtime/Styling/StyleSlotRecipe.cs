@@ -3,8 +3,9 @@ using System.Collections.Generic;
 namespace Velvet
 {
     /// <summary>
-    /// Defines class names for UI patterns with multiple slots (parts) in one place.
-    /// Each slot can have a base class and variant axes.
+    /// Companion to <see cref="StyleRecipe"/> for components whose variants must drive class names across
+    /// several independently-styled parts (e.g. a trigger and its listbox) at once, keeping every slot's
+    /// classes in sync under the same variant selection instead of duplicating a StyleRecipe per part.
     /// </summary>
     public sealed class StyleSlotRecipe
     {

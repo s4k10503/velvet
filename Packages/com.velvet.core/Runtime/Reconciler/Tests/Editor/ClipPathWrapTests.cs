@@ -449,7 +449,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ShadowAndRingTogether_When_Reconciled_Then_TheRingStillTakesTheWrapper()
         {
-            // The shadow is a wrapper-less paint, so it no longer competes with the ring for the wrapper: a
+            // The shadow is a wrapper-less paint, so it does not compete with the ring for the wrapper: a
             // shadow+ring element wears the ring wrapper AND carries a shadow paint on the inner.
             using var scope = new ReconcilerScope();
 

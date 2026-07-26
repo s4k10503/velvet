@@ -15,9 +15,9 @@ using Microsoft.CodeAnalysis.Host.Mef;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Helper for retrieving the CodeFix application result as a string.
-    /// Directly invokes AdhocWorkspace + CodeFixProvider.RegisterCodeFixesAsync,
-    /// then stringifies the SyntaxRoot after applying the selected CodeAction.
+    /// Runs the fix through a real AdhocWorkspace + CodeFixProvider.RegisterCodeFixesAsync round-trip instead of
+    /// diffing strings by hand, so the result reflects Roslyn's actual edit and formatting behavior.
+    /// Stringifies the SyntaxRoot after applying the selected CodeAction.
     /// </summary>
     internal static class CodeFixTestHelper
     {

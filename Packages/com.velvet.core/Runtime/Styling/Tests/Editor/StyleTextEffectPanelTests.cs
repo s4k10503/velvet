@@ -255,12 +255,12 @@ namespace Velvet.Tests
             // style.whiteSpace directly at mount, a pattern the framework's own docs treat as legitimate
             // (ReconcilerContext.RefCallbacks). ApplyToElement still runs for this label on every mount/patch
             // pass (it is text-bearing and tracks a raw text) but must never touch a property it never
-            // itself wrote to. No Assume precondition here (unlike the sibling pre-line tests): under the old
-            // unconditional clear-when-not-PreLine write, Apply() runs immediately after the refCallback in
-            // BOTH the create and patch call sites, so the ref's value was already stomped to
-            // StyleKeyword.Null at MOUNT, before any patch — gating on it surviving mount would itself go
-            // Inconclusive rather than cleanly RED. The single assert below, after both mount and a driven
-            // patch, is the honest regression pin.
+            // itself wrote to. No Assume precondition here (unlike the sibling pre-line tests): were the
+            // clear-when-not-PreLine write unconditional rather than ownership-gated, Apply() runs immediately
+            // after the refCallback in BOTH the create and patch call sites, so the ref's value would already
+            // be stomped to StyleKeyword.Null at MOUNT, before any patch — gating on it surviving mount would
+            // itself go Inconclusive rather than cleanly RED under that regression. The single assert below,
+            // after both mount and a driven patch, is the honest regression pin.
             Mount(V.Component(RenderUppercaseOnlyWithManualWhiteSpaceRef));
 
             s_setUppercaseRefText.Invoke("there");

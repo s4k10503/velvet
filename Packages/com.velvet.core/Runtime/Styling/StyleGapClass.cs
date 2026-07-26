@@ -5,8 +5,8 @@ namespace Velvet
     // Parses Velvet's gap-* / gap-x-* / gap-y-* utility classes (and the space-x-* /
     // space-y-* aliases, and the gap-[..] / gap-x-[..] JIT arbitrary form) into a pixel gap value
     // and the axis they space along, for StyleGapManipulator. The numeric scale mirrors the
-    // --space-* tokens in _tokens.uss (1 unit = 4px), so call sites that used the old _gap.uss
-    // classes are unaffected.
+    // --space-* tokens in _tokens.uss (1 unit = 4px), keeping gap-* spacing visually consistent
+    // with the padding/margin scale elsewhere in the utility set.
     internal static class StyleGapClass
     {
         // Returns true and the parsed gap / axis when

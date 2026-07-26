@@ -7,7 +7,8 @@ namespace Velvet.DevTools
     /// <summary>
     /// Global registry of fibers observed by the DevTools window. Every <see cref="V.Mount"/> auto-registers
     /// its root here (and unregisters on dispose), so opening <b>Window ▸ Velvet ▸ DevTools Inspector</b>
-    /// shows the running app's component tree with no manual setup — the React DevTools "just attaches" model.
+    /// shows the running app's component tree with no manual setup — observation attaches to whatever app is
+    /// already running.
     /// <para>
     /// Manual registration stays available for labelling an interior sub-tree (e.g. a specific page fiber):
     /// <code>
@@ -68,7 +69,6 @@ namespace Velvet.DevTools
             }
 
             var resolvedLabel = label ?? fiber.Body?.Method?.Name ?? "[Component]";
-            // Look up the existing entry and overwrite it.
             for (var i = 0; i < s_entries.Count; i++)
             {
                 if (ReferenceEquals(s_entries[i].Fiber, fiber))

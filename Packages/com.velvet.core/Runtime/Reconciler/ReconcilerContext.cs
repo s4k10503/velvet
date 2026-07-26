@@ -368,7 +368,7 @@ namespace Velvet
         // overlay that paints the outset (or inset) ring band. No GPU resource to dispose (unlike clip): the
         // overlay is a plain bordered VisualElement, so cleanup just unwraps + drops the entry. Mutually
         // exclusive with ClipPathBindings on the same element (one structural wrapper per element — ring is
-        // the lowest-precedence wrapper layer). The shadow is now a paint (no wrapper), so it composes with a
+        // the lowest-precedence wrapper layer). The shadow is a paint (no wrapper), so it composes with a
         // ring rather than competing for the wrapper.
         public Dictionary<VisualElement, RingBinding> RingBindings { get; } = new();
 
@@ -714,9 +714,6 @@ namespace Velvet
             var cleanup = refCallback(element);
             RefCallbacks[element] = (refCallback, cleanup);
         }
-
-        // DOM-less AnimatePresence keeps its per-boundary state in PresenceStates (below); the old
-        // wrapper-container-keyed maps were removed with PresenceReconciler.
 
         // Wrapper-less Suspense fallback state, keyed by (boundary fiber, the Suspense's scoped position
         // key). True while that Suspense is showing its fallback subtree instead of its children. The

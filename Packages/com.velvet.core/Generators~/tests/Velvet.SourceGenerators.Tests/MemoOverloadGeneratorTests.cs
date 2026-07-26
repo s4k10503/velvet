@@ -59,8 +59,9 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         /// <summary>
-        /// Extracts the section from the doc comment to the closing brace of the method matching the given signature
-        /// from the generated source.
+        /// Starts at the doc comment rather than the method signature so the snapshot also fails if the generator's
+        /// XML summary text drifts, not just its code. Extracts through the closing brace of the method matching
+        /// the given signature from the generated source.
         /// </summary>
         private static string ExtractMethodBlock(string source, string signature)
         {

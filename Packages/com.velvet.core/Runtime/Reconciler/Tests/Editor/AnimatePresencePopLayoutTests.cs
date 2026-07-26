@@ -16,7 +16,8 @@ namespace Velvet.Tests
     /// animation finishes on top of them. The pin is captured from the child's own last resolved layout, so a
     /// cancelled exit (the key re-added before the animation finishes) can simply clear those five inline
     /// styles to rejoin normal flow. Under <see cref="AnimatePresenceMode.Sync"/> (the default) none of this
-    /// applies — an exiting child keeps participating in flow exactly as it did before this mode existed.
+    /// applies — an exiting child keeps participating in flow exactly like an ordinary in-flow exit, with no
+    /// PopLayout pin applied.
     /// Mounted in a real <see cref="UnityEditor.EditorWindow"/> panel with a forced layout pass, because the pin only
     /// applies when the child's resolved rect is already finite (an un-laid-out panel leaves it NaN).
     /// </summary>

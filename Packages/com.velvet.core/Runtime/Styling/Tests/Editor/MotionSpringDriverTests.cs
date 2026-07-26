@@ -155,8 +155,9 @@ namespace Velvet.Tests
         public void Given_ANegativeRotateClassPair_When_Resolved_Then_TheRotateChannelMatchesTheSharedMagnitudeTable()
         {
             // Arrange / Act — rotate-45 -> rotate-n45 mirrors the static .rotate-45 / .rotate-n45 USS classes;
-            // the parser now reads the magnitude from StyleArbitraryValueResolver's own rotate-preset table
-            // (negating it itself for the "n"-suffixed spelling) instead of a duplicate hand-expanded ± table.
+            // the parser reads the magnitude from StyleArbitraryValueResolver's own rotate-preset table
+            // (negating it itself for the "n"-suffixed spelling), the single source of truth this pins against
+            // rather than a separately hand-expanded ± table that could drift out of sync.
             var plan = MotionSpringClassParser.Resolve(new[] { "rotate-45" }, new[] { "rotate-n45" });
             Assume.That(plan.Rotate, Is.Not.Null, "Precondition: the pair resolves a rotate channel");
 

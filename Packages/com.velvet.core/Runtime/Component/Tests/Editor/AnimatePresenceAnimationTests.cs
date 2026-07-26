@@ -12,9 +12,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies the post-animation contract of AnimatePresence and its style transition scheduler — the behaviour
-    /// observable only once schedule.Execute / ExecuteLater advance. Previously this needed a live PlayMode loop;
-    /// here a simulated panel (see the base) advances the clock and ticks the scheduler deterministically via
-    /// <see cref="SimulatedPanelTestBase.Frame"/>, so every enter/exit/stagger phase is driven exactly and headless:
+    /// observable only once schedule.Execute / ExecuteLater advance. A simulated panel (see the base) advances the
+    /// clock and ticks the scheduler deterministically via <see cref="SimulatedPanelTestBase.Frame"/>, so every
+    /// enter/exit/stagger phase is driven exactly and headless:
     /// <list type="bullet">
     /// <item>On mount, the enter-from class is applied immediately; on the next tick it is swapped for the enter-to
     /// class, firing the transition.</item>
@@ -63,7 +63,7 @@ namespace Velvet.Tests
 
         protected override void OnTearDown() => _reconciler?.Dispose();
 
-        // One frame (replaces a PlayMode `yield return null`): ticks the scheduler, advancing a real-frame-sized step.
+        // One frame, equivalent to a live panel's per-frame tick: ticks the scheduler, advancing a real-frame-sized step.
         private void Tick() => Frame(16);
 
         // Advance well past the given duration in real-frame-sized ticks, so multi-tick scheduling (startAction,
@@ -398,8 +398,8 @@ namespace Velvet.Tests
             Tick();
             Assume.That(LabelTexts(), Is.EqualTo(new[] { "A" }), "Precondition: B is withheld while A exits");
 
-            // Act — let A's exit complete; the withheld B is released and enters (the symmetric release the
-            // headless PlayMode loop could not drive, now deterministic via the simulator).
+            // Act — let A's exit complete; the withheld B is released and enters, driven deterministically
+            // via the simulator.
             AdvancePast(s_waitConfig.DurationSec);
 
             // Assert — A is gone and the previously-withheld B is now the live child.
@@ -666,9 +666,9 @@ namespace Velvet.Tests
             _ => new[] { "c0", "c1", "c2" },
         };
 
-        // One card, mirroring GemShopDialog.Card: a shadow-lg Div with CONDITIONAL children (a date badge / NEW
-        // badge / remaining label that are null for some cards, so sibling counts differ per card and shift as
-        // the list re-keys) plus a nested shadow-md inner Div.
+        // One card: a shadow-lg Div with CONDITIONAL children (a date badge / NEW badge / remaining label that
+        // are null for some cards, so sibling counts differ per card and shift as the list re-keys) plus a
+        // nested shadow-md inner Div.
         private static VNode Card(string name, int index)
         {
             return V.Motion(

@@ -42,8 +42,8 @@ namespace Velvet
         };
 
         // brightness multiplier presets. brightness renders through a first-party custom-filter shader that
-        // multiplies unclamped, so the over-bright values (105/110/125/150/200) genuinely brighten — the
-        // whole point of the shader over the old Tint approximation, which could never exceed identity.
+        // multiplies unclamped, so the over-bright values (105/110/125/150/200) genuinely brighten — required
+        // because CSS brightness() has no upper clamp at N=1.
         private static readonly Dictionary<string, float> s_brightnessPreset = new()
         {
             ["0"] = 0f, ["50"] = 0.5f, ["75"] = 0.75f, ["90"] = 0.9f, ["95"] = 0.95f, ["100"] = 1f,
@@ -52,7 +52,7 @@ namespace Velvet
 
         // saturate presets as a saturation fraction. saturate renders through a first-party custom-filter
         // shader that lerps toward luminance unclamped, so the over-saturate values (150 / 200) push past
-        // the original colour, which the old grayscale(1-N) approximation could not do.
+        // the original colour, matching CSS saturate()'s unbounded N>1 range.
         private static readonly Dictionary<string, float> s_saturatePreset = new()
         {
             ["0"] = 0f, ["50"] = 0.5f, ["100"] = 1f, ["150"] = 1.5f, ["200"] = 2f,

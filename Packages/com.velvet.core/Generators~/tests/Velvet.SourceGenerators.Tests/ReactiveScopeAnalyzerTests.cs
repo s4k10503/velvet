@@ -5,8 +5,9 @@ using Xunit;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Fixture tests for <see cref="ReactiveScopeAnalyzer"/>. 16 cases:
-    /// (Pure / concrete deps detection 8) + (null fallback 5) + (Closure 3).
+    /// Exercises every way Render's returned expression can depend on state, since a wrong classification here
+    /// makes auto-memoization unsound: concrete pure dependencies (8 cases), forced null-dependency fallbacks
+    /// (5 cases), and closures (3 cases).
     /// </summary>
     public class ReactiveScopeAnalyzerTests
     {

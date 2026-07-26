@@ -59,7 +59,7 @@ This README is now scoped to **contributor concerns** (build / test / DLL shippi
 
 ## CI
 
-`.github/workflows/validate-velvet-generators.yml` runs:
+`.github/workflows/generators.yml` runs:
 
 1. `dotnet restore` / `dotnet build -c Release` / `dotnet test`
 2. `git diff --exit-code Runtime/Plugins/Generators/` to confirm the committed DLL matches the rebuilt output

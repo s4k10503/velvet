@@ -269,7 +269,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_Border8Class_When_Resolved_Then_BorderTopWidthIs8()
         {
-            // Arrange/Act — border-8 (Velvet previously stopped at border-4).
+            // Arrange/Act — border-8 is the widest step in Velvet's border-width scale.
             var leaf = MountAndResolve("border-8");
 
             // Assert
@@ -360,7 +360,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TextLgClass_When_Resolved_Then_FontSizeIs18()
         {
-            // Arrange / Act — text-lg == 1.125rem == 18px (Velvet previously baked 20px).
+            // Arrange / Act — text-lg == 1.125rem == 18px.
             var leaf = MountLabelAndResolve("text-lg");
 
             // Assert
@@ -370,7 +370,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_Text2xlClass_When_Resolved_Then_FontSizeIs24()
         {
-            // Arrange / Act — text-2xl == 1.5rem == 24px (Velvet previously baked 30px).
+            // Arrange / Act — text-2xl == 1.5rem == 24px.
             var leaf = MountLabelAndResolve("text-2xl");
 
             // Assert
@@ -380,7 +380,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_Text4xlClass_When_Resolved_Then_FontSizeIs36()
         {
-            // Arrange / Act — text-4xl == 2.25rem == 36px (Velvet previously baked 42px).
+            // Arrange / Act — text-4xl == 2.25rem == 36px.
             var leaf = MountLabelAndResolve("text-4xl");
 
             // Assert
@@ -390,7 +390,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_TextXsClass_When_Resolved_Then_FontSizeIs12()
         {
-            // Arrange / Act — text-xs == 0.75rem == 12px (Velvet previously baked 11px).
+            // Arrange / Act — text-xs == 0.75rem == 12px.
             var leaf = MountLabelAndResolve("text-xs");
 
             // Assert
@@ -400,7 +400,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_RoundedLgClass_When_Resolved_Then_BorderRadiusIs8()
         {
-            // Arrange/Act — rounded-lg == 0.5rem == 8px (Velvet previously baked 16px).
+            // Arrange/Act — rounded-lg == 0.5rem == 8px.
             var leaf = MountAndResolve("rounded-lg");
 
             // Assert
@@ -410,7 +410,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_Rounded3xlClass_When_Resolved_Then_BorderRadiusIs24()
         {
-            // Arrange/Act — rounded-3xl == 1.5rem == 24px (Velvet previously baked 45px).
+            // Arrange/Act — rounded-3xl == 1.5rem == 24px.
             var leaf = MountAndResolve("rounded-3xl");
 
             // Assert
@@ -420,7 +420,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_BareRoundedClass_When_Resolved_Then_BorderRadiusIs4()
         {
-            // Arrange/Act — the bare `rounded` DEFAULT (0.25rem == 4px) had no Velvet class before.
+            // Arrange/Act — the bare `rounded` DEFAULT resolves to 0.25rem == 4px.
             var leaf = MountAndResolve("rounded");
 
             // Assert

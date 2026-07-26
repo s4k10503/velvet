@@ -8,8 +8,9 @@ using Xunit.Abstractions;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Compares MemoizeMethodGenerator output against the golden files under Snapshots/Memoize/.
-    /// On failure, writes the actual output via _testOutputHelper so the diff can be inspected from CI logs.
+    /// CI has no interactive diff viewer, so on failure this writes the actual output via _testOutputHelper
+    /// where it is visible in the CI logs. Compares MemoizeMethodGenerator output against the golden files
+    /// under Snapshots/Memoize/.
     /// </summary>
     public sealed class MemoizeMethodGeneratorTests
     {
@@ -161,7 +162,7 @@ namespace MyApp
         }
 
         [Theory]
-        // VEL001 (arity 0) is exercised by the dedicated Memoize_Arity0_* tests because the new behaviour generates
+        // VEL001 (arity 0) is exercised separately by the dedicated Memoize_Arity0_* tests: VEL001 still generates
         // a wrapper alongside the warning, which AssertOnlyDiagnostic's "no generated sources" precondition rejects.
         [InlineData("VEL002", "private partial global::Velvet.VNode Build(int a, int b, int c, int d, int e, int f, int g, int h, int i);", "public partial class Page")]
         [InlineData("VEL003", "private partial global::Velvet.VNode Build<T>(T value);", "public partial class Page")]
