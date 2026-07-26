@@ -774,6 +774,18 @@ namespace Velvet
             return false;
         }
 
+        // True when `root`'s panel currently has a focused element that is `root` itself or one of its
+        // descendants — the shared "does this subtree currently hold focus" check needed by every path
+        // that must undo something ONLY while it still holds focus (a focus anchor's release, a reverted
+        // landing's settle, UseFocusRing's unmount correction). Returns the held element via `held` (null
+        // when the result is false) so a caller that also needs it — e.g. to Blur it — does not re-read
+        // focusController a second time.
+        internal static bool IsFocusedElementWithin(VisualElement root, out VisualElement? held)
+        {
+            held = root.panel?.focusController?.focusedElement as VisualElement;
+            return held != null && (held == root || root.Contains(held));
+        }
+
         // Walks the parent chain from `element` (inclusive) to the first registered scope root. Physical
         // containment is deliberately the membership definition — robust at event time, across pool reuse,
         // and against the logical-tree caveats that limit userData-based resolution for bare portal children.

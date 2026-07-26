@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `object`/interfaces holding boxed values, and the sign-of-zero distinction for nullable floats.
   IL2CPP (AOT) players keep the reflection implementation.
 
+### Fixed
+
+- A `FocusScope` with `restoreFocus: true` did not hand focus back to the prior element when the
+  scope's ROOT element itself (rather than a descendant) held focus at unmount: the guard used
+  `VisualElement.Contains`, which does not count an element as containing itself, so a focused root
+  read as "focus already left the scope" and the restore was skipped. The guard now uses a
+  self-inclusive check, so a directly-focusable scope root restores focus the same way a focused
+  descendant already did.
+
 ## [1.6.0] - 2026-07-25
 
 ### Added
