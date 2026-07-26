@@ -363,8 +363,7 @@ namespace Velvet
                 // BEFORE this element physically leaves the tree (UI Toolkit clears the focused element
                 // the moment it detaches — the same ordering RescueFocusFromWorldSpaceHost exists for).
                 if (focusScopeBinding.Settings.RestoreFocus
-                    && element.panel?.focusController?.focusedElement is VisualElement held
-                    && element.Contains(held))
+                    && FiberFocusNavigator.IsFocusedElementWithin(element, out _))
                 {
                     var restore = focusScopeBinding.RestoreTarget;
                     if (restore != null && restore.panel != null && restore.canGrabFocus)
