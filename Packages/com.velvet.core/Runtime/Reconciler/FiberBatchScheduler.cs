@@ -199,12 +199,15 @@ namespace Velvet
                     for (var i = 0; i < _drainBuffer.Count; i++)
                     {
                         var dropped = _drainBuffer[i];
-                        dropped.LaneQueue?.Remove(FiberUpdatePriority.Urgent);
-                        dropped.LaneQueue?.Remove(FiberUpdatePriority.Normal);
+                        // Direct field access through Lanes (not the dropped.LaneQueue read accessor): a
+                        // FiberLaneSet handed back by a property getter is a copy, so Remove() through it
+                        // would mutate a throwaway value instead of the backing queue.
+                        dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Urgent);
+                        dropped.Lanes?.Queue.Remove(FiberUpdatePriority.Normal);
                         // The promoted marker retires with the dropped Normal it rode, or it would keep
                         // skipping the settle sweep for as long as any surviving lane stays queued.
                         dropped.HasPromotedTransition = false;
-                        if (dropped.LaneQueue == null || dropped.LaneQueue.Count == 0)
+                        if (dropped.LaneQueue.Count == 0)
                         {
                             dropped.IsDirty = false;
                             dropped.ClearAllTransitionPending();

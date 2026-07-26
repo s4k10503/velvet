@@ -130,13 +130,16 @@ namespace Velvet
         // stranded and silently dropped by FlushState's not-dirty early-return.
         internal static void SettleSubsumedFiber(ComponentFiber fiber)
         {
-            fiber.LaneQueue?.Clear();
+            // Direct field access through Lanes (not the fiber.LaneQueue read accessor): EnsureLanes would
+            // allocate a LaneState for the lane-less majority of subsumed fibers (every non-memoized child
+            // re-render lands here), defeating the documented lazy-allocation invariant, and a FiberLaneSet
+            // handed back by a property getter is a copy — Clear() through it would mutate a throwaway
+            // value instead of the backing queue.
+            fiber.Lanes?.Queue.Clear();
             // The subsuming render committed the fiber's latest (eagerly-written) state, so any
             // starvation-promoted work is satisfied too — a marker left true on the now-clean fiber
             // would mis-time a LATER transition's settle (its sweep would be skipped while other lanes
-            // queue). Direct field access: the proxy setter's EnsureLanes would allocate a LaneState
-            // for the lane-less majority of subsumed fibers (every non-memoized child re-render lands
-            // here), defeating the documented lazy-allocation invariant.
+            // queue).
             if (fiber.Lanes != null)
             {
                 fiber.Lanes.HasPromotedTransition = false;

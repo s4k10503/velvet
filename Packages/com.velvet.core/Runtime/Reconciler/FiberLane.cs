@@ -31,7 +31,7 @@ namespace Velvet
         // lane queue is empty. Shared by ScheduleRerender's escalation check.
         internal static FiberUpdatePriority GetHighestPendingPriority(ComponentFiber fiber)
         {
-            if (fiber.LaneQueue == null || fiber.LaneQueue.Count == 0)
+            if (fiber.LaneQueue.Count == 0)
             {
                 return FiberUpdatePriority.Transition;
             }

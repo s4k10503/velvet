@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Scheduling a fiber re-render no longer allocates a per-fiber sorted set for the pending-lane
+  queue; the four update priorities now live in an inline bit mask with identical enrollment,
+  drain-order, and starvation-promotion semantics.
 - Recycling a pooled primitive widget (`Label`/`Button`/`Toggle`/`Slider`/`TextField`) no longer
   allocates a class-list array on every pool return; the element reset path now uses fixed-arity
   overloads so steady-state list churn stays allocation-free.
