@@ -175,14 +175,16 @@ namespace Velvet
                 return false;
             }
 
-            // Arbitrary form: [<float>deg] (the unit is required in the bracket).
-            if (suffix[0] == '[')
+            // Arbitrary form: [<float>deg] (the unit is required in the bracket). A malformed or unit-less
+            // bracket (or one TryStripBrackets rejects as empty) falls through to int.TryParse below, which
+            // rejects it just the same (a bracket character is never a valid digit).
+            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
-                if (!suffix.EndsWith("deg]", StringComparison.Ordinal) || suffix.Length < 6)
+                if (!inner.EndsWith("deg", StringComparison.Ordinal) || inner.Length < 4)
                 {
                     return false;
                 }
-                var number = suffix.Substring(1, suffix.Length - 5);
+                var number = inner.Slice(0, inner.Length - 3);
                 if (!float.TryParse(number, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
                     || float.IsNaN(value) || float.IsInfinity(value))
                 {

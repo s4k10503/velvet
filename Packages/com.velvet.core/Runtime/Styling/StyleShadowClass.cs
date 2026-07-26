@@ -191,8 +191,8 @@ namespace Velvet
             }
             // Arbitrary value: shadow-[x_y_blur_spread_#color] (underscores are spaces). Sits AFTER the
             // preset lookup so a named preset never reaches it; both families share this one parse.
-            if (suffix.Length >= 2 && suffix[0] == '[' && suffix[suffix.Length - 1] == ']'
-                && TryParseArbitrary(suffix.Substring(1, suffix.Length - 2), out spec))
+            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner)
+                && TryParseArbitrary(inner.ToString(), out spec))
             {
                 wantShadow = true;
                 return true;

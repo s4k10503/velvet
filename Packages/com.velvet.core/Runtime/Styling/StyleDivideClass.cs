@@ -188,10 +188,12 @@ namespace Velvet
             suffix = suffix.Substring(1);
 
             // Arbitrary width: divide-x-[2px] (JIT arbitrary value). Realized as a pixel border, so a percentage
-            // is rejected (only px / unitless is meaningful).
-            if (suffix.Length >= 2 && suffix[0] == '[')
+            // is rejected (only px / unitless is meaningful). TryParseArbitraryPixels already verifies the
+            // bracket shape itself, so a non-bracket suffix falls straight through to the preset scale below
+            // without needing its own duplicate guard here.
+            if (StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out width))
             {
-                return StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out width);
+                return true;
             }
 
             return WidthScale.TryGetValue(suffix, out width);

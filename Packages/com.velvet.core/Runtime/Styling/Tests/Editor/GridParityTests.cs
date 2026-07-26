@@ -271,6 +271,26 @@ namespace Velvet.Tests
             var dict = prop.GetValue(ctx) as System.Collections.IDictionary;
             return dict?.Count ?? 0;
         }
+
+        [Test]
+        public void Given_AnArbitraryBracketColumnCount_When_Parsed_Then_TheCountIsExtracted()
+        {
+            // Act
+            var ok = StyleGridClass.TryParse("grid-cols-[7]", out var columns);
+
+            // Assert
+            Assert.That((ok, columns), Is.EqualTo((true, 7)));
+        }
+
+        [Test]
+        public void Given_AnEmptyBracketColumnCount_When_Parsed_Then_ItIsRejected()
+        {
+            // Act
+            var ok = StyleGridClass.TryParse("grid-cols-[]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
     }
 
     /// <summary>

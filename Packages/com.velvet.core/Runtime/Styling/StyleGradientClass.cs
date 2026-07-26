@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using UnityEngine;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -307,6 +308,12 @@ namespace Velvet
                 type = GradientType.Radial;
                 return true;
             }
+            // Deliberately NOT StyleArbitraryValueResolver.TryStripBrackets: unlike every other bracket
+            // grammar in this file, an empty or unrecognized bg-radial-[...] body is not an error here — it
+            // is exactly as meaningful as a plain `bg-radial` (ParseRadialPosition no-ops on any token it
+            // does not recognize, leaving the centre at its 0.5,0.5 default) — so rejecting an empty body
+            // would make bg-radial-[] behave differently from bg-radial-[bogus], which is not the boundary
+            // this class draws anywhere else.
             if (baseTok.StartsWith(RadialArbitraryActivator, StringComparison.Ordinal) && baseTok[baseTok.Length - 1] == ']')
             {
                 type = GradientType.Radial;
@@ -391,7 +398,10 @@ namespace Velvet
             }
         }
 
-        // "10%" or "[12.5%]" → 0.10 / 0.125 (clamped to 0..1). False when not a percentage.
+        // "10%" or "[12.5%]" → 0.10 / 0.125 (clamped to 0..1). False when not a percentage. Delegates to
+        // the shared utility length grammar (the same one w-[…]-style arbitrary values use) so the numeric
+        // parse can never drift from it; the explicit LengthUnit.Percent check is what keeps this a
+        // percentage-only grammar even though the shared parser also accepts px/rem/bare-number lengths.
         private static bool TryParsePercent(string s, out float frac)
         {
             frac = 0f;
@@ -399,18 +409,9 @@ namespace Velvet
             {
                 return false;
             }
-            var body = s;
-            if (body.Length >= 2 && body[0] == '[' && body[body.Length - 1] == ']')
-            {
-                body = body.Substring(1, body.Length - 2);
-            }
-            if (body.Length < 2 || body[body.Length - 1] != '%')
-            {
-                return false;
-            }
-            var num = body.Substring(0, body.Length - 1);
-            if (!float.TryParse(num, NumberStyles.Float, CultureInfo.InvariantCulture, out var v)
-                || float.IsNaN(v) || float.IsInfinity(v))
+            var body = StyleArbitraryValueResolver.TryStripBrackets(s, 0, out var inner) ? inner : s.AsSpan();
+            if (!StyleArbitraryValueResolver.TryParseValue(body, out var v, out var unit)
+                || unit != LengthUnit.Percent)
             {
                 return false;
             }
@@ -471,12 +472,11 @@ namespace Velvet
             {
                 return false;
             }
-            if (s.Length >= 3 && s[0] == '[' && s[s.Length - 1] == ']')
+            if (StyleArbitraryValueResolver.TryStripBrackets(s, 0, out var inner))
             {
-                var inner = s.Substring(1, s.Length - 2);
                 if (inner.EndsWith("deg", StringComparison.Ordinal))
                 {
-                    inner = inner.Substring(0, inner.Length - 3);
+                    inner = inner.Slice(0, inner.Length - 3);
                 }
                 return float.TryParse(inner, NumberStyles.Float, CultureInfo.InvariantCulture, out deg)
                     && !float.IsNaN(deg) && !float.IsInfinity(deg);
