@@ -21,8 +21,7 @@ namespace Velvet
     // Hover uses the <em>bubbling</em> PointerOverEvent / PointerOutEvent pair, not
     // the non-bubbling PointerEnter/PointerLeave: when a child element (a label/icon) covers the
     // interior, only a bubbling event reaches this element while the pointer is over that child — matching the
-    // CSS :hover ancestor chain. (Non-bubbling enter dispatched at a child does NOT reach the ancestor,
-    // so the old code only lit up on the uncovered border ring.) On PointerOut the hover is cleared only
+    // CSS :hover ancestor chain. On PointerOut the hover is cleared only
     // once the pointer has actually left this element's bounds; while it merely crosses between descendants the
     // payload is kept, avoiding a per-crossing remove/re-add that restarts any transition.
     internal sealed class StyleVariantManipulator : Manipulator, IVariantSettleTarget

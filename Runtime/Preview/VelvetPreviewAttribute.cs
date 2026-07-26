@@ -5,8 +5,7 @@ namespace Velvet
 {
     /// <summary>
     /// Marks a static method as a Velvet preview "story" — a named, self-contained snippet of UI that the
-    /// Velvet Preview window can mount and live-render without entering Play Mode (the Storybook equivalent of
-    /// a single exported story).
+    /// Velvet Preview window can mount and live-render without entering Play Mode.
     /// </summary>
     /// <remarks>
     /// The annotated method must be <c>static</c>, take no parameters, and return a <see cref="VNode"/>
@@ -28,8 +27,8 @@ namespace Velvet
         public string? Name { get; init; }
 
         /// <summary>
-        /// Optional grouping label so related stories collapse under one heading in the list (the Storybook
-        /// "title" segment). When <c>null</c> or empty, the declaring type's name is used.
+        /// Optional grouping label so related stories collapse under one heading in the list. When <c>null</c>
+        /// or empty, the declaring type's name is used.
         /// </summary>
         public string? Group { get; init; }
 

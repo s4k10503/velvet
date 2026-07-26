@@ -34,8 +34,8 @@ namespace Velvet.Tests
 
         // Parses and applies a token to a fresh element, returning its single resolved FilterFunction — or null
         // when the token does not parse or does not resolve to exactly one filter. Callers ASSERT (not Assume)
-        // on the result, so a token the pre-shader parser rejected outright — it capped brightness/saturate at
-        // 1 — surfaces as a Failure rather than an Assume-driven Inconclusive, keeping the test a valid RED.
+        // on the result: a brightness/saturate value outside the supported range must surface as a Failure,
+        // not an Assume-driven Inconclusive, so a regression that re-caps the range at 1 is caught as a RED.
         private static FilterFunction? ResolveSingle(string token)
         {
             var el = new VisualElement();
@@ -51,14 +51,14 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABrightnessBracketValue_When_Resolved_Then_TheInlineFilterBindsTheBuiltInBrightnessDefinition()
         {
-            // Act — an over-bright bracket value (N>1), a range the pre-shader parser rejected outright.
+            // Act — an over-bright bracket value (N>1), which brightness's unclamped range must accept.
             var fn = ResolveSingle("brightness-[1.5]");
 
             // Assert — resolves to exactly the built-in brightness Custom definition (matched by its filterName,
             // not its reference: a material-invalidation rebuild hands back a fresh definition instance, which a
-            // reference compare would flake against once the cache re-primes) carrying the raw factor. RED
-            // against the pre-shader path two ways: it rejected N>1 at parse (fn stays null), and even a value it
-            // accepted bound the Tint filter, not this Custom definition.
+            // reference compare would flake against once the cache re-primes) carrying the raw factor. Guards
+            // against two independent regressions: a parser that re-caps brightness at N=1 (fn stays null), and
+            // a resolver that binds a Tint filter instead of this Custom definition.
             Assert.That((fn?.type, fn?.customDefinition?.filterName, fn?.GetParameter(0).floatValue),
                 Is.EqualTo(((FilterFunctionType?)FilterFunctionType.Custom, "velvet-brightness", (float?)1.5f)));
         }
@@ -66,12 +66,12 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASaturateBracketValue_When_Resolved_Then_TheInlineFilterBindsTheBuiltInSaturateDefinition()
         {
-            // Act — an over-saturate bracket value (N>1), a range the pre-shader parser rejected outright.
+            // Act — an over-saturate bracket value (N>1), which saturate's unclamped range must accept.
             var fn = ResolveSingle("saturate-[1.5]");
 
-            // Assert — resolves to exactly the built-in saturate Custom definition carrying the raw factor. RED
-            // against the pre-shader path two ways: it rejected N>1 at parse (fn stays null), and even a value it
-            // accepted bound the Grayscale filter, not this Custom definition.
+            // Assert — resolves to exactly the built-in saturate Custom definition carrying the raw factor. Guards
+            // against two independent regressions: a parser that re-caps saturate at N=1 (fn stays null), and a
+            // resolver that binds a Grayscale filter instead of this Custom definition.
             Assert.That((fn?.type, fn?.customDefinition?.filterName, fn?.GetParameter(0).floatValue),
                 Is.EqualTo(((FilterFunctionType?)FilterFunctionType.Custom, "velvet-saturate", (float?)1.5f)));
         }
@@ -115,8 +115,9 @@ namespace Velvet.Tests
             // Arrange — different values on two elements must still refer to the ONE shared definition, the
             // reference UI Toolkit's filter transition interpolation matches on; a per-resolve CreateInstance
             // would break transition-all on brightness without failing any per-element test. Asserting the
-            // Custom type alongside the shared identity keeps this RED against the old Tint path, where both
-            // customDefinitions are null and a bare shared-reference check passes on null == null.
+            // Custom type alongside the shared identity is required because a resolver that never sets a Custom
+            // definition would leave both customDefinitions null, and a bare shared-reference check passes
+            // vacuously on null == null.
             var a = new VisualElement();
             var b = new VisualElement();
             ApplyToken(a, "brightness-[0.4]");
@@ -134,22 +135,22 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABrightnessValueAboveOne_When_Resolved_Then_TheShaderParameterCarriesTheUnclampedValue()
         {
-            // Act — a value the pre-shader parser rejected outright (it capped brightness at 1).
+            // Act — a value above the CSS identity (N>1), which brightness's unclamped range must accept.
             var fn = ResolveSingle("brightness-[2]");
 
-            // Assert — the raw over-bright factor reaches the shader parameter unclamped. RED against the
-            // pre-shader parser, which rejected N>1 (fn stays null) instead of carrying 2.
+            // Assert — the raw over-bright factor reaches the shader parameter unclamped. Root cause: a parser
+            // that caps brightness at 1 would leave fn null instead of carrying 2.
             Assert.That(fn?.GetParameter(0).floatValue, Is.EqualTo(2f));
         }
 
         [Test]
         public void Given_ASaturateValueAboveOne_When_Resolved_Then_TheShaderParameterCarriesTheUnclampedValue()
         {
-            // Act — a value the pre-shader parser rejected outright (it capped saturate at 1).
+            // Act — a value above the CSS identity (N>1), which saturate's unclamped range must accept.
             var fn = ResolveSingle("saturate-[2]");
 
-            // Assert — the raw over-saturate factor reaches the shader parameter unclamped. RED against the
-            // pre-shader parser, which rejected N>1 (fn stays null) instead of carrying 2.
+            // Assert — the raw over-saturate factor reaches the shader parameter unclamped. Root cause: a parser
+            // that caps saturate at 1 would leave fn null instead of carrying 2.
             Assert.That(fn?.GetParameter(0).floatValue, Is.EqualTo(2f));
         }
 
@@ -189,8 +190,8 @@ namespace Velvet.Tests
         {
             // Arrange — an applied filter holds its definition by reference; the subsystem-registration reset
             // that runs on a domain-reload-skipping play-mode enter must only drop the cached reference, never
-            // destroy the object. Destroying it (the pre-fix behavior) strands this live reference at a dead
-            // Unity object that no re-resolve heals.
+            // destroy the object. Destroying it strands this live reference at a dead Unity object that no
+            // re-resolve heals.
             var el = new VisualElement();
             ApplyToken(el, "brightness-[1.5]");
             var applied = el.style.filter.value[0].customDefinition;

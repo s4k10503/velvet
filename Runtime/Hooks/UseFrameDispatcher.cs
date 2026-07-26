@@ -16,12 +16,12 @@ namespace Velvet
     /// caller any control over the render loop itself.
     /// </summary>
     /// <remarks>
-    /// Subscribing per-PANEL rather than per-component-HOST (the one scheduled item per component this
-    /// replaced) is what makes order both deterministic and stable across a keyed reorder: a transient
-    /// detach only flips <see cref="Subscription.Active"/> off and back on — the slot in the ordered list
-    /// is never vacated — where a plain per-element <c>IVisualElementScheduledItem</c> is re-appended to
-    /// the end of UI Toolkit's own internal scheduler list on every re-attach (verified by decompiling
-    /// <c>TimerEventScheduler</c>/<c>BaseVisualElementScheduledItem</c>), silently reshuffling order.
+    /// Subscribing per-PANEL rather than per-component-HOST is what makes order both deterministic and
+    /// stable across a keyed reorder: a transient detach only flips <see cref="Subscription.Active"/> off
+    /// and back on — the slot in the ordered list is never vacated — where a plain per-element
+    /// <c>IVisualElementScheduledItem</c> is re-appended to the end of UI Toolkit's own internal scheduler
+    /// list on every re-attach (verified by decompiling <c>TimerEventScheduler</c>/
+    /// <c>BaseVisualElementScheduledItem</c>), silently reshuffling order.
     /// </remarks>
     internal sealed class UseFrameDispatcher
     {

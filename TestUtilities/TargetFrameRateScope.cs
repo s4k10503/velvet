@@ -7,8 +7,8 @@ namespace Velvet.TestUtilities
     /// <summary>
     /// Raises Application.targetFrameRate for the scope's lifetime and restores the previous value on
     /// Dispose. PlayMode fixtures that assert on real elapsed time (camera/particle playback) bump the
-    /// frame rate so their realtime waits resolve in fewer, more predictable frames; previously each
-    /// fixture saved and restored the value by hand in UnitySetUp/UnityTearDown.
+    /// frame rate so their realtime waits resolve in fewer, more predictable frames, without each
+    /// fixture saving and restoring the value by hand in UnitySetUp/UnityTearDown.
     /// Test-only. Must not be used from production code.
     /// </summary>
     public readonly struct TargetFrameRateScope : IDisposable
@@ -29,8 +29,8 @@ namespace Velvet.TestUtilities
 
     /// <summary>
     /// Shared realtime wait for PlayMode fixtures that assert on actual rendered/simulated output
-    /// rather than a fixed frame count. Previously duplicated verbatim across the SceneView/Particles/
-    /// Portal playback specs.
+    /// rather than a fixed frame count. Shared across the SceneView/Particles/Portal playback specs
+    /// so each does not duplicate this wait verbatim.
     /// Test-only. Must not be used from production code.
     /// </summary>
     public static class PlayModeRealtimeTestHelpers

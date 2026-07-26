@@ -8,8 +8,9 @@ using Velvet.SourceGenerators.PurityAnalysis;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Test harness that invokes <see cref="PurityAnalyzer"/> directly against a Compilation.
-    /// Reuses the same reference resolution and Velvet stub as <see cref="GeneratorTestHelper"/>.
+    /// Invokes <see cref="PurityAnalyzer"/> directly against a Compilation so tests can assert on its output in
+    /// isolation, without running the full generator pipeline. Reuses the same reference resolution and Velvet
+    /// stub as <see cref="GeneratorTestHelper"/> so the two test doubles cannot drift apart.
     /// </summary>
     internal static class PurityAnalyzerTestHelper
     {
@@ -52,7 +53,8 @@ namespace JetBrains.Annotations
 
         public static IMethodSymbol FindMethod(Compilation compilation, string methodName)
         {
-            // Accepts both "ClassName.MethodName" (type-qualified) and bare method-name forms.
+            // Type-qualified lookup disambiguates when multiple fixture classes declare a method with the same
+            // name; a bare name is enough otherwise.
             string? typeFilter = null;
             var simpleName = methodName;
             var dotIndex = methodName.LastIndexOf('.');

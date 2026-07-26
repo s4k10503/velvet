@@ -161,6 +161,12 @@ namespace Velvet
         /// <summary>
         /// Subscribes to state changes with a (current, previous) signature.
         /// </summary>
+        /// <remarks>
+        /// Argument order note: <paramref name="listener"/> takes <c>(current, previous)</c>. This is the
+        /// reverse of the props comparator on <see cref="V.Memo{TProps}"/>, which takes
+        /// <c>(previous, next)</c> — the two areas settled on opposite conventions, so check the parameter
+        /// names at the call site rather than assuming one order.
+        /// </remarks>
         /// <param name="listener">Invoked with <c>(currentState, previousState)</c> on every state mutation. Must not be null.</param>
         /// <param name="fireImmediately">
         /// When <c>true</c>, fires the listener synchronously with <c>(Current, Current)</c> before returning
@@ -186,6 +192,12 @@ namespace Velvet
         /// Subscribes to a selected slice with a (currentSlice, previousSlice) signature. The listener
         /// fires only when the selected slice changes under the given comparer.
         /// </summary>
+        /// <remarks>
+        /// Argument order note: <paramref name="observer"/> takes <c>(current, previous)</c>. This is the
+        /// reverse of the props comparator on <see cref="V.Memo{TProps}"/>, which takes
+        /// <c>(previous, next)</c> — the two areas settled on opposite conventions, so check the parameter
+        /// names at the call site rather than assuming one order.
+        /// </remarks>
         /// <typeparam name="T">Selected projection type.</typeparam>
         /// <param name="selector">Pure projection from the store snapshot. Must not be null.</param>
         /// <param name="observer">Invoked with <c>(currentSlice, previousSlice)</c> on each change. Must not be null.</param>

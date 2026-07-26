@@ -1287,6 +1287,13 @@ namespace Velvet
         /// props, or deep-comparing one field).<br/>
         /// Attributes cannot carry delegates, so the comparator is supplied here at the call site rather
         /// than on <c>[Component]</c>.
+        /// <para>
+        /// Argument order note: <paramref name="areEqual"/> takes <c>(previous, next)</c>. This is the
+        /// reverse of <see cref="Store{TState}.Subscribe(Action{TState, TState}, bool)"/> and
+        /// <see cref="Store{TState}.Select{T}"/>, whose listener/observer callbacks take
+        /// <c>(current, previous)</c> — the two areas settled on opposite conventions, so check the
+        /// parameter names at the call site rather than assuming one order.
+        /// </para>
         /// </remarks>
         /// <typeparam name="TProps">Props type. Use <c>sealed record</c> (reference type) to avoid boxing.</typeparam>
         /// <param name="body">Delegate of a static method annotated with <c>[Component]</c> taking a single <typeparamref name="TProps"/> parameter.</param>

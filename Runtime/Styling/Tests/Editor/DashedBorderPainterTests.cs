@@ -11,7 +11,8 @@ namespace Velvet.Tests
     /// has no dash-array, so a dashed / dotted outline is walked by arc length: dashes are butt-capped runs of
     /// ~3× the line width spaced by ~2× gaps; dots are zero-length round-capped strokes spaced ~2× the width.
     /// A closed polyline wraps its last edge back to point 0; the flattened rounded-rect gains points as its
-    /// corners round (the sink-refactor parity guard). GWT, one assert per case.
+    /// corners round, matching the corner sampling the shared Painter2D path builder emits. GWT, one assert
+    /// per case.
     /// </summary>
     [TestFixture]
     internal sealed class DashedBorderPainterTests
@@ -97,8 +98,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_ARoundedRectPolyline_When_Built_Then_ItHasMorePointsThanASquare()
         {
-            // Arrange — the sink refactor must keep the bezier corners: a rounded rect samples each corner into
-            // chords, so it flattens to strictly more points than a square (whose corners emit none).
+            // Arrange — the polyline flattener (an IRoundedRectPathSink) must keep the bezier corners a
+            // Painter2D path would draw: a rounded rect samples each corner into chords, so it flattens to
+            // strictly more points than a square (whose corners emit none).
             var square = new List<Vector2>();
             SilhouetteFace.BuildShearedRoundedRectPolyline(square, 0f, 100f, 100f, 0f, 0f, 0f, 0f, 0f, 0f);
             var rounded = new List<Vector2>();

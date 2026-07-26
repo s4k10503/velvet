@@ -28,7 +28,7 @@ namespace Velvet.TestUtilities
         /// Immediately fires any pending UseEffect (post-paint async) callbacks for the whole tree
         /// produced by V.Mount, via FiberRenderer's tree-wide 2-phase passive drain: every pending
         /// fiber's cleanups run before any setup, both phases post-order (child-before-parent) — the
-        /// same React ordering production observes on the post-paint scheduler tick.
+        /// same ordering production observes on the post-paint scheduler tick.
         /// Test-only. Must not be used from production code.
         /// </summary>
         public static void FlushEffectsForTest(this MountedTree mounted)

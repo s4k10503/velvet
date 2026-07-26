@@ -1766,8 +1766,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_TranslateXPresetThenTranslateYPreset_When_Applied_Then_BothAxesCompose()
         {
-            // The documented clobber fix: an x and a y preset must compose onto one inline `translate`, not
-            // last-write-wins (the old USS .translate-x-N / .translate-y-N rules clobbered to a single axis).
+            // translate is a single inline Vector3 property: an x and a y preset applied in sequence must
+            // compose onto that one value rather than last-write-wins overwriting the other axis.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("translate-x-4", out var tx);
             StyleArbitraryValueResolver.TryParse("translate-y-2", out var ty);
@@ -1794,7 +1794,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_HeightTwoThirdsFraction_When_Parsed_Then_ResolvesHeightFromRatio()
         {
-            // h-2/3 had no hyphen equivalent before — fractional heights are new via the slash form.
+            // h-2/3 has no hyphen equivalent; the slash form is the only syntax that expresses a fractional height.
             var ok = StyleArbitraryValueResolver.TryParse("h-2/3", out var s);
 
             Assume.That(ok, Is.True, "Precondition: h-2/3 is a recognized fraction");
@@ -2084,8 +2084,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_OverBrightnessPreset_When_Parsed_Then_ResolvesTheWidenedMultiplier()
         {
-            // brightness-150 now brightens: the shader multiplies unclamped, so the over-bright preset resolves
-            // to a multiplier above 1 instead of being rejected.
+            // brightness-150 is an over-bright preset (N>1): the shader multiplies unclamped, so the value must
+            // resolve to a multiplier above 1.
             var ok = StyleArbitraryValueResolver.TryParse("brightness-150", out var s);
 
             Assume.That(ok, Is.True, "Precondition: brightness-150 is recognized");
@@ -2130,8 +2130,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_BrightnessAndContrast_When_Applied_Then_BrightnessComposesBeforeContrast()
         {
-            // Canonical CSS filter order: brightness precedes contrast, even though brightness is now a Custom
-            // function keyed by its own filter slot rather than routed through LayerMap.Customs.
+            // Canonical CSS filter order: brightness precedes contrast. Brightness is a Custom function keyed by
+            // its own filter slot rather than routed through LayerMap.Customs, which would compose it after
+            // every built-in and break this order.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("contrast-125", out var c);
             StyleArbitraryValueResolver.TryParse("brightness-50", out var b);
@@ -2148,8 +2149,8 @@ namespace Velvet.Tests
         public void Given_SaturatePreset_When_Applied_Then_EmitsTheBuiltInSaturateShaderFunction()
         {
             // saturate renders through the first-party custom-filter shader as a Custom function bound to the
-            // shared saturate definition. The stored parameter is the RAW fraction (0.5), not the old 1-N
-            // complement, because the shader implements the lerp-toward-luminance natively.
+            // shared saturate definition. The stored parameter is the RAW fraction (0.5): the shader implements
+            // the lerp-toward-luminance natively, so there is no 1-N complement to pre-compute.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("saturate-50", out var s);
 
@@ -2163,8 +2164,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_FullSaturate_When_Applied_Then_EmitsIdentityParameter()
         {
-            // saturate-100 is the CSS identity, so the shader parameter is 1 (unchanged), not the old
-            // grayscale(0) complement.
+            // saturate-100 is the CSS identity, so the shader parameter is 1 (unchanged) — the raw fraction
+            // itself, since the shader needs no complement transform.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("saturate-100", out var s);
 
@@ -2176,8 +2177,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_OverSaturate_When_Parsed_Then_ResolvesTheWidenedFraction()
         {
-            // saturate-150 now over-saturates: the shader lerps toward luminance unclamped, so the over-saturate
-            // preset resolves to a fraction above 1 instead of being rejected.
+            // saturate-150 is an over-saturate preset (N>1): the shader lerps toward luminance unclamped, so the
+            // value must resolve to a fraction above 1.
             var ok = StyleArbitraryValueResolver.TryParse("saturate-150", out var s);
 
             Assume.That(ok, Is.True, "Precondition: saturate-150 is recognized");

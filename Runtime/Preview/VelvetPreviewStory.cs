@@ -10,8 +10,8 @@ namespace Velvet
     /// produces a fresh <see cref="VNode"/> tree each time the story is mounted.
     /// <para>
     /// A story method is parameterless (renders one fixed view) or takes a single "args" object — a
-    /// class/struct/record of editable props (the Storybook <c>args</c>). For an args-story the preview window
-    /// reflects the args type into live control knobs and re-mounts with the edited instance.
+    /// class/struct/record of editable props. For an args-story the preview window reflects the args type into
+    /// live control knobs and re-mounts with the edited instance.
     /// </para>
     /// </summary>
     public sealed class VelvetPreviewStory

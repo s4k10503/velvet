@@ -4,7 +4,6 @@ using Xunit;
 
 namespace Velvet.SourceGenerators.Tests
 {
-    /// <summary>Tests for <see cref="RulesOfHooksAnalyzer"/> (VEL101).</summary>
     public class RulesOfHooksAnalyzerTests
     {
         [Fact]
@@ -447,7 +446,8 @@ namespace MyApp.Pages
         [Fact]
         public void DoesNotReport_When_Custom_Hook_Called_At_Method_Top_Level()
         {
-            // Custom hook called unconditionally (no enclosing control-flow): OK.
+            // Unconditional top-level calls execute in the same order on every render, so hook-state slots stay
+            // aligned; nothing to flag.
             const string source = @"
 namespace MyApp.Pages
 {

@@ -282,10 +282,9 @@ namespace Velvet.Tests
             yield return null;
             yield return null;
 
-            // Assert — AnchoredDriver must never touch style.scale when distanceFactor was never set, or
-            // it would silently fight whatever else is driving that same inline property on the same
-            // element (the regression a prior revision of this driver had: it unconditionally nulled
-            // style.scale every tick regardless of whether distanceFactor was ever in play).
+            // Assert — AnchoredDriver must never touch style.scale when distanceFactor was never set: an
+            // unconditional null-clear on every tick would collide with whatever other mechanism is driving
+            // that same inline property on the same element.
             Assert.That((element.resolvedStyle.scale.value.x, element.resolvedStyle.scale.value.y), Is.EqualTo((2f, 2f)));
         }
 

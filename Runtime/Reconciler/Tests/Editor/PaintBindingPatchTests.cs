@@ -204,8 +204,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoSiblings_When_OneGainsShadow_Then_TheNextSiblingKeepsItsSlotIndex()
         {
-            // Arrange: two plain siblings in a column. The wrapper era interposed a container around the
-            // shadowed element; a paint adds nothing structural, so the sibling order/indices are unchanged.
+            // Arrange: two plain siblings in a column. A shadow paint adds nothing structural, so gaining a
+            // shadow leaves the sibling order/indices unchanged.
             using var scope = new ReconcilerScope();
             var before = new VNode[]
             {
@@ -314,8 +314,7 @@ namespace Velvet.Tests
         public void Given_AUserWrapElementWithShadowClass_When_Reconciled_Then_TheInnerCarriesTheShadowPaint()
         {
             // Arrange: an element with BOTH a user wrapElement and a shadow-* class. The shadow is a paint on
-            // the inner element, so it composes with the user wrapper rather than opting out (the wrapper era
-            // had to opt out to avoid a double structural wrapper).
+            // the inner element, so it composes with the user wrapper without needing to opt out.
             using var scope = new ReconcilerScope();
             Func<VisualElement, VisualElement> wrap = el =>
             {

@@ -11,11 +11,11 @@ namespace Velvet.Tests
     /// <summary>
     /// Regression coverage for pooled-element state ghosting: a primitive returned to <see cref="VNodePool"/>
     /// must be reset so it cannot carry state its previous node set onto its next consumer. The inline-style
-    /// cases pin <c>FiberElementPoolReset.ResetInlineStyle</c>, which documents itself as nulling EVERY inline
-    /// property Velvet may set but originally omitted <c>letterSpacing</c> (written by the <c>tracking-[Npx]</c>
-    /// arbitrary) — a recycled label therefore kept its previous letter spacing and ghosted it onto the next
-    /// consumer whose node declared no <c>tracking-*</c> (the fresh node's empty oldClasses diff never clears
-    /// it). The widget cases pin the per-widget reset helpers (<see cref="FiberTogglePoolHelper"/>,
+    /// cases pin <c>FiberElementPoolReset.ResetInlineStyle</c>, which must null EVERY inline property Velvet
+    /// may set, including <c>letterSpacing</c> (written by the <c>tracking-[Npx]</c> arbitrary) — omitting it
+    /// would let a recycled label keep its previous letter spacing and ghost it onto the next consumer whose
+    /// node declares no <c>tracking-*</c> (the fresh node's empty oldClasses diff never clears it). The widget
+    /// cases pin the per-widget reset helpers (<see cref="FiberTogglePoolHelper"/>,
     /// <see cref="FiberSliderPoolHelper"/>, <see cref="FiberTextFieldPoolHelper"/>) end-to-end through the
     /// reconciler: a Toggle / Slider / TextField rendered with non-default state, removed, and then recreated
     /// as a PLAIN widget rents the same pooled instance back, and the reset must scrub every widget-specific

@@ -6,9 +6,9 @@ namespace Velvet.TestUtilities
 {
     /// <summary>
     /// Builds a UIDocument-backed runtime panel whose PanelSettings targets a RenderTexture, so a
-    /// PlayMode fixture can read back what the panel actually drew. Previously hand-rolled per fixture
-    /// across the SceneView and Particles playback specs: a GameObject + UIDocument + PanelSettings +
-    /// RenderTexture, wired up and torn down the same way each time.
+    /// PlayMode fixture can read back what the panel actually drew. Shared across the SceneView and
+    /// Particles playback specs so each fixture does not hand-roll the same GameObject + UIDocument +
+    /// PanelSettings + RenderTexture wiring and teardown.
     /// Test-only. Must not be used from production code.
     /// </summary>
     public sealed class RenderTexturePanelHost : IDisposable
@@ -46,8 +46,8 @@ namespace Velvet.TestUtilities
 
     /// <summary>
     /// Reads pixels back from a RenderTexture via a throwaway Texture2D, saving and restoring
-    /// RenderTexture.active around the read. Previously hand-rolled per fixture across the
-    /// SceneView/Particles/Portal playback specs.
+    /// RenderTexture.active around the read. Shared across the SceneView/Particles/Portal playback
+    /// specs so each fixture does not hand-roll the same readback.
     /// Test-only. Must not be used from production code.
     /// </summary>
     public static class RenderTexturePixelReader

@@ -242,7 +242,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_RoundedLgClass_When_ResolvingShadowCornerRadius_Then_Is8()
         {
-            // Arrange/Act — rounded-lg mirrors --radius-lg, re-aligned to 8px (was 16).
+            // Arrange/Act — rounded-lg's shadow corner radius mirrors the --radius-lg token, 8px.
             var ok = StyleShadowClass.TryResolveCornerRadius(new[] { "rounded-lg" }, out var radius);
             Assume.That(ok, Is.True, "Precondition: rounded-lg resolves a mirrored corner radius");
 
@@ -253,7 +253,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_Rounded3xlClass_When_ResolvingShadowCornerRadius_Then_Is24()
         {
-            // Arrange/Act — rounded-3xl mirrors --radius-3xl, re-aligned to 24px (was 45).
+            // Arrange/Act — rounded-3xl's shadow corner radius mirrors the --radius-3xl token, 24px.
             var ok = StyleShadowClass.TryResolveCornerRadius(new[] { "rounded-3xl" }, out var radius);
             Assume.That(ok, Is.True, "Precondition: rounded-3xl resolves a mirrored corner radius");
 
