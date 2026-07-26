@@ -54,6 +54,8 @@ The render pipeline, in dependency order under `Runtime/`:
 - `Compiler` (default `true`) = the **React Compiler equivalent**: the ILPP under `CodeGen/` (`CompilerWeaver`, driven by `VelvetCompilerILPostProcessor`) weaves auto-memoization of a component's VNode construction keyed on its hook inputs + props. It processes **every assembly that references `Velvet`** (including samples), bailing gracefully (no diagnostic) on memo-unsafe hooks. Opt a component out with `[Component(Compiler = false)]`.
 - `Memoize` (default `false`) = the **`React.memo` equivalent**: a props-bail at the reconcile boundary (skip a parent-driven re-render when props are shallow-equal). The component's own store/state updates still re-render it. Note auto-memo is keyed on props too, so an unstable callback prop (fresh delegate each render) defeats both axes — stabilize with `UseCallback`.
 
+Do not confuse either axis with the standalone method-level `[Memoize]` attribute (`Component/MemoizeAttribute.cs`): that is an unrelated source-generator marker that wraps a partial method's body in `V.Memoized(factory, deps)` (see `Documentation~/memoization.md`). Same word, independent mechanism.
+
 `Generators~/` (Roslyn) handles the analyzer side (exhaustive-deps, rules-of-hooks); `CodeGen/` (Cecil ILPP) handles the weaving. Both run at compile time.
 
 ## Tests
