@@ -1,12 +1,13 @@
 namespace Velvet
 {
     /// <summary>
-    /// Conditional class-name concatenation utility.
-    /// Filters out null/empty entries and joins them with spaces.
+    /// Central null/empty-safe join point for utility-first class composition, so call sites can pass raw
+    /// conditional expressions (ternaries, <see cref="When"/>) as arguments without each one guarding against
+    /// null or empty branches itself.
     /// </summary>
     public static class StyleClassNames
     {
-        /// <summary>Joins parts with spaces, skipping null/empty entries.</summary>
+        /// <summary>Single allocation-conscious join point, so callers never special-case the 0/1-argument shape.</summary>
         public static string? Class(params string?[] parts)
         {
             switch (parts.Length)
@@ -55,7 +56,7 @@ namespace Velvet
             return result.ToString();
         }
 
-        /// <summary>Conditional class (returns null when condition is false).</summary>
+        /// <summary>Sugar for a ternary, so a <see cref="Class"/> call reads as a flat list of always/conditionally-applied classes.</summary>
         public static string? When(bool condition, string className)
             => condition ? className : null;
     }

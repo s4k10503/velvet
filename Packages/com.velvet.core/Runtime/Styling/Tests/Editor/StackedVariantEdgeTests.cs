@@ -318,13 +318,15 @@ namespace Velvet.Tests
     /// events and the <see cref="VelvetTheme"/> toggle. A stacked leaf applies iff ALL of its conditions hold
     /// simultaneously and clears when any turns off, order-independently. Two-deep is the certified path
     /// (deeper nesting falls out of the same recursion but is documented best-effort). This also pins that an
-    /// edge-based inner state (hover/focus/active) survives the outer condition closing and reopening: the
-    /// outer-gate close used to detach and drop the stacked manipulator for every inner kind, and on reopen a
-    /// fresh instance started with the inner off, while pointer/focus signals fire only on state EDGES — so a
-    /// pointer that never left the element could not re-apply <c>dark:hover:*</c> until a physical re-hover. In
-    /// real CSS the oracle is a continuously-tracked :hover pseudo-class, unaffected by an ancestor class
-    /// toggling. Level-based inners (dark, responsive) still detach on close: they re-derive their truth on
-    /// re-attach, and dark's process-wide theme subscription must release immediately. GWT, one assert each.
+    /// edge-based inner state (hover/focus/active) survives the outer condition closing and reopening: because
+    /// pointer/focus signals fire only on state EDGES, a manipulator that detached and dropped its inner state
+    /// on outer-close would need a fresh physical edge (e.g. the pointer leaving and re-entering) to reapply
+    /// <c>dark:hover:*</c> after reopen — a pointer that never left the element would have no edge to fire. So
+    /// the manipulator instance and its edge-tracked inner state persist across the outer gate closing and
+    /// reopening; only the outer condition re-evaluates. In real CSS the oracle is a continuously-tracked
+    /// :hover pseudo-class, unaffected by an ancestor class toggling. Level-based inners (dark, responsive)
+    /// still detach on close: they re-derive their truth on re-attach, and dark's process-wide theme
+    /// subscription must release immediately. GWT, one assert each.
     /// </summary>
     [TestFixture]
     internal sealed class StackedVariantBehaviorTests

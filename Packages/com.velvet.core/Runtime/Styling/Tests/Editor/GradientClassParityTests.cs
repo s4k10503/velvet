@@ -401,8 +401,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_BgRadialAtPercentCenter_When_Extracted_Then_YIsNotLostWhenXIsHalf()
         {
-            // at_50%_75%: x=50%, y=75%. The earlier `centerX == 0.5f` disambiguation lost the y value
-            // whenever x resolved to exactly 50% (it routed the 2nd percentage back to x). This pins y.
+            // at_50%_75%: x=50%, y=75%. A value-sentinel disambiguation (checking centerX == 0.5f to decide
+            // whether x is already set) is ambiguous with a legitimately parsed 50% x value, which would route
+            // the 2nd percentage back to x and lose y. This pins that x=50% and y=75% both resolve correctly.
             var ok = StyleGradientClass.TryExtract(
                 new[] { "bg-radial-[at_50%_75%]", "from-[#ff0000]", "to-[#0000ff]" }, out var spec);
 

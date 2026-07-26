@@ -482,7 +482,8 @@ namespace Velvet.Tests
         public void Given_AnInitialTheEnterCannotResolve_When_Mounted_Then_ItWarnsInsteadOfStayingSilentlyInert()
         {
             // Arrange — initial with NO own animate (inherited-label configurations are not yet
-            // driven by the standalone enter), which previously warned and now must again.
+            // driven by the standalone enter): the warning fires because a standalone mount enter needs
+            // its own animate + variants to resolve initial against.
             LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("initial"));
 
             // Act

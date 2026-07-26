@@ -476,8 +476,8 @@ namespace Velvet.Tests
             Assume.That(s_brokenFallbackContentRenderCount, Is.EqualTo(0), "Precondition: nothing has thrown yet");
             s_trackingShouldThrow = true;
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test fallback content error");
-            // The original exception is no longer silently treated as caught (see the next test) — it
-            // also surfaces here since this boundary has no ancestor to escalate to.
+            // The original exception is not treated as caught just because the fallback rendered (see the
+            // next test) — it also surfaces here since this boundary has no ancestor to escalate to.
             LogAssert.Expect(LogType.Exception, "InvalidOperationException: Test render error");
 
             // Act
@@ -492,12 +492,12 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABoundarysOwnFallbackContentThrows_When_NoAncestorBoundaryExists_Then_TheOriginalExceptionIsStillLogged()
         {
-            // Before this fix, TryShowFallback reported the ORIGINAL exception as successfully caught
-            // whenever its Reconcile call returned without a raw throw — true whether the fallback
-            // content rendered cleanly or failed and was absorbed elsewhere (logged, or shown by a
-            // farther boundary). With no ancestor boundary here, that meant the original exception was
-            // silently dropped instead of falling through to Debug.LogException like any other uncaught
-            // exception. It must now surface.
+            // TryShowFallback reports the ORIGINAL exception as caught only when the fallback both
+            // Reconciles without a raw throw AND its own content did not fail (fiber.FallbackContentFailed
+            // stays false) — a Reconcile call returning normally is not enough on its own, since the
+            // fallback's failure can be absorbed elsewhere (logged, or shown by a farther boundary) without
+            // a raw throw reaching this call site. With no ancestor boundary here, an uncaught original
+            // exception falls through to Debug.LogException like any other uncaught exception.
             // Arrange
             using var mounted = V.Mount(_root, V.Component(BoundaryWithBrokenFallbackRender, key: "broken-fallback-boundary-logged"));
             s_trackingShouldThrow = true;

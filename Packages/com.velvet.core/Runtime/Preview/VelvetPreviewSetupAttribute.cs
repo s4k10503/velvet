@@ -4,10 +4,10 @@ using System;
 namespace Velvet
 {
     /// <summary>
-    /// Marks a static method that prepares the shared environment every preview story in its assembly relies on
-    /// — the Storybook global-decorator / <c>preview.js</c> equivalent. It runs once before the first story in
-    /// that assembly mounts (font registration, store seeding, a localization resolver, a utility stylesheet) and
-    /// its returned handle is disposed when previewing stops or the story source is rescanned.
+    /// Marks a static method that prepares the shared environment every preview story in its assembly relies on.
+    /// It runs once before the first story in that assembly mounts (font registration, store seeding, a
+    /// localization resolver, a utility stylesheet) and its returned handle is disposed when previewing stops or
+    /// the story source is rescanned.
     /// </summary>
     /// <remarks>
     /// The annotated method must be <c>static</c>, take no parameters, and return either an

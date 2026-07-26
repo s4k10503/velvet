@@ -40,7 +40,7 @@ namespace Velvet.TestUtilities
 
         /// <summary>
         /// Hook run after the window is shown (default no-op). USS fixtures override this to attach the bundled
-        /// <c>StyleUtilities.uss</c> to the panel root; it is the post-show seam where stylesheet loading lived.
+        /// <c>StyleUtilities.uss</c> to the panel root; it is the post-show seam for attaching stylesheets.
         /// </summary>
         protected virtual void LoadStyleSheets() { }
 

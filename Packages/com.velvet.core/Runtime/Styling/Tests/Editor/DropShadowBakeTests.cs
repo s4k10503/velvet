@@ -48,8 +48,8 @@ namespace Velvet.Tests
 
         // The interior must be OPAQUE: the bake is the full soft silhouette, and the binding repaints the
         // caster's opaque fill OVER it, so an opaque interior is exactly what the fill covers. A transparent
-        // interior (the cut the old approach used) is the bug — it left a faint shadow over the top of the fill
-        // and a hard band at the offset-down bottom edge. The center texel is the deep interior.
+        // interior is the bug — cutting a hole there would leave a faint shadow visible over the top of the
+        // fill and a hard band at the offset-down bottom edge. The center texel is the deep interior.
         [Test]
         public void Given_AShadowBake_When_Sampled_Then_TheInteriorTexelIsOpaque()
         {

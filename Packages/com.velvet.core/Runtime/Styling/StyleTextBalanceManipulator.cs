@@ -49,7 +49,7 @@ namespace Velvet
     // exposed until an unrelated geometry event happens to fire. Ownership ends when the text-balance
     // class itself is removed: the teardown that clears the inline maxWidth then restores a co-present
     // max-w-* utility's own value via FiberNodePatcher.ReapplyArbitraryValues — the same shared-inline-slot
-    // restore FiberWrapperElementAppliers.RestoreSharedInlineSlot performs after detaching a Hue/Pulse
+    // restore FiberAnimateMotionApplier.RestoreSharedInlineSlot performs after detaching a Hue/Pulse
     // motion — so removing just the text-balance token does not also erase an unrelated max-width the
     // element still carries.
     //

@@ -11,9 +11,8 @@ namespace Velvet.Tests
     /// <summary>
     /// The preview window's Viewport addon: selecting a custom W/H pair (via the toolbar fields) sizes the mount
     /// canvas to that reference size and marks it a responsive scope (<c>@container</c>) so a mounted story's
-    /// <c>sm:</c>/<c>md:</c>… evaluate against the simulated width; <b>Full</b> (the only remaining menu preset —
-    /// device presets were removed in favor of free-form W/H entry) removes the marker and restores the fill
-    /// behavior.
+    /// <c>sm:</c>/<c>md:</c>… evaluate against the simulated width; <b>Full</b> (the menu's only preset — any other
+    /// reference size is entered via the free-form W/H fields) removes the marker and restores the fill behavior.
     /// </summary>
     /// <remarks>
     /// The viewport selection handlers (<c>SetViewport</c>/<c>OnViewportFieldChanged</c>) and the mount canvas

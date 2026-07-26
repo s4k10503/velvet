@@ -1023,10 +1023,10 @@ namespace Velvet
         private static FilterFunction? BuildFilter(ArbitraryProperty prop, float value)
         {
             // brightness and saturate have no UITK filter type; each renders through a first-party
-            // custom-filter shader (BuiltInFilterDefinitions) as a FilterFunctionType.Custom function. Unlike
-            // the old Tint / grayscale(1-N) approximations, the shaders take the full CSS range (over-brighten
-            // and over-saturate, N>1) and do the multiply/lerp on the encoded pixel before the Linear-output
-            // conversion, matching browser semantics exactly. The stored Value is the raw CSS factor N — the
+            // custom-filter shader (BuiltInFilterDefinitions) as a FilterFunctionType.Custom function. The
+            // shaders take the full CSS range (over-brighten and over-saturate, N>1) and do the multiply/lerp
+            // on the encoded pixel before the Linear-output conversion, matching browser semantics exactly.
+            // The stored Value is the raw CSS factor N — the
             // shader implements saturate's lerp-toward-luminance natively, so there is no 1-N complement to
             // pre-compute. A null definition (shader stripped from the build) drops the layer, the same degrade
             // the bake shaders take when their shader is missing.
