@@ -104,7 +104,7 @@ utility UI Toolkit can express; the rest are omitted because UI Toolkit has **no
 them (not a Velvet decision).
 
 **Supported (shipped):** `font-<family>` / `font-thin`…`font-black` / `italic` / `not-italic` /
-`text-xs`…`text-4xl` (font-size) / `text-left|center|right|start|end` (`-unity-text-align`) /
+`text-xs`…`text-9xl` (font-size) / `text-left|center|right|start|end` (`-unity-text-align`) /
 `tracking-*` (`letter-spacing`) / `leading-*` (`line-height`) /
 `whitespace-normal|nowrap|pre|pre-wrap|pre-line` /
 `text-wrap` / `text-nowrap` / `text-balance` / `truncate` / `text-ellipsis` / `text-clip`

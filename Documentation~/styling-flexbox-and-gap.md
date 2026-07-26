@@ -3,34 +3,35 @@
 Velvet's utility classes are Tailwind-inspired, but they run on Unity UI Toolkit's
 layout engine (Yoga), which implements a **subset of Flexbox** and behaves differently
 from CSS in two places that trip up people coming from Tailwind. Both are inherent to
-UI Toolkit, not bugs in Velvet — this page documents the gotchas and the idioms that
-avoid them.
+UI Toolkit, not bugs in Velvet — this page documents the gotchas, what Velvet already
+papers over, and the idioms that avoid what is left.
 
-## 1. `flex` defaults to a **column**, not a row
+## 1. The engine's raw flex default is a **column**, not a row — `.flex` corrects it
 
-| | CSS / Tailwind | Velvet (UI Toolkit / Yoga) |
-|---|---|---|
-| Default `flex-direction` of a flex container | `row` | `column` |
+| | CSS / Tailwind | Raw UI Toolkit / Yoga default | Velvet's `.flex` utility |
+|---|---|---|---|
+| Default `flex-direction` of a flex container | `row` | `column` | `row` |
 
-In CSS, `display: flex` lays children out horizontally by default. In UI Toolkit a flex
-container's default direction is `column`, so `.flex` alone stacks children **vertically**.
-
-> A `VisualElement` is already a flex container by default, so `.flex` is mostly about
-> intent/readability — the direction is what actually matters.
-
-**Always state the direction explicitly:**
+In CSS, `display: flex` lays children out horizontally by default. UI Toolkit's underlying flex
+container (Yoga) defaults to `column` instead, so a raw `display: flex` written outside Velvet's
+utilities (a manual inline style, a `refCallback`, …) stacks children **vertically**. Velvet's
+`.flex` utility class closes that gap explicitly: it sets `flex-direction: row` in addition to
+`display: flex`, so `V.Div(className: "flex", ...)` alone already lays out children
+**horizontally**, matching Tailwind's default.
 
 ```csharp
-// Horizontal row (Tailwind's `flex` default)
-V.Div(className: "flex flex-row items-center gap-x-2", ...);
+// Horizontal row — the `.flex` default, matching Tailwind (`flex-row` is redundant but harmless).
+V.Div(className: "flex items-center gap-x-2", ...);
 
-// Vertical column
+// Vertical column — flex-col overrides the row default.
 V.Div(className: "flex flex-col gap-2", ...);
 ```
 
-`.flex` intentionally does **not** force `flex-direction: row`. Doing so would override the
-engine default and silently re-flow every existing `flex`-without-direction element. Direction
-is therefore opt-in via `flex-row` / `flex-col`.
+`flex-col` still forces a column when you need one; `flex-row` is redundant with the `.flex`
+default (both resolve to the same USS declaration) but is harmless to keep for readability. The
+only place the raw engine default (column) still surfaces is a flex container built **without**
+the `.flex` utility class — e.g. a bare `VisualElement` styled entirely through `refCallback` or a
+custom manipulator.
 
 ## 2. `gap-*` is a framework-level CSS-`gap` polyfill (no USS rules)
 
@@ -66,6 +67,11 @@ The class names and the numeric scale (`gap-0-5`, `gap-1`, `gap-1-5`, `gap-2`, �
 `--space-*` tokens, 1 unit = 4px) are unchanged from the old emulation, so existing call sites are
 unaffected — the classes are recognized in C# now instead of by USS selectors. `_gap.uss` no longer
 emits any rules; see `Runtime/Styling/StyleGapManipulator.cs` and `Runtime/Styling/StyleGapClass.cs`.
+
+Tailwind's `space-x-*` / `space-y-*` are accepted as aliases of `gap-x-*` / `gap-y-*` (same scale,
+same manipulator) — they realize the same "leading margin on every child but the first" spacing a
+`space-* > * + *` margin rule would inside a flex container. `space-*-reverse` has no equivalent
+and is not supported.
 
 ### How re-spacing stays correct
 
@@ -146,7 +152,7 @@ row/column layout is **exact**; the remaining gaps are called out here and in
 
 ## Roadmap
 
-A native `gap` and a configurable default direction depend on UI Toolkit features that are not yet
-available (USS `gap`, and broader Flexbox parity, are on Unity's roadmap beyond 6.7 LTS). When native
-`gap` lands, the polyfill can be replaced and the residual edge cases above go away. Until then, the
-framework-level manipulator is the supported approach and matches CSS `gap` for the common cases.
+A native `gap` depends on a UI Toolkit feature that is not yet available (USS `gap`, and broader
+Flexbox parity, are on Unity's roadmap beyond 6.7 LTS). When native `gap` lands, the polyfill can
+be replaced and the residual edge cases above go away. Until then, the framework-level manipulator
+is the supported approach and matches CSS `gap` for the common cases.
