@@ -16,8 +16,8 @@ namespace Velvet.Tests
     /// <item>Updating the gesture classes while a state is active swaps the old classes off and the new classes
     /// on for that state; while the state is inactive the update changes no classes on the element.</item>
     /// <item>Null hover/tap arrays are treated as empty, so constructing and attaching the manipulator never throws.</item>
-    /// <item><c>ParseClassNames</c> splits a space-separated string into its tokens and returns an empty array for
-    /// a null or empty string.</item>
+    /// <item><c>ParseClassNames</c> splits a space-separated string into its tokens (the null/empty contract is
+    /// owned by the ParseClassNames cache fixture).</item>
     /// <item>Reconciliation registers one manipulator per element that declares gesture classes, registers none
     /// for an element without them, and removes the manipulator when the gesture classes are patched away.</item>
     /// </list>
@@ -357,26 +357,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(result, Is.EqualTo(new[] { "hover-glow", "hover-scale" }));
-        }
-
-        [Test]
-        public void Given_NullString_When_Parsed_Then_ReturnsEmptyArray()
-        {
-            // Act
-            var result = V.ParseClassNames(null);
-
-            // Assert
-            Assert.That(result, Is.Empty);
-        }
-
-        [Test]
-        public void Given_EmptyString_When_Parsed_Then_ReturnsEmptyArray()
-        {
-            // Act
-            var result = V.ParseClassNames("");
-
-            // Assert
-            Assert.That(result, Is.Empty);
         }
 
         #endregion

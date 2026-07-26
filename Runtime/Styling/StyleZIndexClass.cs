@@ -88,12 +88,12 @@ namespace Velvet
                 return false;
             }
 
-            if (cls.Length > 3 && cls[0] == 'z' && cls[1] == '-' && cls[2] == '['
-                && cls[cls.Length - 1] == ']')
+            // TryStripBrackets goes first (it self-guards on length, so it is safe to evaluate against any
+            // cls) and its success implies cls.Length >= 5, which is what makes the cls[0]/cls[1] reads below
+            // safe without a separate bounds check.
+            if (StyleArbitraryValueResolver.TryStripBrackets(cls, 2, out var inner) && cls[0] == 'z' && cls[1] == '-')
             {
-                var inner = cls.Substring(3, cls.Length - 4);
-                return inner.Length > 0
-                    && int.TryParse(inner, NumberStyles.Integer, CultureInfo.InvariantCulture, out z);
+                return int.TryParse(inner, NumberStyles.Integer, CultureInfo.InvariantCulture, out z);
             }
 
             var negate = cls[0] == '-';

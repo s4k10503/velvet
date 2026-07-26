@@ -257,9 +257,9 @@ namespace Velvet
             {
                 return false;
             }
-            if (suffix.Length >= 2 && suffix[0] == '[' && suffix[suffix.Length - 1] == ']')
+            if (StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner))
             {
-                return StyleColorValueParser.TryParseColor(suffix.AsSpan(1, suffix.Length - 2), out color);
+                return StyleColorValueParser.TryParseColor(inner, out color);
             }
             return VelvetPalette.TryResolveColorToken(suffix, out color);
         }

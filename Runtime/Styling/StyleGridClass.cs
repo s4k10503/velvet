@@ -81,13 +81,12 @@ namespace Velvet
 
             var suffix = cls.Substring("grid-cols-".Length);
             // Arbitrary grid-cols-[N] (JIT arbitrary value) — only an integer column COUNT is supported; a CSS track
-            // list (grid-cols-[1fr_200px] / repeat(...)) has no Flexbox equivalent and no-ops here.
-            if (suffix.Length >= 2 && suffix[0] == '[' && suffix[suffix.Length - 1] == ']')
-            {
-                suffix = suffix.Substring(1, suffix.Length - 2);
-            }
+            // list (grid-cols-[1fr_200px] / repeat(...)) has no Flexbox equivalent and no-ops here. A malformed or
+            // empty bracket falls through to int.TryParse on the UNSTRIPPED suffix below, which rejects it just
+            // the same (a bracket character is never a valid digit).
+            var numeric = StyleArbitraryValueResolver.TryStripBrackets(suffix, 0, out var inner) ? inner : suffix.AsSpan();
 
-            if (int.TryParse(suffix, out var parsed) && parsed > 0)
+            if (int.TryParse(numeric, out var parsed) && parsed > 0)
             {
                 columns = parsed;
                 return true;
