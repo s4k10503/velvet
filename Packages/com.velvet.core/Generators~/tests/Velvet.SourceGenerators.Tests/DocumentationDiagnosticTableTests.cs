@@ -19,17 +19,17 @@ namespace Velvet.SourceGenerators.Tests
     {
         private static readonly Regex DiagnosticIdPattern = new(@"VEL\d{3}", RegexOptions.Compiled);
 
-        // "Velvet.Memoize" is the [Memoize]-attribute diagnostic category (VEL001-009). memoization.md's
+        // "Velvet.Memoize" is the [MemoizeMethod]-attribute diagnostic category (VEL001-009). memoization.md's
         // table intentionally documents only this category and points elsewhere (AnalyzerReleases.Unshipped.md)
         // for the separate "Velvet.Hooks" rules-of-hooks diagnostics (VEL100/101), so the table's exact-match
         // comparison set is scoped to this category rather than to every diagnostic the assembly defines.
-        private const string MemoizeAttributeCategory = "Velvet.Memoize";
+        private const string MemoizeMethodAttributeCategory = "Velvet.Memoize";
 
         [Fact]
         public void MemoizationDocTable_ComparedAgainstMemoizeCategoryDescriptors_MatchesExactly()
         {
             var definedIds = AllDiagnosticDescriptors()
-                .Where(d => d.Category == MemoizeAttributeCategory)
+                .Where(d => d.Category == MemoizeMethodAttributeCategory)
                 .Select(d => d.Id)
                 .ToHashSet();
             var documentedIds = ExtractIds(File.ReadAllText(MemoizationDocPath()));
@@ -38,9 +38,9 @@ namespace Velvet.SourceGenerators.Tests
             var undefinedInDoc = documentedIds.Except(definedIds).OrderBy(x => x).ToList();
 
             Assert.True(missingFromDoc.Count == 0 && undefinedInDoc.Count == 0,
-                $"Documentation~/memoization.md's diagnostic table is out of sync with the {MemoizeAttributeCategory} " +
+                $"Documentation~/memoization.md's diagnostic table is out of sync with the {MemoizeMethodAttributeCategory} " +
                 $"category descriptors.\nDefined but missing from the doc table: [{string.Join(", ", missingFromDoc)}]\n" +
-                $"In the doc table but not a defined {MemoizeAttributeCategory} descriptor: [{string.Join(", ", undefinedInDoc)}]");
+                $"In the doc table but not a defined {MemoizeMethodAttributeCategory} descriptor: [{string.Join(", ", undefinedInDoc)}]");
         }
 
         [Fact]

@@ -30,7 +30,7 @@ namespace MyApp.Pages
 {
     public partial class HomePage
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private partial global::Velvet.VNode BuildHeader(string title);
 
         private global::Velvet.VNode BuildHeader_Impl(string title) => null;
@@ -49,7 +49,7 @@ namespace MyApp.Pages
 {
     public partial class HomePage
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private partial global::Velvet.VNode BuildHeader(string title, int count, bool visible);
 
         private global::Velvet.VNode BuildHeader_Impl(string title, int count, bool visible) => null;
@@ -68,7 +68,7 @@ namespace MyApp.Pages
 {
     public partial class HomePage
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private partial global::Velvet.VNode Build(int a, int b, int c, int d, int e, int f, int g, int h);
 
         private global::Velvet.VNode Build_Impl(int a, int b, int c, int d, int e, int f, int g, int h) => null;
@@ -87,10 +87,10 @@ namespace MyApp.Pages
 {
     public partial class HomePage
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private partial global::Velvet.VNode BuildHeader(string title);
 
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private partial global::Velvet.VNode BuildFooter(int count);
 
         private global::Velvet.VNode BuildHeader_Impl(string title) => null;
@@ -112,7 +112,7 @@ namespace MyApp
     {
         public partial class Inner
         {
-            [global::Velvet.Memoize]
+            [global::Velvet.MemoizeMethod]
             private partial global::Velvet.VNode Build(int x);
 
             private global::Velvet.VNode Build_Impl(int x) => null;
@@ -132,7 +132,7 @@ namespace MyApp.Pages
 {
     public partial class StaticHost
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         public static partial global::Velvet.VNode Build(int x);
 
         private static global::Velvet.VNode Build_Impl(int x) => null;
@@ -151,7 +151,7 @@ namespace MyApp
 {
     public partial class Container<TKey, TValue>
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private partial global::Velvet.VNode Build(int x);
 
         private global::Velvet.VNode Build_Impl(int x) => null;
@@ -181,7 +181,7 @@ namespace MyApp
 {{
     {classDecl}
     {{
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         {methodDecl}
     }}
 }}",
@@ -198,7 +198,7 @@ namespace MyApp.Pages
 {
     public partial class HomePage
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private static partial global::Velvet.VNode BuildBanner();
 
         private static global::Velvet.VNode BuildBanner_Impl() => null;
@@ -219,7 +219,7 @@ namespace MyApp.Pages
 {
     public partial class HomePage
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private static partial global::Velvet.VNode BuildBanner();
 
         private static global::Velvet.VNode BuildBanner_Impl() { throw new System.Exception(); }
@@ -240,7 +240,7 @@ namespace MyApp.Pages
 {
     public partial class HomePage
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private static partial global::Velvet.VNode BuildBanner();
     }
 }");
@@ -256,7 +256,7 @@ namespace MyApp
 {
     public partial class Page
     {
-        [global::Velvet.Memoize]
+        [global::Velvet.MemoizeMethod]
         private global::Velvet.VNode Build(int x) => null;
     }
 }");

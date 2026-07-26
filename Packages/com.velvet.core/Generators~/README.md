@@ -21,7 +21,7 @@ dotnet test Velvet.SourceGenerators.sln
 
 - `SourceBuilderTests` — unit tests for the indent / block helpers in `Shared/SourceBuilder.cs`
 - `MemoOverloadGeneratorTests` — snapshot comparison that verifies the generated `V.Memoized<T1..T8>` output
-- `MemoizeMethodGeneratorTests` — verifies `[Memoize]`-driven `V.Memoized(...)` wrapper expansion and its diagnostics (see [Documentation~/memoization.md](../Documentation~/memoization.md) for what they mean and the complete list)
+- `MemoizeMethodGeneratorTests` — verifies `[MemoizeMethod]`-driven `V.Memoized(...)` wrapper expansion and its diagnostics (see [Documentation~/memoization.md](../Documentation~/memoization.md) for what they mean and the complete list)
 
 ## Directory layout
 
@@ -34,7 +34,7 @@ Generators~/
 ├── src/Velvet.SourceGenerators/
 │   ├── Velvet.SourceGenerators.csproj
 │   ├── MemoOverloadGenerator.cs              (auto-generates Memoized<T1..T8>)
-│   ├── MemoizeMethodGenerator.cs             ([Memoize] → V.Memoized wrapper expansion)
+│   ├── MemoizeMethodGenerator.cs             ([MemoizeMethod] → V.Memoized wrapper expansion)
 │   ├── Diagnostics/MemoizeDiagnostics.cs     (diagnostic descriptors — see Documentation~/memoization.md)
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
 │   └── Shared/SourceBuilder.cs               (shared helpers)
@@ -51,7 +51,7 @@ Generators~/
 
 The `~` suffix is the Unity Asset DB convention for "ignore this directory". Generator sources are not visible to Unity.
 
-## Using `[Memoize]`
+## Using `[MemoizeMethod]`
 
 End-user guidance — usage, constraints, diagnostic IDs, and examples — has moved to [Documentation~/memoization.md](../Documentation~/memoization.md).
 

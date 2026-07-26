@@ -12,7 +12,7 @@ namespace Velvet
     /// the reconcile boundary. The two share a name but govern independent mechanisms.
     /// </remarks>
     [AttributeUsage(AttributeTargets.Method, Inherited = false)]
-    public sealed class MemoizeAttribute : Attribute
+    public sealed class MemoizeMethodAttribute : Attribute
     {
     }
 }
