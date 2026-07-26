@@ -34,10 +34,11 @@ generator source, rebuild with `./build.sh` and commit the updated DLLs.
 
 | Workflow | Trigger | Unity license |
 |----------|---------|---------------|
-| `Test ▸ source-generators` | push / PR | not required |
+| `Source generators ▸ source-generators` | push / PR | not required |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push / PR | **required** (skipped if absent) |
 | `UPM ▸ split` | push to `main` | not required |
 | `UPM ▸ release` | manual (`workflow_dispatch`) | not required |
+| `Docs` (DocFX → GitHub Pages) | push to `main` / release / manual | **required** (skipped if absent) |
 
 The source-generator tests and the `upm`-branch split run with no Unity license, so the pipeline
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically

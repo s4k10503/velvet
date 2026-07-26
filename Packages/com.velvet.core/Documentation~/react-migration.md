@@ -19,6 +19,11 @@ It also explicitly documents the intentional differences imposed by C# language 
 
 ## 1. Hooks Mapping
 
+§1-1 through §1-3 below cover every hook with a direct React naming/semantic relationship except
+two documented alongside the concept they belong to: `Hooks.UseMemo` sits with the memoization
+axes in [§2-3 Components](#2-3-components), and `Hooks.Use` / `Hooks.UseFallback` sit with
+[§2-5 Suspense / Error Boundary](#2-5-suspense--error-boundary).
+
 ### 1-1. Naming Differences (C# Language Constraints)
 
 In C#, methods conventionally use PascalCase, so the names always differ from React's camelCase hook names. The semantics are, in principle, a 1:1 match with React.
@@ -27,10 +32,15 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 |-------|--------|----------------|
 | `useEffect(fn, deps)` | `Hooks.UseEffect(fn, deps)` | Nearly equivalent. Runs asynchronously after paint, at the next frame boundary. 2-pass cleanup → effect ordering |
 | `useLayoutEffect(fn, deps)` | `Hooks.UseLayoutEffect(fn, deps)` | Nearly equivalent. Runs synchronously immediately after reconcile. For DOM measurement and layout adjustment |
+| `useInsertionEffect(fn, deps)` | `Hooks.UseInsertionEffect(fn, deps)` | Nearly equivalent. Runs synchronously after render, before every `UseLayoutEffect` of the same commit. For style injection; must not read layout or refs |
+| `useOptimistic(state, updateFn)` | `Hooks.UseOptimistic(state, applyOptimistic)` | React parity. Returns `(optimisticState, addOptimistic)`; the optimistic override is discarded once the pass-through state changes |
 | `useCallback(fn, deps)` | `Hooks.UseCallback<T>(fn, deps)` | Nearly equivalent. Type inference can fail, so specify the generic type argument explicitly |
 | `useContext(Context)` | `Hooks.UseContext(context)` | React parity. Propagates Provider value changes live (a masked consumer — shadowed by an inner Provider — is still re-rendered, but it live-reads the same value, so the reconciler diffs it to a no-op) |
 | `useTransition()` | `Hooks.UseTransition()` | React parity. Returns `(isPending, startTransition)` in the same order as React's `[isPending, startTransition]` |
+| `useDeferredValue(value)` / `useDeferredValue(value, initialValue)` | `Hooks.UseDeferredValue<T>(value)` / `Hooks.UseDeferredValue<T>(value, initialValue)` | React parity. Defers the commit of `value` changes through the Transition lane, returning the previous committed value during an urgent re-render; the `initialValue` overload returns it on the first render only, then immediately schedules a transition toward `value`. Change detection is reference equality (NaN-aware for float/double), with no comparer argument |
 | `useRef()` | Inside a component: `Hooks.UseRef<T>()` / outside a component (e.g. orchestrator): `new Ref<T>()` | For parent→child ref forwarding, pass the orchestrator-side `new Ref<T>()` to the `V.Component<TRef>(body, componentRef, key)` overload |
+| `useImperativeHandle(ref, createHandle, deps?)` | `Hooks.UseImperativeHandle<THandle>(handleRef, factory)` / `Hooks.UseImperativeHandle<THandle>(handleRef, factory, deps)` | React parity. Builds a handle via `factory` and writes it into the `Ref<THandle>` the parent forwarded through `componentRef:` (read back inside the child with `ForwardedRef<T>()`); omitting `deps` re-invokes `factory` every render, same as passing no deps array in React |
+| `useId()` | `Hooks.UseId(prefix?)` | React parity. Stable ID tied to the component instance and hook-slot position — same value across re-renders, distinct across instances/slots — for label/field association or `aria-*` attributes. Format is `:r{hex}:` (or `{prefix}:r{hex}:`), the same colon-wrapped shape React emits; a `prefix` is honored only on the first render |
 | Service Locator hooks such as R3F `useThree()` / react-redux `useStore()` | `Hooks.UseService<T>()` | Obtains a cross-cutting service from the DI container. See 1-2 below for details |
 
 > **Note — Choosing between `UseEffect` and `UseLayoutEffect`**  
@@ -96,7 +106,8 @@ Velvet state is organized into two layers — **"component-local state" and "sha
 
 #### Shared State (Zustand-inspired Store)
 
-Velvet's `Store<TState>` is an Atomic Store based on R3 `BehaviorSubject`, corresponding to Zustand's `create()`.
+Velvet's `Store<TState>` is an Atomic Store with a hand-rolled synchronous listener set (no Rx-style
+operators or buffering — see `StoreStateNotifier<T>`), corresponding to Zustand's `create()`.
 
 | Zustand | Velvet |
 |---------|--------|
@@ -104,7 +115,7 @@ Velvet's `Store<TState>` is an Atomic Store based on R3 `BehaviorSubject`, corre
 | `useStore(myStore, s => s.field)` | `Hooks.UseStore(store, s => s.field)` (inside a component function; obtain `store` via `UseContext`) |
 | `useStore(myStore, s => s.field, shallow)` | `Hooks.UseStore(store, s => s.field, customComparer)` |
 | `set(newState)` | `SetState(s => s with { ... })` (protected, inside the Store) |
-| `get()` | `store.Current` / `store.StateChanges` (R3 Observable) |
+| `get()` | `store.Current` (snapshot) / `store.Subscribe(...)` / `store.Select(...)` (change notifications) |
 
 The Store is registered in DI via VContainer and distributed with `V.Provider` at the page root / orchestrator. Components receive it via `Hooks.UseContext` and subscribe to a selector via `Hooks.UseStore` (equivalent to React's `useContext` + `useStore`):
 
@@ -124,7 +135,9 @@ V.Provider(CounterStoreContext, _counterStore,
     children: new[] { V.Component(CounterComponentRender, key: "counter") })
 ```
 
-If the selector's return value equals the previous one, no re-render occurs (the default is `EqualityComparer<T>.Default`; override it via the third argument).
+If the selector's return value equals the previous one, no re-render occurs. The default comparer is
+reference (`Object.is`) equality — pass `EqualityComparer<TSel>.Default` as the third argument when a
+value-equality skip is wanted instead (e.g. a record selector with stable content).
 
 ---
 
@@ -180,6 +193,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | React | Velvet | Notes |
 |-------|--------|------|
 | `<Suspense fallback={<Spinner/>}>` | `V.Suspense(fallback, children)` | Equivalent |
+| `use(promise)` | `Hooks.Use(() => someUniTask, resourceKey)` | Reads an async resource declaratively; while pending it throws to the nearest `V.Suspense` boundary, just like React's `use()` with a Promise |
 | Class Component + `getDerivedStateFromError` | The `V.ErrorBoundary(fallback, children)` helper, or `[Component(IsErrorBoundary = true)]` + `Hooks.UseFallback(fn)` | Explicit opt-in. The helper suits a use directly under Mount; the functional pattern suits cases where you want fallback/children values to update dynamically on parent re-render |
 | Class Component + `componentDidCatch` | `Hooks.UseEffect` + try-catch, or logging via an error-notification Store | When you want to log side effects from a functional component, do it inside an effect |
 
@@ -487,7 +501,7 @@ const handleClick = useCallback(() => setState(s => ({ ...s, clicked: true })), 
 ```csharp
 // Velvet — define variants with StyleRecipe
 private static readonly StyleRecipe ButtonRecipe = new StyleRecipe(
-    baseClass: "btn rounded-full font-bold",
+    @base: "btn rounded-full font-bold",
     variants: new Dictionary<string, Dictionary<string, string>>
     {
         ["intent"] = new() { ["primary"] = "bg-primary text-white", ["ghost"] = "bg-transparent" },
@@ -496,7 +510,7 @@ private static readonly StyleRecipe ButtonRecipe = new StyleRecipe(
 
 // Inside Render
 V.Button(
-    className: ButtonCva.Apply(("intent", "primary"), ("size", "lg")),
+    className: ButtonRecipe.Apply(("intent", "primary"), ("size", "lg")),
     text: "Save")
 ```
 
@@ -525,9 +539,9 @@ const button = cva("btn rounded-full font-bold", {
 
 The following domains are out of scope for this migration guide and are intended to be covered in separate documents:
 
-- Layout features such as virtual scroll / Portal (equivalent to React Window / Portal)
-- Animation features (equivalent to Framer Motion)
-- Routing features (equivalent to React Router)
+- Layout features such as virtual scroll (`V.VirtualList`, not yet documented separately) and Portal (equivalent to React Window / Portal — see [portals.md](portals.md))
+- Animation features (equivalent to Framer Motion — see [motion.md](motion.md))
+- Routing features (equivalent to React Router, not yet documented separately)
 
 Since concrete API names stay in sync more easily with the implementation, refer to the XmlDoc / IntelliSense inside the Velvet package.
 
@@ -535,12 +549,6 @@ Since concrete API names stay in sync more easily with the implementation, refer
 
 ## Appendix: Policy on Aligning with React Behavior
 
-Velvet's first principle is to **reproduce React's semantics as faithfully as possible**. Hook behavior, Context propagation, Suspense, and Error Boundary aim to match React down to their semantics, and discovered differences are resolved over time.
+Velvet's first principle is to **reproduce React's semantics as faithfully as possible**; "same name, different behavior" is treated as **a trap to be avoided**, and any difference discovered is resolved toward React over time. See the [package README's design philosophy](https://github.com/s4k10503/velvet/blob/main/Packages/com.velvet.core/README.md#design-philosophy) for the full policy and the three pillars it rests on.
 
-Differences that are intentionally retained come only from those that are **clearly improvable** or from **environment constraints**, such as:
-
-- Component declaration style: functional only (consistent with the React 16.8+ Hooks direction; class components are not introduced)
-- C# language constraints: PascalCase naming / no JSX / `params` limitations, etc.
-- Improvement differences aimed at type safety / reduced GC allocation: requiring `keySelector` for `V.List`, the lazy thunk in `V.When`, etc.
-
-"Same name, different behavior" is a source of accidents, and Velvet treats it as **a trap to be avoided**.
+The differences retained *within this migration guide* are the ones documented inline above, each either environment-forced (C# language constraints: PascalCase naming / no JSX / `params` limitations) or a type-safety / GC-allocation improvement scoped to the specific API being mapped — e.g. the required `keySelector` for `V.List`, or the lazy thunk in `V.When`.

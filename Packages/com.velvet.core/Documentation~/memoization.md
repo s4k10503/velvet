@@ -27,10 +27,10 @@ The generator emits a wrapper that calls `V.Memoized` with the parameters as the
 
 - The partial method declaration must carry an accessibility modifier (C# 9.0 extended partial methods spec)
 - The containing class must be declared `partial`
-- Only arity 1–8 is supported (arity 0 emits VEL003, 9+ emits VEL004)
-- The return type must derive from `Velvet.VNode` (VEL010)
-- Generic methods, `async`, and `ref`/`out` parameters are unsupported (VEL005/006/007)
-- The implementation lives in `<MethodName>_Impl` (writing the body directly on the partial declaration emits VEL011)
+- Arity 0 still generates but warns (VEL001) unless the `_Impl` method is provably pure; arity 9+ is rejected outright (VEL002)
+- The return type must derive from `Velvet.VNode` (VEL008)
+- Generic methods, `async`, and `ref`/`out` parameters are unsupported (VEL003/004/005)
+- The implementation lives in `<MethodName>_Impl` (writing the body directly on the partial declaration emits VEL009)
 
 ## Use inside the Runtime asmdef
 
@@ -40,19 +40,19 @@ The generator emits a wrapper that calls `V.Memoized` with the parameters as the
 
 | ID | Trigger |
 |----|---------|
-| VEL003 | arity 0 |
-| VEL004 | arity 9+ |
-| VEL005 | generic method |
-| VEL006 | async / Task / ValueTask |
-| VEL007 | ref / out / in / ref readonly parameter |
-| VEL008 | accessibility modifier missing |
-| VEL009 | containing class is not partial |
-| VEL010 | return type does not derive from VNode |
-| VEL011 | partial method already has a body |
+| VEL001 | arity 0 cannot prove purity |
+| VEL002 | arity 9+ |
+| VEL003 | generic method |
+| VEL004 | async / Task / ValueTask |
+| VEL005 | ref / out / in / ref readonly parameter |
+| VEL006 | accessibility modifier missing |
+| VEL007 | containing class is not partial |
+| VEL008 | return type does not derive from VNode |
+| VEL009 | partial method already has a body |
 
-For a complete list including the `ReactiveScopeAnalyzer` and `PurityAnalyzer` diagnostics, see `Generators~/src/Velvet.SourceGenerators/AnalyzerReleases.Shipped.md`.
+For a complete list including the `ReactiveScopeAnalyzer` and `PurityAnalyzer` diagnostics, see `Generators~/src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md`.
 
 ## See also
 
-- [`Generators~/README.md`](../Generators~/README.md) — contributor guide for building, testing, and shipping the Source Generator DLL
+- [`Generators~/README.md`](https://github.com/s4k10503/velvet/blob/main/Packages/com.velvet.core/Generators~/README.md) — contributor guide for building, testing, and shipping the Source Generator DLL
 - `[Component(Memoize = true)]` — component-level memoization (`React.memo` equivalent)

@@ -10,7 +10,7 @@
 Velvet brings React's authoring model to Unity UI Toolkit. You describe UI as the pure-function
 output of state; a Virtual DOM and reconciler diff that description and apply only the changes to
 the underlying `VisualElement` tree. Hooks, a Zustand-style store, utility-first styling, and
-Source Generator-driven memoization round out the experience — all from C#, with no UXML or USS
+compile-time memoization round out the experience — all from C#, with no UXML or USS
 authoring required.
 
 Velvet's guiding principle is **"reproduce React's semantics as faithfully as possible,"**
@@ -40,7 +40,7 @@ desync bugs, Velvet is for you:
   - [Store (Zustand-style)](#store-zustand-style)
   - [Utility-first styling](#utility-first-styling)
   - [Animation (Framer Motion)](#animation-framer-motion)
-  - [Source Generator memoization](#source-generator-memoization)
+  - [Compile-time memoization](#compile-time-memoization)
 - [Developer tooling](#developer-tooling)
 - [JSX → V.\*](#jsx--v)
 - [Design philosophy](#design-philosophy)
@@ -58,8 +58,9 @@ desync bugs, Velvet is for you:
 
 ## Installation
 
-> Published distribution from a dedicated `upm` branch is set up via CI. Until the first release is
-> tagged, install directly from the repository.
+> Distribution is a dedicated `upm` branch (package-at-root), published automatically by CI on
+> every merge to `main`. Tagged releases (`vX.Y.Z`) mark stable snapshots on that branch — pin
+> one for reproducible installs, or track the branch head for the latest.
 
 Velvet uses [UniTask](https://github.com/Cysharp/UniTask) and references it by assembly name. UniTask is
 not on the Unity registry, and Velvet intentionally does **not** declare it as a package dependency — so an
@@ -129,32 +130,24 @@ differences, scheduling work by lane-based priority.
 
 ### Hooks
 
-React's primary hooks, exposed in C# PascalCase:
+React's primary hooks, exposed in C# PascalCase. A representative sample — see
+[react-migration.md §1](Packages/com.velvet.core/Documentation~/react-migration.md#1-hooks-mapping)
+for the complete hook-by-hook mapping (all of `UseReducer` / `UseLayoutEffect` /
+`UseInsertionEffect` / `UseMemo` / `UseTransition` / `UseDeferredValue` / `UseOptimistic` /
+`UseId` / `UseImperativeHandle`, plus semantic-difference notes):
 
 | React | Velvet |
 |-------|--------|
 | `useState` | `UseState` |
-| `useReducer` | `UseReducer` |
 | `useEffect` (post-paint async) | `UseEffect` |
-| `useLayoutEffect` (pre-paint sync) | `UseLayoutEffect` |
-| `useCallback` | `UseCallback` |
-| `useMemo` | `UseMemo` |
 | `useContext` | `UseContext` |
-| `useTransition` | `UseTransition` |
-| `useDeferredValue` | `UseDeferredValue` |
-| `useId` | `UseId` |
 | `useRef` | `Hooks.UseRef<T>()` (in component) / `new Ref<T>()` (outside) |
-| `useImperativeHandle` | `UseImperativeHandle` |
 
-Velvet also ships hooks that cover Unity / DI / async-mutation cases the React ecosystem usually
-handles with third-party libraries:
-
-| Hook | Purpose |
-|------|---------|
-| `UseService<T>()` | Resolves a service via `HookServiceContext` (DI-framework neutral) |
-| `UseBlocker(predicate, deps)` | Blocks navigation departures (sync + async overloads) |
-| `UseMutation<TVariables, TData>(options)` | Tracks the Idle/Pending/Success/Error lifecycle of an async mutation |
-| `UseStore(store, selector)` | Subscribes a component to a slice of a `Store` |
+Velvet also ships hooks with no direct React-core equivalent, covering Unity / DI / routing /
+async-mutation cases the React ecosystem usually hands to third-party libraries —
+`UseService<T>()` (DI resolution), `UseStore` (Zustand-style store subscription, see
+[Store](#store-zustand-style) below), `UseBlocker` (React-Router-style navigation blocking), and
+`UseMutation` (react-query-style async-mutation lifecycle).
 
 ### Store (Zustand-style)
 
@@ -192,84 +185,63 @@ Styling is composed entirely from utility classes — no per-component USS files
 
 ### Animation (Framer Motion)
 
-Mount / unmount and gesture animations, modeled on Framer Motion:
+Mount / unmount and gesture animations, modeled on Framer Motion: **`V.Motion`** for an animated
+element (`StyleTransition` presets, Framer-style `variants`, `whileHoverClass` / `whileTapClass`
+gestures) and **`V.AnimatePresence`** for keyed enter/exit (DOM-less, with a `PopLayout` exit
+mode). See [motion.md](Packages/com.velvet.core/Documentation~/motion.md) for the full guide —
+variants, orchestration, springs, and the one-config-every-update transition semantics.
 
-- **`V.Motion`** — an animated element with `StyleTransition` presets (`Fade`, `SlideUp`, `ScaleIn`, `FadeSlideUp`, …), Framer-style **variants** (`variants:` + `initial:` / `animate:` / `exit:` labels, with label inheritance down the tree), and `whileHoverClass` / `whileTapClass` gestures. A Motion outside `AnimatePresence` plays its `initial` → `animate` enter on mount, like any `motion.*` element.
-- **`V.AnimatePresence`** — keyed enter / exit, keeping a removed child mounted until its exit finishes. **DOM-less** (React/Framer parity): it emits no wrapper, so its children flow directly into the parent's layout. `mode: AnimatePresenceMode.PopLayout` pins an exiting child out of flow so siblings reflow immediately (Framer's `mode="popLayout"`).
-- **`StyleTransitionConfig`** — tween timing (`DurationSec` / `Easing` / `DelaySec`), per-property overrides (`PropertyOverrides`), `staggerChildren` / `delayChildren` / `when` orchestration for variant propagation, and opt-in **spring physics** (`Type = TransitionType.Spring` + `Stiffness` / `Damping` / `Mass`) with velocity-preserving interruption.
-- **`V.AnimatedList`** — sugar combining `AnimatePresence` + `List` + `Motion` for animated collections, with `staggerSec`.
+### Compile-time memoization
 
-See [motion.md](Packages/com.velvet.core/Documentation~/motion.md) for the full guide (variants, orchestration, springs, and the one-config-every-update transition semantics).
+Velvet pushes memoization to compile time rather than leaving it a runtime mechanism the way React
+does:
 
-### Source Generator memoization
+- `[Memoize]` — partial-method-level memoization, generated by a Roslyn source generator.
+- `[Component(Memoize = true)]` — whole-component caching equivalent to `React.memo`; the flag is
+  woven in by the same ILPP pass that drives `[Component(Compiler = true)]`'s auto-memoization, and
+  checked by the reconciler at the props-bail boundary.
 
-A Roslyn source generator and an IL post-processor provide static, allocation-conscious
-memoization:
-
-- `[Memoize]` — partial-method-level memoization.
-- `[Component(Memoize = true)]` — whole-component caching, equivalent to `React.memo`.
+See [memoization.md](Packages/com.velvet.core/Documentation~/memoization.md).
 
 ## Developer tooling
 
 Velvet reproduces the React-ecosystem editor tooling as Unity editor windows that drive off the
-live framework. See [preview-tooling.md](Packages/com.velvet.core/Documentation~/preview-tooling.md)
-for the full guide.
-
-- **Preview window (Storybook)** — open via **Window ▸ Velvet ▸ Preview**. Declare a *story* with
-  `[VelvetPreview]` on a static method returning `VNode` (with optional `[VelvetPreviewSetup]` for
-  shared fonts / store / localization), and it live-renders onto a real panel **without entering Play
-  Mode**. Addons mirror Storybook's: **Controls / Args** (live prop knobs from a story's args object),
-  **Viewport** (responsive widths driven by `@container`), **Theme** (`dark:`), **Backgrounds**,
-  **Zoom**, **Outline**, and **Measure**.
-- **DevTools (React DevTools)** — open via **Window ▸ Velvet ▸ DevTools Inspector**. A real-time
-  VNode-tree inspector with state-history time travel. It **auto-attaches**: every `V.Mount` registers
-  its root, so the running app's tree shows up with no setup (manual
-  `VelvetDevToolsRegistry.Register(fiber, "Label")` stays available for labelling an interior sub-tree).
-- **Screenshot capture** — a registry-driven visual-regression harness renders every `[VelvetPreview]`
-  story off-screen to a PNG, reusing the exact same story source as the preview window.
+live framework: a **Preview window** (**Window ▸ Velvet ▸ Preview**, the Storybook equivalent,
+with Controls / Viewport / Theme / Backgrounds / Zoom / Outline / Measure addons) and **DevTools**
+(**Window ▸ Velvet ▸ DevTools Inspector**, the React DevTools equivalent, with state-history time
+travel). See [preview-tooling.md](Packages/com.velvet.core/Documentation~/preview-tooling.md) for
+the full guide, including the headless screenshot-capture pattern for visual regression.
 
 ## JSX → V.\*
+
+A representative sample — see
+[react-migration.md §2](Packages/com.velvet.core/Documentation~/react-migration.md#2-dsl-mapping--jsx--v)
+for the complete DSL mapping (`Fragment`, `Provider`, `Suspense`, `ErrorBoundary`, and more):
 
 | React (JSX) | Velvet |
 |-------------|--------|
 | `<div>` / `<button>` / `<input>` | `V.Div(...)` / `V.Button(...)` / `V.TextField(...)` |
 | `{cond && <X/>}` | `V.When(cond, () => V.X())` |
 | `items.map(x => <X key={x.id}/>)` | `V.List(items, x => x.id, x => V.X(...))` |
-| `<>{children}</>` | `V.Fragment(children)` |
-| `<Ctx.Provider value={v}>` | `V.Provider(ctx, v, ...children)` |
-| `<Suspense fallback={<X/>}>` | `V.Suspense(fallback, ...children)` |
-| `<ErrorBoundary fallback={...}>` | `V.ErrorBoundary(fallback, ...children)` |
 
 ## Design philosophy
 
-Velvet's first principle is to **match React's behaviour** — naming, hook semantics, context
-propagation, Suspense, Error Boundary, and lane priority all align with React by default. "Names
-match but behaviour does not" is treated as a trap to avoid; any drift is resolved toward React.
+Velvet's first principle is to **reproduce React's semantics as faithfully as possible**,
+deviating only where a C# language constraint, a Unity environment constraint, or a clear
+type-safety / GC-allocation improvement justifies it — "names match but behaviour does not" is
+treated as a trap to avoid, and any drift discovered is resolved toward React.
+[Compile-time memoization](#compile-time-memoization) above is where this goes furthest: React's
+runtime `React.memo` / Compiler mechanism becomes ILPP weaving plus a Source Generator.
 
-Velvet diverges only when the improvement is clearly justified:
-
-- **C# language constraints** — PascalCase identifiers, JSX-less factory style.
-- **Unity environment constraints** — `refCallback` for direct `VisualElement` access; bridging the
-  UI Toolkit event model.
-- **Type safety / GC reduction** — stricter constraints than React's spec where warranted, plus
-  Source Generator-driven static expansion.
-
-That third point is also where Velvet aims to go *beyond* React, not merely deviate from it:
-React's memoization is a runtime mechanism, whereas Velvet pushes it to **compile time** via an
-ILPP pass (the React-Compiler equivalent, `[Component(Compiler = true)]`) and Source Generators
-(`[Memoize]` / `[Component(Memoize = true)]`). It spends C#'s real strengths — static type
-information and code generation — on the practical axis of performance. See
-[memoization.md](Packages/com.velvet.core/Documentation~/memoization.md).
+See [Packages/com.velvet.core/README.md](Packages/com.velvet.core/README.md#design-philosophy) for
+the full rationale — the three pillars, and what Velvet intentionally does not do (no new UXML/USS
+authoring, no runtime-object control).
 
 **A known trade-off, stated honestly.** Reproducing React faithfully *without* JSX means the
 `new VNode[] { ... }` scaffolding can take up roughly 15–30% of a file as structural noise — the
 necessary friction of "React-faithful × C# constraints." The practical mitigation is the same as
 in React: split by component — extract each section into its own `[Component]` (or a private
 `static VNode` helper) so the entry render lists sections instead of nesting them.
-
-Velvet also intentionally **does not** introduce new UXML or USS authoring, and does not control
-runtime objects (avatars, camera, physics, input) — it is dedicated to the UI layer. See the
-[documentation](#documentation) for the full rationale.
 
 ## Documentation
 
