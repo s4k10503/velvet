@@ -10,7 +10,7 @@ namespace Velvet.Tests
     /// Pins the scheduled Motion mechanics that only run against a REAL (simulated) panel — their
     /// scheduled swap-to-animate, deferred inline-style clears, and layout-driven FLIP inverse all run
     /// through <c>schedule.Execute().ExecuteLater(ms)</c>, which only fires once a panel ticks its
-    /// scheduler against its own clock (the batchmode EditMode PlayerLoop never does). Three mechanics:
+    /// scheduler against its own clock (the batchmode EditMode PlayerLoop never does). Four mechanics:
     /// (1) <c>V.Motion(layoutId:)</c>'s FLIP behavior — when a Motion's resolved layout rect changes
     /// across a re-render while carrying the same layoutId, MotionLayoutIdDriver applies an inverse
     /// inline transform immediately after layout settles at the new rect, then springs it back to zero,
@@ -20,11 +20,14 @@ namespace Velvet.Tests
     /// a sequential slot ADDED on top of its own declared delay, riding the runtime-swap play's
     /// <c>additionalDelaySec</c> so the claim delays the SWAP itself rather than parking an inline
     /// <c>transition-delay</c>, while a descendant with its own explicit <c>animate</c> opts out entirely
-    /// (Framer parity); and (3) a standalone <c>V.Motion(variants:, initial:, animate:)</c> mounted with
+    /// (Framer parity); (3) a standalone <c>V.Motion(variants:, initial:, animate:)</c> mounted with
     /// NO AnimatePresence — Framer parity dictates <c>initial</c>/<c>animate</c> drive the mount enter on
     /// any <c>motion.*</c> component regardless, with the scheduled swap to the resting
     /// <c>variants[animate]</c> firing on the next tick and a later unrelated re-render never replaying
-    /// <c>initial</c>.
+    /// <c>initial</c>; and (4) a classic (tween) variant enter's frame discipline — the from-state must
+    /// survive the tick that started the enter, because the panel computes styles only after the timer
+    /// queue drains, and the dangerous shape is production's own: the mount runs inside the panel's own
+    /// timer tick, so a zero-delay swap item can become runnable in the very tick that mounted the element.
     /// </summary>
     [TestFixture]
     internal sealed class MotionScheduledMechanicsTests : MotionSimulatedPanelTestsBase
@@ -40,12 +43,24 @@ namespace Velvet.Tests
         private static StateUpdater<bool> s_setMoved;
         private static Action<int> s_bump;
 
+        private readonly record struct SetState(string Keys);
+
+        private sealed class SetStore : Store<SetState>
+        {
+            public SetStore(string initial) : base(new SetState(initial)) { }
+            public void Set(string keys) => SetState(_ => new SetState(keys));
+            protected override void ResetCore() => SetState(_ => new SetState(""));
+        }
+
+        private static SetStore s_store;
+
         [SetUp]
         public override void SetUp()
         {
             base.SetUp();
             s_setMoved = default;
             s_bump = null;
+            s_store = null;
         }
 
         [Component]
@@ -386,6 +401,96 @@ namespace Velvet.Tests
             Assert.That(
                 (element.ClassListContains("opacity-100"), element.ClassListContains("opacity-0")),
                 Is.EqualTo((true, false)));
+        }
+
+        // The dangerous shape is production's own: the mount runs inside the panel's timer tick (the
+        // batch scheduler's drain is itself a scheduled item), the enter's swap is registered on a
+        // freshly attached element, and a zero-delay swap item then becomes runnable in the very tick
+        // that mounted the element.
+        private VisualElement StartEnterInsideATimerTick(StyleAnimationScheduler scheduler)
+        {
+            var element = new VisualElement();
+            Root.Add(element);
+            element.AddToClassList("opacity-100");
+            Tick();
+            element.schedule.Execute(() =>
+            {
+                scheduler.PlayVariantEnter(element, new[] { "opacity-0" }, new[] { "opacity-100" },
+                    durationSec: 0.3f, easing: EasingMode.EaseInOut, delaySec: 0f);
+            });
+            return element;
+        }
+
+        [Test]
+        public void Given_AVariantEnterStartedInsideATimerTick_When_ThatTickEnds_Then_TheFromStateIsStillApplied()
+        {
+            // Arrange — mirror production: the enter's step 1 (strip to-classes, apply from-classes,
+            // schedule the swap) runs inside the panel's own timer tick.
+            var scheduler = new StyleAnimationScheduler();
+            var element = StartEnterInsideATimerTick(scheduler);
+
+            // Act — the single tick that both starts the enter and drains the timer queue.
+            Tick();
+
+            // Assert — the from-state must survive the tick that started the enter; a swap that ran
+            // in the same tick strips it before the panel computes it once, so the transition sees
+            // no change and the enter degenerates to an instant jump.
+            Assert.That(element.ClassListContains("opacity-0"), Is.True);
+        }
+
+        [Test]
+        public void Given_AVariantEnterStartedInsideATimerTick_When_TheNextTickRuns_Then_TheSwapReachesTheAnimateState()
+        {
+            // Arrange — same production shape as above.
+            var scheduler = new StyleAnimationScheduler();
+            var element = StartEnterInsideATimerTick(scheduler);
+            Tick();
+            Assume.That(element.ClassListContains("opacity-0"), Is.True,
+                "Precondition: the from-state survived the starting tick");
+
+            // Act — the next tick is where the deferred swap belongs.
+            Tick();
+
+            // Assert — the swap did fire on the following tick (the enter must still make progress,
+            // not park the from-state forever).
+            Assert.That(element.ClassListContains("opacity-0"), Is.False);
+        }
+
+        [Component]
+        private static VNode LateMountHost()
+        {
+            var keys = Hooks.UseStore(s_store, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "late-" + key, key: key.ToString(), variants: s_fade,
+                    initial: "hidden", animate: "visible",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+            }
+            return V.Div(name: "host", children: children.ToArray());
+        }
+
+        [Test]
+        public void Given_AMotionMountedByATimerTickDrain_When_ThatTickEnds_Then_TheFromStateIsStillApplied()
+        {
+            // Arrange — mount the host and settle, then dirty the store WITHOUT a manual drain, so
+            // the new Motion's whole mount (create detached -> play enter -> attach) happens inside
+            // the panel's own timer tick via the batch scheduler's scheduled drain, exactly like
+            // production. The enter's zero-delay swap item is attached mid-tick with its deadline
+            // already reached.
+            using var store = new SetStore("");
+            s_store = store;
+            using var mounted = V.Mount(Root, V.Component(LateMountHost, key: "root"));
+            Tick();
+            store.Set("a");
+
+            // Act — the single tick that both drains the batch (mounting the Motion) and the timer
+            // queue (where the just-scheduled swap must NOT yet run).
+            Tick();
+
+            // Assert — the from-state survived its mounting tick; swapping in the same tick would
+            // strip it before its first style pass and the enter would play as an instant jump.
+            Assert.That(Root.Q<VisualElement>("late-a").ClassListContains("opacity-0"), Is.True);
         }
     }
 }
