@@ -4,12 +4,95 @@ using System.Collections.Generic;
 namespace Velvet
 {
     /// <summary>
+    /// Bitmask over the four <see cref="FiberUpdatePriority"/> values, used as the per-fiber pending-lane
+    /// set. The priority space is fixed at exactly 4 members (Urgent=0 .. Transition=3), and this type sits
+    /// on the scheduler's hottest path (<see cref="FiberWorkLoop.ScheduleRerender"/> /
+    /// <see cref="FiberWorkLoop.FlushState"/> run on every hook-driven update), so membership is tracked with
+    /// a single byte rather than a general-purpose ordered-set container: no per-enrollment node allocation,
+    /// no comparer indirection.
+    /// </summary>
+    internal struct FiberLaneSet
+    {
+        private byte _mask;
+
+        /// <summary>Number of lanes currently enrolled (0-4).</summary>
+        internal readonly int Count
+        {
+            get
+            {
+                var count = 0;
+                for (var bit = 0; bit < 4; bit++)
+                {
+                    if ((_mask & (1 << bit)) != 0)
+                    {
+                        count++;
+                    }
+                }
+                return count;
+            }
+        }
+
+        /// <summary>
+        /// The numerically-lowest (highest-priority) enrolled lane. Undefined on an empty set by contract —
+        /// every call site guards with <see cref="Count"/> or <see cref="Contains"/> before reading Min — but
+        /// resolves to <c>default</c> (Urgent) rather than throwing, so a caller that skips the guard fails
+        /// open into a plausible-looking value instead of an exception on the render hot path.
+        /// </summary>
+        internal readonly FiberUpdatePriority Min
+        {
+            get
+            {
+                for (var bit = 0; bit < 4; bit++)
+                {
+                    if ((_mask & (1 << bit)) != 0)
+                    {
+                        return (FiberUpdatePriority)bit;
+                    }
+                }
+                return default;
+            }
+        }
+
+        internal readonly bool Contains(FiberUpdatePriority priority) => (_mask & (1 << (int)priority)) != 0;
+
+        /// <summary>
+        /// Enrolls <paramref name="priority"/>. Returns true iff it was not already enrolled — callers key
+        /// first-enrollment-vs-coalesced-re-add decisions (e.g. the transition-starvation clock reset in
+        /// <see cref="FiberWorkLoop.ScheduleRerender"/>) off this return value.
+        /// </summary>
+        internal bool Add(FiberUpdatePriority priority)
+        {
+            var bit = (byte)(1 << (int)priority);
+            if ((_mask & bit) != 0)
+            {
+                return false;
+            }
+            _mask |= bit;
+            return true;
+        }
+
+        /// <summary>Un-enrolls <paramref name="priority"/>. Returns true iff it had been enrolled.</summary>
+        internal bool Remove(FiberUpdatePriority priority)
+        {
+            var bit = (byte)(1 << (int)priority);
+            if ((_mask & bit) == 0)
+            {
+                return false;
+            }
+            _mask &= (byte)~bit;
+            return true;
+        }
+
+        internal void Clear() => _mask = 0;
+    }
+
+    /// <summary>
     /// Auxiliary structure that represents the Lane scheduling state on a Fiber.
     /// A minimal model of the per-fiber and per-subtree pending-update lane bitsets.
     /// </summary>
     internal sealed class LaneState
     {
-        public SortedSet<FiberUpdatePriority>? Queue;
+        public FiberLaneSet Queue;
         public bool IsInTransition;
         public int TransitionStarvationCounter;
         // The settle sweep keys off the Transition label's presence, which starvation promotion erases
@@ -20,7 +103,7 @@ namespace Velvet
 
         public void Clear()
         {
-            Queue?.Clear();
+            Queue.Clear();
             IsInTransition = false;
             TransitionStarvationCounter = 0;
             HasPromotedTransition = false;
@@ -230,12 +313,15 @@ namespace Velvet
 
         internal LaneState EnsureLanes() => Lanes ??= new LaneState();
 
-        /// <summary>Null-safe getter / lazy-init setter for Lane operations (used by FiberWorkLoop).</summary>
-        internal SortedSet<FiberUpdatePriority>? LaneQueue
-        {
-            get => Lanes?.Queue;
-            set => EnsureLanes().Queue = value;
-        }
+        /// <summary>
+        /// Null-safe read of the pending-lane mask (used by FiberWorkLoop / FiberLane's query paths). An
+        /// unallocated <see cref="Lanes"/> (fiber currently clean) reads as an empty <see cref="FiberLaneSet"/>
+        /// without allocating, preserving the lazy-init invariant. This is a read-only view: FiberLaneSet's
+        /// Add/Remove/Clear mutate the struct in place and a property getter can only hand back a copy of it
+        /// (CS1612), so enrollment/removal call sites go through <see cref="EnsureLanes"/> / <see cref="Lanes"/>
+        /// directly against the backing <see cref="LaneState.Queue"/> field instead of through this accessor.
+        /// </summary>
+        internal FiberLaneSet LaneQueue => Lanes?.Queue ?? default;
 
         /// <summary>
         /// True while any <see cref="Hooks.UseTransition"/> slot on this fiber is pending. Derived from the

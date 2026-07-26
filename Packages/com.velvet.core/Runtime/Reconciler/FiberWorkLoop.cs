@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 namespace Velvet
 {
@@ -90,13 +89,14 @@ namespace Velvet
 
         internal static void ScheduleRerender(ComponentFiber fiber, FiberUpdatePriority priority)
         {
-            fiber.LaneQueue ??= new SortedSet<FiberUpdatePriority>();
-
             // Record the current highest priority before adding.
             // If the same Lane already exists, Add returns false (coalesced).
             var prevHighest = FiberLane.GetHighestPendingPriority(fiber);
 
-            var enrolled = fiber.LaneQueue.Add(priority);
+            // Goes through EnsureLanes()/Lanes directly (not the fiber.LaneQueue read accessor): FiberLaneSet
+            // is a struct, so a property getter can only hand back a copy — Add must mutate the backing
+            // LaneState.Queue field in place to enroll for real.
+            var enrolled = fiber.EnsureLanes().Queue.Add(priority);
 
             // A coalesced re-add must NOT restart the starvation clock: it measures how long the lane
             // has been continuously pending, so sustained re-scheduling (e.g. a per-frame
@@ -228,11 +228,14 @@ namespace Velvet
             // lane (e.g. a context-driven flush) the reconcile runs synchronously.
             var flushBudget = FiberLane.FrameBudgetMs;
 
-            if (fiber.LaneQueue != null && fiber.LaneQueue.Count > 0)
+            if (fiber.LaneQueue.Count > 0)
             {
                 var flushingLane = fiber.LaneQueue.Min;
                 flushBudget = FiberLane.BudgetForLane(flushingLane);
-                fiber.LaneQueue.Remove(flushingLane);
+                // A non-empty read above means Lanes was already allocated (Queue is only ever populated
+                // through EnsureLanes()), so the backing field is safe to mutate directly here — the
+                // fiber.LaneQueue accessor itself only ever hands back a read-only copy of the mask.
+                fiber.Lanes!.Queue.Remove(flushingLane);
 
                 // The promoted marker retires at the drain that commits its content — a
                 // starvation-promoted lane rides the Normal label (see HasPromotedTransition).
@@ -253,7 +256,7 @@ namespace Velvet
                 // The Transition label alone is not the settled signal — starvation promotion erases it
                 // while the promoted work is still queued (possibly parked behind an Urgent drain), so
                 // the promoted marker must ALSO be clear before the pending flags may sweep.
-                if (fiber.LaneQueue == null || fiber.LaneQueue.Count == 0
+                if (fiber.LaneQueue.Count == 0
                     || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
                 {
                     fiber.ClearAllTransitionPending();
@@ -399,7 +402,7 @@ namespace Velvet
 
         private static void PromoteStarvedTransitionLane(ComponentFiber fiber)
         {
-            if (fiber.LaneQueue == null || !fiber.LaneQueue.Contains(FiberUpdatePriority.Transition))
+            if (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition))
             {
                 fiber.TransitionStarvationCounter = 0;
                 return;
@@ -419,8 +422,10 @@ namespace Velvet
                 // higher-priority traffic is. The promoted marker keeps the settle sweep honest about
                 // the erased Transition label (see HasPromotedTransition), so isPending still clears at
                 // (not before) the commit that renders the promoted content.
-                fiber.LaneQueue.Remove(FiberUpdatePriority.Transition);
-                fiber.LaneQueue.Add(FiberUpdatePriority.Normal);
+                // Contains(Transition) above guarantees Lanes was already allocated; mutate the backing
+                // field directly, as the fiber.LaneQueue accessor only hands back a read-only copy.
+                fiber.Lanes!.Queue.Remove(FiberUpdatePriority.Transition);
+                fiber.Lanes.Queue.Add(FiberUpdatePriority.Normal);
                 fiber.HasPromotedTransition = true;
                 fiber.TransitionStarvationCounter = 0;
             }
@@ -519,7 +524,6 @@ namespace Velvet
                 // queued, and completing the async action inside that window must not clear isPending
                 // ahead of the commit that renders the transition's content.
                 if (fiber.IsDisposed
-                    || fiber.LaneQueue == null
                     || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
                 {
                     slot.IsPending = false;

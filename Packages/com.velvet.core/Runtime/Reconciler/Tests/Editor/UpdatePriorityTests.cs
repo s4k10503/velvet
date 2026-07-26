@@ -737,7 +737,7 @@ namespace Velvet.Tests
             s_btnSetValue.Invoke("direct");
 
             // Assert
-            Assume.That(s_btnFiber.LaneQueue, Is.Not.Null, "Precondition: an update is queued on the fiber");
+            Assume.That(s_btnFiber.LaneQueue.Count, Is.GreaterThan(0), "Precondition: an update is queued on the fiber");
             Assert.AreEqual((1, FiberUpdatePriority.Normal), (s_btnRenderCount, s_btnFiber.LaneQueue.Min),
                 "Outside a discrete event, a setState stays on the Normal lane and does not flush synchronously");
         }
@@ -948,10 +948,10 @@ namespace Velvet.Tests
                 {
                     setValue.Invoke("clicked");
                     // Capture the lane the handler scheduled, before the end-of-event sync flush drains it. Read
-                    // Min only when something is queued: SortedSet.Min returns default==Urgent on an empty set,
-                    // which would let a dropped enqueue pass the assertion falsely.
+                    // Min only when something is queued: FiberLaneSet.Min returns default==Urgent on an empty
+                    // set, which would let a dropped enqueue pass the assertion falsely.
                     var queue = s_btnFiber.LaneQueue;
-                    s_btnLaneInHandler = queue != null && queue.Count > 0 ? queue.Min : (FiberUpdatePriority?)null;
+                    s_btnLaneInHandler = queue.Count > 0 ? queue.Min : (FiberUpdatePriority?)null;
                 },
                 key: "btn");
         }
@@ -968,9 +968,9 @@ namespace Velvet.Tests
                 {
                     setOn.Invoke(next);
                     // Capture the scheduled lane before the end-of-event sync flush drains it. Read Min only when
-                    // something is queued (SortedSet.Min returns default==Urgent on an empty set).
+                    // something is queued (FiberLaneSet.Min returns default==Urgent on an empty set).
                     var queue = s_btnFiber.LaneQueue;
-                    s_btnLaneInHandler = queue != null && queue.Count > 0 ? queue.Min : (FiberUpdatePriority?)null;
+                    s_btnLaneInHandler = queue.Count > 0 ? queue.Min : (FiberUpdatePriority?)null;
                 },
                 key: "tg");
         }

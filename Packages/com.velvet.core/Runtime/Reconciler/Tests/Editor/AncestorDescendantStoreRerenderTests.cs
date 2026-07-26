@@ -544,7 +544,7 @@ namespace Velvet.Tests
                 "The subsumed child is removed from the delayed tier (its lane is honored by the re-expansion, not dropped)");
             Assert.IsFalse(s_childFiber.IsDirty,
                 "The subsumed child's dirty flag is cleared by the re-expansion");
-            Assert.IsTrue(s_childFiber.LaneQueue == null || s_childFiber.LaneQueue.Count == 0,
+            Assert.IsTrue(s_childFiber.LaneQueue.Count == 0,
                 "The subsumed child's lane queue is settled, not left holding a stranded Transition lane");
         }
 
