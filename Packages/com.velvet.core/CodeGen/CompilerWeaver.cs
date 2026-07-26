@@ -299,71 +299,48 @@ namespace Velvet.CodeGen
                 {
                     return false;
                 }
-                if (next.OpCode == OpCodes.Pop)
+
+                if (TryMatchDiscardedHookResult(next))
                 {
-                    // A discarded hook result means a reactive input is not captured in the deps array, so
-                    // the memo would bail re-renders the discarded value should have triggered. Bail.
                     return false;
                 }
-                if (TryGetStlocVariable(next, body, out var local))
+
+                var directCapture = TryMatchDirectCapture(next, body, out var directLocal, out var directBoundary);
+                if (directCapture == HookCaptureMatch.Bail)
                 {
-                    // A whole-tuple capture (`var s = Hooks.UseState(...)`) stores the returned ValueTuple and is
-                    // compared via ValueTuple.Equals — per-element EqualityComparer<T>.Default (structural). For a
-                    // reference / float Item1 that diverges from the Object.is the reconciler uses to drive a
-                    // re-render, so a fresh-but-equal value would be a stale hit. Bail: single-element
-                    // deconstruction (`var (value, _) = ...`) captures Item1 directly and is compared soundly.
-                    if (IsValueTupleType(local.VariableType))
-                    {
-                        return false;
-                    }
-                    hookPipedLocals.Add(local);
-                    lastHookBoundary = next;
-                    continue;
-                }
-                // Deconstruction shape that keeps only the first tuple element (the value):
-                // `var (value, _) = Hooks.UseXxx(...);` emits `call → ldfld <Item1> → stloc`. Only Item1 is
-                // a sound dep — capturing a later element (e.g. the stable setter of UseState while the value
-                // is discarded) would leave the changing value out of the deps array. Bail on anything but Item1.
-                if (next.OpCode == OpCodes.Ldfld && next.Operand is FieldReference field
-                    && next.Next is { } afterLdfld
-                    && TryGetStlocVariable(afterLdfld, body, out var deconstructedLocal))
-                {
-                    if (field.Name != "Item1")
-                    {
-                        return false;
-                    }
-                    hookPipedLocals.Add(deconstructedLocal);
-                    lastHookBoundary = afterLdfld;
-                    continue;
-                }
-                // Two-element deconstruction that keeps BOTH tuple elements — the idiomatic
-                // `var (value, setter) = Hooks.UseState(...)`. Roslyn emits
-                //   call -> dup -> ldfld Item1 -> stloc <value> -> ldfld Item2 -> st* <setter>
-                // Only Item1 (the value) is a sound dep; Item2 (the reference-stable StateUpdater<T> setter) does
-                // not change between renders, so it is NOT a dep. Capture Item1 and advance the boundary PAST the
-                // setter store so the cache gate lands after the whole deconstruction (the stack must be balanced:
-                // Item2 has to be consumed before the gate runs). Without this branch the leading `dup` matched no
-                // shape and bailed the whole component — disabling auto-memo for every `var (x, setX) = ...` site.
-                if (next.OpCode == OpCodes.Dup)
-                {
-                    var item1Ldfld = next.Next;
-                    var valueStore = item1Ldfld?.Next;
-                    var item2Ldfld = valueStore?.Next;
-                    var setterStore = item2Ldfld?.Next;
-                    if (item1Ldfld != null && item1Ldfld.OpCode == OpCodes.Ldfld
-                        && item1Ldfld.Operand is FieldReference item1Field && item1Field.Name == "Item1"
-                        && valueStore != null && TryGetStlocVariable(valueStore, body, out var tupleValueLocal)
-                        && item2Ldfld != null && item2Ldfld.OpCode == OpCodes.Ldfld
-                        && item2Ldfld.Operand is FieldReference item2Field && item2Field.Name == "Item2"
-                        && setterStore != null && IsValueConsumingStore(setterStore))
-                    {
-                        hookPipedLocals.Add(tupleValueLocal);
-                        lastHookBoundary = setterStore;
-                        continue;
-                    }
-                    // A dup that is not the canonical two-element tuple deconstruction: unknown shape, bail.
                     return false;
                 }
+                if (directCapture == HookCaptureMatch.Matched)
+                {
+                    hookPipedLocals.Add(directLocal!);
+                    lastHookBoundary = directBoundary;
+                    continue;
+                }
+
+                var item1Capture = TryMatchItem1Deconstruction(next, body, out var item1Local, out var item1Boundary);
+                if (item1Capture == HookCaptureMatch.Bail)
+                {
+                    return false;
+                }
+                if (item1Capture == HookCaptureMatch.Matched)
+                {
+                    hookPipedLocals.Add(item1Local!);
+                    lastHookBoundary = item1Boundary;
+                    continue;
+                }
+
+                var twoElementCapture = TryMatchTwoElementDeconstruction(next, body, out var twoElementLocal, out var twoElementBoundary);
+                if (twoElementCapture == HookCaptureMatch.Bail)
+                {
+                    return false;
+                }
+                if (twoElementCapture == HookCaptureMatch.Matched)
+                {
+                    hookPipedLocals.Add(twoElementLocal!);
+                    lastHookBoundary = twoElementBoundary;
+                    continue;
+                }
+
                 // Hook return consumed by an unsupported pattern. Bail: the deps array would be incomplete.
                 return false;
             }
@@ -416,6 +393,106 @@ namespace Velvet.CodeGen
 
             analysis = new HookAnalysis(hookPipedLocals, lastHookBoundary, returns);
             return true;
+        }
+
+        // Outcome of matching the instruction immediately following a hook call against one hook-return
+        // consumption shape: NotMatched means this shape was not recognized (the next matcher gets a turn),
+        // Bail means the shape was recognized but is unsound to cache (TryAnalyze leaves the whole method
+        // unwoven), and Matched means a sound dep was captured and the hook boundary can advance.
+        private enum HookCaptureMatch
+        {
+            NotMatched,
+            Bail,
+            Matched,
+        }
+
+        // A discarded hook result (`Hooks.UseXxx(...);` as a bare statement, IL `call -> pop`) means a
+        // reactive input is not captured in the deps array, so the memo would bail re-renders the discarded
+        // value should have triggered. There is no valid outcome for this shape other than bail.
+        private static bool TryMatchDiscardedHookResult(Instruction next)
+            => next.OpCode == OpCodes.Pop;
+
+        // A whole-tuple capture (`var s = Hooks.UseState(...)`) stores the returned ValueTuple and is
+        // compared via ValueTuple.Equals — per-element EqualityComparer<T>.Default (structural). For a
+        // reference / float Item1 that diverges from the Object.is the reconciler uses to drive a
+        // re-render, so a fresh-but-equal value would be a stale hit. Bail: single-element
+        // deconstruction (`var (value, _) = ...`) captures Item1 directly and is compared soundly.
+        private static HookCaptureMatch TryMatchDirectCapture(
+            Instruction next, MethodBody body, out VariableDefinition? capturedLocal, out Instruction? newBoundary)
+        {
+            capturedLocal = null;
+            newBoundary = null;
+            if (!TryGetStlocVariable(next, body, out var local))
+            {
+                return HookCaptureMatch.NotMatched;
+            }
+            if (IsValueTupleType(local.VariableType))
+            {
+                return HookCaptureMatch.Bail;
+            }
+            capturedLocal = local;
+            newBoundary = next;
+            return HookCaptureMatch.Matched;
+        }
+
+        // Deconstruction shape that keeps only the first tuple element (the value):
+        // `var (value, _) = Hooks.UseXxx(...);` emits `call → ldfld <Item1> → stloc`. Only Item1 is
+        // a sound dep — capturing a later element (e.g. the stable setter of UseState while the value
+        // is discarded) would leave the changing value out of the deps array. Bail on anything but Item1.
+        private static HookCaptureMatch TryMatchItem1Deconstruction(
+            Instruction next, MethodBody body, out VariableDefinition? capturedLocal, out Instruction? newBoundary)
+        {
+            capturedLocal = null;
+            newBoundary = null;
+            if (next.OpCode != OpCodes.Ldfld || next.Operand is not FieldReference field
+                || next.Next is not { } afterLdfld
+                || !TryGetStlocVariable(afterLdfld, body, out var deconstructedLocal))
+            {
+                return HookCaptureMatch.NotMatched;
+            }
+            if (field.Name != "Item1")
+            {
+                return HookCaptureMatch.Bail;
+            }
+            capturedLocal = deconstructedLocal;
+            newBoundary = afterLdfld;
+            return HookCaptureMatch.Matched;
+        }
+
+        // Two-element deconstruction that keeps BOTH tuple elements — the idiomatic
+        // `var (value, setter) = Hooks.UseState(...)`. Roslyn emits
+        //   call -> dup -> ldfld Item1 -> stloc <value> -> ldfld Item2 -> st* <setter>
+        // Only Item1 (the value) is a sound dep; Item2 (the reference-stable StateUpdater<T> setter) does
+        // not change between renders, so it is NOT a dep. Capture Item1 and advance the boundary PAST the
+        // setter store so the cache gate lands after the whole deconstruction (the stack must be balanced:
+        // Item2 has to be consumed before the gate runs). Without this branch the leading `dup` matched no
+        // shape and bailed the whole component — disabling auto-memo for every `var (x, setX) = ...` site.
+        private static HookCaptureMatch TryMatchTwoElementDeconstruction(
+            Instruction next, MethodBody body, out VariableDefinition? capturedLocal, out Instruction? newBoundary)
+        {
+            capturedLocal = null;
+            newBoundary = null;
+            if (next.OpCode != OpCodes.Dup)
+            {
+                return HookCaptureMatch.NotMatched;
+            }
+            var item1Ldfld = next.Next;
+            var valueStore = item1Ldfld?.Next;
+            var item2Ldfld = valueStore?.Next;
+            var setterStore = item2Ldfld?.Next;
+            if (item1Ldfld != null && item1Ldfld.OpCode == OpCodes.Ldfld
+                && item1Ldfld.Operand is FieldReference item1Field && item1Field.Name == "Item1"
+                && valueStore != null && TryGetStlocVariable(valueStore, body, out var tupleValueLocal)
+                && item2Ldfld != null && item2Ldfld.OpCode == OpCodes.Ldfld
+                && item2Ldfld.Operand is FieldReference item2Field && item2Field.Name == "Item2"
+                && setterStore != null && IsValueConsumingStore(setterStore))
+            {
+                capturedLocal = tupleValueLocal;
+                newBoundary = setterStore;
+                return HookCaptureMatch.Matched;
+            }
+            // A dup that is not the canonical two-element tuple deconstruction: unknown shape, bail.
+            return HookCaptureMatch.Bail;
         }
 
         private static bool IsInsideAnyHandler(MethodBody body, Instruction insertAfter, IReadOnlyList<Instruction> returns)
@@ -828,7 +905,7 @@ namespace Velvet.CodeGen
             var paramCount = parameters.Count;
             var depsCount = paramCount + analysis.HookPipedLocals.Count;
 
-            var injected = new List<Instruction>(20 + depsCount * 4);
+            var injected = new List<Instruction>();
             injected.Add(Instruction.Create(OpCodes.Ldc_I4, depsCount));
             injected.Add(Instruction.Create(OpCodes.Newarr, objectType));
             for (var i = 0; i < paramCount; i++)

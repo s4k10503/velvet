@@ -238,72 +238,112 @@ namespace Velvet
             var singleTabStop = scopeRoot != null && binding is { Settings.SingleTabStop: true }
                 && !ReferenceEquals(scopeRoot, containRoot);
 
-            if (singleTabStop)
+            // Evaluated in this exact order — each mode is only reached once the earlier ones declined,
+            // mirroring their real precedence (SingleTabStop group > Contain wrap > boundary escape >
+            // SingleTabStop group-entry prediction).
+            if (TryHandleSingleTabStopGroupExit(evt, panel!, panelRoot, focused, forward, containRoot, scopeRoot, singleTabStop, ctx))
             {
-                // The whole subtree acts as ONE tab stop: walk the sequential ring in the move's
-                // direction, skipping every other member of this scope, and land on the first focusable
-                // outside it. The walk ring is bounded by the nearest enclosing CONTAIN scope when one
-                // exists — a group inside a modal must wrap within the modal, never escape it.
-                var ring = new VisualElementFocusRing(containRoot ?? panelRoot);
-                var direction = ToRingDirection(forward);
-                // The ring's direction-first element: stepping onto it mid-walk means the walk crossed
-                // the ring edge (wrapped) — in a chained host, that crossing is the boundary exit.
-                var ringEdge = ring.GetNextFocusable(null, direction);
-                var candidate = ring.GetNextFocusable(focused, direction) as VisualElement;
-                var wrapped = candidate != null && ReferenceEquals(candidate, ringEdge);
-                var guard = MaxRingWalk;
-                while (candidate != null && candidate != focused && scopeRoot!.Contains(candidate) && guard-- > 0)
-                {
-                    candidate = ring.GetNextFocusable(candidate, direction) as VisualElement;
-                    if (candidate != null && ReferenceEquals(candidate, ringEdge))
-                    {
-                        wrapped = true;
-                    }
-                }
-                if (candidate != null && candidate != focused && !scopeRoot!.Contains(candidate))
-                {
-                    // A wrap in an unconstrained chained host takes the boundary exit instead of landing
-                    // back at the ring's start — the pinned iframe contract: Tab past the host ring's
-                    // end exits to the declaring panel.
-                    if (wrapped && containRoot == null
-                        && TryChainedEscape(evt, panel!, panelRoot, focused, forward, ctx, requireRingEdge: false))
-                    {
-                        return;
-                    }
-                    Redirect(evt, panel!, ResolveScopeEntryTarget(candidate, ctx));
-                    return;
-                }
-                // Every reachable focusable is a member. In an unconstrained chained host the one-stop
-                // exit crosses the panel boundary; under containment (or with nowhere to go) the move is
-                // suppressed with focus held in place — the engine default would cycle the members,
-                // breaking the one-stop contract, and a boundary escape would break the modal.
-                if (containRoot == null
-                    && TryChainedEscape(evt, panel!, panelRoot, focused, forward, ctx, requireRingEdge: false))
-                {
-                    return;
-                }
-                panel!.focusController.IgnoreEvent(evt);
-                evt.StopPropagation();
                 return;
             }
-
-            if (containRoot != null)
+            if (TryHandleContainScopeWrap(evt, panel!, focused, forward, containRoot))
             {
-                // A ring scoped to the contain root computes the same sequential order the panel ring
-                // would, restricted to the scope's members — and wraps at the scope edges, which IS the
-                // containment contract. Keyed on the NEAREST contain scope, so focus sitting in a plain
-                // scope nested inside a modal still wraps within the modal.
-                var scoped = new VisualElementFocusRing(containRoot);
-                Redirect(evt, panel!, scoped.GetNextFocusable(focused, ToRingDirection(forward)) as VisualElement);
                 return;
             }
+            if (TryHandleBoundaryEscape(evt, panel!, panelRoot, focused, forward, ctx))
+            {
+                return;
+            }
+            TryHandleSingleTabStopGroupEntryPrediction(evt, panel!, panelRoot, focused, forward, ctx);
+        }
 
+        // Mode (a): the whole subtree acts as ONE tab stop. Applies only when the innermost scope is
+        // SingleTabStop and is not itself the nearest contain scope. Every reachable outcome inside this
+        // mode is a terminal move outcome (it never falls through to a later mode).
+        private static bool TryHandleSingleTabStopGroupExit(
+            NavigationMoveEvent evt, IPanel panel, VisualElement panelRoot, VisualElement focused, bool forward,
+            VisualElement? containRoot, VisualElement? scopeRoot, bool singleTabStop, ReconcilerContext ctx)
+        {
+            if (!singleTabStop)
+            {
+                return false;
+            }
+            // The whole subtree acts as ONE tab stop: walk the sequential ring in the move's
+            // direction, skipping every other member of this scope, and land on the first focusable
+            // outside it. The walk ring is bounded by the nearest enclosing CONTAIN scope when one
+            // exists — a group inside a modal must wrap within the modal, never escape it.
+            var ring = new VisualElementFocusRing(containRoot ?? panelRoot);
+            var direction = ToRingDirection(forward);
+            // The ring's direction-first element: stepping onto it mid-walk means the walk crossed
+            // the ring edge (wrapped) — in a chained host, that crossing is the boundary exit.
+            var ringEdge = ring.GetNextFocusable(null, direction);
+            var candidate = ring.GetNextFocusable(focused, direction) as VisualElement;
+            var wrapped = candidate != null && ReferenceEquals(candidate, ringEdge);
+            var guard = MaxRingWalk;
+            while (candidate != null && candidate != focused && scopeRoot!.Contains(candidate) && guard-- > 0)
+            {
+                candidate = ring.GetNextFocusable(candidate, direction) as VisualElement;
+                if (candidate != null && ReferenceEquals(candidate, ringEdge))
+                {
+                    wrapped = true;
+                }
+            }
+            if (candidate != null && candidate != focused && !scopeRoot!.Contains(candidate))
+            {
+                // A wrap in an unconstrained chained host takes the boundary exit instead of landing
+                // back at the ring's start — the pinned iframe contract: Tab past the host ring's
+                // end exits to the declaring panel.
+                if (wrapped && containRoot == null
+                    && TryChainedEscape(evt, panel, panelRoot, focused, forward, ctx, requireRingEdge: false))
+                {
+                    return true;
+                }
+                Redirect(evt, panel, ResolveScopeEntryTarget(candidate, ctx));
+                return true;
+            }
+            // Every reachable focusable is a member. In an unconstrained chained host the one-stop
+            // exit crosses the panel boundary; under containment (or with nowhere to go) the move is
+            // suppressed with focus held in place — the engine default would cycle the members,
+            // breaking the one-stop contract, and a boundary escape would break the modal.
+            if (containRoot == null
+                && TryChainedEscape(evt, panel, panelRoot, focused, forward, ctx, requireRingEdge: false))
+            {
+                return true;
+            }
+            panel.focusController.IgnoreEvent(evt);
+            evt.StopPropagation();
+            return true;
+        }
+
+        // Mode (b): applies only when focus sits inside a contain scope (and mode (a) declined).
+        private static bool TryHandleContainScopeWrap(
+            NavigationMoveEvent evt, IPanel panel, VisualElement focused, bool forward, VisualElement? containRoot)
+        {
+            if (containRoot == null)
+            {
+                return false;
+            }
+            // A ring scoped to the contain root computes the same sequential order the panel ring
+            // would, restricted to the scope's members — and wraps at the scope edges, which IS the
+            // containment contract. Keyed on the NEAREST contain scope, so focus sitting in a plain
+            // scope nested inside a modal still wraps within the modal.
+            var scoped = new VisualElementFocusRing(containRoot);
+            Redirect(evt, panel, scoped.GetNextFocusable(focused, ToRingDirection(forward)) as VisualElement);
+            return true;
+        }
+
+        // Mode (c): a boundary escape, either a chained host's ring wrap (cross-panel hop) or focus
+        // leaving a z-relocated element's real subtree (same-panel placeholder redirect). Reached only
+        // when neither mode (a) nor (b) claimed the move.
+        private static bool TryHandleBoundaryEscape(
+            NavigationMoveEvent evt, IPanel panel, VisualElement panelRoot, VisualElement focused, bool forward,
+            ReconcilerContext ctx)
+        {
             // Chained host escape: focus sits in a host panel that joined its declaring panel's Tab order,
             // and this move would wrap around the host's own ring edge — cross the boundary instead, to the
             // declaring-panel element right after (forward) / before (backward) the portal's placeholder.
-            if (TryChainedEscape(evt, panel!, panelRoot, focused, forward, ctx, requireRingEdge: true))
+            if (TryChainedEscape(evt, panel, panelRoot, focused, forward, ctx, requireRingEdge: true))
             {
-                return;
+                return true;
             }
 
             // Same-panel counterpart: focus sits inside a z-relocated element's subtree (its real element
@@ -312,11 +352,16 @@ namespace Velvet
             // instead of wherever the layer container happens to sit physically. Reached only when neither
             // Contain nor SingleTabStop claims this focus (both returned above), mirroring the chained escape's
             // own scope precedence.
-            if (TryZLayerExit(evt, panel!, panelRoot, focused, forward, ctx))
-            {
-                return;
-            }
+            return TryZLayerExit(evt, panel, panelRoot, focused, forward, ctx);
+        }
 
+        // Mode (d): entering a SingleTabStop scope from outside — the group is one tab stop, so a move
+        // predicted to land inside it is redirected to the group's roving stop instead. Reached only when
+        // no earlier mode claimed the move; this is the move's final word regardless of its own outcome.
+        private static bool TryHandleSingleTabStopGroupEntryPrediction(
+            NavigationMoveEvent evt, IPanel panel, VisualElement panelRoot, VisualElement focused, bool forward,
+            ReconcilerContext ctx)
+        {
             // Entering a SingleTabStop scope from outside: the group is one tab stop, so the move lands on
             // the member last used, else the group's first member — from either direction (the WAI-ARIA
             // composite contract; a backward move's raw prediction would be the group's ring-LAST).
@@ -331,12 +376,14 @@ namespace Velvet
                     var landing = ResolveScopeEntryTarget(entryPredicted, ctx);
                     if (!ReferenceEquals(landing, entryPredicted))
                     {
-                        Redirect(evt, panel!, landing);
+                        Redirect(evt, panel, landing);
+                        return true;
                     }
                     // Landing == predicted: the engine's own move already enters at the group's correct
                     // stop (a forward move's raw prediction IS the group's ring-first).
                 }
             }
+            return false;
         }
 
         // A landing inside a SingleTabStop group must enter at the group's roving tab stop — the member
@@ -681,8 +728,7 @@ namespace Velvet
             }
             root.schedule.Execute(() =>
             {
-                if (reverted.panel?.focusController?.focusedElement is VisualElement held
-                    && (held == reverted || reverted.Contains(held)))
+                if (IsFocusedElementWithin(reverted, out _))
                 {
                     return;
                 }

@@ -102,7 +102,20 @@ namespace Velvet
 
         private void ResetImmediate(IReadOnlyList<AnimationSequenceStep>? steps)
         {
-            _steps = steps ?? Array.Empty<AnimationSequenceStep>();
+            var isComplete = ApplyStepsReset(steps ?? Array.Empty<AnimationSequenceStep>());
+            if (!isComplete)
+            {
+                ArriveAtStart(0);
+            }
+        }
+
+        // Shared by ResetImmediate and ArriveAtStart's reentrant drain: both re-seed the walker at step 0
+        // from a steps list and must reset every one of these fields together, or a stale label/hold/
+        // warned-index could survive across a reseed. Returns the resulting IsComplete so each caller
+        // decides its own next step (ArriveAtStart(0) vs break) without duplicating the reset itself.
+        private bool ApplyStepsReset(IReadOnlyList<AnimationSequenceStep> steps)
+        {
+            _steps = steps;
             _stepIndex = 0;
             _elapsedInStepSec = 0f;
             _currentHoldSec = 0f;
@@ -111,10 +124,7 @@ namespace Velvet
             _isComplete = _steps.Count == 0;
             _springFallbackWarnedIndices?.Clear();
             WarnAboutUnvalidatedToSteps();
-            if (!_isComplete)
-            {
-                ArriveAtStart(0);
-            }
+            return _isComplete;
         }
 
         // A default(AnimationSequenceStep) (an unfilled array/list slot) bypasses the To/Wait/Call factories'
@@ -158,16 +168,8 @@ namespace Velvet
             {
                 var pending = _pendingResetSteps;
                 _pendingResetSteps = null;
-                _steps = pending;
-                _stepIndex = 0;
-                _elapsedInStepSec = 0f;
-                _currentHoldSec = 0f;
-                _currentLabel = null;
-                _currentTransition = null;
-                _isComplete = _steps.Count == 0;
-                _springFallbackWarnedIndices?.Clear();
-                WarnAboutUnvalidatedToSteps();
-                if (_isComplete)
+                var isComplete = ApplyStepsReset(pending);
+                if (isComplete)
                 {
                     break;
                 }

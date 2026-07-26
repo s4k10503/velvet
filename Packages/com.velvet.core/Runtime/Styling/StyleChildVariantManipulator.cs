@@ -208,14 +208,7 @@ namespace Velvet
                 var hash = 17;
                 var count = container.childCount;
                 hash = hash * 31 + count;
-                for (var i = 0; i < count; i++)
-                {
-                    var child = container[i];
-                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(child);
-                    // A child's in-flow / out-of-flow transition (a PopLayout pin or its cancel) changes which
-                    // children the walk applies to even though neither its identity nor the total count changed.
-                    hash = hash * 31 + (StyleOutOfFlowChild.IsOutOfFlow(child) ? 1 : 0);
-                }
+                hash = StyleOutOfFlowChild.HashChildSequence(hash, container);
                 return hash;
             }
         }

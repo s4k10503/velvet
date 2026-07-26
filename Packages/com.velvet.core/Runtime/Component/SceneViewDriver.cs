@@ -245,14 +245,7 @@ namespace Velvet
                 pw = Mathf.Clamp(Mathf.FloorToInt(pw * shrink), 1, MaxTextureSize);
                 ph = Mathf.Clamp(Mathf.FloorToInt(ph * shrink), 1, MaxTextureSize);
             }
-            // Symmetric hysteresis: the axis last COMMITTED as the basis keeps being used unless the
-            // OTHER axis has pulled ahead by a full quantization step, so a sub-step wobble in which
-            // axis is momentarily longer never flips the basis.
-            var useWidthAsBasis = binding.WidthWasQuantizedAxis is { } stickyToWidth
-                ? (stickyToWidth
-                    ? pw >= ph || ph - pw < SizeQuantizationStep
-                    : pw > ph && pw - ph >= SizeQuantizationStep)
-                : pw >= ph;
+            var useWidthAsBasis = DecideWidthAsBasis(binding.WidthWasQuantizedAxis, pw, ph);
             usedWidthAsBasis = useWidthAsBasis;
 
             if (useWidthAsBasis)
@@ -268,6 +261,28 @@ namespace Velvet
                 ph = quantizedH;
             }
             return true;
+        }
+
+        // Symmetric hysteresis: the axis last COMMITTED as the basis keeps being used unless the OTHER
+        // axis has pulled ahead by a full quantization step, so a sub-step wobble in which axis is
+        // momentarily longer never flips the basis.
+        private static bool DecideWidthAsBasis(bool? stickyToWidth, int pw, int ph)
+        {
+            if (stickyToWidth == null)
+            {
+                // No axis has been committed yet (first successful derivation for this element): there
+                // is no history to hold onto, so fall back to the plain larger-of-the-two comparison.
+                return pw >= ph;
+            }
+            if (stickyToWidth.Value)
+            {
+                // Width was last committed as the basis: keep it unless height has pulled ahead by a
+                // full quantization step.
+                return pw >= ph || ph - pw < SizeQuantizationStep;
+            }
+            // Height was last committed as the basis: keep it unless width has pulled ahead by a full
+            // quantization step.
+            return pw > ph && pw - ph >= SizeQuantizationStep;
         }
 
         // Rounds a pixel size up to the next SizeQuantizationStep multiple (e.g. 100 -> 112 at the

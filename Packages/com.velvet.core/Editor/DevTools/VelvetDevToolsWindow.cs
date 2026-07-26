@@ -28,6 +28,15 @@ namespace Velvet.Editor.DevTools
         private const double AutoRefreshInterval = 0.5;
         private const BindingFlags PublicInstance = BindingFlags.Instance | BindingFlags.Public;
         private const BindingFlags NonPublicInstance = BindingFlags.Instance | BindingFlags.NonPublic;
+        private static readonly Vector2 WindowMinSize = new(480, 300);
+        private const float RefreshButtonWidth = 70f;
+        private const float AutoToggleWidth = 50f;
+        private const float ClearRegistryButtonWidth = 95f;
+        private const float PaneDividerWidth = 1f;
+        private const float EntryToggleWidth = 16f;
+        private const float RecordStateButtonWidth = 100f;
+        private const float ClearHistoryButtonWidth = 55f;
+        private const float RenderCountLabelWidth = 70f;
         #endregion
 
         #region Reflection cache (for ComponentFiber's internal fields not visible from the Editor asm)
@@ -79,7 +88,7 @@ namespace Velvet.Editor.DevTools
         public static void ShowWindow()
         {
             var window = GetWindow<VelvetDevToolsWindow>(false, WindowTitle, true);
-            window.minSize = new Vector2(480, 300);
+            window.minSize = WindowMinSize;
             window.Show();
         }
 
@@ -149,19 +158,19 @@ namespace Velvet.Editor.DevTools
         {
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
-            if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(70)))
+            if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(RefreshButtonWidth)))
             {
                 RefreshSelectedComponent();
                 Repaint();
             }
 
-            _autoRefresh = GUILayout.Toggle(_autoRefresh, "Auto", EditorStyles.toolbarButton, GUILayout.Width(50));
+            _autoRefresh = GUILayout.Toggle(_autoRefresh, "Auto", EditorStyles.toolbarButton, GUILayout.Width(AutoToggleWidth));
 
             GUILayout.FlexibleSpace();
 
             GUILayout.Label(_cachedRegisteredLabel, EditorStyles.toolbarButton);
 
-            if (GUILayout.Button("Clear Registry", EditorStyles.toolbarButton, GUILayout.Width(95)))
+            if (GUILayout.Button("Clear Registry", EditorStyles.toolbarButton, GUILayout.Width(ClearRegistryButtonWidth)))
             {
                 VelvetDevToolsRegistry.Clear();
                 _historyMap.Clear();
@@ -195,7 +204,7 @@ namespace Velvet.Editor.DevTools
             DrawLeftPane(entries);
             EditorGUILayout.EndVertical();
 
-            GUILayout.Box(string.Empty, GUILayout.Width(1), GUILayout.ExpandHeight(true));
+            GUILayout.Box(string.Empty, GUILayout.Width(PaneDividerWidth), GUILayout.ExpandHeight(true));
 
             EditorGUILayout.BeginVertical(GUILayout.ExpandWidth(true));
             DrawRightPane(entries);
@@ -234,7 +243,7 @@ namespace Velvet.Editor.DevTools
 
                 EditorGUILayout.BeginHorizontal();
 
-                var nowSelected = GUILayout.Toggle(isSelected, GUIContent.none, GUILayout.Width(16));
+                var nowSelected = GUILayout.Toggle(isSelected, GUIContent.none, GUILayout.Width(EntryToggleWidth));
                 if (nowSelected != isSelected)
                 {
                     _selectedEntryIndex = isSelected ? -1 : i;
@@ -269,7 +278,7 @@ namespace Velvet.Editor.DevTools
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(entry.Label, EditorStyles.boldLabel);
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Record State", GUILayout.Width(100)))
+            if (GUILayout.Button("Record State", GUILayout.Width(RecordStateButtonWidth)))
             {
                 RecordCurrentState(entry);
             }
@@ -336,7 +345,7 @@ namespace Velvet.Editor.DevTools
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Render History (newest first)", EditorStyles.boldLabel);
             GUILayout.FlexibleSpace();
-            if (GUILayout.Button("Clear", GUILayout.Width(55)))
+            if (GUILayout.Button("Clear", GUILayout.Width(ClearHistoryButtonWidth)))
             {
                 if (_historyMap.TryGetValue(entry.Fiber, out var buf))
                 {
@@ -365,7 +374,7 @@ namespace Velvet.Editor.DevTools
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField($"[{i}] {h.Timestamp:HH:mm:ss.fff}", EditorStyles.boldLabel);
                 GUILayout.FlexibleSpace();
-                EditorGUILayout.LabelField($"Render#{h.RenderCount}", EditorStyles.miniLabel, GUILayout.Width(70));
+                EditorGUILayout.LabelField($"Render#{h.RenderCount}", EditorStyles.miniLabel, GUILayout.Width(RenderCountLabelWidth));
                 EditorGUILayout.EndHorizontal();
 
                 EditorGUILayout.SelectableLabel(
@@ -492,22 +501,10 @@ namespace Velvet.Editor.DevTools
             var fiberType = typeof(ComponentFiber);
             s_previousTreeProp = fiberType.GetProperty("PreviousTree", NonPublicInstance);
             s_reconcilerProp = fiberType.GetProperty("Reconciler", NonPublicInstance);
-            if (s_reconcilerProp != null)
-            {
-                s_ctxFi = s_reconcilerProp.PropertyType.GetField("_ctx", NonPublicInstance);
-                if (s_ctxFi != null)
-                {
-                    s_memoCacheProp = s_ctxFi.FieldType.GetProperty("MemoCache", PublicInstance);
-                    if (s_memoCacheProp != null)
-                    {
-                        s_cacheFi = s_memoCacheProp.PropertyType.GetField("_cache", NonPublicInstance);
-                        if (s_cacheFi != null)
-                        {
-                            s_cacheCountProp = s_cacheFi.FieldType.GetProperty("Count", PublicInstance);
-                        }
-                    }
-                }
-            }
+            s_ctxFi = s_reconcilerProp?.PropertyType.GetField("_ctx", NonPublicInstance);
+            s_memoCacheProp = s_ctxFi?.FieldType.GetProperty("MemoCache", PublicInstance);
+            s_cacheFi = s_memoCacheProp?.PropertyType.GetField("_cache", NonPublicInstance);
+            s_cacheCountProp = s_cacheFi?.FieldType.GetProperty("Count", PublicInstance);
             s_chainResolved = true;
         }
 

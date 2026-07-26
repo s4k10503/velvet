@@ -9,7 +9,8 @@ namespace Velvet
     // once per element when a skew-* element also carries a bg-gradient-* (it owns and destroys the result),
     // then draws the texture as a quad in its own generateVisualContent — so the slant can poke beyond the
     // box, which a clipped background-image cannot. The AA is baked into the texture's alpha (the shader's
-    // SDF smoothstep), replacing the earlier vertex-textured fan whose triangle edges were not antialiased.
+    // SDF smoothstep): a vertex-only triangle fan has no per-pixel distance field to antialias its edges
+    // against, so only a rasterized SDF bake can produce a soft edge here.
     //
     // Bake-then-draw (not a live material) for the same reason DropShadow bakes: UITK freezes a custom
     // material's draw order under an animating ancestor transform. Returns null on a headless device or a
@@ -136,25 +137,14 @@ namespace Velvet
             m.SetFloat(SkewYId, tanY);
             m.SetFloat(AaId, AaHalfWidth);
 
-            var rt = RenderTexture.GetTemporary(
-                quadW, quadH, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
-            var prev = RenderTexture.active;
-            Graphics.Blit(null, rt, m);
-            RenderTexture.active = rt;
             // sRGB texture (linear:false) to match GradientBackground's C# bake encoding, so a skewed and a
             // non-skewed element with the same stops display identically regardless of the consuming
             // project's color space (the Linear RT stores the shader's raw output; ReadPixels copies the
             // bytes unchanged; the texture flag only governs how UITK samples them).
-            var tex = new Texture2D(quadW, quadH, TextureFormat.RGBA32, mipChain: false, linear: false)
-            {
-                wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear,
-                hideFlags = HideFlags.HideAndDontSave,
-            };
-            tex.ReadPixels(new Rect(0, 0, quadW, quadH), 0, 0);
-            tex.Apply(updateMipmaps: false, makeNoLongerReadable: false);
-            RenderTexture.active = prev;
-            RenderTexture.ReleaseTemporary(rt);
+            var tex = SilhouetteBakeReadback.Bake(m, quadW, quadH,
+                RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear,
+                TextureFormat.RGBA32, linear: false, name: null,
+                TextureWrapMode.Clamp, FilterMode.Bilinear, HideFlags.HideAndDontSave);
             s_baked.Add(tex);
             return tex;
         }

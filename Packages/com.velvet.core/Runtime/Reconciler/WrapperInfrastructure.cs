@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 
@@ -98,6 +99,54 @@ namespace Velvet
             {
                 wrapper.style.flexShrink = flexShrink;
             }
+        }
+
+        // True when the class list carries an inline filter — a static filter-* utility or the animate-hue
+        // motion (which drives style.filter every frame) — in the base classes OR any state variant. A filter
+        // promotes the element to an offscreen render tree sized to its layout boundingBox, which clips a
+        // sheared silhouette / shadow bleed; the paint layers answer with a bounds-spacer (SilhouetteBoundsSpacer)
+        // that widens boundingBox. The spacer must exist whenever a filter COULD apply (a variant applies its
+        // payload at state time, outside this reconcile pass), so both checks peel variant layers to the leaf.
+        // Shared by the skew, drop-shadow and particles spacer gates above, so it lives here rather than on any
+        // one of those subsystems.
+        internal static bool CarriesFilter(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            if (StyleFilterValueParser.HasFilterClass(classNames))
+            {
+                return true;
+            }
+            foreach (var cls in classNames)
+            {
+                var leaf = cls;
+                while (StyleVariantClass.TryParse(leaf, out _, out var payload))
+                {
+                    leaf = payload;
+                }
+                if (leaf != null && leaf.StartsWith("animate-hue", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Removes the ring wrapper, restoring element at the wrapper's slot. Shared by the ring layer's own
+        // unwrap case and the clip-path layer's wrapper swap (a clip added to an already ring-wrapped
+        // element steals the wrapper slot), so it lives here rather than on either one, taking the owning
+        // ReconcilerContext explicitly since it has no instance of its own to read it from.
+        internal static void UnwrapRingInPlace(ReconcilerContext ctx, VisualElement element, RingBinding binding)
+        {
+            if (binding.OnGeometry != null)
+            {
+                element.UnregisterCallback(binding.OnGeometry);
+            }
+            ctx.RingBindings.Remove(element);
+            ctx.WrapperToInnerMap.Remove(binding.Wrapper);
+            WrapperInfrastructure.RemoveWrapperRestoreInner(element, binding.Wrapper);
         }
     }
 }

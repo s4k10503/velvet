@@ -332,9 +332,41 @@ namespace Velvet
                 return NavigationResult.NotFound;
             }
 
-            #region Provisional history index for Back/Forward
-            // The index must move before the Guard/Blocker checks so a Guard redirect (Replace)
-            // overwrites the correct entry; rolled back below if the Blocker check rejects the attempt.
+            var savedHistoryIndex = ApplyProvisionalHistoryIndex(mode);
+
+            var guardResult = await RunGuardChecks(matches, path, mode, savedHistoryIndex, cancellationToken, redirectCount);
+            if (guardResult.HasValue)
+            {
+                return guardResult.Value;
+            }
+
+            var blockerResult = await RunBlockerCheck(path, mode, savedHistoryIndex, cancellationToken);
+            if (blockerResult.HasValue)
+            {
+                return blockerResult.Value;
+            }
+
+            var loaderResult = await RunLoaderPhase(matches, mode, cancellationToken);
+            if (loaderResult.HasValue)
+            {
+                return loaderResult.Value;
+            }
+
+            var location = CommitHistoryEntry(path, matches, mode);
+
+            CurrentLocation = location;
+            Status = RouterStatus.Ready;
+            OnLocationChanged?.Invoke(location);
+
+            return NavigationResult.Success;
+        }
+
+        #region Provisional history index for Back/Forward
+
+        // The index must move before the Guard/Blocker checks so a Guard redirect (Replace)
+        // overwrites the correct entry; rolled back below if the Blocker check rejects the attempt.
+        private int ApplyProvisionalHistoryIndex(NavigationMode mode)
+        {
             var savedHistoryIndex = _historyIndex;
             if (mode == NavigationMode.Back)
             {
@@ -344,14 +376,26 @@ namespace Velvet
             {
                 _historyIndex++;
             }
+            return savedHistoryIndex;
+        }
 
-            #endregion
+        #endregion
 
-            #region Guard check (after Match, before Loader)
-            // NOTE: design choice - Guard runs before the Blocker check.
-            // Routes rejected by a Guard are not subject to Blocker evaluation.
-            // This lets auth redirects bypass Blockers (such as unsaved-changes prompts), satisfying
-            // the UX requirement of "do not show a leave-confirmation to unauthenticated users".
+        #region Guard check (after Match, before Loader)
+
+        // NOTE: design choice - Guard runs before the Blocker check.
+        // Routes rejected by a Guard are not subject to Blocker evaluation.
+        // This lets auth redirects bypass Blockers (such as unsaved-changes prompts), satisfying
+        // the UX requirement of "do not show a leave-confirmation to unauthenticated users".
+        // Returns null when no match redirected, so the caller falls through to the Blocker check.
+        private async UniTask<NavigationResult?> RunGuardChecks(
+            IReadOnlyList<RouteMatch> matches,
+            string path,
+            NavigationMode mode,
+            int savedHistoryIndex,
+            CancellationToken cancellationToken,
+            int redirectCount)
+        {
             foreach (var match in matches)
             {
                 if (match.Route == null) continue;
@@ -406,9 +450,21 @@ namespace Velvet
                     return redirectResult;
                 }
             }
-            #endregion
+            return null;
+        }
 
-            #region Blocker check
+        #endregion
+
+        #region Blocker check
+
+        // Returns null when the attempt is neither cancelled nor blocked, so the caller falls through
+        // to the Loader phase.
+        private async UniTask<NavigationResult?> RunBlockerCheck(
+            string path,
+            NavigationMode mode,
+            int savedHistoryIndex,
+            CancellationToken cancellationToken)
+        {
             var currentPath = CurrentLocation?.Path ?? "";
             var attempt = new NavigationAttempt { CurrentPath = currentPath, NextPath = path, NavigationMode = mode };
             // By design, a different navigation lifts the previous block even if Proceed() was not
@@ -434,9 +490,21 @@ namespace Velvet
                 Status = RouterStatus.Idle;
                 return NavigationResult.Blocked;
             }
-            #endregion
+            return null;
+        }
 
-            #region Loading
+        #endregion
+
+        #region Loading
+
+        // Returns null on a normal completion (cached or fresh), leaving _loaderData/_loaderErrors set
+        // for CommitHistoryEntry; returns Cancelled only when a fresh (non-cached) loader run observes
+        // cancellation.
+        private async UniTask<NavigationResult?> RunLoaderPhase(
+            IReadOnlyList<RouteMatch> matches,
+            NavigationMode mode,
+            CancellationToken cancellationToken)
+        {
             var cachedLoaderData = (mode == NavigationMode.Back || mode == NavigationMode.Forward)
                 ? _history[_historyIndex].loaderData
                 : null;
@@ -473,9 +541,15 @@ namespace Velvet
                 // are surfaced through RouterContext.Errors (keyed by RouteId) for UseRouteError.
                 _loaderErrors = new Dictionary<string?, Exception>(_loaderRunner.Errors);
             }
-            #endregion
+            return null;
+        }
 
-            #region History management
+        #endregion
+
+        #region History management
+
+        private RouterLocation CommitHistoryEntry(string path, IReadOnlyList<RouteMatch> matches, NavigationMode mode)
+        {
             var allParams = new Dictionary<string, string>();
             foreach (var match in matches)
             {
@@ -521,14 +595,11 @@ namespace Velvet
                 default:
                     throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
             }
-            #endregion
 
-            CurrentLocation = location;
-            Status = RouterStatus.Ready;
-            OnLocationChanged?.Invoke(location);
-
-            return NavigationResult.Success;
+            return location;
         }
+
+        #endregion
 
         /// <summary>
         /// Re-emits <see cref="OnLocationChanged"/> with a fresh <see cref="RouterLocation"/> instance
