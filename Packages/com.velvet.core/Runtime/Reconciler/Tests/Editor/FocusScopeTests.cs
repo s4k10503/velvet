@@ -127,6 +127,46 @@ namespace Velvet.Tests
         }
 
         [Component]
+        private static VNode RestoreScopeRootFocusableHost()
+        {
+            var (showScope, setShowScope) = Hooks.UseState(true);
+            s_setShowScope = setShowScope;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "opener"),
+                showScope
+                    ? V.FocusScope(name: "scope", key: "scope", restoreFocus: true,
+                        props: new FiberElementProps { Focusable = true },
+                        children: new VNode[]
+                        {
+                            V.Button(name: "inner"),
+                        })
+                    : null,
+            });
+        }
+
+        [Test]
+        public void Given_AFocusScopeWithRestoreFocus_When_TheScopeRootItselfHoldsFocusAndUnmounts_Then_TheElementFocusCameFromRegainsFocus()
+        {
+            // Arrange — focus enters the scope root element ITSELF (not a descendant) FROM the opener: the
+            // root is made focusable directly, exercising the restore guard's own-root case rather than a
+            // contained child's.
+            Mount(RestoreScopeRootFocusableHost);
+            var opener = Q("opener");
+            opener.Focus();
+            Q("scope").Focus();
+            Assume.That(_host.Panel.focusController.focusedElement, Is.EqualTo(Q("scope")),
+                "Precondition: the scope root itself holds focus");
+
+            // Act
+            s_setShowScope.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_host.Panel.focusController.focusedElement, Is.EqualTo(opener));
+        }
+
+        [Component]
         private static VNode AutoFocusScopeHost() => V.Div(children: new VNode[]
         {
             V.FocusScope(name: "scope", autoFocus: true, children: new VNode[]
