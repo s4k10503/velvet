@@ -64,6 +64,18 @@ namespace Velvet.Tests
             return V.Div(className: cls, name: "card");
         }
 
+        // Mirrors RenderCard but with the no-filter class as the INITIAL UseState value, so a mount-only
+        // test can observe the first-render state instead of a filtered mount patched off — V.Mount's
+        // initial render + FlushImmediate is one synchronous call, so there is no window to swap the class
+        // via the state setter between "mounted" and "flushed" the way a later patch can.
+        [Component]
+        private static VNode RenderCardWithoutFilter()
+        {
+            var (cls, setClass) = Hooks.UseState(ShadowNoFilter);
+            s_setClass = setClass;
+            return V.Div(className: cls, name: "card");
+        }
+
         private VisualElement Box => _window.rootVisualElement.Q<VisualElement>("box");
         private VisualElement Card => _window.rootVisualElement.Q<VisualElement>("card");
 
@@ -93,6 +105,12 @@ namespace Velvet.Tests
         private void MountShadowCard()
         {
             _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderCard));
+        }
+
+        // Mounts RenderCardWithoutFilter, whose first render already carries the no-filter class.
+        private void MountShadowCardWithoutFilter()
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Component(RenderCardWithoutFilter));
         }
 
         private void SetItems(string[] items)
@@ -253,8 +271,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_AShadowedElementWithoutFilter_When_Mounted_Then_NoSpacerIsAdded()
         {
-            MountShadowCard();
-            SetClass(ShadowNoFilter);
+            MountShadowCardWithoutFilter();
 
             Assert.That(ShadowSpacerCount(), Is.EqualTo(0));
         }
