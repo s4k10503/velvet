@@ -172,20 +172,10 @@ namespace Velvet
             mat.SetVector(ElementSizeId, new Vector4(targetWidth, targetHeight, 0f, 0f));
             mat.SetFloat(SkewXId, Mathf.Tan(skewXDeg * Mathf.Deg2Rad));
 
-            var rt = RenderTexture.GetTemporary(qw, qh, 0, RenderTextureFormat.ARGB32);
-            var prev = RenderTexture.active;
-            Graphics.Blit(null, rt, mat);
-            RenderTexture.active = rt;
-            var tex = new Texture2D(qw, qh, TextureFormat.RGBA32, false)
-            {
-                name = "VelvetDropShadowSilhouette",
-                wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Bilinear,
-            };
-            tex.ReadPixels(new Rect(0, 0, qw, qh), 0, 0);
-            tex.Apply(false, false);
-            RenderTexture.active = prev;
-            RenderTexture.ReleaseTemporary(rt);
+            var tex = SilhouetteBakeReadback.Bake(mat, qw, qh,
+                RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default,
+                TextureFormat.RGBA32, linear: false, name: "VelvetDropShadowSilhouette",
+                TextureWrapMode.Clamp, FilterMode.Bilinear, HideFlags.None);
             mat.SetFloat(SkewXId, 0f); // defensive: never leave a stale shear on the shared Material
             return tex;
         }

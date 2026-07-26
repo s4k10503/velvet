@@ -100,6 +100,20 @@ namespace Velvet
         // inter-child edge (non-wrap); HalfMargin == four-side child margins + container negative margin.
         private enum Edge { None, Left, Top }
         private enum Mode { None, Leading, HalfMargin }
+
+        // (mode, edge) transition table read by ApplyLeading / ApplyHalfMargin / Clear: re-running the SAME
+        // strategy overwrites its own margins wholesale (no clear needed), so only a MODE or EDGE change
+        // needs one of the two clear helpers first.
+        //   None            -> Leading(e)      : no clear (first application).
+        //   Leading(e)      -> Leading(e)       : no clear (same edge; ApplyLeading rewrites in place).
+        //   Leading(e1)     -> Leading(e2), e1!=e2: ClearEdge(e1) first (Auto row<->column direction flip).
+        //   HalfMargin      -> Leading(e)      : ClearHalfMargin first (wrap -> non-wrap flip).
+        //   None            -> HalfMargin      : no clear (_applied is already None).
+        //   Leading(e)      -> HalfMargin      : ClearEdge(e) first (non-wrap -> wrap flip).
+        //   HalfMargin      -> HalfMargin      : no clear (ApplyHalfMargin rewrites in place).
+        //   any             -> None (Clear())  : ClearHalfMargin when HalfMargin, else ClearEdge when
+        //                                        _applied != None; ResetAllMargined then covers every
+        //                                        remaining tracked element regardless of which ran.
         private Edge _applied = Edge.None;
         private Mode _mode = Mode.None;
 
@@ -400,15 +414,7 @@ namespace Velvet
                 hash = hash * 31 + (wrap ? 1 : ResolveEdge() == Edge.Left ? 2 : 3);
                 var count = container.childCount;
                 hash = hash * 31 + count;
-                for (var i = 0; i < count; i++)
-                {
-                    var child = container[i];
-                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(child);
-                    // A child's in-flow / out-of-flow transition (a PopLayout pin or its cancel) changes
-                    // which children the margin walk counts even though neither its identity nor the
-                    // container's total count changed, so it must also flip the signature.
-                    hash = hash * 31 + (StyleOutOfFlowChild.IsOutOfFlow(child) ? 1 : 0);
-                }
+                hash = StyleOutOfFlowChild.HashChildSequence(hash, container);
                 return hash;
             }
         }

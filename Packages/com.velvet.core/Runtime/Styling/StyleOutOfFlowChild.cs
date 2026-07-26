@@ -55,5 +55,25 @@ namespace Velvet
             }
             return false;
         }
+
+        // Folds container's child sequence into the given running hash: each child's identity plus its
+        // in-flow / out-of-flow state, in child order. Shared by the index-driven child manipulators'
+        // signature hashes (gap, grid, child-variant) so a child's out-of-flow transition (a PopLayout pin
+        // or its cancel) flips the signature even when neither its identity nor the container's total
+        // child count changed.
+        internal static int HashChildSequence(int hash, VisualElement container)
+        {
+            unchecked
+            {
+                var count = container.childCount;
+                for (var i = 0; i < count; i++)
+                {
+                    var child = container[i];
+                    hash = hash * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(child);
+                    hash = hash * 31 + (IsOutOfFlow(child) ? 1 : 0);
+                }
+                return hash;
+            }
+        }
     }
 }

@@ -54,6 +54,19 @@ namespace Velvet
             ["black"] = VelvetFontWeight.Black,
         };
 
+        // Bundles the three font facets (family / weight / italic) and their "was it specified?"
+        // companions into one ref-passable unit, so ParseClass / ParseArbitrary thread a single argument
+        // through the class-list walk instead of six independent ref locals.
+        private struct FontFacets
+        {
+            public string? Family;
+            public bool HasFamily;
+            public VelvetFontWeight Weight;
+            public bool HasWeight;
+            public bool Italic;
+            public bool HasItalic;
+        }
+
         /// <summary>
         /// Cheap early-out: true when ANY class is a font utility. Avoids the full <see cref="TryExtract"/>
         /// scan on the elements (the vast majority) that carry no font class.
@@ -127,17 +140,12 @@ namespace Velvet
                 return false;
             }
 
-            string? family = null;
-            var hasFamily = false;
-            var weight = VelvetFontWeight.Normal;
-            var hasWeight = false;
-            var italic = false;
-            var hasItalic = false;
+            var facets = new FontFacets { Weight = VelvetFontWeight.Normal };
             var any = false;
 
             foreach (var cls in classNames)
             {
-                if (!ParseClass(cls, ref family, ref hasFamily, ref weight, ref hasWeight, ref italic, ref hasItalic))
+                if (!ParseClass(cls, ref facets))
                 {
                     continue;
                 }
@@ -150,16 +158,12 @@ namespace Velvet
                 return false;
             }
 
-            intent = new FontIntent(family, hasFamily, weight, hasWeight, italic, hasItalic);
+            intent = new FontIntent(facets.Family, facets.HasFamily, facets.Weight, facets.HasWeight, facets.Italic, facets.HasItalic);
             return true;
         }
 
         // Returns true when cls was recognized as a font utility (and mutated the facets accordingly).
-        private static bool ParseClass(
-            string cls,
-            ref string? family, ref bool hasFamily,
-            ref VelvetFontWeight weight, ref bool hasWeight,
-            ref bool italic, ref bool hasItalic)
+        private static bool ParseClass(string cls, ref FontFacets facets)
         {
             if (string.IsNullOrEmpty(cls))
             {
@@ -169,18 +173,18 @@ namespace Velvet
             switch (cls)
             {
                 case "italic":
-                    italic = true;
-                    hasItalic = true;
+                    facets.Italic = true;
+                    facets.HasItalic = true;
                     return true;
                 case "not-italic":
-                    italic = false;
-                    hasItalic = true;
+                    facets.Italic = false;
+                    facets.HasItalic = true;
                     return true;
                 case "bold-italic":
-                    weight = VelvetFontWeight.Bold;
-                    hasWeight = true;
-                    italic = true;
-                    hasItalic = true;
+                    facets.Weight = VelvetFontWeight.Bold;
+                    facets.HasWeight = true;
+                    facets.Italic = true;
+                    facets.HasItalic = true;
                     return true;
             }
 
@@ -201,36 +205,33 @@ namespace Velvet
             if (rest[0] == '[' && rest[rest.Length - 1] == ']')
             {
                 var value = StyleArbitraryValueResolver.TryStripBrackets(rest, 0, out var inner) ? inner.ToString() : string.Empty;
-                return ParseArbitrary(value, ref family, ref hasFamily, ref weight, ref hasWeight);
+                return ParseArbitrary(value, ref facets);
             }
 
             // Deprecated alias of `italic` (kept in sync with _typography.uss's .font-italic).
             if (rest == "italic")
             {
-                italic = true;
-                hasItalic = true;
+                facets.Italic = true;
+                facets.HasItalic = true;
                 return true;
             }
 
             // font-<weight-keyword>.
             if (WeightKeywords.TryGetValue(rest, out var kw))
             {
-                weight = kw;
-                hasWeight = true;
+                facets.Weight = kw;
+                facets.HasWeight = true;
                 return true;
             }
 
             // Otherwise a family name: font-sans, font-mono, font-display, …
-            family = rest;
-            hasFamily = true;
+            facets.Family = rest;
+            facets.HasFamily = true;
             return true;
         }
 
         // font-[weight:550] / font-[550] → weight; font-[addr:key] / font-[Inter] → family.
-        private static bool ParseArbitrary(
-            string value,
-            ref string? family, ref bool hasFamily,
-            ref VelvetFontWeight weight, ref bool hasWeight)
+        private static bool ParseArbitrary(string value, ref FontFacets facets)
         {
             if (value.Length == 0)
             {
@@ -239,29 +240,29 @@ namespace Velvet
 
             if (value.StartsWith("weight:", StringComparison.Ordinal))
             {
-                return TryParseWeight(value.Substring("weight:".Length), ref weight, ref hasWeight);
+                return TryParseWeight(value.Substring("weight:".Length), ref facets);
             }
 
             // A bare number is a weight (font-[550]); anything else (incl. addr:key) is a family.
-            if (char.IsDigit(value[0]) && TryParseWeight(value, ref weight, ref hasWeight))
+            if (char.IsDigit(value[0]) && TryParseWeight(value, ref facets))
             {
                 return true;
             }
 
-            family = value;
-            hasFamily = true;
+            facets.Family = value;
+            facets.HasFamily = true;
             return true;
         }
 
-        private static bool TryParseWeight(string raw, ref VelvetFontWeight weight, ref bool hasWeight)
+        private static bool TryParseWeight(string raw, ref FontFacets facets)
         {
             if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
             {
                 return false;
             }
 
-            weight = (VelvetFontWeight)value;
-            hasWeight = true;
+            facets.Weight = (VelvetFontWeight)value;
+            facets.HasWeight = true;
             return true;
         }
     }

@@ -22,6 +22,10 @@ namespace Velvet
     //      not click it.
     internal sealed class DndActiveDrag
     {
+        // Hold-to-drag clock cadence, matching the sibling per-frame element drivers' TickIntervalMs
+        // convention (AnchoredDriver, SceneViewDriver, ParticlesDriver).
+        private const long DelayTickIntervalMs = 16;
+
         private readonly ReconcilerContext _ctx;
         private readonly VisualElement _scopeElement;
         private readonly DndScopeBinding _scope;
@@ -171,7 +175,7 @@ namespace Velvet
                 // activates. The clock rides the PANEL ROOT's scheduler, not the source's: a re-attach
                 // resets a recurring item's phase in full, so a source inside a keyed list that reorders
                 // every frame would postpone a source-scheduled tick forever.
-                _delayTick = _panelRoot.schedule.Execute(OnDelayTick).Every(16);
+                _delayTick = _panelRoot.schedule.Execute(OnDelayTick).Every(DelayTickIntervalMs);
             }
             else if (_activation.Distance <= 0f)
             {
@@ -295,6 +299,18 @@ namespace Velvet
             _delayTick?.Pause();
             _delayTick = null;
 
+            CaptureActiveSnapshot();
+            RegisterActiveObservers();
+            EstablishFocusAnchor();
+            ApplyActiveStyling();
+            BeginOverlaySession();
+
+            var args = new DragStartArgs(ActiveInfo(), _origin);
+            FireDiscrete(() => _scope.Settings.OnDragStart?.Invoke(args));
+        }
+
+        private void CaptureActiveSnapshot()
+        {
             _origin = _lastPointerPosition;
             _originRect = _source.worldBound;
             _grabOffset = _origin - _originRect.position;
@@ -305,10 +321,13 @@ namespace Velvet
             // depend on the live settings surviving the drag unchanged.
             _activeMovement = _draggable.Settings.Movement;
             _activeDraggingClasses = _draggable.DraggingClasses;
+        }
 
-            // Steals the pointer from a child that captured at its own pointer-down (its
-            // PointerCaptureOutEvent aborts its click — "it's a drag now"); from here every pointer event
-            // of this id is delivered to the source only, so the drag-lifetime callbacks live there.
+        // Steals the pointer from a child that captured at its own pointer-down (its
+        // PointerCaptureOutEvent aborts its click — "it's a drag now"); from here every pointer event
+        // of this id is delivered to the source only, so the drag-lifetime callbacks live there.
+        private void RegisterActiveObservers()
+        {
             _source.CapturePointer(_pointerId);
             _onDragMove = OnDragMove;
             _onDragUp = OnDragUp;
@@ -324,13 +343,17 @@ namespace Velvet
             // Escape must cancel no matter which of this tree's panels holds keyboard focus — key events
             // dispatch through the FOCUSED panel, which need not be the source's.
             RegisterEscapeOnManagedRoots();
-            // The runtime input system only routes keyboard events into a panel that HAS a focused
-            // element, and a mouse-only drag typically has none — the Escape listener would never see
-            // its KeyDownEvent (verified against real editor input). The source anchors keyboard focus
-            // for the session; Close restores what it changed.
-            // Panel-local null is not "focus went nowhere": keyboard routes through whichever managed
-            // panel holds focus, so the anchor must not steal routing from e.g. a main-panel TextField
-            // while the drag runs in a layer panel.
+        }
+
+        // The runtime input system only routes keyboard events into a panel that HAS a focused
+        // element, and a mouse-only drag typically has none — the Escape listener would never see
+        // its KeyDownEvent (verified against real editor input). The source anchors keyboard focus
+        // for the session; Close restores what it changed.
+        // Panel-local null is not "focus went nowhere": keyboard routes through whichever managed
+        // panel holds focus, so the anchor must not steal routing from e.g. a main-panel TextField
+        // while the drag runs in a layer panel.
+        private void EstablishFocusAnchor()
+        {
             var focusController = _source.panel?.focusController;
             if (focusController != null && focusController.focusedElement == null
                 && !FiberFocusNavigator.AnyManagedPanelHoldsFocus(_ctx))
@@ -343,22 +366,25 @@ namespace Velvet
                 _source.Focus();
                 _anchoredFocus = true;
             }
+        }
 
+        private void ApplyActiveStyling()
+        {
             if (_activeDraggingClasses.Length > 0)
             {
                 StyleAnimationClassUtils.AddClasses(_source, _activeDraggingClasses);
             }
             ApplyDragActiveClasses();
+        }
 
+        private void BeginOverlaySession()
+        {
             _overlay = DndOverlayDriver.FindOverlay(_ctx, out _overlayPositioner);
             if (_overlay != null && _overlayPositioner != null)
             {
                 DndOverlayDriver.BeginSession(_overlayPositioner, _originRect.size);
                 DndOverlayDriver.SyncPosition(_overlayPositioner, _overlay, _source.panel, _lastPointerPosition, _grabOffset);
             }
-
-            var args = new DragStartArgs(ActiveInfo(), _origin);
-            FireDiscrete(() => _scope.Settings.OnDragStart?.Invoke(args));
         }
 
         private void ApplyDragActiveClasses()
@@ -685,83 +711,107 @@ namespace Velvet
             _delayTick = null;
             if (_active)
             {
-                if (_onDragMove != null) _source.UnregisterCallback(_onDragMove, TrickleDown.TrickleDown);
-                if (_onDragUp != null) _source.UnregisterCallback(_onDragUp, TrickleDown.TrickleDown);
-                if (_onDragDown != null) _source.UnregisterCallback(_onDragDown, TrickleDown.TrickleDown);
-                if (_onDragCancel != null) _source.UnregisterCallback(_onDragCancel, TrickleDown.TrickleDown);
-                if (_onCaptureOut != null) _source.UnregisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
-                if (_onEscape != null)
-                {
-                    foreach (var root in _escapeRoots)
-                    {
-                        root.UnregisterCallback(_onEscape, TrickleDown.TrickleDown);
-                    }
-                }
-                _escapeRoots.Clear();
-                _onDragMove = null;
-                _onDragUp = null;
-                _onDragDown = null;
-                _onDragCancel = null;
-                _onCaptureOut = null;
-                _onEscape = null;
-                if (_source.HasPointerCapture(_pointerId))
-                {
-                    _source.ReleasePointer(_pointerId);
-                }
-                // Undo the whole anchor, not just the focusable flag: the session created this focus
-                // from nothing, so an already-focusable source must not silently keep it (a lit
-                // focus-visible ring and keyboard routing the user never asked for). Focus the user
-                // moved elsewhere during the drag is left alone. The check is subtree-aware because a
-                // composite source delegates focus to an inner child; the focusable-restore nests inside
-                // the anchor branch because made-focusable implies anchored — the flags are never
-                // independent.
-                if (_anchoredFocus)
-                {
-                    if (_source.panel?.focusController?.focusedElement is VisualElement held
-                        && (held == _source || _source.Contains(held)))
-                    {
-                        _source.Blur();
-                    }
-                    _anchoredFocus = false;
-                    if (_madeSourceFocusable)
-                    {
-                        _source.focusable = false;
-                        _madeSourceFocusable = false;
-                    }
-                }
-                // Restore symmetry runs on the activation-time snapshots (see the field-block note).
-                if (_activeMovement == DragMovement.Translate)
-                {
-                    _source.style.translate = _savedTranslate;
-                }
-                if (_activeDraggingClasses.Length > 0)
-                {
-                    StyleAnimationClassUtils.RemoveClasses(_source, _activeDraggingClasses);
-                }
-                foreach (var (element, classes) in _appliedActiveClasses)
-                {
-                    StyleAnimationClassUtils.RemoveClasses(element, classes);
-                }
-                _appliedActiveClasses.Clear();
-                if (_overElement != null && _appliedOverClasses is { Length: > 0 })
-                {
-                    StyleAnimationClassUtils.RemoveClasses(_overElement, _appliedOverClasses);
-                }
-                _overId = null;
-                _overBinding = null;
-                _overElement = null;
-                _appliedOverClasses = null;
-                if (_overlayPositioner != null)
-                {
-                    DndOverlayDriver.EndSession(_overlayPositioner);
-                }
-                _overlay = null;
-                _overlayPositioner = null;
+                UnregisterActiveObservers();
+                ReleaseFocusAnchor();
+                RestoreActiveTranslate();
+                RemoveActiveStyling();
+                EndOverlaySession();
             }
             if (ReferenceEquals(_ctx.ActiveDrag, this))
             {
                 _ctx.ActiveDrag = null;
             }
+        }
+
+        private void UnregisterActiveObservers()
+        {
+            if (_onDragMove != null) _source.UnregisterCallback(_onDragMove, TrickleDown.TrickleDown);
+            if (_onDragUp != null) _source.UnregisterCallback(_onDragUp, TrickleDown.TrickleDown);
+            if (_onDragDown != null) _source.UnregisterCallback(_onDragDown, TrickleDown.TrickleDown);
+            if (_onDragCancel != null) _source.UnregisterCallback(_onDragCancel, TrickleDown.TrickleDown);
+            if (_onCaptureOut != null) _source.UnregisterCallback(_onCaptureOut, TrickleDown.TrickleDown);
+            if (_onEscape != null)
+            {
+                foreach (var root in _escapeRoots)
+                {
+                    root.UnregisterCallback(_onEscape, TrickleDown.TrickleDown);
+                }
+            }
+            _escapeRoots.Clear();
+            _onDragMove = null;
+            _onDragUp = null;
+            _onDragDown = null;
+            _onDragCancel = null;
+            _onCaptureOut = null;
+            _onEscape = null;
+            if (_source.HasPointerCapture(_pointerId))
+            {
+                _source.ReleasePointer(_pointerId);
+            }
+        }
+
+        // Undo the whole anchor, not just the focusable flag: the session created this focus
+        // from nothing, so an already-focusable source must not silently keep it (a lit
+        // focus-visible ring and keyboard routing the user never asked for). Focus the user
+        // moved elsewhere during the drag is left alone. The check is subtree-aware because a
+        // composite source delegates focus to an inner child; the focusable-restore nests inside
+        // the anchor branch because made-focusable implies anchored — the flags are never
+        // independent.
+        private void ReleaseFocusAnchor()
+        {
+            if (_anchoredFocus)
+            {
+                if (FiberFocusNavigator.IsFocusedElementWithin(_source, out _))
+                {
+                    _source.Blur();
+                }
+                _anchoredFocus = false;
+                if (_madeSourceFocusable)
+                {
+                    _source.focusable = false;
+                    _madeSourceFocusable = false;
+                }
+            }
+        }
+
+        private void RestoreActiveTranslate()
+        {
+            // Restore symmetry runs on the activation-time snapshots (see the field-block note).
+            if (_activeMovement == DragMovement.Translate)
+            {
+                _source.style.translate = _savedTranslate;
+            }
+        }
+
+        private void RemoveActiveStyling()
+        {
+            if (_activeDraggingClasses.Length > 0)
+            {
+                StyleAnimationClassUtils.RemoveClasses(_source, _activeDraggingClasses);
+            }
+            foreach (var (element, classes) in _appliedActiveClasses)
+            {
+                StyleAnimationClassUtils.RemoveClasses(element, classes);
+            }
+            _appliedActiveClasses.Clear();
+            if (_overElement != null && _appliedOverClasses is { Length: > 0 })
+            {
+                StyleAnimationClassUtils.RemoveClasses(_overElement, _appliedOverClasses);
+            }
+            _overId = null;
+            _overBinding = null;
+            _overElement = null;
+            _appliedOverClasses = null;
+        }
+
+        private void EndOverlaySession()
+        {
+            if (_overlayPositioner != null)
+            {
+                DndOverlayDriver.EndSession(_overlayPositioner);
+            }
+            _overlay = null;
+            _overlayPositioner = null;
         }
 
         private void UnregisterPendingObservers()

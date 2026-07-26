@@ -13,8 +13,9 @@ namespace Velvet
         // UIToolkit's schedule.Execute runs on the next frame, so 50ms is set to absorb the
         // 60fps (16ms) - 30fps (33ms) frame delay.
         private const long AnimationGraceMs = 50;
+        // Far above any legitimate UI transition length; catches a sec/ms unit mixup (an order-of-magnitude
+        // mistake) rather than acting as a real cap.
         private const float MaxDurationSec = 10f;
-        private const int MaxPoolSize = 16;
 
         // EasingMode values are finite, so caching is safe.
         private static readonly Dictionary<EasingMode, List<EasingFunction>> s_easingCache = new();
@@ -28,8 +29,9 @@ namespace Velvet
 
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingEnters = new();
-        private readonly Stack<List<TimeValue>> _durationPool = new();
-        private readonly Stack<List<TimeValue>> _delayPool = new();
+        // Scoped to this scheduler instance so a leaked or double-returned rent stays contained to it instead
+        // of corrupting a pool every other scheduler instance also draws from (see TimeValueListPool).
+        private readonly TimeValueListPool _listPool = new();
 
         // The next-frame class swap (EnterFromClass -> EnterToClass) is what fires the CSS transition.
         // additionalDelaySec: extra delay (seconds) added on top of the StyleTransitionConfig delay, used by
@@ -174,7 +176,7 @@ namespace Velvet
             // driver at the from-value (0 = invisible) NOW (synchronously, before the next-frame swap) so there
             // is no first-frame flash, then the tick (started at the swap) ramps each shadow to follow the
             // caster's opacity. Released on completion / cancel.
-            pending.Shadows = CollectShadowsForCoFade(element, pending, 0f);
+            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, 0f);
             _pendingEnters[element] = pending;
 
             // Schedules the deferred swap (and its own completion timeout) on the PANEL-ROOT host, not the
@@ -201,45 +203,7 @@ namespace Velvet
                 var host = panel.visualTree;
 
                 var startAction = new Action(() =>
-                {
-                    if (!_pendingEnters.ContainsKey(element))
-                    {
-                        return;
-                    }
-
-                    StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
-                    StyleAnimationClassUtils.AddClasses(element, toClasses);
-                    // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so
-                    // descendant shadows fade in lockstep with it.
-                    StartShadowCoFadeTick(pending);
-
-                    // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
-                    // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
-                    // SLOWEST animating property (SlowestPropertyTimeoutMs) rather than just the top-level
-                    // durationSec/delaySec: PropertyOverrides can give one property a longer duration than the
-                    // top-level value, and completing on the top-level timing alone would clear the inline
-                    // transition-duration (snapping the still-mid-tween slower property to its resting value) before
-                    // it actually finishes.
-                    var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
-                    var timeout = host.schedule.Execute(() =>
-                    {
-                        if (_pendingEnters.Remove(element, out var completed))
-                        {
-                            if (!variantMode)
-                            {
-                                StyleAnimationClassUtils.RemoveClasses(element, toClasses);
-                            }
-                            // Target is opaque now — stop the co-fade and restore the shadows to full strength.
-                            EndShadowCoFade(completed);
-                            ClearTransitionStyles(element);
-                            ReturnDurationList(completed.DurationList);
-                            ReturnDelayList(completed.DelayList);
-                            onComplete?.Invoke();
-                        }
-                    });
-                    timeout.ExecuteLater(durationMs);
-                    pending.TimeoutItem = timeout;
-                });
+                    RunEnterStartAction(element, fromClasses, toClasses, pending, durationList, delayList, host, variantMode, onComplete));
 
                 if (staggerDelayMs > 0)
                 {
@@ -278,6 +242,52 @@ namespace Velvet
             {
                 DeferUntilAttached(element, pending, ScheduleOnHost);
             }
+        }
+
+        // The deferred-swap body PlayEnterInternal's ScheduleOnHost runs once attached (immediately, or after
+        // the stagger/next-frame delay): swaps the from/to classes (firing the CSS transition), starts the
+        // shadow co-fade tick, then schedules the completion timeout.
+        private void RunEnterStartAction(VisualElement element, string[] fromClasses, string[] toClasses,
+            PendingAnimation pending, List<TimeValue> durationList, List<TimeValue>? delayList,
+            VisualElement host, bool variantMode, Action? onComplete)
+        {
+            if (!_pendingEnters.ContainsKey(element))
+            {
+                return;
+            }
+
+            StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+            StyleAnimationClassUtils.AddClasses(element, toClasses);
+            // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so
+            // descendant shadows fade in lockstep with it.
+            ShadowCoFadeCoordinator.StartShadowCoFadeTick(pending);
+
+            // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
+            // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
+            // SLOWEST animating property (SlowestPropertyTimeoutMs) rather than just the top-level
+            // durationSec/delaySec: PropertyOverrides can give one property a longer duration than the
+            // top-level value, and completing on the top-level timing alone would clear the inline
+            // transition-duration (snapping the still-mid-tween slower property to its resting value) before
+            // it actually finishes.
+            var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
+            var timeout = host.schedule.Execute(() =>
+            {
+                if (_pendingEnters.Remove(element, out var completed))
+                {
+                    if (!variantMode)
+                    {
+                        StyleAnimationClassUtils.RemoveClasses(element, toClasses);
+                    }
+                    // Target is opaque now — stop the co-fade and restore the shadows to full strength.
+                    ShadowCoFadeCoordinator.EndShadowCoFade(completed);
+                    ClearTransitionStyles(element);
+                    _listPool.ReturnDurationList(completed.DurationList);
+                    _listPool.ReturnDelayList(completed.DelayList);
+                    onComplete?.Invoke();
+                }
+            });
+            timeout.ExecuteLater(durationMs);
+            pending.TimeoutItem = timeout;
         }
 
         // The next-frame class swap (ExitFromClass -> ExitToClass) is what fires the CSS transition; onComplete
@@ -356,7 +366,7 @@ namespace Velvet
             // Co-fade drop-shadows OUT with the element instead of hiding them: register this exit as a shadow
             // driver at the from-value (1 = opaque, the element's current state); the tick (started at the swap)
             // then ramps each shadow down to follow the caster's fading opacity. Released on completion / cancel.
-            pending.Shadows = CollectShadowsForCoFade(element, pending, 1f);
+            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, 1f);
             _pendingExits[element] = pending;
 
             var staggerDelayMs = (long)(additionalDelaySec * 1000);
@@ -387,44 +397,7 @@ namespace Velvet
                 }
                 var host = panel.visualTree;
                 var startAction = new Action(() =>
-                {
-                    if (!_pendingExits.ContainsKey(element))
-                    {
-                        return;
-                    }
-
-                    StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
-                    StyleAnimationClassUtils.AddClasses(element, toClasses);
-                    // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
-                    // stable host so descendant shadows fade out in lockstep (and keep ticking through any
-                    // reconcile-reorder detach of the exiting ghost, which is why the host is the panel root).
-                    StartShadowCoFadeTick(pending);
-
-                    // Step 3: invoke onComplete after the duration. Sized from the SLOWEST animating property
-                    // (SlowestPropertyTimeoutMs) rather than just the top-level DurationSec/DelaySec: a variant
-                    // exit's PropertyOverrides can give one property a longer duration than the top-level value,
-                    // and completing on the top-level timing alone would drop the ghost — removing its element —
-                    // while that slower property is still mid-tween.
-                    var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
-                    var timeout = host.schedule.Execute(() =>
-                    {
-                        if (_pendingExits.Remove(element, out var completed))
-                        {
-                            EndShadowCoFade(completed);
-                            // Clear BEFORE returning the lists (mirrors the enter completion): the inline
-                            // slots retain the list references, and a completed exit's element can outlive
-                            // its drop (a re-entry preempting the drop render) — leaving them set would make
-                            // later class changes tween unexpectedly, and a re-rented list would silently
-                            // mutate this element's timing through the retained reference.
-                            ClearTransitionStyles(element);
-                            ReturnDurationList(completed.DurationList);
-                            ReturnDelayList(completed.DelayList);
-                            onComplete?.Invoke();
-                        }
-                    });
-                    timeout.ExecuteLater(durationMs);
-                    pending.TimeoutItem = timeout;
-                });
+                    RunExitStartAction(element, fromClasses, toClasses, pending, durationList, delayList, host, onComplete));
 
                 // Delay the swap by the stagger offset (each removed child fades on its turn), else run next frame.
                 if (staggerDelayMs > 0)
@@ -453,6 +426,52 @@ namespace Velvet
             {
                 DeferUntilAttached(element, pending, ScheduleOnHost);
             }
+        }
+
+        // The exit sibling of RunEnterStartAction: the deferred-swap body PlayExit's ScheduleOnHost runs once
+        // attached — swaps the from/to classes (firing the CSS transition), starts the shadow co-fade tick, then
+        // schedules the completion timeout. No variantMode parameter: unlike an enter, an exit never keeps its
+        // to-classes on completion (the caller removes the element).
+        private void RunExitStartAction(VisualElement element, string[] fromClasses, string[] toClasses,
+            PendingAnimation pending, List<TimeValue> durationList, List<TimeValue>? delayList,
+            VisualElement host, Action? onComplete)
+        {
+            if (!_pendingExits.ContainsKey(element))
+            {
+                return;
+            }
+
+            StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+            StyleAnimationClassUtils.AddClasses(element, toClasses);
+            // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
+            // stable host so descendant shadows fade out in lockstep (and keep ticking through any
+            // reconcile-reorder detach of the exiting ghost, which is why the host is the panel root).
+            ShadowCoFadeCoordinator.StartShadowCoFadeTick(pending);
+
+            // Step 3: invoke onComplete after the duration. Sized from the SLOWEST animating property
+            // (SlowestPropertyTimeoutMs) rather than just the top-level DurationSec/DelaySec: a variant
+            // exit's PropertyOverrides can give one property a longer duration than the top-level value,
+            // and completing on the top-level timing alone would drop the ghost — removing its element —
+            // while that slower property is still mid-tween.
+            var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
+            var timeout = host.schedule.Execute(() =>
+            {
+                if (_pendingExits.Remove(element, out var completed))
+                {
+                    ShadowCoFadeCoordinator.EndShadowCoFade(completed);
+                    // Clear BEFORE returning the lists (mirrors the enter completion): the inline
+                    // slots retain the list references, and a completed exit's element can outlive
+                    // its drop (a re-entry preempting the drop render) — leaving them set would make
+                    // later class changes tween unexpectedly, and a re-rented list would silently
+                    // mutate this element's timing through the retained reference.
+                    ClearTransitionStyles(element);
+                    _listPool.ReturnDurationList(completed.DurationList);
+                    _listPool.ReturnDelayList(completed.DelayList);
+                    onComplete?.Invoke();
+                }
+            });
+            timeout.ExecuteLater(durationMs);
+            pending.TimeoutItem = timeout;
         }
 
         // Defers an action until the element attaches to a panel — shared by any animation that can start
@@ -545,7 +564,7 @@ namespace Velvet
             // mirroring PlayEnterInternal — matching those hardcoded values (rather than reading the spring's
             // own opacity channel, which may not even exist for a translate/scale/rotate-only play) keeps a
             // spring's shadow behavior identical to a tween's for the same enter/exit direction.
-            pending.Shadows = CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
+            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
             state.OnSettled = onComplete;
             map[element] = pending;
 
@@ -644,7 +663,7 @@ namespace Velvet
                 AnimatingElement = element,
                 Bezier = state,
             };
-            pending.Shadows = CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
+            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
             state.OnSettled = onComplete;
             map[element] = pending;
 
@@ -718,7 +737,7 @@ namespace Velvet
             // The spring's own physics tick is now live — start sampling the caster's opacity each frame
             // (StartShadowCoFadeTick) so co-faded descendant shadows track it exactly like a tween's, from the
             // same moment its CSS transition would have started firing.
-            StartShadowCoFadeTick(pending);
+            ShadowCoFadeCoordinator.StartShadowCoFadeTick(pending);
 
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
@@ -749,7 +768,7 @@ namespace Velvet
                 }
                 // Target is at rest now — stop the co-fade and restore the shadows to full strength (a no-op
                 // when this subtree carries none, the common case).
-                EndShadowCoFade(pending);
+                ShadowCoFadeCoordinator.EndShadowCoFade(pending);
                 MotionSpringDriver.ClearInlineOverrides(element, state);
                 ReapplyMotionOwnedInlineValues(element);
                 state.OnSettled?.Invoke();
@@ -773,7 +792,7 @@ namespace Velvet
                 return;
             }
 
-            StartShadowCoFadeTick(pending);
+            ShadowCoFadeCoordinator.StartShadowCoFadeTick(pending);
 
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
@@ -797,7 +816,7 @@ namespace Velvet
                 {
                     RemoveIfCurrent(_pendingEnters, element, pending);
                 }
-                EndShadowCoFade(pending);
+                ShadowCoFadeCoordinator.EndShadowCoFade(pending);
                 BezierTweenDriver.ClearInlineOverrides(element, state);
                 ReapplyMotionOwnedInlineValues(element);
                 state.OnSettled?.Invoke();
@@ -827,7 +846,7 @@ namespace Velvet
         // class REMOVAL triggers it; nothing removes a class here (the swap already landed its classes back
         // when the motion started), so nobody else re-asserts it. Re-read the element's OWN current class list
         // and re-apply whatever inline-resolved values it still names, mirroring
-        // FiberWrapperElementAppliers.RestoreSharedInlineSlot's identical problem for the animate-* motions.
+        // FiberAnimateMotionApplier.RestoreSharedInlineSlot's identical problem for the animate-* motions.
         // Driver-agnostic (takes only the element, reads its own class list), so both the spring and bezier
         // settle/cancel paths share it.
         private static void ReapplyMotionOwnedInlineValues(VisualElement element)
@@ -945,7 +964,7 @@ namespace Velvet
 
         // C# becomes the Single Source of Truth, so they need not be defined in USS.
         // GC tuning: the EasingFunction list is cached statically per EasingMode; TimeValue lists are
-        // reused via per-instance pools.
+        // reused via TimeValueListPool.
         // transition-property: all — a shared, never-mutated list (StyleList retains the reference as-is, so a
         // static instance is safe; ClearTransitionStyles releases it via StyleKeyword.Null).
         private static readonly List<UnityEngine.UIElements.StylePropertyName> s_allTransitionProperties =
@@ -965,7 +984,7 @@ namespace Velvet
             }
 
             var durationMs = (int)(durationSec * 1000);
-            var durationList = RentDurationList(durationMs);
+            var durationList = _listPool.RentDurationList(durationMs);
             element.style.transitionDuration = durationList;
             element.style.transitionTimingFunction = GetOrCreateEasingList(easing);
 
@@ -983,7 +1002,7 @@ namespace Velvet
             if (delaySec > 0f)
             {
                 var delayMs = (int)(delaySec * 1000);
-                delayList = RentDelayList(delayMs);
+                delayList = _listPool.RentDelayList(delayMs);
                 element.style.transitionDelay = delayList;
             }
 
@@ -1028,8 +1047,8 @@ namespace Velvet
                 return names;
             });
             var easingList = new List<EasingFunction>(count);
-            var durationList = RentEmptyDurationList(count);
-            var delayList = RentEmptyDelayList(count);
+            var durationList = _listPool.RentEmptyDurationList(count);
+            var delayList = _listPool.RentEmptyDelayList(count);
             var hasDelay = false;
             for (var i = 0; i < count; i++)
             {
@@ -1054,7 +1073,7 @@ namespace Velvet
             // never come (this play's own bookkeeping only tracks a DelayList when it set one).
             if (!hasDelay)
             {
-                ReturnDelayList(delayList);
+                _listPool.ReturnDelayList(delayList);
                 return (durationList, null);
             }
             element.style.transitionDelay = delayList;
@@ -1093,85 +1112,108 @@ namespace Velvet
                 // Interrupted enter / exit: the target returns to its resting (opaque) state, so stop this
                 // tween's co-fade and drop its driver — the shadow snaps back to full (product collapses to 1)
                 // unless an enclosing fade still drives it.
-                EndShadowCoFade(pending);
+                ShadowCoFadeCoordinator.EndShadowCoFade(pending);
 
                 if (pending.Spring != null)
                 {
-                    var spring = pending.Spring;
-                    if (!forTeardown && animateReversal && element.panel != null && spring.Tick != null)
-                    {
-                        // Hand off to a reversal spring: retarget every channel toward the value it STARTED
-                        // from (continuity — each channel's SpringIntegrator instance, and therefore its
-                        // current value/velocity, is untouched by this), drop the original completion (a
-                        // reversal settling is not "finishing" anything the original caller asked for), and
-                        // move ownership into the enter map — mirroring the tween reversal's own move into
-                        // _pendingEnters below. The recurring tick keeps running uninterrupted throughout;
-                        // only its targets and its eventual finalize action change. Requires a tick that has
-                        // actually started (spring.Tick != null): a cancel that lands before then — still
-                        // parked behind its delay — has no running tick to keep alive, and nothing would ever
-                        // start one for it (its ScheduledItem was already paused above, and a still-off-panel
-                        // PendingAttach was already unregistered), so handing off here would just park a dead
-                        // entry in _pendingEnters forever instead of finalizing below.
-                        MotionSpringDriver.Retarget(spring);
-                        spring.OnSettled = null;
-                        CancelPending(_pendingEnters, element);
-                        _pendingEnters[element] = pending;
-                    }
-                    else
-                    {
-                        // No reversal (a plain CancelEnter, an off-panel exit with nothing left to interpolate
-                        // against, a cancel before the tick ever started, or a teardown cancel that must never
-                        // hand off regardless): stop the tick now and drop the inline overrides immediately.
-                        spring.Tick?.Pause();
-                        spring.Tick = null;
-                        MotionSpringDriver.ClearInlineOverrides(element, spring);
-                        ReapplyMotionOwnedInlineValues(element);
-                    }
+                    CancelSpringPending(element, pending, pending.Spring, animateReversal, forTeardown);
                     return;
                 }
 
                 if (pending.Bezier != null)
                 {
-                    var bezier = pending.Bezier;
-                    if (!forTeardown && animateReversal && element.panel != null && bezier.Tick != null)
-                    {
-                        // Hand off to a reversal exactly like the spring branch above: freeze each channel at its
-                        // current sampled value, retarget it back toward its resting value, drop the original
-                        // completion, and move ownership into the enter map. Requires a tick that has actually
-                        // started (bezier.Tick != null) — a cancel that lands while still parked behind the delay
-                        // has no running tick to redirect and nothing would ever start one, so it finalizes below.
-                        BezierTweenDriver.Retarget(bezier);
-                        bezier.OnSettled = null;
-                        CancelPending(_pendingEnters, element);
-                        _pendingEnters[element] = pending;
-                    }
-                    else
-                    {
-                        bezier.Tick?.Pause();
-                        bezier.Tick = null;
-                        BezierTweenDriver.ClearInlineOverrides(element, bezier);
-                        ReapplyMotionOwnedInlineValues(element);
-                    }
+                    CancelBezierPending(element, pending, pending.Bezier, animateReversal, forTeardown);
                     return;
                 }
 
-                if (!forTeardown && animateReversal && element.panel != null && pending.DurationList is { Count: > 0 })
-                {
-                    // A cancelled exit retargets a still-attached element back to its resting
-                    // classes. Clearing the inline transition styles in this same call would make
-                    // the next style resolve snap straight to the resting values; keep the
-                    // transition alive instead so the panel interpolates from the currently
-                    // resolved value, and defer the clear (and list return) until the reversal has
-                    // run its course. Off-panel there is nothing to interpolate (and scheduling
-                    // would plant a fresh deferred-attach callback), so clear immediately.
-                    ScheduleReversalCleanup(element, pending);
-                }
-                else
-                {
-                    ClearTransitionStyles(element);
-                    ReturnDurationList(pending.DurationList);
-                    ReturnDelayList(pending.DelayList);
-                }
+                CancelTweenPending(element, pending, animateReversal, forTeardown);
+            }
+        }
+
+        // Spring branch of CancelPending's post-removal dispatch: hand off to a reversal spring, or stop the
+        // tick and drop its inline overrides outright. See CancelPending for the shared prefix (dictionary
+        // removal, class/resting-class bookkeeping, co-fade end) this runs after.
+        private void CancelSpringPending(VisualElement element, PendingAnimation pending, MotionSpringState spring,
+            bool animateReversal, bool forTeardown)
+        {
+            if (!forTeardown && animateReversal && element.panel != null && spring.Tick != null)
+            {
+                // Hand off to a reversal spring: retarget every channel toward the value it STARTED
+                // from (continuity — each channel's SpringIntegrator instance, and therefore its
+                // current value/velocity, is untouched by this), drop the original completion (a
+                // reversal settling is not "finishing" anything the original caller asked for), and
+                // move ownership into the enter map — mirroring the tween reversal's own move into
+                // _pendingEnters below. The recurring tick keeps running uninterrupted throughout;
+                // only its targets and its eventual finalize action change. Requires a tick that has
+                // actually started (spring.Tick != null): a cancel that lands before then — still
+                // parked behind its delay — has no running tick to keep alive, and nothing would ever
+                // start one for it (its ScheduledItem was already paused above, and a still-off-panel
+                // PendingAttach was already unregistered), so handing off here would just park a dead
+                // entry in _pendingEnters forever instead of finalizing below.
+                MotionSpringDriver.Retarget(spring);
+                spring.OnSettled = null;
+                CancelPending(_pendingEnters, element);
+                _pendingEnters[element] = pending;
+            }
+            else
+            {
+                // No reversal (a plain CancelEnter, an off-panel exit with nothing left to interpolate
+                // against, a cancel before the tick ever started, or a teardown cancel that must never
+                // hand off regardless): stop the tick now and drop the inline overrides immediately.
+                spring.Tick?.Pause();
+                spring.Tick = null;
+                MotionSpringDriver.ClearInlineOverrides(element, spring);
+                ReapplyMotionOwnedInlineValues(element);
+            }
+        }
+
+        // Bezier branch of CancelPending's post-removal dispatch: the bezier sibling of CancelSpringPending —
+        // see CancelPending for the shared prefix this runs after.
+        private void CancelBezierPending(VisualElement element, PendingAnimation pending, BezierTweenState bezier,
+            bool animateReversal, bool forTeardown)
+        {
+            if (!forTeardown && animateReversal && element.panel != null && bezier.Tick != null)
+            {
+                // Hand off to a reversal exactly like the spring branch above: freeze each channel at its
+                // current sampled value, retarget it back toward its resting value, drop the original
+                // completion, and move ownership into the enter map. Requires a tick that has actually
+                // started (bezier.Tick != null) — a cancel that lands while still parked behind the delay
+                // has no running tick to redirect and nothing would ever start one, so it finalizes below.
+                BezierTweenDriver.Retarget(bezier);
+                bezier.OnSettled = null;
+                CancelPending(_pendingEnters, element);
+                _pendingEnters[element] = pending;
+            }
+            else
+            {
+                bezier.Tick?.Pause();
+                bezier.Tick = null;
+                BezierTweenDriver.ClearInlineOverrides(element, bezier);
+                ReapplyMotionOwnedInlineValues(element);
+            }
+        }
+
+        // Tween branch of CancelPending's post-removal dispatch (neither Spring nor Bezier set) — see
+        // CancelPending for the shared prefix this runs after.
+        private void CancelTweenPending(VisualElement element, PendingAnimation pending,
+            bool animateReversal, bool forTeardown)
+        {
+            if (!forTeardown && animateReversal && element.panel != null && pending.DurationList is { Count: > 0 })
+            {
+                // A cancelled exit retargets a still-attached element back to its resting
+                // classes. Clearing the inline transition styles in this same call would make
+                // the next style resolve snap straight to the resting values; keep the
+                // transition alive instead so the panel interpolates from the currently
+                // resolved value, and defer the clear (and list return) until the reversal has
+                // run its course. Off-panel there is nothing to interpolate (and scheduling
+                // would plant a fresh deferred-attach callback), so clear immediately.
+                ScheduleReversalCleanup(element, pending);
+            }
+            else
+            {
+                ClearTransitionStyles(element);
+                _listPool.ReturnDurationList(pending.DurationList);
+                _listPool.ReturnDelayList(pending.DelayList);
             }
         }
 
@@ -1196,8 +1238,8 @@ namespace Velvet
                 if (_pendingEnters.Remove(element))
                 {
                     ClearTransitionStyles(element);
-                    ReturnDurationList(reversal.DurationList);
-                    ReturnDelayList(reversal.DelayList);
+                    _listPool.ReturnDurationList(reversal.DurationList);
+                    _listPool.ReturnDelayList(reversal.DelayList);
                 }
             });
             timeout.ExecuteLater((long)timeoutMs);
@@ -1246,7 +1288,7 @@ namespace Velvet
                 if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
                 StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
                 StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
-                EndShadowCoFade(pending);
+                ShadowCoFadeCoordinator.EndShadowCoFade(pending);
                 if (pending.Spring != null)
                 {
                     // A hard stop, no reversal: pause the tick and drop the inline overrides it owns (the
@@ -1265,106 +1307,10 @@ namespace Velvet
                     ReapplyMotionOwnedInlineValues(element);
                 }
                 ClearTransitionStyles(element);
-                ReturnDurationList(pending.DurationList);
-                ReturnDelayList(pending.DelayList);
+                _listPool.ReturnDurationList(pending.DurationList);
+                _listPool.ReturnDelayList(pending.DelayList);
             }
             map.Clear();
-        }
-
-        // Collects every drop-shadow paint under an element (the element itself and its descendants) and
-        // registers this animation as a co-fade driver on each at the given start factor (0 for an enter,
-        // 1 for an exit). The shadow is painted as a baked quad in the caster's own generateVisualContent and
-        // does NOT honor UI Toolkit opacity (neither inherited from an animating ancestor nor inline), so while
-        // a FadeSlideUp / Fade tweens the target's opacity the scheduler samples that opacity each frame
-        // (StartShadowCoFadeTick) and scales each shadow's alpha by it — the shadow fades WITH its element
-        // instead of being hidden then popping in. The returned list lets completion / cancel end the SAME
-        // co-fade without re-walking the subtree; null when there are none (the common case) so nothing is
-        // retained and no tick is scheduled. The driver token is the PendingAnimation, and a binding's opacity
-        // is the PRODUCT of its active drivers, so a nested animation whose own fade completes first does NOT
-        // reveal a shadow an enclosing, still-running fade also covers.
-        private static List<(VisualElement element, DropShadowBinding binding)>? CollectShadowsForCoFade(
-            VisualElement element, object driver, float startFactor)
-        {
-            List<(VisualElement, DropShadowBinding)>? shadows = null;
-            CollectShadows(element, ref shadows);
-            if (shadows == null)
-            {
-                return null;
-            }
-            foreach (var (el, binding) in shadows)
-            {
-                DropShadowSilhouette.SetCoFade(binding, el, driver, startFactor);
-            }
-            return shadows;
-        }
-
-        // Depth-first walk gathering each element that carries a shadow paint binding. The shadow is the
-        // caster's own paint, not a separate child element, so the binding is looked up per element via
-        // DropShadowSilhouette's side-channel.
-        private static void CollectShadows(VisualElement element,
-            ref List<(VisualElement, DropShadowBinding)>? shadows)
-        {
-            var binding = DropShadowSilhouette.TryGet(element);
-            if (binding != null)
-            {
-                (shadows ??= new List<(VisualElement, DropShadowBinding)>()).Add((element, binding));
-            }
-            var count = element.childCount;
-            for (var i = 0; i < count; i++)
-            {
-                CollectShadows(element[i], ref shadows);
-            }
-        }
-
-        // Starts the recurring co-fade tick: every frame, sample the animating element's current (transition-
-        // interpolated) opacity and push it to each collected descendant shadow, so they fade in lockstep with
-        // the element. Scheduled on the PANEL ROOT (not the animating element): a recurring item survives a
-        // keyed reorder's detach/re-attach of the animating element on its own (UI Toolkit pauses and
-        // reschedules it automatically), but the panel root is already the one stable host every other piece
-        // of this animation's bookkeeping runs against, so the tick shares it instead of tracking its own.
-        // No-op when the subtree carries no shadows (the common case), so a shadowless animation costs
-        // nothing. Paused by EndShadowCoFade on completion / cancel.
-        private static void StartShadowCoFadeTick(PendingAnimation pending)
-        {
-            if (pending.Shadows == null)
-            {
-                return;
-            }
-            var animatingElement = pending.AnimatingElement;
-            if (animatingElement == null)
-            {
-                return;
-            }
-            var host = animatingElement.panel?.visualTree;
-            if (host == null)
-            {
-                return;
-            }
-            pending.ShadowTick = host.schedule.Execute(() =>
-            {
-                var raw = animatingElement.resolvedStyle.opacity;
-                var factor = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
-                foreach (var (el, binding) in pending.Shadows)
-                {
-                    DropShadowSilhouette.SetCoFade(binding, el, pending, factor);
-                }
-            }).Every(StyleAnimateDriver.TickMs);
-        }
-
-        // Stops the co-fade tick and drops this animation's driver from each shadow (null-safe; balanced
-        // one-for-one with CollectShadowsForCoFade). When a shadow's last driver is removed it returns to full
-        // strength; an enclosing, still-running fade keeps driving it.
-        private static void EndShadowCoFade(PendingAnimation pending)
-        {
-            pending.ShadowTick?.Pause();
-            if (pending.Shadows == null)
-            {
-                return;
-            }
-            foreach (var (el, binding) in pending.Shadows)
-            {
-                DropShadowSilhouette.EndCoFade(binding, el, pending);
-            }
         }
 
         private void ClearTransitionStyles(VisualElement element)
@@ -1391,52 +1337,7 @@ namespace Velvet
             return list;
         }
 
-        private List<TimeValue> RentDurationList(int ms) => RentTimeValueList(_durationPool, ms);
-        private void ReturnDurationList(List<TimeValue>? list) => ReturnTimeValueList(_durationPool, list);
-        private List<TimeValue> RentDelayList(int ms) => RentTimeValueList(_delayPool, ms);
-        private void ReturnDelayList(List<TimeValue>? list) => ReturnTimeValueList(_delayPool, list);
-        // n-entry siblings for PropertyOverrides: rented EMPTY (the caller fills them directly, positionally
-        // matching each override — see ApplyPropertyOverrideTransitionStyles) rather than pre-filled from an
-        // intermediary int[], but drawn from the SAME pools the single-entry methods above use (a rented list's
-        // capacity just grows to whatever size it was last asked for, so ReturnTimeValueList already handles
-        // returning either shape without change).
-        private List<TimeValue> RentEmptyDurationList(int capacity) => RentEmptyTimeValueList(_durationPool, capacity);
-        private List<TimeValue> RentEmptyDelayList(int capacity) => RentEmptyTimeValueList(_delayPool, capacity);
-
-        // Single-entry hot path: every enter / exit without PropertyOverrides rents exactly one of these per
-        // animation.
-        private static List<TimeValue> RentTimeValueList(Stack<List<TimeValue>> pool, int ms)
-        {
-            var list = RentEmptyTimeValueList(pool, capacity: 1);
-            list.Add(new TimeValue(ms, TimeUnit.Millisecond));
-            return list;
-        }
-
-        // Rents a list with no entries — either a fresh one sized to capacity, or a pooled one cleared of
-        // whatever it held last. Shared by the single-entry rent above (which adds its one TimeValue itself)
-        // and the PropertyOverrides path (which fills several, positionally, in its own loop).
-        private static List<TimeValue> RentEmptyTimeValueList(Stack<List<TimeValue>> pool, int capacity)
-        {
-            if (!pool.TryPop(out var list))
-            {
-                list = new List<TimeValue>(capacity);
-            }
-            else
-            {
-                list.Clear();
-            }
-            return list;
-        }
-
-        private static void ReturnTimeValueList(Stack<List<TimeValue>> pool, List<TimeValue>? list)
-        {
-            if (list != null && pool.Count < MaxPoolSize)
-            {
-                pool.Push(list);
-            }
-        }
-
-        // Fields are sufficient since this is a private sealed class.
+        // Fields are sufficient since this is a private sealed class, not a public API surface.
         private sealed class PendingAnimation
         {
             public IVisualElementScheduledItem? ScheduledItem;
@@ -1476,6 +1377,171 @@ namespace Velvet
             // Non-null for a bezier-driven entry (StartBezierVariant) — the bezier sibling of Spring. Mutually
             // exclusive with it per play (which one is set depends on config.Type); both null for a plain tween.
             public BezierTweenState? Bezier;
+        }
+
+        // Drop-shadow co-fade bookkeeping for every StyleAnimationScheduler play (tween / spring / bezier,
+        // enter / exit): a drop-shadow paint does not honor UI Toolkit opacity, so while an animation tweens its
+        // target's opacity this samples that opacity each frame and scales each descendant shadow's alpha by it,
+        // making the shadow fade WITH its caster instead of popping in/out. Depends only on the PendingAnimation
+        // instance each play already carries as its driver token, not on any of the scheduler's own map/pool state.
+        private static class ShadowCoFadeCoordinator
+        {
+            // Collects every drop-shadow paint under an element (the element itself and its descendants) and
+            // registers this animation as a co-fade driver on each at the given start factor (0 for an enter,
+            // 1 for an exit). The shadow is painted as a baked quad in the caster's own generateVisualContent and
+            // does NOT honor UI Toolkit opacity (neither inherited from an animating ancestor nor inline), so while
+            // a FadeSlideUp / Fade tweens the target's opacity the scheduler samples that opacity each frame
+            // (StartShadowCoFadeTick) and scales each shadow's alpha by it — the shadow fades WITH its element
+            // instead of being hidden then popping in. The returned list lets completion / cancel end the SAME
+            // co-fade without re-walking the subtree; null when there are none (the common case) so nothing is
+            // retained and no tick is scheduled. The driver token is the PendingAnimation, and a binding's opacity
+            // is the PRODUCT of its active drivers, so a nested animation whose own fade completes first does NOT
+            // reveal a shadow an enclosing, still-running fade also covers.
+            internal static List<(VisualElement element, DropShadowBinding binding)>? CollectShadowsForCoFade(
+                VisualElement element, object driver, float startFactor)
+            {
+                List<(VisualElement, DropShadowBinding)>? shadows = null;
+                CollectShadows(element, ref shadows);
+                if (shadows == null)
+                {
+                    return null;
+                }
+                foreach (var (el, binding) in shadows)
+                {
+                    DropShadowSilhouette.SetCoFade(binding, el, driver, startFactor);
+                }
+                return shadows;
+            }
+
+            // Depth-first walk gathering each element that carries a shadow paint binding. The shadow is the
+            // caster's own paint, not a separate child element, so the binding is looked up per element via
+            // DropShadowSilhouette's side-channel.
+            private static void CollectShadows(VisualElement element,
+                ref List<(VisualElement, DropShadowBinding)>? shadows)
+            {
+                var binding = DropShadowSilhouette.TryGet(element);
+                if (binding != null)
+                {
+                    (shadows ??= new List<(VisualElement, DropShadowBinding)>()).Add((element, binding));
+                }
+                var count = element.childCount;
+                for (var i = 0; i < count; i++)
+                {
+                    CollectShadows(element[i], ref shadows);
+                }
+            }
+
+            // Starts the recurring co-fade tick: every frame, sample the animating element's current (transition-
+            // interpolated) opacity and push it to each collected descendant shadow, so they fade in lockstep with
+            // the element. Scheduled on the PANEL ROOT (not the animating element): a recurring item survives a
+            // keyed reorder's detach/re-attach of the animating element on its own (UI Toolkit pauses and
+            // reschedules it automatically), but the panel root is already the one stable host every other piece
+            // of this animation's bookkeeping runs against, so the tick shares it instead of tracking its own.
+            // No-op when the subtree carries no shadows (the common case), so a shadowless animation costs
+            // nothing. Paused by EndShadowCoFade on completion / cancel.
+            internal static void StartShadowCoFadeTick(StyleAnimationScheduler.PendingAnimation pending)
+            {
+                if (pending.Shadows == null)
+                {
+                    return;
+                }
+                var animatingElement = pending.AnimatingElement;
+                if (animatingElement == null)
+                {
+                    return;
+                }
+                var host = animatingElement.panel?.visualTree;
+                if (host == null)
+                {
+                    return;
+                }
+                pending.ShadowTick = host.schedule.Execute(() =>
+                {
+                    var raw = animatingElement.resolvedStyle.opacity;
+                    var factor = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
+                    foreach (var (el, binding) in pending.Shadows)
+                    {
+                        DropShadowSilhouette.SetCoFade(binding, el, pending, factor);
+                    }
+                }).Every(StyleAnimateDriver.TickMs);
+            }
+
+            // Stops the co-fade tick and drops this animation's driver from each shadow (null-safe; balanced
+            // one-for-one with CollectShadowsForCoFade). When a shadow's last driver is removed it returns to full
+            // strength; an enclosing, still-running fade keeps driving it.
+            internal static void EndShadowCoFade(StyleAnimationScheduler.PendingAnimation pending)
+            {
+                pending.ShadowTick?.Pause();
+                if (pending.Shadows == null)
+                {
+                    return;
+                }
+                foreach (var (el, binding) in pending.Shadows)
+                {
+                    DropShadowSilhouette.EndCoFade(binding, el, pending);
+                }
+            }
+        }
+
+        // TimeValue buffer pool for the transition-duration / transition-delay inline style lists every tween play
+        // rents: reuses an existing List<TimeValue> instead of allocating one per animation start. Duration and
+        // delay lists pool separately (distinct backing Stacks) even though both are structurally List<TimeValue>,
+        // since a duration list and a delay list are never interchangeable at a call site. One instance per
+        // StyleAnimationScheduler (not shared process-wide): every rent is returned by that same scheduler's own
+        // completion/cancel path, so a leaked or double-returned entry from a bug in one scheduler cannot corrupt
+        // a pool other, unrelated scheduler instances also draw from.
+        private sealed class TimeValueListPool
+        {
+            // A loose upper bound on concurrently animating elements, not a hard capacity limit.
+            private const int MaxPoolSize = 16;
+
+            private readonly Stack<List<TimeValue>> _durationPool = new();
+            private readonly Stack<List<TimeValue>> _delayPool = new();
+
+            internal List<TimeValue> RentDurationList(int ms) => RentTimeValueList(_durationPool, ms);
+            internal void ReturnDurationList(List<TimeValue>? list) => ReturnTimeValueList(_durationPool, list);
+            internal List<TimeValue> RentDelayList(int ms) => RentTimeValueList(_delayPool, ms);
+            internal void ReturnDelayList(List<TimeValue>? list) => ReturnTimeValueList(_delayPool, list);
+            // n-entry siblings for PropertyOverrides: rented EMPTY (the caller fills them directly, positionally
+            // matching each override — see StyleAnimationScheduler.ApplyPropertyOverrideTransitionStyles) rather
+            // than pre-filled from an intermediary int[], but drawn from the SAME pools the single-entry methods
+            // above use (a rented list's capacity just grows to whatever size it was last asked for, so
+            // ReturnTimeValueList already handles returning either shape without change).
+            internal List<TimeValue> RentEmptyDurationList(int capacity) => RentEmptyTimeValueList(_durationPool, capacity);
+            internal List<TimeValue> RentEmptyDelayList(int capacity) => RentEmptyTimeValueList(_delayPool, capacity);
+
+            // Single-entry hot path: every enter / exit without PropertyOverrides rents exactly one of these per
+            // animation.
+            private static List<TimeValue> RentTimeValueList(Stack<List<TimeValue>> pool, int ms)
+            {
+                var list = RentEmptyTimeValueList(pool, capacity: 1);
+                list.Add(new TimeValue(ms, TimeUnit.Millisecond));
+                return list;
+            }
+
+            // Rents a list with no entries — either a fresh one sized to capacity, or a pooled one cleared of
+            // whatever it held last. Shared by the single-entry rent above (which adds its one TimeValue itself)
+            // and the PropertyOverrides path (which fills several, positionally, in its own loop).
+            private static List<TimeValue> RentEmptyTimeValueList(Stack<List<TimeValue>> pool, int capacity)
+            {
+                if (!pool.TryPop(out var list))
+                {
+                    list = new List<TimeValue>(capacity);
+                }
+                else
+                {
+                    list.Clear();
+                }
+                return list;
+            }
+
+            private static void ReturnTimeValueList(Stack<List<TimeValue>> pool, List<TimeValue>? list)
+            {
+                if (list != null && pool.Count < MaxPoolSize)
+                {
+                    pool.Push(list);
+                }
+            }
         }
 
     }

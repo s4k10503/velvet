@@ -78,35 +78,9 @@ namespace Velvet
         public static (T value, StateUpdater<T> setValue) UseState<T>(Func<T> initialFactory)
         {
             if (initialFactory == null) throw new ArgumentNullException(nameof(initialFactory));
-            return UseStateFromFactory(initialFactory, "UseState");
+            return UseStateInternalCore(initialFactory, default!, "UseState");
         }
 
-        private static (T value, StateUpdater<T> setValue) UseStateFromFactory<T>(Func<T> initialFactory, string hookName)
-        {
-            var fiber = Resolve(hookName);
-            fiber.StateSlots ??= new List<HookStateSlot>();
-            var index = fiber.Indices.StateHookIndex++;
-
-            if (index >= fiber.StateSlots.Count)
-            {
-                var seed = initialFactory();
-                var slot = new HookStateSlot<T> { Value = seed };
-                var setValue = HookSetterFactory.CreateStateSetter(slot, () => fiber.IsDisposed, () => RequestRender(fiber));
-                slot.Setter = new StateUpdater<T>(setValue, CreateUpdater(slot, fiber));
-                fiber.StateSlots.Add(slot);
-                return (slot.Value, slot.Setter);
-            }
-
-            if (fiber.StateSlots[index] is not HookStateSlot<T> typed)
-            {
-                throw HookSlotTypeMismatch(fiber, hookName, fiber.StateSlots[index].GetType(), typeof(T).Name, index);
-            }
-
-            return (typed.Value, typed.Setter);
-        }
-
-        // initialFactory is always null at the current call site (the eager UseState(T) overload above);
-        // UseState(Func<T>) is served by the separate UseStateFromFactory above instead of this branch.
         private static (T value, StateUpdater<T> setValue) UseStateInternalCore<T>(
             Func<T>? initialFactory, T initial, string hookName)
         {
@@ -1154,9 +1128,7 @@ namespace Velvet
                     // identity change or a host remount — never per patch — and a state write from
                     // the commit phase schedules an ordinary follow-up render, so the correction is
                     // a plain setter call; the setters are no-ops if the component itself unmounted.
-                    var panel = element.panel;
-                    if (panel?.focusController?.focusedElement is UnityEngine.UIElements.VisualElement held
-                        && (held == element || element.Contains(held)))
+                    if (FiberFocusNavigator.IsFocusedElementWithin(element, out _))
                     {
                         setFocused.Invoke(false);
                         setFocusVisible.Invoke(false);
@@ -2052,7 +2024,7 @@ namespace Velvet
             // matching the strictness the reconciler and Provider use to decide a re-render. Structural value
             // equality would treat a fresh-but-equal record prop or context value as unchanged and return a
             // stale cached VNode, suppressing a re-render the framework actually committed. Identity comparison keeps the
-            // memo sound for props- and context-driven inputs that the weaver now captures in the deps array.
+            // memo sound for props- and context-driven inputs that the weaver captures in the deps array.
             if (slot.LastDeps != null && ObjectIs.AreEqualDeps(slot.LastDeps, deps))
             {
                 // Hit against the committed deps: reuse the committed VNode and stage the committed values so the

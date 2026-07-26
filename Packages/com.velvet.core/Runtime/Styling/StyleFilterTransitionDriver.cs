@@ -496,49 +496,12 @@ namespace Velvet
             return mode switch
             {
                 EasingMode.Linear => t,
-                EasingMode.EaseIn => CubicBezier(0.42f, 0f, 1f, 1f, t),
-                EasingMode.EaseOut => CubicBezier(0f, 0f, 0.58f, 1f, t),
-                EasingMode.EaseInOut => CubicBezier(0.42f, 0f, 0.58f, 1f, t),
-                EasingMode.Ease => CubicBezier(0.25f, 0.1f, 0.25f, 1f, t),
+                EasingMode.EaseIn => CubicBezierEvaluator.Evaluate(0.42f, 0f, 1f, 1f, t),
+                EasingMode.EaseOut => CubicBezierEvaluator.Evaluate(0f, 0f, 0.58f, 1f, t),
+                EasingMode.EaseInOut => CubicBezierEvaluator.Evaluate(0.42f, 0f, 0.58f, 1f, t),
+                EasingMode.Ease => CubicBezierEvaluator.Evaluate(0.25f, 0.1f, 0.25f, 1f, t),
                 _ => t,
             };
-        }
-
-        // Standard CSS cubic-bezier easing: solve X(s)=x for the curve parameter s (Newton on the eased time
-        // axis, control points 0,x1,x2,1), then evaluate Y(s) (control points 0,y1,y2,1). A small, deliberately
-        // approximate solver — exact arbitrary-bezier easing is out of scope here.
-        private static float CubicBezier(float x1, float y1, float x2, float y2, float x)
-        {
-            var s = x;
-            for (var iter = 0; iter < 6; iter++)
-            {
-                var dx = BezierAxis(x1, x2, s) - x;
-                if (Mathf.Abs(dx) < 1e-5f)
-                {
-                    break;
-                }
-                var slope = BezierAxisDerivative(x1, x2, s);
-                if (Mathf.Abs(slope) < 1e-6f)
-                {
-                    break;
-                }
-                s -= dx / slope;
-            }
-            s = Mathf.Clamp01(s);
-            return BezierAxis(y1, y2, s);
-        }
-
-        // Cubic bezier along one axis with fixed endpoints 0 and 1; c1, c2 are the two inner control coords.
-        private static float BezierAxis(float c1, float c2, float s)
-        {
-            var u = 1f - s;
-            return (3f * u * u * s * c1) + (3f * u * s * s * c2) + (s * s * s);
-        }
-
-        private static float BezierAxisDerivative(float c1, float c2, float s)
-        {
-            var u = 1f - s;
-            return (3f * u * u * c1) + (6f * u * s * (c2 - c1)) + (3f * s * s * (1f - c2));
         }
 
         #endregion

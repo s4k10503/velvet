@@ -136,55 +136,7 @@ namespace Velvet
                     // skew / shadow so it can defer to whichever owns the face. ElementNode only — a Motion never
                     // renders this silhouette (mirroring skew's own silent Motion exclusion).
                     _patcher.Appliers.ApplyBorderStyleOnCreate(element, elementNode.ClassNames);
-                    // SceneView (V.SceneView): wire the camera-output binding. The element has no panel
-                    // yet, so the first real texture sync runs from the binding's geometry callback once
-                    // layout settles; later camera swaps arrive through the props diff.
-                    if (elementNode.Props?.SceneView != null)
-                    {
-                        _patcher.Appliers.ApplySceneView(element, elementNode.Props.SceneView);
-                    }
-                    // Particles (V.Particles): wire the simulation host + painter binding. The host is
-                    // panel-independent (only the draw needs one); later effect swaps arrive through the
-                    // props diff.
-                    if (elementNode.Props?.Particles != null)
-                    {
-                        _patcher.Appliers.ApplyParticles(element, elementNode.Props.Particles);
-                        // After ApplyParticles: the spacer sync needs the binding that call creates.
-                        _patcher.Appliers.ApplyParticlesSpacer(element, elementNode.ClassNames);
-                    }
-                    // Anchored (V.Anchored): wire the per-frame screen-projection tick. Panel-independent at
-                    // creation (Attach's own synchronous Sync call bails cleanly if the element has no panel
-                    // yet); the first real tick fires once mounted.
-                    if (elementNode.Props?.Anchored != null)
-                    {
-                        _patcher.Appliers.ApplyAnchored(element, elementNode.Props.Anchored);
-                    }
-                    // Focus scope (V.FocusScope / props.FocusScope): register the scope binding. AutoFocus
-                    // and the lazy navigator attach ride the binding's own AttachToPanelEvent, so an
-                    // off-panel create is fine here.
-                    if (elementNode.Props?.FocusScope != null)
-                    {
-                        _patcher.Appliers.ApplyFocusScope(element, elementNode.Props.FocusScope);
-                    }
-                    // Drag-and-drop slots: register the bindings. Panel-independent at creation — the
-                    // draggable's pointer-down armer and the overlay's positioning resolve panels at
-                    // event time.
-                    if (elementNode.Props?.DndContext != null)
-                    {
-                        _patcher.Appliers.ApplyDndContext(element, elementNode.Props.DndContext);
-                    }
-                    if (elementNode.Props?.Draggable != null)
-                    {
-                        _patcher.Appliers.ApplyDraggable(element, elementNode.Props.Draggable);
-                    }
-                    if (elementNode.Props?.Droppable != null)
-                    {
-                        _patcher.Appliers.ApplyDroppable(element, elementNode.Props.Droppable);
-                    }
-                    if (elementNode.Props?.DragOverlay != null)
-                    {
-                        _patcher.Appliers.ApplyDragOverlay(element, elementNode.Props.DragOverlay);
-                    }
+                    ApplyOptionalCreateBindings(element, elementNode.Props, elementNode.ClassNames);
 
                     VisualElement outer;
                     if (elementNode.WrapElement != null)
@@ -290,49 +242,7 @@ namespace Velvet
                     _patcher.Appliers.ApplyGestureManipulator(element, motionNode.WhileHoverClass, motionNode.WhileTapClass, motionNode.WhileFocusClass);
                     _patcher.ApplyVariantManipulators(element, appliedClasses);
                     _patcher.ApplyAttributes(element, motionNode.Props);
-                    // SceneView through a Motion host: a Motion can host any element type, so the
-                    // camera-output binding must attach exactly like the plain element path above.
-                    if (motionNode.Props?.SceneView != null)
-                    {
-                        _patcher.Appliers.ApplySceneView(element, motionNode.Props.SceneView);
-                    }
-                    // Particles through a Motion host: same reason as SceneView above — a Motion can
-                    // host any element type, so the binding must attach on this create path too.
-                    if (motionNode.Props?.Particles != null)
-                    {
-                        _patcher.Appliers.ApplyParticles(element, motionNode.Props.Particles);
-                        // After ApplyParticles, as on the plain element path.
-                        _patcher.Appliers.ApplyParticlesSpacer(element, appliedClasses);
-                    }
-                    // Anchored through a Motion host: same reason as SceneView/Particles above — a Motion
-                    // can host any element type, so the binding must attach on this create path too.
-                    if (motionNode.Props?.Anchored != null)
-                    {
-                        _patcher.Appliers.ApplyAnchored(element, motionNode.Props.Anchored);
-                    }
-                    // Focus scope through a Motion host: same reason as the sibling bindings above.
-                    if (motionNode.Props?.FocusScope != null)
-                    {
-                        _patcher.Appliers.ApplyFocusScope(element, motionNode.Props.FocusScope);
-                    }
-                    // Drag-and-drop through a Motion host: a V.Motion wrapping a draggable/droppable is
-                    // first-class, so the bindings must attach on this create path too.
-                    if (motionNode.Props?.DndContext != null)
-                    {
-                        _patcher.Appliers.ApplyDndContext(element, motionNode.Props.DndContext);
-                    }
-                    if (motionNode.Props?.Draggable != null)
-                    {
-                        _patcher.Appliers.ApplyDraggable(element, motionNode.Props.Draggable);
-                    }
-                    if (motionNode.Props?.Droppable != null)
-                    {
-                        _patcher.Appliers.ApplyDroppable(element, motionNode.Props.Droppable);
-                    }
-                    if (motionNode.Props?.DragOverlay != null)
-                    {
-                        _patcher.Appliers.ApplyDragOverlay(element, motionNode.Props.DragOverlay);
-                    }
+                    ApplyOptionalCreateBindings(element, motionNode.Props, appliedClasses);
                     StyleFontResolver.ApplyIfPresent(element, appliedClasses);
                     _patcher.ApplyChildVariantManipulator(element, appliedClasses);
                     _patcher.ApplyGapManipulator(element, appliedClasses);
@@ -623,6 +533,64 @@ namespace Velvet
                     FiberLogger.LogWarning("FiberNodeFactory",
                         $"Unsupported VNode type: {node?.GetType().Name ?? "null"}. Returning empty VisualElement.");
                     return new VisualElement();
+            }
+        }
+
+        // The optional bindings shared by ElementNode and MotionNode's create paths — a Motion can host
+        // any element type, so each of these must attach on its create path exactly like the plain
+        // element path. classNames is the classes actually applied to element (the declared ClassNames
+        // for a plain element, or the variant-resolved appliedClasses for a Motion), since
+        // ApplyParticlesSpacer reads the utility classes off it.
+        private void ApplyOptionalCreateBindings(VisualElement element, FiberElementProps? props, string[] classNames)
+        {
+            // SceneView (V.SceneView): wire the camera-output binding. The element has no panel
+            // yet, so the first real texture sync runs from the binding's geometry callback once
+            // layout settles; later camera swaps arrive through the props diff.
+            if (props?.SceneView != null)
+            {
+                _patcher.Appliers.ApplySceneView(element, props.SceneView);
+            }
+            // Particles (V.Particles): wire the simulation host + painter binding. The host is
+            // panel-independent (only the draw needs one); later effect swaps arrive through the
+            // props diff.
+            if (props?.Particles != null)
+            {
+                _patcher.Appliers.ApplyParticles(element, props.Particles);
+                // After ApplyParticles: the spacer sync needs the binding that call creates.
+                _patcher.Appliers.ApplyParticlesSpacer(element, classNames);
+            }
+            // Anchored (V.Anchored): wire the per-frame screen-projection tick. Panel-independent at
+            // creation (Attach's own synchronous Sync call bails cleanly if the element has no panel
+            // yet); the first real tick fires once mounted.
+            if (props?.Anchored != null)
+            {
+                _patcher.Appliers.ApplyAnchored(element, props.Anchored);
+            }
+            // Focus scope (V.FocusScope / props.FocusScope): register the scope binding. AutoFocus
+            // and the lazy navigator attach ride the binding's own AttachToPanelEvent, so an
+            // off-panel create is fine here.
+            if (props?.FocusScope != null)
+            {
+                _patcher.Appliers.ApplyFocusScope(element, props.FocusScope);
+            }
+            // Drag-and-drop slots: register the bindings. Panel-independent at creation — the
+            // draggable's pointer-down armer and the overlay's positioning resolve panels at
+            // event time.
+            if (props?.DndContext != null)
+            {
+                _patcher.Appliers.ApplyDndContext(element, props.DndContext);
+            }
+            if (props?.Draggable != null)
+            {
+                _patcher.Appliers.ApplyDraggable(element, props.Draggable);
+            }
+            if (props?.Droppable != null)
+            {
+                _patcher.Appliers.ApplyDroppable(element, props.Droppable);
+            }
+            if (props?.DragOverlay != null)
+            {
+                _patcher.Appliers.ApplyDragOverlay(element, props.DragOverlay);
             }
         }
 

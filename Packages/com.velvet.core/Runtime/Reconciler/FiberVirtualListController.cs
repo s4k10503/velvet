@@ -57,8 +57,8 @@ namespace Velvet
 
             // Route class application through the same canonical entry point ElementNode uses, so the
             // ScrollView honours variant-token skipping, arbitrary values (w-[120px], bg-[addr:…]) and the
-            // font-[…] skip rather than the old crude "add every token verbatim" loop. Variant manipulators
-            // and the inline font layer are applied by FiberNodeFactory after the controller is created.
+            // font-[…] skip. Variant manipulators and the inline font layer are applied by FiberNodeFactory
+            // after the controller is created.
             FiberElementFactory.ApplyClassNames(scrollView, node.ClassNames);
 
             _totalHeightSpacer = new VisualElement
@@ -173,6 +173,26 @@ namespace Velvet
         {
             var newCount = newLast - newFirst + 1;
 
+            IndexOldRenderedItems();
+
+            AllocateRenderBuffers(newCount, out var newNodes, out var newElements);
+
+            PatchOrReplaceVisibleItems(newFirst, newCount, newNodes, newElements);
+
+            DisposeScrolledOutItems();
+
+            RebuildVisibleContainer(newFirst, newCount, newElements);
+
+            _renderedNodes = newNodes;
+            _renderedElements = newElements;
+            _firstRenderedIndex = newFirst;
+            _lastRenderedIndex = newLast;
+        }
+
+        // Indexes the still-rendered items by key into _oldNodesByKey, for RenderRange's reuse/patch
+        // lookup and recycle-cleanup pass.
+        private void IndexOldRenderedItems()
+        {
             // Index the still-rendered items by key BEFORE allocating the new buffers: when the window size is
             // unchanged the new buffers ALIAS _renderedNodes/_renderedElements (a zero-allocation reuse), so the
             // Array.Clear below would wipe the very entries this index reads. Building it first keeps the per-key
@@ -195,14 +215,25 @@ namespace Velvet
                     }
                 }
             }
+        }
 
-            var newNodes = _renderedNodes.Length == newCount ? _renderedNodes : new VNode[newCount];
-            var newElements = _renderedElements.Length == newCount ? _renderedElements : new VisualElement[newCount];
+        // Aliases the existing _renderedNodes/_renderedElements buffers when the window size is unchanged
+        // (zero-allocation reuse), else allocates fresh ones sized to newCount, and clears both plus the
+        // per-render _reusedKeys set for the patch-or-replace pass that follows.
+        private void AllocateRenderBuffers(int newCount, out VNode[] newNodes, out VisualElement[] newElements)
+        {
+            newNodes = _renderedNodes.Length == newCount ? _renderedNodes : new VNode[newCount];
+            newElements = _renderedElements.Length == newCount ? _renderedElements : new VisualElement[newCount];
             System.Array.Clear(newNodes, 0, newCount);
             System.Array.Clear(newElements, 0, newCount);
 
             _reusedKeys.Clear();
+        }
 
+        // Renders each visible-range item and either patches its reused element or creates a replacement,
+        // filling newNodes/newElements in place.
+        private void PatchOrReplaceVisibleItems(int newFirst, int newCount, VNode[] newNodes, VisualElement[] newElements)
+        {
             // Render the items under the context that enclosed the V.VirtualList: the scope parents new item
             // fibers under the host (so they share its context) and restores the enclosing snapshot onto the
             // cursor for the item bodies, then stamps the new fibers for isolated-re-render reconstruction.
@@ -269,7 +300,12 @@ namespace Velvet
             {
                 _reconciler.EndDetachedItemScope(_hostFiber, _enclosingContext, scopeToken);
             }
+        }
 
+        // Disposes every item still held from the prior render whose key was not reused in this render
+        // pass (scrolled out of the visible range).
+        private void DisposeScrolledOutItems()
+        {
             foreach (var kvp in _oldNodesByKey)
             {
                 if (!_reusedKeys.Contains(kvp.Key))
@@ -277,7 +313,11 @@ namespace Velvet
                     _reconciler.CleanupElementForController(kvp.Value.element);
                 }
             }
+        }
 
+        // Repopulates _visibleContainer from newElements at its new scroll offset.
+        private void RebuildVisibleContainer(int newFirst, int newCount, VisualElement[] newElements)
+        {
             _visibleContainer.Clear();
             _visibleContainer.style.top = newFirst * _node.ItemHeight;
 
@@ -289,11 +329,6 @@ namespace Velvet
                     _visibleContainer.Add(newElements[i]);
                 }
             }
-
-            _renderedNodes = newNodes;
-            _renderedElements = newElements;
-            _firstRenderedIndex = newFirst;
-            _lastRenderedIndex = newLast;
         }
 
         private void ClearRenderedItems()

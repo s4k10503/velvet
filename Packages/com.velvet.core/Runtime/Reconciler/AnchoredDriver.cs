@@ -120,13 +120,21 @@ namespace Velvet
             binding.HasAppliedDistanceFactorScale = false;
         }
 
+        // The recurring "nothing sensible to show" reaction shared by every Sync guard below: hide the
+        // element and drop any distanceFactor scale it applied on an earlier tick, so a guard that starts
+        // failing never leaves a stale position/scale on screen.
+        private static void HideAndClearScale(VisualElement element, AnchoredBinding binding)
+        {
+            element.style.display = DisplayStyle.None;
+            ClearAppliedScale(element, binding);
+        }
+
         private static void Sync(VisualElement element, AnchoredBinding binding)
         {
             var target = binding.Settings.Target;
             if (target == null)
             {
-                element.style.display = DisplayStyle.None;
-                ClearAppliedScale(element, binding);
+                HideAndClearScale(element, binding);
                 return;
             }
 
@@ -143,8 +151,7 @@ namespace Velvet
                 // No camera to project through (an explicit Camera destroyed, or no MainCamera-tagged camera
                 // in the scene) — there is no sensible position to hold, so hide rather than freeze at a
                 // screen position that no longer corresponds to anything, mirroring the target==null branch.
-                element.style.display = DisplayStyle.None;
-                ClearAppliedScale(element, binding);
+                HideAndClearScale(element, binding);
                 return;
             }
 
@@ -161,8 +168,7 @@ namespace Velvet
             {
                 if (binding.Settings.HideWhenBehindCamera)
                 {
-                    element.style.display = DisplayStyle.None;
-                    ClearAppliedScale(element, binding);
+                    HideAndClearScale(element, binding);
                 }
                 return;
             }
@@ -183,8 +189,7 @@ namespace Velvet
                         + "projection is undefined here (e.g. Velvet content mounted into an EditorWindow). "
                         + "Hiding it instead of showing a stale or arbitrary position.");
                 }
-                element.style.display = DisplayStyle.None;
-                ClearAppliedScale(element, binding);
+                HideAndClearScale(element, binding);
                 return;
             }
 
@@ -198,8 +203,7 @@ namespace Velvet
             if (binding.Settings.Occlude && Physics.Linecast(
                     camera.transform.position, target.position, binding.Settings.OccludeLayerMask, QueryTriggerInteraction.Ignore))
             {
-                element.style.display = DisplayStyle.None;
-                ClearAppliedScale(element, binding);
+                HideAndClearScale(element, binding);
                 return;
             }
 
