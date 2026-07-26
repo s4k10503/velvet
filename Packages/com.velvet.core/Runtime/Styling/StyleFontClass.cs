@@ -195,10 +195,12 @@ namespace Velvet
                 return false;
             }
 
-            // Arbitrary form: font-[<value>].
+            // Arbitrary form: font-[<value>]. Bracket-shaped tokens always resolve here (never fall through
+            // to the family-name catch-all below) — TryStripBrackets only "fails" for the empty font-[]
+            // case, for which ParseArbitrary independently rejects the empty value anyway.
             if (rest[0] == '[' && rest[rest.Length - 1] == ']')
             {
-                var value = rest.Substring(1, rest.Length - 2);
+                var value = StyleArbitraryValueResolver.TryStripBrackets(rest, 0, out var inner) ? inner.ToString() : string.Empty;
                 return ParseArbitrary(value, ref family, ref hasFamily, ref weight, ref hasWeight);
             }
 

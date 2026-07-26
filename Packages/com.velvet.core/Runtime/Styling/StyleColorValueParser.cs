@@ -188,10 +188,9 @@ namespace Velvet
             {
                 return false;
             }
-            if (span[0] == '[' && span[span.Length - 1] == ']')
+            if (StyleArbitraryValueResolver.TryStripBrackets(span, 0, out var inner))
             {
-                if (!float.TryParse(span.Slice(1, span.Length - 2), NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out var frac)
+                if (!float.TryParse(inner, NumberStyles.Float, CultureInfo.InvariantCulture, out var frac)
                     || !float.IsFinite(frac) || frac < 0f || frac > 1f)
                 {
                     return false;

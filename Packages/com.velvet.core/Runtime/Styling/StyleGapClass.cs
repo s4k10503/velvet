@@ -59,9 +59,11 @@ namespace Velvet
 
             // Arbitrary value: gap-[20px] / gap-x-[12px] (JIT arbitrary value). Gap is realized as a pixel
             // inter-child margin, so a percentage value is rejected (only px / unitless is meaningful).
-            if (suffix.Length >= 2 && suffix[0] == '[')
+            // TryParseArbitraryPixels already verifies the bracket shape itself, so a non-bracket suffix falls
+            // straight through to the preset scale below without needing its own duplicate guard here.
+            if (StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out gap))
             {
-                return StyleArbitraryValueResolver.TryParseArbitraryPixels(suffix.AsSpan(), out gap);
+                return true;
             }
 
             // The numeric scale is the shared --space-* preset table (1 unit = 4px), so gap-* resolves the same

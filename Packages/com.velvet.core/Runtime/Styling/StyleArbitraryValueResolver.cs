@@ -1381,6 +1381,25 @@ namespace Velvet
             }
         }
 
+        // Strips the enclosing brackets off a bracketed JIT arbitrary-value token (`[value]`), optionally
+        // after a fixed literal prefix that precedes the '[' (prefixLength chars — e.g. 2 for "z-" in
+        // "z-[10]", 0 for a bare "[value]" token). Rejects an empty value ("z-[]" / "[]"): every call
+        // site's downstream parse (a color, a number, a unit-suffixed length) already fails on an empty
+        // string, so accepting it here would only defer the identical rejection to each call site instead
+        // of making it once, here. Span-based so a caller already holding a slice (the common shape on
+        // this per-class hot path) pays no extra allocation; a caller holding a string gets the same for
+        // free via the implicit span conversion.
+        internal static bool TryStripBrackets(ReadOnlySpan<char> token, int prefixLength, out ReadOnlySpan<char> inner)
+        {
+            if (token.Length < prefixLength + 3 || token[prefixLength] != '[' || token[token.Length - 1] != ']')
+            {
+                inner = default;
+                return false;
+            }
+            inner = token.Slice(prefixLength + 1, token.Length - prefixLength - 2);
+            return true;
+        }
+
         // Parses a bracketed JIT arbitrary value (`[..]`) that must resolve to a non-negative pixel length —
         // the contract shared by gap-[..], divide-*-[..], and ring-[..], where a percentage is meaningless.
         // Takes the whole suffix incl. brackets; returns false for a non-`[..]` token or any non-px / negative
@@ -1388,11 +1407,11 @@ namespace Velvet
         internal static bool TryParseArbitraryPixels(ReadOnlySpan<char> suffix, out float px)
         {
             px = 0f;
-            if (suffix.Length < 2 || suffix[0] != '[' || suffix[suffix.Length - 1] != ']')
+            if (!TryStripBrackets(suffix, 0, out var inner))
             {
                 return false;
             }
-            if (TryParseValue(suffix.Slice(1, suffix.Length - 2), out var value, out var unit)
+            if (TryParseValue(inner, out var value, out var unit)
                 && unit == LengthUnit.Pixel && value >= 0f)
             {
                 px = value;
