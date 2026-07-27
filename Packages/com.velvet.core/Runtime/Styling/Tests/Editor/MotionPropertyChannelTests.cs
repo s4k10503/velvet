@@ -20,8 +20,14 @@ namespace Velvet.Tests
     /// is exercised by calling <c>Step</c> directly and reading the INLINE style back. Exact-value cases use the
     /// bezier driver on the linear identity curve <c>cubic-bezier(0,0,1,1)</c>, where eased progress equals
     /// elapsed/duration, so the expected value is plain arithmetic rather than a re-derivation of the solver;
-    /// the spring is used where only monotone progress is meaningful. GWT, one assert per case (Assume for
-    /// preconditions).
+    /// the spring is used where only monotone progress is meaningful. GWT, one assert per case.
+    /// <para>
+    /// "Does this class pair resolve a channel at all" is the behavior under test, never a precondition, so a
+    /// case whose driver state comes back null must FAIL rather than skip: each assertion below folds that
+    /// question in — a nullable/sentinel reading, or a tuple element — so losing channel recognition turns the
+    /// suite red instead of inconclusive. <c>Assume</c> is reserved for facts about a DIFFERENT, already-tested
+    /// component that make a fixture meaningful (the anticipate curve genuinely dipping below zero).
+    /// </para>
     /// </remarks>
     [TestFixture]
     internal sealed class MotionPropertyChannelTests
@@ -35,14 +41,35 @@ namespace Velvet.Tests
         private const float LinearX2 = 1f;
         private const float LinearY2 = 1f;
 
-        private static BezierTweenState CreateHalfway(VisualElement element, string[] from, string[] to)
+        // Builds a bezier play for the class pair and steps it to exactly half its duration. Returns null when
+        // the pair resolves NO channel — the caller folds that into its own assertion rather than skipping,
+        // since losing channel recognition is precisely the regression these cases exist to catch.
+        private static BezierTweenState? CreateHalfway(VisualElement element, string[] from, string[] to)
         {
             var plan = MotionSpringClassParser.Resolve(from, to);
             var state = BezierTweenDriver.Create(plan, LinearX1, LinearY1, LinearX2, LinearY2, durationSec: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the class pair resolves at least one channel");
-            BezierTweenDriver.ApplyCurrentValues(element, state!);
-            BezierTweenDriver.Step(element, state!, 0.5f);
-            return state!;
+            if (state == null)
+            {
+                return null;
+            }
+            BezierTweenDriver.ApplyCurrentValues(element, state);
+            BezierTweenDriver.Step(element, state, 0.5f);
+            return state;
+        }
+
+        // Steps a spring until every channel reports settled, reporting whether it got there inside the tick
+        // budget instead of asserting: a spring that never converges is a regression the caller's own assertion
+        // must carry.
+        private static bool StepUntilSettled(VisualElement element, MotionSpringState state)
+        {
+            for (var i = 0; i < 600; i++)
+            {
+                if (MotionSpringDriver.Step(element, state, FixedDeltaSec))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         [Test]
@@ -52,10 +79,12 @@ namespace Velvet.Tests
             var element = new VisualElement();
 
             // Act — black -> white on a linear curve, sampled at exactly half the duration.
-            CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
+            var state = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
 
-            // Assert — the straight-RGBA midpoint of #000000 and #ffffff.
-            Assert.That(element.style.backgroundColor.value, Is.EqualTo(new Color(0.5f, 0.5f, 0.5f, 1f)));
+            // Assert — the straight-RGBA midpoint of #000000 and #ffffff. A pair that resolved no channel reads
+            // as null here and fails the same comparison a wrong value would.
+            Assert.That(state != null ? (Color?)element.style.backgroundColor.value : null,
+                Is.EqualTo(new Color(0.5f, 0.5f, 0.5f, 1f)));
         }
 
         [Test]
@@ -65,14 +94,15 @@ namespace Velvet.Tests
             var element = new VisualElement();
 
             // Act
-            CreateHalfway(element, new[] { "border-black" }, new[] { "border-white" });
+            var state = CreateHalfway(element, new[] { "border-black" }, new[] { "border-white" });
 
             // Assert — border-color is a four-slot shorthand, so the driver's per-frame write must reach every side.
             var mid = new Color(0.5f, 0.5f, 0.5f, 1f);
-            Assert.That(
-                (element.style.borderTopColor.value, element.style.borderRightColor.value,
-                    element.style.borderBottomColor.value, element.style.borderLeftColor.value),
-                Is.EqualTo((mid, mid, mid, mid)));
+            var sides = state == null
+                ? default
+                : (element.style.borderTopColor.value, element.style.borderRightColor.value,
+                    element.style.borderBottomColor.value, element.style.borderLeftColor.value);
+            Assert.That(sides, Is.EqualTo((mid, mid, mid, mid)));
         }
 
         [Test]
@@ -82,10 +112,11 @@ namespace Velvet.Tests
             var element = new VisualElement();
 
             // Act — the /N modifier overwrites the base color's alpha, so this pair travels 0.2 -> 0.8 in alpha.
-            CreateHalfway(element, new[] { "bg-red-500/20" }, new[] { "bg-red-500/80" });
+            var state = CreateHalfway(element, new[] { "bg-red-500/20" }, new[] { "bg-red-500/80" });
 
-            // Assert
-            Assert.That(element.style.backgroundColor.value.a, Is.EqualTo(0.5f).Within(1e-5f));
+            // Assert — NaN stands in for "no channel resolved", which no tolerance can bring within the target.
+            var alpha = state == null ? float.NaN : element.style.backgroundColor.value.a;
+            Assert.That(alpha, Is.EqualTo(0.5f).Within(1e-5f));
         }
 
         [Test]
@@ -95,10 +126,11 @@ namespace Velvet.Tests
             var element = new VisualElement();
 
             // Act — w-0 (0px) -> w-64 (--space-64 == 256px).
-            CreateHalfway(element, new[] { "w-0" }, new[] { "w-64" });
+            var state = CreateHalfway(element, new[] { "w-0" }, new[] { "w-64" });
 
             // Assert
-            Assert.That(element.style.width.value, Is.EqualTo(new Length(128f, LengthUnit.Pixel)));
+            Assert.That(state != null ? (Length?)element.style.width.value : null,
+                Is.EqualTo(new Length(128f, LengthUnit.Pixel)));
         }
 
         [Test]
@@ -108,14 +140,15 @@ namespace Velvet.Tests
             var element = new VisualElement();
 
             // Act — p-0 (0px) -> p-8 (--space-8 == 32px).
-            CreateHalfway(element, new[] { "p-0" }, new[] { "p-8" });
+            var state = CreateHalfway(element, new[] { "p-0" }, new[] { "p-8" });
 
             // Assert
             var mid = new Length(16f, LengthUnit.Pixel);
-            Assert.That(
-                (element.style.paddingTop.value, element.style.paddingRight.value,
-                    element.style.paddingBottom.value, element.style.paddingLeft.value),
-                Is.EqualTo((mid, mid, mid, mid)));
+            var edges = state == null
+                ? default
+                : (element.style.paddingTop.value, element.style.paddingRight.value,
+                    element.style.paddingBottom.value, element.style.paddingLeft.value);
+            Assert.That(edges, Is.EqualTo((mid, mid, mid, mid)));
         }
 
         [Test]
@@ -125,14 +158,15 @@ namespace Velvet.Tests
             var element = new VisualElement();
 
             // Act — rounded-none (0px) -> rounded-3xl (--radius-3xl == 24px).
-            CreateHalfway(element, new[] { "rounded-none" }, new[] { "rounded-3xl" });
+            var state = CreateHalfway(element, new[] { "rounded-none" }, new[] { "rounded-3xl" });
 
             // Assert
             var mid = new Length(12f, LengthUnit.Pixel);
-            Assert.That(
-                (element.style.borderTopLeftRadius.value, element.style.borderTopRightRadius.value,
-                    element.style.borderBottomLeftRadius.value, element.style.borderBottomRightRadius.value),
-                Is.EqualTo((mid, mid, mid, mid)));
+            var corners = state == null
+                ? default
+                : (element.style.borderTopLeftRadius.value, element.style.borderTopRightRadius.value,
+                    element.style.borderBottomLeftRadius.value, element.style.borderBottomRightRadius.value);
+            Assert.That(corners, Is.EqualTo((mid, mid, mid, mid)));
         }
 
         [Test]
@@ -142,10 +176,11 @@ namespace Velvet.Tests
             var element = new VisualElement();
 
             // Act
-            CreateHalfway(element, new[] { "h-[40px]" }, new[] { "h-[100px]" });
+            var state = CreateHalfway(element, new[] { "h-[40px]" }, new[] { "h-[100px]" });
 
             // Assert
-            Assert.That(element.style.height.value, Is.EqualTo(new Length(70f, LengthUnit.Pixel)));
+            Assert.That(state != null ? (Length?)element.style.height.value : null,
+                Is.EqualTo(new Length(70f, LengthUnit.Pixel)));
         }
 
         [Test]
@@ -155,10 +190,11 @@ namespace Velvet.Tests
             var element = new VisualElement();
 
             // Act — the sizing fractions resolve to percentages of the parent, which UI Toolkit resolves itself.
-            CreateHalfway(element, new[] { "w-1/4" }, new[] { "w-3/4" });
+            var state = CreateHalfway(element, new[] { "w-1/4" }, new[] { "w-3/4" });
 
             // Assert
-            Assert.That(element.style.width.value, Is.EqualTo(new Length(50f, LengthUnit.Percent)));
+            Assert.That(state != null ? (Length?)element.style.width.value : null,
+                Is.EqualTo(new Length(50f, LengthUnit.Percent)));
         }
 
         [Test]
@@ -168,20 +204,24 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "bg-black" }, new[] { "bg-white" });
             var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 20f, mass: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the class pair resolves a background-color channel");
-            MotionSpringDriver.ApplyCurrentValues(element, state!);
 
-            // Act
-            for (var i = 0; i < 5; i++)
+            // Act — the sentinel readings survive when no channel resolved, so both stay equal and fail below.
+            var early = -1f;
+            var later = -1f;
+            if (state != null)
             {
-                MotionSpringDriver.Step(element, state!, FixedDeltaSec);
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+                for (var i = 0; i < 5; i++)
+                {
+                    MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
+                early = element.style.backgroundColor.value.r;
+                for (var i = 0; i < 40; i++)
+                {
+                    MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
+                later = element.style.backgroundColor.value.r;
             }
-            var early = element.style.backgroundColor.value.r;
-            for (var i = 0; i < 40; i++)
-            {
-                MotionSpringDriver.Step(element, state!, FixedDeltaSec);
-            }
-            var later = element.style.backgroundColor.value.r;
 
             // Assert
             Assert.That(later, Is.GreaterThan(early));
@@ -194,19 +234,21 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "w-0" }, new[] { "w-32" });
             var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 20f, mass: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the class pair resolves a width channel");
-            MotionSpringDriver.ApplyCurrentValues(element, state!);
 
-            // Act — step until every channel reports settled (the cap only guards a never-settling regression).
-            var settled = false;
-            for (var i = 0; i < 600 && !settled; i++)
+            // Act — NaN stands in for either failure mode (no channel resolved, or a spring that never
+            // converged), so both fail the tolerance comparison rather than skipping the case.
+            var restingWidth = float.NaN;
+            if (state != null)
             {
-                settled = MotionSpringDriver.Step(element, state!, FixedDeltaSec);
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+                if (StepUntilSettled(element, state))
+                {
+                    restingWidth = element.style.width.value.value;
+                }
             }
-            Assume.That(settled, Is.True, "Precondition: the spring settled within the tick budget");
 
-            // Assert — w-32 is --space-32 (128px); the settle tolerance is the driver's own pixel rest epsilon.
-            Assert.That(element.style.width.value.value, Is.EqualTo(128f).Within(0.1f));
+            // Assert — w-32 is --space-32 (128px); the tolerance is the driver's own pixel rest epsilon.
+            Assert.That(restingWidth, Is.EqualTo(128f).Within(0.1f));
         }
 
         [Test]
@@ -215,17 +257,21 @@ namespace Velvet.Tests
             // Arrange
             var element = new VisualElement();
             var state = CreateHalfway(element, new[] { "rounded-none" }, new[] { "rounded-3xl" });
-            Assume.That(element.style.borderTopLeftRadius.keyword, Is.Not.EqualTo(StyleKeyword.Null),
-                "Precondition: the driver owns the corner radii while it ticks");
+            // Whether the driver ever owned the slots is part of the claim, not a precondition: an unset corner
+            // is trivially "released", so the assertion has to see that it was held first.
+            var heldWhileTicking = state != null && element.style.borderTopLeftRadius.keyword != StyleKeyword.Null;
 
             // Act — the scheduler calls this once the play finishes, handing the slots back to the classes.
-            BezierTweenDriver.ClearInlineOverrides(element, state);
+            if (state != null)
+            {
+                BezierTweenDriver.ClearInlineOverrides(element, state);
+            }
 
             // Assert — a shorthand clear must release every corner it wrote, not just the first.
             Assert.That(
-                (element.style.borderTopLeftRadius.keyword, element.style.borderTopRightRadius.keyword,
+                (heldWhileTicking, element.style.borderTopLeftRadius.keyword, element.style.borderTopRightRadius.keyword,
                     element.style.borderBottomLeftRadius.keyword, element.style.borderBottomRightRadius.keyword),
-                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
+                Is.EqualTo((true, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null, StyleKeyword.Null)));
         }
 
         [Test]
@@ -237,12 +283,13 @@ namespace Velvet.Tests
             element.AddToClassList("transition-colors");
 
             // Act
-            CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
+            var state = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
 
             // Assert — the inline transition-property resolves to no style property at all, so the element
             // computes zero transitions and the driver's writes reach the paint unfiltered.
             var declared = element.style.transitionProperty.value;
-            Assert.That(declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]), Is.True);
+            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
+                Is.True);
         }
 
         [Test]
@@ -252,14 +299,18 @@ namespace Velvet.Tests
             var element = new VisualElement();
             element.AddToClassList("transition-colors");
             var state = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
-            Assume.That(element.style.transitionProperty.keyword, Is.Not.EqualTo(StyleKeyword.Null),
-                "Precondition: the driver suspended the element's native transition while it ticks");
+            // A transition that was never suspended is trivially "restored", so the round trip is the claim.
+            var suspendedWhileTicking = state != null && element.style.transitionProperty.keyword != StyleKeyword.Null;
 
             // Act
-            BezierTweenDriver.ClearInlineOverrides(element, state);
+            if (state != null)
+            {
+                BezierTweenDriver.ClearInlineOverrides(element, state);
+            }
 
             // Assert — clearing the inline override hands transition-property straight back to the cascade.
-            Assert.That(element.style.transitionProperty.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That((suspendedWhileTicking, element.style.transitionProperty.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
         }
 
         [Test]
@@ -268,10 +319,10 @@ namespace Velvet.Tests
             // Arrange / Act — a color has no identity value the silent side could stand in for, unlike the
             // opacity/transform axes, so a one-sided color must fall back to the plain class swap.
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100", "bg-red-500" });
-            Assume.That(plan.Opacity, Is.Not.Null, "Precondition: the opacity axis still resolves both sides");
 
-            // Assert
-            Assert.That(plan.Colors, Is.Null);
+            // Assert — the axis this delta DOES resolve is folded in, so a plan that animates nothing at all
+            // cannot pass by vacuously reporting no color channel.
+            Assert.That((plan.Opacity != null, plan.Colors?.Count ?? 0), Is.EqualTo((true, 0)));
         }
 
         [Test]
@@ -360,16 +411,22 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "bg-black" }, new[] { "bg-white" });
             var state = BezierTweenDriver.Create(plan, x1: 0.5f, y1: -1.5f, x2: 0.5f, y2: 1f, durationSec: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the class pair resolves a background-color channel");
+            // A fact about the evaluator, not about this feature: the sample only exercises the clamp while the
+            // curve genuinely dips below zero there.
             Assume.That(CubicBezierEvaluator.Evaluate(0.5f, -1.5f, 0.5f, 1f, 0.25f), Is.LessThan(0f),
                 "Precondition: the curve's anticipate lobe is below zero at this sample");
 
             // Act
-            BezierTweenDriver.ApplyCurrentValues(element, state!);
-            BezierTweenDriver.Step(element, state!, 0.25f);
+            var red = float.NaN;
+            if (state != null)
+            {
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+                BezierTweenDriver.Step(element, state, 0.25f);
+                red = element.style.backgroundColor.value.r;
+            }
 
             // Assert
-            Assert.That(element.style.backgroundColor.value.r, Is.EqualTo(0f));
+            Assert.That(red, Is.EqualTo(0f));
         }
 
         [Test]
@@ -388,10 +445,10 @@ namespace Velvet.Tests
         {
             // Arrange / Act — mirrors the CSS cascade the class list itself would apply.
             var plan = MotionSpringClassParser.Resolve(new[] { "w-0", "w-4" }, new[] { "w-8" });
-            Assume.That(plan.Lengths, Is.Not.Null, "Precondition: the width pair resolves a channel");
 
-            // Assert — w-4 is --space-4 (16px), so the later class is the one the channel starts from.
-            Assert.That(plan.Lengths![0].From, Is.EqualTo(16f));
+            // Assert — w-4 is --space-4 (16px), so the later class is the one the channel starts from. A plan
+            // with no width channel reads as null and fails the same comparison a wrong magnitude would.
+            Assert.That(plan.Lengths?[0].From, Is.EqualTo(16f));
         }
     }
 }

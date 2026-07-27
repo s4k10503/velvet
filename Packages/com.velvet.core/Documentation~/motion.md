@@ -189,22 +189,32 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   through. `border-color` fans out to all four sides.
 - **`border-radius`,** from the `rounded-*` scale and the bracket forms, including the per-side and
   per-corner spellings.
-- **Lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*` … `inset-y-*`),
-  `basis-*`, and border widths, from the spacing scale and the bracket forms. These dirty Yoga
-  layout on every tick — the whole subtree relayouts each frame for the length of the play — so
-  reach for a transform channel first and animate a length only where the reflow is the point.
+- **Spacing-scale lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*`
+  … `inset-y-*`) and `basis-*`, from the `--space-*` scale (`p-4`, `w-64`, `-mt-2`), the sizing
+  fractions (`w-1/2`), and the bracket forms. These dirty Yoga layout on every tick — the whole
+  subtree relayouts each frame for the length of the play — so reach for a transform channel first
+  and animate a length only where the reflow is the point.
+- **Border widths,** from the `border-*` width utilities (`border`, `border-2`, `border-t-4`) and
+  the bracket forms. These read a **separate literal scale mirroring the stylesheet's own
+  declarations**, not the spacing scale — `border-2` is 2px, not `--space-2`. Same per-tick layout
+  cost as the lengths above.
+- **Font size and letter spacing, bracket forms only:** `text-[20px]` and `tracking-[2px]` are
+  driven. The named presets are not — `text-lg` resolves through a `--text-*` token and
+  `tracking-wide` through a fixed named step, neither of which has a C# mirror to read a magnitude
+  from — so a `text-sm` → `text-2xl` delta lands instantly while `text-[14px]` → `text-[24px]`
+  animates. Reach for the bracket form when you want the size to move.
 - **Both sides must name the property.** Unlike the quartet, a color or a length has no identity
   value the silent side could stand in for ("no background color declared" is not the statement
   "transparent"), so a property only one side names is **not** animated: the swap lands it
   instantly. The same applies to a pair whose two sides carry different units (`w-1/2` →
   `w-[200px]`) — a percentage resolves against a laid-out parent this path cannot consult.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
-  subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) and preset font
-  sizes (`text-lg`) resolve through `--color-*` / `--text-*` tokens with no C# mirror (the bracket
-  form `text-[20px]` *is* driven); keyword lengths (`w-auto`, `w-full`) are modes, not magnitudes;
-  `rounded-full` is a saturating pill sentinel; `shadow-*`, `skew-*` and gradients are baked
-  silhouette paints; `filter-*` is driven by its own opt-in `transition-filter`; `z-*` is a
-  physical reparent.
+  subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
+  `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
+  (`tracking-wide`) names likewise, per the bullet above; keyword lengths (`w-auto`, `w-full`) are
+  modes, not magnitudes; `rounded-full` is a saturating pill sentinel; `shadow-*`, `skew-*` and
+  gradients are baked silhouette paints; `filter-*` is driven by its own opt-in
+  `transition-filter`; `z-*` is a physical reparent.
 - **The element's own USS transition is suspended while a driver runs.** A driver writes the exact
   value the curve or the physics calls for on that frame, so a `transition-all` /
   `transition-colors` / `transition-transform` class on the same element would restart a native
