@@ -163,7 +163,12 @@ namespace Velvet
         // instead try-catches each effect individually and emits via Debug.LogException.
         // Returns immediately if the fiber is not mounted or not dirty.
         // fiber: Fiber whose pending lane updates should be flushed.
-        public static void FlushState(ComponentFiber fiber)
+        public static void FlushState(ComponentFiber fiber) => FlushState(fiber, FiberLane.TimeSlicedBudgetMs);
+
+        // The time-sliced budget travels on the call rather than being read from FiberLane, so a caller that
+        // needs one flush to park deterministically cannot leave that budget set for an unrelated later flush
+        // to inherit.
+        internal static void FlushState(ComponentFiber fiber, double timeSlicedBudgetMs)
         {
             if (!fiber.IsMounted) return;
             if (!fiber.IsDirty)
@@ -231,7 +236,7 @@ namespace Velvet
             if (fiber.LaneQueue.Count > 0)
             {
                 var flushingLane = fiber.LaneQueue.Min;
-                flushBudget = FiberLane.BudgetForLane(flushingLane);
+                flushBudget = FiberLane.BudgetForLane(flushingLane, timeSlicedBudgetMs);
                 // A non-empty read above means Lanes was already allocated (Queue is only ever populated
                 // through EnsureLanes()), so the backing field is safe to mutate directly here — the
                 // fiber.LaneQueue accessor itself only ever hands back a read-only copy of the mask.

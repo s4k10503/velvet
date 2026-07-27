@@ -214,7 +214,6 @@ namespace Velvet.Tests
         [SetUp]
         public void SetUp()
         {
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             _root = new VisualElement();
             FiberPortalRegistry.Clear();
             s_fallbackShown = false;
@@ -229,7 +228,6 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             FiberPortalRegistry.Clear();
         }
 
@@ -252,10 +250,9 @@ namespace Velvet.Tests
             // placeholder (enqueuing it) as the pass's very last entry — so that SAME tick's own top-level
             // finally (Reconciler.ContinueReconcile) is what drains it: the boundary catches the Portal
             // child's throw and calls SetAborted() on the shared context.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_portalAdded = true;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_listFiber);
+            s_listFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_listFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: the tiny budget parked the grow mid-commit");
             s_listFiber.DrainTimeSlicedReconcileForTest();
@@ -265,7 +262,6 @@ namespace Velvet.Tests
             // Act (2) — an unrelated fiber sharing the same mounted tree (and so the same ReconcilerContext)
             // re-renders normally, synchronously, well after the time-sliced pass above fully completed and
             // returned.
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_setCounterText.Invoke("updated");
             mounted.FlushStateForTest();
 
@@ -290,10 +286,9 @@ namespace Velvet.Tests
             // Act — the pass parks per-item under the tiny budget, so the brand-new trailing item (and the
             // keyed Fragment inside it) is expanded by a continuation tick, and that SAME tick's own
             // top-level completion is the only boundary this pass ever gets.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_keyedFragmentAdded = true;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_listFiber);
+            s_listFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_listFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: the tiny budget parked the grow mid-commit");
             s_listFiber.DrainTimeSlicedReconcileForTest();
