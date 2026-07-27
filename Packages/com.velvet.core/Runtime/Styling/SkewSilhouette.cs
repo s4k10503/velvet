@@ -243,8 +243,9 @@ namespace Velvet
         // Patch-time stash sync, delegated to the shared face stash. Runs AFTER SyncClassDrivenStyling (so the
         // resolver's inline writes for this patch are already on the element); see SilhouetteFaceStash.SyncOnPatch
         // for the three cases (resolver overwrote us / USS color may have moved beneath the sentinel / current).
-        public static void SyncStashOnPatch(VisualElement element, SkewBinding binding, bool classesChanged)
-            => binding.Face.SyncOnPatch(element, classesChanged);
+        public static void SyncStashOnPatch(VisualElement element, SkewBinding binding, bool classesChanged,
+            bool canReleaseFace)
+            => binding.Face.SyncOnPatch(element, classesChanged, canReleaseFace);
 
         // Re-seats the direct children's approximate descendant shear from the reconciler, the panel-independent
         // path that also covers a child add / remove / reorder when the caster's own box did not change size (so

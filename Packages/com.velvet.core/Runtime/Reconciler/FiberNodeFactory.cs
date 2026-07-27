@@ -109,30 +109,39 @@ namespace Velvet
                     // text leaves, and after the element's own text is set so it transforms the final value.
                     StyleTextEffectResolver.Apply(_ctx, element, elementNode.ClassNames);
 
+                    // The paint layers read a class source that also carries what the passes above have already
+                    // written onto the live class list, so a payload ALREADY LIT at this point paints from the
+                    // first frame instead of waiting for an unrelated re-render to bring the token in
+                    // literally. That means the families resolved from this element's own placed subtree a few
+                    // lines up — has-[.class]:shadow-lg over a matching child, structural, data-/aria-,
+                    // supports- — and not dark: or md:, which are still off while the element is detached and
+                    // arrive later through attach.
+                    var paintClasses = _patcher.ResolveVariantClassesOnCreate(
+                        element, elementNode.ClassNames, paintTail: true);
                     // Skew is wrapper-less (the sheared silhouette is the element's own painted
                     // content), so it attaches before — and composes with — any wrap layer below,
                     // including a user wrapElement.
-                    _patcher.Appliers.ApplySkewOnCreate(element, elementNode.ClassNames);
+                    _patcher.Appliers.ApplySkewOnCreate(element, paintClasses);
                     // Gradient is also wrapper-less (baked texture set as the element's own
                     // background-image, clipped to its border-radius), so it attaches on the element too.
-                    _patcher.Appliers.ApplyGradientOnCreate(element, elementNode.ClassNames);
+                    _patcher.Appliers.ApplyGradientOnCreate(element, paintClasses);
                     // animate-* motion (gradient pan / hue cycle) drives the element's own inline style; runs
                     // after the gradient so a pan mode sees the baked gradient already applied.
-                    _patcher.Appliers.ApplyAnimateOnCreate(element, elementNode.ClassNames);
+                    _patcher.Appliers.ApplyAnimateOnCreate(element, paintClasses);
                     // transition-filter: register the tween binding so a later filter change animates.
                     // The mount's own filter is already applied instantly above (the binding is not enabled
                     // yet), matching CSS's no-transition-on-initial-value.
-                    _patcher.Appliers.ApplyFilterTransitionOnCreate(element, elementNode.ClassNames);
+                    _patcher.Appliers.ApplyFilterTransitionOnCreate(element, paintClasses);
                     // Drop shadow is wrapper-less too (the baked shadow texture is painted behind the
                     // element's own content, bleeding outside the box) — a non-structural paint like CSS
                     // box-shadow, so it composes with any wrap layer below and a user wrapElement. The paint
                     // self-suppresses while an active clip-path-* is present (clip-path clips the box-shadow).
-                    _patcher.Appliers.ApplyShadowOnCreate(element, elementNode.ClassNames);
+                    _patcher.Appliers.ApplyShadowOnCreate(element, paintClasses);
                     // border-dashed / border-dotted: another wrapper-less paint (the dashed outline is the
                     // element's own generateVisualContent; only the border color is suppressed). Attaches after
                     // skew / shadow so it can defer to whichever owns the face. ElementNode only — a Motion never
                     // renders this silhouette (mirroring skew's own silent Motion exclusion).
-                    _patcher.Appliers.ApplyBorderStyleOnCreate(element, elementNode.ClassNames);
+                    _patcher.Appliers.ApplyBorderStyleOnCreate(element, paintClasses);
                     ApplyOptionalCreateBindings(element, elementNode.Props, elementNode.ClassNames);
 
                     VisualElement outer;
@@ -246,11 +255,16 @@ namespace Velvet
                     _patcher.ApplyStructuralVariants(element);
                     _patcher.ApplyHasClassVariants(element);
                     _patcher.ApplyHasVariantManipulators(element);
-                    _patcher.Appliers.ApplyGradientOnCreate(element, appliedClasses);
-                    _patcher.Appliers.ApplyAnimateOnCreate(element, appliedClasses);
+                    // Same composed source as the element path, recorded as a NON-paint-tail element so a
+                    // later variant re-sync never attaches to a Motion the three silhouette paints its own
+                    // patch would refuse.
+                    var motionPaintClasses = _patcher.ResolveVariantClassesOnCreate(
+                        element, appliedClasses, paintTail: false);
+                    _patcher.Appliers.ApplyGradientOnCreate(element, motionPaintClasses);
+                    _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);
                     // transition-filter on a Motion host: a Motion can carry filter utilities + that class
                     // just like a plain element, so register the tween binding here too.
-                    _patcher.Appliers.ApplyFilterTransitionOnCreate(element, appliedClasses);
+                    _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
                     // Motion does NOT paint a drop shadow: the animation scheduler hides a subtree's shadow
                     // paints for the lifetime of an enter / exit (the opacity-blind shadow would otherwise
                     // show through the fading caster as a dark box), and a shadow ON the animating Motion
