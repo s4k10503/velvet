@@ -1446,6 +1446,14 @@ namespace Velvet
         /// Provides a context value to the descendant subtree, visible to descendants that read the
         /// same context via <c>Hooks.UseContext</c>.
         /// </summary>
+        /// <remarks>
+        /// A value change reaches consumers by comparing this provider against the one that held the same
+        /// position last render, and an unkeyed provider is identified by its own sibling index. That covers
+        /// the ordinary cases, including a conditional sibling rendered as <c>null</c>, which keeps its slot.
+        /// Give the provider an explicit <paramref name="key"/> when the index itself can move — it follows a
+        /// variable number of siblings, or is appended after a mapped list — so it stays identified across
+        /// the shift.
+        /// </remarks>
         /// <typeparam name="T">Context value type.</typeparam>
         /// <param name="context">Context object whose value is being provided.</param>
         /// <param name="value">Value visible to descendants via <c>Hooks.UseContext(context)</c>.</param>

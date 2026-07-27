@@ -92,14 +92,10 @@ namespace Velvet
 
         #region ChildReconciler — for inline ContextProviderNode tracking
 
-        private readonly ClearablePool<Dictionary<ProviderPairKey, ContextProviderNode>> _providerMapPool = new(m => m.Clear());
-        private readonly ClearablePool<Dictionary<ProviderPairKey, int>> _providerOccurrencePool = new(m => m.Clear());
+        private readonly ClearablePool<GeneralPathReconciler.ProviderPairTable> _providerTablePool = new(t => t.Clear());
 
-        public Dictionary<ProviderPairKey, ContextProviderNode> RentProviderMap() => _providerMapPool.Rent();
-        public void ReturnProviderMap(Dictionary<ProviderPairKey, ContextProviderNode> map) => _providerMapPool.Return(map);
-
-        public Dictionary<ProviderPairKey, int> RentProviderOccurrenceMap() => _providerOccurrencePool.Rent();
-        public void ReturnProviderOccurrenceMap(Dictionary<ProviderPairKey, int> map) => _providerOccurrencePool.Return(map);
+        public GeneralPathReconciler.ProviderPairTable RentProviderTable() => _providerTablePool.Rent();
+        public void ReturnProviderTable(GeneralPathReconciler.ProviderPairTable table) => _providerTablePool.Return(table);
 
         #endregion
 

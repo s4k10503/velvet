@@ -104,7 +104,7 @@ namespace Velvet
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            Dictionary<ProviderPairKey, ContextProviderNode> oldProviders)
+            ProviderPairTable oldProviders)
         {
             var pool = _ctx.BufferPool;
             var commit = new GeneralCommitState
@@ -131,7 +131,6 @@ namespace Velvet
 
                 // Live-context walk: emit + commit each new leaf under its ancestor Providers.
                 var positionCounters = pool.RentPositionCounter();
-                var providerOccurrences = pool.RentProviderOccurrenceMap();
                 var prevFlag = _ctx.ContextValueChanged;
                 var walk = pool.RentInlineWalk();
                 walk.IsNewSide = true;
@@ -140,17 +139,15 @@ namespace Velvet
                 walk.OldFibers = oldFibers;
                 walk.NewFibers = newFibers;
                 walk.OldProvidersForPairing = oldProviders;
-                walk.ProviderOccurrences = providerOccurrences;
                 walk.Commit = commit;
                 try
                 {
-                    ExpandInlineRecursive(walk, newChildren, positionCounters, fragmentKeyScope: null);
+                    ExpandInlineRecursive(walk, newChildren, positionCounters, FiberKeying.WalkRoot);
                 }
                 finally
                 {
                     _ctx.ContextValueChanged = prevFlag;
                     pool.ReturnPositionCounter(positionCounters);
-                    pool.ReturnProviderOccurrenceMap(providerOccurrences);
                     pool.ReturnInlineWalk(walk);
                 }
 
@@ -386,7 +383,7 @@ namespace Velvet
         // Providers is read only on the old-side branch and OldProvidersForPairing only on the new-side
         // branch, and no recursion flips IsNewSide — so one copy of each per walk is exact. ReconcileGeneral
         // cannot break that by construction: it always walks the new side and has no old-side Providers
-        // parameter to hand over. ExpandInlineForReconcile takes both maps from its caller, so that is the
+        // parameter to hand over. ExpandInlineForReconcile takes both tables from its caller, so that is the
         // entry carrying the runtime check.
         internal sealed class InlineWalk
         {
@@ -398,15 +395,14 @@ namespace Velvet
             public int SlotStart;
             public List<ComponentFiber> OldFibers = null!;
             public HashSet<ComponentFiber> NewFibers = null!;
-            public Dictionary<ProviderPairKey, ContextProviderNode>? Providers;
-            public Dictionary<ProviderPairKey, ContextProviderNode>? OldProvidersForPairing;
+            public ProviderPairTable? Providers;
+            public ProviderPairTable? OldProvidersForPairing;
             public GeneralCommitState? Commit;
-            // Per-position Provider counter, so two Providers that share one ProviderPairKey position
-            // (nested Providers, which are transparent and open no scope of their own) get distinct keys in
-            // walk order. Walk-wide, and deliberately never rewound — a Suspense rollback discards a primary
-            // subtree whose Providers already counted, but the fallback expands under its own scope, so the
-            // discarded counts belong to positions the rest of the walk never revisits.
-            public Dictionary<ProviderPairKey, int>? ProviderOccurrences;
+            // Expansion-order position of the next new-side Provider, the fallback pairing for a Provider
+            // whose structural position has no counterpart on the old side. Monotonic for the whole walk:
+            // nothing rewinds it, including a Suspense rollback that discards a primary subtree it has
+            // already advanced through — matching the old side, which reproduces exactly one branch.
+            public int NewProviderOrdinal;
 
             // Every field a walk may set is scrubbed here: a stale reference surviving into the next
             // rent would silently splice one walk's destination or fiber accumulators into another's.
@@ -421,7 +417,47 @@ namespace Velvet
                 Providers = null;
                 OldProvidersForPairing = null;
                 Commit = null;
-                ProviderOccurrences = null;
+                NewProviderOrdinal = 0;
+            }
+        }
+
+        // The old side's Providers, recorded two ways so the new side can prefer the precise pairing without
+        // losing the one it replaces.
+        //
+        // ByPosition is the primary: a Provider is compared against whatever held its structural position last
+        // render, which is unaffected by Providers appearing or disappearing elsewhere in the walk.
+        //
+        // InWalkOrder is the fallback, and is exactly the pairing that predates ByPosition. A structural
+        // position is not stable across everything: an unkeyed Provider's own contribution is its sibling
+        // index, so `cond ? new[]{ p } : new[]{ banner, p }` moves it even though the Provider sequence itself
+        // never changed. Falling back to walk order there keeps that case pairing as it always did, and makes
+        // the whole scheme monotone — a position hit can only be more accurate than the ordinal it replaces,
+        // and a position miss is never worse than the behavior it replaced. Give a Provider an explicit key to
+        // pin its position through such a shift.
+        internal sealed class ProviderPairTable
+        {
+            private readonly Dictionary<ProviderPairKey, ContextProviderNode> _byPosition = new();
+            private readonly List<ContextProviderNode> _inWalkOrder = new();
+
+            public void Record(ProviderPairKey key, ContextProviderNode provider)
+            {
+                // Two Providers cannot share a structural position (siblings differ by index or key, nesting
+                // differs by path), so this only ever guards against a path hash collision — where keeping the
+                // first preserves walk order rather than rebinding an earlier position to a later Provider.
+                _byPosition.TryAdd(key, provider);
+                _inWalkOrder.Add(provider);
+            }
+
+            public ContextProviderNode? Match(ProviderPairKey key, int walkOrdinal)
+            {
+                if (_byPosition.TryGetValue(key, out var atPosition)) return atPosition;
+                return walkOrdinal < _inWalkOrder.Count ? _inWalkOrder[walkOrdinal] : null;
+            }
+
+            public void Clear()
+            {
+                _byPosition.Clear();
+                _inWalkOrder.Clear();
             }
         }
 
@@ -463,10 +499,10 @@ namespace Velvet
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            Dictionary<ProviderPairKey, ContextProviderNode>? providers = null,
-            Dictionary<ProviderPairKey, ContextProviderNode>? oldProvidersForPairing = null)
+            ProviderPairTable? providers = null,
+            ProviderPairTable? oldProvidersForPairing = null)
         {
-            AssertProviderMapMatchesSide(isNewSide, providers, oldProvidersForPairing);
+            AssertProviderTableMatchesSide(isNewSide, providers, oldProvidersForPairing);
 
             if (nodes == null || nodes.Length == 0) return Array.Empty<VNode>();
 
@@ -490,7 +526,6 @@ namespace Velvet
 
             var buffer = _ctx.BufferPool.RentNodeList();
             var positionCounters = _ctx.BufferPool.RentPositionCounter();
-            var providerOccurrences = _ctx.BufferPool.RentProviderOccurrenceMap();
             var prevFlag = _ctx.ContextValueChanged;
             var walk = _ctx.BufferPool.RentInlineWalk();
             walk.Result = buffer;
@@ -501,10 +536,9 @@ namespace Velvet
             walk.NewFibers = newFibers;
             walk.Providers = providers;
             walk.OldProvidersForPairing = oldProvidersForPairing;
-            walk.ProviderOccurrences = providerOccurrences;
             try
             {
-                ExpandInlineRecursive(walk, nodes, positionCounters, fragmentKeyScope: null);
+                ExpandInlineRecursive(walk, nodes, positionCounters, FiberKeying.WalkRoot);
                 return buffer.Count == 0 ? Array.Empty<VNode>() : buffer.ToArray();
             }
             finally
@@ -512,52 +546,34 @@ namespace Velvet
                 if (isNewSide) _ctx.ContextValueChanged = prevFlag;
                 _ctx.BufferPool.ReturnNodeList(buffer);
                 _ctx.BufferPool.ReturnPositionCounter(positionCounters);
-                _ctx.BufferPool.ReturnProviderOccurrenceMap(providerOccurrences);
                 _ctx.BufferPool.ReturnInlineWalk(walk);
             }
         }
 
         // The walk keeps one Providers / OldProvidersForPairing pair for its whole descent, which is exact
-        // only because each map is consumed on exactly one side (Providers collects old-side Providers;
+        // only because each table is consumed on exactly one side (Providers collects old-side Providers;
         // OldProvidersForPairing is read when a new-side Provider pushes) and no recursion flips the side.
-        // A caller that hands in the off-side map is expressing an intent this walk silently drops, so
+        // A caller that hands in the off-side table is expressing an intent this walk silently drops, so
         // fail loudly here rather than at the far end of a diff that quietly used the wrong Providers.
         // Checked ahead of the empty-input and flat-leaf early-outs: the caller's intent is just as wrong
         // when the container happens to hold nothing that needs expanding.
-        private static void AssertProviderMapMatchesSide(
+        private static void AssertProviderTableMatchesSide(
             bool isNewSide,
-            Dictionary<ProviderPairKey, ContextProviderNode>? providers,
-            Dictionary<ProviderPairKey, ContextProviderNode>? oldProvidersForPairing)
+            ProviderPairTable? providers,
+            ProviderPairTable? oldProvidersForPairing)
         {
             UnityEngine.Debug.Assert(
                 isNewSide ? providers == null : oldProvidersForPairing == null,
                 "[Velvet] GeneralPathReconciler.ExpandInlineForReconcile: the new side only reads "
-                + "oldProvidersForPairing and the old side only fills providers; the map for the other "
+                + "oldProvidersForPairing and the old side only fills providers; the table for the other "
                 + "side is never consumed.");
-        }
-
-        // The pairing key of the Provider being visited, and the claim on it: the position is derived from
-        // the enclosing fiber + scope + node index, and its occurrence counter advances so a second Provider
-        // at the same position takes the next key. Both sides call this at the same point of the same walk
-        // order, which is what makes a new-side lookup land on the Provider that held the position last
-        // render rather than on whichever Provider happened to be emitted the same number of steps in.
-        private ProviderPairKey TakeProviderPairKey(
-            InlineWalk walk, ContextProviderNode provider, string? fragmentKeyScope, int nodeIndex)
-        {
-            var position = FiberKeying.ProviderPosition(
-                _ctx.FiberStack.Current, fragmentKeyScope, provider.Key, nodeIndex);
-            var occurrences = walk.ProviderOccurrences;
-            if (occurrences == null) return position;
-            occurrences.TryGetValue(position, out var occurrence);
-            occurrences[position] = occurrence + 1;
-            return position.AtOccurrence(occurrence);
         }
 
         private void ExpandInlineRecursive(
             InlineWalk walk,
             VNode?[] nodes,
             Dictionary<object, int> positionCounters,
-            string? fragmentKeyScope)
+            WalkPosition position)
         {
             var result = walk.Result;
             var isNewSide = walk.IsNewSide;
@@ -576,22 +592,24 @@ namespace Velvet
                     case FragmentNode fragment:
                         if (fragment.Children != null)
                         {
-                            var childScope = FiberKeying.FragmentChildScope(
-                                fragmentKeyScope, fragment.Key, nodeIndex);
-                            ExpandInlineRecursive(walk, fragment.Children, positionCounters, childScope);
+                            var childPosition = FiberKeying.FragmentChild(
+                                position, fragment.Key, nodeIndex);
+                            ExpandInlineRecursive(walk, fragment.Children, positionCounters, childPosition);
                         }
                         break;
                     case ContextProviderNode provider when !isNewSide:
                     {
-                        // Recorded under its position BEFORE the descent, so a nested Provider's own
-                        // occurrence is numbered after this one's on both sides.
-                        var pairKey = TakeProviderPairKey(walk, provider, fragmentKeyScope, nodeIndex);
-                        walk.Providers?.TryAdd(pairKey, provider);
+                        // Recorded BEFORE the descent, so the walk order the new side counts in places an
+                        // enclosing Provider ahead of the ones it wraps.
+                        walk.Providers?.Record(
+                            FiberKeying.ProviderPosition(
+                                _ctx.FiberStack.Current, position, provider.Key, nodeIndex),
+                            provider);
                         if (provider.Children != null)
                         {
-                            var providerScope = FiberKeying.ProviderChildScope(
-                                fragmentKeyScope, provider.Key, nodeIndex);
-                            ExpandInlineRecursive(walk, provider.Children, positionCounters, providerScope);
+                            var childPosition = FiberKeying.ProviderChild(
+                                position, provider.Key, nodeIndex);
+                            ExpandInlineRecursive(walk, provider.Children, positionCounters, childPosition);
                         }
                         break;
                     }
@@ -600,20 +618,23 @@ namespace Velvet
                         provider.PushContext(_ctx.ComponentContextStack);
                         try
                         {
-                            var pairKey = TakeProviderPairKey(walk, provider, fragmentKeyScope, nodeIndex);
-                            // No old Provider at this position means this one is mounting here: its consumers
-                            // mount with it and read the live cursor, so there is nothing to notify.
-                            if (walk.OldProvidersForPairing != null
-                                && walk.OldProvidersForPairing.TryGetValue(pairKey, out var oldProvider)
-                                && provider.HasValueChanged(oldProvider))
+                            var pairKey = FiberKeying.ProviderPosition(
+                                _ctx.FiberStack.Current, position, provider.Key, nodeIndex);
+                            // Neither a structural position nor a walk-order counterpart means this Provider
+                            // is mounting here: its consumers mount with it and read the live cursor, so
+                            // there is nothing to notify.
+                            var oldProvider = walk.OldProvidersForPairing?.Match(
+                                pairKey, walk.NewProviderOrdinal);
+                            walk.NewProviderOrdinal++;
+                            if (oldProvider != null && provider.HasValueChanged(oldProvider))
                             {
                                 NotifyContextValueChange(provider);
                             }
                             if (provider.Children != null)
                             {
-                                var providerScope = FiberKeying.ProviderChildScope(
-                                    fragmentKeyScope, provider.Key, nodeIndex);
-                                ExpandInlineRecursive(walk, provider.Children, positionCounters, providerScope);
+                                var childPosition = FiberKeying.ProviderChild(
+                                    position, provider.Key, nodeIndex);
+                                ExpandInlineRecursive(walk, provider.Children, positionCounters, childPosition);
                             }
                         }
                         finally
@@ -688,9 +709,9 @@ namespace Velvet
                                 _ctx.FiberStack.Push(fiber);
                                 try
                                 {
-                                    var componentScope = FiberKeying.ComponentChildScope(
-                                        fragmentKeyScope, component.Key, nodeIndex);
-                                    ExpandInlineRecursive(walk, fiber.PreviousTree, childCounters, componentScope);
+                                    var componentPosition = FiberKeying.ComponentChild(
+                                        position, component.Key, nodeIndex);
+                                    ExpandInlineRecursive(walk, fiber.PreviousTree, childCounters, componentPosition);
                                 }
                                 finally
                                 {
@@ -717,9 +738,9 @@ namespace Velvet
                                     _ctx.FiberStack.Push(fiber);
                                     try
                                     {
-                                        var componentScope = FiberKeying.ComponentChildScope(
-                                            fragmentKeyScope, component.Key, nodeIndex);
-                                        ExpandInlineRecursive(walk, fiber.PreviousTree, childCounters, componentScope);
+                                        var componentPosition = FiberKeying.ComponentChild(
+                                            position, component.Key, nodeIndex);
+                                        ExpandInlineRecursive(walk, fiber.PreviousTree, childCounters, componentPosition);
                                     }
                                     finally
                                     {
@@ -741,7 +762,7 @@ namespace Velvet
                         // matched route during this walk's commit (live context), reading
                         // RouterContext.Location / Depth from the live stack and pushing Depth+1 around
                         // the route Component's mount. No pre-captured snapshot / owner is needed.
-                        _keying.RegisterScopedKey(node, fragmentKeyScope, nodeIndex);
+                        _keying.RegisterScopedKey(node, position.Scope, nodeIndex);
                         Emit(node, result, commit);
                         break;
                     case MemoNode memo:
@@ -750,10 +771,10 @@ namespace Velvet
                         // wrapper-less in the parent's slot range. The inner renders in live context
                         // (the enclosing Provider is still pushed on the new side), so no pre-captured
                         // snapshot is needed.
-                        ExpandMemoInline(walk, memo, fragmentKeyScope, nodeIndex);
+                        ExpandMemoInline(walk, memo, position, nodeIndex);
                         break;
                     case SuspenseNode suspense:
-                        ExpandSuspenseInline(walk, suspense, fragmentKeyScope, nodeIndex);
+                        ExpandSuspenseInline(walk, suspense, position, nodeIndex);
                         break;
                     case AnimatePresenceNode presence:
                         // DOM-less: AnimatePresence emits no wrapper. Its keyed children expand directly
@@ -766,7 +787,7 @@ namespace Velvet
                         _ctx.PresenceExpansionDepth++;
                         try
                         {
-                            ExpandAnimatePresenceInline(walk, presence, fragmentKeyScope, nodeIndex);
+                            ExpandAnimatePresenceInline(walk, presence, position, nodeIndex);
                         }
                         finally
                         {
@@ -777,11 +798,11 @@ namespace Velvet
                         // Regular element: CreateElement / PatchNode reconciles its children via the
                         // host's ReconcileChildren during this walk's commit, so descendant Components
                         // render in-scope of their ancestor Providers without a pre-captured snapshot.
-                        _keying.RegisterScopedKey(node, fragmentKeyScope, nodeIndex);
+                        _keying.RegisterScopedKey(node, position.Scope, nodeIndex);
                         Emit(node, result, commit);
                         break;
                     default:
-                        _keying.RegisterScopedKey(node, fragmentKeyScope, nodeIndex);
+                        _keying.RegisterScopedKey(node, position.Scope, nodeIndex);
                         Emit(node, result, commit);
                         break;
                 }
@@ -799,11 +820,11 @@ namespace Velvet
         private void ExpandMemoInline(
             InlineWalk walk,
             MemoNode memo,
-            string? fragmentKeyScope,
+            WalkPosition position,
             int nodeIndex)
         {
-            var memoScope = FiberKeying.MemoScope(fragmentKeyScope, nodeIndex);
-            var cacheKey = FiberKeying.MemoCacheKey(memo.Key, memoScope);
+            var innerPosition = FiberKeying.MemoInner(position, nodeIndex);
+            var cacheKey = FiberKeying.MemoCacheKey(memo.Key, innerPosition.Scope!);
             var (inner, _, previousCached) = _ctx.FiberMemoCache.GetOrComputeWithHitInfo(cacheKey, memo);
             if (previousCached != null)
             {
@@ -822,7 +843,7 @@ namespace Velvet
                 // Recurse under this memo's own scope so a nested Memo's position key (or an inner
                 // Component's slot key) cannot collide with this memo's scope — e.g. an outer and an
                 // inner unkeyed Memo both at node index 0 would otherwise share cacheKey "{scope}/m0".
-                ExpandInlineRecursive(walk, new[] { inner }, counters, memoScope);
+                ExpandInlineRecursive(walk, new[] { inner }, counters, innerPosition);
             }
             finally
             {
@@ -877,16 +898,18 @@ namespace Velvet
         private void ExpandSuspenseInline(
             InlineWalk walk,
             SuspenseNode suspense,
-            string? fragmentKeyScope,
+            WalkPosition position,
             int nodeIndex)
         {
             var result = walk.Result;
             var newFibers = walk.NewFibers;
             var commit = walk.Commit;
             var boundaryFiber = _ctx.FiberStack.Current;
-            var suspenseKey = FiberKeying.SuspenseKey(fragmentKeyScope, suspense.Key, nodeIndex);
-            var primaryScope = FiberKeying.SuspenseSubtreeScope(suspenseKey, isFallback: false);
-            var fallbackScope = FiberKeying.SuspenseSubtreeScope(suspenseKey, isFallback: true);
+            var suspenseKey = FiberKeying.SuspenseKey(position.Scope, suspense.Key, nodeIndex);
+            var primaryPosition = FiberKeying.SuspenseSubtree(
+                position, suspenseKey, suspense.Key, nodeIndex, isFallback: false);
+            var fallbackPosition = FiberKeying.SuspenseSubtree(
+                position, suspenseKey, suspense.Key, nodeIndex, isFallback: true);
             var stateKey = (boundaryFiber, suspenseKey);
 
             if (walk.IsNewSide)
@@ -905,7 +928,7 @@ namespace Velvet
                         var counters = _ctx.BufferPool.RentPositionCounter();
                         try
                         {
-                            ExpandInlineRecursive(walk, suspense.Children, counters, primaryScope);
+                            ExpandInlineRecursive(walk, suspense.Children, counters, primaryPosition);
                         }
                         catch (FiberSuspendSignal)
                         {
@@ -965,7 +988,7 @@ namespace Velvet
                             var fbCounters = _ctx.BufferPool.RentPositionCounter();
                             try
                             {
-                                ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fbCounters, fallbackScope);
+                                ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fbCounters, fallbackPosition);
                             }
                             finally
                             {
@@ -999,7 +1022,7 @@ namespace Velvet
                     try
                     {
                         ExpandInlineRecursive(walk, nodesToExpand, counters,
-                            wasFallback ? fallbackScope : primaryScope);
+                            wasFallback ? fallbackPosition : primaryPosition);
                     }
                     finally
                     {
@@ -1041,13 +1064,15 @@ namespace Velvet
         private void ExpandAnimatePresenceInline(
             InlineWalk walk,
             AnimatePresenceNode presence,
-            string? fragmentKeyScope,
+            WalkPosition position,
             int nodeIndex)
         {
             var parent = walk.Parent;
             var commit = walk.Commit;
             var boundaryFiber = _ctx.FiberStack.Current;
-            var presenceKey = FiberKeying.PresenceKey(fragmentKeyScope, presence.Key, nodeIndex);
+            var presencePosition = FiberKeying.Presence(position, presence.Key, nodeIndex);
+            // FiberKeying.PresenceKey always composes onto its parent, so this scope is never null.
+            var presenceKey = presencePosition.Scope!;
             // Parent is part of the key so an AnimatePresence nested inside a real element does not collide
             // with an outer one at the same (fiber, scope, index). See ReconcilerContext.PresenceStates.
             var stateKey = (boundaryFiber, parent, presenceKey);
@@ -1061,7 +1086,7 @@ namespace Velvet
                     foreach (var (key, node) in oldState.Committed)
                     {
                         EmitPresenceChildAsAnchor(walk, node,
-                            FiberNodeFactory.FindFirstMotionDescendant(node), key, presenceKey, out _);
+                            FiberNodeFactory.FindFirstMotionDescendant(node), key, presencePosition, out _);
                     }
                 }
                 return;
@@ -1156,13 +1181,13 @@ namespace Velvet
                 {
                     if (!newKeySet.Contains(key))
                     {
-                        ExpandPresenceGhostEntry(walk, key, node, presenceKey,
+                        ExpandPresenceGhostEntry(walk, key, node, presencePosition,
                             state, boundaryFiber, presence, nextCommitted, ref exitIndex, exitCount,
                             ref removedInstantThisRender, exitPass);
                         continue;
                     }
 
-                    ExpandPresenceEnterEntry(walk, key, node, presenceKey,
+                    ExpandPresenceEnterEntry(walk, key, node, presencePosition,
                         state, boundaryFiber, presence, prevCommitted, nextCommitted, newKeyed,
                         blockEnters, firstRender, ref visualIndex);
                 }
@@ -1223,7 +1248,7 @@ namespace Velvet
             InlineWalk walk,
             string key,
             VNode node,
-            string? presenceKey,
+            WalkPosition presencePosition,
             ReconcilerContext.PresenceBoundaryState state,
             ComponentFiber? boundaryFiber,
             AnimatePresenceNode presence,
@@ -1272,7 +1297,7 @@ namespace Velvet
                 return;
             }
 
-            var ghostAnchor = EmitPresenceChildAsAnchor(walk, node, ghostMotionNode, key, presenceKey,
+            var ghostAnchor = EmitPresenceChildAsAnchor(walk, node, ghostMotionNode, key, presencePosition,
                 out var ghostMotionElement);
             // A ghost reproduces the SAME committed node on both diff sides, so the patch that
             // would re-record the Motion's element bails on reference equality — fall back to
@@ -1395,7 +1420,7 @@ namespace Velvet
             InlineWalk walk,
             string key,
             VNode node,
-            string? presenceKey,
+            WalkPosition presencePosition,
             ReconcilerContext.PresenceBoundaryState state,
             ComponentFiber? boundaryFiber,
             AnimatePresenceNode presence,
@@ -1421,7 +1446,7 @@ namespace Velvet
             // gate, so CreateElement can tell this SAME node (which the dispatch below is about to
             // explicitly animate) apart from every OTHER Motion the emission below might create.
             var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
-            var anchor = EmitPresenceChildAsAnchor(walk, node, motion, key, presenceKey,
+            var anchor = EmitPresenceChildAsAnchor(walk, node, motion, key, presencePosition,
                 out var motionElement);
             // Same memo discipline as the ghost path: record when this emission resolved the
             // element (create or genuine patch), fall back to the memo when a no-op re-render's
@@ -1727,15 +1752,15 @@ namespace Velvet
             InlineWalk walk,
             VNode? node,
             string? key,
-            string? presenceScope)
+            WalkPosition presencePosition)
         {
             var commit = walk.Commit;
             var startIdx = commit != null ? commit.NewElements.Count : walk.Result!.Count;
-            var childScope = FiberKeying.PresenceChildScope(presenceScope, key);
+            var childPosition = FiberKeying.PresenceChild(presencePosition, key);
             var counters = _ctx.BufferPool.RentPositionCounter();
             try
             {
-                ExpandInlineRecursive(walk, new[] { node }, counters, childScope);
+                ExpandInlineRecursive(walk, new[] { node }, counters, childPosition);
             }
             finally
             {
@@ -1782,7 +1807,7 @@ namespace Velvet
             VNode? node,
             MotionNode? anchorMotion,
             string? key,
-            string? presenceScope,
+            WalkPosition presencePosition,
             out VisualElement? anchorMotionElement)
         {
             var previousAnchor = _ctx.PresenceAnchorMotion;
@@ -1791,7 +1816,7 @@ namespace Velvet
             _ctx.PresenceAnchorMotionElement = null;
             try
             {
-                var emitted = EmitPresenceChild(walk, node, key, presenceScope);
+                var emitted = EmitPresenceChild(walk, node, key, presencePosition);
                 anchorMotionElement = _ctx.PresenceAnchorMotionElement;
                 return emitted;
             }

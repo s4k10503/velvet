@@ -19,6 +19,9 @@ namespace Velvet.Tests
     /// <item>A Provider inside a Suspense fallback keeps notifying its consumers while the primary subtree
     /// also declares one.</item>
     /// <item>With two Providers in a fallback, the last one keeps notifying its consumers.</item>
+    /// <item>A Provider whose own sibling index moves — a preceding child appearing in a longer children
+    /// array — still notifies its consumers: a position with no counterpart on the old side falls back to
+    /// pairing in walk order rather than treating the Provider as newly mounted.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -120,6 +123,23 @@ namespace Velvet.Tests
                 "Each fallback Provider keeps its own position, so the last one is not pushed past the end of the old side");
         }
 
+        [Test]
+        public void Given_ProviderPrecededByAppearingSibling_When_ItsValueChanges_Then_ConsumerRendersNewValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(ShiftedSiblingIndexHostRender, key: "host"));
+            Assume.That(_root.Q<Label>("consumer")?.text, Is.EqualTo("initial"),
+                "Precondition: the consumer mounted with the initial value as the only child");
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("consumer")?.text, Is.EqualTo("updated"),
+                "A non-Provider child appearing ahead of it moves the Provider's sibling index but not its place in walk order");
+        }
+
         #region Consumer
 
         // Memoized with no props: only a context notification can re-render it, so its Label goes stale
@@ -161,6 +181,22 @@ namespace Velvet.Tests
                     V.Component(MemoizedConsumerRender, key: "consumer"),
                 }),
             });
+        }
+
+        // The children array grows by a non-Provider child ahead of the Provider, so the Provider keeps its
+        // place in walk order (still the first and only one) while its sibling index moves from 0 to 1.
+        [Component]
+        private static VNode ShiftedSiblingIndexHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            var themeProvider = V.Provider(ThemeContext, tick == 0 ? "initial" : "updated", new VNode[]
+            {
+                V.Component(MemoizedConsumerRender, key: "consumer"),
+            });
+            return V.Div(name: "host", children: tick == 0
+                ? new VNode[] { themeProvider }
+                : new VNode[] { V.Label(text: "banner"), themeProvider });
         }
 
         [Component]

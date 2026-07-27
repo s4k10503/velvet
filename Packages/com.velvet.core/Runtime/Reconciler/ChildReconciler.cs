@@ -179,7 +179,7 @@ namespace Velvet
             // single Reconcile call, so a sibling fiber's setState re-render (which calls
             // Reconcile with a different parent/slotStart) does not falsely orphan unrelated
             // siblings under the same anchor.
-            var oldProviders = _ctx.BufferPool.RentProviderMap();
+            var oldProviders = _ctx.BufferPool.RentProviderTable();
             var oldFibers = _ctx.BufferPool.RentFiberList();
             var newFibers = _ctx.BufferPool.RentFiberSet();
             VNode?[] oldNodes;
@@ -218,7 +218,7 @@ namespace Velvet
             }
             finally
             {
-                _ctx.BufferPool.ReturnProviderMap(oldProviders);
+                _ctx.BufferPool.ReturnProviderTable(oldProviders);
                 _ctx.BufferPool.ReturnFiberList(oldFibers);
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
             }
