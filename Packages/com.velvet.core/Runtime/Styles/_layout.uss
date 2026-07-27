@@ -3,6 +3,15 @@
 /*
  * Display
  *
+ * `.grid` precedes `.flex`: its property set contains `.flex`'s. See StyleUtilities.uss.
+ *
+ * NOTE (Tailwind parity): UI Toolkit has no `display: grid` (its layout is a Flexbox subset), so `.grid`
+ * is realized as a flex-wrap row and StyleGridManipulator sizes the children into the grid-cols-N columns
+ * (and owns the gap-* spacing). A bare `grid` with no grid-cols-N is a single column (the manipulator sizes
+ * each child to the full row, stacking them vertically). See Documentation~/styling-flexbox-and-gap.md.
+ */
+.grid { display: flex; flex-direction: row; flex-wrap: wrap; }
+/*
  * NOTE (Tailwind parity): in CSS/Tailwind `flex` implies `flex-direction: row`,
  * but UI Toolkit's layout engine (Yoga) defaults a flex container to `column`.
  * `.flex` therefore sets `flex-direction: row` explicitly so a bare `flex` lays
@@ -12,13 +21,6 @@
  * See Documentation~/styling-flexbox-and-gap.md.
  */
 .flex { display: flex; flex-direction: row; }
-/*
- * NOTE (Tailwind parity): UI Toolkit has no `display: grid` (its layout is a Flexbox subset), so `.grid`
- * is realized as a flex-wrap row and StyleGridManipulator sizes the children into the grid-cols-N columns
- * (and owns the gap-* spacing). A bare `grid` with no grid-cols-N is a single column (the manipulator sizes
- * each child to the full row, stacking them vertically). See Documentation~/styling-flexbox-and-gap.md.
- */
-.grid { display: flex; flex-direction: row; flex-wrap: wrap; }
 .hidden { display: none; }
 
 /* Position */
@@ -89,17 +91,17 @@
 .justify-around { justify-content: space-around; }
 .justify-evenly { justify-content: space-evenly; }
 
+/* Flex shorthand (grow / shrink / basis). Precedes grow-/shrink-: its property set contains theirs. */
+.flex-1 { flex-grow: 1; flex-shrink: 1; flex-basis: 0; }
+.flex-auto { flex-grow: 1; flex-shrink: 1; flex-basis: auto; }
+.flex-initial { flex-grow: 0; flex-shrink: 1; flex-basis: auto; }
+.flex-none { flex-grow: 0; flex-shrink: 0; flex-basis: auto; }
+
 /* Flex Grow/Shrink */
 .grow { flex-grow: 1; }
 .grow-0 { flex-grow: 0; }
 .shrink { flex-shrink: 1; }
 .shrink-0 { flex-shrink: 0; }
-
-/* Flex shorthand (grow / shrink / basis) */
-.flex-1 { flex-grow: 1; flex-shrink: 1; flex-basis: 0; }
-.flex-auto { flex-grow: 1; flex-shrink: 1; flex-basis: auto; }
-.flex-initial { flex-grow: 0; flex-shrink: 1; flex-basis: auto; }
-.flex-none { flex-grow: 0; flex-shrink: 0; flex-basis: auto; }
 
 /* Flex Basis (presets; reuse --space-* tokens. basis-[..] arbitrary covers other values) */
 .basis-0 { flex-basis: var(--space-0); }

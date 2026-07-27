@@ -54,6 +54,7 @@ Generators~/
 │   └── Shared/                               (SourceBuilder, VelvetWellKnownNames, …)
 ├── src/Velvet.SourceGenerators.CodeFixes/    (ships to ../Runtime/Plugins/Analyzers/)
 ├── src/Velvet.StyleTable/                    (console tool — writes ../Runtime/Styling/StyleUtilityProperties.g.cs)
+│   ├── Velvet.StyleTable.csproj              (force-added — the root .gitignore ignores *.csproj)
 │   ├── Program.cs                            (CLI: --styles <dir> --output <file>)
 │   ├── UssStyleSheetParser.cs                (rules and declarations, straight off the text)
 │   ├── UssSelector.cs                        (which selector shapes the table can model)

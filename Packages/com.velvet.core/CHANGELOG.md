@@ -88,6 +88,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **BREAKING:** A utility whose property set contains another's is now declared before the narrower
+  one in the bundled stylesheets, so the narrower utility wins the properties they share. Bundled
+  utilities are single-class selectors, so two on one element tie on specificity and the later
+  declaration wins; wherever the order was inverted, the narrower utility could never take effect.
+  `"size-8 w-4"` laid out 32px wide and now lays out 16px wide, matching the web. The families
+  corrected are `size-*` (now before `w-*` / `h-*`), the flex shorthands `flex-1` / `flex-auto` /
+  `flex-initial` / `flex-none` (now before `grow-*` / `shrink-*`), the single-edge `mt-auto` /
+  `mr-auto` / `mb-auto` / `ml-auto` (now opening their own edge bands, after `mx-auto` / `my-auto`),
+  `border-x-*` / `border-y-*` (now before `border-t/r/b/l-*`), the bare `rounded-tl` / `rounded-tr` /
+  `rounded-bl` / `rounded-br` corners (now after every scaled side utility), and `.grid` (now before
+  `.flex`; both resolve to `display: flex` under UI Toolkit, so nothing renders differently).
+  Anything written against the old order — `"size-8 w-4"` expecting 32px — now resolves the other way.
+  Three families keep their position because the reference cascade puts them there: the `anim-*`
+  presets (scheduler-applied, and meant to outrank the base `opacity-*` / `scale-*` / `transition-*`
+  utilities they animate), `truncate` relative to `overflow-*` and `whitespace-*`, and
+  `transition-none` relative to the other `transition-*` utilities. `truncate md:whitespace-normal`
+  and `transition-colors md:transition-none` are inert as a result.
+
 - **BREAKING:** `"flex flex-col md:flex-row"` — the documented "stack on narrow screens, row on wide
   ones" idiom — laid out as a column at every width. A responsive or state variant adds the BARE
   utility to the live class list, so above the breakpoint the element carried both `flex-col` and

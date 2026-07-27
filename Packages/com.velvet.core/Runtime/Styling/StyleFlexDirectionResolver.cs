@@ -11,7 +11,7 @@ namespace Velvet
     //
     // The five direction/display classes are consulted FIRST — even on a panel — in the SAME precedence USS
     // itself uses when more than one matches the element (equal specificity, so the LAST declared RULE wins):
-    // _layout.uss declares .flex, .grid, .flex-col, .flex-col-reverse, .flex-row, .flex-row-reverse in that
+    // _layout.uss declares .grid, .flex, .flex-col, .flex-col-reverse, .flex-row, .flex-row-reverse in that
     // source order, so flex-row-reverse beats flex-row beats flex-col-reverse beats flex-col beats the bare
     // .flex row default, regardless of which classes ended up on the element or in what order — a
     // responsive/state variant routinely leaves TWO direction classes on the live list at once (e.g.

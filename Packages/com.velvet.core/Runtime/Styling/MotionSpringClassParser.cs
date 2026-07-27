@@ -308,9 +308,7 @@ namespace Velvet
         /// <para>
         /// Ordering the writes cannot fix this, because the winner they would have to agree with is not
         /// derivable from the properties alone. For preset utilities it is stylesheet declaration order, which
-        /// is NOT a function of how many slots a utility writes: <c>.size-*</c> is declared after
-        /// <c>.w-*</c>/<c>.h-*</c>, so the two-slot shorthand wins width at rest while a one-slot longhand wins
-        /// it everywhere else. For bracket-form tokens it is not declaration order at all but class-array
+        /// the class strings do not carry. For bracket-form tokens it is not declaration order at all but class-array
         /// position, since inline-resolved tokens apply in sequence and the last one holds the slot. And the
         /// four radius half-shorthands write two slots each AND overlap pairwise, so a slot-count key cannot
         /// even order them against each other. Reproducing all three rules means a hand-maintained declaration

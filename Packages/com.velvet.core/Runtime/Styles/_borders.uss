@@ -7,37 +7,33 @@
 .border-4 { border-width: 4px; }
 .border-8 { border-width: 8px; }
 
-/* Border Width - per side (1px) */
+/* Border Width - two sides (x / y). Precedes the single-side utilities: it contains them. */
+.border-x { border-left-width: 1px; border-right-width: 1px; }
+.border-y { border-top-width: 1px; border-bottom-width: 1px; }
+.border-x-2 { border-left-width: 2px; border-right-width: 2px; }
+.border-y-2 { border-top-width: 2px; border-bottom-width: 2px; }
+.border-x-4 { border-left-width: 4px; border-right-width: 4px; }
+.border-y-4 { border-top-width: 4px; border-bottom-width: 4px; }
+.border-x-8 { border-left-width: 8px; border-right-width: 8px; }
+.border-y-8 { border-top-width: 8px; border-bottom-width: 8px; }
+
+/* Border Width - one side (t / r / b / l) */
 .border-t { border-top-width: 1px; }
 .border-r { border-right-width: 1px; }
 .border-b { border-bottom-width: 1px; }
 .border-l { border-left-width: 1px; }
-.border-x { border-left-width: 1px; border-right-width: 1px; }
-.border-y { border-top-width: 1px; border-bottom-width: 1px; }
-
-/* Border Width - per side (2px) */
 .border-t-2 { border-top-width: 2px; }
 .border-r-2 { border-right-width: 2px; }
 .border-b-2 { border-bottom-width: 2px; }
 .border-l-2 { border-left-width: 2px; }
-.border-x-2 { border-left-width: 2px; border-right-width: 2px; }
-.border-y-2 { border-top-width: 2px; border-bottom-width: 2px; }
-
-/* Border Width - per side (4px) */
 .border-t-4 { border-top-width: 4px; }
 .border-r-4 { border-right-width: 4px; }
 .border-b-4 { border-bottom-width: 4px; }
 .border-l-4 { border-left-width: 4px; }
-.border-x-4 { border-left-width: 4px; border-right-width: 4px; }
-.border-y-4 { border-top-width: 4px; border-bottom-width: 4px; }
-
-/* Border Width - per side (8px) */
 .border-t-8 { border-top-width: 8px; }
 .border-r-8 { border-right-width: 8px; }
 .border-b-8 { border-bottom-width: 8px; }
 .border-l-8 { border-left-width: 8px; }
-.border-x-8 { border-left-width: 8px; border-right-width: 8px; }
-.border-y-8 { border-top-width: 8px; border-bottom-width: 8px; }
 
 /* Border Color */
 .border-default { border-color: var(--color-border); }
@@ -65,10 +61,6 @@
 .rounded-r { border-top-right-radius: var(--radius-default); border-bottom-right-radius: var(--radius-default); }
 .rounded-b { border-bottom-left-radius: var(--radius-default); border-bottom-right-radius: var(--radius-default); }
 .rounded-l { border-top-left-radius: var(--radius-default); border-bottom-left-radius: var(--radius-default); }
-.rounded-tl { border-top-left-radius: var(--radius-default); }
-.rounded-tr { border-top-right-radius: var(--radius-default); }
-.rounded-bl { border-bottom-left-radius: var(--radius-default); }
-.rounded-br { border-bottom-right-radius: var(--radius-default); }
 /* side: t */
 .rounded-t-none { border-top-left-radius: var(--radius-none); border-top-right-radius: var(--radius-none); }
 .rounded-t-sm { border-top-left-radius: var(--radius-sm); border-top-right-radius: var(--radius-sm); }
@@ -105,6 +97,11 @@
 .rounded-l-2xl { border-top-left-radius: var(--radius-2xl); border-bottom-left-radius: var(--radius-2xl); }
 .rounded-l-3xl { border-top-left-radius: var(--radius-3xl); border-bottom-left-radius: var(--radius-3xl); }
 .rounded-l-full { border-top-left-radius: var(--radius-full); border-bottom-left-radius: var(--radius-full); }
+/* Bare corners follow every scaled side group: a side's property set contains a corner's. */
+.rounded-tl { border-top-left-radius: var(--radius-default); }
+.rounded-tr { border-top-right-radius: var(--radius-default); }
+.rounded-bl { border-bottom-left-radius: var(--radius-default); }
+.rounded-br { border-bottom-right-radius: var(--radius-default); }
 /* corner: tl */
 .rounded-tl-none { border-top-left-radius: var(--radius-none); }
 .rounded-tl-sm { border-top-left-radius: var(--radius-sm); }

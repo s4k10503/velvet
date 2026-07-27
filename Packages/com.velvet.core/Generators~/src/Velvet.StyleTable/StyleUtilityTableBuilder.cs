@@ -21,10 +21,8 @@ namespace Velvet.StyleTable
             {
                 problems.Add(new UssProblem(
                     UssProblemCode.VocabularyExceedsCapacity,
-                    $"The longhand vocabulary holds {longhands.Length} properties but the generated property " +
-                    $"set holds {PropertySetCapacity}. Widen the set by emitting another backing word; " +
-                    "truncating would drop the properties past the limit and make the classes that write " +
-                    "them look conflict-free."));
+                    $"The longhand vocabulary holds {longhands.Length} properties but a property set holds " +
+                    $"{PropertySetCapacity}. Emit another backing word in StyleLonghandSet."));
                 return new StyleUtilityTableResult(
                     new StyleUtilityTable(longhands, ImmutableArray<StyleUtilityTableEntry>.Empty),
                     problems.ToImmutable());
@@ -34,8 +32,7 @@ namespace Velvet.StyleTable
             {
                 problems.Add(new UssProblem(
                     UssProblemCode.NoStyleSheets,
-                    "No stylesheet was supplied. An empty table is indistinguishable from a table whose " +
-                    "classes all conflict with nothing, so there is no safe way to emit one."));
+                    "No stylesheet was supplied. Point --styles at the directory holding the USS partials."));
             }
 
             var bitOf = new Dictionary<string, int>(longhands.Length, StringComparer.Ordinal);
@@ -70,9 +67,7 @@ namespace Velvet.StyleTable
             {
                 problems.Add(sheet.ProblemAt(
                     UssProblemCode.MalformedUss,
-                    "Could not read the stylesheet: " + error.Message +
-                    ". Whatever follows is not in the table, so the classes it defines would look like they " +
-                    "set nothing.",
+                    "Could not read the stylesheet: " + error.Message + ".",
                     error.Offset));
             }
 
@@ -111,9 +106,9 @@ namespace Velvet.StyleTable
                 case UssSelectorKind.Unsupported:
                     problems.Add(sheet.ProblemAt(
                         UssProblemCode.UnsupportedConstruct,
-                        $"'{rule.Selector}' is not a USS construct the utility property table can model. It " +
-                        "models class selectors (optionally gated on a pseudo-class or the is-selected " +
-                        "marker class), :root blocks, type-keyed selectors and @import statements.",
+                        $"'{rule.Selector}' is not a selector the table can model. It models a class, " +
+                        "optionally gated on a pseudo-class or the is-selected marker, plus :root blocks, " +
+                        "type-keyed selectors and @import.",
                         rule.Offset));
                     return;
 
@@ -124,11 +119,9 @@ namespace Velvet.StyleTable
                         {
                             problems.Add(sheet.ProblemAt(
                                 UssProblemCode.RootDeclaresNonCustomProperty,
-                                $"':root' declares '{declaration.Property}'. The table skips :root on the " +
-                                "premise that it defines only custom properties, which are values other " +
-                                "declarations read through var() rather than properties an element holds; a " +
-                                "real property declared there applies to the root element and the exclusion " +
-                                "has to be revisited.",
+                                $"':root' declares '{declaration.Property}'. The table skips :root because " +
+                                "custom properties are values var() reads, not properties an element holds; " +
+                                "a real property there needs a deliberate decision.",
                                 declaration.Offset));
                         }
                     }
@@ -147,11 +140,9 @@ namespace Velvet.StyleTable
             {
                 problems.Add(sheet.ProblemAt(
                     UssProblemCode.ClassSpansMultipleGates,
-                    $"Utility class '{target.ClassName}' is already defined under gate '{entry.Gate}' and is " +
-                    $"redefined under gate '{target.Gate}'. A gated rule and an ungated rule live in " +
-                    "different cascade layers, so merging them into one property set would let a " +
-                    "higher-priority class evict a class whose rule only applies in a state that class does " +
-                    "not participate in.",
+                    $"Utility class '{target.ClassName}' is defined under gate '{entry.Gate}' and again " +
+                    $"under gate '{target.Gate}'. A gated and an ungated rule are different cascade layers " +
+                    "and cannot share one property set.",
                     rule.Offset));
                 return;
             }
@@ -163,9 +154,8 @@ namespace Velvet.StyleTable
                     problems.Add(sheet.ProblemAt(
                         UssProblemCode.UtilityDeclaresCustomProperty,
                         $"Utility class '{target.ClassName}' declares custom property " +
-                        $"'{declaration.Property}'. Such a class acts on the elements whose declarations read " +
-                        "it through var(), not on the element carrying the class, and the table has no way " +
-                        "to express that reach.",
+                        $"'{declaration.Property}'. It acts on whatever reads it through var(), not on the " +
+                        "element carrying the class, which the table cannot express.",
                         declaration.Offset));
                     continue;
                 }
@@ -173,9 +163,8 @@ namespace Velvet.StyleTable
                 {
                     problems.Add(sheet.ProblemAt(
                         UssProblemCode.UnknownProperty,
-                        $"'{declaration.Property}' is not a UI Toolkit longhand or shorthand property. Every " +
-                        "declared property must resolve to longhands so that two classes writing the same " +
-                        "storage slot compare equal.",
+                        $"'{declaration.Property}' is not a UI Toolkit longhand or shorthand. Add it to " +
+                        "UssPropertyVocabulary if a newer Unity introduced it.",
                         declaration.Offset));
                     continue;
                 }
