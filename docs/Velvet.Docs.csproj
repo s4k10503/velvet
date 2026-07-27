@@ -38,7 +38,7 @@
     <Reference Include="$(ScriptAssemblies)/Unity.ResourceManager.dll" Private="false" />
   </ItemGroup>
 
-  <!-- The Velvet source generator expands [Memoize] partial methods so the source binds cleanly. -->
+  <!-- The Velvet source generator expands [MemoizeMethod] partial methods so the source binds cleanly. -->
   <ItemGroup>
     <Analyzer Include="$(VelvetPackage)/Runtime/Plugins/Generators/Velvet.SourceGenerators.dll" />
   </ItemGroup>

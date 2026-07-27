@@ -1,15 +1,15 @@
-# Memoization with `[Memoize]`
+# Memoization with `[MemoizeMethod]`
 
-This guide covers the `[Memoize]` attribute — Velvet's partial-method-level memoization driven by the Source Generator. For component-level memoization (`React.memo` equivalent), use `[Component(Memoize = true)]`.
+This guide covers the `[MemoizeMethod]` attribute — Velvet's partial-method-level memoization driven by the Source Generator. For component-level memoization (`React.memo` equivalent), use `[Component(Memoize = true)]`.
 
 ## Overview
 
-Annotate a partial method declaration with `[Memoize]` and the SG generates a `V.Memoized(...)` wrapper body whose deps are auto-extracted from the method parameters. Write the actual implementation in a sibling method with the `_Impl` suffix.
+Annotate a partial method declaration with `[MemoizeMethod]` and the SG generates a `V.Memoized(...)` wrapper body whose deps are auto-extracted from the method parameters. Write the actual implementation in a sibling method with the `_Impl` suffix.
 
 ```csharp
 public static partial class HomePage
 {
-    [Memoize]
+    [MemoizeMethod]
     private static partial VNode BuildHeader(string title, int count);
 
     private static VNode BuildHeader_Impl(string title, int count)
@@ -34,7 +34,7 @@ The generator emits a wrapper that calls `V.Memoized` with the parameters as the
 
 ## Use inside the Runtime asmdef
 
-`[Memoize]` works in any partial class inside `Velvet.asmdef`. The Generator DLL is placed at `Runtime/Plugins/Generators/Velvet.SourceGenerators.dll` and Unity applies it automatically via the `RoslynAnalyzer` label.
+`[MemoizeMethod]` works in any partial class inside `Velvet.asmdef`. The Generator DLL is placed at `Runtime/Plugins/Generators/Velvet.SourceGenerators.dll` and Unity applies it automatically via the `RoslynAnalyzer` label.
 
 ## Diagnostic IDs
 

@@ -173,13 +173,13 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `React.memo(Component)` | `[Component(Memoize = true)]` | An opt-in attribute that shallow-compares props at the reconcile boundary with `Object.is`, and bails out of parent re-render if they are equal |
 | React Compiler (automatic memoization) | no annotation (all `[Component]`) | The ILPP `CompilerWeaver` weaves inner automatic memoization with default-on. Opt out with `[Component(Compiler = false)]` |
 | `useMemo(value, deps)` | `Hooks.UseMemo(() => value, deps)` | Value-memoization hook; recomputes only when a dep changes (use inside render) |
-| `useMemo(() => <X/>, deps)` | `Hooks.UseMemo(() => V.X(), deps)` or `V.Memoized(() => V.X(), deps)` | The hook returns a memoized VNode; `V.Memoized` is a node-level escape hatch usable outside render (e.g. expanded by `[Memoize]`), diff-skipping the subtree |
+| `useMemo(() => <X/>, deps)` | `Hooks.UseMemo(() => V.X(), deps)` or `V.Memoized(() => V.X(), deps)` | The hook returns a memoized VNode; `V.Memoized` is a node-level escape hatch usable outside render (e.g. expanded by `[MemoizeMethod]`), diff-skipping the subtree |
 | `useCallback(fn, deps)` | `Hooks.UseCallback(fn, deps)` | Returns a stable delegate while deps are unchanged |
 
 > **Note — Two memoization axes**  
 > `[Component(Memoize = true)]` is equivalent to **React.memo**, bailing out of parent-driven re-render when props are shallow-equal to the previous ones (opt-in).  
 > **Inner automatic memoization** (equivalent to React Compiler) is **default-on** for all `[Component]`; the ILPP caches VNode construction keyed on hook-derived inputs. No annotation needed. To exclude a specific Component, use `[Component(Compiler = false)]` (equivalent to React's `"use no memo"`).  
-> `Hooks.UseMemo(factory, deps)` is the value-memoization hook (React's `useMemo`). `V.Memoized(factory, deps)` is a node-level escape hatch that explicitly memoizes a **VNode subtree** (callable outside a render, e.g. what `[Memoize]` expands to); the reconciler reuses the cached subtree while the deps are unchanged.
+> `Hooks.UseMemo(factory, deps)` is the value-memoization hook (React's `useMemo`). `V.Memoized(factory, deps)` is a node-level escape hatch that explicitly memoizes a **VNode subtree** (callable outside a render, e.g. what `[MemoizeMethod]` expands to); the reconciler reuses the cached subtree while the deps are unchanged.
 
 ### 2-4. Context
 

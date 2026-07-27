@@ -6,7 +6,7 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies how a <c>[Memoize]</c> partial method, expanded by the generator into a
+    /// Specifies how a <c>[MemoizeMethod]</c> partial method, expanded by the generator into a
     /// <c>V.Memoized(() =&gt; *_Impl(...), args...)</c> call, behaves across reconciliations.
     /// <list type="bullet">
     /// <item>The first reconciliation always misses the dependency cache, so the underlying <c>_Impl</c> body
@@ -21,17 +21,17 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// Each test reconciles a single-element VNode tree twice through a <see cref="Reconciler"/> and observes
-    /// the per-arity <c>*ImplCallCount</c> on <see cref="MemoizeAttributeDemoComponent"/>, which the generated
+    /// the per-arity <c>*ImplCallCount</c> on <see cref="MemoizeMethodAttributeDemoComponent"/>, which the generated
     /// memo wrapper increments only on a build (cache miss).
     /// </remarks>
     [TestFixture]
-    internal sealed class MemoizeAttributeE2ETests : ReconcilerTestFixture
+    internal sealed class MemoizeMethodAttributeE2ETests : ReconcilerTestFixture
     {
         [Test]
         public void Given_Arity1_When_FirstReconcile_Then_ImplRunsOnce()
         {
             // Arrange
-            var demo = new MemoizeAttributeDemoComponent();
+            var demo = new MemoizeMethodAttributeDemoComponent();
             var tree = new VNode[] { demo.BuildArity1("title") };
 
             // Act
@@ -45,7 +45,7 @@ namespace Velvet.Tests
         public void Given_Arity1_When_ReconciledAgainWithSameArg_Then_ImplIsNotReinvoked()
         {
             // Arrange
-            var demo = new MemoizeAttributeDemoComponent();
+            var demo = new MemoizeMethodAttributeDemoComponent();
             var tree1 = new VNode[] { demo.BuildArity1("title") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
             Assume.That(demo.Arity1ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");
@@ -63,7 +63,7 @@ namespace Velvet.Tests
         public void Given_Arity1_When_ReconciledAgainWithChangedArg_Then_ImplIsReinvoked()
         {
             // Arrange
-            var demo = new MemoizeAttributeDemoComponent();
+            var demo = new MemoizeMethodAttributeDemoComponent();
             var tree1 = new VNode[] { demo.BuildArity1("old") };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
             Assume.That(demo.Arity1ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");
@@ -81,7 +81,7 @@ namespace Velvet.Tests
         public void Given_Arity3_When_ReconciledAgainWithSameArgs_Then_ImplIsNotReinvoked()
         {
             // Arrange
-            var demo = new MemoizeAttributeDemoComponent();
+            var demo = new MemoizeMethodAttributeDemoComponent();
             var tree1 = new VNode[] { demo.BuildArity3("t", 1, true) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
             Assume.That(demo.Arity3ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");
@@ -99,7 +99,7 @@ namespace Velvet.Tests
         public void Given_Arity3_When_ReconciledAgainWithOneArgChanged_Then_ImplIsReinvoked()
         {
             // Arrange — only the middle argument differs between the two renders
-            var demo = new MemoizeAttributeDemoComponent();
+            var demo = new MemoizeMethodAttributeDemoComponent();
             var tree1 = new VNode[] { demo.BuildArity3("t", 1, true) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
             Assume.That(demo.Arity3ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");
@@ -117,7 +117,7 @@ namespace Velvet.Tests
         public void Given_Arity8_When_ReconciledAgainWithSameArgs_Then_ImplIsNotReinvoked()
         {
             // Arrange
-            var demo = new MemoizeAttributeDemoComponent();
+            var demo = new MemoizeMethodAttributeDemoComponent();
             var tree1 = new VNode[] { demo.BuildArity8(1, 2, 3, 4, 5, 6, 7, 8) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
             Assume.That(demo.Arity8ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");
@@ -135,7 +135,7 @@ namespace Velvet.Tests
         public void Given_Arity8_When_ReconciledAgainWithLastArgChanged_Then_ImplIsReinvoked()
         {
             // Arrange — only the eighth argument differs
-            var demo = new MemoizeAttributeDemoComponent();
+            var demo = new MemoizeMethodAttributeDemoComponent();
             var tree1 = new VNode[] { demo.BuildArity8(1, 2, 3, 4, 5, 6, 7, 8) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
             Assume.That(demo.Arity8ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");

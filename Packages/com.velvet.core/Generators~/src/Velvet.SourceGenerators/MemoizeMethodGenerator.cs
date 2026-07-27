@@ -16,10 +16,10 @@ namespace Velvet.SourceGenerators
 {
     /// <summary>
     /// Incremental Source Generator that produces the body of a V.Memoized(...) wrapper from a partial method
-    /// declaration annotated with [Memoize].
+    /// declaration annotated with [MemoizeMethod].
     /// </summary>
     /// <remarks>
-    /// User writes:   [Memoize] private partial VNode BuildHeader(string title, int count);
+    /// User writes:   [MemoizeMethod] private partial VNode BuildHeader(string title, int count);
     /// User writes:   private VNode BuildHeader_Impl(string title, int count) => V.Div(...);
     /// SG generates:  private partial VNode BuildHeader(string title, int count)
     ///                  => V.Memoized(() => BuildHeader_Impl(title, count), title, count);
@@ -27,7 +27,7 @@ namespace Velvet.SourceGenerators
     [Generator(LanguageNames.CSharp)]
     public sealed class MemoizeMethodGenerator : IIncrementalGenerator
     {
-        private const string MemoizeAttributeMetadataName = "Velvet.MemoizeAttribute";
+        private const string MemoizeMethodAttributeMetadataName = "Velvet.MemoizeMethodAttribute";
         private const string ImplSuffix = "_Impl";
         internal const int MinArity = 0;
         internal const int MaxArity = 8;
@@ -36,7 +36,7 @@ namespace Velvet.SourceGenerators
         {
             var methodCandidates = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    MemoizeAttributeMetadataName,
+                    MemoizeMethodAttributeMetadataName,
                     predicate: static (node, _) => node is MethodDeclarationSyntax,
                     transform: static (ctx, ct) => BuildCandidate(ctx, ct))
                 .Where(static c => c is not null)!
