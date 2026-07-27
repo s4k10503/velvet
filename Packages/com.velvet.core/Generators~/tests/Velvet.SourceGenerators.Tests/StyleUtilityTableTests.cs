@@ -263,15 +263,190 @@ namespace Velvet.SourceGenerators.Tests
         [Fact]
         public void Given_AnImportStatement_When_TheTableIsDerived_Then_NothingIsReported()
         {
-            // Arrange
+            // Arrange — the partial an aggregator names, then the aggregator, which is where the importer
+            // splices it: an imported sheet precedes the importing sheet's own rules.
             var run = StyleTableTestHelper.Derive(
-                StyleSheetInput.Uss("@import url(\"_tokens.uss\");\n.opacity-50 { opacity: 0.5; }"));
+                new StyleSheetInput("/styles/_tokens.uss", ".opacity-50 { opacity: 0.5; }"),
+                new StyleSheetInput("/styles/StyleUtilities.uss", "@import url(\"_tokens.uss\");"));
 
             // Act
             var codes = run.ProblemCodes;
 
             // Assert
             Assert.Empty(codes);
+        }
+
+        [Fact]
+        public void Given_AnAggregatorSuppliedAheadOfItsImports_When_TheTableIsDerived_Then_TheOrderMismatchIsReported()
+        {
+            // Arrange — an aggregator's own rules outrank every partial's, so a first position would record it
+            // as losing ties it wins.
+            var run = StyleTableTestHelper.Derive(
+                new StyleSheetInput(
+                    "/styles/StyleUtilities.uss",
+                    "@import url(\"_tokens.uss\");\n.opacity-75 { opacity: 0.75; }"),
+                new StyleSheetInput("/styles/_tokens.uss", ".opacity-50 { opacity: 0.5; }"));
+
+            // Act
+            var codes = run.ProblemCodes;
+
+            // Assert
+            Assert.Equal(new[] { UssProblemCode.StyleSheetOrderMismatch }, codes);
+        }
+
+        [Fact]
+        public void Given_APartialNoAggregatorImports_When_TheTableIsDerived_Then_TheOrderMismatchIsReported()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(
+                new StyleSheetInput("/styles/_tokens.uss", ".opacity-50 { opacity: 0.5; }"),
+                new StyleSheetInput("/styles/_stray.uss", ".opacity-25 { opacity: 0.25; }"),
+                new StyleSheetInput("/styles/StyleUtilities.uss", "@import url(\"_tokens.uss\");"));
+
+            // Act
+            var codes = run.ProblemCodes;
+
+            // Assert
+            Assert.Equal(new[] { UssProblemCode.StyleSheetOrderMismatch }, codes);
+        }
+
+        [Fact]
+        public void Given_PartialsSuppliedAgainstTheImportOrder_When_TheTableIsDerived_Then_TheOrderMismatchIsReported()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(
+                new StyleSheetInput("/styles/_effects.uss", ".opacity-25 { opacity: 0.25; }"),
+                new StyleSheetInput("/styles/_tokens.uss", ".opacity-50 { opacity: 0.5; }"),
+                new StyleSheetInput(
+                    "/styles/StyleUtilities.uss",
+                    "@import url(\"_tokens.uss\");\n@import url(\"_effects.uss\");"));
+
+            // Act
+            var codes = run.ProblemCodes;
+
+            // Assert
+            Assert.Equal(new[] { UssProblemCode.StyleSheetOrderMismatch }, codes);
+        }
+
+        [Fact]
+        public void Given_TwoUtilitiesSettingTransitionProperty_When_TheTableIsDerived_Then_TheLaterOneIsOrderedAfter()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(StyleSheetInput.Uss(@"
+.transition-transform { transition-property: translate, scale, rotate; }
+.transition-colors { transition-property: color; }"));
+
+            // Act
+            var ordered = StyleTableTestHelper.Load(run).TransitionUtilitiesInCascadeOrder();
+
+            // Assert
+            Assert.Equal(new[] { "transition-transform", "transition-colors" }, ordered);
+        }
+
+        [Fact]
+        public void Given_AClassSettingTransitionPropertyTwice_When_TheTableIsDerived_Then_TheLaterValueWins()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(StyleSheetInput.Uss(
+                ".util { transition-property: opacity; transition-property: scale; }"));
+
+            // Act
+            var properties = StyleTableTestHelper.Load(run).TransitionPropertiesOf("util");
+
+            // Assert
+            Assert.Equal(new[] { "scale" }, properties);
+        }
+
+        [Fact]
+        public void Given_ATransitionPropertyNamingAShorthand_When_TheTableIsDerived_Then_ItExpandsToTheLonghands()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(
+                StyleSheetInput.Uss(".util { transition-property: border-color; }"));
+
+            // Act
+            var properties = StyleTableTestHelper.Load(run).TransitionPropertiesOf("util");
+
+            // Assert
+            Assert.Equal(
+                new[]
+                {
+                    "border-bottom-color", "border-left-color", "border-right-color", "border-top-color",
+                },
+                properties);
+        }
+
+        [Fact]
+        public void Given_TransitionPropertyNone_When_TheTableIsDerived_Then_ItNamesNoProperty()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(
+                StyleSheetInput.Uss(".util { transition-property: none; }"));
+
+            // Act
+            var properties = StyleTableTestHelper.Load(run).TransitionPropertiesOf("util");
+
+            // Assert
+            Assert.Empty(properties);
+        }
+
+        [Fact]
+        public void Given_TransitionPropertyAll_When_TheTableIsDerived_Then_ItNamesEveryLonghand()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(
+                StyleSheetInput.Uss(".util { transition-property: all; }"));
+            var probe = StyleTableTestHelper.Load(run);
+
+            // Act
+            var covered = probe.TransitionPropertiesOf("util").Count;
+
+            // Assert
+            Assert.Equal(probe.LonghandCount, covered);
+        }
+
+        [Fact]
+        public void Given_AGatedTransitionPropertyDeclaration_When_TheTableIsDerived_Then_ItIsReported()
+        {
+            // Arrange — skipping it silently would leave the guard answering from the ungated declarations for
+            // an element whose gated rule had already replaced them.
+            var run = StyleTableTestHelper.Derive(
+                StyleSheetInput.Uss(".util:hover { transition-property: opacity; }"));
+
+            // Act
+            var codes = run.ProblemCodes;
+
+            // Assert
+            Assert.Equal(new[] { UssProblemCode.GatedTransitionProperty }, codes);
+        }
+
+        [Fact]
+        public void Given_ATransitionPropertyValueCarryingAComment_When_TheTableIsDerived_Then_TheCommentIsNotAToken()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(
+                StyleSheetInput.Uss(".util { transition-property: opacity /* the fade */; }"));
+
+            // Act
+            var properties = StyleTableTestHelper.Load(run).TransitionPropertiesOf("util");
+
+            // Assert
+            Assert.Equal(new[] { "opacity" }, properties);
+        }
+
+        [Fact]
+        public void Given_ATransitionPropertyNamingAnUnknownProperty_When_TheTableIsDerived_Then_ItIsReported()
+        {
+            // Arrange — `transform` is a CSS property UI Toolkit has no storage for; a list naming it
+            // transitions nothing.
+            var run = StyleTableTestHelper.Derive(
+                StyleSheetInput.Uss(".util { transition-property: transform; }"));
+
+            // Act
+            var codes = run.ProblemCodes;
+
+            // Assert
+            Assert.Equal(new[] { UssProblemCode.UnknownTransitionProperty }, codes);
         }
 
         [Theory]
