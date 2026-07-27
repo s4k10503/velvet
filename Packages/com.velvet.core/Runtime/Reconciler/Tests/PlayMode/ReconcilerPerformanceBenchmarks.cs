@@ -208,6 +208,95 @@ namespace Velvet.Tests.Performance
 
         #endregion
 
+        #region B-1-c-2: Re-reconcile — inline-expansion path (Provider / Fragment / Component)
+
+        // Pins the general (inline-expansion) walk, which the Label-only benchmarks above never reach:
+        // a flat host-leaf array routes to the Indexed/Keyed fast path, so the expansion walk early-outs
+        // before its first recursion. The allocation column is the load-bearing one — the walk's own
+        // per-call state is pooled, so a steady-state re-reconcile must not allocate for it.
+        [Test, Performance]
+        public void Reconcile_Expansion_NoChange_100Nodes()
+        {
+            var nodes = BenchmarkHelpers.BuildExpansionNodes(100);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), nodes);
+
+            Measure.Method(() =>
+            {
+                _reconciler.Reconcile(_root, nodes, nodes);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        // Same walk with every emitted leaf changing, so each recursion also runs the commit
+        // (CommitLeaf -> PatchNode) rather than only the structural descent.
+        [Test, Performance]
+        public void Reconcile_Expansion_AllChange_100Nodes()
+        {
+            var oldNodes = BenchmarkHelpers.BuildExpansionNodes(100, prefix: "old-");
+            var newNodes = BenchmarkHelpers.BuildExpansionNodes(100, prefix: "new-");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldNodes);
+
+            Measure.Method(() =>
+            {
+                _reconciler.Reconcile(_root, oldNodes, newNodes);
+                _reconciler.Reconcile(_root, newNodes, oldNodes);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        #endregion
+
+        #region B-1-c-3: Time-sliced indexed diff, driven to completion through the resume entry
+
+        // Every other benchmark passes a zero frame budget, which routes the indexed diff straight
+        // through its non-budgeted path and never parks state. These two force a yield per element so
+        // the parked-state save/restore and the ContinueIndexed resume entry are what gets measured.
+        [Test, Performance]
+        public void Reconcile_BudgetedIndexed_AllChange_200Elements()
+        {
+            var oldNodes = BenchmarkHelpers.BuildLabelNodes(200, prefix: "old-");
+            var newNodes = BenchmarkHelpers.BuildLabelNodes(200, prefix: "new-");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldNodes);
+
+            Measure.Method(() =>
+            {
+                ReconcileToCompletionUnderBudget(oldNodes, newNodes);
+                ReconcileToCompletionUnderBudget(newNodes, oldNodes);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        // Grow then shrink, so the Remove and Add phases are entered through both the phase fall-through
+        // and the resume entry — the Common phase alone would leave two thirds of the machine unmeasured.
+        [Test, Performance]
+        public void Reconcile_BudgetedIndexed_GrowShrink_100To200Elements()
+        {
+            var smallNodes = BenchmarkHelpers.BuildLabelNodes(100);
+            var largeNodes = BenchmarkHelpers.BuildLabelNodes(200);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), smallNodes);
+
+            Measure.Method(() =>
+            {
+                ReconcileToCompletionUnderBudget(smallNodes, largeNodes);
+                ReconcileToCompletionUnderBudget(largeNodes, smallNodes);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        #endregion
+
         #region B-1-d: Pooled-widget recycle (mount -> unmount -> remount)
 
         // Pins the primitive-element pool's recycle path: VNodePool.ReturnLabel / ReturnButton (invoked
@@ -242,6 +331,20 @@ namespace Velvet.Tests.Performance
         #endregion
 
         #region Helpers
+
+        // The smallest positive budget: every element overruns it, so the diff yields after each one and
+        // the whole list commits through ContinueReconcile. A realistic multi-millisecond budget would
+        // finish a 200-element list in a single slice and measure the straight-line path instead.
+        private const double YieldPerElementBudgetMs = 1e-6;
+
+        private void ReconcileToCompletionUnderBudget(VNode[] oldNodes, VNode[] newNodes)
+        {
+            _reconciler.Reconcile(_root, oldNodes, newNodes, YieldPerElementBudgetMs);
+            while (_reconciler.HasPendingWork)
+            {
+                _reconciler.ContinueReconcile(YieldPerElementBudgetMs);
+            }
+        }
 
         /// <summary>
         /// Initial mount on the long-lived Reconciler path. Production reuses one Reconciler per Page/Component,

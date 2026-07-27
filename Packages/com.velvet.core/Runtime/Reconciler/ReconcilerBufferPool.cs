@@ -130,6 +130,15 @@ namespace Velvet
 
         #endregion
 
+        #region GeneralPathReconciler — inline-expansion walk state
+
+        private readonly ClearablePool<GeneralPathReconciler.InlineWalk> _inlineWalkPool = new(w => w.Clear());
+
+        public GeneralPathReconciler.InlineWalk RentInlineWalk() => _inlineWalkPool.Rent();
+        public void ReturnInlineWalk(GeneralPathReconciler.InlineWalk walk) => _inlineWalkPool.Return(walk);
+
+        #endregion
+
         #region FiberNodeFactory.BuildKeyedMapCopy — indexByKey
 
         private readonly ClearablePool<Dictionary<string, int>> _indexByKeyMapPool = new(m => m.Clear());
