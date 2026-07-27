@@ -111,15 +111,15 @@ namespace Velvet
         // never conditions on flex-direction, so ResolveEdge OR's a marker with a detected row-reverse /
         // column-reverse rather than XOR'ing: the idiomatic flex-row-reverse space-x-4 space-x-reverse still
         // lands trailing instead of cancelling back to leading.
-        // Source asymmetry (by design, not an oversight): these markers are extracted from the VNode's
-        // OWN classNames array at gap-config time (FiberNodePatcher.ApplyGapManipulator), the same source
-        // StyleGapClass.TryExtract already reads the gap value and axis from — so a variant-prefixed
-        // md:space-x-reverse resolves however the variant system resolves md: classes generally (it either
-        // is or isn't in THIS render's classNames, before any manipulator ever runs).
-        // StyleFlexDirectionResolver, by contrast, reads the live element's classList, because unlike the
-        // gap spec itself the direction can change out from under the manipulator without a matching
-        // gap-config patch. The two halves of this feature therefore consult different lists on principle,
-        // not by accident — each is authoritative for what it answers.
+        // Source asymmetry (by design, not an oversight): these markers are extracted at gap-config time
+        // from the same class array StyleGapClass.TryExtract reads the gap value and axis from, so a
+        // variant-prefixed md:space-x-reverse resolves with the rest of the spec — the patcher switches
+        // that array to the element's live class list once a variant has toggled any layout gate class onto
+        // it, which is what carries the marker across a breakpoint.
+        // StyleFlexDirectionResolver, by contrast, reads the live element's classList unconditionally,
+        // because unlike the gap spec itself the direction can change out from under the manipulator
+        // without a matching gap-config patch. The two halves of this feature therefore reach the live list
+        // by different routes on principle, not by accident — each is authoritative for what it answers.
         private bool _xReverse;
         private bool _yReverse;
 

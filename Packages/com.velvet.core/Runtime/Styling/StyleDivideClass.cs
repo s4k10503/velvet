@@ -78,6 +78,11 @@ namespace Velvet
             ["8"] = 8f,
         };
 
+        // Single-token half of HasDivideClass. Its own predicate so the prefix has ONE definition — both
+        // the array scan below and the variant-payload gate (StyleVariantPayload) resolve the family here.
+        public static bool IsDivideToken(string cls)
+            => !string.IsNullOrEmpty(cls) && cls.StartsWith("divide-", StringComparison.Ordinal);
+
         // Cheap early-out gate: true when ANY class begins with the divide- prefix. No allocation —
         // used to skip the full TryExtract scan on the ~99% of elements with no divide class.
         public static bool HasDivideClass(string[] classNames)
@@ -88,7 +93,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (!string.IsNullOrEmpty(cls) && cls.StartsWith("divide-", StringComparison.Ordinal))
+                if (IsDivideToken(cls))
                 {
                     return true;
                 }

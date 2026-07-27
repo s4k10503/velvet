@@ -207,19 +207,16 @@ once, which is routine once a responsive/state variant is involved (`flex flex-c
 leaves BOTH `flex-col` and `flex-row` on the live class list above the breakpoint).
 `StyleFlexDirectionResolver` reproduces that exact precedence — checking
 `flex-row-reverse`, then `flex-row`, then `flex-col-reverse`, then `flex-col`, then `flex`, in that
-order —
-and resolves it into ONE mutually-exclusive verdict (axis + reversed-or-not together), rather than an
+order — and resolves it into ONE mutually-exclusive verdict (axis + reversed-or-not together), rather than an
 axis check and a reversed check answered independently: a `gap-x-4` container patched straight from
 `flex-row-reverse` to `flex-col-reverse` (no row-family class survives the patch) needs the reversed
 bit to come from a fresh read of whichever family the CURRENT verdict is, not a stale answer cached
 from the row family that is no longer even present. (`grid` sets `flex-direction: row` too, but is
-deliberately excluded from this scan: a `grid` present in the RECONCILED class array routes the
-element's gap through the separate grid manipulator instead, suppressing this one entirely — see
-"`flex-wrap` and `grid`" below. A variant-gated class such as `md:grid` can still land on the LIVE
-class list outside that reconciled array, a pre-existing gap in the suppression check rather than
-something this change introduces, but it does not change the answer here either way: `grid` implies
-Row, which coincides with this scan's own fallback default, so omitting it never produces a different
-result.)
+deliberately excluded from this scan: a `grid` routes the element's gap through the separate grid
+manipulator instead, suppressing this one entirely — see "`flex-wrap` and `grid`" below — whether it
+arrives as a literal class or through a variant such as `md:grid`. Even if it somehow reached this
+scan it would not change the answer: `grid` implies Row, which coincides with this scan's own
+fallback default.)
 
 Classes are consulted before `resolvedStyle`, even on a panel: the direction classes are USS-only
 rules with no equivalent C# inline `flex-direction` write, so `resolvedStyle.flexDirection` only
@@ -280,9 +277,11 @@ bleeding its negative margin outward over its siblings until something unrelated
 `grid` also sets `flex-direction: row` (and `flex-wrap: wrap`) in `_layout.uss`, but a `grid` /
 `grid-cols-*` class routes an element's gap through the separate grid manipulator entirely —
 `StyleGapManipulator` is suppressed and removed for that element rather than ever computing a
-direction or wrap verdict for it — the suppression itself lives in
-`FiberNodePatcher.ApplyGapManipulator`, which checks for the grid class before the manipulator is
-ever created or updated — so neither class scan needs to (or does) recognize `grid` at all.
+direction or wrap verdict for it. The suppression is decided once per patch, from the same class
+source the two manipulators are configured from, and handed to the gap configuration as a verdict —
+which is also what orders the handoff, since whichever of the two is departing has to release the
+child margins it wrote before the arriving one writes its own. So neither class scan needs to (or
+does) recognize `grid` at all.
 
 ```csharp
 // Wrapping grid: gap-4 now spaces BOTH the row direction and between wrapped rows.

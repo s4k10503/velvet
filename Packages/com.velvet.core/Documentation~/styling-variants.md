@@ -12,6 +12,13 @@ class selectors cannot contain `:`, so these tokens are never written to the ele
 list; the reconciler routes each one to a **manipulator** that toggles the payload on and off
 as the matching signal changes.
 
+A payload may be one of the utilities that is itself realised by a manipulator rather than by a
+USS rule — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance`. Those are
+re-derived when the variant toggles them, so a variant-gated one behaves exactly like a literal
+class, including the ownership rules between them: `className="gap-4 md:grid md:grid-cols-3"` is a
+gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from
+`md` up.
+
 ## The variant set
 
 | Family | Prefixes | Driven by |
