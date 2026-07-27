@@ -5,18 +5,31 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The axis a divide border runs along. divide-x draws a LEFT border between columns,
-    // divide-y draws a TOP border between rows (mirrors GapAxis, minus Auto — the divide
-    // utilities are always explicitly x or y).
+    // The axis a divide border runs along. divide-x divides columns, divide-y divides rows (mirrors GapAxis,
+    // minus Auto — the divide utilities are always explicitly x or y). Which PHYSICAL edge of that axis
+    // carries the border is resolved separately, from the container's direction and the reverse marker — see
+    // StyleDivideManipulator.ResolveEdge.
     internal enum DivideAxis
     {
         Horizontal,
         Vertical,
     }
 
-    // A resolved divide-* utility: the axis + width of the inter-child border, an optional color, and the line
-    // style. A divide is only active when an axis class (divide-x / divide-y / divide-x-N / divide-x-[..]) is
-    // present — a lone divide-{color} does nothing (the color needs a width to show).
+    // The physical edge of a divided child that carries the divider border. Shared with DivideDashPainter,
+    // which needs the edge rather than the axis to place its stroke: a trailing divider's dashes run down the
+    // child's right / bottom edge, where the solid border of the same divider would paint.
+    internal enum DivideEdge
+    {
+        Left,
+        Top,
+        Right,
+        Bottom,
+    }
+
+    // A resolved divide-* utility: the axis + width of the inter-child border, an optional color, the line
+    // style, and whether the divider is reversed onto the axis's trailing edge. A divide is only active when
+    // an axis class (divide-x / divide-y / divide-x-N / divide-x-[..]) is present — a lone divide-{color},
+    // and a lone divide-x-reverse, do nothing (both need a width to show).
     internal readonly struct DivideSpec
     {
         public readonly DivideAxis Axis;
@@ -25,27 +38,33 @@ namespace Velvet
         public readonly Color Color;
         public readonly BorderLineStyle Style;
 
-        public DivideSpec(DivideAxis axis, float width, bool hasColor, Color color, BorderLineStyle style)
+        // The divide-x-reverse / divide-y-reverse marker FOR THE AXIS THIS SPEC RESOLVED TO. Unlike gap's
+        // Auto axis, a divide always names its axis in the class itself, so the cross-axis marker can never
+        // become relevant later and is dropped at parse time rather than carried per axis: divide-y with a
+        // divide-x-reverse is simply not reversed.
+        public readonly bool Reverse;
+
+        public DivideSpec(DivideAxis axis, float width, bool hasColor, Color color, BorderLineStyle style, bool reverse)
         {
             Axis = axis;
             Width = width;
             HasColor = hasColor;
             Color = color;
             Style = style;
+            Reverse = reverse;
         }
     }
 
     // Parses Velvet's divide-x / divide-y (and divide-x-{0,2,4,8} widths, the
-    // divide-x-[Npx] JIT arbitrary form, and divide-{color}) into a DivideSpec for
-    // StyleDivideManipulator, which writes the inter-child leading border (border-left for x,
-    // border-top for y) on every child except the first — the `> * + *` divider rule, which
-    // no USS selector can express (UI Toolkit has no :first-child and no `> *` child combinator).
+    // divide-x-[Npx] JIT arbitrary form, divide-{color}, and the divide-x-reverse / divide-y-reverse
+    // markers) into a DivideSpec for StyleDivideManipulator, which writes the inter-child border on
+    // every child except the first — the `> * + *` divider rule, which no USS selector can express
+    // (UI Toolkit has no :first-child and no `> *` child combinator).
     //
     // Deviations (UI Toolkit constraints):
     //   - divide-dashed / divide-dotted have no UI Toolkit border-style, so they are painted by
     //     DivideDashPainter on each divided child's own generateVisualContent (the manipulator still writes
     //     the real gutter width and masks the color with the sentinel). divide-double is still unsupported.
-    //   - divide-*-reverse is unsupported.
     //   - A single element resolves ONE axis (last axis class wins, CSS-cascade order); divide-x and
     //     divide-y are not combined onto the same element.
     internal static class StyleDivideClass
@@ -78,8 +97,8 @@ namespace Velvet
         }
 
         // Scans classNames for the divide utilities and accumulates the axis + width (last axis class
-        // wins) and color (last color class wins). Returns false when no axis class is present — a lone
-        // divide-{color} is inert.
+        // wins), color (last color class wins) and the per-axis reverse markers. Returns false when no axis
+        // class is present — a lone divide-{color}, or a lone divide-x-reverse, is inert.
         public static bool TryExtract(string[] classNames, out DivideSpec spec)
         {
             spec = default;
@@ -94,6 +113,8 @@ namespace Velvet
             var hasColor = false;
             var color = default(Color);
             var style = BorderLineStyle.Solid;
+            var xReverse = false;
+            var yReverse = false;
 
             foreach (var cls in classNames)
             {
@@ -102,7 +123,21 @@ namespace Velvet
                     continue;
                 }
 
-                if (TryParseAxisWidth(cls, out var a, out var w))
+                // Checked before the axis/width parse: divide-x-reverse shares the divide-x prefix, and
+                // reading it as a width would depend on "reverse" failing every width parse rather than on
+                // this being a marker.
+                if (TryParseReverse(cls, out var reverseAxis))
+                {
+                    if (reverseAxis == DivideAxis.Horizontal)
+                    {
+                        xReverse = true;
+                    }
+                    else
+                    {
+                        yReverse = true;
+                    }
+                }
+                else if (TryParseAxisWidth(cls, out var a, out var w))
                 {
                     foundAxis = true;
                     axis = a;
@@ -117,16 +152,41 @@ namespace Velvet
                     hasColor = true;
                     color = c;
                 }
-                // Otherwise an unsupported divide-* (divide-double, divide-*-reverse, …): skip it without
-                // disturbing the accumulated spec.
+                // Otherwise an unsupported divide-* (divide-double, …): skip it without disturbing the
+                // accumulated spec.
             }
 
             if (!foundAxis)
             {
                 return false;
             }
-            spec = new DivideSpec(axis, width, hasColor, color, style);
+            // The marker on the OTHER axis is discarded here: the axis is final by now, and a marker that
+            // does not name it can never apply.
+            var reverse = axis == DivideAxis.Horizontal ? xReverse : yReverse;
+            spec = new DivideSpec(axis, width, hasColor, color, style, reverse);
             return true;
+        }
+
+        // divide-x-reverse / divide-y-reverse. Each is an ABSOLUTE per-axis instruction — "put the divider on
+        // the trailing physical edge" — that Tailwind never conditions on flex-direction, so
+        // StyleDivideManipulator.ResolveEdge OR's it with a detected row-reverse / column-reverse rather than
+        // XOR'ing: the idiomatic flex-row-reverse divide-x divide-x-reverse still lands trailing instead of
+        // cancelling back to leading. Matched exactly, so a divide-x-reverse-something is left to the parses
+        // below rather than swallowed here.
+        private static bool TryParseReverse(string cls, out DivideAxis axis)
+        {
+            switch (cls)
+            {
+                case "divide-x-reverse":
+                    axis = DivideAxis.Horizontal;
+                    return true;
+                case "divide-y-reverse":
+                    axis = DivideAxis.Vertical;
+                    return true;
+                default:
+                    axis = DivideAxis.Horizontal;
+                    return false;
+            }
         }
 
         // divide-solid / divide-dashed / divide-dotted (the last one wins in the cascade). divide-solid is the

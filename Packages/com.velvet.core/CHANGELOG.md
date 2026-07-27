@@ -33,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Tailwind's own `space-*-reverse` semantics. See `Documentation~/styling-flexbox-and-gap.md` for
   the combination rule with a `flex-row-reverse` / `flex-col-reverse` container (OR, not XOR) and
   the one case where the marker ends up a no-op.
+- `divide-x-reverse` / `divide-y-reverse` are recognized, previously documented as an explicit cut.
+  Each moves its axis's divider border to the trailing physical edge (`border-right` /
+  `border-bottom`), and combines with a reversed container the same way the `space-*-reverse` markers
+  do: OR per axis, never XOR. A lone marker with no `divide-x` / `divide-y` stays inert, since it has
+  no width to move.
 
 ### Changed
 
@@ -113,6 +118,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `null` preserves; give it an explicit `key` when the index itself moves, such as a provider appended
   after a variable number of siblings — keying the provider pins its own place among its siblings, so an
   unkeyed fragment or component enclosing it needs a key of its own if that is what moves.
+  (or plain) form as the base, or render one direction class computed in C#. The `gap-*` and `divide-*`
+  polyfills resolve their axis from the same precedence and were updated in lockstep, so spacing and
+  dividers still follow the axis the container actually renders on.
+- `divide-x-*` / `divide-y-*` drew their rule on the wrong side of every pair inside a
+  `flex-row-reverse` / `flex-col-reverse` container. The divider edge was picked from the axis alone
+  and never consulted the container's direction, so the rule between the two visually adjacent
+  children was missing while an extra rule appeared along the container's own outer edge. **This moves
+  the rules of every reversed `divide-*` container.** An app that compensated for the old placement —
+  an extra `border-*` on a child, a spacer, a hand-rolled divider — now gets that compensation *plus*
+  the correctly placed rule, and should drop it. Non-reversed containers are unaffected. The direction
+  is read from the direction classes first and `resolvedStyle` only as a fallback, so a runtime
+  `flex-row` ↔ `flex-row-reverse` toggle converges on the patch itself rather than waiting for a
+  geometry event that a flip between two same-size directions never fires. See
+  `Documentation~/styling-flexbox-and-gap.md`.
 - The VEL100 exhaustive-deps analyzer now also covers `Hooks.UseInsertionEffect` and `Hooks.UseBlocker`.
   Both take a closure plus a deps array, but neither was listed as a deps-comparing hook, so a captured
   value missing from their deps went unreported.
