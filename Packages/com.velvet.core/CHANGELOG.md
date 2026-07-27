@@ -122,20 +122,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same shape left `md:gap-4` spacing nothing. Each of the four is now re-derived when a variant
   toggles it, in either direction, so a variant-gated class behaves exactly like a literal one —
   including the ownership handoff between gap and grid (the grid owns its children's margins, and the
-  gap manipulator is suppressed for it).
+  gap manipulator is suppressed for it). One consequence to know: declaring the same token BOTH
+  literally and behind a variant (`gap-4 md:gap-4`) now loses the manipulator when the variant
+  deactivates, because a variant payload is toggled on the class list rather than reference-counted
+  against the literal. Declare the base once and let the variant override it (`gap-4 md:gap-8`) — see
+  `Documentation~/styling-variants.md`.
 - Losing a `grid` class while keeping a `gap-*` one (`grid grid-cols-3 gap-4` → `flex gap-4`) left the
   children with no spacing at all: the arriving gap manipulator wrote its margins before the departing
   grid manipulator cleared the margins IT had written, and that clear took the new ones with it.
   Whichever of the two is departing now releases its writes first.
-- Removing a `text-balance` class from an element that also carries a `max-w-[…]` utility restores that
-  utility's own max-width reliably. `text-balance` borrows the element's inline max-width while active
-  and nulls it on detach, and the restore used to re-scan the class list — which cannot see a bracket
-  value, since those resolve to inline style instead of entering the class list. It now restores from
-  the recorded value directly, so a max-width supplied by a variant (`dark:max-w-[80px]`) comes back too.
-- A `clip-path-*` payload carried by a structural (`first:`), `has-[.class]:`, `data-`/`aria-` or
-  `supports-` variant now re-resolves the element's clip mask when it toggles. UI Toolkit has no
-  `clip-path` property, so the class toggle alone does nothing and the mask has to be re-derived from
-  the live class list; the state, theme and relational variants already did this and these four did not.
+- Removing a `text-balance` class from an element whose max-width comes from a VARIANT
+  (`dark:max-w-[80px] text-balance` with the dark theme active) left the element with no max-width at
+  all. `text-balance` borrows that inline slot while it is attached and nulls it on detach, and the
+  restore re-derived the value by scanning the element's class list — which skips variant tokens, since
+  a variant's payload is not a utility of the element itself. Nothing else re-asserts that layer, so the
+  width was gone for good. The restore now reads the recorded value directly and no longer cares how the
+  token was spelled. A max-width from the element's own `max-w-[…]` utility was already restored
+  correctly and is unchanged.
+- On an element that already carries a clip — a base `clip-path-*`, or one from a state, theme,
+  responsive or relational variant — a `clip-path-*` payload carried by a structural (`first:`),
+  `has-[.class]:`, `data-`/`aria-` or `supports-` variant now re-resolves the mask when it toggles.
+  UI Toolkit has no `clip-path` property, so the class toggle alone does nothing and the mask has to be
+  re-derived from the live class list, which only the first group's own toggles used to do. A clip
+  declared ONLY by one of these four families is still inert: nothing gives such an element the wrapper
+  the mask is painted into.
 - The VEL100 exhaustive-deps analyzer now also covers `Hooks.UseInsertionEffect` and `Hooks.UseBlocker`.
   Both take a closure plus a deps array, but neither was listed as a deps-comparing hook, so a captured
   value missing from their deps went unreported.

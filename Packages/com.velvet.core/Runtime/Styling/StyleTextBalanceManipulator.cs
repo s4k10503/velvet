@@ -325,10 +325,10 @@ namespace Velvet
         }
 
         // Clears the inline maxWidth this manipulator wrote and drops the parent subscription (invoked on
-        // detach / removal). Restoring a co-present max-w-* utility's own value, when this is a class
-        // removal rather than a full unmount, is the CALLER's job (see the class doc's ownership
-        // paragraph): this manipulator knows only that it borrowed the slot, not what the element's
-        // cascade says should be in it.
+        // detach / removal). Putting a co-present max-w-* value BACK is the caller's job (see the class
+        // doc's ownership paragraph): this manipulator knows only that it borrowed the slot, not what the
+        // element's cascade says belongs in it. The caller restores on a class removal and skips it on a
+        // full unmount, where the element's whole layer record is dropped moments later regardless.
         private void Clear()
         {
             if (target is TextElement textElement)
