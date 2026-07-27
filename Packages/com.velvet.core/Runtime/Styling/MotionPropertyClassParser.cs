@@ -95,6 +95,104 @@ namespace Velvet
         internal static bool IsColor(ArbitraryProperty property)
             => property is ArbitraryProperty.TextColor or ArbitraryProperty.BackgroundColor or ArbitraryProperty.BorderColor;
 
+        // The physical style slots a property writes, as a family plus a bitmask within it. Two properties can
+        // only ever collide inside one family (a padding shorthand against a padding edge, a radius shorthand
+        // against a corner), so a small per-family mask expresses every overlap without a global slot table.
+        // None means the property owns its slot outright and can never collide.
+        private enum SlotFamily { None, Sizing, Edge, Padding, Margin, Radius, BorderWidth }
+
+        private const int SlotA = 1, SlotB = 2, SlotC = 4, SlotD = 8, SlotE = 16, SlotF = 32;
+
+        /// <summary>
+        /// True when two DIFFERENT properties write at least one style slot in common — a shorthand against one
+        /// of its own longhands (<c>p-*</c> vs <c>pt-*</c>, <c>size-*</c> vs <c>w-*</c>, <c>inset-*</c> vs
+        /// <c>top-*</c>, <c>rounded-*</c> vs <c>rounded-tl-*</c>, <c>border-*</c> vs <c>border-t-*</c>).
+        /// </summary>
+        internal static bool WritesOverlappingSlots(ArbitraryProperty a, ArbitraryProperty b)
+        {
+            if (a == b)
+            {
+                return false;
+            }
+            var (familyA, maskA) = SlotFootprint(a);
+            var (familyB, maskB) = SlotFootprint(b);
+            return familyA == familyB && familyA != SlotFamily.None && (maskA & maskB) != 0;
+        }
+
+        // Slot letters are positional within a family: Edge / Padding / Margin / BorderWidth read A..D as
+        // top / right / bottom / left, Radius as top-left / top-right / bottom-left / bottom-right, Sizing as
+        // width / height / min-width / min-height / max-width / max-height.
+        private static (SlotFamily Family, int Mask) SlotFootprint(ArbitraryProperty property) => property switch
+        {
+            ArbitraryProperty.Width => (SlotFamily.Sizing, SlotA),
+            ArbitraryProperty.Height => (SlotFamily.Sizing, SlotB),
+            ArbitraryProperty.Size => (SlotFamily.Sizing, SlotA | SlotB),
+            ArbitraryProperty.MinWidth => (SlotFamily.Sizing, SlotC),
+            ArbitraryProperty.MinHeight => (SlotFamily.Sizing, SlotD),
+            ArbitraryProperty.MaxWidth => (SlotFamily.Sizing, SlotE),
+            ArbitraryProperty.MaxHeight => (SlotFamily.Sizing, SlotF),
+
+            ArbitraryProperty.Top => (SlotFamily.Edge, SlotA),
+            ArbitraryProperty.Right => (SlotFamily.Edge, SlotB),
+            ArbitraryProperty.Bottom => (SlotFamily.Edge, SlotC),
+            ArbitraryProperty.Left => (SlotFamily.Edge, SlotD),
+            ArbitraryProperty.Inset => (SlotFamily.Edge, SlotA | SlotB | SlotC | SlotD),
+            ArbitraryProperty.InsetX => (SlotFamily.Edge, SlotB | SlotD),
+            ArbitraryProperty.InsetY => (SlotFamily.Edge, SlotA | SlotC),
+
+            ArbitraryProperty.PaddingTop => (SlotFamily.Padding, SlotA),
+            ArbitraryProperty.PaddingRight => (SlotFamily.Padding, SlotB),
+            ArbitraryProperty.PaddingBottom => (SlotFamily.Padding, SlotC),
+            ArbitraryProperty.PaddingLeft => (SlotFamily.Padding, SlotD),
+            ArbitraryProperty.Padding => (SlotFamily.Padding, SlotA | SlotB | SlotC | SlotD),
+            ArbitraryProperty.PaddingX => (SlotFamily.Padding, SlotB | SlotD),
+            ArbitraryProperty.PaddingY => (SlotFamily.Padding, SlotA | SlotC),
+
+            ArbitraryProperty.MarginTop => (SlotFamily.Margin, SlotA),
+            ArbitraryProperty.MarginRight => (SlotFamily.Margin, SlotB),
+            ArbitraryProperty.MarginBottom => (SlotFamily.Margin, SlotC),
+            ArbitraryProperty.MarginLeft => (SlotFamily.Margin, SlotD),
+            ArbitraryProperty.Margin => (SlotFamily.Margin, SlotA | SlotB | SlotC | SlotD),
+            ArbitraryProperty.MarginX => (SlotFamily.Margin, SlotB | SlotD),
+            ArbitraryProperty.MarginY => (SlotFamily.Margin, SlotA | SlotC),
+
+            ArbitraryProperty.BorderTopLeftRadius => (SlotFamily.Radius, SlotA),
+            ArbitraryProperty.BorderTopRightRadius => (SlotFamily.Radius, SlotB),
+            ArbitraryProperty.BorderBottomLeftRadius => (SlotFamily.Radius, SlotC),
+            ArbitraryProperty.BorderBottomRightRadius => (SlotFamily.Radius, SlotD),
+            ArbitraryProperty.BorderRadius => (SlotFamily.Radius, SlotA | SlotB | SlotC | SlotD),
+            ArbitraryProperty.BorderTopRadius => (SlotFamily.Radius, SlotA | SlotB),
+            ArbitraryProperty.BorderRightRadius => (SlotFamily.Radius, SlotB | SlotD),
+            ArbitraryProperty.BorderBottomRadius => (SlotFamily.Radius, SlotC | SlotD),
+            ArbitraryProperty.BorderLeftRadius => (SlotFamily.Radius, SlotA | SlotC),
+
+            ArbitraryProperty.BorderTopWidth => (SlotFamily.BorderWidth, SlotA),
+            ArbitraryProperty.BorderRightWidth => (SlotFamily.BorderWidth, SlotB),
+            ArbitraryProperty.BorderBottomWidth => (SlotFamily.BorderWidth, SlotC),
+            ArbitraryProperty.BorderLeftWidth => (SlotFamily.BorderWidth, SlotD),
+            ArbitraryProperty.BorderWidth => (SlotFamily.BorderWidth, SlotA | SlotB | SlotC | SlotD),
+
+            // background-color, color, border-color, flex-basis, font-size and letter-spacing each own their
+            // slot alone — border-color is the only utility writing the four border colors.
+            _ => (SlotFamily.None, 0),
+        };
+
+        /// <summary>
+        /// True when the magnitude of <paramref name="property"/> can legitimately go negative (a pulled-in
+        /// margin, an offset past its edge, tightened tracking). Every other length is a non-negative extent, so
+        /// a driver overshooting below zero has to saturate rather than emit a value nothing can render.
+        /// </summary>
+        internal static bool AllowsNegativeLength(ArbitraryProperty property) => property switch
+        {
+            ArbitraryProperty.MarginTop or ArbitraryProperty.MarginRight or ArbitraryProperty.MarginBottom
+                or ArbitraryProperty.MarginLeft or ArbitraryProperty.Margin or ArbitraryProperty.MarginX
+                or ArbitraryProperty.MarginY => true,
+            ArbitraryProperty.Top or ArbitraryProperty.Right or ArbitraryProperty.Bottom or ArbitraryProperty.Left
+                or ArbitraryProperty.Inset or ArbitraryProperty.InsetX or ArbitraryProperty.InsetY => true,
+            ArbitraryProperty.LetterSpacing => true,
+            _ => false,
+        };
+
         // The properties a per-frame driver may own. Opacity and the transform quartet are excluded because
         // MotionSpringClassParser's own axes already drive them (with their identity-value fallbacks and the
         // translate/scale composition their shared inline styles need); filter-* is excluded because

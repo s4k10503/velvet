@@ -208,6 +208,13 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   "transparent"), so a property only one side names is **not** animated: the swap lands it
   instantly. The same applies to a pair whose two sides carry different units (`w-1/2` →
   `w-[200px]`) — a percentage resolves against a laid-out parent this path cannot consult.
+- **Don't mix a shorthand with its own longhand in one delta.** `p-8` beside `pt-2` — or `size-*`
+  beside `w-*`, `inset-*` beside `top-*`, `rounded-*` beside `rounded-tl-*`, `border-*` beside
+  `border-t-*` — makes two utilities claim one slot, and the animation declines to guess: the whole
+  overlapping group drops out and lands with the class swap instead. Nothing is silently
+  half-animated, which is what the alternative (animate the longhand, snap the shorthand) would
+  give you — one edge gliding while the other three jump. Use one or the other on a given axis, the
+  same rule that already applies to arbitrary values layered on a single property.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
@@ -215,13 +222,21 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   modes, not magnitudes; `rounded-full` is a saturating pill sentinel; `shadow-*`, `skew-*` and
   gradients are baked silhouette paints; `filter-*` is driven by its own opt-in
   `transition-filter`; `z-*` is a physical reparent.
-- **The element's own USS transition is suspended while a driver runs.** A driver writes the exact
-  value the curve or the physics calls for on that frame, so a `transition-all` /
-  `transition-colors` / `transition-transform` class on the same element would restart a native
+- **A colour- or length-driving play suspends the element's own USS transitions while it runs.** A
+  driver writes the exact value the curve or the physics calls for on that frame, so a
+  `transition-colors` / `transition-all` class on the same element would restart a native
   transition on every one of those writes and leave the painted value trailing for the whole play.
-  UI Toolkit's `transition-property` has no "everything except these" spelling, so the suspension
-  is element-wide for the duration of the play and is released the moment the play settles or is
-  cancelled. Reach for `Tween` when you want the class's own transition to do the work.
+  UI Toolkit's `transition-property` is a positive list with no "everything except these" spelling,
+  and the declared list cannot be read before the element is on a panel, so the suspension is
+  necessarily element-wide: while it is up the element's *other* transitions land instantly too — a
+  `hover:bg-*` fade included — and that covers the play's `DelaySec` and stagger slot, since the
+  element is already parked at its from-pose across that window. This is **narrower than Framer
+  Motion**, which takes over only the values it animates and leaves the element's other CSS
+  transitions running; UI Toolkit gives no way to express that. Two overlapping plays each hold
+  their own claim, so the first to finish cannot un-suspend the second, and the suspension lifts as
+  soon as the last one settles or is cancelled. **A play confined to the transform quartet suspends
+  nothing** — the cost is paid only where the driver and the class would actually fight over a
+  slot. Reach for `Tween` when you want the class's own transition to do the work instead.
 
 ## Cubic-bezier easing
 

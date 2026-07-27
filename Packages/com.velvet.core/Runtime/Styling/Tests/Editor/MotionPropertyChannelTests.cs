@@ -430,6 +430,124 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnAuthoredLonghandUnderADrivenShorthand_When_ThePlayIsReleased_Then_TheAuthoredValueIsBack()
+        {
+            // Arrange — pt-[2px] is an arbitrary token, so it lives as a Base layer and an inline value and
+            // never enters the USS class list. The driven `padding` channel owns all four edges, including that
+            // one, so releasing the play has to hand the edge back to the layer rather than just null it.
+            var element = new VisualElement();
+            StyleArbitraryValueResolver.ApplyClassToken(element, "pt-[2px]", StyleLayerPriority.Base);
+            var authored = element.style.paddingTop.value;
+            var state = CreateHalfway(element, new[] { "p-0" }, new[] { "p-8" });
+
+            // Act
+            if (state != null)
+            {
+                BezierTweenDriver.ClearInlineOverrides(element, state);
+            }
+
+            // Assert — the authored longhand was in force before the play and is in force after it.
+            var authoredThenRestored = state == null ? default : (authored, element.style.paddingTop.value);
+            var twoPixels = new Length(2f, LengthUnit.Pixel);
+            Assert.That(authoredThenRestored, Is.EqualTo((twoPixels, twoPixels)));
+        }
+
+        [Test]
+        public void Given_AShorthandBesideAOneSidedLonghand_When_Resolved_Then_TheOverlappingGroupIsNotPlanned()
+        {
+            // Arrange / Act — pt-2 is unpaired, so animating the p- shorthand alone would drive the top edge
+            // toward 32 and then pop it to 8 at the end of every play.
+            var plan = MotionSpringClassParser.Resolve(new[] { "p-0" }, new[] { "p-8", "pt-2" });
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
+        [Test]
+        public void Given_AShorthandBesideABothSidedLonghand_When_Resolved_Then_TheOverlappingGroupIsNotPlanned()
+        {
+            // Arrange / Act — two channels writing one slot would let the order they happen to be visited, not
+            // the specificity that decides the resting value, pick the winner for the length of the play.
+            var plan = MotionSpringClassParser.Resolve(new[] { "p-0", "pt-4" }, new[] { "p-8", "pt-2" });
+
+            // Assert
+            Assert.That(plan.IsEmpty, Is.True);
+        }
+
+        [Test]
+        public void Given_TwoLivePlaysOnOneElement_When_TheFirstIsReleased_Then_TheNativeTransitionStaysSuspended()
+        {
+            // Arrange — the patcher can start a scheduler play and a layoutId spring against one element, so an
+            // absolute restore would let whichever settles first un-suspend the one still writing every frame.
+            var element = new VisualElement();
+            var first = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
+            var second = CreateHalfway(element, new[] { "rounded-none" }, new[] { "rounded-3xl" });
+
+            // Act
+            if (first != null)
+            {
+                BezierTweenDriver.ClearInlineOverrides(element, first);
+            }
+
+            // Assert — the surviving play still owns the suspension.
+            var stillSuspended = element.style.transitionProperty.keyword != StyleKeyword.Null;
+            Assert.That((first != null, second != null, stillSuspended), Is.EqualTo((true, true, true)));
+        }
+
+        [Test]
+        public void Given_APlayConfinedToTheTransformQuartet_When_Started_Then_TheElementsOwnTransitionIsUntouched()
+        {
+            // Arrange — .transition-colors names no property this play drives, so suspending would cost the
+            // element its hover fade for the whole play and buy nothing.
+            var element = new VisualElement();
+            element.AddToClassList("transition-colors");
+
+            // Act
+            var state = CreateHalfway(element, new[] { "opacity-0" }, new[] { "opacity-100" });
+
+            // Assert
+            Assert.That((state != null, element.style.transitionProperty.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_AnAnticipateCurveOnAWidthChannel_When_SteppedBelowZero_Then_TheEmittedWidthSaturates()
+        {
+            // Arrange — the same anticipate lobe the color clamp is pinned against, on a magnitude this time: a
+            // width below zero is not a value the layout engine can honor.
+            var element = new VisualElement();
+            var plan = MotionSpringClassParser.Resolve(new[] { "w-0" }, new[] { "w-32" });
+            var state = BezierTweenDriver.Create(plan, x1: 0.5f, y1: -1.5f, x2: 0.5f, y2: 1f, durationSec: 1f);
+            Assume.That(CubicBezierEvaluator.Evaluate(0.5f, -1.5f, 0.5f, 1f, 0.25f), Is.LessThan(0f),
+                "Precondition: the curve's anticipate lobe is below zero at this sample");
+
+            // Act
+            var width = float.NaN;
+            if (state != null)
+            {
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+                BezierTweenDriver.Step(element, state, 0.25f);
+                width = element.style.width.value.value;
+            }
+
+            // Assert
+            Assert.That(width, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void Given_ANegativeMarginPair_When_SteppedToHalfTheDuration_Then_TheMagnitudeStaysNegative()
+        {
+            // Arrange / Act — a pulled-in margin is a legitimate negative, so the saturation that protects the
+            // extents must not reach it.
+            var element = new VisualElement();
+            var state = CreateHalfway(element, new[] { "-mt-4" }, new[] { "-mt-8" });
+
+            // Assert — -16px to -32px, sampled halfway.
+            Assert.That(state != null ? (Length?)element.style.marginTop.value : null,
+                Is.EqualTo(new Length(-24f, LengthUnit.Pixel)));
+        }
+
+        [Test]
         public void Given_AVariantDeltaMixingAColorAndTheOpacityAxis_When_Resolved_Then_BothChannelsArePlanned()
         {
             // Arrange / Act — the property channels are additive to the fixed axes, not a replacement for them.

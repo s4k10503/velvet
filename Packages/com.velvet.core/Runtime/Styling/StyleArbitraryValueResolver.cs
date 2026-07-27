@@ -719,6 +719,30 @@ namespace Velvet
             ResolveAndApply(element, ArbitraryProperty.FilterCustom, map);
         }
 
+        // Re-asserts the winning layer for EVERY property this element still has layers registered for.
+        //
+        // The release path of a per-frame driver (MotionSpringDriver / BezierTweenDriver) needs this because
+        // ClearInline nulls whole shorthand fan-outs — a driven `padding` channel owns all four edges — while an
+        // authored longhand (pt-[2px]) is registered against ONE of those edges. Nulling the four and stopping
+        // would leave that edge on whatever the driver last wrote, permanently: the layer map still records the
+        // authored value, so nothing else re-applies it, and the next unrelated variant release on that property
+        // would resurrect it out of nowhere. Re-asserting the whole map instead of the driven properties alone is
+        // what makes that correct regardless of which shorthand overlapped which longhand.
+        //
+        // Reads the map without mutating it, so a driver that never registered a layer leaves it untouched and
+        // the recorded cascade stays exactly what the class diff put there.
+        internal static void ReapplyLayeredValues(VisualElement element)
+        {
+            if (element == null || !s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            foreach (var property in map.Keys)
+            {
+                ResolveAndApply(element, property, map);
+            }
+        }
+
         // Drops all arbitrary-value layers tracked for element. Called when the element is
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)

@@ -160,14 +160,19 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Suspends the element's native transitions for the rest of this play (see
-        /// <see cref="MotionNativeTransitionGuard"/>) and writes each channel's CURRENT eased value as an inline
-        /// style, synchronously — so the element shows the from-pose on the very first rendered frame instead of
-        /// flashing at the (already-applied) resting classes' value until the first tick runs.
+        /// Writes each channel's CURRENT eased value as an inline style, synchronously — so the element shows
+        /// the from-pose on the very first rendered frame instead of flashing at the (already-applied) resting
+        /// classes' value until the first tick runs — after suspending the element's native transitions when
+        /// this play drives a property one of them could intercept. See
+        /// <see cref="MotionSpringDriver.ApplyCurrentValues"/> for why the suspension goes up with this first
+        /// write rather than with the recurring tick.
         /// </summary>
         public static void ApplyCurrentValues(VisualElement element, BezierTweenState state)
         {
-            MotionNativeTransitionGuard.Suspend(element);
+            if (state.Colors != null || state.Lengths != null)
+            {
+                MotionNativeTransitionGuard.Suspend(element, state);
+            }
             ApplyEased(element, state, CurrentEased(state));
         }
 
@@ -187,8 +192,10 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Clears every inline override this state ever wrote — including the transition suspension
+        /// Releases every inline slot this state ever wrote — and the transition suspension
         /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
+        /// See <see cref="MotionSpringDriver.ClearInlineOverrides"/> for why the surviving arbitrary-value
+        /// layers are re-asserted only after every slot has been nulled.
         /// </summary>
         public static void ClearInlineOverrides(VisualElement element, BezierTweenState state)
         {
@@ -204,7 +211,8 @@ namespace Velvet
             {
                 foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
             }
-            MotionNativeTransitionGuard.Restore(element);
+            StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+            MotionNativeTransitionGuard.Release(element, state);
         }
 
         /// <summary>
@@ -291,7 +299,7 @@ namespace Velvet
             {
                 foreach (var l in state.Lengths)
                 {
-                    var v = Mathf.LerpUnclamped(l.Value.From, l.Value.To, eased);
+                    var v = MotionPropertyInterpolation.LerpLength(l.Property, l.Value.From, l.Value.To, eased);
                     StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }

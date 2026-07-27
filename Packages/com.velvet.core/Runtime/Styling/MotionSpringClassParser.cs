@@ -250,6 +250,8 @@ namespace Velvet
         /// the plain class swap, which lands it instantly. A length pair whose two sides carry DIFFERENT units
         /// falls back the same way: a percentage resolves against a laid-out parent this path cannot consult, so
         /// there is no common space to interpolate a px↔% pair in.
+        /// A shorthand and one of its own longhands appearing in the same delta drops BOTH — see
+        /// <see cref="OverlapsAnotherNamedProperty"/>.
         /// </summary>
         private static void PairProperties(Dictionary<ArbitraryProperty, ArbitraryStyle>? fromProperties,
             Dictionary<ArbitraryProperty, ArbitraryStyle>? toProperties, ref SpringPlan plan)
@@ -260,7 +262,8 @@ namespace Velvet
             }
             foreach (var (property, from) in fromProperties)
             {
-                if (!toProperties.TryGetValue(property, out var to))
+                if (!toProperties.TryGetValue(property, out var to)
+                    || OverlapsAnotherNamedProperty(property, fromProperties, toProperties))
                 {
                     continue;
                 }
@@ -277,6 +280,44 @@ namespace Velvet
                 (plan.Lengths ??= new List<LengthChannelPlan>())
                     .Add(new LengthChannelPlan(property, from.Value, to.Value, from.Unit));
             }
+        }
+
+        /// <summary>
+        /// True when any OTHER property either side names writes a style slot <paramref name="property"/> also
+        /// writes — a shorthand meeting one of its own longhands (<c>p-8</c> beside <c>pt-2</c>).
+        /// </summary>
+        /// <remarks>
+        /// Channels are keyed by property, so a shorthand and a longhand would otherwise be independent: one
+        /// side naming only the longhand leaves it unpaired while the shorthand keeps animating the slot it
+        /// shares, popping to the cascade's value at the end of every play; both sides naming both produces two
+        /// channels writing one slot, whose in-flight winner is the order the channels happen to be visited
+        /// rather than the specificity that decides the resting value.
+        /// The whole overlapping group is therefore dropped and lands with the class swap. The alternative —
+        /// keeping the longhand and dropping only the shorthand — would still split the family, gliding one edge
+        /// while the other three jump, so it trades an incoherent ending for an incoherent middle. Declaring a
+        /// shorthand and its longhand in one variant is already ambiguous authoring (the arbitrary-value layer
+        /// map documents the same "use one or the other" rule for its own layers); this makes the animation
+        /// decline the ambiguity rather than resolve it arbitrarily.
+        /// </remarks>
+        private static bool OverlapsAnotherNamedProperty(ArbitraryProperty property,
+            Dictionary<ArbitraryProperty, ArbitraryStyle> fromProperties,
+            Dictionary<ArbitraryProperty, ArbitraryStyle> toProperties)
+        {
+            foreach (var other in fromProperties.Keys)
+            {
+                if (MotionPropertyClassParser.WritesOverlappingSlots(property, other))
+                {
+                    return true;
+                }
+            }
+            foreach (var other in toProperties.Keys)
+            {
+                if (MotionPropertyClassParser.WritesOverlappingSlots(property, other))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private static void Scan(string[]? classes, ref float? opacity, ref float? translateX, ref float? translateY,

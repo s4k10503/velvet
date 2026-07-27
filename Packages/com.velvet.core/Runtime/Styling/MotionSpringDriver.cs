@@ -158,14 +158,24 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Suspends the element's native transitions for the rest of this play (see
-        /// <see cref="MotionNativeTransitionGuard"/>) and writes each channel's CURRENT integrator value as an
-        /// inline style, synchronously — so the element shows the from-pose on the very first rendered frame
-        /// instead of flashing at the (already-applied) resting classes' value until the first tick runs.
+        /// Writes each channel's CURRENT integrator value as an inline style, synchronously — so the element
+        /// shows the from-pose on the very first rendered frame instead of flashing at the (already-applied)
+        /// resting classes' value until the first tick runs — after suspending the element's native transitions
+        /// when this play drives a property one of them could intercept (see
+        /// <see cref="MotionNativeTransitionGuard"/>).
         /// </summary>
+        /// <remarks>
+        /// The suspension goes up with this FIRST write rather than with the recurring tick, because this write
+        /// is itself one a live native transition would animate into instead of landing on. A play parked behind
+        /// a delay is already holding its from-pose over that whole window, so there is no earlier moment the
+        /// driver does not own the slots.
+        /// </remarks>
         public static void ApplyCurrentValues(VisualElement element, MotionSpringState state)
         {
-            MotionNativeTransitionGuard.Suspend(element);
+            if (state.Colors != null || state.Lengths != null)
+            {
+                MotionNativeTransitionGuard.Suspend(element, state);
+            }
             WriteChannelValues(element, state);
         }
 
@@ -205,8 +215,10 @@ namespace Velvet
             {
                 foreach (var l in state.Lengths)
                 {
-                    StyleArbitraryValueResolver.ApplyInline(element,
-                        new ArbitraryStyle(l.Property, l.Value.Integrator.Value, l.Unit));
+                    // The integrator already holds the spring's true position, overshoot included; the emitter
+                    // is what saturates a property with no negative meaning.
+                    var v = MotionPropertyInterpolation.ClampLength(l.Property, l.Value.Integrator.Value);
+                    StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
                 }
             }
         }
@@ -280,9 +292,15 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Clears every inline override this state ever wrote — including the transition suspension
+        /// Releases every inline slot this state ever wrote — and the transition suspension
         /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
         /// </summary>
+        /// <remarks>
+        /// The slots are nulled first and the element's surviving arbitrary-value layers re-asserted afterwards,
+        /// in that order: a driven shorthand owns a whole fan-out (a `padding` channel writes all four edges)
+        /// while an authored longhand (`pt-[2px]`) is registered against ONE of them, so per-property
+        /// interleaving would let a later null wipe a value an earlier re-assert had just restored.
+        /// </remarks>
         public static void ClearInlineOverrides(VisualElement element, MotionSpringState state)
         {
             if (state.Opacity != null) element.style.opacity = StyleKeyword.Null;
@@ -297,7 +315,8 @@ namespace Velvet
             {
                 foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
             }
-            MotionNativeTransitionGuard.Restore(element);
+            StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+            MotionNativeTransitionGuard.Release(element, state);
         }
 
         /// <summary>
