@@ -1,7 +1,5 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 
 namespace Velvet.StyleTable
 {
@@ -38,7 +36,7 @@ namespace Velvet.StyleTable
                 return UsageError;
             }
 
-            var sheets = StyleSheetsIn(stylesDirectory);
+            var sheets = UssCascadeOrder.SheetsIn(stylesDirectory);
             var result = StyleUtilityTableBuilder.Build(sheets);
             if (result.Problems.Length > 0)
             {
@@ -59,12 +57,6 @@ namespace Velvet.StyleTable
                 $"stylesheet(s) -> {outputPath}{(changed ? "" : " (unchanged)")}");
             return Ok;
         }
-
-        public static IReadOnlyList<UssSourceText> StyleSheetsIn(string directory) =>
-            Directory.EnumerateFiles(directory, "*.uss")
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .Select(path => new UssSourceText(path, File.ReadAllText(path)))
-                .ToList();
 
         /// <summary>
         /// Leaves the file alone when the derivation reproduced it, so a no-op build does not restamp an asset

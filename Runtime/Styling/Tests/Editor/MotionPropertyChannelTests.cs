@@ -576,10 +576,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADurationOnlyTransitionUtility_When_APlayDrivesTheElement_Then_TheNativeTransitionIsSuspended()
+        public void Given_ATransitionFilterUtility_When_APlayDrivesTheElement_Then_ItsTransitionIsUntouched()
         {
-            // Arrange — .transition-filter sets duration and timing ONLY, so transition-property is left at UI
-            // Toolkit's initial `all` and the element natively transitions every animatable property.
+            // Arrange — .transition-filter pins transition-property to `filter`, which no driver channel
+            // writes. Suspending would overwrite the very list StyleFilterTransitionDriver reads to decide it
+            // owns a filter change, so filter-* changes would land instantly for the whole play.
             var element = new VisualElement();
             element.AddToClassList("transition-filter");
 
@@ -587,9 +588,8 @@ namespace Velvet.Tests
             var state = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
 
             // Assert
-            var declared = element.style.transitionProperty.value;
-            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
-                Is.True);
+            Assert.That((state != null, element.style.transitionProperty.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
         }
 
         [Test]

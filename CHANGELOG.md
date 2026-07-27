@@ -23,10 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   those transitions cover a property it drives — decided from the element's class list, so a
   `transition-transform` or `transition-all` element no longer paints a translate that trails the
   driver for the whole play and then eases in, while a `transition-colors` element running a
-  fade/slide keeps its hover fade. A class that supplies only a duration (`transition-filter`, a
-  bare `duration-*`) leaves `transition-property` at UI Toolkit's `all` default and so counts as
-  covering everything. Overlapping plays each hold their own claim, so the first to settle cannot
-  un-suspend the second.
+  fade/slide keeps its hover fade. The class list is read the way the cascade reads it:
+  `transition-property` holds one value, so the utilities that set it do not combine and the
+  last-declared one present wins outright — `transition-all transition-colors` transitions the
+  colours only, and `transition-all transition-none` transitions nothing. `transition-filter` names
+  `filter`, which no driver writes, so it never triggers a suspension. A bare `duration-*` with no
+  such utility leaves `transition-property` at UI Toolkit's `all` default and so counts as covering
+  everything. Overlapping plays each hold their own claim, so the first to settle cannot un-suspend
+  the second.
 - `space-x-reverse` / `space-y-reverse` are recognized alongside the existing `space-x-*` /
   `space-y-*` aliases: each is a per-axis marker that moves the gap-polyfill margin to the axis's
   trailing physical edge (`margin-right` / `margin-bottom`) instead of the leading one, matching

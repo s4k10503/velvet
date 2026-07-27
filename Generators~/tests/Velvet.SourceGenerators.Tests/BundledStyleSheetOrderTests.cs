@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using Velvet.StyleTable;
 using Xunit;
 
@@ -123,9 +122,10 @@ namespace Velvet.SourceGenerators.Tests
         {
             var utilities = new List<Utility>();
             var order = 0;
-            foreach (var path in PartialsInImportOrder())
+            foreach (var source in UssCascadeOrder.SheetsIn(
+                Path.Combine(SolutionPaths.RuntimeRoot(), "Styles")))
             {
-                var sheet = UssStyleSheetParser.Parse(path, File.ReadAllText(path));
+                var sheet = UssStyleSheetParser.Parse(source.Path, source.Text);
                 foreach (var rule in sheet.Rules)
                 {
                     var properties = new HashSet<string>(StringComparer.Ordinal);
@@ -147,20 +147,6 @@ namespace Velvet.SourceGenerators.Tests
                 }
             }
             return utilities;
-        }
-
-        /// <summary>
-        /// The partials in the aggregator's @import order, which is the order the importer concatenates them
-        /// in and therefore the order the cascade resolves ties by.
-        /// </summary>
-        private static IEnumerable<string> PartialsInImportOrder()
-        {
-            var styles = Path.Combine(SolutionPaths.RuntimeRoot(), "Styles");
-            var aggregator = File.ReadAllText(Path.Combine(styles, "StyleUtilities.uss"));
-            foreach (Match match in Regex.Matches(aggregator, @"@import\s+url\(""([^""]+)""\)"))
-            {
-                yield return Path.Combine(styles, match.Groups[1].Value);
-            }
         }
 
         private sealed class Utility

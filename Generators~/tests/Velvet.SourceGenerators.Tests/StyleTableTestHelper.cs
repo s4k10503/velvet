@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
@@ -103,12 +104,14 @@ namespace Velvet.SourceGenerators.Tests
         private readonly Type _properties;
         private readonly Type _longhand;
         private readonly Type _rule;
+        private readonly Type _transitions;
 
         public StyleTableProbe(Assembly assembly)
         {
             _properties = Required(assembly, "Velvet.StyleUtilityProperties");
             _longhand = Required(assembly, "Velvet.StyleLonghand");
             _rule = Required(assembly, "Velvet.StyleUtilityRule");
+            _transitions = Required(assembly, "Velvet.StyleTransitionUtilities");
         }
 
         public int Count => (int)_properties.GetProperty("Count", BindingFlags.Public | BindingFlags.Static)!
@@ -127,7 +130,12 @@ namespace Velvet.SourceGenerators.Tests
                 throw new InvalidOperationException($"The table defines no rule for '{className}'.");
             }
 
-            var set = _rule.GetProperty("Properties")!.GetValue(rule)!;
+            return LonghandNames(_rule.GetProperty("Properties")!.GetValue(rule)!);
+        }
+
+        /// <summary>The USS longhand names a <c>StyleLonghandSet</c> holds, sorted.</summary>
+        private IReadOnlyList<string> LonghandNames(object set)
+        {
             var contains = set.GetType().GetMethod("Contains")!;
             var identifierToUss = UssPropertyVocabulary.Longhands
                 .ToDictionary(l => l.Identifier, l => l.UssName, StringComparer.Ordinal);
@@ -151,6 +159,49 @@ namespace Velvet.SourceGenerators.Tests
                 throw new InvalidOperationException($"The table defines no rule for '{className}'.");
             }
             return _rule.GetProperty("Gate")!.GetValue(rule)!.ToString()!;
+        }
+
+        /// <summary>How many bundled utilities declare <c>transition-property</c>.</summary>
+        public int TransitionCount =>
+            (int)_transitions.GetProperty("Count", BindingFlags.Public | BindingFlags.Static)!.GetValue(null)!;
+
+        /// <summary>The utilities that declare <c>transition-property</c>, in cascade order.</summary>
+        public IReadOnlyList<string> TransitionUtilitiesInCascadeOrder()
+        {
+            var byClassName = (IEnumerable)_transitions
+                .GetField("ByClassName", BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetValue(null)!;
+            var byPosition = new SortedDictionary<int, string>();
+            foreach (var pair in byClassName)
+            {
+                var type = pair.GetType();
+                byPosition.Add(
+                    (int)type.GetProperty("Value")!.GetValue(pair)!,
+                    (string)type.GetProperty("Key")!.GetValue(pair)!);
+            }
+            return byPosition.Values.ToList();
+        }
+
+        /// <summary>The USS longhand names <paramref name="className"/>'s transition-property value covers.</summary>
+        public IReadOnlyList<string> TransitionPropertiesOf(string className)
+        {
+            if (!TryGetTransition(className, out _, out var set))
+            {
+                throw new InvalidOperationException($"'{className}' declares no transition-property.");
+            }
+            return LonghandNames(set!);
+        }
+
+        public bool DeclaresTransition(string className) => TryGetTransition(className, out _, out _);
+
+        private bool TryGetTransition(string className, out int cascadePosition, out object? properties)
+        {
+            var tryGet = _transitions.GetMethod("TryGet", BindingFlags.Public | BindingFlags.Static)!;
+            var arguments = new object?[] { className, null, null };
+            var found = (bool)tryGet.Invoke(null, arguments)!;
+            cascadePosition = (int)arguments[1]!;
+            properties = arguments[2];
+            return found;
         }
 
         private bool TryGet(string className, out object? rule)
