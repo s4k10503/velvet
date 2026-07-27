@@ -494,8 +494,9 @@ namespace Velvet.Tests
             // Arrange — the control pins that size-* animates on its own.
             var control = MotionSpringClassParser.Resolve(new[] { "size-4" }, new[] { "size-8" });
 
-            // Act — .size-* is declared AFTER .w-*, so here the two-slot shorthand is what wins width at rest,
-            // the opposite of every other family. Dropping both is what keeps the landing correct.
+            // Act — .size-* is declared BEFORE .w-*, so the single-axis longhand wins width at rest, as in
+            // every other shorthand/longhand family. A plan derived from the class strings alone cannot see
+            // which of the two holds the slot, so dropping both is what keeps the landing correct.
             var overlapping = MotionSpringClassParser.Resolve(new[] { "w-4", "size-4" }, new[] { "w-20", "size-8" });
 
             // Assert

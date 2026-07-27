@@ -212,12 +212,11 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   with `w-*`, `inset-*` with `top-*`, `rounded-*` with `rounded-tl-*`, `border-*` with
   `border-t-*` — has two utilities claiming one slot, so neither animates and the swap lands them
   both. Which of the two holds the shared slot at rest is not something the animation can derive:
-  for preset classes it is stylesheet declaration order (and `.size-*` is declared *after* `.w-*`,
-  so there the shorthand wins width, the opposite of every other family), while for bracket-form
-  tokens it is class-array position instead. Use one or the other on a given axis. One caveat: the
-  rule only sees utilities whose value is readable, so an unreadable longhand beside a readable
-  shorthand (`rounded-3xl rounded-tl-full`) is invisible to it and the shorthand still drives the
-  corner the longhand owns at rest.
+  for preset classes it is stylesheet declaration order, which the class strings do not carry, while
+  for bracket-form tokens it is class-array position instead. Use one or the other on a given axis.
+  One caveat: the rule only sees utilities whose value is readable, so an unreadable longhand beside
+  a readable shorthand (`rounded-3xl rounded-tl-full`) is invisible to it and the shorthand still
+  drives the corner the longhand owns at rest.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing

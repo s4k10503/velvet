@@ -12,6 +12,17 @@ $CodeFixProject = 'src/Velvet.SourceGenerators.CodeFixes/Velvet.SourceGenerators
 $CodeFixDll = "src/Velvet.SourceGenerators.CodeFixes/bin/$Configuration/netstandard2.0/Velvet.SourceGenerators.CodeFixes.dll"
 $CodeFixDeployDir = '../Runtime/Plugins/Analyzers'
 
+$StyleTableProject = 'src/Velvet.StyleTable/Velvet.StyleTable.csproj'
+$StyleSheetDir = '../Runtime/Styles'
+$StyleTableOutput = '../Runtime/Styling/StyleUtilityProperties.g.cs'
+
+# The utility property table is a function of the bundled stylesheets alone, so it is derived here into
+# committed source rather than recomputed inside every consumer's compile. It runs first: a stylesheet the
+# derivation cannot model must stop the build before any assembly is deployed.
+Write-Host "[Velvet.StyleTable] dotnet run -c $Configuration"
+dotnet run --project $StyleTableProject -c $Configuration --verbosity quiet -- --styles $StyleSheetDir --output $StyleTableOutput
+if ($LASTEXITCODE -ne 0) { throw "the utility property table could not be derived" }
+
 # Both assemblies build before either is deployed: a failure in the second build
 # would otherwise leave one refreshed DLL beside one stale DLL, which is the
 # mismatch the deployed pair exists to avoid.
