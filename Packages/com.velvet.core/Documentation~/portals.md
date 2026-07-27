@@ -74,11 +74,11 @@ frame and batchmode has no way to drive that.
 `FocusController` when focused, and a host torn down while it holds focus hands focus back to
 the main panel first (otherwise it would dangle on a destroyed `FocusController`, or — for a
 layer panel, which persists — simply vanish since UI Toolkit clears `focusedElement` as soon as
-the focused element leaves its panel's tree). Automatic Tab/Shift-Tab focus chaining ACROSS
-panel boundaries is intentionally NOT implemented: UI Toolkit's own focus ring unconditionally
-wraps within its own panel (confirmed from the engine source) and exposes no signal for "focus
-tried to leave the ring". If you need this, wire it explicitly (e.g. a `KeyDownEvent` handler on
-the portal's own boundary elements that calls `.Focus()` on the target panel's own focus target).
+the focused element leaves its panel's tree). Tab/Shift-Tab does not cross a panel boundary on
+its own: UI Toolkit's own focus ring unconditionally wraps within its own panel (confirmed from
+the engine source) and exposes no signal for "focus tried to leave the ring", which is why Velvet
+predicts and redirects the ring rather than hooking it. Chaining is a per-host opt-in and
+`Isolated` is the default — see "Cross-panel Tab order: `PanelFocusOrder`" below.
 
 ## Screen-space layers: `V.Portal(layer:)`
 
