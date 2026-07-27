@@ -26,7 +26,11 @@ namespace Velvet
             // space-x-*/space-y-* alias onto the gap axes: Velvet realizes inter-child
             // spacing as a leading margin on every child but the first (the gap manipulator), which
             // is exactly what the `space-* > * + *` margin rule produces for a flex container.
-            // (Deviations: takes effect only inside a flex container, and space-*-reverse is unsupported.)
+            // (Deviation: takes effect only inside a flex container.) The space-x-reverse /
+            // space-y-reverse markers carry no pixel value of their own, so they decline here the same as
+            // any other unrecognized suffix ("reverse" matches neither the arbitrary-pixel nor the preset
+            // scale parse below) — StyleGapManipulator reads them separately via ExtractReverseMarkers,
+            // since they flip which edge the gap lands on rather than contributing a gap value themselves.
             if (cls.StartsWith("space-x-", StringComparison.Ordinal))
             {
                 axis = GapAxis.Horizontal;
@@ -91,6 +95,32 @@ namespace Velvet
                 }
             }
             return false;
+        }
+
+        // Scans classNames for the space-x-reverse / space-y-reverse markers. Tailwind's markers are
+        // absolute ("put the margin on the trailing edge") and never consult flex-direction themselves —
+        // StyleGapManipulator is the one that OR's a marker with a detected row-reverse/column-reverse, so
+        // the idiomatic flex-row-reverse space-x-4 space-x-reverse combination still lands trailing rather
+        // than cancelling back to leading.
+        public static void ExtractReverseMarkers(string[] classNames, out bool xReverse, out bool yReverse)
+        {
+            xReverse = false;
+            yReverse = false;
+            if (classNames == null)
+            {
+                return;
+            }
+            foreach (var cls in classNames)
+            {
+                if (cls == "space-x-reverse")
+                {
+                    xReverse = true;
+                }
+                else if (cls == "space-y-reverse")
+                {
+                    yReverse = true;
+                }
+            }
         }
 
         // Scans classNames for the last gap utility (later classes win, matching CSS

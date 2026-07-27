@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bare `duration-*`) leaves `transition-property` at UI Toolkit's `all` default and so counts as
   covering everything. Overlapping plays each hold their own claim, so the first to settle cannot
   un-suspend the second.
+- `space-x-reverse` / `space-y-reverse` are recognized alongside the existing `space-x-*` /
+  `space-y-*` aliases: each is a per-axis marker that moves the gap-polyfill margin to the axis's
+  trailing physical edge (`margin-right` / `margin-bottom`) instead of the leading one, matching
+  Tailwind's own `space-*-reverse` semantics. See `Documentation~/styling-flexbox-and-gap.md` for
+  the combination rule with a `flex-row-reverse` / `flex-col-reverse` container (OR, not XOR) and
+  the one case where the marker ends up a no-op.
 
 ### Changed
 
@@ -103,6 +109,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the cancel path. The write is therefore skipped when the element is off-panel, keeping the
   (always-detached) pool return free of the inline entry the trailing null would then tear down
   again; what changed is that the reset no longer depends on that call ordering.
+- `gap-*` (and its `space-x-*`/`space-y-*` aliases) placed its margin on the wrong physical edge
+  inside a `flex-row-reverse` / `flex-col-reverse` container: `StyleGapManipulator` folded
+  `RowReverse` into `Row` and `ColumnReverse` into `Column` when picking the leading edge, so a
+  plain `gap-4` (no reverse marker at all) wrote a leading `margin-left`/`margin-top` that showed up
+  as extra space on the container's OUTER edge, with no gap on the visually-adjacent boundary it was
+  reversed away from. Off-panel (EditMode, and the pre-attach mount pass), a `flex-col-reverse`
+  container's axis itself resolved wrong (the class-marker fallback checked only the literal string
+  `"flex-col"`, which `"flex-col-reverse"` never matches), so the gap landed on the wrong AXIS
+  entirely, not just the wrong edge. `gap-*` is now direction-correct on a reversed container without
+  needing a `space-*-reverse` marker — see `Documentation~/styling-flexbox-and-gap.md` for how
+  direction is resolved. This is a visible behavior change for any app that was compensating for the
+  old misplaced margin.
 - A `FocusScope` with `restoreFocus: true` did not hand focus back to the prior element when the
   scope's ROOT element itself (rather than a descendant) held focus at unmount: the guard used
   `VisualElement.Contains`, which does not count an element as containing itself, so a focused root
