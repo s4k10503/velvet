@@ -51,14 +51,25 @@
     transition-timing-function: ease-in-out;
 }
 
-/* transition-filter — opt-in for animating filter-* changes (blur-*, brightness-*, ...).
+/* transition-filter — hands filter-* changes (blur-*, brightness-*, ...) to Velvet's own tween rather
+ * than to the engine's native filter animation, which transition-all / a bare duration-* would get.
  *
- * Deliberately sets NO transition-property: filter. UI Toolkit stops repainting an inline filter once its
- * transition-property is [filter], so a native transition would freeze the effect after the first frame.
- * Instead this carries only the duration + timing-function, which a scheduler-tween driver reads to lerp the
- * filter's parameters itself (StyleFilterTransitionDriver). duration-* / ease-* still override, declared later.
+ * transition-property is pinned to `filter` so the scheduler-driven tween (StyleFilterTransitionDriver)
+ * owns the motion outright. The inline-filter setter runs a write as an UNCANCELLABLE native animation
+ * whenever the resolved transition-property covers every property, and takes a plain direct-write path
+ * when it names filter; only the latter lets a per-frame tween write paint what it wrote, so leaving
+ * this at the initial `all` would have each tween frame restart a native chase over the same value.
+ * (What the setter actually matches the list against is `background-size` — or any shorthand covering
+ * it, which `-unity-background-scale-mode` is — so that equivalence is measured on this editor rather
+ * than definitional. A list naming filter AND either of those two would satisfy the tween's probe and
+ * the setter's animating path at once; a list naming either WITHOUT filter animates the filter with
+ * nothing in it mentioning filters.)
+ * Pinning one property also means this class transitions ONLY filter, and it does not combine with
+ * another transition-* utility: they set the same property, so the later-declared one wins outright.
+ * duration-* / ease-* still override, declared later.
  */
 .transition-filter {
+    transition-property: filter;
     transition-duration: var(--duration-normal);
     transition-timing-function: ease-in-out;
 }

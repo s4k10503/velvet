@@ -26,6 +26,10 @@ namespace Velvet.Tests
     /// The structural cases pin the FULL reset surface: every inline style property the reset scrubs is compared
     /// against a freshly constructed element, in both directions, so dropping a scrubbed property from the helper
     /// (reintroducing a ghost) or scrubbing a new one without extending the pinned contract list fails a test.
+    /// One case additionally resets an element that is still ATTACHED to a panel: clearing an inline filter goes
+    /// through the transition system, so the scrub must not turn itself into a running animation that keeps
+    /// painting what it just removed. Today's callers detach before resetting, which suppresses that path on its
+    /// own; the case pins the helper independently of that ordering.
     /// </summary>
     [TestFixture]
     internal sealed class PooledElementStyleGhostTests : VariantCleanupTestsBase
@@ -46,6 +50,67 @@ namespace Velvet.Tests
 
             // Assert — the letterSpacing is cleared, so the recycled label cannot ghost it onto the next consumer.
             Assert.AreEqual(StyleKeyword.Null, label.style.letterSpacing.keyword);
+        }
+
+        [Test]
+        public void Given_AnAttachedElementWithAFilterCoveringTransition_When_ResetForReuse_Then_NothingKeepsPaintingTheFilter()
+        {
+            // Arrange — an element on a real panel carrying a settled inline filter under a live whole-property
+            // transition (what transition-all / a bare duration-* resolves to). Clearing an inline filter goes
+            // through the transition system, so the clear can become a running animation that keeps painting
+            // the filter the reset just removed; the reset must hold regardless of whether its caller detached
+            // the element first. The fake clock makes the painted mid-animation value load-independent.
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            var element = new VisualElement();
+            element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(0.3f) });
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            var blur = new FilterFunction(FilterFunctionType.Blur);
+            blur.AddParameter(new FilterParameter(12f));
+            element.style.filter = new List<FilterFunction> { blur };
+            now += 1.0;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            Assume.That(element.resolvedStyle.filter, Is.Not.Empty,
+                "Precondition: the element paints its inline filter before the reset");
+
+            // Act — the shared pool reset runs, then the panel paints a frame.
+            FiberElementPoolReset.ResetCommonState(element);
+            now += 0.15;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+
+            // Assert — nothing is painting a filter any more.
+            Assert.That(element.resolvedStyle.filter, Is.Empty);
+        }
+
+        [Test]
+        public void Given_AnAttachedElementWithATransitionedOpacity_When_ResetForReuse_Then_TheOpacityIsAlreadyBack()
+        {
+            // Arrange — filter is not special: EVERY inline clear in the scrub restores its matched-rules value
+            // through the transition system, so the neutralising write has to land before the whole scrub, not
+            // merely before the filter clear. opacity is the probe because it is cleared early in the scrub, so
+            // a write placed later would leave this one animating.
+            using var host = new HeadlessEditorPanelHost();
+            var now = 100.0;
+            EditorPanelTestHelpers.SetPanelTimeFunction(host.Panel, () => now);
+            var element = new VisualElement();
+            element.style.transitionDuration = new StyleList<TimeValue>(new List<TimeValue> { new TimeValue(0.3f) });
+            host.Root.Add(element);
+            EditorPanelTestHelpers.ForcePanelUpdate(host.Panel);
+            element.style.opacity = 0.2f;
+            now += 1.0;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+            Assume.That(element.resolvedStyle.opacity, Is.EqualTo(0.2f).Within(1e-3f),
+                "Precondition: the element paints its inline opacity before the reset");
+
+            // Act
+            FiberElementPoolReset.ResetCommonState(element);
+            now += 0.15;
+            EditorPanelTestHelpers.DriveAnimationsOnce(host.Panel);
+
+            // Assert — fully back to the default, not part-way through fading back to it.
+            Assert.That(element.resolvedStyle.opacity, Is.EqualTo(1f).Within(1e-3f));
         }
 
         // Integration: reconcile remove → recreate a plain label from the pool

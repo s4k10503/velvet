@@ -30,6 +30,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `transition-filter` now declares `transition-property: filter`, so Velvet's tween owns the motion
+  outright. Previously it left `transition-property` at its initial whole-property value, under which
+  the engine's inline-filter setter runs an inline write as its own animation that no API can cancel:
+  every frame the tween wrote restarted that animation over the same value, and what was painted
+  lagged the tween that was supposed to drive it. The resolved value is now what decides which
+  animator runs — a value naming `filter`, alone or among other property names, leaves the setter on
+  its plain direct-write path so the tween can paint its own frames; a whole-property value hands the
+  change to the engine and the tween stands down; anything else keeps the change instant, except a
+  value naming `background-size` or `-unity-background-scale-mode`, which is what the setter actually
+  gates on and so animates a filter change with nothing in the declaration mentioning filters. The tween
+  re-checks that value on every frame, so a `transition-property` rewritten mid-tween (a Motion play,
+  a class swap) hands over once instead of restarting the engine's animation on every tick. Because
+  every `transition-*` utility sets the same property, `transition-filter` does not combine with
+  another one — the later-declared utility wins — and it transitions only `filter`.
+- A user-authored `filter-[name:args]` custom filter now interpolates under `transition-filter` when
+  both sides are the same registered definition with the same number of arguments and matching
+  argument types per slot: a color argument cross-fades and a float argument lerps. Previously a user
+  custom on either side always forced an instant write. One added or removed on its own now fades
+  from the neutral its own `FilterParameterDeclaration.interpolationDefaultValue` declares — the same
+  value the engine pads its filter-list transitions with — and another filter may be added or removed
+  alongside one that pairs, so `filter-[glow:1]` → `blur-4 filter-[glow:2]` fades the blur in while
+  the glow lerps. A user custom still snaps when it cannot be paired: a different definition on each
+  side, a differing argument count, a slot whose type differs across the change, and two or more
+  distinct user customs when a filter is added or removed (they all compose last, leaving no order to
+  place them in). A definition destroyed mid-tween now drops out of the frames the tween paints
+  instead of throwing, mirroring how the compose path already skips dead definitions.
 - Scheduling a fiber re-render no longer allocates a per-fiber sorted set for the pending-lane
   queue; the four update priorities now live in an inline bit mask with identical enrollment,
   drain-order, and starvation-promotion semantics.
@@ -61,6 +87,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   receives the navigation attempt, and a cancellation token on the async overload) is covered for the same
   reason. A lambda's own parameters are supplied per invocation and are never treated as dependencies, and a
   lambda wider than the hook's widest overload is still not read as that hook's factory.
+- `Documentation~/styling-filters.md` claimed that UI Toolkit's transition system cannot repaint an
+  inline `filter` at all, and that `transition-all` and `transition-property: filter` therefore leave
+  a filter change snapping. Both were wrong: the engine animates an inline filter under a
+  whole-property `transition-property`, and pinning the property does not stop it repainting. The
+  guide now describes the measured behavior — which of the two animators runs, and why — instead.
+- The pooled-element inline-style reset neutralised the transition longhands only at the end of its
+  scrub, so on an element still attached to a panel every clear before that point — `filter`,
+  `opacity`, the transforms, the colors, the geometry longhands — became a running animation that
+  kept painting the value the reset had just removed, and the trailing nulls restored the
+  matched-rules value rather than disabling the transition, so nothing cancelled them. The reset now
+  writes a zero transition duration before its inline scrub, which makes every clear in that scrub
+  cancel instead of animate. No shipped caller could reach the defect: they all detach before
+  resetting, and a detached element is not style-initialized, which already takes every clear down
+  the cancel path. The write is therefore skipped when the element is off-panel, keeping the
+  (always-detached) pool return free of the inline entry the trailing null would then tear down
+  again; what changed is that the reset no longer depends on that call ordering.
 - A `FocusScope` with `restoreFocus: true` did not hand focus back to the prior element when the
   scope's ROOT element itself (rather than a descendant) held focus at unmount: the guard used
   `VisualElement.Contains`, which does not count an element as containing itself, so a focused root
