@@ -12,8 +12,9 @@ namespace Velvet
     {
         // Applies (when on is true) or clears each payload on target.
         // A payload containing [ that parses as an arbitrary value is applied as an inline style at
-        // priority (so a state variant layers over the base / lower-priority variants
-        // rather than wiping the property when it turns off); otherwise it is toggled as a USS class.
+        // priority; otherwise it is projected onto the class list at that same priority. Either way the
+        // payload layers over the base and the lower-priority variants rather than tying with them, and
+        // turning it off falls back to whatever is still active.
         public static void Apply(VisualElement target, string?[] payloads, bool on,
             int priority = StyleLayerPriority.Base,
             ReconcilerContext? ctx = null, object? owner = null)
@@ -53,13 +54,13 @@ namespace Velvet
                 }
 
                 // The important modifier on a variant payload (hover:!bg-red, focus:bg-red!): strip the
-                // bang and, when present, raise this payload to the Important layer so it wins conflicts.
+                // bang and, when present, raise this payload into the important band so it wins conflicts.
                 var core = StyleArbitraryValueResolver.StripImportant(payload, out var important);
                 if (string.IsNullOrEmpty(core))
                 {
                     continue;
                 }
-                var effectivePriority = important ? StyleLayerPriority.Important : priority;
+                var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
                 if (StyleArbitraryValueResolver.IsInlineResolved(core)
                     && StyleArbitraryValueResolver.TryParse(core, out var style))
@@ -81,13 +82,13 @@ namespace Velvet
                 }
                 else if (on)
                 {
-                    target.AddToClassList(core);
+                    StyleClassProjection.Add(target, core, effectivePriority);
                     layoutGateChanged |= TrackLayoutGate(ctx, target, core, true);
                     reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
                 }
                 else
                 {
-                    target.RemoveFromClassList(core);
+                    StyleClassProjection.Remove(target, core, effectivePriority);
                     layoutGateChanged |= TrackLayoutGate(ctx, target, core, false);
                     reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
                 }

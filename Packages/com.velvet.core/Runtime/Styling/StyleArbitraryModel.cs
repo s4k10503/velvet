@@ -88,11 +88,14 @@ namespace Velvet
         #endregion
 
         #region Important
-        // The important modifier (!utility / utility!): the highest layer, so an important utility
-        // wins over the base and every state/variant layer — the inline-style stand-in for CSS !important
-        // (inline styles already beat USS class rules in UI Toolkit). A single shared layer, so stacking
-        // two important utilities on the same property is last-wins (a documented edge).
+        // Floor of the important band (!utility / utility!). An important payload layers at Important plus
+        // its own variant priority, so the whole band sits above every ordinary layer (Active, the highest,
+        // is 60) while important-versus-important keeps the ordinary ladder: dark:!w-[10px] beats
+        // !w-[20px], the same way dark:w-[10px] beats w-[20px].
         public const int Important = 100;
+
+        // The layer an important payload occupies given the priority it would otherwise have had.
+        public static int ImportantOf(int priority) => Important + priority;
         #endregion
 
         // The layer priority a stacked variant's inner kind contributes; a composed arbitrary leaf

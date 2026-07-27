@@ -23,10 +23,12 @@ namespace Velvet
     // itself uses when more than one matches the element (equal specificity, so the LAST declared RULE wins):
     // _layout.uss declares .grid, .flex, .flex-col, .flex-col-reverse, .flex-row, .flex-row-reverse in that
     // source order, so flex-row-reverse beats flex-row beats flex-col-reverse beats flex-col beats the bare
-    // .flex row default, regardless of which classes ended up on the element or in what order — a
-    // responsive/state variant routinely leaves TWO direction classes on the live list at once (e.g.
-    // "flex flex-col md:flex-row" above the breakpoint), and only checking one family (row OR column) would
-    // silently pick the wrong one. This scan is the layout's mirror, not an independent policy: _layout.uss
+    // .flex row default, regardless of which classes ended up on the element or in what order. More than one
+    // still reaches the live list: StyleClassProjection drops a losing class only when a higher-priority one
+    // claims every property it writes, which leaves the bare .flex beside any direction utility (it also sets
+    // display) and leaves two direction utilities written at the same priority tying with each other. Checking
+    // one family (row OR column) would silently pick the wrong one. This scan is the layout's mirror, not an
+    // independent policy: _layout.uss
     // orders the column family before the row family so a variant can turn a column INTO a row (the
     // mobile-first idiom), and if this list stopped matching that order the spacing would point one way while
     // the element renders the other. Any change to the stylesheet block moves this list with it.

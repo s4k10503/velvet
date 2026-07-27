@@ -597,7 +597,8 @@ namespace Velvet
         // Per-element, per-property stack of arbitrary-value layers keyed by priority (ascending). A
         // ConditionalWeakTable auto-drops entries when an element is GC'd; pooled (reused) elements are scrubbed
         // explicitly via ClearAll so no layer ghosts across reuse.
-        private sealed class LayerMap : Dictionary<ArbitraryProperty, SortedList<int, ArbitraryStyle>>
+        private sealed class LayerMap : Dictionary<ArbitraryProperty, SortedList<int, ArbitraryStyle>>,
+            StyleClassProjection.ILayerHost
         {
             // Per-NAME priority stacks for filter-[name:args] custom filters, in first-application
             // order. Unlike every other arbitrary property, a custom filter cannot share the single
@@ -612,9 +613,124 @@ namespace Velvet
             // die with the rest of the element's layer state. Lazily allocated: most elements never
             // apply a custom filter.
             public List<(string Name, SortedList<int, ArbitraryStyle> Stack)>? Customs;
+
+            // The class-list half of the same cascade (StyleClassProjection). It lives here because the two
+            // halves decide one outcome together — an inline layer a USS class outranks has to stop
+            // painting, and a class an inline layer outranks has to stop counting — and because sharing this
+            // map's lifetime means ClearAll scrubs both at once, so no element can reach the pool carrying
+            // half a verdict. Null until some payload above the base priority needs one.
+            public StyleClassProjection.Model? Projection;
+
+            // Per property, the priority below which every layer is fully overridden by a USS class and must
+            // not be written inline. Absent means nothing is masked. Lazily allocated: only an element mixing
+            // a bracket value with a variant-applied class ever gets one.
+            public Dictionary<ArbitraryProperty, int>? Floors;
+
+            public bool HasLayers => Count > 0;
+
+            public void CollectLayers(List<StyleClassProjection.InlineLayer> into)
+                => CollectLayerPriorities(this, into);
+
+            public void ApplyFloors(VisualElement element, Dictionary<ArbitraryProperty, int> floors)
+                => ApplyProjectionFloors(element, this, floors);
         }
 
         private static readonly ConditionalWeakTable<VisualElement, LayerMap> s_layers = new();
+
+        // The element's class projection, created (with its layer map) on demand.
+        internal static StyleClassProjection.Model GetOrCreateProjection(VisualElement element)
+        {
+            var map = s_layers.GetValue(element, static _ => new LayerMap());
+            return map.Projection ??= new StyleClassProjection.Model(map);
+        }
+
+        // The element's class projection, or null when nothing has needed one.
+        internal static StyleClassProjection.Model? TryGetProjection(VisualElement element)
+            => element != null && s_layers.TryGetValue(element, out var map) ? map.Projection : null;
+
+        // Reports every registered layer as (property, priority) so the projection can rank inline layers
+        // against USS classes. The name-keyed custom-filter stacks are not reported: a registered name is
+        // not an ArbitraryProperty, and the whole filter family is held out of the comparison anyway (see
+        // StyleArbitraryLonghands), so there would be nothing to rank it against.
+        private static void CollectLayerPriorities(LayerMap map, List<StyleClassProjection.InlineLayer> into)
+        {
+            foreach (var pair in map)
+            {
+                var priorities = pair.Value.Keys;
+                for (var i = 0; i < priorities.Count; i++)
+                {
+                    into.Add(new StyleClassProjection.InlineLayer(pair.Key, priorities[i]));
+                }
+            }
+        }
+
+        // Installs the projection's verdict about which inline layers a USS class has overridden, and
+        // re-resolves the properties whose verdict changed. Re-resolving is what actually removes the inline
+        // value that was hiding the winning class, or restores it once the class stops winning.
+        private static void ApplyProjectionFloors(
+            VisualElement element, LayerMap map, Dictionary<ArbitraryProperty, int> floors)
+        {
+            var previous = map.Floors;
+            if (SameFloors(previous, floors))
+            {
+                return;
+            }
+            map.Floors = floors.Count == 0 ? null : new Dictionary<ArbitraryProperty, int>(floors);
+            foreach (var pair in floors)
+            {
+                if (previous == null || !previous.TryGetValue(pair.Key, out var was) || was != pair.Value)
+                {
+                    ResolveAndApply(element, pair.Key, map);
+                }
+            }
+            if (previous == null)
+            {
+                return;
+            }
+            foreach (var property in previous.Keys)
+            {
+                if (!floors.ContainsKey(property))
+                {
+                    ResolveAndApply(element, property, map);
+                }
+            }
+        }
+
+        private static bool SameFloors(Dictionary<ArbitraryProperty, int>? previous, Dictionary<ArbitraryProperty, int> floors)
+        {
+            var previousCount = previous?.Count ?? 0;
+            if (previousCount != floors.Count)
+            {
+                return false;
+            }
+            foreach (var pair in floors)
+            {
+                if (!previous!.TryGetValue(pair.Key, out var was) || was != pair.Value)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // The highest-priority layer for property, unless a USS class has overridden it. A floor records the
+        // highest priority a class beat, and layers die from the bottom up, so the top layer sitting at or
+        // below the floor means every layer does.
+        private static bool TryWinningLayer(LayerMap map, ArbitraryProperty property, out ArbitraryStyle style)
+        {
+            style = default;
+            if (!map.TryGetValue(property, out var layers) || layers.Count == 0)
+            {
+                return false;
+            }
+            var top = layers.Count - 1;
+            if (map.Floors != null && map.Floors.TryGetValue(property, out var floor) && layers.Keys[top] <= floor)
+            {
+                return false;
+            }
+            style = layers.Values[top];
+            return true;
+        }
 
         // Registers style at priority for its property and applies the
         // winning (highest-priority) layer inline. Base utilities use StyleLayerPriority.Base
@@ -636,6 +752,19 @@ namespace Velvet
                 layers[priority] = style;
             }
             ResolveAndApply(element, style.Property, map);
+            Reproject(element, map);
+        }
+
+        // Re-runs the class verdict after a layer changed. A new layer can outrank a class that was winning,
+        // and a departing one can hand a property back to a class that was suppressed, so the two halves have
+        // to be re-derived together. Nothing to do on the vast majority of elements, which never build a
+        // projection at all.
+        private static void Reproject(VisualElement element, LayerMap map)
+        {
+            if (map.Projection != null)
+            {
+                StyleClassProjection.OnInlineLayersChanged(element, map.Projection);
+            }
         }
 
         // Registers a filter-[name:args] layer at priority under its own per-name stack (LayerMap.Customs),
@@ -694,6 +823,7 @@ namespace Velvet
                 if (layers.Count == 0) map.Remove(property);
             }
             ResolveAndApply(element, property, map);
+            Reproject(element, map);
         }
 
         // Clears the layer an ArbitraryStyle applied, using the parsed value itself rather than just its
@@ -717,6 +847,7 @@ namespace Velvet
             // compose slot): see LayerMap.Customs.
             FindCustomStack(map, style.Custom!.Name)?.Remove(priority);
             ResolveAndApply(element, ArbitraryProperty.FilterCustom, map);
+            Reproject(element, map);
         }
 
         // Re-asserts the winning layer for EVERY property this element still has layers registered for.
@@ -946,10 +1077,9 @@ namespace Velvet
                 ApplyTransitionDuration(element, map);
                 return;
             }
-            if (map.TryGetValue(property, out var layers) && layers.Count > 0)
+            if (TryWinningLayer(map, property, out var winner))
             {
-                // SortedList is ascending by priority, so the last entry is the highest-priority winner.
-                ApplyInline(element, layers.Values[layers.Count - 1]);
+                ApplyInline(element, winner);
             }
             else
             {
@@ -959,23 +1089,23 @@ namespace Velvet
 
         private static void ApplyCombinedTranslate(VisualElement element, LayerMap map)
         {
-            var hasX = map.TryGetValue(ArbitraryProperty.TranslateX, out var xl) && xl.Count > 0;
-            var hasY = map.TryGetValue(ArbitraryProperty.TranslateY, out var yl) && yl.Count > 0;
+            var hasX = TryWinningLayer(map, ArbitraryProperty.TranslateX, out var xw);
+            var hasY = TryWinningLayer(map, ArbitraryProperty.TranslateY, out var yw);
             if (!hasX && !hasY)
             {
                 element.style.translate = StyleKeyword.Null;
                 return;
             }
-            var x = hasX ? new Length(xl.Values[xl.Count - 1].Value, xl.Values[xl.Count - 1].Unit) : new Length(0f);
-            var y = hasY ? new Length(yl.Values[yl.Count - 1].Value, yl.Values[yl.Count - 1].Unit) : new Length(0f);
+            var x = hasX ? new Length(xw.Value, xw.Unit) : new Length(0f);
+            var y = hasY ? new Length(yw.Value, yw.Unit) : new Length(0f);
             element.style.translate = new Translate(x, y);
         }
 
         private static void ApplyCombinedScale(VisualElement element, LayerMap map)
         {
-            var hasX = map.TryGetValue(ArbitraryProperty.ScaleX, out var xl) && xl.Count > 0;
-            var hasY = map.TryGetValue(ArbitraryProperty.ScaleY, out var yl) && yl.Count > 0;
-            var hasUniform = map.TryGetValue(ArbitraryProperty.Scale, out var ul) && ul.Count > 0;
+            var hasX = TryWinningLayer(map, ArbitraryProperty.ScaleX, out var xw);
+            var hasY = TryWinningLayer(map, ArbitraryProperty.ScaleY, out var yw);
+            var hasUniform = TryWinningLayer(map, ArbitraryProperty.Scale, out var uw);
             if (!hasX && !hasY && !hasUniform)
             {
                 element.style.scale = StyleKeyword.Null;
@@ -983,9 +1113,9 @@ namespace Velvet
             }
             // A per-axis value wins for its axis; the uniform scale-[v] is the fallback for an axis not set
             // explicitly; a wholly-missing axis defaults to 1 (identity), NOT 0 — scale-x-[.5] leaves y unscaled.
-            var uniform = hasUniform ? ul.Values[ul.Count - 1].Value : 1f;
-            var x = hasX ? xl.Values[xl.Count - 1].Value : uniform;
-            var y = hasY ? yl.Values[yl.Count - 1].Value : uniform;
+            var uniform = hasUniform ? uw.Value : 1f;
+            var x = hasX ? xw.Value : uniform;
+            var y = hasY ? yw.Value : uniform;
             element.style.scale = new Scale(new Vector2(x, y));
         }
 
@@ -993,11 +1123,11 @@ namespace Velvet
         // is written out-of-band as a single-element list. The stored Value is in SECONDS. No null layer -> clear.
         private static void ApplyTransitionDuration(VisualElement element, LayerMap map)
         {
-            if (map.TryGetValue(ArbitraryProperty.TransitionDuration, out var layers) && layers.Count > 0)
+            if (TryWinningLayer(map, ArbitraryProperty.TransitionDuration, out var winner))
             {
                 element.style.transitionDuration = new List<TimeValue>
                 {
-                    new TimeValue(layers.Values[layers.Count - 1].Value, TimeUnit.Second),
+                    new TimeValue(winner.Value, TimeUnit.Second),
                 };
             }
             else

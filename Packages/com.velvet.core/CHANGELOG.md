@@ -45,6 +45,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A variant payload spelled as a **USS class** (`dark:bg-neutral-900`, `md:flex-col`) now overrides a
+  base utility writing the same properties regardless of the order the bundled stylesheets declare
+  them in. Previously the payload was added to the live class list as a bare utility, where it tied
+  with the base on specificity and won or lost purely by source order — so half of every override pair
+  was a silent no-op (`bg-white dark:bg-neutral-900`, `w-full md:w-64`, `items-center md:items-start`
+  and `flex flex-row md:flex-col` among them). Each element now carries a model of which class every
+  priority layer wants, ranked by the precedence the variant already had, and for each USS longhand
+  only the highest-priority class holding it stays on the element; the losers come off and return when
+  they stop losing, including with several variants of different precedence active at once. Class and
+  arbitrary-value payloads are ranked against each other too, so `bg-[#fff] dark:bg-neutral-900` and
+  `bg-white dark:bg-[#171717]` both work. A payload only displaces a class whose properties it wholly
+  covers, so three shapes still fall to declaration order: two utilities at the same priority; a base
+  whose property set is a strict *superset* of the payload's, which the stylesheets order safely
+  (`size-8 md:w-4` resolves the width, the shorthand keeping the height); and two sets that merely
+  *overlap*, which nothing orders — `rounded-l` and `rounded-t` share one corner and neither contains
+  the other, so `rounded-l md:rounded-t` can be a silent no-op. A class Velvet does not ship carries no
+  known properties and is never ranked at all. See `Documentation~/styling-variants.md`; the
+  direction-override table in `Documentation~/styling-flexbox-and-gap.md` is gone, both halves of every
+  pair now working.
+- The **important modifier** (`!bg-red-500`, `dark:bg-red-500!`) now applies to class-only utilities,
+  where it was previously stripped and otherwise inert — only utilities with an inline form honoured
+  it. An important utility beats every non-important one on the same property whatever their
+  priorities, and two important utilities fall back to the ordinary ladder, so
+  `!bg-blue-500 dark:!bg-red-500` layers like the plain pair instead of the previous last-wins. It
+  settles a same-priority tie (`flex-row !flex-col` lays out as a column) and nothing else: an overlap
+  that is not containment, and a class whose properties are unknown, are decided by declaration order
+  with or without the bang.
+- A variant payload naming a class the element already carries no longer takes that class with it when
+  it turns off: `gap-4 md:gap-4` keeps `gap-4` below the breakpoint, and so does `dark:gap-4 md:gap-4`
+  when either variant deactivates. This previously also misfired for a payload that turns off without
+  ever having turned on — the structural, `has-[…]:`, `data-`/`aria-` and `supports-` families evaluate
+  an unconditional off — so `"gap-4 first:gap-4"` lost its literal `gap-4` on every child but the
+  first. Two payloads of the *same* precedence still share one slot.
+- The `Visible` prop's `hidden` class is now ranked with the utilities rather than written past them,
+  at the important layer, so an element declared `Visible = false` stays hidden beside an `md:flex`
+  payload by decision rather than by the stylesheet's declaration order. `Visible = true` clears only
+  the prop's own layer, so a `hidden` written literally in `className` keeps hiding the element.
+- A `has-[.foo]:` variant now reflects whether `foo` is on the element rather than whether it was
+  written: a `foo` that lost every property it writes to a higher-priority class no longer satisfies
+  the condition. This is a deviation from CSS, where `:has(.foo)` tests class-attribute membership and
+  a losing declaration never removes the class from the DOM.
 - `transition-filter` now declares `transition-property: filter`, so Velvet's tween owns the motion
   outright. Previously it left `transition-property` at its initial whole-property value, under which
   the engine's inline-filter setter runs an inline write as its own animation that no API can cancel:
