@@ -32,7 +32,10 @@ namespace Velvet.Tests
     /// setup is asserted directly (no tick needed to observe it), and the recurring tick's own math — along with
     /// the standalone integrator and the layoutId delta math, neither of which involves a panel or VisualElement
     /// at all — is exercised by calling the driver directly in a loop instead of trying to pump a real/simulated
-    /// scheduler clock. GWT, one assert per case (Assume for preconditions).
+    /// scheduler clock. GWT, one assert per case: every fact a case depends on — channel recognition,
+    /// settle/convergence, or a captured intermediate reading — folds into that single assertion via a
+    /// nullable/NaN/tuple sentinel, so a regression in any of them turns the case red instead of skipping
+    /// it (see <see cref="MotionPropertyChannelTests"/> for the pattern this fixture follows).
     /// </remarks>
     [TestFixture]
     internal sealed class MotionSpringDriverTests
@@ -70,21 +73,28 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 20f, mass: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
-            MotionSpringDriver.ApplyCurrentValues(element, state!);
-            Assume.That(element.style.opacity.value, Is.EqualTo(0f), "Precondition: starts at the from-value");
+            if (state != null)
+            {
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+            }
 
-            // Act — a handful of early ticks, then many more later ticks.
-            for (var i = 0; i < 5; i++)
+            // Act — a handful of early ticks, then many more later ticks. The sentinel readings survive when
+            // no channel resolved, so both stay equal and fail below instead of the case being skipped.
+            var earlyOpacity = -1f;
+            var laterOpacity = -1f;
+            if (state != null)
             {
-                MotionSpringDriver.Step(element, state!, FixedDeltaSec);
+                for (var i = 0; i < 5; i++)
+                {
+                    MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
+                earlyOpacity = element.style.opacity.value;
+                for (var i = 0; i < 40; i++)
+                {
+                    MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
+                laterOpacity = element.style.opacity.value;
             }
-            var earlyOpacity = element.style.opacity.value;
-            for (var i = 0; i < 40; i++)
-            {
-                MotionSpringDriver.Step(element, state!, FixedDeltaSec);
-            }
-            var laterOpacity = element.style.opacity.value;
 
             // Assert — opacity has moved further toward the target (1) as more ticks run.
             Assert.That(laterOpacity, Is.GreaterThan(earlyOpacity));
@@ -97,44 +107,62 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 20f, mass: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
-            MotionSpringDriver.ApplyCurrentValues(element, state!);
+            if (state != null)
+            {
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+            }
 
             // Act — step until settled (a critically damped spring at this stiffness settles well inside this
             // budget; the cap just guards against an infinite loop if a regression stops it from ever settling).
-            var settled = false;
-            for (var i = 0; i < 600 && !settled; i++)
+            // NaN stands in for either failure mode (no channel resolved, or a spring that never converged),
+            // so both fail the tolerance comparison rather than skipping the case.
+            var restingOpacity = float.NaN;
+            if (state != null)
             {
-                settled = MotionSpringDriver.Step(element, state!, FixedDeltaSec);
+                var settled = false;
+                for (var i = 0; i < 600 && !settled; i++)
+                {
+                    settled = MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
+                if (settled)
+                {
+                    restingOpacity = element.style.opacity.value;
+                }
             }
-            Assume.That(settled, Is.True, "Precondition: the spring settled within the tick budget");
 
             // Assert
-            Assert.That(element.style.opacity.value, Is.EqualTo(1f).Within(0.01f));
+            Assert.That(restingOpacity, Is.EqualTo(1f).Within(0.01f));
         }
 
         [Test]
         public void Given_ASettledSpringChannel_When_InlineOverridesCleared_Then_TheOpacityStyleIsRemoved()
         {
-            // Arrange — settle the spring first (Assume guards the precondition, mirroring the test above).
+            // Arrange — settle the spring first.
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 20f, mass: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
-            MotionSpringDriver.ApplyCurrentValues(element, state!);
             var settled = false;
-            for (var i = 0; i < 600 && !settled; i++)
+            if (state != null)
             {
-                settled = MotionSpringDriver.Step(element, state!, FixedDeltaSec);
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+                for (var i = 0; i < 600 && !settled; i++)
+                {
+                    settled = MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
             }
-            Assume.That(settled, Is.True, "Precondition: the spring settled within the tick budget");
+            // A style that was never driven while settling is trivially "removed", so the assertion has to
+            // see that it was held first.
+            var heldWhileSettled = settled && element.style.opacity.keyword != StyleKeyword.Null;
 
             // Act — the scheduler calls this once every channel has settled, so the (already-applied) resting
             // classes' own opacity takes back over instead of the driver's inline value.
-            MotionSpringDriver.ClearInlineOverrides(element, state!);
+            if (state != null)
+            {
+                MotionSpringDriver.ClearInlineOverrides(element, state);
+            }
 
             // Assert
-            Assert.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That((heldWhileSettled, element.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
         }
 
         [Test]
@@ -145,10 +173,10 @@ namespace Velvet.Tests
             // (shared, not a second hand-copied dictionary), so this pins that the shared table still resolves
             // the same 0.5 / 1.0 pair.
             var plan = MotionSpringClassParser.Resolve(new[] { "scale-50" }, new[] { "scale-100" });
-            Assume.That(plan.Scale, Is.Not.Null, "Precondition: the pair resolves a scale channel");
 
-            // Assert
-            Assert.That((plan.Scale!.Value.from, plan.Scale.Value.to), Is.EqualTo((0.5f, 1f)));
+            // Assert — a pair that resolved no scale channel reads as null here and fails the same
+            // comparison a wrong magnitude would.
+            Assert.That(plan.Scale, Is.EqualTo(((float, float)?)(0.5f, 1f)));
         }
 
         [Test]
@@ -159,10 +187,10 @@ namespace Velvet.Tests
             // (negating it itself for the "n"-suffixed spelling), the single source of truth this pins against
             // rather than a separately hand-expanded ± table that could drift out of sync.
             var plan = MotionSpringClassParser.Resolve(new[] { "rotate-45" }, new[] { "rotate-n45" });
-            Assume.That(plan.Rotate, Is.Not.Null, "Precondition: the pair resolves a rotate channel");
 
-            // Assert
-            Assert.That((plan.Rotate!.Value.from, plan.Rotate.Value.to), Is.EqualTo((45f, -45f)));
+            // Assert — a pair that resolved no rotate channel reads as null here and fails the same
+            // comparison a wrong magnitude would.
+            Assert.That(plan.Rotate, Is.EqualTo(((float, float)?)(45f, -45f)));
         }
 
         [Test]
@@ -173,20 +201,31 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-100" }, new[] { "opacity-0" });
             var state = MotionSpringDriver.Create(plan, stiffness: 100f, damping: 20f, mass: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
-            MotionSpringDriver.ApplyCurrentValues(element, state!);
-            for (var i = 0; i < 5; i++)
+            var targetMidExit = float.NaN;
+            if (state != null)
             {
-                MotionSpringDriver.Step(element, state!, FixedDeltaSec);
+                MotionSpringDriver.ApplyCurrentValues(element, state);
+                for (var i = 0; i < 5; i++)
+                {
+                    MotionSpringDriver.Step(element, state, FixedDeltaSec);
+                }
+                targetMidExit = state.Opacity!.Target;
             }
-            Assume.That(state!.Opacity!.Target, Is.EqualTo(0f), "Precondition: heading toward the exit value");
 
             // Act — an exit-cancel (the key re-entered mid-exit): retarget back toward the resting value.
-            MotionSpringDriver.Retarget(state!);
+            // NaN stands in for a plan that resolved no channel, failing the comparison below the same way a
+            // wrong target would.
+            var targetAfterRetarget = float.NaN;
+            if (state != null)
+            {
+                MotionSpringDriver.Retarget(state);
+                targetAfterRetarget = state.Opacity!.Target;
+            }
 
-            // Assert — the channel's goal flipped to the value it originally started from (its RestingTarget),
+            // Assert — the channel was genuinely heading toward the exit value (0) before the retarget, and
+            // its goal flipped to the value it originally started from (its RestingTarget, 1) afterward —
             // not a fresh 0/1 default or the exit value it was still short of.
-            Assert.That(state!.Opacity!.Target, Is.EqualTo(1f));
+            Assert.That((targetMidExit, targetAfterRetarget), Is.EqualTo((0f, 1f)));
         }
 
         [Test]
@@ -242,7 +281,6 @@ namespace Velvet.Tests
             }
             var capturedValue = spring.Value;
             var capturedVelocity = spring.Velocity;
-            Assume.That(capturedVelocity, Is.Not.EqualTo(0f), "Precondition: the spring has built up velocity heading toward the first target");
 
             // Act — retarget to a wildly different value (mirrors an exit-cancel reversing back toward the
             // resting value) and take one more step; a FRESH spring seeded with the exact captured state is the
@@ -250,10 +288,13 @@ namespace Velvet.Tests
             spring.Step(FixedDeltaSec, -50f, stiffness: 100f, damping: 10f, mass: 1f);
             var reference = new SpringIntegrator(capturedValue, capturedVelocity);
             reference.Step(FixedDeltaSec, -50f, stiffness: 100f, damping: 10f, mass: 1f);
+            var valuesMatch = Mathf.Abs(spring.Value - reference.Value) <= 1e-6f;
 
-            // Assert — the retargeted spring's value matches the reference exactly: the retarget carried the
-            // SAME value/velocity forward (no discontinuity) rather than resetting either.
-            Assert.That(spring.Value, Is.EqualTo(reference.Value).Within(1e-6f));
+            // Assert — the spring had genuinely built up velocity before the retarget (otherwise "continues
+            // from its current value/velocity" would be indistinguishable from a reset to zero), and the
+            // retargeted spring's value matches the reference exactly: the retarget carried the SAME
+            // value/velocity forward (no discontinuity) rather than resetting either.
+            Assert.That((capturedVelocity != 0f, valuesMatch), Is.EqualTo((true, true)));
         }
 
         [Test]
