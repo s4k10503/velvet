@@ -2775,15 +2775,25 @@ namespace Velvet
 
         #region Helpers
 
-        // Returns contentContainer when the element is a ScrollView; otherwise returns the element itself.
+        // The element a child added to this one actually lands under: its contentContainer, or the
+        // element itself when it does not redirect. This is the same rule VisualElement.Add follows, and it
+        // is keyed on the redirect rather than on a widget type so it holds for every composite a caller can
+        // reach. V.Custom<T> mounts ANY VisualElement subclass with children, so the redirecting widgets are
+        // not a closed set Velvet chooses: ScrollView, Foldout, TabView, Tab and TwoPaneSplitView all parent
+        // their children in an inner container, and all of them place a real reconciled child list there.
+        // Everything downstream — where children are reconciled, and which box the layout manipulators read
+        // their direction / wrap from and write a container margin to — has to name that same element or it
+        // describes a layout the children are not in.
+        //
+        // A null contentContainer (ListView, which parents nothing and builds its rows from its own item
+        // source) answers with the element. That is not a workaround for a crash: VisualElement is null-safe
+        // throughout for this — childCount reads 0, the indexer yields nothing — so a caller walking "the
+        // children" of one simply finds none. Insert quietly does nothing there, which is why nothing should
+        // be reconciled into such a widget in the first place.
         internal static VisualElement GetChildContainer(VisualElement element)
         {
-            if (element is ScrollView scrollView)
-            {
-                return scrollView.contentContainer;
-            }
-
-            return element;
+            var content = element.contentContainer;
+            return content ?? element;
         }
 
         #endregion

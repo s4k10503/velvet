@@ -21,8 +21,8 @@ namespace Velvet
     // AttachToPanelEvent. A signature makes a redundant Apply a no-op.
     //
     // Child container. Like gap / divide it resolves and iterates FiberNodePatcher.GetChildContainer(target)
-    // (a ScrollView's contentContainer; else self), so the payload lands on the reconciled content and never
-    // on a ScrollView's internal hierarchy.
+    // (a composite widget's inner box; else self), so the payload lands on the reconciled content and never
+    // on the widget's internal hierarchy.
     //
     // Out-of-flow children (position: absolute) are excluded from the walk via StyleOutOfFlowChild, the same
     // way gap / divide exclude them. This is a deliberate deviation from literal CSS `> *` (which DOES match
@@ -106,7 +106,7 @@ namespace Velvet
 
         private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
 
-        // The container children are reconciled into (a ScrollView's contentContainer; else self).
+        // The container children are reconciled into (a composite widget's inner box; else self).
         private VisualElement? ChildContainer
             => target == null ? null : FiberNodePatcher.GetChildContainer(target);
 

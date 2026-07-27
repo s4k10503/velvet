@@ -88,6 +88,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **BREAKING:** `gap-*` / `space-*` and `divide-*` on a composite widget picked their physical edge
+  from the widget's own flex-direction instead of from the container the spaced children are actually
+  in. A composite widget — `ScrollView`, `Foldout`, `Tab`, `TabView`, `TwoPaneSplitView`,
+  `RadioButtonGroup`, `ToggleButtonGroup`, `PopupWindow`, and anything else that redirects —
+  reconciles its children into an inner box, so a `flex-row-reverse` / `flex-col-reverse` class on one
+  reverses only the widget's own box (a ScrollView's viewport and scrollers, a Foldout's toggle above
+  its content) while the content still paints in source order; the gap margin and the divider border
+  moved to the trailing edge anyway, leaving every visually adjacent pair unseparated and a margin or
+  a rule stranded on an outer edge. Both manipulators now read the direction from the inner box, which
+  is already the container they iterate and write to, and the container they name is decided by the
+  redirect itself rather than by a widget type — so it holds for anything mounted through
+  `V.Custom<T>` too. `flex-wrap` is read from there as well, so a `flex-wrap` written on such a widget
+  — which wraps only the widget, never its content — no longer switches the content to the four-side
+  half-margin polyfill: adjacent children keep the same separation through the leading-margin path,
+  without that path's negative container margin bleeding `gap/2` outward *inside* the widget, over the
+  box that clips or frames the content. A plain `gap-*` now follows the inner box's own direction
+  (vertical for a default `ScrollView`) rather than the widget's. **This changes existing layouts with
+  no compile error**: a class string that used to space horizontally may now space vertically, or move
+  its margin from one edge to the other. Plain elements parent their own children, so nothing changes
+  for them; nest a plain container inside the widget and put the direction or wrap class there when
+  the content needs one.
+  Two consequences worth knowing. Off-panel, where no resolved style exists, an inner box now defaults
+  to the engine's column rather than to `.flex`'s row, so the off-panel and on-panel answers agree —
+  *except* for a widget whose own built-in USS lays its inner box out as a row (a horizontally
+  scrolling `ScrollView`, a `TwoPaneSplitView`, a `ToggleButtonGroup`), which only a live panel can
+  report. On those, the first application runs before the widget attaches and writes the column edge,
+  moving to the row edge on the first geometry event — a one-frame flash that did not exist before.
+  And the manipulators now also watch the inner box for geometry changes, since
+  `GeometryChangedEvent` neither bubbles nor trickles and a re-layout confined to that box used to
+  reach nothing.
+- Two latent bugs on composite widgets other than `ScrollView` are fixed by the same change, because
+  the manipulators' "is this element still my child" test compared against the widget instead of the
+  box its children are in and so was permanently false. `gap-*` reset **all four margins on every
+  tracked child** on any change to its inputs, including out-of-flow children whose margin it is
+  supposed to leave alone — visibly shifting an `AnimatePresence` exit ghost mid-flight. A skewed
+  container (`skew-x-*` / `skew-y-*`) re-captured the *previous* pass's shear as each child's own
+  baseline translate every pass, so removing the skew restored a stale shear instead of the child's
+  original position.
 - **BREAKING:** `"flex flex-col md:flex-row"` — the documented "stack on narrow screens, row on wide
   ones" idiom — laid out as a column at every width. A responsive or state variant adds the BARE
   utility to the live class list, so above the breakpoint the element carried both `flex-col` and

@@ -42,7 +42,13 @@ namespace Velvet.Tests
     /// The manipulator writes INLINE margins (resolved to pixels from the same scale as <c>_tokens.uss</c>), so
     /// the produced spacing is observable via <c>element.style.margin*</c> without attaching to a panel or
     /// ticking layout — off-panel, both direction and wrap fall back from the class markers (the only source
-    /// available) to the same defaults their on-panel <c>resolvedStyle</c> fallback would produce. A USS
+    /// available) to the same defaults their on-panel <c>resolvedStyle</c> fallback would produce. That
+    /// agreement extends to a composite widget's inner box, which no class marker can reach: its off-panel
+    /// direction default is the engine's column rather than <c>.flex</c>'s row precisely so the two answers
+    /// match, and its wrap default was already the engine's. It does NOT extend to a widget whose own
+    /// built-in USS lays that box out as a row — a horizontally scrolling <c>ScrollView</c>, a
+    /// <c>TwoPaneSplitView</c>, a <c>ToggleButtonGroup</c> — which only a live panel reports; that case is
+    /// covered in <see cref="CompositeWidgetSpacingDirectionPanelTests"/>. A USS
     /// child-selector approach to gap would resolve only under a live panel and produce no inline margins at
     /// all, so these off-panel assertions are a meaningful discriminator against that class of implementation.
     /// </remarks>
@@ -420,6 +426,9 @@ namespace Velvet.Tests
         // landing there would shift the whole scroller instead of just the content. We assert both: content
         // is spaced, and the container margin is on the contentContainer with the ScrollView's own margin
         // left untouched.
+        // The wrap verdict is read from the content container as well, so the class that makes it wrap has
+        // to sit there: a flex-wrap in the ScrollView's own class string wraps only the ScrollView's box,
+        // which holds the viewport and the scrollers rather than the spaced children.
         [Test]
         public void Given_ScrollViewWrapGap4_When_Reconciled_Then_ContainerMarginOnContentNotScrollView()
         {
@@ -427,7 +436,10 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree = new VNode[]
             {
-                V.ScrollView("flex flex-row flex-wrap gap-4", Children(3)),
+                V.ScrollView(
+                    className: "flex flex-row gap-4",
+                    onCreated: el => ((ScrollView)el).contentContainer.AddToClassList("flex-wrap"),
+                    children: Children(3)),
             };
 
             // Act
@@ -474,6 +486,30 @@ namespace Velvet.Tests
             Assert.That(content[0].style.marginTop.value.value, Is.EqualTo(0f), "first content child no leading gap");
             Assert.That(content[1].style.marginTop.value.value, Is.EqualTo(Space2), "gap before 2nd content child");
             Assert.That(content[2].style.marginTop.value.value, Is.EqualTo(Space2), "gap before 3rd content child");
+        }
+
+        // The off-panel half of the plain-gap axis verdict for a redirecting widget. The direction class is on
+        // the ScrollView, which no child of the content container is laid out by, and no class marker can
+        // reach the content container itself — so the axis comes from the off-panel default for a widget's own
+        // inner box, which is the engine's column. Its on-panel twin (CompositeWidgetSpacingDirectionPanelTests)
+        // resolves the same container through resolvedStyle and must land on the same edge: a default that
+        // disagreed with the resolved answer would let an off-panel test pin what an on-panel one refutes.
+        [Test]
+        public void Given_ScrollViewRowGap4_When_ReconciledOffPanel_Then_TheAxisFollowsTheContentContainer()
+        {
+            // Arrange
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[]
+            {
+                V.ScrollView("flex flex-row gap-4", Children(3)),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var content = ((ScrollView)Container(scope.Root)).contentContainer;
+
+            // Assert: vertical spacing, matching the column the content container resolves to on a panel.
+            Assert.That(content[1].style.marginTop.value.value, Is.EqualTo(Space4));
         }
 
         // Bug 2: off-panel, bare `flex gap-4` (Auto axis, no flex-row/flex-col) must resolve the ROW edge
