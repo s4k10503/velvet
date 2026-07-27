@@ -19,7 +19,7 @@ namespace Velvet.SourceGenerators.Tests
 namespace Velvet
 {
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, Inherited = false)]
-    public sealed class MemoizeAttribute : global::System.Attribute { }
+    public sealed class MemoizeMethodAttribute : global::System.Attribute { }
 
     [global::System.AttributeUsage(global::System.AttributeTargets.Method | global::System.AttributeTargets.Constructor, Inherited = false)]
     public sealed class PureAttribute : global::System.Attribute { }

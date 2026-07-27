@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value-type props while preserving `Object.is` member semantics exactly — including members declared
   as `object`/interfaces holding boxed values, and the sign-of-zero distinction for nullable floats.
   IL2CPP (AOT) players keep the reflection implementation.
+- **BREAKING:** The method-level `MemoizeAttribute` (`[Memoize]`) is renamed to `MemoizeMethodAttribute`
+  (`[MemoizeMethod]`) so it no longer collides in name with the unrelated `ComponentAttribute.Memoize`
+  props-bail flag (`[Component(Memoize = true)]`, which keeps its name and behavior unchanged). Migrate
+  by replacing `[Memoize]` with `[MemoizeMethod]` on annotated partial methods.
 
 ### Fixed
 

@@ -54,7 +54,7 @@ The UI is described as the pure-function output of state. The VNode tree may be 
 - **Reconciler**: diff patching plus Lane-based priority scheduling
 - **Hooks**: React's primary hooks exposed in C# PascalCase (see [Documentation~/](./Documentation~/) for details)
 - **Animation**: `V.Motion` / `V.AnimatePresence` model Framer Motion — variants with `initial` / `animate` / `exit` labels, standalone mount enters, `PopLayout` exits, `staggerChildren` / `delayChildren` orchestration, per-property transition overrides, and opt-in spring physics (see [Documentation~/motion.md](./Documentation~/motion.md)); `AnimatePresence` is DOM-less (it emits no wrapper, mirroring React/Framer). Lists are `V.AnimatePresence(children: V.List(items, key, (x, i) => V.Motion(...)))` — author the animated cell directly, exactly like Framer's `motion.div`
-- **Compile-time memoization**: `[Memoize]` (a Roslyn source generator) for partial-method-level memoization; `[Component(Memoize = true)]` (an ILPP weaving pass, the same one driving `[Component(Compiler = true)]`'s auto-memoization) for whole-component `React.memo`-equivalent caching — see [Documentation~/memoization.md](./Documentation~/memoization.md)
+- **Compile-time memoization**: `[MemoizeMethod]` (a Roslyn source generator) for partial-method-level memoization; `[Component(Memoize = true)]` (an ILPP weaving pass, the same one driving `[Component(Compiler = true)]`'s auto-memoization) for whole-component `React.memo`-equivalent caching — see [Documentation~/memoization.md](./Documentation~/memoization.md)
 
 #### 2. Utility-first styling
 
@@ -193,7 +193,7 @@ See [package.json](./package.json) for dependent packages. Velvet is a self-cont
 
 - [Documentation~/README.md](./Documentation~/README.md) — Velvet documentation index
 - [Documentation~/react-migration.md](./Documentation~/react-migration.md) — In-depth guide for developers coming from React
-- [Documentation~/memoization.md](./Documentation~/memoization.md) — `[Memoize]` and component-level caching
+- [Documentation~/memoization.md](./Documentation~/memoization.md) — `[MemoizeMethod]` and component-level caching
 
 ---
 
