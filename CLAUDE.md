@@ -19,12 +19,13 @@ Unity test runs require the editor to be **closed** (it holds the project lock).
 UNITY=/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity
 "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
   -testResults /tmp/results.xml -logFile /tmp/run.log
+python3 scripts/assert-no-inconclusive.py /tmp/results.xml
 ```
 
 - **Run a subset / single fixture:** add `-testFilter "Velvet.Tests.SomeFixture"` (semicolon-separates multiple; matches fully-qualified class or method names).
 - **PlayMode:** `-testPlatform PlayMode`.
 - **Do NOT pass `-nographics`.** Everything that needs a real panel (an `EditorWindow.rootVisualElement`, or anything reading `resolvedStyle` / firing pointer/focus events) goes through `TestGraphics.IgnoreIfHeadless`, so the flag does not fail those tests — it **skips** them, and the run reports green having exercised none of the panel behavior. Graphics-free tests all pass with graphics on, so the flag buys nothing and costs the half of the suite that is hardest to get right.
-- Results land in the JUnit-style XML (`grep -o 'passed="[0-9]*"\|failed="[0-9]*"'`); compile errors appear only in the `-logFile` (`grep "error CS"`).
+- Results land in the JUnit-style XML (`grep -o 'passed="[0-9]*"\|failed="[0-9]*"'`); compile errors appear only in the `-logFile` (`grep "error CS"`). Neither the exit code nor any reporter treats an inconclusive case as a failure, which is why the run ends with `assert-no-inconclusive.py` — CI runs the same script.
 - Interactively, the same suites run from **Window ▸ General ▸ Test Runner**.
 
 ### Source generators (separate .NET solution)

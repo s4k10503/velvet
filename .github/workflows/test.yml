@@ -107,6 +107,14 @@ jobs:
           artifactsPath: ${{ matrix.testMode }}-results
           githubToken: ${{ secrets.GITHUB_TOKEN }}
 
+      # Unity exits 0 on an inconclusive case and game-ci's reporter reads only
+      # passed/failed/skipped off <test-run>, so a test whose Assume stopped holding
+      # would leave this job green. always() reports both tallies on a run that also
+      # has failures.
+      - name: Assert no inconclusive results
+        if: always()
+        run: python3 scripts/assert-no-inconclusive.py "${{ matrix.testMode }}-results"
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
