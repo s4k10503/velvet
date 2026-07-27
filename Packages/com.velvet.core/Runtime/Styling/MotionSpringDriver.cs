@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -27,10 +28,53 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Running state for one spring-driven Motion variant enter/exit: up to five channels (see
+    /// One spring-driven color channel. A single scalar 0→1 PROGRESS spring drives a
+    /// <see cref="Color.LerpUnclamped"/> between the endpoints rather than four independent per-component
+    /// springs: four springs sharing one stiffness/damping/mass but different distances settle at different
+    /// times, so the color would drift off the straight line between the two endpoints and arrive channel by
+    /// channel. Interpolation stays in straight RGBA — the space UI Toolkit's own color transition uses — so
+    /// switching a config between Tween and Spring cannot change which colors the element passes through.
+    /// </summary>
+    internal sealed class SpringColorChannel
+    {
+        public readonly ArbitraryProperty Property;
+        public readonly Color From;
+        public readonly Color To;
+        public readonly SpringChannel Progress;
+
+        public SpringColorChannel(ArbitraryProperty property, Color from, Color to)
+        {
+            Property = property;
+            From = from;
+            To = to;
+            Progress = new SpringChannel(0f, 1f);
+        }
+    }
+
+    /// <summary>
+    /// One spring-driven length channel: the property to write, the unit both endpoints share (see
+    /// <see cref="MotionSpringClassParser.LengthChannelPlan"/>), and the magnitude spring itself.
+    /// </summary>
+    internal sealed class SpringLengthChannel
+    {
+        public readonly ArbitraryProperty Property;
+        public readonly LengthUnit Unit;
+        public readonly SpringChannel Value;
+
+        public SpringLengthChannel(ArbitraryProperty property, float from, float to, LengthUnit unit)
+        {
+            Property = property;
+            Unit = unit;
+            Value = new SpringChannel(from, to);
+        }
+    }
+
+    /// <summary>
+    /// Running state for one spring-driven Motion variant enter/exit: the five fixed axes (see
     /// <see cref="SpringAxis"/>; translate x/y are always present together, never alone — see
-    /// <see cref="MotionSpringClassParser.Resolve"/>), the shared stiffness/damping/mass, the recurring tick
-    /// handle, and the completion callback. Owned by <c>StyleAnimationScheduler</c>'s <c>PendingAnimation</c>.
+    /// <see cref="MotionSpringClassParser.Resolve"/>) plus any color/length property channels the delta
+    /// resolved, the shared stiffness/damping/mass, the recurring tick handle, and the completion callback.
+    /// Owned by <c>StyleAnimationScheduler</c>'s <c>PendingAnimation</c>.
     /// </summary>
     internal sealed class MotionSpringState
     {
@@ -39,6 +83,8 @@ namespace Velvet
         public SpringChannel? TranslateY;
         public SpringChannel? Scale;
         public SpringChannel? Rotate;
+        public List<SpringColorChannel>? Colors;
+        public List<SpringLengthChannel>? Lengths;
 
         public float Stiffness;
         public float Damping;
@@ -90,15 +136,64 @@ namespace Velvet
             if (plan.TranslateY is { } ty) state.TranslateY = new SpringChannel(ty.from, ty.to);
             if (plan.Scale is { } s) state.Scale = new SpringChannel(s.from, s.to);
             if (plan.Rotate is { } r) state.Rotate = new SpringChannel(r.from, r.to);
+            if (plan.Colors != null)
+            {
+                var colors = new List<SpringColorChannel>(plan.Colors.Count);
+                foreach (var c in plan.Colors)
+                {
+                    colors.Add(new SpringColorChannel(c.Property, c.From, c.To));
+                }
+                state.Colors = colors;
+            }
+            if (plan.Lengths != null)
+            {
+                var lengths = new List<SpringLengthChannel>(plan.Lengths.Count);
+                foreach (var l in plan.Lengths)
+                {
+                    lengths.Add(new SpringLengthChannel(l.Property, l.From, l.To, l.Unit));
+                }
+                state.Lengths = lengths;
+            }
             return state;
         }
 
         /// <summary>
         /// Writes each channel's CURRENT integrator value as an inline style, synchronously — so the element
         /// shows the from-pose on the very first rendered frame instead of flashing at the (already-applied)
-        /// resting classes' value until the first tick runs.
+        /// resting classes' value until the first tick runs — after suspending the element's native transitions
+        /// when this play drives a property one of them could intercept (see
+        /// <see cref="MotionNativeTransitionGuard"/>).
         /// </summary>
+        /// <remarks>
+        /// The suspension goes up with this FIRST write rather than with the recurring tick, because this write
+        /// is itself one a live native transition would animate into instead of landing on. A play parked behind
+        /// a delay is already holding its from-pose over that whole window, so there is no earlier moment the
+        /// driver does not own the slots.
+        /// </remarks>
         public static void ApplyCurrentValues(VisualElement element, MotionSpringState state)
+        {
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state));
+            WriteChannelValues(element, state);
+        }
+
+        // The slot groups this play writes, for the guard's intersection against what the element's own
+        // transition utilities declare.
+        private static MotionTransitionSlots DrivenSlots(MotionSpringState state)
+        {
+            var slots = MotionTransitionSlots.None;
+            if (state.Opacity != null) slots |= MotionTransitionSlots.Opacity;
+            if (state.TranslateX != null || state.TranslateY != null) slots |= MotionTransitionSlots.Translate;
+            if (state.Scale != null) slots |= MotionTransitionSlots.Scale;
+            if (state.Rotate != null) slots |= MotionTransitionSlots.Rotate;
+            if (state.Colors != null) slots |= MotionTransitionSlots.Color;
+            if (state.Lengths != null) slots |= MotionTransitionSlots.Length;
+            return slots;
+        }
+
+        // The style writes themselves, without the once-per-play transition suspension above: re-asserting the
+        // same inline transition-property on every tick would only re-dirty the element's computed transitions
+        // for a value it already holds.
+        private static void WriteChannelValues(VisualElement element, MotionSpringState state)
         {
             if (state.Opacity != null)
             {
@@ -118,6 +213,24 @@ namespace Velvet
             if (state.Rotate != null)
             {
                 element.style.rotate = new Rotate(Angle.Degrees(state.Rotate.Integrator.Value));
+            }
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors)
+                {
+                    StyleArbitraryValueResolver.ApplyInline(element,
+                        new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, c.Progress.Integrator.Value)));
+                }
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths)
+                {
+                    // The integrator already holds the spring's true position, overshoot included; the emitter
+                    // is what saturates a property with no negative meaning.
+                    var v = MotionPropertyInterpolation.ClampLength(l.Property, l.Value.Integrator.Value);
+                    StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
+                }
             }
         }
 
@@ -159,21 +272,62 @@ namespace Velvet
                 c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
                 settled &= c.Integrator.IsSettled(c.Target, DegreeRestDelta, DegreeRestSpeed);
             }
+            if (state.Colors != null)
+            {
+                foreach (var color in state.Colors)
+                {
+                    // The progress spring runs 0→1, so it settles on the same normalized scale opacity does.
+                    var c = color.Progress;
+                    c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
+                    settled &= c.Integrator.IsSettled(c.Target, NormalizedRestDelta, NormalizedRestSpeed);
+                }
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var length in state.Lengths)
+                {
+                    // A magnitude channel converges on the pixel scale whichever unit it carries: a percentage
+                    // spans the same 0..100-ish range a pixel length does, so the same epsilon reads as the
+                    // same fraction of the travel.
+                    var c = length.Value;
+                    c.Integrator.Step(dtSec, c.Target, state.Stiffness, state.Damping, state.Mass);
+                    settled &= c.Integrator.IsSettled(c.Target, PixelRestDelta, PixelRestSpeed);
+                }
+            }
 
-            // Every channel's Integrator.Value was just advanced above; re-applying them is exactly what
-            // ApplyCurrentValues already does for the initial (pre-tick) write, so the four style writes live
-            // in exactly one place instead of being duplicated here.
-            ApplyCurrentValues(element, state);
+            // Every channel's Integrator.Value was just advanced above; re-applying them is exactly what the
+            // initial (pre-tick) write already does, so the style writes live in exactly one place instead of
+            // being duplicated here.
+            WriteChannelValues(element, state);
             return settled;
         }
 
-        /// <summary>Clears every inline override this state ever wrote, letting the (already-resting) classes take back over.</summary>
+        /// <summary>
+        /// Releases every inline slot this state ever wrote — and the transition suspension
+        /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
+        /// </summary>
+        /// <remarks>
+        /// The slots are nulled first and the element's surviving arbitrary-value layers re-asserted afterwards,
+        /// in that order: a driven shorthand owns a whole fan-out (a `padding` channel writes all four edges)
+        /// while an authored longhand (`pt-[2px]`) is registered against ONE of them, so per-property
+        /// interleaving would let a later null wipe a value an earlier re-assert had just restored.
+        /// </remarks>
         public static void ClearInlineOverrides(VisualElement element, MotionSpringState state)
         {
             if (state.Opacity != null) element.style.opacity = StyleKeyword.Null;
             if (state.TranslateX != null || state.TranslateY != null) element.style.translate = StyleKeyword.Null;
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) StyleArbitraryValueResolver.ClearInline(element, c.Property);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
+            }
+            StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+            MotionNativeTransitionGuard.Release(element, state);
         }
 
         /// <summary>
@@ -185,12 +339,12 @@ namespace Velvet
         public static void Retarget(MotionSpringState state) => ForEachActiveChannel(state, static c => c.Target = c.RestingTarget);
 
         /// <summary>
-        /// Runs <paramref name="action"/> against whichever of the five optional channels on <paramref
-        /// name="state"/> are active (non-null) — the single place that walks the fixed channel set for the
-        /// callers (like <see cref="Retarget"/>) whose per-channel action does not otherwise depend on WHICH
-        /// channel it is. Not used by <see cref="ApplyCurrentValues"/> / <see cref="Step"/> (each element.style
-        /// write is channel-specific, and translate x/y compose onto one shared inline style) or
-        /// <see cref="ClearInlineOverrides"/> (same translate composition), which stay hand-written.
+        /// Runs <paramref name="action"/> against every active <see cref="SpringChannel"/> on <paramref
+        /// name="state"/> — the five optional axes plus each property channel's own integrator — the single
+        /// place that walks the channel set for the callers (like <see cref="Retarget"/>) whose per-channel
+        /// action does not otherwise depend on WHICH channel it is. Not used by the write/step/clear paths,
+        /// where each element.style write is channel-specific (and translate x/y compose onto one shared
+        /// inline style), which stay hand-written.
         /// </summary>
         private static void ForEachActiveChannel(MotionSpringState state, System.Action<SpringChannel> action)
         {
@@ -199,6 +353,14 @@ namespace Velvet
             if (state.TranslateY != null) action(state.TranslateY);
             if (state.Scale != null) action(state.Scale);
             if (state.Rotate != null) action(state.Rotate);
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) action(c.Progress);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) action(l.Value);
+            }
         }
     }
 }

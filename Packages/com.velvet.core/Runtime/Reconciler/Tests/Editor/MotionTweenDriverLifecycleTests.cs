@@ -38,12 +38,12 @@ namespace Velvet.Tests
             ["visible"] = "opacity-100 translate-x-4",
         };
 
-        // Colors are not an animatable channel for either driver: an exit between these labels
-        // resolves to an empty plan.
-        private static readonly Dictionary<string, string> s_paint = new()
+        // Semantic theme tokens resolve through --color-* with no C# mirror, so neither driver can read a
+        // numeric endpoint out of these class names: an exit between these labels resolves to an empty plan.
+        private static readonly Dictionary<string, string> s_themeTokens = new()
         {
-            ["visible"] = "bg-white",
-            ["hidden"] = "bg-black",
+            ["visible"] = "bg-surface",
+            ["hidden"] = "bg-primary",
         };
 
         private readonly record struct SetState(string Keys);
@@ -265,9 +265,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_ABezierExitWithNoAnimatableChannel_When_TheKeyIsRemoved_Then_TheGhostDropsAndExitCompleteFiresOnce()
         {
-            // Arrange — the exit variant only changes colors (not a bezier channel), so the plan is empty and the
-            // exit must complete once, not replay against the per-pass exit bookkeeping forever.
-            s_hostVariants = s_paint;
+            // Arrange — the exit variant's only delta is a semantic theme token (no numeric endpoint a bezier
+            // channel could read), so the plan is empty and the exit must complete once, not replay against
+            // the per-pass exit bookkeeping forever.
+            s_hostVariants = s_themeTokens;
             s_hostTransition = new StyleTransitionConfig { Type = TransitionType.Bezier, DurationSec = 0.5f };
             var exitCompleteCalls = 0;
             s_onExitComplete = () => exitCompleteCalls++;
@@ -461,10 +462,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_ASpringExitWithNoAnimatableChannel_When_TheKeyIsRemoved_Then_TheGhostDropsAndExitCompleteFiresOnce()
         {
-            // Arrange — the exit variant only changes colors (not a spring channel), so the spring
-            // plan is empty and the exit must complete once, not replay against the per-pass
-            // exit bookkeeping forever.
-            s_hostVariants = s_paint;
+            // Arrange — the exit variant's only delta is a semantic theme token (no numeric endpoint a spring
+            // channel could read), so the spring plan is empty and the exit must complete once, not replay
+            // against the per-pass exit bookkeeping forever.
+            s_hostVariants = s_themeTokens;
             s_hostTransition = new StyleTransitionConfig { Type = TransitionType.Spring, DurationSec = 0.5f };
             var exitCompleteCalls = 0;
             s_onExitComplete = () => exitCompleteCalls++;

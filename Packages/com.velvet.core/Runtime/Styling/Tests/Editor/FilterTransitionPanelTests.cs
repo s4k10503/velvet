@@ -216,6 +216,28 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARunningFilterTween_When_TheLayerReassertRuns_Then_ItsStartValueIsUnchanged()
+        {
+            // Arrange — a running blur tween, advanced one frame so the LIVE inline filter is mid-flight and
+            // differs from where the tween started.
+            var element = MountResolved("transition-filter");
+            var binding = _mounted.Root.Reconciler.Context.FilterTransitionBindings[element];
+            ApplyBlur(element, 12f);
+            Assume.That(binding.Scheduled, Is.Not.Null, "Precondition: a tween is running");
+            StyleFilterTransitionDriver.ApplyFrame(element, binding, 0.5f);
+            var startedFrom = binding.Channels[0].From[0].floatValue;
+
+            // Act — what a settling spring/bezier play does when it hands its slots back: re-assert every
+            // arbitrary-value layer the element still carries.
+            StyleArbitraryValueResolver.ReapplyLayeredValues(element);
+
+            // Assert — the filter family is exempt from that re-assert, so the tween still starts where it
+            // started. Without the exemption the re-resolve redirects it from the mid-frame value, restarting a
+            // full duration from wherever the eye happened to be.
+            Assert.That(binding.Channels[0].From[0].floatValue, Is.EqualTo(startedFrom));
+        }
+
+        [Test]
         public void Given_RunningTween_When_Detached_Then_TickPaused()
         {
             // Arrange — a running filter tween.
