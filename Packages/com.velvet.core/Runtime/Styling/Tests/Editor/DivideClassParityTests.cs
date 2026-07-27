@@ -788,8 +788,56 @@ namespace Velvet.Tests
             container.AddToClassList("flex-col-reverse");
             manipulator.Apply();
 
+            // Assert — the divider is now ON the trailing edge, not merely gone from the leading one.
+            Assert.That(container[1].style.borderBottomWidth.value, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void Given_ADirectionClassFlipWithNoSpecChange_When_ApplyReruns_Then_TheStaleLeadingBorderIsReleased()
+        {
+            // Arrange — the release half of the same flip. A divider that took the new edge without giving up
+            // the old one rules the child on both sides and insets it by two gutters instead of one.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-col divide-y", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = scope.Root[0];
+            var manipulator = scope.Reconciler.Context.DivideManipulators[container];
+            Assume.That(container[1].style.borderTopWidth.value, Is.EqualTo(1f),
+                "Precondition: the column divider settled on the leading (top) edge");
+
+            // Act
+            container.RemoveFromClassList("flex-col");
+            container.AddToClassList("flex-col-reverse");
+            manipulator.Apply();
+
             // Assert
             Assert.That(container[1].style.borderTopWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AChildOfAReversedDivideContainer_When_ItIsMovedOut_Then_NoResidualTrailingBorder()
+        {
+            // Arrange — a reversed container puts the divider on the TRAILING edge, so the reset a departing
+            // child gets has to reach that edge. A reset hardcoded to the leading pair leaves a reparented
+            // child ruled on its right indefinitely: the container's abandoned-edge clear only walks children
+            // that are still members, and nothing else revisits one that left.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row-reverse divide-x", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = scope.Root[0];
+            var manipulator = scope.Reconciler.Context.DivideManipulators[container];
+            var movedChild = container[2];
+            Assume.That(movedChild.style.borderRightWidth.value, Is.EqualTo(1f),
+                "Precondition: the child carries the trailing divider while it is in the container");
+
+            // Act — move the child out of the divide container (a sibling reparent), then re-apply.
+            container.Remove(movedChild);
+            var sink = new VisualElement();
+            sink.Add(movedChild);
+            manipulator.Apply();
+
+            // Assert
+            Assert.That(movedChild.style.borderRightWidth.keyword, Is.EqualTo(StyleKeyword.Null));
         }
 
         [Test]
@@ -981,6 +1029,32 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(b.style.borderTopWidth.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ADividedColumn_When_FlippedToColumnReverse_Then_TheTrailingBorderIsWrittenWithNoSynthesizedEvent()
+        {
+            // Arrange — the receive half on the production convergence path: releasing the abandoned edge is
+            // only half of converging, and a re-apply that cleared the old edge and wrote nothing would
+            // satisfy every release assertion in this fixture while leaving the container with no rules at all.
+            using var store = new DirectionStore();
+            s_store = store;
+            using var mounted = V.Mount(Root, V.Component(DividedColumn, key: "col"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            Assume.That(b.style.borderBottomWidth.value, Is.EqualTo(0f),
+                "Precondition: the trailing edge is unwritten before the flip");
+
+            // Act — flip to flex-col-reverse and just tick; no synthesized geometry event.
+            store.Set(true);
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Assert
+            Assert.That(b.style.borderBottomWidth.value, Is.EqualTo(1f));
         }
 
         [Test]

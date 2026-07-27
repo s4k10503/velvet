@@ -321,6 +321,15 @@ namespace Velvet
             _hasSignature = false;
         }
 
+        // Unlike the Apply walk, this does NOT skip out-of-flow children — it clears the ABANDONED edge on
+        // every current child unconditionally, including a PopLayout ghost mid-exit. That ghost's inline
+        // position was computed by GeneralPathReconciler.PinExitingChildOutOfFlow against the box it had when
+        // it was pinned, so an edge flip landing here while it is still exiting changes its border box under
+        // it. The consequence is milder than the same window in the gap manipulator: the pin folds a child's
+        // MARGIN into the compensated left/top it computes, so clearing a margin edge shifts the ghost by the
+        // full gap, whereas a border width it never folded in only changes the ghost's own content inset by
+        // the divider width. Skipping ghosts instead would be worse — a ghost that outlives the flip would
+        // keep painting a rule on an edge no live sibling still uses.
         private void ClearEdge(VisualElement container, DivideEdge edge)
         {
             if (container == null)

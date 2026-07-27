@@ -157,15 +157,14 @@ divider — and UI Toolkit has no `:first-child` and no `> *` child combinator e
 realizes them through the same kind of per-container manipulator (`StyleDivideManipulator`): the
 border goes on every child **except the first**, never on the container's outer edges.
 
-Which physical edge carries that border is resolved exactly the way a gap's is. The axis is fixed by
-the class (`divide-x` is horizontal, `divide-y` is vertical — there is no direction-following `Auto`
-form), and within that axis the border moves to the **trailing** edge (`border-right` /
-`border-bottom`) on a reversed container, or when the matching `divide-x-reverse` /
-`divide-y-reverse` marker is present. Marker and reversed direction combine with **OR**, not XOR
-(`flex-row-reverse divide-x divide-x-reverse` still lands trailing), and the flip is per axis
-(`divide-x` never reacts to `flex-col-reverse`, `divide-y` never to `flex-row-reverse`). The
-direction itself comes from the class list first and `resolvedStyle` only as a fallback, for the
-staleness reason spelled out under "How re-spacing stays correct" below.
+Which physical edge carries that border follows **exactly** the rule "Reversed containers" above
+states for gap — the same trailing-edge move on `flex-row-reverse` / `flex-col-reverse`, the same
+OR-not-XOR combination with the reverse marker, the same per-axis independence, and the same
+class-list-before-`resolvedStyle` direction source. Read that section for the rule; only the two
+differences are restated here. The axis is always fixed by the class (`divide-x` is horizontal,
+`divide-y` is vertical — there is no direction-following `Auto` form that a plain `gap-*` has), and
+the marker is spelled `divide-x-reverse` / `divide-y-reverse` rather than `space-x-reverse` /
+`space-y-reverse`.
 
 | Utility | Axis | Effect |
 |---|---|---|
@@ -281,8 +280,9 @@ bleeding its negative margin outward over its siblings until something unrelated
 `grid` also sets `flex-direction: row` (and `flex-wrap: wrap`) in `_layout.uss`, but a `grid` /
 `grid-cols-*` class routes an element's gap through the separate grid manipulator entirely —
 `StyleGapManipulator` is suppressed and removed for that element rather than ever computing a
-direction or wrap verdict for it, so neither class scan needs to (or does) recognize `grid` at all;
-see `StyleFlexDirectionResolver`'s own comment for the mechanics.
+direction or wrap verdict for it — the suppression itself lives in
+`FiberNodePatcher.ApplyGapManipulator`, which checks for the grid class before the manipulator is
+ever created or updated — so neither class scan needs to (or does) recognize `grid` at all.
 
 ```csharp
 // Wrapping grid: gap-4 now spaces BOTH the row direction and between wrapped rows.
