@@ -45,13 +45,21 @@ namespace Velvet.SourceGenerators.AutoDeps
         public bool DepsAreParams { get; }
 
         /// <summary>
-        /// Largest lambda arity the widest overload of this hook's factory accepts. Most factories are
-        /// parameterless (0); <c>UseBlocker</c> passes the navigation attempt (and, on the async overload, a
-        /// cancellation token) into the predicate. A lambda with more parameters than this is not the hook's
-        /// factory shape — notably <c>V.Memo&lt;TProps&gt;(Func&lt;TProps,VNode&gt;, props, …)</c>, whose
-        /// props lambda must stay out of the deps-comparison pipeline.
+        /// Largest lambda arity the widest deps-taking overload of this hook's factory accepts, or
+        /// <see cref="UnboundedFactoryParameterCount"/> when the factory is a type parameter constrained to
+        /// <c>Delegate</c> and therefore admits any arity. Effect factories are parameterless (0);
+        /// <c>UseBlocker</c> passes the navigation attempt (and, on the async overload, a cancellation token)
+        /// into the predicate; <c>UseCallback</c> memoizes the user's own delegate, whose shape it does not
+        /// constrain at all. A lambda with more parameters than this is not the hook's factory shape —
+        /// notably <c>V.Memo&lt;TProps&gt;(Func&lt;TProps,VNode&gt;, props, …)</c>, whose props lambda must
+        /// stay out of the deps-comparison pipeline.
         /// </summary>
         public int MaxFactoryParameterCount { get; }
+
+        /// <summary>
+        /// <see cref="MaxFactoryParameterCount"/> for a factory whose arity the signature does not bound.
+        /// </summary>
+        public const int UnboundedFactoryParameterCount = int.MaxValue;
 
         /// <summary>
         /// Maps a Velvet deps-comparing method name to its descriptor, or returns false for non-deps methods.
@@ -62,8 +70,10 @@ namespace Velvet.SourceGenerators.AutoDeps
         /// <remarks>
         /// This table is the analyzer's whole notion of which hooks compare deps, and it is expressed in
         /// strings that no compiler checks against the runtime. The Generators~ hook-surface drift guard
-        /// asserts that every runtime hook taking both a delegate and a <c>deps</c> parameter appears here,
-        /// so a hook added on the runtime side cannot silently fall out of exhaustive-deps coverage.
+        /// asserts that every runtime hook taking both a delegate and a dependency list appears here, and
+        /// that each entry's argument positions and factory bound match the signature it claims to describe,
+        /// so a hook added or reshaped on the runtime side cannot silently fall out of exhaustive-deps
+        /// coverage.
         /// </remarks>
         public static bool TryGet(string methodName, out DepsHookDescriptor descriptor)
         {
@@ -79,7 +89,14 @@ namespace Velvet.SourceGenerators.AutoDeps
                     descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 0, depsArgIndex: 1, depsAreParams: false);
                     return true;
                 case VelvetWellKnownNames.UseCallbackMethodName:
-                    descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 0, depsArgIndex: 1, depsAreParams: true);
+                    // `UseCallback<T>(T callback, params object?[] deps) where T : Delegate` memoizes whatever
+                    // delegate the user hands it, so its lambda is routinely an event handler taking arguments.
+                    descriptor = new DepsHookDescriptor(
+                        VelvetWellKnownNames.HooksTypeFullName,
+                        factoryArgIndex: 0,
+                        depsArgIndex: 1,
+                        depsAreParams: true,
+                        maxFactoryParameterCount: UnboundedFactoryParameterCount);
                     return true;
                 case VelvetWellKnownNames.UseMemoMethodName:
                     // UseMemo's factory is parameterless, so it flows through the deps-comparison

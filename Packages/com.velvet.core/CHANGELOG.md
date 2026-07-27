@@ -32,9 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The VEL100 exhaustive-deps analyzer now also covers `Hooks.UseInsertionEffect` and `Hooks.UseBlocker`.
   Both take a closure plus a deps array, but neither was listed as a deps-comparing hook, so a captured
-  value missing from their deps went unreported. `UseBlocker`'s predicate receives the navigation attempt,
-  and a factory lambda that takes parameters was previously skipped outright; the predicate's own
-  parameter is supplied per invocation and is still never treated as a dependency.
+  value missing from their deps went unreported.
+- VEL100 now inspects deps-comparing hooks whose lambda takes parameters, which it previously skipped
+  outright. This matters most for `Hooks.UseCallback`, whose whole purpose is memoizing the caller's own
+  delegate: the everyday `UseCallback<Action<ClickEvent>>(evt => Save(draft), draft)` shape was never
+  checked, matching React's `useCallback` only in the parameterless case. `UseBlocker`'s predicate (which
+  receives the navigation attempt, and a cancellation token on the async overload) is covered for the same
+  reason. A lambda's own parameters are supplied per invocation and are never treated as dependencies, and a
+  lambda wider than the hook's widest overload is still not read as that hook's factory.
 - A `FocusScope` with `restoreFocus: true` did not hand focus back to the prior element when the
   scope's ROOT element itself (rather than a descendant) held focus at unmount: the guard used
   `VisualElement.Contains`, which does not count an element as containing itself, so a focused root

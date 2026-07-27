@@ -45,6 +45,7 @@ namespace Velvet
 
     public sealed class NavigationAttempt { }
     public sealed class RouteBlockerState { }
+
     public sealed class MemoNode : VNode
     {
         public string Key;
@@ -84,10 +85,13 @@ namespace Velvet
         public static void UseEffect(global::System.Func<global::System.Action> factory, object[] deps) { }
         public static void UseLayoutEffect(global::System.Func<global::System.Action> factory, object[] deps) { }
         public static void UseInsertionEffect(global::System.Func<global::System.Action> factory, object[] deps) { }
-        public static T UseCallback<T>(T callback, params object[] deps) where T : class => callback;
+        public static T UseCallback<T>(T callback, params object[] deps) where T : global::System.Delegate => callback;
         public static T UseMemo<T>(global::System.Func<T> factory, params object[] deps) => factory();
         public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock, params object[] deps) => null;
+        public static global::Velvet.RouteBlockerState UseBlocker(
+            global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
+                global::Cysharp.Threading.Tasks.UniTask<bool>> shouldBlock, params object[] deps) => null;
         public static (T value, global::System.Action<T> setValue) UseState<T>(T initial) =>
             (initial, _ => { });
         public static (TState state, global::System.Action<TAction> dispatch) UseReducer<TState, TAction>(global::System.Func<TState, TAction, TState> reducer, TState initial) =>
@@ -100,6 +104,12 @@ namespace Velvet
             new global::Velvet.MutableRef<T>(initial);
         public static void UseImperativeHandle<T>(object refTarget, global::System.Func<T> factory, params object[] deps) { }
     }
+}
+
+namespace Cysharp.Threading.Tasks
+{
+    // Stands in for the real UniTask<T> so UseBlocker's async overload keeps its true arity here.
+    public struct UniTask<T> { }
 }
 ";
 

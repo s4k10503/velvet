@@ -80,7 +80,7 @@ namespace Velvet.SourceGenerators.Diagnostics
             "VEL100",
             "Hook lambda captures a local that is not in the deps array",
             "Hook lambda captures '{0}' but it is not present in the deps array; the closure may run with a stale value",
-            "Compares closure-captured locals inside a deps-comparing hook's factory lambda (UseEffect / UseLayoutEffect / UseInsertionEffect / UseCallback / UseMemo / UseImperativeHandle / UseBlocker, plus V.Memoized / V.MemoizedWithKey) against the elements listed in the deps argument and warns on mismatches. Conservative: only flags simple `new[]` / `new T[] { ... }` deps initializers and loose params deps.");
+            "Compares closure-captured locals inside a deps-comparing hook's factory lambda (UseEffect / UseLayoutEffect / UseInsertionEffect / UseCallback / UseMemo / UseImperativeHandle / UseBlocker, plus V.Memoized / V.MemoizedWithKey) against the elements listed in the deps argument and warns on mismatches. Conservative: only flags simple `new[]` / `new T[] { ... }` deps initializers and loose params deps, and never treats the factory lambda's own parameters as dependencies.");
 
         public static readonly DiagnosticDescriptor Vel101HookInConditional = HookWarn(
             "VEL101",

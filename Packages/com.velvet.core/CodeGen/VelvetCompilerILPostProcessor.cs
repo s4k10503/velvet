@@ -16,7 +16,10 @@ namespace Velvet.CodeGen
     // are surfaced through DiagnosticMessage.
     internal sealed class VelvetCompilerILPostProcessor : ILPostProcessor
     {
-        private const string VelvetAssemblyName = "Velvet";
+        // Read off the runtime assembly this one references rather than spelled out: a literal would survive
+        // an asmdef rename and make WillProcess answer false for every assembly, silently disabling
+        // auto-memoization project-wide with no diagnostic to explain it.
+        private static readonly string VelvetAssemblyName = typeof(Velvet.Hooks).Assembly.GetName().Name;
 
         public override ILPostProcessor GetInstance() => this;
 

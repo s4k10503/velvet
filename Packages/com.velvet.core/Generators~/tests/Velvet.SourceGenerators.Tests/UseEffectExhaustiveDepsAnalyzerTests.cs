@@ -550,6 +550,108 @@ namespace MyApp.Pages
         }
 
         [Fact]
+        public void Reports_When_UseCallback_Parameterized_Delegate_Captures_Local_Missing_From_Deps()
+        {
+            // Arrange
+            // UseCallback memoizes the caller's own delegate, routinely an event handler taking arguments —
+            // the common React shape `useCallback(e => save(draft), [draft])`.
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var draft = 5;
+            global::Velvet.Hooks.UseCallback<System.Action<int>>(evt => System.Console.WriteLine(draft), new object[] { });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Contains("draft", Assert.Single(diagnostics.Where(d => d.Id == "VEL100")).GetMessage());
+        }
+
+        [Fact]
+        public void DoesNotReport_When_UseCallback_Parameterized_Delegate_Only_Reads_Its_Own_Parameter()
+        {
+            // Arrange
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            global::Velvet.Hooks.UseCallback<System.Action<int>>(evt => System.Console.WriteLine(evt), new object[] { });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
+        }
+
+        [Fact]
+        public void Reports_When_UseBlocker_TwoParameter_Predicate_Captures_Local_Missing_From_Deps()
+        {
+            // Arrange
+            // The async overload's predicate takes attempt + cancellation token: the widest factory this
+            // hook's descriptor admits, distinguishing its maximum from the one-parameter case.
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var isDirty = true;
+            global::Velvet.Hooks.UseBlocker((attempt, ct) => Build(isDirty), new object[] { });
+        }
+        private static global::Cysharp.Threading.Tasks.UniTask<bool> Build(bool flag) => default;
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Contains("isDirty", Assert.Single(diagnostics.Where(d => d.Id == "VEL100")).GetMessage());
+        }
+
+        [Fact]
+        public void DoesNotReport_When_Factory_Lambda_Exceeds_The_Hooks_Maximum_Arity()
+        {
+            // Arrange
+            // Three parameters is wider than any UseBlocker overload accepts, so the lambda is not this
+            // hook's factory and must not be read as one — the gate that keeps V.Memo's props lambda out.
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var isDirty = true;
+            global::Velvet.Hooks.UseBlocker((attempt, ct, extra) => isDirty, new object[] { });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
+        }
+
+        [Fact]
         public void Reports_When_UseImperativeHandle_Factory_Captures_Local_Missing_From_Deps()
         {
             // UseImperativeHandle's deps-comparing argument is the factory at index 1 (refTarget is index 0).

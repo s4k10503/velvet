@@ -65,9 +65,11 @@ namespace Velvet.SourceGenerators.AutoDeps
 
             // Only handle lambda factories (block / expression body); method groups are not analyzed.
             if (args[hook.FactoryArgIndex].Expression is not LambdaExpressionSyntax lambda) return;
-            // Most factories are parameterless; UseBlocker's predicate is not. Gating on the descriptor's
-            // declared arity keeps the props-comparing component overload V.Memo<TProps>(Func<TProps,VNode>,
-            // props, ...) out of the deps-comparing pipeline even if a future descriptor entry shared its name.
+            // Effect factories are parameterless, but UseBlocker's predicate and UseCallback's memoized
+            // delegate take arguments; the lambda's own parameters are supplied per invocation and are never
+            // dependencies. Gating on the descriptor's declared arity keeps the props-comparing component
+            // overload V.Memo<TProps>(Func<TProps,VNode>, props, ...) out of the deps-comparing pipeline even
+            // if a future descriptor entry shared its name.
             var lambdaParamCount = lambda switch
             {
                 SimpleLambdaExpressionSyntax => 1,

@@ -13,22 +13,27 @@ using Xunit;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Pins the analyzer's hook-name surface to the runtime's. Which methods are hooks is encoded on both
-    /// sides of a compile boundary this solution cannot cross: the ILPP weaver uses <c>nameof</c> and breaks
-    /// loudly on a rename, while the analyzer's strings would keep compiling against a name that no longer
-    /// exists — exhaustive-deps would simply stop reporting, with nothing red. This fixture re-derives the
-    /// runtime surface by parsing the runtime sources with Roslyn (syntax only: no assembly references, no
-    /// build ordering, and no dependency on a Unity-produced artifact that CI does not have) and fails when
-    /// the two no longer line up.
+    /// Pins the analyzer's hook surface to the runtime's. Which methods are hooks is encoded on both sides of
+    /// a compile boundary this solution cannot cross: the ILPP weaver uses <c>nameof</c> and breaks loudly on
+    /// a rename, while the analyzer's strings would keep compiling against a name that no longer exists —
+    /// exhaustive-deps would simply stop reporting, with nothing red. This fixture re-derives the runtime
+    /// surface by parsing the runtime sources with Roslyn (syntax only: no assembly references, no build
+    /// ordering, and no dependency on a Unity-produced artifact that CI does not have) and fails when the two
+    /// no longer line up — on a missing hook, on a wrongly described one, and on an unpinned constant.
     /// </summary>
     /// <remarks>
-    /// A syntax-only parse cannot see members inside a disabled preprocessor region. Both the symbol-free and
-    /// the <c>UNITY_EDITOR</c> parse are unioned, so an editor-only declaration is still covered; a member
-    /// gated on any other symbol's exclusive branch would stay invisible to this guard.
+    /// Known limits of a syntax-only parse, none of which currently hide anything on this surface:
+    /// members inside a disabled preprocessor region are invisible (the symbol-free and <c>UNITY_EDITOR</c>
+    /// parses are unioned, so an editor-only declaration is covered, but another symbol's exclusive branch is
+    /// not); a parameter whose type is a custom delegate cannot be told from any other named type, so the
+    /// remainder is asserted against a recorded list instead of ignored; and where a hook declares more than
+    /// one delegate parameter the first is taken to be the factory.
     /// </remarks>
     public sealed class HookSurfaceDriftTests
     {
-        private const string DepsParameterName = "deps";
+        private const string ConventionalDepsParameterName = "deps";
+        private const string MethodNameSuffix = "MethodName";
+        private const string TypeNameSuffix = "FullName";
 
         // The two runtime types the analyzer binds hook calls to. Hook-name constants are resolved against
         // the union of their declared methods.
@@ -39,9 +44,9 @@ namespace Velvet.SourceGenerators.Tests
         };
 
         /// <summary>
-        /// Runtime methods that take a <c>deps</c> parameter yet are deliberately outside exhaustive-deps
-        /// coverage, each with the reason it cannot be analyzed. Stated here so an intentional omission is a
-        /// decision recorded in code rather than an absence nobody can tell from an oversight.
+        /// Runtime methods that declare a dependency list yet are deliberately outside exhaustive-deps
+        /// coverage, each with the reason it cannot be analyzed. Recorded here so an intentional omission is a
+        /// decision in code rather than an absence nobody can distinguish from an oversight.
         /// </summary>
         private static readonly Dictionary<string, string> DepsMethodsOutsideAnalyzerCoverage = new()
         {
@@ -53,21 +58,33 @@ namespace Velvet.SourceGenerators.Tests
                 "auto-memoization plumbing whose deps array the ILPP weaver emits; never a hand-written call site",
         };
 
+        /// <summary>
+        /// Well-known-name constants that name no declaration and so cannot be resolved against the runtime
+        /// sources. Recorded so the suffix convention stays enforceable for everything else.
+        /// </summary>
+        private static readonly Dictionary<string, string> ConstantsNamingNoDeclaration = new()
+        {
+            [nameof(VelvetWellKnownNames.Namespace)] =
+                "names the runtime namespace, which is not a type or method declaration",
+        };
+
         private static readonly Lazy<RuntimeSourceIndex> Runtime = new(RuntimeSourceIndex.Build);
 
         [Fact]
         public void Given_WellKnownMethodNameConstants_When_ResolvedAgainstRuntimeSource_Then_EachNamesADeclaredMethod()
         {
             // Arrange
+            var constants = ConstantsWithSuffix(MethodNameSuffix);
             var declared = HookHostTypes
                 .SelectMany(type => Runtime.Value.PublicMethodNamesOf(type))
                 .ToHashSet(StringComparer.Ordinal);
+            Assume.NotEmpty(constants, $"no '{MethodNameSuffix}' constants found on {nameof(VelvetWellKnownNames)}");
             Assume.NotEmpty(declared, "no public methods parsed off the runtime hook host types");
 
             // Act
-            var unresolved = ConstantsWithSuffix("MethodName")
+            var unresolved = constants
                 .Where(c => !declared.Contains(c.Value))
-                .Select(c => $"{c.Name} = \"{c.Value}\"")
+                .Select(Describe)
                 .OrderBy(x => x, StringComparer.Ordinal)
                 .ToList();
 
@@ -82,13 +99,15 @@ namespace Velvet.SourceGenerators.Tests
         public void Given_WellKnownTypeNameConstants_When_ResolvedAgainstRuntimeSource_Then_EachNamesADeclaredType()
         {
             // Arrange
+            var constants = ConstantsWithSuffix(TypeNameSuffix);
             var declared = Runtime.Value.DeclaredTypeFullNames;
+            Assume.NotEmpty(constants, $"no '{TypeNameSuffix}' constants found on {nameof(VelvetWellKnownNames)}");
             Assume.NotEmpty(declared, "no type declarations parsed off the runtime sources");
 
             // Act
-            var unresolved = ConstantsWithSuffix("FullName")
+            var unresolved = constants
                 .Where(c => !declared.Contains(StripGlobalPrefix(c.Value)))
-                .Select(c => $"{c.Name} = \"{c.Value}\"")
+                .Select(Describe)
                 .OrderBy(x => x, StringComparer.Ordinal)
                 .ToList();
 
@@ -100,6 +119,30 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
+        public void Given_WellKnownNameConstants_When_NamedWithoutARecognizedSuffix_Then_EachIsRecordedAsNamingNoDeclaration()
+        {
+            // Arrange
+            var constants = AllStringConstants();
+            Assume.NotEmpty(constants, $"no string constants found on {nameof(VelvetWellKnownNames)}");
+
+            // Act
+            var unpinned = constants
+                .Where(c => !c.Name.EndsWith(MethodNameSuffix, StringComparison.Ordinal)
+                    && !c.Name.EndsWith(TypeNameSuffix, StringComparison.Ordinal))
+                .Where(c => !ConstantsNamingNoDeclaration.ContainsKey(c.Name))
+                .Select(Describe)
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToList();
+
+            // Assert
+            Assert.True(unpinned.Count == 0,
+                $"These {nameof(VelvetWellKnownNames)} constants end in neither '{MethodNameSuffix}' nor " +
+                $"'{TypeNameSuffix}', so nothing resolves them against the runtime: " +
+                $"[{string.Join(", ", unpinned)}]. Rename to a pinned suffix, or record it in " +
+                $"{nameof(ConstantsNamingNoDeclaration)}.");
+        }
+
+        [Fact]
         public void Given_RuntimeDepsComparingHooks_When_LookedUpInTheDescriptorTable_Then_EachHasADescriptor()
         {
             // Arrange
@@ -107,25 +150,49 @@ namespace Velvet.SourceGenerators.Tests
             Assume.NotEmpty(qualifying, "no deps-comparing hooks matched in the runtime sources");
 
             // Act
-            var uncovered = qualifying
-                .Where(hook => !HasDescriptorBoundTo(hook.MethodName, hook.ContainingTypeFullName))
+            var uncovered = qualifying.Keys
+                .Where(hook => !HasDescriptorBoundTo(hook))
                 .Select(hook => hook.FullName)
                 .OrderBy(x => x, StringComparer.Ordinal)
                 .ToList();
 
             // Assert
             Assert.True(uncovered.Count == 0,
-                $"These runtime hooks take a delegate plus a '{DepsParameterName}' parameter but have no " +
+                "These runtime hooks take a delegate plus a dependency list but have no " +
                 $"{nameof(DepsHookDescriptor)} entry, so VEL100 exhaustive-deps does not analyze them: " +
                 $"[{string.Join(", ", uncovered)}]. Add a descriptor, or record the reason in " +
                 $"{nameof(DepsMethodsOutsideAnalyzerCoverage)}.");
         }
 
         [Fact]
+        public void Given_DepsHookDescriptors_When_ComparedAgainstTheRuntimeSignature_Then_EachDescribesItAccurately()
+        {
+            // Arrange
+            var qualifying = QualifyingDepsHooks();
+            Assume.NotEmpty(qualifying, "no deps-comparing hooks matched in the runtime sources");
+
+            // Act
+            var wrong = new List<string>();
+            foreach (var (hook, overloads) in qualifying)
+            {
+                if (!HasDescriptorBoundTo(hook)) continue;
+                DepsHookDescriptor.TryGet(hook.MethodName, out var descriptor);
+                wrong.AddRange(Mismatches(descriptor, overloads).Select(m => $"{hook.FullName}: {m}"));
+            }
+            wrong.Sort(StringComparer.Ordinal);
+
+            // Assert
+            Assert.True(wrong.Count == 0,
+                $"These {nameof(DepsHookDescriptor)} entries do not describe the runtime signature they claim " +
+                $"to: [{string.Join("; ", wrong)}]. A descriptor that exists but points at the wrong argument " +
+                "or bounds the factory too tightly silently drops call sites the analyzer appears to cover.");
+        }
+
+        [Fact]
         public void Given_RuntimeDepsTakingMethods_When_NotShapedForDepsComparison_Then_EachIsRecordedAsOutOfCoverage()
         {
             // Arrange
-            var qualifying = QualifyingDepsHooks().Select(h => h.FullName).ToHashSet(StringComparer.Ordinal);
+            var qualifying = QualifyingDepsHooks().Keys.Select(h => h.FullName).ToHashSet(StringComparer.Ordinal);
 
             // Act
             var unaccounted = DepsTakingMethodNames()
@@ -135,10 +202,10 @@ namespace Velvet.SourceGenerators.Tests
 
             // Assert
             Assert.True(unaccounted.Count == 0,
-                $"These runtime methods take a '{DepsParameterName}' parameter but do not match the " +
-                "delegate-plus-deps shape the analyzer can inspect: " + $"[{string.Join(", ", unaccounted)}]. " +
-                "The shape match is syntactic and can miss a custom delegate type, so each such method must " +
-                $"either qualify or be recorded in {nameof(DepsMethodsOutsideAnalyzerCoverage)} with its reason.");
+                "These runtime methods declare a dependency list but do not match the delegate-plus-deps shape " +
+                $"the analyzer can inspect: [{string.Join(", ", unaccounted)}]. The shape match is syntactic " +
+                "and can miss a custom delegate type, so each such method must either qualify or be recorded " +
+                $"in {nameof(DepsMethodsOutsideAnalyzerCoverage)} with its reason.");
         }
 
         [Fact]
@@ -157,63 +224,180 @@ namespace Velvet.SourceGenerators.Tests
 
             // Assert
             Assert.True(stale.Count == 0,
-                $"{nameof(DepsMethodsOutsideAnalyzerCoverage)} records methods that no longer take a " +
-                $"'{DepsParameterName}' parameter on [{string.Join(", ", HookHostTypes)}]: " +
-                $"[{string.Join("; ", stale)}]. A stale exclusion hides a real gap the next time that name " +
-                "comes back.");
+                $"{nameof(DepsMethodsOutsideAnalyzerCoverage)} records methods that no longer declare a " +
+                $"dependency list on [{string.Join(", ", HookHostTypes)}]: [{string.Join("; ", stale)}]. " +
+                "A stale exclusion hides a real gap the next time that name comes back.");
         }
 
         /// <summary>
-        /// Every public method on the well-known host types that declares a <c>deps</c> parameter, whatever
-        /// its shape. Overloads collapse to one entry — the analyzer matches by name.
+        /// Each way the descriptor disagrees with every deps-taking overload of the hook it describes. The
+        /// argument positions must hold for all of them (the analyzer has one descriptor per name), while the
+        /// factory bound must admit the widest.
         /// </summary>
-        private static HashSet<string> DepsTakingMethodNames() =>
-            HookHostTypes
-                .SelectMany(type => Runtime.Value.PublicMethodsOf(type))
-                .Where(m => m.Method.ParameterList.Parameters.Any(IsDepsParameter))
-                .Select(m => $"{m.ContainingTypeFullName}.{m.Method.Identifier.ValueText}")
-                .ToHashSet(StringComparer.Ordinal);
+        private static IEnumerable<string> Mismatches(
+            DepsHookDescriptor descriptor, IReadOnlyList<DepsOverload> overloads)
+        {
+            var factoryIndexes = overloads.Select(o => o.FactoryArgIndex).Distinct().ToList();
+            if (factoryIndexes.Count > 1 || factoryIndexes[0] != descriptor.FactoryArgIndex)
+            {
+                yield return $"FactoryArgIndex is {descriptor.FactoryArgIndex}, runtime has " +
+                    $"[{string.Join(", ", factoryIndexes)}]";
+            }
+
+            var depsIndexes = overloads.Select(o => o.DepsArgIndex).Distinct().ToList();
+            if (depsIndexes.Count > 1 || depsIndexes[0] != descriptor.DepsArgIndex)
+            {
+                yield return $"DepsArgIndex is {descriptor.DepsArgIndex}, runtime has " +
+                    $"[{string.Join(", ", depsIndexes)}]";
+            }
+
+            var paramsForms = overloads.Select(o => o.DepsAreParams).Distinct().ToList();
+            if (paramsForms.Count > 1 || paramsForms[0] != descriptor.DepsAreParams)
+            {
+                yield return $"DepsAreParams is {descriptor.DepsAreParams}, runtime has " +
+                    $"[{string.Join(", ", paramsForms)}]";
+            }
+
+            var widest = overloads.Max(o => o.FactoryParameterCount);
+            if (widest != descriptor.MaxFactoryParameterCount)
+            {
+                yield return $"MaxFactoryParameterCount is {Arity(descriptor.MaxFactoryParameterCount)}, " +
+                    $"runtime's widest factory takes {Arity(widest)}";
+            }
+        }
+
+        private static string Arity(int value) =>
+            value == DepsHookDescriptor.UnboundedFactoryParameterCount ? "unbounded" : value.ToString();
 
         /// <summary>
-        /// Runtime methods the analyzer is expected to cover: a <c>deps</c> parameter (so there is a declared
-        /// dependency list) plus a delegate parameter (so there are closure captures to compare against it),
-        /// minus the recorded exclusions. Overloads collapse to one entry — the analyzer matches by name.
+        /// Runtime hooks the analyzer is expected to cover — a dependency list (so there is a declared
+        /// dependency set) plus a delegate parameter (so there are closure captures to compare against it) —
+        /// mapped to every deps-taking overload of that name, minus the recorded exclusions.
         /// </summary>
-        private static List<HookDeclaration> QualifyingDepsHooks() =>
-            HookHostTypes
-                .SelectMany(type => Runtime.Value.PublicMethodsOf(type))
-                .Where(m => m.Method.ParameterList.Parameters.Any(IsDepsParameter))
-                .Where(m => m.Method.ParameterList.Parameters.Any(p => IsDelegateTyped(p, m.Method)))
-                .Select(m => new HookDeclaration(m.ContainingTypeFullName, m.Method.Identifier.ValueText))
-                .Where(hook => !DepsMethodsOutsideAnalyzerCoverage.ContainsKey(hook.FullName))
-                .Distinct()
-                .ToList();
+        private static Dictionary<HookDeclaration, List<DepsOverload>> QualifyingDepsHooks()
+        {
+            var byHook = new Dictionary<HookDeclaration, List<DepsOverload>>();
+            foreach (var overload in DepsOverloads().Where(o => o.FactoryArgIndex >= 0))
+            {
+                var hook = new HookDeclaration(overload.ContainingTypeFullName, overload.MethodName);
+                if (DepsMethodsOutsideAnalyzerCoverage.ContainsKey(hook.FullName)) continue;
+                if (!byHook.TryGetValue(hook, out var list))
+                {
+                    byHook[hook] = list = new List<DepsOverload>();
+                }
+                list.Add(overload);
+            }
+            return byHook;
+        }
 
-        private static bool HasDescriptorBoundTo(string methodName, string containingTypeFullName) =>
-            DepsHookDescriptor.TryGet(methodName, out var descriptor)
-            && descriptor.ContainingTypeFullName == containingTypeFullName;
+        /// <summary>Every public method on the host types that declares a dependency list, whatever its shape.</summary>
+        private static HashSet<string> DepsTakingMethodNames() =>
+            DepsOverloads()
+                .Select(o => $"{o.ContainingTypeFullName}.{o.MethodName}")
+                .ToHashSet(StringComparer.Ordinal);
 
-        private static bool IsDepsParameter(ParameterSyntax parameter) =>
-            parameter.Identifier.ValueText == DepsParameterName;
+        private static IEnumerable<DepsOverload> DepsOverloads()
+        {
+            foreach (var type in HookHostTypes)
+            {
+                foreach (var declared in Runtime.Value.PublicMethodsOf(type))
+                {
+                    var overload = TryDescribe(declared);
+                    if (overload is not null) yield return overload.Value;
+                }
+            }
+        }
+
+        private static DepsOverload? TryDescribe(MethodDeclaration declared)
+        {
+            var parameters = declared.Method.ParameterList.Parameters;
+            var depsIndex = -1;
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                if (IsDependencyListParameter(parameters[i], isLast: i == parameters.Count - 1)) depsIndex = i;
+            }
+            if (depsIndex < 0) return null;
+
+            var factoryIndex = -1;
+            for (var i = 0; i < parameters.Count && factoryIndex < 0; i++)
+            {
+                if (IsDelegateTyped(parameters[i], declared.Method)) factoryIndex = i;
+            }
+
+            return new DepsOverload(
+                declared.ContainingTypeFullName,
+                declared.Method.Identifier.ValueText,
+                factoryIndex,
+                depsIndex,
+                parameters[depsIndex].Modifiers.Any(SyntaxKind.ParamsKeyword),
+                factoryIndex < 0 ? 0 : FactoryParameterCount(parameters[factoryIndex], declared.Method));
+        }
+
+        /// <summary>
+        /// A declared dependency list: the conventional <c>deps</c> name, or a trailing <c>object[]</c> under
+        /// any other name. Matching on shape rather than on the name alone is what keeps a hook that spells it
+        /// <c>dependencies</c> inside the partition instead of invisible to every fact in this fixture.
+        /// </summary>
+        private static bool IsDependencyListParameter(ParameterSyntax parameter, bool isLast) =>
+            parameter.Identifier.ValueText == ConventionalDepsParameterName
+            || (isLast && IsObjectArray(parameter.Type));
+
+        private static bool IsObjectArray(TypeSyntax? type) =>
+            Unwrap(type) is ArrayTypeSyntax array && IsObjectType(Unwrap(array.ElementType));
+
+        private static bool IsObjectType(TypeSyntax? type) =>
+            type is PredefinedTypeSyntax predefined && predefined.Keyword.IsKind(SyntaxKind.ObjectKeyword);
+
+        private static TypeSyntax? Unwrap(TypeSyntax? type) =>
+            type is NullableTypeSyntax nullable ? Unwrap(nullable.ElementType) : type;
 
         /// <summary>
         /// Syntactic delegate-parameter match: a <c>Func</c> / <c>Action</c> parameter, or a type parameter
-        /// the method constrains to <c>Delegate</c> (<c>UseCallback&lt;T&gt;(T, params object[]) where T :
-        /// Delegate</c>). A custom delegate type is indistinguishable from any other type name without
-        /// symbols, which is why the non-matching remainder is asserted against a recorded exclusion list
-        /// rather than ignored.
+        /// the method constrains to <c>Delegate</c>.
         /// </summary>
         private static bool IsDelegateTyped(ParameterSyntax parameter, MethodDeclarationSyntax method)
         {
             var typeName = SimpleTypeName(parameter.Type);
             if (typeName is null) return false;
-            if (typeName is "Func" or "Action") return true;
+            return typeName is "Func" or "Action" || IsDelegateConstrained(typeName, method);
+        }
 
-            return method.ConstraintClauses.Any(clause =>
+        /// <summary>
+        /// How many arguments the factory lambda receives: <c>Func</c>'s type arguments minus its return,
+        /// <c>Action</c>'s type arguments, and unbounded for a <c>Delegate</c>-constrained type parameter,
+        /// whose shape the signature does not pin down.
+        /// </summary>
+        private static int FactoryParameterCount(ParameterSyntax parameter, MethodDeclarationSyntax method)
+        {
+            var type = Unwrap(parameter.Type);
+            var typeName = SimpleTypeName(type);
+            if (typeName is not null && IsDelegateConstrained(typeName, method))
+            {
+                return DepsHookDescriptor.UnboundedFactoryParameterCount;
+            }
+
+            var typeArguments = AsGenericName(type)?.TypeArgumentList.Arguments.Count ?? 0;
+            return typeName == "Func" ? Math.Max(0, typeArguments - 1) : typeArguments;
+        }
+
+        private static GenericNameSyntax? AsGenericName(TypeSyntax? type) =>
+            Unwrap(type) switch
+            {
+                GenericNameSyntax generic => generic,
+                QualifiedNameSyntax qualified => AsGenericName(qualified.Right),
+                AliasQualifiedNameSyntax alias => AsGenericName(alias.Name),
+                _ => null,
+            };
+
+        private static bool IsDelegateConstrained(string typeName, MethodDeclarationSyntax method) =>
+            method.ConstraintClauses.Any(clause =>
                 clause.Name.Identifier.ValueText == typeName
                 && clause.Constraints.OfType<TypeConstraintSyntax>()
                     .Any(constraint => SimpleTypeName(constraint.Type) == "Delegate"));
-        }
+
+        private static bool HasDescriptorBoundTo(HookDeclaration hook) =>
+            DepsHookDescriptor.TryGet(hook.MethodName, out var descriptor)
+            && descriptor.ContainingTypeFullName == hook.ContainingTypeFullName;
 
         private static string? SimpleTypeName(TypeSyntax? type) =>
             type switch
@@ -229,18 +413,34 @@ namespace Velvet.SourceGenerators.Tests
         private static string StripGlobalPrefix(string fullName) =>
             fullName.StartsWith("global::", StringComparison.Ordinal) ? fullName.Substring("global::".Length) : fullName;
 
+        private static string Describe((string Name, string Value) constant) =>
+            $"{constant.Name} = \"{constant.Value}\"";
+
         // Reflects over the constants instead of restating them, so a constant added to the well-known-names
-        // type is guarded without also editing this fixture.
-        private static IEnumerable<(string Name, string Value)> ConstantsWithSuffix(string suffix) =>
+        // type is guarded without editing this fixture.
+        private static List<(string Name, string Value)> AllStringConstants() =>
             typeof(VelvetWellKnownNames)
                 .GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
-                .Where(f => f.IsLiteral && f.FieldType == typeof(string) && f.Name.EndsWith(suffix, StringComparison.Ordinal))
-                .Select(f => (f.Name, (string)f.GetRawConstantValue()!));
+                .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+                .Select(f => (f.Name, (string)f.GetRawConstantValue()!))
+                .ToList();
+
+        private static List<(string Name, string Value)> ConstantsWithSuffix(string suffix) =>
+            AllStringConstants().Where(c => c.Name.EndsWith(suffix, StringComparison.Ordinal)).ToList();
 
         private readonly record struct HookDeclaration(string ContainingTypeFullName, string MethodName)
         {
             public string FullName => $"{ContainingTypeFullName}.{MethodName}";
         }
+
+        /// <summary>One overload that declares a dependency list, as derived from the runtime signature.</summary>
+        private readonly record struct DepsOverload(
+            string ContainingTypeFullName,
+            string MethodName,
+            int FactoryArgIndex,
+            int DepsArgIndex,
+            bool DepsAreParams,
+            int FactoryParameterCount);
 
         private readonly record struct MethodDeclaration(string ContainingTypeFullName, MethodDeclarationSyntax Method);
 
@@ -270,11 +470,10 @@ namespace Velvet.SourceGenerators.Tests
 
             public static RuntimeSourceIndex Build()
             {
-                var files = RuntimeSourceFiles();
                 var types = new HashSet<string>(StringComparer.Ordinal);
                 var methods = new List<MethodDeclaration>();
 
-                foreach (var file in files)
+                foreach (var file in RuntimeSourceFiles())
                 {
                     var text = File.ReadAllText(file);
                     Collect(CSharpSyntaxTree.ParseText(text, DefaultParseOptions), types, methods);
@@ -349,7 +548,7 @@ namespace Velvet.SourceGenerators.Tests
             // type, so only production sources are indexed.
             private static List<string> RuntimeSourceFiles()
             {
-                var root = RuntimeRoot();
+                var root = SolutionPaths.RuntimeRoot();
                 var files = Directory
                     .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
                     .Where(path => !path.Split(Path.DirectorySeparatorChar).Contains("Tests"))
@@ -360,35 +559,6 @@ namespace Velvet.SourceGenerators.Tests
                 }
                 return files;
             }
-
-            private static string RuntimeRoot()
-            {
-                var root = Path.GetFullPath(Path.Combine(GeneratorsRoot(), "..", "Runtime"));
-                if (!Directory.Exists(root))
-                {
-                    throw new InvalidOperationException(
-                        $"Velvet runtime sources not found at '{root}'. This guard re-derives the hook surface " +
-                        "from them, so a moved runtime tree must break it rather than pass vacuously.");
-                }
-                return root;
-            }
-
-            // Walks up from the test host's output directory to the Generators~ root, identified by its .sln
-            // file — robust to CI vs local build output layouts without hardcoding a depth.
-            private static string GeneratorsRoot()
-            {
-                var dir = new DirectoryInfo(AppContext.BaseDirectory);
-                while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Velvet.SourceGenerators.sln")))
-                {
-                    dir = dir.Parent;
-                }
-                if (dir == null)
-                {
-                    throw new InvalidOperationException(
-                        "Could not locate Generators~ root (Velvet.SourceGenerators.sln) above " + AppContext.BaseDirectory);
-                }
-                return dir.FullName;
-            }
         }
 
         private static class Assume
@@ -398,8 +568,8 @@ namespace Velvet.SourceGenerators.Tests
                 if (values.Count == 0)
                 {
                     throw new InvalidOperationException(
-                        $"Precondition failed: {what}. The runtime source parse produced nothing to compare " +
-                        "against, which would make this guard pass vacuously.");
+                        $"Precondition failed: {what}. There is nothing to compare against, which would make " +
+                        "this guard pass vacuously.");
                 }
             }
         }

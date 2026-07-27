@@ -6,10 +6,13 @@ namespace Velvet.SourceGenerators.Shared
     /// </summary>
     /// <remarks>
     /// These are plain strings because this solution cannot reference the Unity runtime assembly, so the
-    /// compiler cannot check them against the real surface. Every constant declared here is instead pinned
-    /// against the runtime source by the Generators~ hook-surface drift guard, which resolves each
-    /// <c>…FullName</c> to a declared type and each <c>…MethodName</c> to a declared method. A constant added
-    /// here is therefore covered without editing that guard; a constant added anywhere else is not.
+    /// compiler cannot check them against the real surface. The Generators~ hook-surface drift guard pins
+    /// them against the runtime source instead, resolving each <c>…FullName</c> to a declared type and each
+    /// <c>…MethodName</c> to a declared method. Those two suffixes are what makes a constant pinned, so a new
+    /// constant is guarded without editing that guard only when it is named with one — and the guard fails on
+    /// a constant carrying neither suffix unless it is recorded there as naming no declaration, which is why
+    /// <see cref="Namespace"/> does not silently sit unchecked. A constant declared outside this type is not
+    /// covered at all.
     /// </remarks>
     internal static class VelvetWellKnownNames
     {
