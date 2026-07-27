@@ -177,5 +177,82 @@ namespace Velvet.Tests.Performance
         // tree have.
         private static string LeafClass(string tint) => $"text-balance hover:text-{tint}-500";
     }
+
+    /// <summary>
+    /// Benchmarks the class projection on the shape that builds one most often and carries the most
+    /// classes: a long list of rows toggling the <c>Visible</c> prop, which writes <c>hidden</c> into the
+    /// projection and so forces a recompute per row per toggle. The manipulator fixture above cannot stand
+    /// in for it — its rows carry six utility classes and vary their variant payloads, not their props.
+    /// <para>
+    /// Two row shapes, because the recompute has two costs. With nothing suppressed the verdict
+    /// reconciliation early-outs and the whole cost is the band walk; with a class suppressed it runs in
+    /// full, hashing every entry into a per-class aliveness table and diffing that against the live class
+    /// list. The second case is what a change to that pass has to be measured against.
+    /// </para>
+    /// </summary>
+    internal sealed class VisibleToggleProjectionBenchmarks
+    {
+        private const int k_Rows = 200;
+        private const int k_WarmupCount = 5;
+        private const int k_MeasurementCount = 20;
+
+        // Thirty utilities, the upper end of what a real row carries. None displaces another, and `hidden`
+        // covers only part of what `flex` writes, so the verdict reconciliation stays on its early-out.
+        private const string k_PlainRowClass =
+            "flex flex-row items-center justify-between p-4 m-2 w-full h-12 rounded border "
+            + "bg-white text-black text-sm font-bold underline uppercase relative overflow-hidden "
+            + "opacity-100 shrink-0 grow gap-4 tracking-wide leading-tight top-0 left-0 "
+            + "border-neutral-200 shadow-sm min-w-0 max-w-full";
+
+        // The same row plus an important utility that takes background-color off `bg-white`, so the verdict
+        // reconciliation cannot early-out and every recompute pays the full pass.
+        private const string k_SuppressingRowClass = k_PlainRowClass + " !bg-red-500";
+
+        private Reconciler _reconciler = null!;
+        private VisualElement _root = null!;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _reconciler = new Reconciler();
+            _root = new VisualElement();
+        }
+
+        [TearDown]
+        public void TearDown() => _reconciler.Dispose();
+
+        [Test, Performance]
+        public void Reconcile_ToggleVisible_200Rows() => Run(k_PlainRowClass);
+
+        [Test, Performance]
+        public void Reconcile_ToggleVisible_200RowsWithASuppressedClass() => Run(k_SuppressingRowClass);
+
+        private void Run(string rowClass)
+        {
+            var shown = BuildRows(rowClass, visible: true);
+            var hidden = BuildRows(rowClass, visible: false);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), shown);
+
+            Measure.Method(() =>
+                {
+                    _reconciler.Reconcile(_root, shown, hidden);
+                    _reconciler.Reconcile(_root, hidden, shown);
+                })
+                .GC()
+                .WarmupCount(k_WarmupCount)
+                .MeasurementCount(k_MeasurementCount)
+                .Run();
+        }
+
+        private static VNode[] BuildRows(string rowClass, bool visible)
+        {
+            var rows = new VNode[k_Rows];
+            for (var i = 0; i < k_Rows; i++)
+            {
+                rows[i] = V.Div(className: rowClass, props: new FiberElementProps { Visible = visible });
+            }
+            return rows;
+        }
+    }
 }
 #endif

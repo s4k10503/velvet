@@ -1070,7 +1070,9 @@ namespace Velvet
                 {
                     continue;
                 }
-                var priority = important ? StyleLayerPriority.Important : StyleLayerPriority.Base;
+                var priority = important
+                    ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                    : StyleLayerPriority.Base;
 
                 // No class-list fallback: an inline-classified token unresolvable here is owned by another
                 // resolver (e.g. font-[..] by StyleFontResolver) and must not enter the USS class list.
@@ -1262,20 +1264,23 @@ namespace Velvet
                 return;
             }
 
-            // Important modifier (!utility / utility!): strip the bang; when present, elevate the
-            // inline-resolved utility to the Important layer. A class-only utility's bang is inert.
+            // Important modifier (!utility / utility!): strip the bang; when present, elevate the utility
+            // into the important band, on whichever of the two layers below carries it.
             var core = StyleArbitraryValueResolver.StripImportant(cls, out var important);
             if (string.IsNullOrEmpty(core))
             {
                 return;
             }
-            var priority = important ? StyleLayerPriority.Important : StyleLayerPriority.Base;
+            var priority = important
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base;
 
-            // Plain classes (the common case) go straight to the USS class list and skip both resolvers;
-            // inline-value tokens (bracketed, color-opacity, static-scale) resolve to inline style.
+            // Plain classes (the common case) go to the USS class list through the projection, which decides
+            // whether a higher-priority payload has already taken every property they write; inline-value
+            // tokens (bracketed, color-opacity, static-scale) resolve to inline style.
             if (!StyleArbitraryValueResolver.IsInlineResolved(core))
             {
-                element.AddToClassList(core);
+                StyleClassProjection.Add(element, core, priority);
                 return;
             }
 
@@ -1300,13 +1305,16 @@ namespace Velvet
             {
                 return;
             }
-            var priority = important ? StyleLayerPriority.Important : StyleLayerPriority.Base;
+            var priority = important
+                ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                : StyleLayerPriority.Base;
 
-            // Plain classes (the common case) leave the USS class list directly; inline-value tokens
+            // Plain classes (the common case) leave the USS class list through the projection, which may
+            // hand the properties they held back to a payload it had suppressed; inline-value tokens
             // (bracketed, color-opacity, static-scale) clear the inline style they applied.
             if (!StyleArbitraryValueResolver.IsInlineResolved(core))
             {
-                element.RemoveFromClassList(core);
+                StyleClassProjection.Remove(element, core, priority);
                 return;
             }
 
