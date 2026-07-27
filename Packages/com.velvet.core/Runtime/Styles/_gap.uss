@@ -6,9 +6,12 @@
  * (`.gap-* > *`) cannot follow `flex-direction` and cannot cancel the margin on
  * the last child (a trailing gap). Velvet therefore implements `gap-*` at the
  * FRAMEWORK level instead: it owns the ordered child list, so a per-container
- * `StyleGapManipulator` writes the inter-child leading margin (margin-left for a
- * row, margin-top for a column) on every child EXCEPT the first — spacing
- * strictly BETWEEN children, matching CSS `gap`. See:
+ * `StyleGapManipulator` writes the inter-child margin on every child EXCEPT the
+ * first — spacing strictly BETWEEN children, matching CSS `gap`. That margin
+ * lands on the LEADING edge of the resolved axis (margin-left for a row,
+ * margin-top for a column) normally, or the TRAILING edge (margin-right /
+ * margin-bottom) on a `flex-row-reverse` / `flex-col-reverse` container — see
+ * "Reversed containers" in the guide below. See:
  *   - Runtime/Styling/StyleGapManipulator.cs (the polyfill + residual edge cases)
  *   - Runtime/Styling/StyleGapClass.cs (class → pixel scale, mirrors _tokens.uss)
  *   - Documentation~/styling-flexbox-and-gap.md

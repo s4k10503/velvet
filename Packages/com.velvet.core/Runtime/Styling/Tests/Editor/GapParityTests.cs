@@ -1,7 +1,11 @@
 using System.Collections;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
+using UnityEditor.UIElements.TestFramework;
+using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.UIElements.TestFramework;
 
 using Velvet;
 using Velvet.TestUtilities;
@@ -19,23 +23,26 @@ namespace Velvet.Tests
     /// that alone, so the manipulator switches to the classic wrap-compatible half-margin polyfill instead:
     /// <c>gap/2</c> on all four sides of every child and <c>-gap/2</c> on all four sides of the container. This
     /// also covers a handful of hardening regressions (gap on a contentContainer-redirecting element like
-    /// ScrollView must land on the reconciled content, not the element itself; the off-panel Auto-axis default
-    /// is row, not column; the wrap container's own negative margin must survive a later <c>DiffStyles</c> pass
-    /// since gap is applied AFTER style diffing; a child moved out of a gap container must carry no residual
-    /// gap margin; <see cref="StyleGapManipulator.Apply"/> must no-op when nothing relevant changed so the
-    /// GeometryChanged feedback its own writes provoke does not re-churn), and the RUNTIME axis flip: an
-    /// Auto-axis gap resolves its edge from the direction class marker off-panel, so a re-render that swaps
-    /// <c>flex-row</c> ↔ <c>flex-col</c> must move the inter-child margin to the new edge AND clear the edge it
-    /// abandoned. Also specifies the <c>space-x-*</c> / <c>space-y-*</c> alias onto the same gap machinery
-    /// (<c>space-*</c> is CSS's own inter-child-margin selector, <c>&gt; * + *</c>, which UITK has no equivalent
-    /// for) — the alias maps onto <see cref="GapAxis"/> and the <c>--space-*</c> scale exactly like <c>gap-x-*</c>
-    /// / <c>gap-y-*</c>, and the cheap <see cref="StyleGapClass.HasGapClass"/> gate must recognize it too, or it
-    /// never reaches the manipulator — plus the <c>gap-x-[…]</c> / <c>gap-[…]</c> JIT arbitrary-value form.
+    /// ScrollView must land on the reconciled content, not the element itself; the Auto-axis default with no
+    /// direction class is row, not column; the wrap container's own negative margin must survive a later
+    /// <c>DiffStyles</c> pass since gap is applied AFTER style diffing; a child moved out of a gap container
+    /// must carry no residual gap margin; <see cref="StyleGapManipulator.Apply"/> must no-op when nothing
+    /// relevant changed so the GeometryChanged feedback its own writes provoke does not re-churn), and the
+    /// RUNTIME axis flip: an Auto-axis gap resolves its edge from the direction class marker — the class list
+    /// is consulted before <c>resolvedStyle</c> even on a panel, see <see cref="StyleGapManipulator.ResolveDirection"/>
+    /// — so a re-render that swaps <c>flex-row</c> ↔ <c>flex-col</c> must move the inter-child margin to the new
+    /// edge AND clear the edge it abandoned. Also specifies the <c>space-x-*</c> / <c>space-y-*</c> alias onto
+    /// the same gap machinery (<c>space-*</c> is CSS's own inter-child-margin selector, <c>&gt; * + *</c>, which
+    /// UITK has no equivalent for) — the alias maps onto <see cref="GapAxis"/> and the <c>--space-*</c> scale
+    /// exactly like <c>gap-x-*</c> / <c>gap-y-*</c>, and the cheap <see cref="StyleGapClass.HasGapClass"/> gate
+    /// must recognize it too, or it never reaches the manipulator — plus the <c>gap-x-[…]</c> / <c>gap-[…]</c>
+    /// JIT arbitrary-value form.
     /// </summary>
     /// <remarks>
     /// The manipulator writes INLINE margins (resolved to pixels from the same scale as <c>_tokens.uss</c>), so
     /// the produced spacing is observable via <c>element.style.margin*</c> without attaching to a panel or
-    /// ticking layout — wrap is likewise detected off-panel via the <c>flex-wrap</c> class marker. A USS
+    /// ticking layout — off-panel, both direction and wrap fall back from the class markers (the only source
+    /// available) to the same defaults their on-panel <c>resolvedStyle</c> fallback would produce. A USS
     /// child-selector approach to gap would resolve only under a live panel and produce no inline margins at
     /// all, so these off-panel assertions are a meaningful discriminator against that class of implementation.
     /// </remarks>
@@ -311,6 +318,24 @@ namespace Velvet.Tests
             AssertFourSideMargin(container[0], Half4, "child[0]");
             AssertFourSideMargin(container[2], Half4, "child[2]");
             AssertFourSideMargin(container, -Half4, "container");
+        }
+
+        [Test]
+        public void Given_FlexWrapReverseGap4_When_ReconciledOffPanel_Then_StillUsesTheHalfMarginPolyfill()
+        {
+            // Arrange — flex-wrap-reverse is a DIFFERENT string than flex-wrap, so the off-panel class-marker
+            // fallback must recognize it too (the same shape of miss the flex-col / flex-col-reverse fix
+            // addressed for direction) — otherwise a flex-wrap-reverse container would wrongly resolve to
+            // non-wrap off-panel and use the single leading-edge margin instead of the half-margin polyfill.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row flex-wrap-reverse gap-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            AssertFourSideMargin(container[0], Half4, "child[0] under flex-wrap-reverse");
         }
 
         [Test]
@@ -604,6 +629,37 @@ namespace Velvet.Tests
                 "the newly added child gets the gap");
         }
 
+        // The signature-widening regression guard: ComputeSignature must encode all four edges distinctly.
+        // A class-driven direction toggle reaches the manipulator through UpdateGap, which unconditionally
+        // forces a re-apply (bypassing the cached signature) — so the ONLY place a collapsed edge encoding
+        // can matter is a re-application that does NOT go through UpdateGap, i.e. exactly what a
+        // GeometryChangedEvent-triggered Apply() call is. This drives that path directly: change the class
+        // list on the live element (not through the reconciler, so UpdateGap never runs), then call Apply()
+        // via reflection the same way OnGeometryChanged would — a stale cached signature that collapsed Top
+        // and Bottom into one bucket would make this a no-op and leave the abandoned margin in place.
+        [Test]
+        public void Given_AClassListChangeWithNoConfigChange_When_ApplyReruns_Then_TheMarginMovesToTheNewEdge()
+        {
+            // Arrange — establish the Top edge off-panel via a real reconcile.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-col gap-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+            var manipulator = GetGapManipulator(scope.Reconciler, container);
+            Assume.That(container[1].style.marginTop.value.value, Is.EqualTo(Space4),
+                "Precondition: the column gap settled on the leading (top) edge");
+
+            // Act — flip the class list DIRECTLY (never through UpdateGap, so gap/axis/markers are
+            // unchanged and the cached signature is the only thing standing between this call and the new
+            // edge), then re-run Apply() the way a GeometryChangedEvent would.
+            container.RemoveFromClassList("flex-col");
+            container.AddToClassList("flex-col-reverse");
+            InvokeApply(manipulator);
+
+            // Assert — the stale leading (top) margin is cleared once Apply() re-derives the new edge.
+            Assert.That(container[1].style.marginTop.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
         [Test]
         public void Given_AnAutoGapRow_When_Mounted_Then_TheSecondChildHasAHorizontalLeadingMargin()
         {
@@ -737,13 +793,282 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_SpaceXReverse_When_Parsed_Then_DeclinesToParse()
+        public void Given_SpaceXReverse_When_Parsed_Then_DeclinesToParseAsAGapValue()
         {
-            // Act — space-x-reverse has no gap analog; it is an intentional no-op (locked here).
+            // Act — space-x-reverse carries no pixel gap value of its own (TryParse is the pixel-value
+            // parser); it is now recognized separately as a reverse marker (see the tests below), not
+            // dropped as an unsupported no-op.
             var ok = StyleGapClass.TryParse("space-x-reverse", out _, out _);
 
             // Assert
             Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_SpaceXReverse_When_ReverseMarkersExtracted_Then_TheHorizontalMarkerIsRecognized()
+        {
+            // Act — space-x-reverse is no longer an unsupported no-op: StyleGapManipulator reads it through
+            // this extractor instead of the pixel-value TryParse.
+            StyleGapClass.ExtractReverseMarkers(new[] { "space-x-reverse" }, out var xReverse, out var yReverse);
+
+            // Assert
+            Assert.That((xReverse, yReverse), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_SpaceYReverse_When_ReverseMarkersExtracted_Then_TheVerticalMarkerIsRecognized()
+        {
+            // Act
+            StyleGapClass.ExtractReverseMarkers(new[] { "space-y-reverse" }, out var xReverse, out var yReverse);
+
+            // Assert
+            Assert.That((xReverse, yReverse), Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_NoReverseMarkerClass_When_ReverseMarkersExtracted_Then_BothMarkersAreFalse()
+        {
+            // Act
+            StyleGapClass.ExtractReverseMarkers(new[] { "flex", "flex-row", "gap-4" }, out var xReverse, out var yReverse);
+
+            // Assert
+            Assert.That((xReverse, yReverse), Is.EqualTo((false, false)));
+        }
+
+        // --- End-to-end: the reverse marker / row-reverse / col-reverse edge flip, driven through the
+        // reconciler exactly like the rest of this file's off-panel oracle (inline margins, no panel needed
+        // — StyleGapManipulator's off-panel fallback reads the flex-row-reverse / flex-col-reverse / space-*-
+        // reverse class markers directly, matching the on-panel resolvedStyle.flexDirection reads exactly). ---
+
+        [Test]
+        public void Given_FlexRowSpaceXReverse_When_Reconciled_Then_SecondChildCarriesTheTrailingMargin()
+        {
+            // Arrange — space-x-4 space-x-reverse on a (non-reversed) row: the marker alone, with no
+            // row-reverse container, still moves the gap to the trailing physical edge (margin-right).
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row space-x-4 space-x-reverse", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_FlexRowSpaceXReverse_When_Reconciled_Then_ThirdChildCarriesTheTrailingMargin()
+        {
+            // Arrange — same container; the LAST child (not just the second) also carries the trailing
+            // margin, matching the ordinary leading-margin contract (every child but the first).
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row space-x-4 space-x-reverse", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[2].style.marginRight.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_ALeadingMarginRow_When_SpaceXReverseIsAddedByPatch_Then_TheStaleLeadingMarginIsCleared()
+        {
+            // Arrange — first reconcile establishes the LEADING (margin-left) edge with no reverse marker.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row space-x-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            Assume.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4),
+                "Precondition: the leading (margin-left) edge is established before the marker is added");
+
+            // Act — patch in space-x-reverse: the edge flips from Left to Right, so the manipulator must
+            // clear the now-abandoned leading margin, not just add the new trailing one.
+            var tree2 = new VNode[] { Row("flex flex-row space-x-4 space-x-reverse", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the stale margin-left is cleared (this is the missing-clear case: ApplyLeading's
+            // "_applied != edge" check must cover ALL four edges, not just Left vs Top).
+            Assert.That(container[1].style.marginLeft.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_FlexRowReverseGap4_When_ReconciledOffPanel_Then_ResolvesTheTrailingHorizontalEdge()
+        {
+            // Arrange — plain gap-4 (Auto axis) on a flex-row-reverse container: the row-reverse direction
+            // alone (no space-*-reverse marker) must move the margin to the trailing edge (margin-right).
+            // This is the parity bug independent of the issue as filed: plain gap-4 was already wrong on a
+            // row-reverse container.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row-reverse gap-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_FlexColReverseGap4_When_ReconciledOffPanel_Then_ResolvesTheTrailingVerticalEdge()
+        {
+            // Arrange — plain gap-4 on a flex-col-reverse container. Off-panel, this exercises TWO bugs at
+            // once: the axis-detection fallback used to check only "flex-col" (a different string than
+            // "flex-col-reverse"), resolving the wrong axis entirely, and the edge itself must land on the
+            // trailing margin-bottom, not margin-top.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-col-reverse gap-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginBottom.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_FlexRowReverseWithSpaceXReverse_When_Reconciled_Then_StillResolvesTheTrailingEdge()
+        {
+            // Arrange — the idiomatic Tailwind combination: a row-reverse container's own direction AND the
+            // space-x-reverse marker both independently mean "trailing edge". They must OR together (both
+            // pointing the same way keeps it trailing) rather than XOR (which would cancel back to leading).
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row-reverse space-x-4 space-x-reverse", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_FlexColGapY4WithSpaceXReverse_When_Reconciled_Then_TheHorizontalMarkerDoesNotAffectTheVerticalAxis()
+        {
+            // Arrange — space-x-reverse must not flip a VERTICAL gap: the flip is per-axis, so a plain
+            // vertical gap-y-4 on a non-reversed column stays on the leading (margin-top) edge even with an
+            // (irrelevant, cross-axis) space-x-reverse marker present.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-col gap-y-4 space-x-reverse", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginTop.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_FlexColReverseGapX4_When_Reconciled_Then_TheHorizontalGapStaysOnTheLeadingEdge()
+        {
+            // Arrange — the direction half of per-axis independence: gap-x-4 (explicit Horizontal axis) on
+            // a flex-col-reverse container must NOT flip, because flex-col-reverse only reverses the
+            // VERTICAL axis. The gap stays on margin-left.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-col-reverse gap-x-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_FlexRowReverseGapY4_When_Reconciled_Then_TheVerticalGapStaysOnTheLeadingEdge()
+        {
+            // Arrange — the symmetric direction half: gap-y-4 (explicit Vertical axis) on a
+            // flex-row-reverse container must NOT flip, because flex-row-reverse only reverses the
+            // HORIZONTAL axis. The gap stays on margin-top.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row-reverse gap-y-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginTop.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_FlexColSpaceYReverse_When_Reconciled_Then_TheSecondChildCarriesTheTrailingVerticalMargin()
+        {
+            // Arrange — space-y-reverse end to end (only the extractor was covered elsewhere): the vertical
+            // twin of space-x-reverse, moving the gap emulation's margin to margin-bottom.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-col space-y-4 space-y-reverse", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginBottom.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_ATrailingMarginRow_When_SpaceXReverseIsRemovedByPatch_Then_TheStaleTrailingMarginIsCleared()
+        {
+            // Arrange — the mirror image of the earlier Left→Right clear test: establish the TRAILING
+            // (margin-right) edge first, then patch the marker away so the edge flips back to leading.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Row("flex flex-row space-x-4 space-x-reverse", 3) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var container = Container(scope.Root);
+            Assume.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4),
+                "Precondition: the trailing (margin-right) edge is established before the marker is removed");
+
+            // Act — patch away space-x-reverse: the edge flips from Right back to Left, so the manipulator
+            // must clear the now-abandoned trailing margin, not just add the new leading one.
+            var tree2 = new VNode[] { Row("flex flex-row space-x-4", 3) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the stale margin-right is cleared.
+            Assert.That(container[1].style.marginRight.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_FlexRowReverseWrapGap4_When_Reconciled_Then_StillUsesTheSymmetricHalfMarginPolyfill()
+        {
+            // Arrange — flex-wrap always wins over direction: a reversed container that also wraps must
+            // still use the four-side half-margin polyfill (symmetric on every side), never ResolveEdge's
+            // leading/trailing split, since wrapping needs both axes spaced regardless of direction.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex flex-row-reverse flex-wrap gap-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            AssertFourSideMargin(container[0], Half4, "child[0] in a reversed wrapping container");
+        }
+
+        [Test]
+        public void Given_AnElementCarryingBothFlexColAndFlexRowReverse_When_Reconciled_Then_TheLaterDeclaredClassWins()
+        {
+            // Arrange — two direction classes on one element is routine once responsive/state variants are
+            // involved (a base flex-col plus a variant-applied md:flex-row-reverse both land in the SAME
+            // live class list once the breakpoint is met). _layout.uss declares .flex-col before
+            // .flex-row-reverse, so at equal specificity the LATER rule wins the USS cascade regardless of
+            // which class was written first or which one a naive "row family vs column family" check
+            // happens to look at — the gap must resolve exactly as real USS would: horizontal, trailing.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { Row("flex-col flex-row-reverse gap-4", 3) };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var container = Container(scope.Root);
+
+            // Assert
+            Assert.That(container[1].style.marginRight.value.value, Is.EqualTo(Space4));
         }
 
         [Test]
@@ -779,6 +1104,382 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scope.Root[0][1].style.marginLeft.value.value, Is.EqualTo(12f));
+        }
+    }
+
+    /// <summary>
+    /// On-panel coverage for the row-reverse / col-reverse gap edge flip, using a real
+    /// <see cref="UnityEditor.EditorWindow"/> panel (<see cref="PanelTestBase"/>) rather than the simulated
+    /// one <see cref="GapReverseRuntimeFlipTests"/> below uses. <c>flex-row-reverse</c> /
+    /// <c>flex-col-reverse</c> are USS-only rules (<c>_layout.uss</c>) with no C# parse path of their own —
+    /// <c>resolvedStyle.flexDirection</c> never actually reports <c>RowReverse</c> without the bundled
+    /// <c>StyleUtilities.uss</c> attached to a real panel. Since <see cref="StyleGapManipulator.ResolveDirection"/>
+    /// reads the class markers before resolvedStyle even on a panel, the first test below is class-marker
+    /// coverage on a panel, not resolvedStyle coverage — the second test is the one that actually proves the
+    /// resolvedStyle FALLBACK, by withholding every direction/display class entirely.
+    /// </summary>
+    [TestFixture]
+    internal sealed class GapReversePanelTests : PanelTestBase
+    {
+        private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
+        private const float Space4 = 16f;
+
+        protected override void LoadStyleSheets()
+        {
+            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetPath);
+            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
+            _window.rootVisualElement.styleSheets.Add(sheet);
+        }
+
+        [Test]
+        public void Given_AFlexRowReverseGapContainer_When_PanelResolves_Then_TheSecondChildCarriesTheTrailingMargin()
+        {
+            // Arrange
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "row", className: "flex flex-row-reverse gap-x-4", children: new VNode[]
+                {
+                    V.Label(name: "a", text: "a"),
+                    V.Label(name: "b", text: "b"),
+                }));
+            var row = _window.rootVisualElement.Q<VisualElement>("row");
+            ForcePanelUpdate(row.panel);
+            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+            row.SimulateEvent(evt);
+            Assume.That(row.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.RowReverse),
+                "Precondition: the panel resolved flex-row-reverse from the bundled USS");
+
+            // Assert
+            var b = _window.rootVisualElement.Q<Label>("b");
+            Assert.That(b.resolvedStyle.marginRight, Is.EqualTo(Space4));
+        }
+
+        [Test]
+        public void Given_ADirectionSetOnlyThroughResolvedStyle_When_PanelResolves_Then_TheGapStillFollowsIt()
+        {
+            // Arrange — flex-direction set via an inline style (standing in for a custom stylesheet rule),
+            // with NONE of the five direction/display classes (flex / flex-row(-reverse) /
+            // flex-col(-reverse)) anywhere on the element — the one case ResolveDirection's class scan
+            // cannot answer, so it must fall through to resolvedStyle. A VisualElement is a flex container
+            // by Yoga's own default regardless of a "flex" class, so the inline flex-direction alone is
+            // enough to produce a real RowReverse layout.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "row", className: "gap-x-4",
+                    refCallback: el => { el.style.flexDirection = FlexDirection.RowReverse; return null; },
+                    children: new VNode[]
+                    {
+                        V.Label(name: "a", text: "a"),
+                        V.Label(name: "b", text: "b"),
+                    }));
+            var row = _window.rootVisualElement.Q<VisualElement>("row");
+            ForcePanelUpdate(row.panel);
+            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+            row.SimulateEvent(evt);
+            Assume.That(row.resolvedStyle.flexDirection, Is.EqualTo(FlexDirection.RowReverse),
+                "Precondition: the panel resolved the inline flex-direction with no direction class present");
+
+            // Assert
+            var b = _window.rootVisualElement.Q<Label>("b");
+            Assert.That(b.resolvedStyle.marginRight, Is.EqualTo(Space4));
+        }
+    }
+
+    /// <summary>
+    /// The on-panel convergence regression guard for a class-driven direction toggle. <c>flex-row-reverse</c>
+    /// / <c>flex-col-reverse</c> are USS-only rules with no C# inline <c>flex-direction</c> write, so
+    /// <c>resolvedStyle.flexDirection</c> only catches up after the panel's NEXT style pass — and a
+    /// same-rect direction toggle (children reorder, the container itself never resizes) fires no
+    /// <c>GeometryChangedEvent</c> to trigger a re-derive. A manipulator that consulted resolvedStyle for
+    /// this would converge on the FIRST toggle (the initial layout pass happens to change the rect) but
+    /// never on a LATER toggle back — the margin would stay wrong indefinitely, with nothing left to
+    /// correct it. <see cref="StyleGapManipulator"/> avoids this by preferring the flex-row(-reverse) /
+    /// flex-col(-reverse) class markers over resolvedStyle (they are the FINAL class list by the time
+    /// <c>UpdateGap</c> runs, unlike resolvedStyle), so <c>UpdateGap</c>'s own unconditional forced re-apply
+    /// converges immediately, without needing any geometry event at all. This test proves exactly that: it
+    /// ticks the panel after the toggle but deliberately does NOT synthesize a <c>GeometryChangedEvent</c> —
+    /// a version that relied on one (or on resolvedStyle) would never converge here.
+    /// </summary>
+    [TestFixture]
+    internal sealed class GapReverseRuntimeFlipTests
+    {
+        private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
+
+        private readonly record struct DirectionState(bool Reversed);
+
+        private sealed class DirectionStore : Store<DirectionState>
+        {
+            public DirectionStore() : base(new DirectionState(false)) { }
+            public void Set(bool reversed) => SetState(_ => new DirectionState(reversed));
+            protected override void ResetCore() => SetState(_ => new DirectionState(false));
+        }
+
+        private static DirectionStore s_store;
+
+        // A raw class-string store for the scenarios below that need more than a two-state boolean:
+        // the bare-flex round trip and the axis-and-edge-both-flip case both toggle between class
+        // strings that are not simple mirror images of each other.
+        private readonly record struct ClassNameState(string ClassName);
+
+        private sealed class ClassNameStore : Store<ClassNameState>
+        {
+            public ClassNameStore(string initial) : base(new ClassNameState(initial)) { }
+            public void Set(string className) => SetState(_ => new ClassNameState(className));
+            protected override void ResetCore() => SetState(_ => new ClassNameState(string.Empty));
+        }
+
+        private static ClassNameStore s_classNameStore;
+
+        private EditorPanelSimulator _sim;
+
+        [SetUp]
+        public void SetUp()
+        {
+            PanelSimulator.ResetCurrentTime();
+            _sim = new EditorPanelSimulator { panelSize = new Vector2(200, 200) };
+            _sim.ResetTimePerSimulatedFrameToDefault();
+            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetPath);
+            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
+            _sim.rootVisualElement.styleSheets.Add(sheet);
+            s_store = null;
+            s_classNameStore = null;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _sim?.Dispose();
+            _sim = null;
+        }
+
+        private VisualElement Root => _sim.rootVisualElement;
+
+        private void Tick() => _sim.FrameUpdateMs(16);
+
+        [Component]
+        private static VNode ColumnGapRow()
+        {
+            var reversed = Hooks.UseStore(s_store, s => s.Reversed);
+            var dir = reversed ? "flex-col-reverse" : "flex-col";
+            return V.Div(name: "col", className: $"flex {dir} gap-4", children: new VNode[]
+            {
+                V.Label(name: "a", text: "a"),
+                V.Label(name: "b", text: "b"),
+            });
+        }
+
+        [Test]
+        public void Given_AColumnGapContainer_When_FlippedToColumnReverse_Then_TheStaleTopMarginIsClearedWithNoSynthesizedEvent()
+        {
+            // Arrange — establish the leading (margin-top) edge on a settled column container.
+            using var store = new DirectionStore();
+            s_store = store;
+            using var mounted = V.Mount(Root, V.Component(ColumnGapRow, key: "col"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            Assume.That(b.style.marginTop.value.value, Is.EqualTo(16f),
+                "Precondition: the column gap settled on the leading (top) edge");
+
+            // Act — flip to flex-col-reverse and just tick the panel; deliberately NO synthesized
+            // GeometryChangedEvent. Production must converge through UpdateGap's own forced re-apply
+            // (which now reads the class marker, already final at patch time) rather than depending on an
+            // event that a same-rect direction toggle never actually fires.
+            store.Set(true);
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Assert — the abandoned leading margin is cleared without any manufactured event.
+            Assert.That(b.style.marginTop.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AColumnReverseGapContainer_When_FlippedBackToColumn_Then_TheStaleBottomMarginIsClearedWithNoSynthesizedEvent()
+        {
+            // Arrange — the round trip: start REVERSED (so the very first layout pass, which happens to
+            // change the rect from nothing to something, cannot be the thing that makes this converge) and
+            // settle on the trailing (margin-bottom) edge.
+            using var store = new DirectionStore();
+            s_store = store;
+            store.Set(true);
+            using var mounted = V.Mount(Root, V.Component(ColumnGapRow, key: "col"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            Assume.That(b.style.marginBottom.value.value, Is.EqualTo(16f),
+                "Precondition: the column-reverse gap settled on the trailing (bottom) edge");
+
+            // Act — flip BACK to flex-col (no longer reversed) and just tick; no synthesized event. This is
+            // the exact toggle direction the reviewed regression left unconverged: a resolvedStyle-only
+            // read has no rect change to piggyback a natural GeometryChangedEvent on here.
+            store.Set(false);
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Assert — the abandoned trailing margin is cleared without any manufactured event.
+            Assert.That(b.style.marginBottom.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Component]
+        private static VNode ClassDrivenGapRow()
+        {
+            var className = Hooks.UseStore(s_classNameStore, s => s.ClassName);
+            return V.Div(name: "row", className: className, children: new VNode[]
+            {
+                V.Label(name: "a", text: "a"),
+                V.Label(name: "b", text: "b"),
+            });
+        }
+
+        // Bare `flex` is itself a direction-bearing class (_layout.uss: `.flex { flex-direction: row; }`,
+        // the stylesheet's own recommended spelling for a row), so it must be part of the class scan, not
+        // just flex-row(-reverse) / flex-col(-reverse) — otherwise the idiomatic
+        // `reversed ? "flex flex-row-reverse gap-4" : "flex gap-4"` toggle has no marker at all in its OFF
+        // state and falls through to a possibly-stale resolvedStyle.
+
+        [Test]
+        public void Given_ABareFlexGapRow_When_ToggledToRowReverse_Then_TheMarginMovesToTheTrailingEdge()
+        {
+            // Arrange — plain "flex gap-4": no flex-row class, just the direction-bearing bare flex.
+            using var store = new ClassNameStore("flex gap-4");
+            s_classNameStore = store;
+            using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            Assume.That(b.style.marginLeft.value.value, Is.EqualTo(16f),
+                "Precondition: the bare-flex row settled on the leading (left) edge");
+
+            // Act — toggle to flex-row-reverse; no synthesized event.
+            store.Set("flex flex-row-reverse gap-4");
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Assert — the margin moved to the trailing edge.
+            Assert.That(b.style.marginRight.value.value, Is.EqualTo(16f));
+        }
+
+        [Test]
+        public void Given_ABareFlexRowReverseGapRow_When_ToggledBackToPlainFlex_Then_TheStaleTrailingMarginIsCleared()
+        {
+            // Arrange — the failing direction: start reversed (a marker present in both the axis and the
+            // reversed sense), then toggle to bare "flex", which carries NO reversed marker at all — the
+            // OFF state of the reviewed idiom.
+            using var store = new ClassNameStore("flex flex-row-reverse gap-4");
+            s_classNameStore = store;
+            using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            Assume.That(b.style.marginRight.value.value, Is.EqualTo(16f),
+                "Precondition: the reversed row settled on the trailing (right) edge");
+
+            // Act — toggle to bare flex (no synthesized event). Without the class-marker-first fix, this
+            // falls through to resolvedStyle, which is still stale RowReverse at UpdateGap time and never
+            // gets a geometry event to correct it (a same-rect direction toggle moves no rect).
+            store.Set("flex gap-4");
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Assert — the stale trailing margin is cleared.
+            Assert.That(b.style.marginRight.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_AColumnReverseGapRow_When_ToggledToBareFlex_Then_TheAxisAndEdgeBothConvergeToLeft()
+        {
+            // Arrange — the "worse" variant: flex-col-reverse carries NEITHER a row-family class, so
+            // toggling to bare "flex" must flip BOTH the axis (column -> row) and the reversed bit
+            // (reversed -> not) — a single margin-left assertion proves both at once, since getting EITHER
+            // one wrong leaves the left margin at 0 or Null instead of the gap value.
+            using var store = new ClassNameStore("flex-col-reverse gap-4");
+            s_classNameStore = store;
+            using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            Assume.That(b.style.marginBottom.value.value, Is.EqualTo(16f),
+                "Precondition: the column-reverse row settled on the trailing (bottom) edge");
+
+            // Act — toggle to bare flex (no synthesized event).
+            store.Set("flex gap-4");
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Assert — both axis and edge converged to the plain row's leading (left) edge.
+            Assert.That(b.style.marginLeft.value.value, Is.EqualTo(16f));
+        }
+
+        [Test]
+        public void Given_AGapXRowReverseContainer_When_ToggledToColumnReverse_Then_TheMarginMovesFromRightToLeft()
+        {
+            // Arrange — the cross-axis hole: an explicit gap-x-4 (Horizontal axis) container starts
+            // flex-row-reverse (trailing = margin-right), then patches straight to flex-col-reverse — no
+            // row-family class survives the patch at all, so a same-family-only check (as opposed to one
+            // resolved verdict) would find nothing to update and keep the stale Right edge.
+            using var store = new ClassNameStore("flex-row-reverse gap-x-4");
+            s_classNameStore = store;
+            using var mounted = V.Mount(Root, V.Component(ClassDrivenGapRow, key: "row"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<Label>("b");
+            Assume.That(b.style.marginRight.value.value, Is.EqualTo(16f),
+                "Precondition: the row-reverse container settled on the trailing (right) edge");
+
+            // Act — patch straight to flex-col-reverse (no synthesized event); gap-x-4 stays horizontal
+            // regardless, but flex-row-reverse is gone so the reversed bit must re-derive from scratch.
+            store.Set("flex-col-reverse gap-x-4");
+            scheduler.DrainImmediateForTest();
+            Tick();
+            Tick();
+
+            // Assert — the margin moved back to the leading (left) edge; flex-col-reverse does not reverse
+            // the horizontal axis.
+            Assert.That(b.style.marginLeft.value.value, Is.EqualTo(16f));
+        }
+
+        [Component]
+        private static VNode InlineWrapRow()
+        {
+            // "flex flex-row" is present (the realistic, idiomatic shape — nearly every real container
+            // carries a direction class) and NO flex-wrap class at all: IsWrap's resolvedStyle fallback is
+            // the only source that can possibly answer, exactly the "wrap set some other way" case a
+            // direction class must NOT paper over.
+            var children = new VNode[3];
+            for (var i = 0; i < 3; i++)
+            {
+                children[i] = V.Div(name: "child-" + i, className: "w-[40px] h-[20px]");
+            }
+            return V.Div(name: "row", className: "flex flex-row w-[60px] gap-4",
+                refCallback: el => { el.style.flexWrap = Wrap.Wrap; return null; },
+                children: children);
+        }
+
+        [Test]
+        public void Given_AnInlineFlexWrapWithNoWrapClass_When_ThePanelSettles_Then_TheHalfMarginPolyfillAppliesWithoutASynthesizedEvent()
+        {
+            // Arrange/Act — a 60px-wide row with three 40px children set to wrap only via an inline style
+            // (no flex-wrap class at all): wrapping genuinely changes the container's own measured height
+            // (one line of content vs. three stacked lines), unlike a same-size direction toggle, so the
+            // resulting GeometryChangedEvent is a REAL one this test deliberately never synthesizes.
+            using var mounted = V.Mount(Root, V.Component(InlineWrapRow, key: "row"));
+            Tick();
+            Tick();
+            Tick();
+
+            // Assert — the container carries the wrap path's own negative half-margin, proving the
+            // resolvedStyle fallback (not a class) correctly detected wrapping and self-corrected.
+            var row = Root.Q<VisualElement>("row");
+            Assert.That(row.style.marginRight.value.value, Is.EqualTo(-8f));
         }
     }
 }

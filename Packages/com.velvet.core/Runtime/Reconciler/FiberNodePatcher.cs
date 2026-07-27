@@ -1811,21 +1811,25 @@ namespace Velvet
         {
             private readonly float _gap;
             private readonly GapAxis _axis;
+            private readonly bool _xReverse;
+            private readonly bool _yReverse;
 
-            internal GapOp(float gap, GapAxis axis)
+            internal GapOp(float gap, GapAxis axis, bool xReverse, bool yReverse)
             {
                 _gap = gap;
                 _axis = axis;
+                _xReverse = xReverse;
+                _yReverse = yReverse;
             }
 
             public Dictionary<VisualElement, StyleGapManipulator> Table(ReconcilerContext ctx)
                 => ctx.GapManipulators;
 
             public StyleGapManipulator Create(ReconcilerContext ctx)
-                => new StyleGapManipulator(_gap, _axis);
+                => new StyleGapManipulator(_gap, _axis, _xReverse, _yReverse);
 
             public void Update(StyleGapManipulator manipulator)
-                => manipulator.UpdateGap(_gap, _axis);
+                => manipulator.UpdateGap(_gap, _axis, _xReverse, _yReverse);
         }
 
         private readonly struct DivideOp : IManipulatorOp<StyleDivideManipulator>
@@ -2596,8 +2600,9 @@ namespace Velvet
             }
 
             var hasGap = StyleGapClass.TryExtract(classNames, out var gap, out var axis);
+            StyleGapClass.ExtractReverseMarkers(classNames, out var xReverse, out var yReverse);
 
-            Configure<GapOp, StyleGapManipulator>(element, hasGap, new GapOp(gap, axis));
+            Configure<GapOp, StyleGapManipulator>(element, hasGap, new GapOp(gap, axis, xReverse, yReverse));
         }
 
         // Configures the element's StyleDivideManipulator from the divide-x / divide-y (+ width / color)
