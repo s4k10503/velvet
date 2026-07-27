@@ -28,6 +28,12 @@ namespace Velvet
             // `md:grid md:grid-cols-3` re-derives the grid from its FINAL token set instead of first
             // building a one-column grid from the half-applied one.
             var layoutGateChanged = false;
+            // A USS-spelled width payload has to re-sync the layout manipulators: it decides whether
+            // text-balance stands down, and it loses to balance's own inline width, so it moves nothing the
+            // engine would raise a geometry event for. Kept out of the gate set above because it needs only
+            // the trigger, not the per-patch live-list routing that set also turns on. The inline-resolved
+            // spellings need nothing here — the manipulator's own layer probe sees both of their edges.
+            var reSyncOnly = false;
 
             foreach (var payload in payloads)
             {
@@ -77,11 +83,13 @@ namespace Velvet
                 {
                     target.AddToClassList(core);
                     layoutGateChanged |= TrackLayoutGate(ctx, target, core, true);
+                    reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
                 }
                 else
                 {
                     target.RemoveFromClassList(core);
                     layoutGateChanged |= TrackLayoutGate(ctx, target, core, false);
+                    reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
                 }
 
                 // A clip-path payload (hover:clip-path-[…], dark:/first:clip-path-[…], …) was just toggled as a class,
@@ -94,7 +102,7 @@ namespace Velvet
                 }
             }
 
-            if (layoutGateChanged)
+            if (layoutGateChanged || reSyncOnly)
             {
                 // A gap / grid / divide / text-balance class just appeared on (or left) the live class list
                 // without passing through the reconciler, so the manipulators those tokens gate must be
@@ -113,6 +121,11 @@ namespace Velvet
         // The utility tokens whose mere PRESENCE decides whether a layout manipulator exists on an element
         // (FiberNodePatcher.ApplyLayoutManipulators). Each family answers for its own prefix set so this
         // gate cannot drift from the array scans the manipulator passes run.
+        //
+        // Deliberately NOT the same set as the re-sync trigger: entering this one also routes the element
+        // to the live-class-list path on every later patch, which costs an array per patch, and that is
+        // only worth paying for a token a manipulator pass has to READ back out of the class array. A width
+        // payload needs the trigger and nothing else — text-balance reads the live list directly.
         private static bool IsLayoutGateToken(string core)
             => StyleGapClass.IsGapToken(core)
                 || StyleGridClass.IsGridToken(core)

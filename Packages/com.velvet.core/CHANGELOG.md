@@ -199,14 +199,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   children with no spacing at all: the arriving gap manipulator wrote its margins before the departing
   grid manipulator cleared the margins IT had written, and that clear took the new ones with it.
   Whichever of the two is departing now releases its writes first.
-- Removing a `text-balance` class from an element whose max-width comes from a VARIANT
-  (`dark:max-w-[80px] text-balance` with the dark theme active) left the element with no max-width at
-  all. `text-balance` borrows that inline slot while it is attached and nulls it on detach, and the
-  restore re-derived the value by scanning the element's class list — which skips variant tokens, since
-  a variant's payload is not a utility of the element itself. Nothing else re-asserts that layer, so the
-  width was gone for good. The restore now reads the recorded value directly and no longer cares how the
-  token was spelled. A max-width from the element's own `max-w-[…]` utility was already restored
-  correctly and is unchanged.
+- Removing a `text-balance` class from an element whose size comes from a VARIANT
+  (`dark:w-[80px] text-balance` with the dark theme active) left the element with no such value at all.
+  `text-balance` borrows one inline slot while it is attached and nulls it on detach, and the restore
+  re-derived the value by scanning the element's class list — which skips variant tokens, since a
+  variant's payload is not a utility of the element itself. Nothing else re-asserts that layer, so the
+  value was gone for good. The restore now reads the recorded value directly and no longer cares how the
+  token was spelled. A value from the element's own bracket utility was already restored correctly and is
+  unchanged.
+- `text-balance` no longer violates a declared `max-width`, and no longer destroys a co-present sizing
+  utility. It writes the element's inline **`width`** now instead of its `max-width`: the engine clamps
+  that write to whatever `max-width` the element declares, so the ceiling holds by construction, and the
+  declared `max-width` — no longer the slot balance overwrites — stays readable, so the search is bounded
+  by it and the text is balanced *inside* the ceiling rather than cut off by it. Previously the balanced
+  width came from the parent's content width alone, so a `text-balance max-w-[120px]` label in a
+  380px-wide parent rendered ~284px, and a `max-w-*` utility beside `text-balance` was erased outright
+  whenever balance declined to act (empty text, or text that fits one line). Every spelling of a ceiling
+  now behaves identically and applies on every pass: `max-w-[…]`, a variant's `dark:max-w-[80px]`, the USS
+  scale forms (`max-w-32`, `max-w-full`), and percentages. `max-w-0` releases the box instead of widening
+  past it. **Balanced labels carrying a max-width now render narrower**, since they previously rendered
+  wider than they asked to be.
+- **`text-balance` now stands down on an element that declares its own width.** Any `w-*` or `size-*`
+  class — `w-full` included, in every spelling: scale, bracket, fraction, `!`-important, and one a variant
+  supplies — leaves the box exactly as declared, as does a child of a `grid` container, whose width the
+  grid writes. `w-auto` declares nothing and does not count. Balance is approximated by narrowing the box,
+  so a declared width leaves nothing to narrow, and the width is the contract other layout depends on.
+  **`w-full text-balance` no longer balances** — drop the `w-full`, since a column child already fills its
+  parent. `w-32 text-balance` now renders at 128px rather than at a balanced width. See
+  `Documentation~/fonts.md`.
 - On an element that already carries a clip — a base `clip-path-*`, or one from a state, theme,
   responsive or relational variant — a `clip-path-*` payload carried by a structural (`first:`),
   `has-[.class]:`, `data-`/`aria-` or `supports-` variant now re-resolves the mask when it toggles.

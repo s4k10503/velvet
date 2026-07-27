@@ -759,18 +759,18 @@ namespace Velvet
         // form of ReapplyLayeredValues above.
         //
         // For a manipulator that borrows a shared inline slot and nulls it outright on detach
-        // (StyleTextBalanceManipulator and max-width): the authored value it clobbered is still recorded
+        // (StyleTextBalanceManipulator and width): the authored value it clobbered is still recorded
         // here, so re-resolving the one slot restores exactly what the cascade says it should hold — and
         // does so regardless of how that value got there. A restore driven by re-scanning the element's
         // class list is only as complete as that list: it cannot see a layer a VARIANT registered
-        // (dark:max-w-[80px]), whose payload is not a token of the element's own.
+        // (dark:w-[80px]), whose payload is not a token of the element's own.
         //
         // A property with no surviving layer clears the inline value — the same fallback Clear itself takes
         // once it removes the last layer.
         //
         // No filter-family exemption, unlike the whole-map form: this re-resolves whatever property it is
         // handed, so a filter one would recompose the filter list and restart an in-flight transition tween.
-        // Today's only caller passes a max-width; a caller that wants a filter property has to weigh that.
+        // Today's only caller passes a width; a caller that wants a filter property has to weigh that.
         internal static void ReapplyLayeredValue(VisualElement element, ArbitraryProperty property)
         {
             if (element == null || !s_layers.TryGetValue(element, out var map))
@@ -779,6 +779,30 @@ namespace Velvet
             }
             ResolveAndApply(element, property, map);
         }
+
+        // Re-asserts every layer that writes the inline WIDTH slot, for a caller handing that slot back
+        // after borrowing it. Width first and Size second, because Size writes width and height together
+        // while re-resolving Width on an element with no Width layer CLEARS the slot — which would wipe a
+        // Size restore done first. Size is skipped when no Size layer exists, since clearing that one nulls
+        // the height too, and the height may have come from a layer of its own.
+        // An element carrying both layers ends up with the Size one, which cannot reproduce class-string
+        // order; that ambiguity belongs to the resolver and needs a pathological w-[..] size-[..] pair.
+        internal static void ReapplyWidthSlot(VisualElement element)
+        {
+            ReapplyLayeredValue(element, ArbitraryProperty.Width);
+            if (HasLayer(element, ArbitraryProperty.Size))
+            {
+                ReapplyLayeredValue(element, ArbitraryProperty.Size);
+            }
+        }
+
+        // Whether any layer is registered for property. Uncontaminated for a caller asking about a slot it
+        // writes directly rather than through Apply — no manipulator registers a layer.
+        internal static bool HasLayer(VisualElement element, ArbitraryProperty property)
+            => element != null
+                && s_layers.TryGetValue(element, out var map)
+                && map.TryGetValue(property, out var layers)
+                && layers.Count > 0;
 
         // Drops all arbitrary-value layers tracked for element. Called when the element is
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
