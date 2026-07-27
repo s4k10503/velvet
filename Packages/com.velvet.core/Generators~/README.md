@@ -11,12 +11,10 @@ Run the following inside the `Generators~/` directory:
 ./build.ps1   # Windows
 ```
 
-`build.sh` rebuilds and deploys both shipped assemblies:
+Either script rebuilds and deploys both shipped assemblies, leaving the tree in the same state:
 
 - `../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`
 - `../Runtime/Plugins/Analyzers/Velvet.SourceGenerators.CodeFixes.dll`
-
-`build.ps1` currently deploys only the first; after changing the CodeFixes project on Windows, build and copy that assembly by hand.
 
 Commit both rebuilt DLLs. The distribution model assumes Unity users do not need to install `dotnet`.
 
