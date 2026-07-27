@@ -97,10 +97,7 @@ namespace Velvet
                     // [&>*]: runs before gap / divide / grid so those win a shared child edge (see
                     // ApplyPostChildrenClassPasses for the same ordering on the patch path).
                     _patcher.ApplyChildVariantManipulator(element, elementNode.ClassNames);
-                    _patcher.ApplyGapManipulator(element, elementNode.ClassNames);
-                    _patcher.ApplyDivideManipulator(element, elementNode.ClassNames);
-                    _patcher.ApplyGridManipulator(element, elementNode.ClassNames);
-                    _patcher.ApplyTextBalanceManipulator(element, elementNode.ClassNames);
+                    _patcher.ApplyLayoutManipulators(element, elementNode.ClassNames);
                     // Same post-children timing: structural variants (first:/last:/odd:/…) need the placed children.
                     _patcher.ApplyStructuralVariants(element);
                     // has-[.class]: (element as subject) likewise needs the placed children to scan.
@@ -245,10 +242,7 @@ namespace Velvet
                     ApplyOptionalCreateBindings(element, motionNode.Props, appliedClasses);
                     StyleFontResolver.ApplyIfPresent(element, appliedClasses);
                     _patcher.ApplyChildVariantManipulator(element, appliedClasses);
-                    _patcher.ApplyGapManipulator(element, appliedClasses);
-                    _patcher.ApplyDivideManipulator(element, appliedClasses);
-                    _patcher.ApplyGridManipulator(element, appliedClasses);
-                    _patcher.ApplyTextBalanceManipulator(element, appliedClasses);
+                    _patcher.ApplyLayoutManipulators(element, appliedClasses);
                     _patcher.ApplyStructuralVariants(element);
                     _patcher.ApplyHasClassVariants(element);
                     _patcher.ApplyHasVariantManipulators(element);

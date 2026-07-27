@@ -755,6 +755,31 @@ namespace Velvet
             }
         }
 
+        // Re-asserts the winning layer for ONE property, without mutating the map — the single-property
+        // form of ReapplyLayeredValues above.
+        //
+        // For a manipulator that borrows a shared inline slot and nulls it outright on detach
+        // (StyleTextBalanceManipulator and max-width): the authored value it clobbered is still recorded
+        // here, so re-resolving the one slot restores exactly what the cascade says it should hold — and
+        // does so regardless of how that value got there. A restore driven by re-scanning the element's
+        // class list is only as complete as that list: it cannot see a layer a VARIANT registered
+        // (dark:max-w-[80px]), whose payload is not a token of the element's own.
+        //
+        // A property with no surviving layer clears the inline value — the same fallback Clear itself takes
+        // once it removes the last layer.
+        //
+        // No filter-family exemption, unlike the whole-map form: this re-resolves whatever property it is
+        // handed, so a filter one would recompose the filter list and restart an in-flight transition tween.
+        // Today's only caller passes a max-width; a caller that wants a filter property has to weigh that.
+        internal static void ReapplyLayeredValue(VisualElement element, ArbitraryProperty property)
+        {
+            if (element == null || !s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            ResolveAndApply(element, property, map);
+        }
+
         // Drops all arbitrary-value layers tracked for element. Called when the element is
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)

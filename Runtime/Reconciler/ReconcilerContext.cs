@@ -286,6 +286,62 @@ namespace Velvet
         // GridManipulators; removed on cleanup / dispose.
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
 
+        // Layout utility tokens (gap-* / space-* / grid / grid-cols-* / divide-* / text-balance) a VARIANT
+        // currently has toggled onto an element, keyed by that element. The four manipulators those tokens
+        // gate are configured from the RECONCILED class array, which never carries them: `md:grid` is a
+        // variant token, and the bare `grid` it resolves to is written straight onto the live class list by
+        // the conditional manipulator without passing back through the reconciler. An entry here marks the
+        // element as one whose gates must be re-derived from the LIVE class list instead (see
+        // FiberNodePatcher.ApplyLayoutManipulators), so `gap-4 md:grid md:grid-cols-3` lays out as a spaced
+        // grid above the breakpoint and as a gapped flex row below it. Only the gate tokens are tracked, so
+        // an ordinary `hover:bg-red` element never gets an entry and never pays the live-list read. Written
+        // by StyleVariantPayload.Apply for EVERY variant family (state / conditional / relational / child /
+        // stacked / has-), since any of them can carry such a payload. A pure side-table (teardown is a
+        // plain Remove), so it is enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, HashSet<string>> VariantLayoutClasses { get; } = new();
+
+        // Hook to re-derive an element's layout manipulators (gap / divide / grid / text-balance) from its
+        // live class list, set by FiberNodePatcher. StyleVariantPayload.Apply invokes it after a variant
+        // toggles one of the gate tokens above: that toggle happens outside any reconcile pass (a breakpoint
+        // crossing, a theme flip, a pointer state change), so nothing else would re-run those passes.
+        // Null until the patcher wires it.
+        public System.Action<VisualElement> LayoutManipulatorReSync { get; set; } = null!;
+
+        // Records / drops one variant-applied layout gate token for target, returning true when the tracked
+        // set actually changed — so the caller signals a re-derive exactly once per real change. Set
+        // semantics rather than a counter: a manipulator may re-assert an already-applied payload, and an
+        // off-toggle for a payload that was never on is a no-op, either of which would drift a count.
+        // The set deliberately mirrors the class list rather than reference-counting it, because the class
+        // list itself is not reference-counted: two variants asking for the SAME token (dark:gap-4 beside
+        // md:gap-4) already lose the class when whichever one turns off first removes it. Counting here
+        // would only make this table disagree with the element. What changed is the visible consequence —
+        // the token now also decides which layout manipulator the element carries, so that pre-existing
+        // lost toggle reads as a layout change rather than just a lost utility.
+        internal bool TrackVariantLayoutClass(VisualElement target, string cls, bool on)
+        {
+            if (on)
+            {
+                if (!VariantLayoutClasses.TryGetValue(target, out var applied))
+                {
+                    applied = new HashSet<string>();
+                    VariantLayoutClasses[target] = applied;
+                }
+                return applied.Add(cls);
+            }
+
+            if (!VariantLayoutClasses.TryGetValue(target, out var current) || !current.Remove(cls))
+            {
+                return false;
+            }
+            if (current.Count == 0)
+            {
+                // Drop the entry so the element falls back to the cheap reconciled-array path once its last
+                // variant-applied gate token is gone.
+                VariantLayoutClasses.Remove(target);
+            }
+            return true;
+        }
+
         // Per-divided-child dashed / dotted divider paint (divide-dashed / divide-dotted), keyed by the CHILD
         // element (not the container) — the divider is painted on the child's own generateVisualContent, since
         // a container paints BEHIND its children. Attached / updated by StyleDivideManipulator; the callback is
@@ -965,6 +1021,7 @@ namespace Velvet
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,
+                VariantLayoutClasses,
                 ZLayerHosts,
                 ZLayerMembers,
             };

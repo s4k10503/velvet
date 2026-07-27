@@ -181,6 +181,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AGridWithGap_When_OnlyTheGridClassIsPatchedAway_Then_TheGapTakesOverTheChildMargins()
+        {
+            // Arrange — the grid owns the child margins while it is present, so the gap manipulator is
+            // suppressed. Dropping only the grid class hands that ownership over within a single pass, and
+            // the departing grid manipulator clears every margin it wrote as it detaches.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { Grid("grid grid-cols-3 gap-4", 6) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            Assume.That(GetManipulatorCount(scope.Reconciler, "GapManipulators"), Is.EqualTo(0),
+                "Precondition: the grid suppressed the gap manipulator");
+
+            // Act — same gap class, no grid class.
+            var tree2 = new VNode[] { Grid("flex flex-row gap-4", 6) };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert — the arriving gap manipulator's margins survive the departing grid's teardown.
+            Assert.That(Container(scope.Root)[1].style.marginLeft.value.value, Is.EqualTo(Space4));
+        }
+
+        [Test]
         public void Given_GridCols2_When_PatchedToGridCols3_Then_PlacementFollowsNewColumnCount()
         {
             // Arrange — 6 children as 2 columns: child 2 starts row 1 (column 0, no leading gap).
