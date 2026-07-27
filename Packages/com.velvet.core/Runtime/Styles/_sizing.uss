@@ -1,5 +1,51 @@
 /* Sizing Utilities - width, height, min/max */
 
+/* Size precedes Width and Height: its property set contains theirs. See StyleUtilities.uss. */
+/* ============================= */
+/* Size - width + height (Tailwind 3.4 size-*) */
+/* ============================= */
+
+.size-0 { width: var(--space-0); height: var(--space-0); }
+.size-px { width: var(--space-px); height: var(--space-px); }
+.size-0-5 { width: var(--space-0-5); height: var(--space-0-5); }
+.size-1 { width: var(--space-1); height: var(--space-1); }
+.size-1-5 { width: var(--space-1-5); height: var(--space-1-5); }
+.size-2 { width: var(--space-2); height: var(--space-2); }
+.size-2-5 { width: var(--space-2-5); height: var(--space-2-5); }
+.size-3 { width: var(--space-3); height: var(--space-3); }
+.size-3-5 { width: var(--space-3-5); height: var(--space-3-5); }
+.size-4 { width: var(--space-4); height: var(--space-4); }
+.size-5 { width: var(--space-5); height: var(--space-5); }
+.size-6 { width: var(--space-6); height: var(--space-6); }
+.size-7 { width: var(--space-7); height: var(--space-7); }
+.size-8 { width: var(--space-8); height: var(--space-8); }
+.size-9 { width: var(--space-9); height: var(--space-9); }
+.size-10 { width: var(--space-10); height: var(--space-10); }
+.size-11 { width: var(--space-11); height: var(--space-11); }
+.size-12 { width: var(--space-12); height: var(--space-12); }
+.size-14 { width: var(--space-14); height: var(--space-14); }
+.size-16 { width: var(--space-16); height: var(--space-16); }
+.size-20 { width: var(--space-20); height: var(--space-20); }
+.size-24 { width: var(--space-24); height: var(--space-24); }
+.size-28 { width: var(--space-28); height: var(--space-28); }
+.size-32 { width: var(--space-32); height: var(--space-32); }
+.size-36 { width: var(--space-36); height: var(--space-36); }
+.size-40 { width: var(--space-40); height: var(--space-40); }
+.size-44 { width: var(--space-44); height: var(--space-44); }
+.size-48 { width: var(--space-48); height: var(--space-48); }
+.size-52 { width: var(--space-52); height: var(--space-52); }
+.size-56 { width: var(--space-56); height: var(--space-56); }
+.size-60 { width: var(--space-60); height: var(--space-60); }
+.size-64 { width: var(--space-64); height: var(--space-64); }
+.size-72 { width: var(--space-72); height: var(--space-72); }
+.size-80 { width: var(--space-80); height: var(--space-80); }
+.size-96 { width: var(--space-96); height: var(--space-96); }
+
+/* Size - Special */
+.size-full { width: 100%; height: 100%; }
+.size-auto { width: auto; height: auto; }
+/* Fractional sizes (size-1/2 .. size-11/12) resolve via StyleArbitraryValueResolver — USS cannot spell '/'. */
+
 /* ============================= */
 /* Width - Fixed values          */
 /* ============================= */
@@ -253,47 +299,3 @@
 .max-h-96 { max-height: var(--space-96); }
 .max-h-full { max-height: 100%; }
 
-/* ============================= */
-/* Size - width + height (Tailwind 3.4 size-*) */
-/* ============================= */
-
-.size-0 { width: var(--space-0); height: var(--space-0); }
-.size-px { width: var(--space-px); height: var(--space-px); }
-.size-0-5 { width: var(--space-0-5); height: var(--space-0-5); }
-.size-1 { width: var(--space-1); height: var(--space-1); }
-.size-1-5 { width: var(--space-1-5); height: var(--space-1-5); }
-.size-2 { width: var(--space-2); height: var(--space-2); }
-.size-2-5 { width: var(--space-2-5); height: var(--space-2-5); }
-.size-3 { width: var(--space-3); height: var(--space-3); }
-.size-3-5 { width: var(--space-3-5); height: var(--space-3-5); }
-.size-4 { width: var(--space-4); height: var(--space-4); }
-.size-5 { width: var(--space-5); height: var(--space-5); }
-.size-6 { width: var(--space-6); height: var(--space-6); }
-.size-7 { width: var(--space-7); height: var(--space-7); }
-.size-8 { width: var(--space-8); height: var(--space-8); }
-.size-9 { width: var(--space-9); height: var(--space-9); }
-.size-10 { width: var(--space-10); height: var(--space-10); }
-.size-11 { width: var(--space-11); height: var(--space-11); }
-.size-12 { width: var(--space-12); height: var(--space-12); }
-.size-14 { width: var(--space-14); height: var(--space-14); }
-.size-16 { width: var(--space-16); height: var(--space-16); }
-.size-20 { width: var(--space-20); height: var(--space-20); }
-.size-24 { width: var(--space-24); height: var(--space-24); }
-.size-28 { width: var(--space-28); height: var(--space-28); }
-.size-32 { width: var(--space-32); height: var(--space-32); }
-.size-36 { width: var(--space-36); height: var(--space-36); }
-.size-40 { width: var(--space-40); height: var(--space-40); }
-.size-44 { width: var(--space-44); height: var(--space-44); }
-.size-48 { width: var(--space-48); height: var(--space-48); }
-.size-52 { width: var(--space-52); height: var(--space-52); }
-.size-56 { width: var(--space-56); height: var(--space-56); }
-.size-60 { width: var(--space-60); height: var(--space-60); }
-.size-64 { width: var(--space-64); height: var(--space-64); }
-.size-72 { width: var(--space-72); height: var(--space-72); }
-.size-80 { width: var(--space-80); height: var(--space-80); }
-.size-96 { width: var(--space-96); height: var(--space-96); }
-
-/* Size - Special */
-.size-full { width: 100%; height: 100%; }
-.size-auto { width: auto; height: auto; }
-/* Fractional sizes (size-1/2 .. size-11/12) resolve via StyleArbitraryValueResolver — USS cannot spell '/'. */

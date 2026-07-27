@@ -308,16 +308,11 @@
 .m-80 { margin: var(--space-80); }
 .m-96 { margin: var(--space-96); }
 
-/* Margin - Auto */
+/* Margin - Auto (four edges). The two-edge and single-edge autos open their own bands below. */
 .m-auto { margin-left: auto; margin-right: auto; margin-top: auto; margin-bottom: auto; }
-.mr-auto { margin-right: auto; }
-.ml-auto { margin-left: auto; }
-.mt-auto { margin-top: auto; }
-.mb-auto { margin-bottom: auto; }
-.mx-auto { margin-left: auto; margin-right: auto; }
-.my-auto { margin-top: auto; margin-bottom: auto; }
 
 /* Margin - Horizontal (left + right) */
+.mx-auto { margin-left: auto; margin-right: auto; }
 
 .mx-0 { margin-left: var(--space-0); margin-right: var(--space-0); }
 .mx-px { margin-left: var(--space-px); margin-right: var(--space-px); }
@@ -356,6 +351,7 @@
 .mx-96 { margin-left: var(--space-96); margin-right: var(--space-96); }
 
 /* Margin - Vertical (top + bottom) */
+.my-auto { margin-top: auto; margin-bottom: auto; }
 
 .my-0 { margin-top: var(--space-0); margin-bottom: var(--space-0); }
 .my-px { margin-top: var(--space-px); margin-bottom: var(--space-px); }
@@ -394,6 +390,7 @@
 .my-96 { margin-top: var(--space-96); margin-bottom: var(--space-96); }
 
 /* Margin - Top */
+.mt-auto { margin-top: auto; }
 
 .mt-0 { margin-top: var(--space-0); }
 .mt-px { margin-top: var(--space-px); }
@@ -432,6 +429,7 @@
 .mt-96 { margin-top: var(--space-96); }
 
 /* Margin - Right */
+.mr-auto { margin-right: auto; }
 
 .mr-0 { margin-right: var(--space-0); }
 .mr-px { margin-right: var(--space-px); }
@@ -470,6 +468,7 @@
 .mr-96 { margin-right: var(--space-96); }
 
 /* Margin - Bottom */
+.mb-auto { margin-bottom: auto; }
 
 .mb-0 { margin-bottom: var(--space-0); }
 .mb-px { margin-bottom: var(--space-px); }
@@ -508,6 +507,7 @@
 .mb-96 { margin-bottom: var(--space-96); }
 
 /* Margin - Left */
+.ml-auto { margin-left: auto; }
 
 .ml-0 { margin-left: var(--space-0); }
 .ml-px { margin-left: var(--space-px); }

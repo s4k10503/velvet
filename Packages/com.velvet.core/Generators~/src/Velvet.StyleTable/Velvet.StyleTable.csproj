@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Matches the test project so it can reference this one. RollForward lets the tool run on whatever
+         runtime the pinned SDK ships, rather than requiring a matching one to be installed. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>LatestMajor</RollForward>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Velvet.StyleTable</RootNamespace>
+    <AssemblyName>Velvet.StyleTable</AssemblyName>
+    <Description>Derives the utility class to USS property table that ships as generated source in Runtime/Styling.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Velvet.SourceGenerators.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,6 +1,11 @@
 /*
  * StyleUtilities - Utility-First Style Aggregator
  * All styles are imported from partials below.
+ *
+ * Utilities are single-class selectors, so two on one element tie on specificity and the later
+ * declaration wins — across the @import list and within each partial. A utility must therefore be
+ * declared before every narrower one its property set contains, or the narrower one can never win the
+ * properties they share. BundledStyleSheetOrderTests enforces this and names the exemptions.
  */
 
 @import url("_tokens.uss");

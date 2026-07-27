@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Velvet.SourceGenerators\Velvet.SourceGenerators.csproj" />
     <ProjectReference Include="..\..\src\Velvet.SourceGenerators.CodeFixes\Velvet.SourceGenerators.CodeFixes.csproj" />
+    <ProjectReference Include="..\..\src\Velvet.StyleTable\Velvet.StyleTable.csproj" />
   </ItemGroup>
 
   <ItemGroup>
