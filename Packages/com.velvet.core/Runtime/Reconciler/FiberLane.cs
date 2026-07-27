@@ -21,12 +21,6 @@ namespace Velvet
         // paused commit never runs UseLayoutEffect against a not-yet-attached UseRef.
         internal const double TimeSlicedBudgetMs = 5;
 
-        // Test-only override for the time-sliced budget. Negative means "no override" (production value).
-        // EditMode tests set this to a tiny value to force a deterministic pause after one node, because the
-        // real 5 ms budget rarely overruns on a small list and the UIToolkit scheduler does not advance in
-        // EditMode. Mirrors the existing test-controlled IsInDiscreteEvent static.
-        internal static double TimeSlicedBudgetOverrideForTest = -1;
-
         // The highest-priority pending lane on the fiber (lowest enum value wins); Transition when the
         // lane queue is empty. Shared by ScheduleRerender's escalation check.
         internal static FiberUpdatePriority GetHighestPendingPriority(ComponentFiber fiber)
@@ -45,17 +39,13 @@ namespace Velvet
         internal static bool SchedulesOnImmediateTier(FiberUpdatePriority priority)
             => priority is FiberUpdatePriority.Urgent or FiberUpdatePriority.Normal;
 
-        // Frame budget for a flush of priority. Transition and Deferred get the time-sliced
-        // budget so a large flat-list diff can pause/resume across frames; Urgent and Normal run synchronously
+        // Frame budget for a flush of priority. Transition and Deferred slice against timeSlicedBudgetMs so a
+        // large flat-list diff can pause/resume across frames; Urgent and Normal run synchronously
         // (user-input-driven updates are never interrupted). Only the reconciler fast path acts on
         // a non-zero budget — see TimeSlicedBudgetMs.
-        internal static double BudgetForLane(FiberUpdatePriority priority)
-        {
-            if (priority is not (FiberUpdatePriority.Transition or FiberUpdatePriority.Deferred))
-            {
-                return FrameBudgetMs;
-            }
-            return TimeSlicedBudgetOverrideForTest >= 0 ? TimeSlicedBudgetOverrideForTest : TimeSlicedBudgetMs;
-        }
+        internal static double BudgetForLane(FiberUpdatePriority priority, double timeSlicedBudgetMs)
+            => priority is FiberUpdatePriority.Transition or FiberUpdatePriority.Deferred
+                ? timeSlicedBudgetMs
+                : FrameBudgetMs;
     }
 }

@@ -50,6 +50,24 @@ namespace Velvet.TestUtilities
             FiberWorkLoop.ScheduleRerender(fiber, priority);
         }
 
+        // Small enough that the very first budget check of a reconcile pass already reads over it. Internal so a
+        // fixture can pin that this exact value — not the production default — is what a flush threaded.
+        internal const double TinyTimeSlicedBudgetMs = 0.0001;
+
+        /// <summary>
+        /// Flushes <paramref name="fiber"/>'s highest pending lane with a time-sliced budget too small to admit
+        /// a single node, so a Transition / Deferred flush parks after its first iteration regardless of host
+        /// speed — the real budget rarely overruns on a list small enough for a test to build, and the UIToolkit
+        /// scheduler does not advance in EditMode. The budget travels on this one call: it is captured on the
+        /// fiber as the resume budget (so <see cref="DrainTimeSlicedReconcileForTest"/> continues at the same
+        /// tiny budget) and is invisible to every other fiber's flush.
+        /// Test-only. Must not be used from production code.
+        /// </summary>
+        public static void FlushStateWithTinyBudgetForTest(this ComponentFiber fiber)
+        {
+            FiberWorkLoop.FlushState(fiber, TinyTimeSlicedBudgetMs);
+        }
+
         /// <summary>
         /// True while a time-sliced reconcile started by <paramref name="fiber"/> is paused with work still
         /// pending (the fast-path diff exceeded its frame budget and parked). Test-only.

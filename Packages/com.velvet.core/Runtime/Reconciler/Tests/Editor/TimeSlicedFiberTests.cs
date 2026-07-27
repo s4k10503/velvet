@@ -11,10 +11,11 @@ namespace Velvet.Tests
     /// cover the integration.
     /// <list type="bullet">
     /// <item><see cref="FiberLane.BudgetForLane"/> gives the Urgent and Normal lanes a zero budget (they run
-    /// synchronously and are never interrupted) and the Transition and Deferred lanes a non-zero time-sliced
-    /// budget so a large flat-list diff can pause.</item>
+    /// synchronously and are never interrupted) and hands the Transition and Deferred lanes the time-sliced
+    /// budget its caller supplied, so a large flat-list diff can pause.</item>
     /// <item>A Transition flush threads the time-sliced budget onto the fiber so the resume continues at the same
-    /// budget; a Normal flush runs synchronously with a zero budget and never parks.</item>
+    /// budget — including a budget a caller supplied in place of the default; a Normal flush runs synchronously
+    /// with a zero budget and never parks.</item>
     /// <item>A Transition flush over a large flat list parks mid-commit with only part of the new list committed,
     /// and the resume drains the remainder to completion.</item>
     /// <item>An immediate-tier flush no-ops while a reconcile is on the stack (the resume reentrancy guard) and
@@ -31,10 +32,9 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// The UIToolkit scheduler does not advance in EditMode, so a parked slice is resumed manually via
-    /// <see cref="MountedTreeTestExtensions.DrainTimeSlicedReconcileForTest"/>, and a tiny budget is forced via
-    /// <see cref="FiberLane.TimeSlicedBudgetOverrideForTest"/> so a pause is deterministic regardless of host
-    /// speed. The override and the discrete-event flag are reset in <see cref="SetUp"/> and <see cref="TearDown"/>
-    /// so a forced budget never leaks into another test.
+    /// <see cref="MountedTreeTestExtensions.DrainTimeSlicedReconcileForTest"/>, and a pause is made deterministic
+    /// regardless of host speed by flushing through
+    /// <see cref="MountedTreeTestExtensions.FlushStateWithTinyBudgetForTest"/>.
     /// </remarks>
     [TestFixture]
     internal sealed class TimeSlicedFiberTests
@@ -45,7 +45,6 @@ namespace Velvet.Tests
         public void SetUp()
         {
             FiberWorkLoop.IsInDiscreteEvent = false;
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             _root = new VisualElement();
             ResetFlatList();
             ResetProbe();
@@ -57,7 +56,6 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             FiberWorkLoop.IsInDiscreteEvent = false;
         }
 
@@ -66,10 +64,11 @@ namespace Velvet.Tests
         [Test]
         public void Given_UrgentAndNormalLanes_When_BudgetQueried_Then_AreSynchronous()
         {
-            // Act + Assert — Urgent and Normal are user-input-driven and run synchronously (zero budget)
+            // Act + Assert — Urgent and Normal are user-input-driven and run synchronously whatever time-sliced
+            // budget the flush carries
             Assert.That(
-                (FiberLane.BudgetForLane(FiberUpdatePriority.Urgent),
-                    FiberLane.BudgetForLane(FiberUpdatePriority.Normal)),
+                (FiberLane.BudgetForLane(FiberUpdatePriority.Urgent, ProbeTimeSlicedBudgetMs),
+                    FiberLane.BudgetForLane(FiberUpdatePriority.Normal, ProbeTimeSlicedBudgetMs)),
                 Is.EqualTo((0.0, 0.0)),
                 "The Urgent and Normal lanes run synchronously with a zero budget");
         }
@@ -77,13 +76,18 @@ namespace Velvet.Tests
         [Test]
         public void Given_TransitionAndDeferredLanes_When_BudgetQueried_Then_AreTimeSliced()
         {
-            // Act + Assert — Transition and Deferred get the non-zero time-sliced budget so a large diff can pause
+            // Act + Assert — Transition and Deferred slice against the budget the flush carries, so a large diff
+            // can pause
             Assert.That(
-                FiberLane.BudgetForLane(FiberUpdatePriority.Transition) > 0.0
-                    && FiberLane.BudgetForLane(FiberUpdatePriority.Deferred) > 0.0,
-                Is.True,
-                "The Transition and Deferred lanes get a non-zero time-sliced budget");
+                (FiberLane.BudgetForLane(FiberUpdatePriority.Transition, ProbeTimeSlicedBudgetMs),
+                    FiberLane.BudgetForLane(FiberUpdatePriority.Deferred, ProbeTimeSlicedBudgetMs)),
+                Is.EqualTo((ProbeTimeSlicedBudgetMs, ProbeTimeSlicedBudgetMs)),
+                "The Transition and Deferred lanes slice against the time-sliced budget the flush carries");
         }
+
+        // Distinct from both the synchronous budget (0) and the production default, so a routing that ignored
+        // its argument cannot coincide with the expected value.
+        private const double ProbeTimeSlicedBudgetMs = 7;
 
         #endregion
 
@@ -104,6 +108,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That(fiber.PendingReconcileBudgetMs, Is.GreaterThan(0.0),
                 "A Transition flush threads the time-sliced budget so the resume continues at the same budget");
+        }
+
+        [Test]
+        public void Given_TransitionFlushUnderATinyBudget_When_Flushed_Then_ThreadsThatBudgetNotTheDefault()
+        {
+            // Arrange
+            s_flatListCount = 1;
+            using var mounted = V.Mount(_root, V.Component(FlatListRender, key: "list"));
+            var fiber = s_flatListFiber;
+
+            // Act
+            fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
+            fiber.FlushStateWithTinyBudgetForTest();
+
+            // Assert — every fixture that forces a park depends on this; without it those fixtures would run at
+            // the production budget, never park, and report Inconclusive on their park precondition rather than
+            // failing
+            Assert.That(fiber.PendingReconcileBudgetMs,
+                Is.EqualTo(MountedTreeTestExtensions.TinyTimeSlicedBudgetMs),
+                "A flush carries the caller's own time-sliced budget through to the fiber's resume budget");
         }
 
         [Test]
@@ -148,10 +172,9 @@ namespace Velvet.Tests
             var fiber = s_flatListFiber;
 
             // Act — a tiny budget forces a pause after one node so the park is deterministic in EditMode
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_flatListCount = 40;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(fiber);
+            fiber.FlushStateWithTinyBudgetForTest();
 
             // Assert
             Assert.That((fiber.HasPendingReconcileWorkForTest(), _root.childCount < 40), Is.EqualTo((true, true)),
@@ -165,10 +188,9 @@ namespace Velvet.Tests
             s_flatListCount = 3;
             using var mounted = V.Mount(_root, V.Component(FlatListRender, key: "list"));
             var fiber = s_flatListFiber;
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_flatListCount = 40;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(fiber);
+            fiber.FlushStateWithTinyBudgetForTest();
             Assume.That(fiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the flush parked mid-commit");
 
             // Act
@@ -237,10 +259,9 @@ namespace Velvet.Tests
             s_refOrderingRefWasNullAtEffect = false;
 
             // Act
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_refOrderingCount = 40;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(fiber);
+            fiber.FlushStateWithTinyBudgetForTest();
             Assume.That(fiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the commit paused mid-flight");
 
             // Assert
@@ -257,10 +278,9 @@ namespace Velvet.Tests
             var fiber = s_refOrderingFiber;
             s_refOrderingEffectRan = false;
             s_refOrderingRefWasNullAtEffect = false;
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_refOrderingCount = 40;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(fiber);
+            fiber.FlushStateWithTinyBudgetForTest();
             Assume.That(fiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the commit paused mid-flight");
 
             // Act
@@ -285,14 +305,12 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SiblingHostRender, key: "host"));
             var host = _root.Q(name: "sibling-host");
             Assume.That(host.childCount, Is.EqualTo(6), "Precondition: the initial mount is 3 (A) + 3 (B)");
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_siblingBFiber);
+            s_siblingBFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks at A's slot count");
 
             // Act — A grows by 2 synchronously (Normal lane), which must re-base parked B's captured slotStart
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_siblingACount = 5;
             s_siblingAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_siblingAFiber);
@@ -312,14 +330,12 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SiblingHostRender, key: "host"));
             var host = _root.Q(name: "sibling-host");
             Assume.That(host.childCount, Is.EqualTo(8), "Precondition: the initial mount is 5 (A) + 3 (B)");
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_siblingBFiber);
+            s_siblingBFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks at slotStart = 5");
 
             // Act — A shrinks 5 -> 2 synchronously, so B's parked slotStart must re-base by -3
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_siblingACount = 2;
             s_siblingAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_siblingAFiber);
@@ -341,18 +357,16 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(ThreeSiblingHostRender, key: "host"));
             var host = _root.Q(name: "three-sibling-host");
             Assume.That(host.childCount, Is.EqualTo(42), "Precondition: the initial mount is 2 (A) + 20 (B) + 20 (C)");
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_siblingBReversed = true;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_siblingBFiber);
+            s_siblingBFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks");
             s_siblingCReversed = true;
             s_siblingCFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_siblingCFiber);
+            s_siblingCFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_siblingCFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: C parks");
 
             // Act — A grows 2 -> 4 synchronously while both B and C are parked
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_siblingACount = 4;
             s_siblingAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_siblingAFiber);
@@ -377,16 +391,14 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(ThreeSiblingHostRender, key: "host"));
             var host = _root.Q(name: "three-sibling-host");
             Assume.That(host.childCount, Is.EqualTo(42), "Precondition: the initial mount is 2 (A) + 20 (B) + 20 (C)");
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_siblingBFiber);
+            s_siblingBFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks mid-commit");
 
             // Act — A grows 2 -> 5 synchronously; B's parked SlotLimit (= C's MountSlotStart) must re-base by +3
             // too, or the resumed Common-phase seam check rejects B's own trailing rows as out-of-range and
             // re-creates them at the C boundary instead of patching them in place.
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_siblingACount = 5;
             s_siblingAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_siblingAFiber);
@@ -408,17 +420,16 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SiblingHostRender, key: "host"));
             var host = _root.Q(name: "sibling-host");
             Assume.That(host.childCount, Is.EqualTo(5), "Precondition: the initial mount is 2 (A) + 3 (B)");
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_siblingBFiber);
+            s_siblingBFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks at A's original slot count");
 
             // Act — A grows 2 -> 25 on the Transition lane so A itself parks and commits its +23 delta across
             // several slices; driving A to completion exercises both the partial and incremental propagation paths
             s_siblingACount = 25;
             s_siblingAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_siblingAFiber);
+            s_siblingAFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_siblingAFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: A itself parks");
             s_siblingAFiber.DrainTimeSlicedReconcileForTest();
             s_siblingBFiber.DrainTimeSlicedReconcileForTest();
@@ -438,16 +449,14 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(SiblingHostRender, key: "host"));
             var host = _root.Q(name: "sibling-host");
             Assume.That(host.childCount, Is.EqualTo(5), "Precondition: the initial mount is 2 (A) + 3 (B)");
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_siblingACount = 20;
             s_siblingAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_siblingAFiber);
+            s_siblingAFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_siblingAFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: A parked mid-grow");
 
             // Act — A re-renders AGAIN (Normal lane) while still parked. RenderAndReconcile force-drains the parked
             // grow before the new render; the drain's child-count delta must propagate to B (else B's MountSlotStart
             // is stale and its rows land inside A's grown prefix).
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_siblingACount = 25;
             s_siblingAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_siblingAFiber);
@@ -472,14 +481,12 @@ namespace Velvet.Tests
             Assume.That(host.childCount, Is.EqualTo(4), "Precondition: Outer div (1) + B (3)");
             var innerDiv = host.Q(name: "inner-div");
             Assume.That(innerDiv.childCount, Is.EqualTo(2), "Precondition: the inner div holds 2 leaves");
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_siblingBFiber);
+            s_siblingBFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks at slotStart = 1");
 
             // Act — the inner grows synchronously; the host-level child count (the div itself) is unchanged
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_nestedInnerCount = 6;
             s_nestedInnerFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_nestedInnerFiber);
@@ -513,10 +520,9 @@ namespace Velvet.Tests
 
             // Act — re-render to sorted order on the Transition lane under a tiny budget so the keyed reorder parks
             // mid-pass, then drain every parked slice to completion.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_rotationSorted = true;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(fiber);
+            fiber.FlushStateWithTinyBudgetForTest();
             fiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — every leaf sits at its sorted slot; the time-sliced reorder must not transpose any pair.

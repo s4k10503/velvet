@@ -57,9 +57,6 @@ namespace Velvet.Tests
         [SetUp]
         public void SetUp()
         {
-            // Defensive reset (mirrors TimeSlicedFiberTests' own SetUp/TearDown pair) so a tiny budget forced
-            // by an earlier failing test can never leak into this one.
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_churnStore = null;
             s_reuseStore = null;
             s_teardownStore = null;
@@ -87,12 +84,6 @@ namespace Velvet.Tests
             s_crossParkKeyedBFiber = null;
             s_drainZManaged = false;
             s_drainFiber = null;
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
         }
 
         // Finds the front (z >= 0) or back (negative z) layer container directly under parent, or null when
@@ -748,13 +739,11 @@ namespace Velvet.Tests
             // the tiny budget parks immediately after — all within this ONE top-level Reconcile() call, whose
             // own finally-drain then creates the FIRST back container, physically shifting every trailing item
             // (and item0's own placeholder) by +1.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_zParkZManaged = true;
             s_zParkFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_zParkFiber);
+            s_zParkFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_zParkFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: the tiny budget parked the pass right after item0's own iteration");
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_zParkFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — every trailing item resumed and patched at its correct (post-shift) physical index.
@@ -767,8 +756,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ATimeSlicedPassParksRightAfterTheLastBackContainerMemberLeaves_When_TheSameFinallyDrainRemovesTheContainer_Then_TheParkedSlotStartIsRebasedSoTrailingItemsResumeAtCorrectIndices()
         {
-            // Arrange — mount with item0 ALREADY z-managed (synchronous: budget=0 at mount regardless of the
-            // override, which is only ever set below), so the back container exists cleanly beforehand.
+            // Arrange — mount with item0 ALREADY z-managed (synchronous: the mount runs on a zero budget, which
+            // the tiny-budget flush below does not reach), so the back container exists cleanly beforehand.
             s_zParkZManaged = true;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(ZParkHost, key: "root"));
@@ -780,13 +769,11 @@ namespace Velvet.Tests
             // container for a teardown check, then the tiny budget parks immediately after — all within this
             // ONE top-level Reconcile() call, whose own finally-drain then REMOVES the now-empty back
             // container, physically shifting every trailing item back by -1.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_zParkZManaged = false;
             s_zParkFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_zParkFiber);
+            s_zParkFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_zParkFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: the tiny budget parked the pass right after item0's own iteration");
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_zParkFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — mirrors the creation-direction test above, in the opposite (-1) direction: every trailing
@@ -985,10 +972,9 @@ namespace Velvet.Tests
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
             // parked (registered in ParkedBaselineFibers) here, deliberately NOT drained yet, while B's
             // own render below runs.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_crossParkACount = 60;
             s_crossParkAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_crossParkAFiber);
+            s_crossParkAFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_crossParkAFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: A's own tiny-budget pass parked mid-commit");
             Assume.That(ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber), Is.True,
@@ -999,7 +985,6 @@ namespace Velvet.Tests
             // container while A is STILL parked. RebaseParkedSlotsForContainerChange's ParkedBaselineFibers
             // loop — not A's own self-park rebase, which only ever fires from A's OWN drain — must be what
             // rebases A here.
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_crossParkBZManaged = true;
             s_crossParkBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkBFiber);
@@ -1039,10 +1024,9 @@ namespace Velvet.Tests
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
             // parked (registered in ParkedBaselineFibers) here, deliberately NOT drained yet, while B's
             // own render below runs.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_crossParkACount = 60;
             s_crossParkAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_crossParkAFiber);
+            s_crossParkAFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_crossParkAFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: A's own tiny-budget pass parked mid-commit");
             Assume.That(ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber), Is.True,
@@ -1052,7 +1036,6 @@ namespace Velvet.Tests
             // ordinary: the shared host's ONLY back-container member leaves, so B's own top-level drain
             // REMOVES the now-empty container while A is STILL parked — the teardown-direction
             // counterpart of the creation test above.
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_crossParkBZManaged = false;
             s_crossParkBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkBFiber);
@@ -1136,10 +1119,9 @@ namespace Velvet.Tests
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
             // parked (registered in ParkedBaselineFibers) here, deliberately NOT drained yet, while B's
             // own render below runs.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_crossParkKeyedACount = 60;
             s_crossParkKeyedAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_crossParkKeyedAFiber);
+            s_crossParkKeyedAFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_crossParkKeyedAFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: A's own tiny-budget pass parked mid-commit");
             Assume.That(ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber), Is.True,
@@ -1148,7 +1130,6 @@ namespace Velvet.Tests
             // Act — B re-renders synchronously (Normal lane), turning its own first item z-managed: the
             // shared host's FIRST negative-z child ever, so B's own top-level drain creates the back
             // container while A is STILL parked.
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_crossParkKeyedBZManaged = true;
             s_crossParkKeyedBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkKeyedBFiber);
@@ -1183,10 +1164,9 @@ namespace Velvet.Tests
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; left parked while
             // B's own render below runs.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_crossParkKeyedACount = 60;
             s_crossParkKeyedAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_crossParkKeyedAFiber);
+            s_crossParkKeyedAFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_crossParkKeyedAFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: A's own tiny-budget pass parked mid-commit");
             Assume.That(ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber), Is.True,
@@ -1195,7 +1175,6 @@ namespace Velvet.Tests
             // Act — B re-renders synchronously (Normal lane), flipping its own first item back to
             // ordinary: the shared host's ONLY back-container member leaves, so B's own top-level drain
             // REMOVES the now-empty container while A is STILL parked.
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_crossParkKeyedBZManaged = false;
             s_crossParkKeyedBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkKeyedBFiber);
@@ -1247,13 +1226,11 @@ namespace Velvet.Tests
             // its deferred z-mount enqueue, since no back container exists yet) runs entirely inside a
             // RESUMED slice, never inside the one Reconciler.Reconcile call whose own top-level finally
             // already drains.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_drainZManaged = true;
             s_drainFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_drainFiber);
+            s_drainFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_drainFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: the tiny budget parked the pass right after item0's own iteration");
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             s_drainFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — RED without draining at a resumed slice's own completion: nothing ever creates the
@@ -1281,18 +1258,16 @@ namespace Velvet.Tests
 
             // Act — tick 1 (via FlushState): item0 parks first, which is what registers the fiber in
             // ParkedBaselineFibers BEFORE its own later container-creating tick runs.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_drainZManaged = true;
             s_drainFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(s_drainFiber);
+            s_drainFiber.FlushStateWithTinyBudgetForTest();
             Assume.That(s_drainFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: the tiny budget parked the pass right after item0's own iteration");
             Assume.That(ctx.ParkedBaselineFibers.Contains(s_drainFiber), Is.True,
                 "Precondition: the fiber is registered as a parked baseline before its own container-creating tick");
 
-            // Act — tick 2 (a single manual resume; the budget stays deliberately tiny THROUGH this tick —
-            // reset only below, after it, unlike the drain test above's own immediate reset): processes
-            // item1, creating the shared parent's first back container INSIDE this same tick's own drain,
+            // Act — tick 2 (a single manual resume, which continues at the tiny budget tick 1 captured on the
+            // fiber): processes item1, creating the shared parent's first back container INSIDE this tick's drain,
             // then re-parks immediately after (item2..item9 remain) — so the fiber is STILL registered in
             // ParkedBaselineFibers at the exact moment RebaseParkedSlotsForContainerChange runs, alongside
             // its own current.RebasePendingSlotStartIfTargeting call on the very same PendingIndexedState.
@@ -1302,9 +1277,8 @@ namespace Velvet.Tests
             Assume.That(s_drainFiber.HasPendingReconcileWorkForTest(), Is.True,
                 "Precondition: the same tick re-parked (item2..item9 still pending) while still registered");
 
-            // Act — drain the remainder; the remaining ticks' own budget has no bearing on the double-rebase
-            // this test targets, which is already fully determined by tick 2 above.
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
+            // Act — drain the remainder; the double-rebase this test targets is already fully determined by
+            // tick 2 above.
             s_drainFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — RED without the fix: the container-creating tick's own +1 delta is applied twice to
