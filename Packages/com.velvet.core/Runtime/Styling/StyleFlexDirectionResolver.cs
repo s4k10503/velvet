@@ -9,6 +9,16 @@ namespace Velvet
     // one; a manipulator that picked its edge from the axis alone would put its margin / border on an outer
     // edge of the container and leave the boundary between the visually adjacent pair unmarked.
     //
+    // The element handed in is the CHILD CONTAINER (FiberNodePatcher.GetChildContainer), NOT the element a
+    // manipulator is attached to. A composite widget redirects its children into an inner box, so a
+    // direction class on the widget lays out the widget's own box — a ScrollView's viewport and scrollers —
+    // while the spaced children sit one level down under the inner box's direction. For a plain element the
+    // two are the same element.
+    //
+    // A class string only reaches the element it is written on, so none of the five direction classes can
+    // land on an inner box: its verdict always comes from the resolvedStyle fallback (off-panel, the
+    // widgetOwned default) below, and what lays it out is the widget's own built-in USS.
+    //
     // The five direction/display classes are consulted FIRST — even on a panel — in the SAME precedence USS
     // itself uses when more than one matches the element (equal specificity, so the LAST declared RULE wins):
     // _layout.uss declares .flex, .grid, .flex-col, .flex-col-reverse, .flex-row, .flex-row-reverse in that
@@ -49,36 +59,46 @@ namespace Velvet
     // answer than omitting it does.
     internal static class StyleFlexDirectionResolver
     {
-        public static FlexDirection Resolve(VisualElement element)
+        // widgetOwned marks a widget's own inner box; it selects the off-panel default only.
+        public static FlexDirection Resolve(VisualElement childContainer, bool widgetOwned)
         {
-            if (element.ClassListContains("flex-row-reverse"))
+            if (childContainer.ClassListContains("flex-row-reverse"))
             {
                 return FlexDirection.RowReverse;
             }
-            if (element.ClassListContains("flex-row"))
+            if (childContainer.ClassListContains("flex-row"))
             {
                 return FlexDirection.Row;
             }
-            if (element.ClassListContains("flex-col-reverse"))
+            if (childContainer.ClassListContains("flex-col-reverse"))
             {
                 return FlexDirection.ColumnReverse;
             }
-            if (element.ClassListContains("flex-col"))
+            if (childContainer.ClassListContains("flex-col"))
             {
                 return FlexDirection.Column;
             }
-            if (element.ClassListContains("flex"))
+            if (childContainer.ClassListContains("flex"))
             {
                 return FlexDirection.Row;
             }
-            if (element.panel != null)
+            if (childContainer.panel != null)
             {
-                return element.resolvedStyle.flexDirection;
+                return childContainer.resolvedStyle.flexDirection;
             }
-            // No direction/display class and no panel to resolve against: mirror the .flex=row default — the
-            // one place this deliberately disagrees with the raw engine, whose own default is column (see
-            // Documentation~/styling-flexbox-and-gap.md, "The engine's raw flex default is a column, not a
-            // row").
+            // No direction/display class and no panel. An inner box takes the ENGINE's default, column: the
+            // row default below mirrors what .flex means on an element an author wrote a class on, and no
+            // class reaches an inner box — what lays it out is the widget's own USS over Yoga's column.
+            // Answering row here would make the off-panel verdict disagree with the on-panel one for the
+            // same tree, so each could pin the other's bug. A widget whose USS overrides that default (a
+            // horizontally scrolling ScrollView, a TwoPaneSplitView) needs the panel branch above.
+            if (widgetOwned)
+            {
+                return FlexDirection.Column;
+            }
+            // Mirror the .flex=row default — the one place this deliberately disagrees with the raw engine,
+            // whose own default is column (see Documentation~/styling-flexbox-and-gap.md, "The engine's raw
+            // flex default is a column, not a row").
             return FlexDirection.Row;
         }
     }

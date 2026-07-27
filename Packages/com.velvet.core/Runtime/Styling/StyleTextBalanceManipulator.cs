@@ -91,10 +91,10 @@ namespace Velvet
     // as the target's own listeners already are. The subscription is (re-)synced at the top of every
     // Apply() call, not only from AttachToPanelEvent, so a mid-life reparent is picked up by whichever
     // event fires next regardless of exactly how UI Toolkit sequences Attach/Detach for a same-panel
-    // reparent. What remains uncovered: a resize confined entirely to a ScrollView parent's OWN
-    // contentContainer (GetChildContainer's ScrollView case) with no accompanying change to the
-    // ScrollView's own outer rect — e.g. a scrollbar toggling — since the subscription is the ScrollView
-    // itself, not its contentContainer. A grandparent-or-higher resize is NOT a separate gap: available is
+    // reparent. What remains uncovered: a resize confined entirely to a composite-widget parent's OWN inner
+    // box (GetChildContainer's redirect case, e.g. a ScrollView's content container) with no accompanying
+    // change to the widget's own outer rect — a scrollbar toggling, say — since the subscription is the
+    // widget itself, not its inner box. A grandparent-or-higher resize is NOT a separate gap: available is
     // read from the parent's own contentRect, so if the parent's rect is genuinely unaffected by a
     // grandparent change, there is nothing that needed re-deriving in the first place.
     //
