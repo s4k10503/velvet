@@ -7,9 +7,15 @@ namespace Velvet
 {
     internal enum IndexedReconcilePhase
     {
+        // Patch (or replace) each slot the old and new lists share.
         Common,
+        // Remove the old tail beyond the shared length, from the end inward.
         Remove,
+        // Create and insert the new tail beyond the shared length.
         Add,
+        // All phases complete. Terminates the dispatch loop; never parked in
+        // IndexedReconcileState.ResumePhase, which only ever holds a phase that has work left.
+        Done,
     }
 
     internal readonly struct IndexedReconcileState

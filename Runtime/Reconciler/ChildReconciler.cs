@@ -598,6 +598,38 @@ namespace Velvet
 
         #region Indexed Pass
 
+        // Inputs fixed for the whole indexed reconcile. A readonly struct passed `in`, NOT a heap state
+        // object like the keyed path's KeyedReconcileState: the unkeyed diff is the framework's hottest
+        // list update and almost always runs at a zero budget with nothing to park, so a per-reconcile
+        // allocation here would be paid by every plain list render. The resumable cursor (phase + index)
+        // deliberately stays out of this struct — it lives in the dispatcher's locals while running and in
+        // IndexedReconcileState while parked.
+        private readonly struct IndexedPassInputs
+        {
+            public readonly VisualElement Parent;
+            public readonly VNode?[] OldNodes;
+            public readonly VNode?[] NewNodes;
+            public readonly int SlotStart;
+            public readonly int SlotLimit;
+
+            public IndexedPassInputs(
+                VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes, int slotStart, int slotLimit)
+            {
+                Parent = parent;
+                OldNodes = oldNodes;
+                NewNodes = newNodes;
+                SlotStart = slotStart;
+                SlotLimit = slotLimit;
+            }
+
+            // Derived on demand rather than stored, so the shared-prefix length has exactly one definition
+            // for the dispatcher and all three phases.
+            public int CommonLength => Math.Min(OldNodes.Length, NewNodes.Length);
+        }
+
+        // State-machine dispatcher for indexed reconciliation, mirroring ReconcileKeyedFrom: each phase is
+        // its own method, the successor phase and its start index are assigned here, and a phase that
+        // yields has already parked its own resume point.
         private void ReconcileIndexedFrom(
             VisualElement? parent,
             VNode?[] oldNodes,
@@ -620,127 +652,170 @@ namespace Velvet
 
             if (parent == null) return;
 
-            var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
-            var budgeted = frameBudgetMs > 0;
+            var inputs = new IndexedPassInputs(parent, oldNodes, newNodes, slotStart, slotLimit);
 
-            if (budgeted)
+            if (frameBudgetMs > 0)
             {
                 _stopwatch ??= new Stopwatch();
                 _stopwatch.Restart();
             }
 
-            #region Phase: Common
-
-            if (startPhase == IndexedReconcilePhase.Common)
+            var phase = startPhase;
+            var index = startIndex;
+            while (phase != IndexedReconcilePhase.Done)
             {
-                for (var i = startIndex; i < commonLength; i++)
+                switch (phase)
                 {
-                    if (_ctx.IsAborted) return;
+                    case IndexedReconcilePhase.Common:
+                        if (!CommonPhase(in inputs, index, frameBudgetMs)) return;
+                        phase = IndexedReconcilePhase.Remove;
+                        index = RemovePhaseStartSentinel;
+                        break;
+                    case IndexedReconcilePhase.Remove:
+                        if (!RemovePhase(in inputs, index, frameBudgetMs)) return;
+                        phase = IndexedReconcilePhase.Add;
+                        index = inputs.CommonLength;
+                        break;
+                    case IndexedReconcilePhase.Add:
+                        if (!AddPhase(in inputs, index, frameBudgetMs)) return;
+                        phase = IndexedReconcilePhase.Done;
+                        break;
+                    default:
+                        throw new InvalidOperationException(
+                            $"[ChildReconciler] Unhandled IndexedReconcilePhase: {phase}");
+                }
+                // An error-boundary abort parks nothing and must end the pass here — unlike a yield, which
+                // already parked its own resume point, an aborted phase reports completion so this is the
+                // only place that can stop the machine before it advances into the next phase's work.
+                if (_ctx.IsAborted) return;
+            }
+        }
 
-                    // Identical VNode instances are guaranteed to be diff-free. Skipping the DOM
-                    // lookup and DiffProps invocation suppresses outlier GC allocations on the
-                    // no-change path.
-                    if (ReferenceEquals(oldNodes[i], newNodes[i]))
-                    {
-                        if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
-                        {
-                            PendingIndexedState = new IndexedReconcileState(
-                                parent, oldNodes, newNodes,
-                                IndexedReconcilePhase.Common, resumeIndex: i + 1, slotStart: slotStart, slotLimit: slotLimit);
-                            _stopwatch.Stop();
-                            return;
-                        }
-                        continue;
-                    }
+        // Parks the resume point for a phase that ran out of budget. Only ever called where the caller has
+        // proven another iteration remains, so HasPendingWork never reports a resume that has nothing left.
+        private void ParkIndexedResume(
+            in IndexedPassInputs inputs, IndexedReconcilePhase resumePhase, int resumeIndex)
+        {
+            PendingIndexedState = new IndexedReconcileState(
+                inputs.Parent, inputs.OldNodes, inputs.NewNodes,
+                resumePhase, resumeIndex, slotStart: inputs.SlotStart, slotLimit: inputs.SlotLimit);
+            _stopwatch!.Stop();
+        }
 
-                    // DOM-desync recovery: the baseline (oldNodes) is a positional prefix of the live children,
-                    // but a transient AnimatePresence overlap (an exit ghost whose VE was dropped, or a key
-                    // re-entered mid-exit) can leave the live container SHORTER than the baseline claims, so the
-                    // slot this index expects no longer exists. Rather than over-index parent.ElementAt, create the
-                    // model's child to converge the DOM toward the (authoritative) new tree; the missing tail is
-                    // built the same way and the Remove phase skips the absent slots.
-                    // Bound by slotLimit (this fiber's range end), not just childCount: for a non-last inline
-                    // tenant childCount includes the following sibling's rows, so an unbounded check would treat a
-                    // sibling row as this fiber's and PATCH it. Out of range → create within this fiber's range.
-                    var slotExists = slotStart + i < Math.Min(SilhouetteBoundsSpacer.NonSpacerChildCount(parent), slotLimit);
-                    if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
-                            slotExists, clampInsertIndex: true, checkAbortAfterCreate: true))
-                    {
-                        return;
-                    }
+        // Returns false only on a yield (this phase parked its resume point); true when the phase is done
+        // with the range — including when an abort cut it short, which the dispatcher detects separately.
+        private bool CommonPhase(in IndexedPassInputs inputs, int startIndex, double frameBudgetMs)
+        {
+            var parent = inputs.Parent;
+            var oldNodes = inputs.OldNodes;
+            var newNodes = inputs.NewNodes;
+            var slotStart = inputs.SlotStart;
+            var slotLimit = inputs.SlotLimit;
+            var commonLength = inputs.CommonLength;
+            var budgeted = frameBudgetMs > 0;
 
+            for (var i = startIndex; i < commonLength; i++)
+            {
+                if (_ctx.IsAborted) return true;
+
+                // Identical VNode instances are guaranteed to be diff-free. Skipping the DOM
+                // lookup and DiffProps invocation suppresses outlier GC allocations on the
+                // no-change path.
+                if (ReferenceEquals(oldNodes[i], newNodes[i]))
+                {
                     if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                     {
-                        PendingIndexedState = new IndexedReconcileState(
-                            parent, oldNodes, newNodes,
-                            IndexedReconcilePhase.Common, resumeIndex: i + 1, slotStart: slotStart, slotLimit: slotLimit);
-                        _stopwatch.Stop();
-                        return;
+                        ParkIndexedResume(in inputs, IndexedReconcilePhase.Common, resumeIndex: i + 1);
+                        return false;
                     }
+                    continue;
                 }
 
-                startPhase = IndexedReconcilePhase.Remove;
-                startIndex = RemovePhaseStartSentinel;
-            }
-
-            #endregion
-
-            #region Phase: Remove
-
-            if (startPhase == IndexedReconcilePhase.Remove)
-            {
-                // Removal proceeds from the tail, so the resume index is "the tail index to process".
-                // RemovePhaseStartSentinel signals phase start (which begins from oldNodes.Length-1).
-                var removeStart = startIndex == RemovePhaseStartSentinel ? oldNodes.Length - 1 : startIndex;
-                for (var i = removeStart; i >= commonLength; i--)
+                // DOM-desync recovery: the baseline (oldNodes) is a positional prefix of the live children,
+                // but a transient AnimatePresence overlap (an exit ghost whose VE was dropped, or a key
+                // re-entered mid-exit) can leave the live container SHORTER than the baseline claims, so the
+                // slot this index expects no longer exists. Rather than over-index parent.ElementAt, create the
+                // model's child to converge the DOM toward the (authoritative) new tree; the missing tail is
+                // built the same way and the Remove phase skips the absent slots.
+                // Bound by slotLimit (this fiber's range end), not just childCount: for a non-last inline
+                // tenant childCount includes the following sibling's rows, so an unbounded check would treat a
+                // sibling row as this fiber's and PATCH it. Out of range → create within this fiber's range.
+                var slotExists = slotStart + i < Math.Min(SilhouetteBoundsSpacer.NonSpacerChildCount(parent), slotLimit);
+                if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
+                        slotExists, clampInsertIndex: true, checkAbortAfterCreate: true))
                 {
-                    if (_ctx.IsAborted) return;
-
-                    // DOM-desync recovery (see the Common phase): when the live container is shorter than the
-                    // baseline claims, the tail slot to remove may not exist — skip it instead of over-indexing.
-                    // NonSpacerChildCount so a trailing filter bounds-spacer is never the slot removal targets.
-                    if (slotStart + i >= SilhouetteBoundsSpacer.NonSpacerChildCount(parent))
-                    {
-                        continue;
-                    }
-                    _cleaner.RemoveElement(parent, slotStart + i);
-
-                    if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
-                    {
-                        var nextRemoveIndex = i - 1;
-                        if (nextRemoveIndex >= commonLength)
-                        {
-                            // Save pending only when another iteration remains.
-                            // nextRemoveIndex == RemovePhaseStartSentinel (-1) signals "phase start",
-                            // so the nextRemoveIndex >= commonLength check is required to avoid that collision.
-                            PendingIndexedState = new IndexedReconcileState(
-                                parent, oldNodes, newNodes,
-                                IndexedReconcilePhase.Remove, resumeIndex: nextRemoveIndex, slotStart: slotStart, slotLimit: slotLimit);
-                            _stopwatch.Stop();
-                            return;
-                        }
-                        // nextRemoveIndex < commonLength: no Remove iterations remain, so saving pending is unnecessary.
-                        // Fall through to the Add phase as-is, even though _stopwatch already shows a budget overrun.
-                        // The Add phase runs a budget check after the first element, so the overrun is bounded
-                        // to "one element" at worst (intentional).
-                    }
+                    return true;
                 }
 
-                startPhase = IndexedReconcilePhase.Add;
-                startIndex = commonLength;
+                if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
+                {
+                    ParkIndexedResume(in inputs, IndexedReconcilePhase.Common, resumeIndex: i + 1);
+                    return false;
+                }
             }
 
-            #endregion
+            return true;
+        }
 
-            #region Phase: Add
+        // Removal proceeds from the tail, so the resume index is "the tail index to process" and
+        // RemovePhaseStartSentinel means "begin at oldNodes.Length - 1". Decoding the sentinel and the
+        // guard against re-encoding it (below) describe the same encoding and must move together.
+        private bool RemovePhase(in IndexedPassInputs inputs, int startIndex, double frameBudgetMs)
+        {
+            var parent = inputs.Parent;
+            var slotStart = inputs.SlotStart;
+            var commonLength = inputs.CommonLength;
+            var budgeted = frameBudgetMs > 0;
 
-            // At this point startPhase is always Add (Common/Remove fall-through or Add resume).
+            var removeStart = startIndex == RemovePhaseStartSentinel ? inputs.OldNodes.Length - 1 : startIndex;
+            for (var i = removeStart; i >= commonLength; i--)
+            {
+                if (_ctx.IsAborted) return true;
+
+                // DOM-desync recovery (see the Common phase): when the live container is shorter than the
+                // baseline claims, the tail slot to remove may not exist — skip it instead of over-indexing.
+                // NonSpacerChildCount so a trailing filter bounds-spacer is never the slot removal targets.
+                if (slotStart + i >= SilhouetteBoundsSpacer.NonSpacerChildCount(parent))
+                {
+                    continue;
+                }
+                _cleaner.RemoveElement(parent, slotStart + i);
+
+                if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
+                {
+                    var nextRemoveIndex = i - 1;
+                    if (nextRemoveIndex >= commonLength)
+                    {
+                        // Park only when another iteration remains. nextRemoveIndex ==
+                        // RemovePhaseStartSentinel (-1) is this phase's own "begin at the tail" encoding,
+                        // so parking that value would restart the whole phase instead of resuming it —
+                        // the nextRemoveIndex >= commonLength test is what keeps the two apart.
+                        ParkIndexedResume(in inputs, IndexedReconcilePhase.Remove, nextRemoveIndex);
+                        return false;
+                    }
+                    // nextRemoveIndex < commonLength: no Remove iterations remain, so nothing is parked and
+                    // the pass falls into Add already over budget. Deliberate, not an oversight — Add runs a
+                    // budget check after its first element, bounding the overrun to one element. Do not
+                    // "fix" this into a yield.
+                }
+            }
+
+            return true;
+        }
+
+        private bool AddPhase(in IndexedPassInputs inputs, int startIndex, double frameBudgetMs)
+        {
+            var parent = inputs.Parent;
+            var newNodes = inputs.NewNodes;
+            var slotStart = inputs.SlotStart;
+            var budgeted = frameBudgetMs > 0;
+
             for (var i = startIndex; i < newNodes.Length; i++)
             {
-                if (_ctx.IsAborted) return;
+                if (_ctx.IsAborted) return true;
 
                 var newElement = _factory.CreateElement(newNodes[i]);
-                if (_ctx.IsAborted) return;
+                if (_ctx.IsAborted) return true;
                 // Insert at the absolute slot to avoid colliding with siblings outside this fiber's
                 // range when slotStart > 0. When the range covers the entire children list, this is
                 // equivalent to Add (slotStart + i == parent.childCount at this point). Clamp to childCount so a
@@ -753,19 +828,16 @@ namespace Velvet
                     var nextAddIndex = i + 1;
                     if (nextAddIndex < newNodes.Length)
                     {
-                        // Save pending only when another iteration remains.
+                        // Park only when another iteration remains.
                         // No pending is needed when the final element has already been processed.
-                        PendingIndexedState = new IndexedReconcileState(
-                            parent, oldNodes, newNodes,
-                            IndexedReconcilePhase.Add, resumeIndex: nextAddIndex, slotStart: slotStart, slotLimit: slotLimit);
-                        _stopwatch.Stop();
-                        return;
+                        ParkIndexedResume(in inputs, IndexedReconcilePhase.Add, nextAddIndex);
+                        return false;
                     }
                     // nextAddIndex >= newNodes.Length: all Add iterations done → fall through.
                 }
             }
 
-            #endregion
+            return true;
         }
 
         #endregion
