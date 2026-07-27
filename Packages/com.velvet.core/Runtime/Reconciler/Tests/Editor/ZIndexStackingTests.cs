@@ -742,15 +742,15 @@ namespace Velvet.Tests
             s_zParkZManaged = true;
             s_zParkFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_zParkFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_zParkFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: the tiny budget parked the pass right after item0's own iteration");
+            var parkedAfterItem0 = s_zParkFiber.HasPendingReconcileWorkForTest();
             s_zParkFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — every trailing item resumed and patched at its correct (post-shift) physical index.
             // RED without the fix: the resumed slice keeps reading one slot short of where the container's
             // insertion actually left each row, so each iteration patches (and renames, via PatchCommon) the
             // WRONG physical element — a cascading off-by-one that leaves a stale/duplicated name in this join.
-            Assert.That(TrailingItemOrder(root), Is.EqualTo(ExpectedTrailingItemOrder));
+            Assert.That((parkedAfterItem0, TrailingItemOrder(root)),
+                Is.EqualTo((true, ExpectedTrailingItemOrder)));
         }
 
         [Test]
@@ -772,13 +772,13 @@ namespace Velvet.Tests
             s_zParkZManaged = false;
             s_zParkFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_zParkFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_zParkFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: the tiny budget parked the pass right after item0's own iteration");
+            var parkedAfterItem0 = s_zParkFiber.HasPendingReconcileWorkForTest();
             s_zParkFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — mirrors the creation-direction test above, in the opposite (-1) direction: every trailing
             // item resumed at its correct (post-shift) physical index instead of one slot past it.
-            Assert.That(TrailingItemOrder(root), Is.EqualTo(ExpectedTrailingItemOrder));
+            Assert.That((parkedAfterItem0, TrailingItemOrder(root)),
+                Is.EqualTo((true, ExpectedTrailingItemOrder)));
         }
 
         #endregion
@@ -975,10 +975,8 @@ namespace Velvet.Tests
             s_crossParkACount = 60;
             s_crossParkAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_crossParkAFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_crossParkAFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: A's own tiny-budget pass parked mid-commit");
-            Assume.That(ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber), Is.True,
-                "Precondition: A is registered as a cross-fiber parked baseline while still parked");
+            var aParked = s_crossParkAFiber.HasPendingReconcileWorkForTest();
+            var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber);
 
             // Act — B re-renders synchronously (Normal lane), turning its own first item z-managed: the
             // shared host's FIRST negative-z child ever, so B's own top-level drain creates the back
@@ -1003,7 +1001,8 @@ namespace Velvet.Tests
             // propagation.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpa" + i); }
-            Assert.That(CrossParkAOrder(host), Is.EqualTo(string.Join(",", expected)));
+            Assert.That((aParked, aRegisteredAsParkedBaseline, CrossParkAOrder(host)),
+                Is.EqualTo((true, true, string.Join(",", expected))));
         }
 
         [Test]
@@ -1027,10 +1026,8 @@ namespace Velvet.Tests
             s_crossParkACount = 60;
             s_crossParkAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_crossParkAFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_crossParkAFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: A's own tiny-budget pass parked mid-commit");
-            Assume.That(ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber), Is.True,
-                "Precondition: A is registered as a cross-fiber parked baseline while still parked");
+            var aParked = s_crossParkAFiber.HasPendingReconcileWorkForTest();
+            var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkAFiber);
 
             // Act — B re-renders synchronously (Normal lane), flipping its own first item back to
             // ordinary: the shared host's ONLY back-container member leaves, so B's own top-level drain
@@ -1049,7 +1046,8 @@ namespace Velvet.Tests
             // order — the -1 teardown direction stays consistent with the +1 creation direction above.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpa" + i); }
-            Assert.That(CrossParkAOrder(host), Is.EqualTo(string.Join(",", expected)));
+            Assert.That((aParked, aRegisteredAsParkedBaseline, CrossParkAOrder(host)),
+                Is.EqualTo((true, true, string.Join(",", expected))));
         }
 
         // Keyed mirror of CrossParkARender/CrossParkSiblingHost: every one of A's own children carries an
@@ -1122,10 +1120,8 @@ namespace Velvet.Tests
             s_crossParkKeyedACount = 60;
             s_crossParkKeyedAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_crossParkKeyedAFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_crossParkKeyedAFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: A's own tiny-budget pass parked mid-commit");
-            Assume.That(ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber), Is.True,
-                "Precondition: A is registered as a cross-fiber parked baseline while still parked");
+            var aParked = s_crossParkKeyedAFiber.HasPendingReconcileWorkForTest();
+            var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber);
 
             // Act — B re-renders synchronously (Normal lane), turning its own first item z-managed: the
             // shared host's FIRST negative-z child ever, so B's own top-level drain creates the back
@@ -1144,7 +1140,8 @@ namespace Velvet.Tests
             // resume writes one slot short of where the container's insertion actually left each row.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpka" + i); }
-            Assert.That(CrossParkKeyedAOrder(host), Is.EqualTo(string.Join(",", expected)));
+            Assert.That((aParked, aRegisteredAsParkedBaseline, CrossParkKeyedAOrder(host)),
+                Is.EqualTo((true, true, string.Join(",", expected))));
         }
 
         [Test]
@@ -1167,10 +1164,8 @@ namespace Velvet.Tests
             s_crossParkKeyedACount = 60;
             s_crossParkKeyedAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_crossParkKeyedAFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_crossParkKeyedAFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: A's own tiny-budget pass parked mid-commit");
-            Assume.That(ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber), Is.True,
-                "Precondition: A is registered as a cross-fiber parked baseline while still parked");
+            var aParked = s_crossParkKeyedAFiber.HasPendingReconcileWorkForTest();
+            var aRegisteredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_crossParkKeyedAFiber);
 
             // Act — B re-renders synchronously (Normal lane), flipping its own first item back to
             // ordinary: the shared host's ONLY back-container member leaves, so B's own top-level drain
@@ -1188,7 +1183,8 @@ namespace Velvet.Tests
             // keyed branch too: every one of A's 60 items landed at its correct (post-shift-back) slot.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpka" + i); }
-            Assert.That(CrossParkKeyedAOrder(host), Is.EqualTo(string.Join(",", expected)));
+            Assert.That((aParked, aRegisteredAsParkedBaseline, CrossParkKeyedAOrder(host)),
+                Is.EqualTo((true, true, string.Join(",", expected))));
         }
 
         #endregion
@@ -1229,15 +1225,16 @@ namespace Velvet.Tests
             s_drainZManaged = true;
             s_drainFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_drainFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_drainFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: the tiny budget parked the pass right after item0's own iteration");
+            var parkedBeforeItem1 = s_drainFiber.HasPendingReconcileWorkForTest();
             s_drainFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — RED without draining at a resumed slice's own completion: nothing ever creates the
             // back container (creation itself lives behind the drain) and item1's real content stays
             // orphaned (parent null), so BOTH sides must be pinned non-null — a bare reference comparison
             // would let null == null pass for exactly the broken state.
-            Assert.That(item1.parent, Is.Not.Null.And.SameAs(FindLayerContainer(root, front: false)));
+            var backContainer = FindLayerContainer(root, front: false);
+            Assert.That((parkedBeforeItem1, backContainer != null, ReferenceEquals(item1.parent, backContainer)),
+                Is.EqualTo((true, true, true)));
         }
 
         #endregion
@@ -1261,10 +1258,8 @@ namespace Velvet.Tests
             s_drainZManaged = true;
             s_drainFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_drainFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_drainFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: the tiny budget parked the pass right after item0's own iteration");
-            Assume.That(ctx.ParkedBaselineFibers.Contains(s_drainFiber), Is.True,
-                "Precondition: the fiber is registered as a parked baseline before its own container-creating tick");
+            var parkedAfterItem0 = s_drainFiber.HasPendingReconcileWorkForTest();
+            var registeredAsParkedBaseline = ctx.ParkedBaselineFibers.Contains(s_drainFiber);
 
             // Act — tick 2 (a single manual resume, which continues at the tiny budget tick 1 captured on the
             // fiber): processes item1, creating the shared parent's first back container INSIDE this tick's drain,
@@ -1274,8 +1269,7 @@ namespace Velvet.Tests
             FiberWorkLoop.ContinueReconcile(s_drainFiber);
             Assume.That(FindLayerContainer(root, front: false), Is.Not.Null,
                 "Precondition: this single resume tick actually created the shared parent's first back container");
-            Assume.That(s_drainFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: the same tick re-parked (item2..item9 still pending) while still registered");
+            var reParkedWhileStillRegistered = s_drainFiber.HasPendingReconcileWorkForTest();
 
             // Act — drain the remainder; the double-rebase this test targets is already fully determined by
             // tick 2 above.
@@ -1286,7 +1280,9 @@ namespace Velvet.Tests
             // again in the ParkedBaselineFibers loop, since nothing yet removed it from that registry), so
             // every trailing item resumes two physical slots ahead of where the container's single
             // insertion actually left it.
-            Assert.That(TrailingItemOrder(root), Is.EqualTo("item2,item3,item4,item5,item6,item7,item8,item9"));
+            Assert.That(
+                (parkedAfterItem0, registeredAsParkedBaseline, reParkedWhileStillRegistered, TrailingItemOrder(root)),
+                Is.EqualTo((true, true, true, "item2,item3,item4,item5,item6,item7,item8,item9")));
         }
 
         #endregion

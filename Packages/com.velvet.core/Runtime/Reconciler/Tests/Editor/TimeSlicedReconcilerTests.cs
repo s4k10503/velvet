@@ -165,13 +165,14 @@ namespace Velvet.Tests
             // Arrange
             var newChildren = BuildLabelArray(10);
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), newChildren, frameBudgetMs: 0.001);
-            Assume.That(_reconciler.HasPendingWork, Is.True, "Precondition: the tiny budget parked the diff");
+            var parkedUnderTinyBudget = _reconciler.HasPendingWork;
 
             // Act
             _reconciler.ContinueReconcile(frameBudgetMs: 10000);
 
             // Assert
-            Assert.That(_reconciler.HasPendingWork, Is.False, "A single sufficient-budget resume completes the diff");
+            Assert.That((parkedUnderTinyBudget, _reconciler.HasPendingWork), Is.EqualTo((true, false)),
+                "The tiny budget parks the diff and a single sufficient-budget resume completes it");
         }
 
         #endregion
@@ -463,14 +464,15 @@ namespace Velvet.Tests
             var newChildren = ReversedKeyedLabelArray(100, "k");
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
             _reconciler.Reconcile(_root, oldChildren, newChildren, frameBudgetMs: 0.001);
-            Assume.That(_reconciler.HasPendingWork, Is.True, "Precondition: the reversed list parked");
+            var parkedUnderTinyBudget = _reconciler.HasPendingWork;
 
             // Act
             _reconciler.ContinueReconcile(frameBudgetMs: 10000);
 
             // Assert
-            Assert.That((_reconciler.HasPendingWork, _root.childCount), Is.EqualTo((false, 100)),
-                "A sufficient-budget resume completes the parked keyed reorder in one step");
+            Assert.That((parkedUnderTinyBudget, _reconciler.HasPendingWork, _root.childCount),
+                Is.EqualTo((true, false, 100)),
+                "The reversed list parks and a sufficient-budget resume completes the keyed reorder in one step");
         }
 
         [Test]
@@ -613,10 +615,21 @@ namespace Velvet.Tests
             var newChildren = ReversedKeyedLabelArray(100, "a");
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
             _reconciler.Reconcile(_root, oldChildren, newChildren, frameBudgetMs: 0.001);
-            Assume.That(_reconciler.HasPendingWork, Is.True, "Precondition: a yield must have occurred");
+            var parkedBeforeDispose = _reconciler.HasPendingWork;
 
-            // Act + Assert — Dispose returns the pending-state buffers without throwing
-            Assert.DoesNotThrow(() => _reconciler.Dispose());
+            // Act — capturing the throw rather than using DoesNotThrow keeps the park in the same comparison
+            Exception disposeError = null;
+            try
+            {
+                _reconciler.Dispose();
+            }
+            catch (Exception error)
+            {
+                disposeError = error;
+            }
+
+            // Assert — Dispose returns the pending-state buffers without throwing
+            Assert.That((parkedBeforeDispose, disposeError), Is.EqualTo((true, (Exception)null)));
         }
 
         [Test]
@@ -627,13 +640,14 @@ namespace Velvet.Tests
             var newChildren = ReversedKeyedLabelArray(100, "a");
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
             _reconciler.Reconcile(_root, oldChildren, newChildren, frameBudgetMs: 0.001);
-            Assume.That(_reconciler.HasPendingWork, Is.True, "Precondition: a yield must have occurred");
+            var parkedBeforeDispose = _reconciler.HasPendingWork;
 
             // Act
             _reconciler.Dispose();
 
             // Assert
-            Assert.That(_reconciler.HasPendingWork, Is.False, "Dispose clears the parked diff's pending work");
+            Assert.That((parkedBeforeDispose, _reconciler.HasPendingWork), Is.EqualTo((true, false)),
+                "Dispose clears the parked diff's pending work");
         }
 
         [Test]
@@ -644,7 +658,7 @@ namespace Velvet.Tests
             var newChildren = ReversedKeyedLabelArray(100, "a");
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldChildren);
             _reconciler.Reconcile(_root, oldChildren, newChildren, frameBudgetMs: 0.001);
-            Assume.That(_reconciler.HasPendingWork, Is.True, "Precondition: a yield must have occurred");
+            var parkedBeforeDispose = _reconciler.HasPendingWork;
             _reconciler.Dispose();
 
             // Act
@@ -653,7 +667,7 @@ namespace Velvet.Tests
             _reconciler.Reconcile(freshRoot, Array.Empty<VNode>(), BuildKeyedLabelArray(3, "x"));
 
             // Assert
-            Assert.That(freshRoot.childCount, Is.EqualTo(3),
+            Assert.That((parkedBeforeDispose, freshRoot.childCount), Is.EqualTo((true, 3)),
                 "A fresh reconciler works after a parked one is disposed (pool state has no destructive side effects)");
         }
 
@@ -808,13 +822,15 @@ namespace Velvet.Tests
             s_indexedTotalCount = 41;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             fiber.FlushStateWithTinyBudgetForTest();
+            var parkedThroughThePortalDrain = fiber.HasPendingReconcileWorkForTest();
             fiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — RED without the fix: the same-pass drain's nested Reconcile call wipes PendingIndexedState
             // the instant it is set, so HasPendingWork already reads false when FlushState returns; the drain
             // above is then a no-op and the list stays truncated at 1 (only the Portal placeholder) forever.
-            Assert.That((_root.childCount, target.childCount), Is.EqualTo((41, 1)),
-                "The parked pass resumes through the same-pass Portal drain and commits every trailing row, with the Portal's content mounted exactly once");
+            Assert.That((parkedThroughThePortalDrain, _root.childCount, target.childCount),
+                Is.EqualTo((true, 41, 1)),
+                "The parked pass survives the same-pass Portal drain, then resumes and commits every trailing row, with the Portal's content mounted exactly once");
         }
 
         [Test]
@@ -832,13 +848,15 @@ namespace Velvet.Tests
             s_keyedTotalCount = 41;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             fiber.FlushStateWithTinyBudgetForTest();
+            var parkedThroughThePortalDrain = fiber.HasPendingReconcileWorkForTest();
             fiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — RED without the fix: DiscardPendingKeyedState (invoked by the same entry-clear) also
             // returns PendingKeyedState's pooled buffers to the shared pool, so the wipe is destructive twice
             // over here; the list stays truncated at 1 (only the Portal placeholder) forever.
-            Assert.That((_root.childCount, target.childCount), Is.EqualTo((41, 1)),
-                "The parked keyed pass resumes through the same-pass Portal drain and commits every trailing row, with the Portal's content mounted exactly once");
+            Assert.That((parkedThroughThePortalDrain, _root.childCount, target.childCount),
+                Is.EqualTo((true, 41, 1)),
+                "The parked keyed pass survives the same-pass Portal drain, then resumes and commits every trailing row, with the Portal's content mounted exactly once");
         }
 
         #region Indexed list component (unkeyed; Portal occupies index 0 once the count is nonzero)
