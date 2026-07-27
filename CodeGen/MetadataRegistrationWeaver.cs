@@ -20,11 +20,15 @@ namespace Velvet.CodeGen
     // as it ran the source-generator-emitted one.
     internal static class MetadataRegistrationWeaver
     {
-        private const string ComponentAttrFullName = "Velvet.ComponentAttribute";
+        // Taken from the type system rather than spelled out: this assembly references Velvet, so a rename
+        // on the runtime side breaks the build here instead of silently registering nothing.
+        private static readonly string ComponentAttrFullName = typeof(Velvet.ComponentAttribute).FullName;
+        private const string IsErrorBoundaryProperty = nameof(Velvet.ComponentAttribute.IsErrorBoundary);
+        private const string MemoizeProperty = nameof(Velvet.ComponentAttribute.Memoize);
+        private const string DisplayNameProperty = nameof(Velvet.ComponentAttribute.DisplayName);
+
+        // The CLI's own name for the module-level type; not a Velvet symbol.
         private const string ModuleTypeName = "<Module>";
-        private const string IsErrorBoundaryProperty = "IsErrorBoundary";
-        private const string MemoizeProperty = "Memoize";
-        private const string DisplayNameProperty = "DisplayName";
 
         public static bool Weave(ModuleDefinition module, List<DiagnosticMessage> diagnostics)
         {
@@ -265,9 +269,12 @@ namespace Velvet.CodeGen
                 return null;
             }
 
-            var registerErrorBoundary = ResolveRegisterMethod(registryType, "RegisterErrorBoundary", 2);
-            var registerMemoize = ResolveRegisterMethod(registryType, "RegisterMemoize", 2);
-            var registerDisplayName = ResolveRegisterMethod(registryType, "RegisterComponentDisplayName", 3);
+            var registerErrorBoundary = ResolveRegisterMethod(
+                registryType, nameof(Velvet.ComponentMethodRegistry.RegisterErrorBoundary), 2);
+            var registerMemoize = ResolveRegisterMethod(
+                registryType, nameof(Velvet.ComponentMethodRegistry.RegisterMemoize), 2);
+            var registerDisplayName = ResolveRegisterMethod(
+                registryType, nameof(Velvet.ComponentMethodRegistry.RegisterComponentDisplayName), 3);
             if (registerErrorBoundary == null || registerMemoize == null || registerDisplayName == null)
             {
                 failure = $"the registration methods on '{RegistryTypeFullName}' could not be resolved on the"
@@ -283,7 +290,7 @@ namespace Velvet.CodeGen
             };
         }
 
-        private const string RegistryTypeFullName = "Velvet.ComponentMethodRegistry";
+        private static readonly string RegistryTypeFullName = typeof(Velvet.ComponentMethodRegistry).FullName;
 
         private static MethodDefinition? ResolveRegisterMethod(TypeDefinition registry, string name, int parameterCount)
         {

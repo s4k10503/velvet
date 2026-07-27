@@ -90,26 +90,9 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         private static string MemoizationDocPath() =>
-            Path.Combine(GeneratorsRoot(), "..", "Documentation~", "memoization.md");
+            Path.Combine(SolutionPaths.GeneratorsRoot(), "..", "Documentation~", "memoization.md");
 
         private static string GeneratorsReadmePath() =>
-            Path.Combine(GeneratorsRoot(), "README.md");
-
-        // Walks up from the test host's output directory (bin/Debug/net8.0/...) to the Generators~ root,
-        // identified by its .sln file — robust to CI vs local build output layouts without hardcoding a depth.
-        private static string GeneratorsRoot()
-        {
-            var dir = new DirectoryInfo(AppContext.BaseDirectory);
-            while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Velvet.SourceGenerators.sln")))
-            {
-                dir = dir.Parent;
-            }
-            if (dir == null)
-            {
-                throw new InvalidOperationException(
-                    "Could not locate Generators~ root (Velvet.SourceGenerators.sln) above " + AppContext.BaseDirectory);
-            }
-            return dir.FullName;
-        }
+            Path.Combine(SolutionPaths.GeneratorsRoot(), "README.md");
     }
 }

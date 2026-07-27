@@ -16,8 +16,9 @@ namespace Velvet.SourceGenerators.AutoDeps
     /// Compares closure-captured values (locals, instance fields, and properties) inside a deps-comparing
     /// hook's lambda factory against the elements listed in the hook's <c>deps</c> argument and reports
     /// <see cref="MemoizeDiagnostics.Vel100UseEffectMissingDep"/> when a captured value is missing.
-    /// Covers <c>UseEffect</c> / <c>UseLayoutEffect</c> / <c>UseCallback</c> / <c>UseMemo</c> /
-    /// <c>UseImperativeHandle</c>, and the V DSL's <c>V.Memoized</c> / <c>V.MemoizedWithKey</c>.
+    /// Covers <c>UseEffect</c> / <c>UseLayoutEffect</c> / <c>UseInsertionEffect</c> / <c>UseCallback</c> /
+    /// <c>UseMemo</c> / <c>UseImperativeHandle</c> / <c>UseBlocker</c>, and the V DSL's <c>V.Memoized</c> /
+    /// <c>V.MemoizedWithKey</c>.
     /// </summary>
     /// <remarks>
     /// The match is conservative: only <c>new[] { ... }</c> / <c>new T[] { ... }</c> deps initializers and
@@ -64,17 +65,18 @@ namespace Velvet.SourceGenerators.AutoDeps
 
             // Only handle lambda factories (block / expression body); method groups are not analyzed.
             if (args[hook.FactoryArgIndex].Expression is not LambdaExpressionSyntax lambda) return;
-            // UseMemo / UseEffect / UseCallback / UseLayoutEffect / UseImperativeHandle and V.Memoized all take
-            // PARAMETERLESS factories. The props-comparing component overload V.Memo<TProps>(Func<TProps,VNode>,
-            // props, ...) takes a one-parameter (TProps) body lambda, so gating on parameter count keeps it out
-            // of the deps-comparing pipeline even if a future descriptor entry shared its name.
+            // Effect factories are parameterless, but UseBlocker's predicate and UseCallback's memoized
+            // delegate take arguments; the lambda's own parameters are supplied per invocation and are never
+            // dependencies. Gating on the descriptor's declared arity keeps the props-comparing component
+            // overload V.Memo<TProps>(Func<TProps,VNode>, props, ...) out of the deps-comparing pipeline even
+            // if a future descriptor entry shared its name.
             var lambdaParamCount = lambda switch
             {
                 SimpleLambdaExpressionSyntax => 1,
                 ParenthesizedLambdaExpressionSyntax paren => paren.ParameterList.Parameters.Count,
                 _ => 0,
             };
-            if (lambdaParamCount > 0) return;
+            if (lambdaParamCount > hook.MaxFactoryParameterCount) return;
 
             var depsArgs = CollectDepsArguments(args, hook);
             var depsIdentifiers = TryExtractDepsIdentifiers(depsArgs, hook.DepsAreParams);
