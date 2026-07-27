@@ -70,11 +70,19 @@ Tests are **colocated** with the code: `Runtime/<Area>/Tests/Editor/` and `.../T
 
 **Test convention for this repo:** Given/When/Then naming (`Given_..._When_..._Then_...`) for method names, with `// Arrange`/`// Act`/`// Assert` sections in the body, **exactly one assert per test**, and `Assume.That` for preconditions. Verify a regression test is RED without the fix and GREEN with it. Test fixtures are `internal sealed class` (the Unity Test Framework discovers internal fixtures; bases are `internal`/`public abstract`). Comments must not carry issue/PR numbers — state the reason in terms of behavior so it is self-contained. Templates: `ButtonChildPoolReuseTests.cs`, `ClickDrivenHookLifecycleTests.cs`.
 
+Four ways a green test has lied here:
+
+- An `Assume` that gates the behavior under test is folded into the assertion — one comparison over a tuple of the gated state and the state under test — rather than deleted; deletion is correct only when the assertion alone would still fail on the broken behavior.
+- A threshold compared against a measured value is platform-dependent, since font metrics and layout land differently on a CI runner than on a developer machine: assert declared values, and where a measured one must take part, let the floating-point margin separate the right outcome from the wrong one rather than a hand-picked pixel budget.
+- `GC.GetAllocatedBytesForCurrentThread()` and `GC.GetTotalMemory()` both report 0 under Unity's Mono while allocation is happening, so "no allocations" holds only after a canary that allocates a known amount moves the instrument — `Unity.PerformanceTesting`'s `.GC()` recorder is the one that measures.
+- A benchmark is evidence only for the code its fixture drives — a paint change measured free on the manipulator-reconcile fixture, whose class strings never take the paint path it changed — so confirm the code under test runs in a fixture before citing its numbers.
+
 ## Conventions
 
 - Commits use Conventional Commits with the `velvet` scope (e.g. `fix(velvet): …`, `feat(velvet): …`, `refactor(velvet): …`).
 - Everything in this repo is written in English: code, comments, commit messages, and PR titles/bodies. PR descriptions state what changed and why — never the local workflow that produced the change (audit/review process, agent tooling, session details).
 - A PR that adds, changes, or removes a feature updates the corresponding `Documentation~` guide (and the `Documentation~/README.md` index table) in the same PR. If the change has no doc impact, say so explicitly in the PR body. `DocumentationDriftTests` (EditMode) and the Generators~ diagnostic-table tests catch API references and diagnostic IDs that no longer exist, but they cannot verify that a behavior description is still accurate — that stays the PR author's responsibility.
+- A fact the bundled stylesheets own — the longhands a utility writes, where it sits in the cascade — is derived from them rather than restated in C#: `Generators~/src/Velvet.StyleTable` reads `Runtime/Styles/*.uss` and emits `Runtime/Styling/StyleUtilityProperties.g.cs`. Where a mirror is genuinely unavoidable it is pinned by a test that fails when the stylesheet moves, because an unpinned one drifts silently — a guard that unioned property sets where the cascade takes only the last declaration suspended the transitions it existed to protect.
 - Documentation is single-source-of-truth: a given fact (the hooks table, the factory list, the diagnostic-ID table, a feature's behavior description) lives in exactly one owning document. Other documents link to it and add at most a one-line summary instead of restating it. Duplicated statements are how docs drift — when the fact changes, only one copy gets updated. This holds for comments too: name a sibling's mechanism ("same ownership rule as `StyleGapManipulator`"), never re-explain it.
 
 ## Comment length
