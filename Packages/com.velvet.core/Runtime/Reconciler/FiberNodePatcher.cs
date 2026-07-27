@@ -1680,9 +1680,9 @@ namespace Velvet
             {
                 if (wanted)
                 {
-                    // Keep this unconditional — never gate it on "the spec is unchanged". Gap / divide /
-                    // grid re-derive against the CURRENT child set and text-balance re-wins a shared
-                    // inline slot, both of which move without any class token changing.
+                    // Keep this unconditional — never gate it on "the spec is unchanged". Gap, divide and
+                    // grid re-derive against the CURRENT child set, which moves without any class token
+                    // changing.
                     op.Update(existing);
                 }
                 else
