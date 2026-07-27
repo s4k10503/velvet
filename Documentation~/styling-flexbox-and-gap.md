@@ -24,47 +24,25 @@ V.Div(className: "flex items-center gap-x-2", ...);
 V.Div(className: "flex flex-col gap-2", ...);
 ```
 
-**`flex-row` is not decorative**: it resolves to the same declaration as the `.flex` default, but
-writing it out forecloses every column override, so `"flex md:flex-col"` lays out as a column above
-the breakpoint while `"flex flex-row md:flex-col"` stays a row at every width — see "Overriding the
-direction from a variant" below. Spell `flex-row` only when nothing may ever override the
-direction; otherwise leave the row implicit in `.flex`.
-
 ### Overriding the direction from a variant
 
-A variant is realized by adding the **bare** utility to the live class list, so
-`"flex flex-col md:flex-row"` carries both `flex-col` and `flex-row` above the breakpoint. Every
-direction utility is a single-class selector, so specificity ties and **the later-declared rule
-wins**. `_layout.uss` therefore declares the column family before the row family:
+Every combination works, in both directions — `flex flex-col md:flex-row` and
+`flex flex-row md:flex-col`, `flex-col sm:flex-col-reverse` and `flex-col-reverse sm:flex-col`. A
+variant payload outranks the base utility on the properties they share, whatever order `_layout.uss`
+declares them in; see
+[styling-variants.md](styling-variants.md#variants-and-the-uss-cascade) for the rule and its limits.
 
-| Declaration order in `_layout.uss` | Precedence |
-|---|---|
-| `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse` | `flex-row-reverse` > `flex-row` > `flex-col-reverse` > `flex-col` > `flex` / `grid` |
+Two family-specific facts survive that:
 
-That order serves the mobile-first idiom — a variant can turn a **column into a row**, and within
-an axis a **plain direction into its reversed form**. The opposite override does not work:
-
-| Works | Does not work |
-|---|---|
-| `flex flex-col md:flex-row` | `flex flex-row md:flex-col` |
-| `flex flex-col-reverse md:flex-row` | `flex flex-row md:flex-col-reverse` |
-| `flex flex-col md:flex-col-reverse` | `flex flex-col-reverse md:flex-col` |
-| `flex flex-row md:flex-row-reverse` | `flex flex-row-reverse md:flex-row` |
-
-A right-hand entry is a silent no-op: the variant class lands on the element and loses the cascade,
-so the base direction holds at every width. Two things that work elsewhere do **not** rescue this
-family:
-
-- **Swapping base and variant is not always the same design.** Velvet's responsive variants are
-  min-width only, so `flex-col md:flex-row` means "column below the breakpoint, row above" — the
-  mirror image of "row below, column above", not a rewrite of it. That second layout is currently
-  not expressible with the direction utilities.
-- **There is no bracket escape hatch.** `flex-direction` has no arbitrary-value parse path, so
-  `md:flex-[column]` is not recognized and silently adds a class matching no rule.
-
-When you need an override this table does not offer, compute the class string in C# from a width
-the component observes itself (a `refCallback` registering `GeometryChangedEvent`, feeding a
-`UseState`) and render `flex-col` or `flex-row` — never both.
+- **Two direction utilities at the same priority still tie**, and `_layout.uss` declares them
+  `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse`, so a literal
+  `"flex-col flex-row"` lays out as a row. Write one, or mark the winner important —
+  `"flex-row !flex-col"` lays out as a column. There is no bracket form to fall back on:
+  `flex-direction` has no arbitrary-value parse path, so `md:flex-[column]` is not recognized and
+  silently adds a class matching no rule.
+- **`.flex` and `.grid` set `flex-direction: row` alongside `display`**, so a direction utility never
+  displaces them — it holds only part of what they write — and takes the direction from them by
+  declaration order instead, both being declared before all four.
 
 ## 2. `gap-*` is a framework-level CSS-`gap` polyfill (no USS rules)
 
@@ -197,7 +175,8 @@ the direction class there when the content needs one.
 **Direction source: a single resolved verdict from the class list, by USS precedence, not
 `resolvedStyle` — on a panel included.** `flex` / `flex-row` / `flex-col` / `flex-row-reverse` /
 `flex-col-reverse` are all direction-bearing (`flex` sets `flex-direction: row`, same as a bare
-`flex-row`), and an element routinely carries more than one at once once a variant is involved.
+`flex-row`), and an element routinely carries more than one at once — the bare `flex` beside whichever
+direction utility holds the direction, and two direction utilities written at one priority.
 `StyleFlexDirectionResolver` reproduces the `_layout.uss` precedence given under "Overriding the
 direction from a variant" above — checking `flex-row-reverse`, then `flex-row`, then
 `flex-col-reverse`, then `flex-col`, then `flex` — and resolves it into ONE mutually-exclusive verdict

@@ -29,17 +29,24 @@ namespace Velvet
         public static void ApplyEnabled(VisualElement element, bool? enabled)
             => element.SetEnabled(enabled ?? true);
 
+        // Hiding writes the same `hidden` utility an author could write, so it goes through the class
+        // projection rather than straight onto the class list — outside it, a `md:flex` payload and this prop
+        // would both hold `display` with no ranking between them, and whichever the stylesheet declared later
+        // would win. The important band is the layer that matches the prop's meaning: an explicit
+        // Visible: false outranks every variant, and only an equally explicit `md:!flex` can overrule it.
         public static void ApplyVisible(VisualElement element, bool? visible)
         {
-            if (visible.HasValue)
+            if (visible == false)
             {
-                element.EnableInClassList(FiberElementProps.HiddenClassName, !visible.Value);
+                StyleClassProjection.Add(element, FiberElementProps.HiddenClassName, s_hiddenPriority);
             }
             else
             {
-                element.RemoveFromClassList(FiberElementProps.HiddenClassName);
+                StyleClassProjection.Remove(element, FiberElementProps.HiddenClassName, s_hiddenPriority);
             }
         }
+
+        private static readonly int s_hiddenPriority = StyleLayerPriority.ImportantOf(StyleLayerPriority.Base);
 
         public static void ApplyFocusable(VisualElement element, bool? focusable)
             => element.focusable = focusable ?? true;

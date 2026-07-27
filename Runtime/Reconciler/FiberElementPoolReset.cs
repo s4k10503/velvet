@@ -43,7 +43,7 @@ namespace Velvet
         {
             if (element == null) return;
 
-            element.ClearClassList();
+            ClearProjectedClassList(element);
             AddClassIfNotEmpty(element, ussClassA);
             AddClassIfNotEmpty(element, ussClassB);
 
@@ -55,12 +55,22 @@ namespace Velvet
         {
             if (element == null) return;
 
-            element.ClearClassList();
+            ClearProjectedClassList(element);
             AddClassIfNotEmpty(element, ussClassA);
             AddClassIfNotEmpty(element, ussClassB);
             AddClassIfNotEmpty(element, ussClassC);
 
             ResetCommonState(element);
+        }
+
+        // Empties the class list and the per-element style model that decides what may be on it, in one step.
+        // Dropping only the classes would leave the model holding a prior consumer's layers and its record of
+        // which of them it had suppressed, so the next consumer's first recompute could take a class off the
+        // element that nothing on this mount ever asked for.
+        private static void ClearProjectedClassList(VisualElement element)
+        {
+            element.ClearClassList();
+            StyleArbitraryValueResolver.ClearAll(element);
         }
 
         private static void AddClassIfNotEmpty(VisualElement element, string ussClass)

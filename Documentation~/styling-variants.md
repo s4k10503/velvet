@@ -19,11 +19,12 @@ class, including the ownership rules between them: `className="gap-4 md:grid md:
 gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from
 `md` up.
 
-A payload is **toggled** on the class list, not reference-counted against the base, so declaring the
-same token both literally and behind a variant is not the same as declaring it once: in
-`gap-4 md:gap-4` the `md:` payload *removes* `gap-4` when the breakpoint deactivates, taking the
-literal one with it. Declare the base value once and let the variant override it — `gap-4 md:gap-8`,
-the idiomatic form — rather than repeating it.
+A payload occupies one slot per `(priority, token)` pair. Declaring the same token literally and
+behind a variant is therefore safe — in `gap-4 md:gap-4` the `md:` payload turning off leaves the
+literal `gap-4` alone — and so is declaring it behind two variants of different precedence
+(`dark:gap-4 md:gap-4`). What still shares a slot is the same token behind two payloads of the **same**
+precedence. Declaring the base value once and letting
+the variant override it (`gap-4 md:gap-8`) remains the idiomatic form.
 
 ## The variant set
 
@@ -48,42 +49,89 @@ V.Div(className: "w-full md:w-[320px]", ...);
 
 ### Variants and the USS cascade
 
-A **USS-class** payload is toggled on the element's live class list, so above the breakpoint
-`"flex flex-col md:flex-row"` carries both `flex-col` and `flex-row`. Both are single-class
-selectors, so specificity ties and the **later-declared rule in the bundled stylesheet wins** —
-a variant does not automatically outrank the base utility the way a CSS media-query rule does.
-Upstream Tailwind emits variant utilities into a later layer, so this is a limit of Velvet's
-current class-toggle mechanism rather than of the cascade itself. Two consequences:
+**A variant payload beats a base utility that writes the same USS properties, in either direction,
+whatever order the bundled stylesheet declares them in.** `bg-white dark:bg-neutral-900`,
+`w-full md:w-64`, `items-center md:items-start` and `flex flex-row md:flex-col` all do what they
+read like.
 
-- **A class payload only overrides in the direction its family is declared in.** Half of every
-  override pair is therefore a silent no-op — the variant class lands on the element and loses.
-  The direction utilities are ordered for the mobile-first idiom, so `flex flex-col md:flex-row`
-  works while `flex flex-row md:flex-col` does not; see
-  [styling-flexbox-and-gap.md](styling-flexbox-and-gap.md) for the full table. Every other family
-  follows its own source order, and there is no single rule covering them: the numeric scales
-  ascend (`p-2 md:p-8`, `text-sm md:text-2xl`) but their keyword members are declared last, so
-  `w-64 md:w-full` works while `w-full md:w-64` does not; the palettes follow palette source order
-  (`bg-neutral-50 dark:bg-neutral-900`); and the enumerated families (`items-*`, `justify-*`,
-  `self-*`, `content-*`, `text-left`/`center`/`right`) have no ordering intuition at all —
-  `items-start md:items-center` works, `items-center md:items-start` and
-  `text-left md:text-center` do not. **Check the partial in `Runtime/Styles/` when an override does
-  not take effect.**
-- **An arbitrary-value payload is exempt** (`md:w-[320px]`, `hover:bg-[#fff]`): it is applied as an
-  inline style on a priority layer, so it always beats the base utility, layers correctly against
-  other variants, and falls back cleanly when it turns off. Where a family has a bracket parse
-  path, that is the reliable way to force an override the declaration order will not give you.
+Velvet cannot lean on the cascade for that. A payload is realized by adding the bare utility to the
+element's live class list, and both it and the base are single-class selectors, so specificity ties
+and USS breaks the tie by declaration order — which says nothing about which one the author meant to
+win. So Velvet decides instead. Each element keeps a model of which class each priority layer wants,
+where the priority is the one the variant's own precedence already defines (see **Precedence order**);
+for every USS property, only the highest-priority class holding it stays on the element. The losers
+come off, and go back on the moment they stop losing.
 
-Neither workaround is universal, so do not assume one is always available:
+Four consequences worth knowing:
 
-- Swapping base and variant changes the design, not just the spelling. Responsive variants are
-  **min-width only**, so `flex-col md:flex-row` says "column when narrow, row when wide"; it does
-  not express "row when narrow, column when wide", which currently has no utility spelling.
-- Families with no arbitrary-value parser have no bracket form at all — `flex-direction`,
-  `display`, and the alignment families among them. `md:flex-[column]` is not recognized and
-  silently adds a class matching no rule.
+- **Same-priority classes still tie by declaration order.** Two base utilities on one property, or two
+  payloads of the same variant family, are ranked by nothing, so the stylesheet decides. Marking one
+  important (below) breaks the tie.
+- **A payload only displaces a class whose properties it wholly covers.** A base utility writing
+  something the payload does not keeps its place, and the two then settle their shared properties by
+  declaration order. That is reliable where one set contains the other — `size-8 md:w-4` resolves the
+  width correctly, because every utility is declared before the narrower ones its set contains — and
+  unreliable where the sets merely overlap. `rounded-l` and `rounded-t` share one corner and neither
+  contains the other, so `rounded-l md:rounded-t` can be a silent no-op. The important modifier does
+  not rescue it: the base is still uncontained, so it still applies. Write one class, or use the
+  arbitrary-value form.
+- **A class Velvet does not ship is never ranked.** The property table is derived from the bundled
+  stylesheets, so a class of your own carries no known properties and can neither displace another
+  class nor be displaced by one. `my-card dark:my-card-dark` ties exactly as before, and marking
+  either one important changes nothing — there is no property set to rank them by. Use the
+  arbitrary-value form where the family has one, or compute the class string in C# and render exactly
+  one member.
+- **`has-[.foo]:` matches what is on the element, not what was written — a deviation from CSS.** On
+  the web `:has(.foo)` tests class-attribute membership, and the cascade never removes a class from
+  the DOM, so a `.foo` whose declarations all lost still matches there. Velvet suppresses the class
+  itself, so the condition stops matching.
 
-When a layout needs an override neither route offers, compute the class string in C# from state
-the component owns and render exactly one member of the family.
+An **arbitrary-value payload** (`md:w-[320px]`, `hover:bg-[#fff]`) is applied as an inline style
+rather than a class, and the two mechanisms agree: an inline layer outranked by a higher-priority
+class stands down so the class shows through, and a class outranked by a higher-priority inline layer
+comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]` both work. The filter
+family is the exception — filters compose rather than override, so a `filter` class and a
+`blur-[6px]` layer both apply.
+
+### Precedence order
+
+Lowest first. Families are ordered by how strong and how deliberate the condition that activates them
+is: a position among siblings is the weakest signal, the element's own interaction state the
+strongest. Where members of one row also rank against each other, `<` shows that order; where they do
+not, each still occupies a layer of its own, so turning one off never disturbs another.
+
+| | Layer |
+|---|---|
+| 1 | The base utility |
+| 2 | `[&>*]:` — a rule the container imposes on its children |
+| 3 | Structural — `first:` · `last:` · `odd:` · `even:` · `[&:nth-child(N)]:` |
+| 4 | Responsive — `sm:` < `md:` < `lg:` < `xl:` < `2xl:` < `supports-[…]:` |
+| 5 | Theme — `dark:` |
+| 6 | `has-[…]:` < `data-[…]:` / `aria-[…]:` |
+| 7 | Relational — the `group-*` and `peer-*` states |
+| 8 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` |
+| 9 | The important band — rows 1–8 again, one level each, for anything carrying `!` |
+
+A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts, so it sits above
+either one alone.
+
+### The important modifier
+
+Prefix or suffix any utility with `!` (`!bg-red-500`, `bg-red-500!`) to raise it into the **important
+band**, the class equivalent of CSS `!important`. It applies to a variant payload too
+(`dark:!bg-red-500`, `hover:bg-red-500!`).
+
+Two rules:
+
+- An important utility beats every non-important one on the same property, whatever their priorities.
+  `!bg-red-500 dark:bg-blue-500` stays red in dark mode.
+- Two important utilities fall back to the ordinary ladder. `!bg-blue-500 dark:!bg-red-500` is blue
+  normally and red in dark mode, the same shape as the plain pair.
+
+This is the escape hatch for a same-priority tie: `bg-white !bg-red-500` resolves red, where
+`bg-white bg-red-500` resolves white. It cannot help where the ranking has nothing to work with: an
+overlap that is not containment, and a class whose properties Velvet does not know, are decided by
+declaration order with or without the bang.
 
 ### Responsive breakpoints
 

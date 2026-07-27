@@ -196,22 +196,25 @@ namespace Velvet
                     continue;
                 }
 
-                // Important modifier (!utility / utility!): strip the bang and, when present,
-                // elevate the inline-resolved utility to the Important layer so it wins over every other
-                // layer. A class-only utility has no inline form to elevate, so its bang is inert.
+                // Important modifier (!utility / utility!): strip the bang and, when present, elevate the
+                // utility into the important band so it wins over every other layer, whether it lands on the
+                // class list or as an inline value.
                 var cls = StyleArbitraryValueResolver.StripImportant(className, out var important);
                 if (string.IsNullOrEmpty(cls))
                 {
                     continue;
                 }
-                var priority = important ? StyleLayerPriority.Important : StyleLayerPriority.Base;
+                var priority = important
+                    ? StyleLayerPriority.ImportantOf(StyleLayerPriority.Base)
+                    : StyleLayerPriority.Base;
 
-                // Plain classes (the overwhelming majority) go straight to the USS class list and skip both
-                // resolvers; inline-value tokens (bracketed, color-opacity, static-scale) resolve to inline
-                // style — the same routing AddClass uses on a re-render.
+                // Plain classes (the overwhelming majority) go to the USS class list through the projection,
+                // which ranks them against the variant payloads; inline-value tokens (bracketed,
+                // color-opacity, static-scale) resolve to inline style — the same routing AddClass uses on a
+                // re-render.
                 if (!StyleArbitraryValueResolver.IsInlineResolved(cls))
                 {
-                    element.AddToClassList(cls);
+                    StyleClassProjection.Add(element, cls, priority);
                 }
                 else
                 {
