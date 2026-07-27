@@ -24,11 +24,12 @@ The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` 
 ```bash
 cd Packages/com.velvet.core/Generators~
 dotnet test Velvet.SourceGenerators.sln -c Release   # run generator unit tests
-./build.sh                                            # rebuild + deploy the DLLs to Runtime/Plugins
 ```
 
-The compiled DLLs under `Packages/com.velvet.core/Runtime/Plugins/` are committed. After changing
-generator source, rebuild with `./build.sh` and commit the updated DLLs.
+The compiled DLLs under `Packages/com.velvet.core/Runtime/Plugins/` are committed, so a change to
+generator source is only complete once they are rebuilt and committed too. Build and DLL-shipping
+steps live in [Generators~/README.md](Packages/com.velvet.core/Generators~/README.md) — `./build.sh`
+on macOS / Linux, `./build.ps1` on Windows.
 
 ## Continuous integration
 
