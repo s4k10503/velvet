@@ -143,7 +143,7 @@ namespace Velvet
         {
 ";
 
-        private const string Footer = @"        };
+        private const string AfterClassMap = @"        };
 
         /// <summary>How many bundled utility classes carry a USS rule.</summary>
         public static int Count => ByClassName.Count;
@@ -157,6 +157,50 @@ namespace Velvet
                 return true;
             }
             rule = default;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The bundled utilities that declare <c>transition-property</c>, in cascade order, with the properties
+    /// each one's value names. <c>MotionNativeTransitionGuard.DeclaredSlots</c> is the only consumer and
+    /// states what the order means.
+    /// </summary>
+    /// <remarks>
+    /// Only ungated rules reach here: the derivation refuses a gated <c>transition-property</c> rather than
+    /// record one, since no reader working from a class list can tell whether the gate holds.
+    /// </remarks>
+    internal static class StyleTransitionUtilities
+    {
+        private static readonly StyleLonghandSet[] Declared =
+        {
+";
+
+        private const string AfterTransitionSets = @"        };
+
+        private static readonly Dictionary<string, int> ByClassName =
+            new Dictionary<string, int>({TRANSITION_COUNT}, StringComparer.Ordinal)
+        {
+";
+
+        private const string Footer = @"        };
+
+        /// <summary>How many bundled utilities declare <c>transition-property</c>.</summary>
+        public static int Count => ByClassName.Count;
+
+        /// <summary>
+        /// The cascade position of <paramref name=""className""/> among the utilities that declare
+        /// <c>transition-property</c>, and the properties its declaration names.
+        /// </summary>
+        public static bool TryGet(string className, out int cascadePosition, out StyleLonghandSet properties)
+        {
+            if (className != null && ByClassName.TryGetValue(className, out cascadePosition))
+            {
+                properties = Declared[cascadePosition];
+                return true;
+            }
+            cascadePosition = -1;
+            properties = StyleLonghandSet.Empty;
             return false;
         }
     }
@@ -180,8 +224,36 @@ namespace Velvet
             AppendRules(sb, rules);
             sb.Append(AfterRules.Replace("{ENTRY_COUNT}", Number(table.Entries.Length)));
             AppendClassMap(sb, table, ruleOfEntry);
+            sb.Append(AfterClassMap);
+            AppendTransitionSets(sb, table);
+            sb.Append(AfterTransitionSets.Replace("{TRANSITION_COUNT}", Number(table.Transitions.Length)));
+            AppendTransitionClassMap(sb, table);
             sb.Append(Footer);
             return sb.ToString();
+        }
+
+        private static void AppendTransitionSets(StringBuilder sb, StyleUtilityTable table)
+        {
+            foreach (var transition in table.Transitions)
+            {
+                sb.Append("            new StyleLonghandSet(0x")
+                    .Append(transition.Word0.ToString("X16", CultureInfo.InvariantCulture))
+                    .Append("UL, 0x")
+                    .Append(transition.Word1.ToString("X16", CultureInfo.InvariantCulture))
+                    .Append("UL),\n");
+            }
+        }
+
+        private static void AppendTransitionClassMap(StringBuilder sb, StyleUtilityTable table)
+        {
+            for (var i = 0; i < table.Transitions.Length; i++)
+            {
+                sb.Append("            { \"")
+                    .Append(table.Transitions[i].ClassName)
+                    .Append("\", ")
+                    .Append(Number(i))
+                    .Append(" },\n");
+            }
         }
 
         /// <summary>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Text;
 
 namespace Velvet.StyleTable
 {
@@ -104,7 +105,10 @@ namespace Velvet.StyleTable
                     index++;
                 }
 
-                var declaration = text.Substring(declarationStart, index - declarationStart).Trim();
+                // The scan above steps OVER a comment to find the terminating ';', so the text it cut still
+                // contains one. Values are read, not just property names, and a comment inside a value would
+                // otherwise reach the vocabulary as a token.
+                var declaration = StripComments(text.Substring(declarationStart, index - declarationStart)).Trim();
                 index++;
                 if (declaration.Length == 0)
                 {
@@ -121,9 +125,35 @@ namespace Velvet.StyleTable
                 }
 
                 declarations.Add(new UssDeclaration(
-                    declaration.Substring(0, colon).Trim(), declarationStart));
+                    declaration.Substring(0, colon).Trim(),
+                    declaration.Substring(colon + 1).Trim(),
+                    declarationStart));
             }
             return declarations.ToImmutable();
+        }
+
+        private static string StripComments(string declaration)
+        {
+            var open = declaration.IndexOf("/*", StringComparison.Ordinal);
+            if (open < 0)
+            {
+                return declaration;
+            }
+            var stripped = new StringBuilder(declaration.Length);
+            var index = 0;
+            while (open >= 0)
+            {
+                stripped.Append(declaration, index, open - index);
+                var close = declaration.IndexOf("*/", open + 2, StringComparison.Ordinal);
+                if (close < 0)
+                {
+                    return stripped.ToString();
+                }
+                index = close + 2;
+                open = declaration.IndexOf("/*", index, StringComparison.Ordinal);
+            }
+            stripped.Append(declaration, index, declaration.Length - index);
+            return stripped.ToString();
         }
 
         /// <summary>
@@ -283,13 +313,21 @@ namespace Velvet.StyleTable
 
     internal readonly struct UssDeclaration
     {
-        public UssDeclaration(string property, int offset)
+        public UssDeclaration(string property, string value, int offset)
         {
             Property = property;
+            Value = value;
             Offset = offset;
         }
 
         public string Property { get; }
+
+        /// <summary>
+        /// The text right of the colon, uninterpreted. Only <c>transition-property</c> needs it: its value is
+        /// itself a list of property names, so which properties an element transitions cannot be answered from
+        /// the declared property alone.
+        /// </summary>
+        public string Value { get; }
 
         public int Offset { get; }
     }

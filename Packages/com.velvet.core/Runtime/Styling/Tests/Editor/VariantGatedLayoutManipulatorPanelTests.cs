@@ -236,7 +236,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADarkGatedTextBalanceApplied_When_TheThemeTurnsLight_Then_TheTextBalanceManipulatorIsRemoved()
         {
-            // Arrange — text-balance owns a shared inline max-width slot, so its teardown is bespoke rather
+            // Arrange — text-balance owns a shared inline width slot, so its teardown is bespoke rather
             // than the shared configure step; the off-edge has to reach it just as the on-edge did.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { V.Label(className: "dark:text-balance", text: "hello") };
@@ -253,18 +253,39 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADarkGatedTextBalanceBesideAMaxWidth_When_TheThemeTurnsLight_Then_TheUtilitysMaxWidthIsRestored()
+        public void Given_ADarkGatedWidth_When_TheThemeTurnsDark_Then_TheElementIsNotTrackedForLiveClassResolution()
         {
-            // Arrange — the variant analogue of the literal co-present-max-width contract: text-balance
-            // borrows the element's max-width slot and nulls it on detach, so the utility's own value has
-            // to come back. max-w-[50px] is inline-resolved, so it is exactly the kind of token that never
-            // appears on the live class list the variant path re-derives from.
+            // Arrange — a width payload has to re-sync the layout manipulators, since it decides whether
+            // text-balance stands down. It must not join the variant-layout tracking table while doing so:
+            // membership there routes the element through a fresh class ARRAY on every later patch, which
+            // is only worth paying where a manipulator pass reads a token back out of that array.
             using var scope = new ReconcilerScope();
-            var tree = new VNode[] { V.Label(className: "max-w-[50px] dark:text-balance", text: "hello") };
+            var tree = new VNode[] { V.Label(className: "text-balance dark:w-40", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var label = scope.Root.Q<Label>();
-            Assume.That(label.style.maxWidth.value.value, Is.EqualTo(50f),
-                "Precondition: the co-present max-w-[50px] utility resolved its own value at mount");
+
+            // Act
+            VelvetTheme.IsDark = true;
+            Assume.That(label.ClassListContains("w-40"), Is.True,
+                "Precondition: the dark payload put the width class on the live class list");
+
+            // Assert
+            Assert.That(scope.Reconciler.Context.VariantLayoutClasses.ContainsKey(label), Is.False);
+        }
+
+        [Test]
+        public void Given_ADarkGatedTextBalanceBesideAWidth_When_TheThemeTurnsLight_Then_TheUtilitysWidthIsRestored()
+        {
+            // Arrange — the variant analogue of the literal co-present-width contract: text-balance
+            // borrows the element's width slot and nulls it on detach, so the utility's own value has
+            // to come back. w-[50px] is inline-resolved, so it is exactly the kind of token that never
+            // appears on the live class list the variant path re-derives from.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Label(className: "w-[50px] dark:text-balance", text: "hello") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var label = scope.Root.Q<Label>();
+            Assume.That(label.style.width.value.value, Is.EqualTo(50f),
+                "Precondition: the co-present w-[50px] utility resolved its own value at mount");
             VelvetTheme.IsDark = true;
             Assume.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(1),
                 "Precondition: the dark payload attached the manipulator that borrows the slot");
@@ -273,54 +294,54 @@ namespace Velvet.Tests
             VelvetTheme.IsDark = false;
 
             // Assert
-            Assert.That(label.style.maxWidth.value.value, Is.EqualTo(50f));
+            Assert.That(label.style.width.value.value, Is.EqualTo(50f));
         }
 
         [Test]
-        public void Given_ATrackedElementWithALiteralTextBalanceBesideAMaxWidth_When_TextBalanceIsRenderedAway_Then_TheUtilitysMaxWidthIsRestored()
+        public void Given_ATrackedElementWithALiteralTextBalanceBesideAWidth_When_TextBalanceIsRenderedAway_Then_TheUtilitysWidthIsRestored()
         {
             // Arrange — no variant gates text-balance here; the dark:gap-4 is only there to put the element
             // in the variant-applied table, which is what switches its layout gates onto the live class
             // list. The teardown then runs on an ordinary re-render, with no variant toggle involved.
             using var scope = new ReconcilerScope();
-            var tree1 = new VNode[] { V.Label(className: "max-w-[50px] text-balance dark:gap-4", text: "hello") };
+            var tree1 = new VNode[] { V.Label(className: "w-[50px] text-balance dark:gap-4", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
             var label = scope.Root.Q<Label>();
-            Assume.That(label.style.maxWidth.value.value, Is.EqualTo(50f),
-                "Precondition: the co-present max-w-[50px] utility resolved its own value at mount");
+            Assume.That(label.style.width.value.value, Is.EqualTo(50f),
+                "Precondition: the co-present w-[50px] utility resolved its own value at mount");
             VelvetTheme.IsDark = true;
             Assume.That(label.ClassListContains("gap-4"), Is.True,
                 "Precondition: the dark payload put a layout gate class on the live class list");
 
             // Act — re-render without the text-balance token, everything else unchanged.
-            var tree2 = new VNode[] { V.Label(className: "max-w-[50px] dark:gap-4", text: "hello") };
+            var tree2 = new VNode[] { V.Label(className: "w-[50px] dark:gap-4", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
             // Assert
-            Assert.That(label.style.maxWidth.value.value, Is.EqualTo(50f));
+            Assert.That(label.style.width.value.value, Is.EqualTo(50f));
         }
 
         [Test]
-        public void Given_ATextBalanceBesideAVariantSuppliedMaxWidth_When_TextBalanceIsRenderedAway_Then_TheVariantsMaxWidthIsRestored()
+        public void Given_ATextBalanceBesideAVariantSuppliedWidth_When_TextBalanceIsRenderedAway_Then_TheVariantsWidthIsRestored()
         {
-            // Arrange — the max-width here is supplied by the dark: layer, not by a utility of the
+            // Arrange — the width here is supplied by the dark: layer, not by a utility of the
             // element's own. That is the case no class-list scan can restore, on either array: a variant
             // token is skipped, because its payload is not a token the element itself carries. Nothing
             // gates layout on this element, so it also proves the restore on the ordinary reconcile path.
             using var scope = new ReconcilerScope();
-            var tree1 = new VNode[] { V.Label(className: "dark:max-w-[80px] text-balance", text: "hello") };
+            var tree1 = new VNode[] { V.Label(className: "dark:w-[80px] text-balance", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
             var label = scope.Root.Q<Label>();
             VelvetTheme.IsDark = true;
-            Assume.That(label.style.maxWidth.value.value, Is.EqualTo(80f),
-                "Precondition: the dark payload resolved its own max-width before text-balance is removed");
+            Assume.That(label.style.width.value.value, Is.EqualTo(80f),
+                "Precondition: the dark payload resolved its own width before text-balance is removed");
 
             // Act — remove just the text-balance token; the dark: layer is untouched.
-            var tree2 = new VNode[] { V.Label(className: "dark:max-w-[80px]", text: "hello") };
+            var tree2 = new VNode[] { V.Label(className: "dark:w-[80px]", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
             // Assert
-            Assert.That(label.style.maxWidth.value.value, Is.EqualTo(80f));
+            Assert.That(label.style.width.value.value, Is.EqualTo(80f));
         }
     }
 }

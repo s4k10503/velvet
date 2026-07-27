@@ -228,16 +228,22 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   writes the exact value the curve or the physics calls for on that frame, so a transition utility
   naming that same property restarts a native transition on every one of those writes and leaves
   the painted value trailing for the whole play, easing in at the end instead of landing. Whether
-  that applies is decided from the element's **class list**: `transition-transform` names
-  translate/scale/rotate, `transition-colors` names the three colours, `transition-colors-scale`
-  and `transition-colors-scale-opacity` add those, and `transition-all` names everything. Anything
-  that supplies only a duration — `transition-filter`, or a bare `duration-*` — leaves
-  `transition-property` at its UI Toolkit default of `all`, so those elements transition
-  *everything* natively and a play on them always suspends. An element with no transition utility
-  at all has a 0s duration and transitions nothing, so nothing suspends. A play suspends only where
-  its own channels intersect that set — a `transition-colors` element running a fade/slide keeps
-  its hover fade, while the same play on a `transition-transform`, `transition-all` or
-  `transition-filter` element suspends. Two blind spots: the check runs once at play start, so a
+  that applies is decided from the element's **class list**, resolved the way the cascade resolves
+  it: `transition-property` holds one value, so the utilities that set it do not combine — the
+  **last-declared** one present on the element wins outright and the rest contribute nothing. The
+  bundled order is `transition-transform`, `transition-filter`, `transition-all`,
+  `transition-none`, `transition-opacity`, `transition-colors`, `transition-colors-scale`,
+  `transition-colors-scale-opacity`, then the scheduler-applied `anim-*` presets. So
+  `transition-all transition-colors` transitions the colours only, and
+  `transition-all transition-none` transitions nothing, whichever order the class strings appear
+  in. `transition-filter` names `filter`, which no driver writes, so it never triggers a
+  suspension. With none of those utilities present, a `duration-*` class — or the inline
+  `duration-[…]` form — leaves `transition-property` at UI Toolkit's default of `all`, so those
+  elements transition *everything* natively and a play on them always suspends; with no duration
+  either, the element transitions nothing and nothing suspends. A play suspends only where its own
+  channels intersect the resolved set — a `transition-colors` element running a fade/slide keeps
+  its hover fade, while the same play on a `transition-transform` or `transition-all` element
+  suspends. Two blind spots: the check runs once at play start, so a
   variant turning on `transition-all` mid-play is not picked up until the next play, and a
   whole-property transition written as an inline style by something other than a `duration-*`
   utility is not seen.

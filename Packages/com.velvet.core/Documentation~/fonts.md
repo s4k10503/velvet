@@ -151,14 +151,14 @@ spaces/tabs to one space, keep newlines, and drop whitespace that sits right at 
 inline `white-space: pre-wrap` write on every text leaf whose resolved whitespace axis is pre-line,
 so the preserved newlines still render as breaks.
 
-The write is per-leaf rather than once on the class-bearing element: `Label`/`TextElement` carries its own element-level `white-space` rule from
-the default theme/USS, and an element's own matching rule always beats an INHERITED value in the
-cascade, so a write on an ancestor alone would never reach a descendant Label. It inherits and
-cascades the same way text-transform / text-decoration do: an explicit
-`whitespace-*` class always wins on the SAME element, and — exactly like how `normal-case` /
-`no-underline` stop an inherited transform / decoration — it also blocks a farther ancestor's
-`whitespace-pre-line` from reaching that subtree at all, rather than merely leaving the collapse
-unapplied on that one element.
+The write is per-leaf rather than once on the class-bearing element: `Label`/`TextElement` carries
+its own element-level `white-space` rule from the default theme/USS, and an element's own matching
+rule always beats an INHERITED value in the cascade, so a write on an ancestor alone would never
+reach a descendant Label. It inherits and cascades the same way text-transform / text-decoration
+do: an explicit `whitespace-*` class always wins on the SAME element, and — exactly like how
+`normal-case` / `no-underline` stop an inherited transform / decoration — it also blocks a farther
+ancestor's `whitespace-pre-line` from reaching that subtree at all, rather than merely leaving the
+collapse unapplied on that one element.
 
 **`leading-*` (line-height)** has no USS property either — `-unity-paragraph-spacing` only affects
 explicit `\n` breaks, not the per-line advance a real line-height changes — so it is realised
@@ -184,56 +184,63 @@ axes: Tailwind defines no `leading-auto` below `leading-none`, and every preset 
 multiplier of 1 included — is already a real value, so there is nothing to reset back to.
 
 **`text-balance`** approximates CSS `text-wrap: balance` even though UI Toolkit's text engine
-exposes no line-break hook at all (there is no way to influence *where* a line wraps).
-`StyleTextBalanceManipulator` sidesteps that by not touching line breaks: it binary-searches the
-public `TextElement.MeasureTextSize(text, width, widthMode, height, heightMode)` — the same method
-the engine's own autosize pass already calls — for the **narrowest inline `maxWidth`** that keeps
-the measured height at or under the height a normal (unbalanced) layout would take at the element's
-available width. Font metrics are constant across candidates, so comparing heights stands in for
-comparing line counts.
+exposes no line-break hook. `StyleTextBalanceManipulator` narrows the box instead: it
+binary-searches `TextElement.MeasureTextSize` — the same method the engine's own autosize pass
+calls — for the narrowest inline **`width`** that still measures the height a normal, unbalanced
+layout would take at the available width. Comparing heights stands in for comparing line counts,
+since font metrics are constant across candidates.
+
+**What it honours.** `text-balance` writes the element's inline `width` and never its `max-width`:
+
+- **A declared `max-width` is a ceiling it balances inside.** Every spelling counts —
+  `max-w-[120px]`, a variant's `dark:max-w-[80px]`, the USS scale forms (`max-w-32`, `max-w-full`),
+  and percentages — and all of them apply on every pass. `max-w-0` leaves nothing to redistribute,
+  so the box is released and the ceiling applies on its own.
+- **A declared `width` turns `text-balance` off for that element.** Balance works by narrowing the
+  box, so a declared width leaves nothing to narrow. Any `w-*` or `size-*` class does it, in every
+  spelling: scale, bracket, fraction, `!`-important, and one a variant supplies. `w-auto` does not,
+  since `width: auto` is the default and declares nothing. **`w-full text-balance` therefore does
+  not balance**; a column child already fills its parent, so drop the `w-full`. The same applies to
+  a child of a `grid` container, whose width the grid itself writes. A class added imperatively
+  (`element.AddToClassList("w-40")`) is not observed, so a width added that way while balance holds
+  a value is ignored until something unrelated forces a derive.
 
 Two deviations from CSS:
 
 - **The box can shrink.** Real `text-wrap: balance` never resizes the element — only where its
-  lines break. This approximation instead narrows the box via `maxWidth`, so anything sized from
-  that box (a background, alignment relative to it) reads against a smaller box than an unbalanced
-  sibling would have. Applied only when the text actually wraps to 2+ lines (see below), so a
-  single-line label's box is never touched.
-- **`maxWidth` is measured against the PARENT's content width**, not the element's own — reading
-  the element's own already-narrowed width back would ratchet it narrower every pass instead of
-  converging. This is exact when the element is its parent's sole / stretch-to-fill child (the
-  common paragraph/heading usage) and an over-estimate when siblings share the row or the element
-  carries its own narrower `max-w-*`; an over-estimate only makes balancing less aggressive, never
-  widening the box past what normal layout already gives it. `text-balance` otherwise owns the
-  element's inline `maxWidth` outright while its class is present — a co-present `max-w-*` utility
-  on the same element is overwritten, the same ownership rule `grid-cols-*` applies to a column's
-  width — and that ownership is enforced every patch, not just once at attach, so a `max-w-*` value
-  that changes in the same render as a still-present `text-balance` is re-overwritten before the
-  render ends. Removing the `text-balance` class instead RESTORES a co-present `max-w-*` utility's
-  own value rather than leaving `maxWidth` cleared.
+  lines break — so anything sized from this box (a background, alignment relative to it) reads
+  against a smaller box than an unbalanced sibling would have. Only when the text wraps to 2+ lines
+  (see below).
+- **The search measures against the PARENT's content width**, since the element's own is this
+  feature's output. That is exact for a sole / stretch-to-fill child, and an over-estimate when
+  siblings share the row: the balanced box plus those siblings can exceed the row, so it overflows
+  slightly and flex-shrink shares the loss across every box in it — a sibling can end up a pixel
+  or so under its declared width. Keep a balanced label out of a tight row if that matters. A
+  **hug-width parent** (auto width, e.g. an `items-start` row) defeats the indirection entirely:
+  the parent's width follows the element's, so the search input narrows every pass. With a fixed
+  ceiling it converges, settling narrower than one pass would give; with a percentage ceiling
+  (`max-w-[50%]`) it oscillates — the bound decays until the box is released, the release
+  re-widens the parent, and the next pass starts over. Give such a parent a definite width.
 
 **Prerequisite — needs a wrapping white-space too:** Velvet's `Label` ships with no bundled base
 white-space rule, so its engine default is `nowrap`. `text-balance` alone is therefore a **silent
 no-op** on a default `Label` — pair it with `text-wrap` / `whitespace-normal` (or another wrapping
 white-space) for it to have any effect.
 
-**Single-line gate:** CSS balance is a no-op on one line, and this approximation shrinks the box, so
-it is gated. The manipulator only writes a narrower `maxWidth` when the natural height at the
-available width exceeds the text's unconstrained single-line height (2+ lines); otherwise any
-previously-applied `maxWidth` is cleared. An element with `white-space: nowrap` reaches the same
-"single line" outcome through this same comparison (`MeasureTextSize` already measures against the
-element's own resolved white-space), which is also why the prerequisite above is silent rather than
-a thrown error.
+**Single-line gate:** CSS balance is a no-op on one line, and this approximation shrinks the box,
+so a width is written only when the text wraps at the ceiling-clamped available width. Otherwise —
+empty text included — the slot goes back to the element's own cascade, dropping a previously
+balanced width and restoring a co-present `w-*` value. A `white-space: nowrap` element reaches the
+same verdict through the same comparison, which is why the prerequisite above is silent rather than
+an error.
 
 **Staleness:** the manipulator re-derives on attach; on its own `GeometryChangedEvent`; on a
-listener on the PARENT's `GeometryChangedEvent` (needed because the manipulator's own `maxWidth`
-write pins the element's resolved size, so an ancestor WIDENING never changes the element's own rect
-and would otherwise never re-fire the search — listening on the parent directly, the same element
-the available width is read from, closes that gap); and on the `ChangeEvent<string>` UI Toolkit
-raises whenever `.text` is reassigned on a live element (covers a text swap that happens to keep the
-same wrapped box size, and therefore raises no geometry event, from going stale). What's left
-uncovered: a resize confined entirely to a `ScrollView` parent's own content viewport with no
-accompanying change to the `ScrollView`'s own outer rect (e.g. a scrollbar toggling).
+listener on the PARENT's `GeometryChangedEvent` (needed because the manipulator's own `width` write
+pins the element's resolved size, so an ancestor WIDENING never changes the element's own rect and
+would otherwise never re-fire the search — listening on the parent directly, the same element the
+available width is read from, closes that gap); and on the `ChangeEvent<string>` UI Toolkit raises
+whenever `.text` is reassigned on a live element (covers a text swap that happens to keep the same
+wrapped box size, and therefore raises no geometry event, from going stale).
 
 **Not expressible in UI Toolkit (no USS property — intentionally absent):**
 
