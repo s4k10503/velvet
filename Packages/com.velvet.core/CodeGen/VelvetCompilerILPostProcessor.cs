@@ -19,6 +19,12 @@ namespace Velvet.CodeGen
         // Read off the runtime assembly this one references rather than spelled out: a literal would survive
         // an asmdef rename and make WillProcess answer false for every assembly, silently disabling
         // auto-memoization project-wide with no diagnostic to explain it.
+        // Resolving this loads Velvet into the ILPP runner, and WillProcess runs ahead of Process's exception
+        // handler, so a load failure surfaces as a type-initialization error rather than a diagnostic. That is
+        // accepted rather than falling back to a literal: CompilerWeaver's own statics take the same
+        // dependency (it cannot weave against a runtime it cannot load), so the fallback would buy a nicer
+        // message only by reinstating the silent project-wide disable in the very rename case this derivation
+        // exists to survive.
         private static readonly string VelvetAssemblyName = typeof(Velvet.Hooks).Assembly.GetName().Name;
 
         public override ILPostProcessor GetInstance() => this;

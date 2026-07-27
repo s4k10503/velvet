@@ -22,12 +22,24 @@ namespace Velvet.SourceGenerators.Tests
     /// no longer line up — on a missing hook, on a wrongly described one, and on an unpinned constant.
     /// </summary>
     /// <remarks>
-    /// Known limits of a syntax-only parse, none of which currently hide anything on this surface:
-    /// members inside a disabled preprocessor region are invisible (the symbol-free and <c>UNITY_EDITOR</c>
-    /// parses are unioned, so an editor-only declaration is covered, but another symbol's exclusive branch is
-    /// not); a parameter whose type is a custom delegate cannot be told from any other named type, so the
-    /// remainder is asserted against a recorded list instead of ignored; and where a hook declares more than
-    /// one delegate parameter the first is taken to be the factory.
+    /// Known limits, none of which currently hide anything on this surface:
+    /// <list type="bullet">
+    /// <item>A dependency list is recognized in exactly two forms — a parameter named <c>deps</c>, or a
+    /// trailing array written with the <c>object</c> keyword. A hook declaring one in any other shape (say
+    /// <c>IReadOnlyList&lt;object&gt; dependencies</c>, or <c>System.Object[]</c> spelled with the type name)
+    /// is not merely uncovered but invisible: it falls into neither half of the partition, so every fact here
+    /// passes while the hook has no exhaustive-deps coverage. Widen the two forms rather than assume the
+    /// remainder is caught.</item>
+    /// <item>Members inside a disabled preprocessor region are invisible. The symbol-free and
+    /// <c>UNITY_EDITOR</c> parses are unioned, so an editor-only declaration is covered, but another symbol's
+    /// exclusive branch is not.</item>
+    /// <item>A parameter whose type is a custom delegate cannot be told from any other named type, so the
+    /// non-matching remainder is asserted against a recorded list instead of ignored.</item>
+    /// <item>Where a hook declares more than one delegate parameter, the first is taken to be the factory.</item>
+    /// <item>The generated <c>V.Memoized&lt;T1..T8&gt;</c> overloads are emitted by the overload generator
+    /// rather than checked in under the runtime tree, so they are not parsed here: that descriptor is only
+    /// ever validated against the non-generic form. The generator's own snapshot tests cover their shape.</item>
+    /// </list>
     /// </remarks>
     public sealed class HookSurfaceDriftTests
     {
@@ -139,7 +151,8 @@ namespace Velvet.SourceGenerators.Tests
                 $"These {nameof(VelvetWellKnownNames)} constants end in neither '{MethodNameSuffix}' nor " +
                 $"'{TypeNameSuffix}', so nothing resolves them against the runtime: " +
                 $"[{string.Join(", ", unpinned)}]. Rename to a pinned suffix, or record it in " +
-                $"{nameof(ConstantsNamingNoDeclaration)}.");
+                $"{nameof(ConstantsNamingNoDeclaration)} alongside " +
+                $"[{string.Join("; ", ConstantsNamingNoDeclaration.Select(e => $"{e.Key} — {e.Value}"))}].");
         }
 
         [Fact]
