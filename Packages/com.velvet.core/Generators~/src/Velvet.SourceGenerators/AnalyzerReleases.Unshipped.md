@@ -1,7 +1,7 @@
 ; Unshipped analyzer release
 ; https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.Analyzers/ReleaseTrackingAnalyzers.Help.md
 ;
-; ID range convention (see Issue 887):
+; ID range convention:
 ;   VEL001-VEL099  Velvet.Memoize       [MemoizeMethod] codegen / [Component(Memoize=true)] validation
 ;   VEL100-VEL199  Velvet.Hooks         Rules-of-Hooks / exhaustive-deps / hook-only constraints
 ;   VEL200-VEL299  Velvet.Routing       (reserved)
@@ -15,7 +15,7 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
-VEL001 | Velvet.Memoize | Warning | [MemoizeMethod] requires at least one parameter
+VEL001 | Velvet.Memoize | Warning | [MemoizeMethod] arity 0 cannot prove the _Impl method is pure
 VEL002 | Velvet.Memoize | Warning | [MemoizeMethod] supports only 1-8 parameters
 VEL003 | Velvet.Memoize | Warning | [MemoizeMethod] does not support generic methods
 VEL004 | Velvet.Memoize | Warning | [MemoizeMethod] does not support async methods

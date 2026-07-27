@@ -23,13 +23,13 @@ namespace Velvet.SourceGenerators.Tests
         // table intentionally documents only this category and points elsewhere (AnalyzerReleases.Unshipped.md)
         // for the separate "Velvet.Hooks" rules-of-hooks diagnostics (VEL100/101), so the table's exact-match
         // comparison set is scoped to this category rather than to every diagnostic the assembly defines.
-        private const string MemoizeMethodAttributeCategory = "Velvet.Memoize";
+        private const string MemoizeCategory = "Velvet.Memoize";
 
         [Fact]
         public void MemoizationDocTable_ComparedAgainstMemoizeCategoryDescriptors_MatchesExactly()
         {
             var definedIds = AllDiagnosticDescriptors()
-                .Where(d => d.Category == MemoizeMethodAttributeCategory)
+                .Where(d => d.Category == MemoizeCategory)
                 .Select(d => d.Id)
                 .ToHashSet();
             var documentedIds = ExtractIds(File.ReadAllText(MemoizationDocPath()));
@@ -38,9 +38,9 @@ namespace Velvet.SourceGenerators.Tests
             var undefinedInDoc = documentedIds.Except(definedIds).OrderBy(x => x).ToList();
 
             Assert.True(missingFromDoc.Count == 0 && undefinedInDoc.Count == 0,
-                $"Documentation~/memoization.md's diagnostic table is out of sync with the {MemoizeMethodAttributeCategory} " +
+                $"Documentation~/memoization.md's diagnostic table is out of sync with the {MemoizeCategory} " +
                 $"category descriptors.\nDefined but missing from the doc table: [{string.Join(", ", missingFromDoc)}]\n" +
-                $"In the doc table but not a defined {MemoizeMethodAttributeCategory} descriptor: [{string.Join(", ", undefinedInDoc)}]");
+                $"In the doc table but not a defined {MemoizeCategory} descriptor: [{string.Join(", ", undefinedInDoc)}]");
         }
 
         [Fact]
