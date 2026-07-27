@@ -1,10 +1,8 @@
-// The class-name parse cache's drain hook is editor-only, and the unchanged-class measurement below
-// depends on it to put two content-identical trees on the class diff's content-compare path.
-#if UNITY_EDITOR
 using System;
 using NUnit.Framework;
 using Unity.PerformanceTesting;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests.Performance
 {
@@ -80,7 +78,7 @@ namespace Velvet.Tests.Performance
             // strings would hand back the very same arrays and the class diff would exit at its
             // identity check. Draining the cache reproduces what a component that rebuilds its VNode
             // tree every render actually hands the reconciler.
-            V.ClearClassNameCacheForTesting();
+            ClassNameCacheTestAccess.ClearForTest();
             var repeat = BuildRows("red");
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted);
 
@@ -255,4 +253,3 @@ namespace Velvet.Tests.Performance
         }
     }
 }
-#endif
