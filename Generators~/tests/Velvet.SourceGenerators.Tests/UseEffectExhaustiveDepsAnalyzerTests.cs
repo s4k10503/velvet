@@ -9,9 +9,9 @@ namespace Velvet.SourceGenerators.Tests
     /// <summary>Tests for <see cref="UseEffectExhaustiveDepsAnalyzer"/>.</summary>
     /// <remarks>
     /// All test sources use the <c>() =&gt; () =&gt; { ... }</c> nested-lambda shape so they typecheck against
-    /// the Velvet stub's <c>UseEffect(Func&lt;Action&gt; factory, object[] deps)</c> signature; the inner
-    /// lambda is the cleanup action. The analyzer descends into the outer lambda's tree and inspects every
-    /// captured local regardless of nesting depth.
+    /// <c>UseEffect(Func&lt;Action&gt; factory, object[] deps)</c>; the inner lambda is the cleanup action.
+    /// The analyzer descends into the outer lambda's tree and inspects every captured local regardless of
+    /// nesting depth.
     /// </remarks>
     public sealed class UseEffectExhaustiveDepsAnalyzerTests
     {
@@ -120,10 +120,9 @@ namespace MyApp.Pages
         }
 
         [Fact]
-        public void DoesNotReport_When_Captured_Local_Is_Action_Setter_From_Hook()
+        public void DoesNotReport_When_Captured_Local_Is_Setter_From_Hook()
         {
-            // Stable hook returns (Action / Action<T>) are exempted: the setter from UseState is a stable
-            // reference across renders and need not be in deps.
+            // The setter from UseState is a stable reference across renders and need not be in deps.
             const string source = @"
 namespace MyApp.Pages
 {
@@ -132,7 +131,7 @@ namespace MyApp.Pages
         public static void Render()
         {
             var (value, setValue) = global::Velvet.Hooks.UseState(0);
-            global::Velvet.Hooks.UseEffect(() => () => setValue(1), new object[] { });
+            global::Velvet.Hooks.UseEffect(() => () => setValue.Invoke(1), new object[] { });
         }
     }
 }";
@@ -840,7 +839,7 @@ namespace MyApp.Pages
     {
         public static void Render()
         {
-            var (onTick, setOnTick) = global::Velvet.Hooks.UseState<System.Action>(null);
+            var (onTick, setOnTick) = global::Velvet.Hooks.UseState<System.Action>(default(System.Action));
             global::Velvet.Hooks.UseEffect(() => () => onTick(), new object[] { });
         }
     }
@@ -864,7 +863,7 @@ namespace MyApp.Pages
         public static void Render()
         {
             var (count, setCount) = global::Velvet.Hooks.UseState(0);
-            global::Velvet.Hooks.UseEffect(() => () => { System.Console.WriteLine(count); setCount(1); }, new object[] { count });
+            global::Velvet.Hooks.UseEffect(() => () => { System.Console.WriteLine(count); setCount.Invoke(1); }, new object[] { count });
         }
     }
 }";

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using Microsoft.CodeAnalysis;
@@ -80,7 +79,7 @@ namespace Velvet.SourceGenerators.Tests
                 "names the runtime namespace, which is not a type or method declaration",
         };
 
-        private static readonly Lazy<RuntimeSourceIndex> Runtime = new(RuntimeSourceIndex.Build);
+        private static RuntimeSourceIndex Runtime => RuntimeSourceIndex.Shared;
 
         [Fact]
         public void Given_WellKnownMethodNameConstants_When_ResolvedAgainstRuntimeSource_Then_EachNamesADeclaredMethod()
@@ -88,7 +87,7 @@ namespace Velvet.SourceGenerators.Tests
             // Arrange
             var constants = ConstantsWithSuffix(MethodNameSuffix);
             var declared = HookHostTypes
-                .SelectMany(type => Runtime.Value.PublicMethodNamesOf(type))
+                .SelectMany(type => Runtime.PublicMethodNamesOf(type))
                 .ToHashSet(StringComparer.Ordinal);
             Assume.NotEmpty(constants, $"no '{MethodNameSuffix}' constants found on {nameof(VelvetWellKnownNames)}");
             Assume.NotEmpty(declared, "no public methods parsed off the runtime hook host types");
@@ -112,7 +111,7 @@ namespace Velvet.SourceGenerators.Tests
         {
             // Arrange
             var constants = ConstantsWithSuffix(TypeNameSuffix);
-            var declared = Runtime.Value.DeclaredTypeFullNames;
+            var declared = Runtime.DeclaredTypeFullNames;
             Assume.NotEmpty(constants, $"no '{TypeNameSuffix}' constants found on {nameof(VelvetWellKnownNames)}");
             Assume.NotEmpty(declared, "no type declarations parsed off the runtime sources");
 
@@ -313,7 +312,7 @@ namespace Velvet.SourceGenerators.Tests
         {
             foreach (var type in HookHostTypes)
             {
-                foreach (var declared in Runtime.Value.PublicMethodsOf(type))
+                foreach (var declared in Runtime.PublicMethodsOf(type))
                 {
                     var overload = TryDescribe(declared);
                     if (overload is not null) yield return overload.Value;
@@ -454,137 +453,5 @@ namespace Velvet.SourceGenerators.Tests
             int DepsArgIndex,
             bool DepsAreParams,
             int FactoryParameterCount);
-
-        private readonly record struct MethodDeclaration(string ContainingTypeFullName, MethodDeclarationSyntax Method);
-
-        /// <summary>
-        /// Namespace-qualified index of the type and public-method declarations in the Velvet runtime sources.
-        /// </summary>
-        private sealed class RuntimeSourceIndex
-        {
-            // The Unity build defines this; parsing with and without it keeps editor-only declarations visible.
-            private static readonly string[] EditorPreprocessorSymbols = { "UNITY_EDITOR" };
-
-            private readonly List<MethodDeclaration> _methods;
-
-            private RuntimeSourceIndex(HashSet<string> types, List<MethodDeclaration> methods)
-            {
-                DeclaredTypeFullNames = types;
-                _methods = methods;
-            }
-
-            public IReadOnlySet<string> DeclaredTypeFullNames { get; }
-
-            public IEnumerable<MethodDeclaration> PublicMethodsOf(string containingTypeFullName) =>
-                _methods.Where(m => m.ContainingTypeFullName == containingTypeFullName);
-
-            public IEnumerable<string> PublicMethodNamesOf(string containingTypeFullName) =>
-                PublicMethodsOf(containingTypeFullName).Select(m => m.Method.Identifier.ValueText);
-
-            public static RuntimeSourceIndex Build()
-            {
-                var types = new HashSet<string>(StringComparer.Ordinal);
-                var methods = new List<MethodDeclaration>();
-
-                foreach (var file in RuntimeSourceFiles())
-                {
-                    var text = File.ReadAllText(file);
-                    Collect(CSharpSyntaxTree.ParseText(text, DefaultParseOptions), types, methods);
-                    Collect(CSharpSyntaxTree.ParseText(text, EditorParseOptions), types, methods);
-                }
-
-                return new RuntimeSourceIndex(types, methods);
-            }
-
-            private static CSharpParseOptions DefaultParseOptions =>
-                CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest);
-
-            private static CSharpParseOptions EditorParseOptions =>
-                DefaultParseOptions.WithPreprocessorSymbols(EditorPreprocessorSymbols);
-
-            private static void Collect(SyntaxTree tree, HashSet<string> types, List<MethodDeclaration> methods)
-            {
-                var root = tree.GetRoot();
-
-                // Enums and delegates carry no methods but can still be named by a well-known-name constant.
-                foreach (var declaration in root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>())
-                {
-                    AddNames(types, declaration, declaration.Identifier.ValueText);
-                }
-                foreach (var declaration in root.DescendantNodes().OfType<DelegateDeclarationSyntax>())
-                {
-                    AddNames(types, declaration, declaration.Identifier.ValueText);
-                }
-
-                foreach (var declaration in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
-                {
-                    var displayName = QualifiedName(declaration, declaration.Identifier.ValueText, nestingSeparator: ".");
-                    foreach (var method in declaration.Members.OfType<MethodDeclarationSyntax>())
-                    {
-                        if (!method.Modifiers.Any(SyntaxKind.PublicKeyword)) continue;
-                        methods.Add(new MethodDeclaration(displayName, method));
-                    }
-                }
-            }
-
-            // A nested type is spelled Outer.Inner by the analyzer's display-string comparisons and Outer+Inner
-            // by the attribute lookups' metadata names; both forms are indexed so either resolves.
-            private static void AddNames(HashSet<string> types, SyntaxNode declaration, string identifier)
-            {
-                types.Add(QualifiedName(declaration, identifier, nestingSeparator: "."));
-                types.Add(QualifiedName(declaration, identifier, nestingSeparator: "+"));
-            }
-
-            private static string QualifiedName(SyntaxNode declaration, string identifier, string nestingSeparator)
-            {
-                var typeSegments = new List<string> { identifier };
-                var containingNamespace = string.Empty;
-                foreach (var ancestor in declaration.Ancestors())
-                {
-                    switch (ancestor)
-                    {
-                        case BaseTypeDeclarationSyntax outer:
-                            typeSegments.Insert(0, outer.Identifier.ValueText);
-                            break;
-                        case BaseNamespaceDeclarationSyntax ns:
-                            containingNamespace = ns.Name.ToString() +
-                                (containingNamespace.Length == 0 ? string.Empty : "." + containingNamespace);
-                            break;
-                    }
-                }
-
-                var nested = string.Join(nestingSeparator, typeSegments);
-                return containingNamespace.Length == 0 ? nested : containingNamespace + "." + nested;
-            }
-
-            // Colocated tests declare their own fixtures and would let a stub stand in for a renamed runtime
-            // type, so only production sources are indexed.
-            private static List<string> RuntimeSourceFiles()
-            {
-                var root = SolutionPaths.RuntimeRoot();
-                var files = Directory
-                    .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
-                    .Where(path => !path.Split(Path.DirectorySeparatorChar).Contains("Tests"))
-                    .ToList();
-                if (files.Count == 0)
-                {
-                    throw new InvalidOperationException($"No runtime C# sources found under '{root}'.");
-                }
-                return files;
-            }
-        }
-
-        private static class Assume
-        {
-            public static void NotEmpty<T>(IReadOnlyCollection<T> values, string what)
-            {
-                if (values.Count == 0)
-                {
-                    throw new InvalidOperationException(
-                        $"Precondition failed: {what}. There is nothing to compare against, which would make " +
-                        "this guard pass vacuously.");
-                }
-            }
-        }
     }
 }
