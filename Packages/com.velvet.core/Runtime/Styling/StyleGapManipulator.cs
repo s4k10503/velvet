@@ -110,15 +110,13 @@ namespace Velvet
         // never conditions on flex-direction, so ResolveEdge OR's a marker with a detected row-reverse /
         // column-reverse rather than XOR'ing: the idiomatic flex-row-reverse space-x-4 space-x-reverse still
         // lands trailing instead of cancelling back to leading.
-        // Source asymmetry (by design, not an oversight): these markers are extracted from the VNode's
-        // OWN classNames array at gap-config time (FiberNodePatcher.ApplyGapManipulator), the same source
-        // StyleGapClass.TryExtract already reads the gap value and axis from — so a variant-prefixed
-        // md:space-x-reverse resolves however the variant system resolves md: classes generally (it either
-        // is or isn't in THIS render's classNames, before any manipulator ever runs). ResolveDirection
-        // below, by contrast, reads the live element's classList, because unlike the gap spec itself the
-        // direction can change out from under the manipulator without a matching gap-config patch (see
-        // ResolveDirection). The two halves of this feature therefore consult different lists on principle,
-        // not by accident — each is authoritative for what it answers.
+        // These markers are extracted at gap-config time from the same class array
+        // StyleGapClass.TryExtract reads the gap value and axis from, so a variant-prefixed
+        // md:space-x-reverse resolves with the rest of the spec: the patcher switches that array to the
+        // element's live class list once a variant has toggled any layout gate class onto it, which is what
+        // carries the marker across a breakpoint. ResolveDirection below reads the live classList
+        // unconditionally instead, because unlike the gap spec the direction can change out from under the
+        // manipulator with no gap-config pass at all (see ResolveDirection).
         private bool _xReverse;
         private bool _yReverse;
 
@@ -537,16 +535,13 @@ namespace Velvet
         // way (a custom stylesheet rule, an inline style) with NONE of the five classes on the element — a
         // direction class, when present, always outranks a custom stylesheet or inline flexDirection.
         // .grid also sets flex-direction: row in _layout.uss, but is deliberately NOT part of this scan:
-        // FiberNodePatcher.ApplyGapManipulator checks StyleGridClass.HasGridClass against the reconciled
-        // classNames array before this manipulator is ever created or updated, and that check matches the
-        // literal string "grid" too, so a "grid" present in THAT array suppresses the manipulator — its gap
-        // is owned by StyleGridManipulator instead. (This does not make "grid" provably unreachable on the
-        // LIVE class list this method actually reads: a variant-gated class, e.g. a responsive md:grid,
-        // is added straight to the live element by the conditional-variant manipulator once its breakpoint
-        // is met, outside the reconciled classNames array HasGridClass checked — a pre-existing gap in that
-        // suppression, not something introduced here. It happens not to matter: "grid" implies Row, which
-        // coincides with this method's own eventual fallback default, so omitting the check never produces
-        // a different answer — it just reaches the same answer by a different path.)
+        // FiberNodePatcher's gap configuration checks StyleGridClass.HasGridClass before this manipulator
+        // is ever created or updated — against the reconciled class array normally, and against the live
+        // class list once a variant has toggled a layout gate class onto the element (so a responsive
+        // md:grid suppresses it too) — and that check matches the literal string "grid" as well, so a grid
+        // container never carries this manipulator at all; its gap is owned by StyleGridManipulator. Even
+        // if it somehow did, "grid" implies Row, which coincides with this method's own fallback default,
+        // so omitting it from the scan cannot produce a different answer.
         private Direction ResolveDirection()
         {
             if (target.ClassListContains("flex-row-reverse"))

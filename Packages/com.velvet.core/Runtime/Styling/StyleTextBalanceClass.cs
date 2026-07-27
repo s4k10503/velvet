@@ -7,6 +7,11 @@ namespace Velvet
     {
         private const string ClassName = "text-balance";
 
+        // Single-token half of HasTextBalanceClass. Its own predicate so the token name has ONE
+        // definition — both the array scan below and the variant-payload gate (StyleVariantPayload)
+        // resolve the family through here.
+        public static bool IsTextBalanceToken(string cls) => cls == ClassName;
+
         // Cheap early-out gate: true when classNames carries the exact `text-balance` token. No
         // allocation — used to skip manipulator attach/lookup on the common element with no such class.
         public static bool HasTextBalanceClass(string[] classNames)
@@ -17,7 +22,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (cls == ClassName)
+                if (IsTextBalanceToken(cls))
                 {
                     return true;
                 }

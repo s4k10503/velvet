@@ -113,6 +113,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `null` preserves; give it an explicit `key` when the index itself moves, such as a provider appended
   after a variable number of siblings — keying the provider pins its own place among its siblings, so an
   unkeyed fragment or component enclosing it needs a key of its own if that is what moves.
+- A `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*` or `text-balance` class reached through a
+  variant (`md:grid`, `dark:gap-4`, `hover:divide-y`, `[&>*]:gap-2`, …) had no effect: those four
+  utilities are realised by manipulators the reconciler attaches from the class array it reconciled,
+  and a variant payload is written straight onto the element's live class list when its signal
+  activates, never passing back through the reconciler. So `className="gap-4 md:grid md:grid-cols-3"`
+  kept its flex-style gap margins above the breakpoint and was never laid out in columns at all; the
+  same shape left `md:gap-4` spacing nothing. Each of the four is now re-derived when a variant
+  toggles it, in either direction, so a variant-gated class behaves exactly like a literal one —
+  including the ownership handoff between gap and grid (the grid owns its children's margins, and the
+  gap manipulator is suppressed for it).
+- Losing a `grid` class while keeping a `gap-*` one (`grid grid-cols-3 gap-4` → `flex gap-4`) left the
+  children with no spacing at all: the arriving gap manipulator wrote its margins before the departing
+  grid manipulator cleared the margins IT had written, and that clear took the new ones with it.
+  Whichever of the two is departing now releases its writes first.
 - The VEL100 exhaustive-deps analyzer now also covers `Hooks.UseInsertionEffect` and `Hooks.UseBlocker`.
   Both take a closure plus a deps array, but neither was listed as a deps-comparing hook, so a captured
   value missing from their deps went unreported.
