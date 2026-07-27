@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -13,6 +14,7 @@ namespace Velvet.Tests
     /// <item>A cached array holds the space-split tokens of its key.</item>
     /// <item>When the cache reaches its size bound the next distinct key logs a warning and clears the cache,
     /// then caches the triggering key, so previously cached keys re-parse to fresh instances afterward.</item>
+    /// <item>Draining the cache makes an already-parsed string parse to a fresh array instance.</item>
     /// </list>
     /// Also specifies the contract of the <see cref="StyleClassNames"/> class-name builder
     /// (<see cref="StyleClassNames.Class"/> joins its parts with a single space, skips <c>null</c>/empty parts,
@@ -26,7 +28,8 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// The cache is process-wide static, so <see cref="SetUp"/> drains it via
-    /// <c>V.ClearClassNameCacheForTesting()</c> to keep other fixtures' entries from pushing past the bound.
+    /// <see cref="ClassNameCacheTestAccess.ClearForTest"/> to keep other fixtures' entries from pushing past
+    /// the bound.
     /// </remarks>
     [TestFixture]
     internal sealed class ParseClassNamesCacheTests
@@ -34,7 +37,7 @@ namespace Velvet.Tests
         [SetUp]
         public void SetUp()
         {
-            V.ClearClassNameCacheForTesting();
+            ClassNameCacheTestAccess.ClearForTest();
         }
 
         #region Cache behavior
@@ -148,6 +151,24 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(firstAfterOverflow, Is.Not.SameAs(firstBeforeOverflow));
+        }
+
+        #endregion
+
+        #region Cache drain
+
+        [Test]
+        public void Given_ParsedString_When_CacheDrained_Then_SameStringReParsesToFreshInstance()
+        {
+            // Arrange
+            var beforeDrain = V.ParseClassNames("drain-probe drain-probe--active");
+
+            // Act
+            ClassNameCacheTestAccess.ClearForTest();
+            var afterDrain = V.ParseClassNames("drain-probe drain-probe--active");
+
+            // Assert
+            Assert.That(afterDrain, Is.Not.SameAs(beforeDrain));
         }
 
         #endregion
