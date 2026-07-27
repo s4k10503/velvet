@@ -19,6 +19,12 @@ class, including the ownership rules between them: `className="gap-4 md:grid md:
 gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from
 `md` up.
 
+A payload is **toggled** on the class list, not reference-counted against the base, so declaring the
+same token both literally and behind a variant is not the same as declaring it once: in
+`gap-4 md:gap-4` the `md:` payload *removes* `gap-4` when the breakpoint deactivates, taking the
+literal one with it. Declare the base value once and let the variant override it — `gap-4 md:gap-8`,
+the idiomatic form — rather than repeating it.
+
 ## The variant set
 
 | Family | Prefixes | Driven by |

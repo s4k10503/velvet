@@ -263,6 +263,8 @@ namespace Velvet.Tests
             var tree = new VNode[] { V.Label(className: "max-w-[50px] dark:text-balance", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
             var label = scope.Root.Q<Label>();
+            Assume.That(label.style.maxWidth.value.value, Is.EqualTo(50f),
+                "Precondition: the co-present max-w-[50px] utility resolved its own value at mount");
             VelvetTheme.IsDark = true;
             Assume.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(1),
                 "Precondition: the dark payload attached the manipulator that borrows the slot");
@@ -284,6 +286,8 @@ namespace Velvet.Tests
             var tree1 = new VNode[] { V.Label(className: "max-w-[50px] text-balance dark:gap-4", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
             var label = scope.Root.Q<Label>();
+            Assume.That(label.style.maxWidth.value.value, Is.EqualTo(50f),
+                "Precondition: the co-present max-w-[50px] utility resolved its own value at mount");
             VelvetTheme.IsDark = true;
             Assume.That(label.ClassListContains("gap-4"), Is.True,
                 "Precondition: the dark payload put a layout gate class on the live class list");
@@ -294,6 +298,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(label.style.maxWidth.value.value, Is.EqualTo(50f));
+        }
+
+        [Test]
+        public void Given_ATextBalanceBesideAVariantSuppliedMaxWidth_When_TextBalanceIsRenderedAway_Then_TheVariantsMaxWidthIsRestored()
+        {
+            // Arrange — the max-width here is supplied by the dark: layer, not by a utility of the
+            // element's own. That is the case no class-list scan can restore, on either array: a variant
+            // token is skipped, because its payload is not a token the element itself carries. Nothing
+            // gates layout on this element, so it also proves the restore on the ordinary reconcile path.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { V.Label(className: "dark:max-w-[80px] text-balance", text: "hello") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var label = scope.Root.Q<Label>();
+            VelvetTheme.IsDark = true;
+            Assume.That(label.style.maxWidth.value.value, Is.EqualTo(80f),
+                "Precondition: the dark payload resolved its own max-width before text-balance is removed");
+
+            // Act — remove just the text-balance token; the dark: layer is untouched.
+            var tree2 = new VNode[] { V.Label(className: "dark:max-w-[80px]", text: "hello") };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert
+            Assert.That(label.style.maxWidth.value.value, Is.EqualTo(80f));
         }
     }
 }
