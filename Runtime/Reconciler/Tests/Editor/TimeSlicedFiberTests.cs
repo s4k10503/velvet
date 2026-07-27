@@ -123,8 +123,8 @@ namespace Velvet.Tests
             fiber.FlushStateWithTinyBudgetForTest();
 
             // Assert — every fixture that forces a park depends on this; without it those fixtures would run at
-            // the production budget, never park, and report Inconclusive on their park precondition rather than
-            // failing
+            // the production budget and never park, which is why each of them compares its parked state inside
+            // its own assertion rather than gating on it
             Assert.That(fiber.PendingReconcileBudgetMs,
                 Is.EqualTo(MountedTreeTestExtensions.TinyTimeSlicedBudgetMs),
                 "A flush carries the caller's own time-sliced budget through to the fiber's resume budget");
@@ -191,14 +191,15 @@ namespace Velvet.Tests
             s_flatListCount = 40;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             fiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(fiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the flush parked mid-commit");
+            var parkedMidCommit = fiber.HasPendingReconcileWorkForTest();
 
             // Act
             fiber.DrainTimeSlicedReconcileForTest();
 
             // Assert
-            Assert.That((fiber.HasPendingReconcileWorkForTest(), _root.childCount), Is.EqualTo((false, 40)),
-                "The resume drains the remaining work and commits the full new list");
+            Assert.That((parkedMidCommit, fiber.HasPendingReconcileWorkForTest(), _root.childCount),
+                Is.EqualTo((true, false, 40)),
+                "The flush parks mid-commit and the resume drains the remaining work, committing the full new list");
         }
 
         #endregion
@@ -262,10 +263,10 @@ namespace Velvet.Tests
             s_refOrderingCount = 40;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             fiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(fiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the commit paused mid-flight");
 
-            // Assert
-            Assert.That(s_refOrderingEffectRan, Is.False,
+            // Assert — "deferred" is a claim about a commit that is still in flight, so the pause has to be part
+            // of the comparison: an effect that never ran at all reads identically on its own
+            Assert.That((fiber.HasPendingReconcileWorkForTest(), s_refOrderingEffectRan), Is.EqualTo((true, false)),
                 "UseLayoutEffect is deferred while the commit is paused (it would otherwise read a not-yet-attached ref)");
         }
 
@@ -281,14 +282,15 @@ namespace Velvet.Tests
             s_refOrderingCount = 40;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             fiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(fiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: the commit paused mid-flight");
+            var pausedMidFlight = fiber.HasPendingReconcileWorkForTest();
 
             // Act
             fiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — the ref rides the LAST leaf (created only after the resume), yet the effect sees it attached
-            Assert.That((s_refOrderingEffectRan, s_refOrderingRefWasNullAtEffect), Is.EqualTo((true, false)),
-                "After the commit completes the deferred layout effect runs once and observes its ref'd element attached");
+            Assert.That((pausedMidFlight, s_refOrderingEffectRan, s_refOrderingRefWasNullAtEffect),
+                Is.EqualTo((true, true, false)),
+                "After the paused commit completes the deferred layout effect runs once and observes its ref'd element attached");
         }
 
         #endregion
@@ -308,7 +310,7 @@ namespace Velvet.Tests
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_siblingBFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks at A's slot count");
+            var bParkedAtASlotCount = s_siblingBFiber.HasPendingReconcileWorkForTest();
 
             // Act — A grows by 2 synchronously (Normal lane), which must re-base parked B's captured slotStart
             s_siblingACount = 5;
@@ -317,8 +319,8 @@ namespace Velvet.Tests
             s_siblingBFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert
-            Assert.That(SiblingLayout(host, aCount: 5, bCount: 30), Is.True,
-                "B's resumed body lands after A's grown prefix, in order, without corrupting either slot");
+            Assert.That((bParkedAtASlotCount, SiblingLayout(host, aCount: 5, bCount: 30)), Is.EqualTo((true, true)),
+                "B parks, and its resumed body lands after A's grown prefix, in order, without corrupting either slot");
         }
 
         [Test]
@@ -333,7 +335,7 @@ namespace Velvet.Tests
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_siblingBFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks at slotStart = 5");
+            var bParkedAtSlotStartFive = s_siblingBFiber.HasPendingReconcileWorkForTest();
 
             // Act — A shrinks 5 -> 2 synchronously, so B's parked slotStart must re-base by -3
             s_siblingACount = 2;
@@ -342,8 +344,8 @@ namespace Velvet.Tests
             s_siblingBFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert
-            Assert.That(SiblingLayout(host, aCount: 2, bCount: 30), Is.True,
-                "B's resumed body lands after A's left-shifted prefix, in order");
+            Assert.That((bParkedAtSlotStartFive, SiblingLayout(host, aCount: 2, bCount: 30)), Is.EqualTo((true, true)),
+                "B parks, and its resumed body lands after A's left-shifted prefix, in order");
         }
 
         [Test]
@@ -360,11 +362,11 @@ namespace Velvet.Tests
             s_siblingBReversed = true;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_siblingBFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks");
+            var bParked = s_siblingBFiber.HasPendingReconcileWorkForTest();
             s_siblingCReversed = true;
             s_siblingCFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_siblingCFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_siblingCFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: C parks");
+            var cParked = s_siblingCFiber.HasPendingReconcileWorkForTest();
 
             // Act — A grows 2 -> 4 synchronously while both B and C are parked
             s_siblingACount = 4;
@@ -374,8 +376,9 @@ namespace Velvet.Tests
             s_siblingCFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — the shift loop walks every following sibling, so A's single delta re-bases both B and C
-            Assert.That(ThreeSiblingReversedLayout(host, aCount: 4, bCount: 20, cCount: 20), Is.True,
-                "A's single delta re-bases both parked B and C; each resumes its reversed order at its rebased slot");
+            Assert.That((bParked, cParked, ThreeSiblingReversedLayout(host, aCount: 4, bCount: 20, cCount: 20)),
+                Is.EqualTo((true, true, true)),
+                "Both B and C park, and A's single delta re-bases both; each resumes its reversed order at its rebased slot");
         }
 
         [Test]
@@ -394,7 +397,7 @@ namespace Velvet.Tests
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_siblingBFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks mid-commit");
+            var bParkedMidCommit = s_siblingBFiber.HasPendingReconcileWorkForTest();
 
             // Act — A grows 2 -> 5 synchronously; B's parked SlotLimit (= C's MountSlotStart) must re-base by +3
             // too, or the resumed Common-phase seam check rejects B's own trailing rows as out-of-range and
@@ -405,8 +408,9 @@ namespace Velvet.Tests
             s_siblingBFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert
-            Assert.That(ThreeSiblingAscendingLayout(host, aCount: 5, bCount: 30, cCount: 20), Is.True,
-                "B resumes within its rebased SlotLimit, patching its trailing rows in place instead of mis-creating them at the C seam");
+            Assert.That((bParkedMidCommit, ThreeSiblingAscendingLayout(host, aCount: 5, bCount: 30, cCount: 20)),
+                Is.EqualTo((true, true)),
+                "B parks and resumes within its rebased SlotLimit, patching its trailing rows in place instead of mis-creating them at the C seam");
         }
 
         [Test]
@@ -423,20 +427,21 @@ namespace Velvet.Tests
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_siblingBFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks at A's original slot count");
+            var bParkedAtAOriginalSlotCount = s_siblingBFiber.HasPendingReconcileWorkForTest();
 
             // Act — A grows 2 -> 25 on the Transition lane so A itself parks and commits its +23 delta across
             // several slices; driving A to completion exercises both the partial and incremental propagation paths
             s_siblingACount = 25;
             s_siblingAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_siblingAFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_siblingAFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: A itself parks");
+            var aParked = s_siblingAFiber.HasPendingReconcileWorkForTest();
             s_siblingAFiber.DrainTimeSlicedReconcileForTest();
             s_siblingBFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert
-            Assert.That(SiblingLayout(host, aCount: 25, bCount: 30), Is.True,
-                "B's resumed body lands after A's incrementally-grown prefix, in order");
+            Assert.That((bParkedAtAOriginalSlotCount, aParked, SiblingLayout(host, aCount: 25, bCount: 30)),
+                Is.EqualTo((true, true, true)),
+                "Both siblings park, and B's resumed body lands after A's incrementally-grown prefix, in order");
         }
 
         [Test]
@@ -452,7 +457,7 @@ namespace Velvet.Tests
             s_siblingACount = 20;
             s_siblingAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_siblingAFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_siblingAFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: A parked mid-grow");
+            var aParkedMidGrow = s_siblingAFiber.HasPendingReconcileWorkForTest();
 
             // Act — A re-renders AGAIN (Normal lane) while still parked. RenderAndReconcile force-drains the parked
             // grow before the new render; the drain's child-count delta must propagate to B (else B's MountSlotStart
@@ -463,8 +468,8 @@ namespace Velvet.Tests
             s_siblingAFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert
-            Assert.That(SiblingLayout(host, aCount: 25, bCount: 3), Is.True,
-                "The force-drained grow's delta propagated to B, so B's rows stay aligned after A's grown prefix");
+            Assert.That((aParkedMidGrow, SiblingLayout(host, aCount: 25, bCount: 3)), Is.EqualTo((true, true)),
+                "A parks mid-grow and the force-drained grow's delta propagates to B, so B's rows stay aligned after A's grown prefix");
         }
 
         [Test]
@@ -484,7 +489,7 @@ namespace Velvet.Tests
             s_siblingBCount = 30;
             s_siblingBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_siblingBFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_siblingBFiber.HasPendingReconcileWorkForTest(), Is.True, "Precondition: B parks at slotStart = 1");
+            var bParkedAtSlotStartOne = s_siblingBFiber.HasPendingReconcileWorkForTest();
 
             // Act — the inner grows synchronously; the host-level child count (the div itself) is unchanged
             s_nestedInnerCount = 6;
@@ -493,8 +498,9 @@ namespace Velvet.Tests
             s_siblingBFiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — the wrapper absorbs the delta, so B's slot does not move
-            Assert.That(NestedLayout(host, innerDiv, innerCount: 6, bCount: 30), Is.True,
-                "The nested growth stays inside the wrapper; B's body still lands after the single Outer div");
+            Assert.That((bParkedAtSlotStartOne, NestedLayout(host, innerDiv, innerCount: 6, bCount: 30)),
+                Is.EqualTo((true, true)),
+                "B parks, the nested growth stays inside the wrapper, and B's body still lands after the single Outer div");
         }
 
         #endregion
@@ -523,11 +529,12 @@ namespace Velvet.Tests
             s_rotationSorted = true;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             fiber.FlushStateWithTinyBudgetForTest();
+            var parkedMidPass = fiber.HasPendingReconcileWorkForTest();
             fiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — every leaf sits at its sorted slot; the time-sliced reorder must not transpose any pair.
-            Assert.That(RotationSortedLayout(_root, 24), Is.True,
-                "After the time-sliced reorder the keyed list is fully sorted r-0..r-23 with no transposed pair");
+            Assert.That((parkedMidPass, RotationSortedLayout(_root, 24)), Is.EqualTo((true, true)),
+                "The keyed reorder parks mid-pass and, after resuming, the list is fully sorted r-0..r-23 with no transposed pair");
         }
 
         #endregion

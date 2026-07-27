@@ -253,8 +253,7 @@ namespace Velvet.Tests
             s_portalAdded = true;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_listFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_listFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: the tiny budget parked the grow mid-commit");
+            var parkedMidCommit = s_listFiber.HasPendingReconcileWorkForTest();
             s_listFiber.DrainTimeSlicedReconcileForTest();
             Assume.That(s_fallbackShown, Is.True,
                 "Precondition: the Portal's error boundary actually caught the throw");
@@ -268,7 +267,7 @@ namespace Velvet.Tests
             // Assert — RED without the fix: a stale IsAborted left over from the Portal drain makes
             // ChildReconciler.Reconcile's entry guard silently no-op this fiber's entire reconcile, leaving
             // the old text in place instead of committing the update.
-            Assert.That(_root.Q<Label>("counter-label").text, Is.EqualTo("updated"));
+            Assert.That((parkedMidCommit, _root.Q<Label>("counter-label").text), Is.EqualTo((true, "updated")));
         }
 
         [Test]
@@ -289,8 +288,7 @@ namespace Velvet.Tests
             s_keyedFragmentAdded = true;
             s_listFiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
             s_listFiber.FlushStateWithTinyBudgetForTest();
-            Assume.That(s_listFiber.HasPendingReconcileWorkForTest(), Is.True,
-                "Precondition: the tiny budget parked the grow mid-commit");
+            var parkedMidCommit = s_listFiber.HasPendingReconcileWorkForTest();
             s_listFiber.DrainTimeSlicedReconcileForTest();
             Assume.That(_root.Q<Label>("keyed-fragment-leaf"), Is.Not.Null,
                 "Precondition: the keyed Fragment's subtree really was expanded and committed");
@@ -298,7 +296,7 @@ namespace Velvet.Tests
             // Assert — RED without the continuation boundary clearing the table: the entries registered by
             // the resumed slice's expansion outlive the pass on the shared context (nothing else runs), so
             // the count stays nonzero here instead of resetting at the pass's genuine end.
-            Assert.That(ctx.EffectiveKeys.Count, Is.EqualTo(0));
+            Assert.That((parkedMidCommit, ctx.EffectiveKeys.Count), Is.EqualTo((true, 0)));
         }
 
         [Component]
