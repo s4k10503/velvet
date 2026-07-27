@@ -763,10 +763,10 @@ namespace Velvet.Tests
     /// Registry-form <c>V.Portal(targetId:)</c> is used throughout: its target resolves at CREATE time, and its
     /// drain-time resolution falls through to the exact same nested-Reconcile call as the layer
     /// (<c>V.Portal(layer:)</c>) and <c>V.WorldSpace</c> arms once the target is known, so this one form
-    /// exercises the shared fix for all three. The tiny <see cref="FiberLane.TimeSlicedBudgetOverrideForTest"/>
-    /// forces a deterministic pause after one node (the UIToolkit scheduler does not advance in EditMode), and a
-    /// parked slice is driven to completion manually via
-    /// <see cref="MountedTreeTestExtensions.DrainTimeSlicedReconcileForTest"/>.
+    /// exercises the shared fix for all three.
+    /// <see cref="MountedTreeTestExtensions.FlushStateWithTinyBudgetForTest"/> forces a deterministic pause after
+    /// one node (the UIToolkit scheduler does not advance in EditMode), and a parked slice is driven to
+    /// completion manually via <see cref="MountedTreeTestExtensions.DrainTimeSlicedReconcileForTest"/>.
     /// </remarks>
     [TestFixture]
     internal sealed class TimeSlicedPortalDrainParkTests
@@ -777,7 +777,6 @@ namespace Velvet.Tests
         public void SetUp()
         {
             FiberWorkLoop.IsInDiscreteEvent = false;
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             _root = new VisualElement();
             FiberPortalRegistry.Clear();
             ResetIndexedList();
@@ -787,7 +786,6 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            FiberLane.TimeSlicedBudgetOverrideForTest = -1;
             FiberWorkLoop.IsInDiscreteEvent = false;
             FiberPortalRegistry.Clear();
         }
@@ -807,10 +805,9 @@ namespace Velvet.Tests
             // (the Portal) both enqueues the deferred mount AND exhausts the budget, so this SAME FlushState call
             // parks with the Portal still queued — its own top-level finally (Reconciler.Reconcile) drains that
             // queue before FlushState returns, re-entering ChildReconciler.Reconcile on this fiber's own instance.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_indexedTotalCount = 41;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(fiber);
+            fiber.FlushStateWithTinyBudgetForTest();
             fiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — RED without the fix: the same-pass drain's nested Reconcile call wipes PendingIndexedState
@@ -832,10 +829,9 @@ namespace Velvet.Tests
             Assume.That(_root.childCount, Is.EqualTo(0), "Precondition: the initial mount renders no rows");
 
             // Act — same tiny-budget grow as the unkeyed case, on the keyed path.
-            FiberLane.TimeSlicedBudgetOverrideForTest = 0.0001;
             s_keyedTotalCount = 41;
             fiber.ScheduleRerenderForTest(FiberUpdatePriority.Transition);
-            FiberWorkLoop.FlushState(fiber);
+            fiber.FlushStateWithTinyBudgetForTest();
             fiber.DrainTimeSlicedReconcileForTest();
 
             // Assert — RED without the fix: DiscardPendingKeyedState (invoked by the same entry-clear) also
