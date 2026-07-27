@@ -193,9 +193,10 @@ namespace Velvet.Tests
 
             // Assert — the single-line gate measures at the ceiling-clamped width, so this text counts as
             // wrapping and gets balanced. Measuring at the parent's width instead would dismiss it as
-            // single-line and leave the box sitting at exactly the ceiling; the margin keeps that verdict
-            // distinguishable from a search that merely returned its own upper bound.
-            Assert.That(balanced.resolvedStyle.width, Is.LessThan(CoPresentMaxWidthPx - 5f));
+            // single-line and leave the box sitting at EXACTLY the ceiling, so the bound only has to clear
+            // that value: how far under it a balanced width lands is font metrics, which differ per
+            // platform, and must not be part of the assertion.
+            Assert.That(balanced.resolvedStyle.width, Is.LessThan(CoPresentMaxWidthPx - 0.5f));
         }
 
         [UnityTest]
@@ -668,7 +669,7 @@ namespace Velvet.Tests
             var tree = V.Div(className: $"w-[{WrapperWidthPx}px]", refCallback: s_rowRef, children: new VNode[]
             {
                 V.Label(name: "balanced", text: LongWrapText, className: "text-balance", refCallback: s_wrapWithFontRef),
-                V.Div(name: "sibling", className: "w-[100px] h-[10px]"),
+                V.Div(name: "sibling", className: "w-[200px] h-[10px]"),
             });
             _mounted = V.Mount(_host.Root, tree);
             yield return WaitRealtime(0.5);
@@ -677,9 +678,11 @@ namespace Velvet.Tests
             Assume.That(balanced.resolvedStyle.height, Is.GreaterThan(balanced.resolvedStyle.fontSize * 1.5f),
                 "Precondition: the text wrapped, so balance wrote a real width into the row");
 
-            // Assert — the sibling ends up under its declared 100px: the row overflows and flex-shrink
-            // shares the loss across both boxes.
-            Assert.That(sibling.resolvedStyle.width, Is.LessThan(100f));
+            // Assert — the sibling ends up under its declared 200px: the row overflows and flex-shrink
+            // shares the loss across both boxes. The sibling is wide enough that any balanced width
+            // overflows the row by a large margin, so the outcome does not depend on where a platform's
+            // font metrics put that width.
+            Assert.That(sibling.resolvedStyle.width, Is.LessThan(200f));
         }
 
         [UnityTest]
