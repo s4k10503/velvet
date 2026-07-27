@@ -1,4 +1,5 @@
 #nullable enable
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -15,8 +16,70 @@ namespace Velvet
     // identity)</c> misses and either the spine reconstruction fails to recognize a child or a fiber's
     // state is reset. Centralizing the derivation here makes that lockstep structural: changing a
     // keying rule changes both walkers at once.
+
+    // Tree position of one inline-expanded ContextProviderNode, used to pair a new-side Provider with the
+    // Provider that held the same position on the old side (whose value it must be compared against to decide
+    // whether consumers need notifying). Position — not order of appearance: the two sides emit different
+    // numbers of Providers whenever a Suspense swaps primary for fallback or a conditional Provider appears,
+    // and an order-based pairing then compares every following Provider against a stranger's value.
+    // Occurrence separates Providers that genuinely share a position: nested Providers are transparent, so an
+    // inner one sits at the same node index of its parent's children and opens no scope of its own. Both sides
+    // number them in walk order (outermost first), which each reproduces identically.
+    //
+    // Equality and hashing are spelled out rather than left to a record struct: this is a dictionary key on the
+    // inline-expansion walk, hashed several times per Provider, and the compiler-generated members route every
+    // field through EqualityComparer<T>.Default — a virtual call per field that Mono does not devirtualize.
+    internal readonly struct ProviderPairKey : IEquatable<ProviderPairKey>
+    {
+        private readonly ComponentFiber? _fiber;
+        private readonly string? _scope;
+        private readonly string? _key;
+        private readonly int _index;
+        private readonly int _occurrence;
+
+        internal ProviderPairKey(ComponentFiber? fiber, string? scope, string? key, int index, int occurrence)
+        {
+            _fiber = fiber;
+            _scope = scope;
+            _key = key;
+            _index = index;
+            _occurrence = occurrence;
+        }
+
+        internal ProviderPairKey AtOccurrence(int occurrence)
+            => new(_fiber, _scope, _key, _index, occurrence);
+
+        public bool Equals(ProviderPairKey other)
+            => _index == other._index
+                && _occurrence == other._occurrence
+                && ReferenceEquals(_fiber, other._fiber)
+                && string.Equals(_scope, other._scope, StringComparison.Ordinal)
+                && string.Equals(_key, other._key, StringComparison.Ordinal);
+
+        public override bool Equals(object? obj) => obj is ProviderPairKey other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hash = _fiber?.GetHashCode() ?? 0;
+                hash = (hash * 397) ^ (_scope?.GetHashCode() ?? 0);
+                hash = (hash * 397) ^ (_key?.GetHashCode() ?? 0);
+                hash = (hash * 397) ^ _index;
+                return (hash * 397) ^ _occurrence;
+            }
+        }
+    }
+
     internal static class FiberKeying
     {
+        // The position of a ContextProviderNode found at nodeIndex of the child array currently being walked
+        // under fiber and parentScope, at occurrence 0. An explicit key replaces the positional index so a
+        // keyed Provider keeps its identity when siblings shift around it.
+        internal static ProviderPairKey ProviderPosition(
+            ComponentFiber? fiber, string? parentScope, string? providerKey, int nodeIndex)
+            => new(fiber, parentScope, providerKey, providerKey != null ? -1 : nodeIndex, 0);
+
         // Returns the per-identity position key for an unkeyed inline ComponentNode: the n-th
         // occurrence of identity within one reconcile scope. Unkeyed siblings are
         // matched between renders by their render order. Mutates counters (bumps the

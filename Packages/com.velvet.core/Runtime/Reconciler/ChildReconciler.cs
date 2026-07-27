@@ -166,8 +166,8 @@ namespace Velvet
             // ContextProviderNode / ComponentNode / OutletNode are expanded inline (no wrapper VE
             // emitted). Old-side expansion is structural-only (no context push, no fiber render).
             // New-side expansion pushes each Provider's value onto the stack and, while it is
-            // still pushed, notifies dependent fibers if the value changed vs the corresponding
-            // old Provider (paired by expansion order), then pops — so propagation snapshots
+            // still pushed, notifies dependent fibers if the value changed vs the old Provider that
+            // held the same tree position (see ProviderPairKey), then pops — so propagation snapshots
             // include the new value. ComponentNode children render synchronously during new-side
             // expansion via ComponentRegistry.GetOrCreateInline; the fiber's PreviousTree is
             // expanded recursively in place of the ComponentNode.
@@ -179,7 +179,7 @@ namespace Velvet
             // single Reconcile call, so a sibling fiber's setState re-render (which calls
             // Reconcile with a different parent/slotStart) does not falsely orphan unrelated
             // siblings under the same anchor.
-            var oldProviders = _ctx.BufferPool.RentProviderList();
+            var oldProviders = _ctx.BufferPool.RentProviderMap();
             var oldFibers = _ctx.BufferPool.RentFiberList();
             var newFibers = _ctx.BufferPool.RentFiberSet();
             VNode?[] oldNodes;
@@ -218,7 +218,7 @@ namespace Velvet
             }
             finally
             {
-                _ctx.BufferPool.ReturnProviderList(oldProviders);
+                _ctx.BufferPool.ReturnProviderMap(oldProviders);
                 _ctx.BufferPool.ReturnFiberList(oldFibers);
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
             }

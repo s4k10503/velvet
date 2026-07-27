@@ -104,7 +104,7 @@ namespace Velvet
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            List<ContextProviderNode> oldProviders)
+            Dictionary<ProviderPairKey, ContextProviderNode> oldProviders)
         {
             var pool = _ctx.BufferPool;
             var commit = new GeneralCommitState
@@ -131,6 +131,7 @@ namespace Velvet
 
                 // Live-context walk: emit + commit each new leaf under its ancestor Providers.
                 var positionCounters = pool.RentPositionCounter();
+                var providerOccurrences = pool.RentProviderOccurrenceMap();
                 var prevFlag = _ctx.ContextValueChanged;
                 var walk = pool.RentInlineWalk();
                 walk.IsNewSide = true;
@@ -139,6 +140,7 @@ namespace Velvet
                 walk.OldFibers = oldFibers;
                 walk.NewFibers = newFibers;
                 walk.OldProvidersForPairing = oldProviders;
+                walk.ProviderOccurrences = providerOccurrences;
                 walk.Commit = commit;
                 try
                 {
@@ -148,6 +150,7 @@ namespace Velvet
                 {
                     _ctx.ContextValueChanged = prevFlag;
                     pool.ReturnPositionCounter(positionCounters);
+                    pool.ReturnProviderOccurrenceMap(providerOccurrences);
                     pool.ReturnInlineWalk(walk);
                 }
 
@@ -383,7 +386,7 @@ namespace Velvet
         // Providers is read only on the old-side branch and OldProvidersForPairing only on the new-side
         // branch, and no recursion flips IsNewSide — so one copy of each per walk is exact. ReconcileGeneral
         // cannot break that by construction: it always walks the new side and has no old-side Providers
-        // parameter to hand over. ExpandInlineForReconcile takes both lists from its caller, so that is the
+        // parameter to hand over. ExpandInlineForReconcile takes both maps from its caller, so that is the
         // entry carrying the runtime check.
         internal sealed class InlineWalk
         {
@@ -395,13 +398,15 @@ namespace Velvet
             public int SlotStart;
             public List<ComponentFiber> OldFibers = null!;
             public HashSet<ComponentFiber> NewFibers = null!;
-            public List<ContextProviderNode>? Providers;
-            public List<ContextProviderNode>? OldProvidersForPairing;
+            public Dictionary<ProviderPairKey, ContextProviderNode>? Providers;
+            public Dictionary<ProviderPairKey, ContextProviderNode>? OldProvidersForPairing;
             public GeneralCommitState? Commit;
-            // Expansion-order position of the next new-side Provider, paired against
-            // OldProvidersForPairing. Monotonic for the whole walk: nothing rewinds it, including a
-            // Suspense rollback that discards a primary subtree the counter has already advanced through.
-            public int NewProviderIndex;
+            // Per-position Provider counter, so two Providers that share one ProviderPairKey position
+            // (nested Providers, which are transparent and open no scope of their own) get distinct keys in
+            // walk order. Walk-wide, and deliberately never rewound — a Suspense rollback discards a primary
+            // subtree whose Providers already counted, but the fallback expands under its own scope, so the
+            // discarded counts belong to positions the rest of the walk never revisits.
+            public Dictionary<ProviderPairKey, int>? ProviderOccurrences;
 
             // Every field a walk may set is scrubbed here: a stale reference surviving into the next
             // rent would silently splice one walk's destination or fiber accumulators into another's.
@@ -416,7 +421,7 @@ namespace Velvet
                 Providers = null;
                 OldProvidersForPairing = null;
                 Commit = null;
-                NewProviderIndex = 0;
+                ProviderOccurrences = null;
             }
         }
 
@@ -445,9 +450,9 @@ namespace Velvet
         // Expansion variant invoked by Reconcile that inlines wrapper-less node types
         // (ContextProviderNode, FragmentNode) into the flat VNode array consumed by the
         // Indexed/Keyed reconciler. Old-side (isNewSide=false) is structural:
-        // it walks the input tree without pushing context onto the live stack. New-side
-        // (isNewSide=true) pushes each Provider's value onto the stack, then —
-        // while the value is still pushed — pairs against the corresponding old Provider via
+        // it walks the input tree without pushing context onto the live stack, recording each Provider under
+        // its ProviderPairKey. New-side (isNewSide=true) pushes each Provider's value onto the stack, then —
+        // while the value is still pushed — pairs against the old Provider that held the same position via
         // oldProvidersForPairing and dispatches NotifyContextChanged when the
         // value changed; finally pops. The push → notify → recurse → pop order guarantees the
         // propagated snapshot includes the new value.
@@ -458,10 +463,10 @@ namespace Velvet
             int slotStart,
             List<ComponentFiber> oldFibers,
             HashSet<ComponentFiber> newFibers,
-            List<ContextProviderNode>? providers = null,
-            List<ContextProviderNode>? oldProvidersForPairing = null)
+            Dictionary<ProviderPairKey, ContextProviderNode>? providers = null,
+            Dictionary<ProviderPairKey, ContextProviderNode>? oldProvidersForPairing = null)
         {
-            AssertProviderListMatchesSide(isNewSide, providers, oldProvidersForPairing);
+            AssertProviderMapMatchesSide(isNewSide, providers, oldProvidersForPairing);
 
             if (nodes == null || nodes.Length == 0) return Array.Empty<VNode>();
 
@@ -485,6 +490,7 @@ namespace Velvet
 
             var buffer = _ctx.BufferPool.RentNodeList();
             var positionCounters = _ctx.BufferPool.RentPositionCounter();
+            var providerOccurrences = _ctx.BufferPool.RentProviderOccurrenceMap();
             var prevFlag = _ctx.ContextValueChanged;
             var walk = _ctx.BufferPool.RentInlineWalk();
             walk.Result = buffer;
@@ -495,6 +501,7 @@ namespace Velvet
             walk.NewFibers = newFibers;
             walk.Providers = providers;
             walk.OldProvidersForPairing = oldProvidersForPairing;
+            walk.ProviderOccurrences = providerOccurrences;
             try
             {
                 ExpandInlineRecursive(walk, nodes, positionCounters, fragmentKeyScope: null);
@@ -505,27 +512,45 @@ namespace Velvet
                 if (isNewSide) _ctx.ContextValueChanged = prevFlag;
                 _ctx.BufferPool.ReturnNodeList(buffer);
                 _ctx.BufferPool.ReturnPositionCounter(positionCounters);
+                _ctx.BufferPool.ReturnProviderOccurrenceMap(providerOccurrences);
                 _ctx.BufferPool.ReturnInlineWalk(walk);
             }
         }
 
         // The walk keeps one Providers / OldProvidersForPairing pair for its whole descent, which is exact
-        // only because each list is consumed on exactly one side (Providers collects old-side Providers;
+        // only because each map is consumed on exactly one side (Providers collects old-side Providers;
         // OldProvidersForPairing is read when a new-side Provider pushes) and no recursion flips the side.
-        // A caller that hands in the off-side list is expressing an intent this walk silently drops, so
+        // A caller that hands in the off-side map is expressing an intent this walk silently drops, so
         // fail loudly here rather than at the far end of a diff that quietly used the wrong Providers.
         // Checked ahead of the empty-input and flat-leaf early-outs: the caller's intent is just as wrong
         // when the container happens to hold nothing that needs expanding.
-        private static void AssertProviderListMatchesSide(
+        private static void AssertProviderMapMatchesSide(
             bool isNewSide,
-            List<ContextProviderNode>? providers,
-            List<ContextProviderNode>? oldProvidersForPairing)
+            Dictionary<ProviderPairKey, ContextProviderNode>? providers,
+            Dictionary<ProviderPairKey, ContextProviderNode>? oldProvidersForPairing)
         {
             UnityEngine.Debug.Assert(
                 isNewSide ? providers == null : oldProvidersForPairing == null,
                 "[Velvet] GeneralPathReconciler.ExpandInlineForReconcile: the new side only reads "
-                + "oldProvidersForPairing and the old side only fills providers; the list for the other "
+                + "oldProvidersForPairing and the old side only fills providers; the map for the other "
                 + "side is never consumed.");
+        }
+
+        // The pairing key of the Provider being visited, and the claim on it: the position is derived from
+        // the enclosing fiber + scope + node index, and its occurrence counter advances so a second Provider
+        // at the same position takes the next key. Both sides call this at the same point of the same walk
+        // order, which is what makes a new-side lookup land on the Provider that held the position last
+        // render rather than on whichever Provider happened to be emitted the same number of steps in.
+        private ProviderPairKey TakeProviderPairKey(
+            InlineWalk walk, ContextProviderNode provider, string? fragmentKeyScope, int nodeIndex)
+        {
+            var position = FiberKeying.ProviderPosition(
+                _ctx.FiberStack.Current, fragmentKeyScope, provider.Key, nodeIndex);
+            var occurrences = walk.ProviderOccurrences;
+            if (occurrences == null) return position;
+            occurrences.TryGetValue(position, out var occurrence);
+            occurrences[position] = occurrence + 1;
+            return position.AtOccurrence(occurrence);
         }
 
         private void ExpandInlineRecursive(
@@ -557,7 +582,11 @@ namespace Velvet
                         }
                         break;
                     case ContextProviderNode provider when !isNewSide:
-                        walk.Providers?.Add(provider);
+                    {
+                        // Recorded under its position BEFORE the descent, so a nested Provider's own
+                        // occurrence is numbered after this one's on both sides.
+                        var pairKey = TakeProviderPairKey(walk, provider, fragmentKeyScope, nodeIndex);
+                        walk.Providers?.TryAdd(pairKey, provider);
                         if (provider.Children != null)
                         {
                             var providerScope = FiberKeying.ProviderChildScope(
@@ -565,16 +594,18 @@ namespace Velvet
                             ExpandInlineRecursive(walk, provider.Children, positionCounters, providerScope);
                         }
                         break;
+                    }
                     case ContextProviderNode provider:
                         // New side: push value first so the notification snapshot includes it.
                         provider.PushContext(_ctx.ComponentContextStack);
                         try
                         {
-                            var oldProvidersForPairing = walk.OldProvidersForPairing;
-                            var pairIndex = walk.NewProviderIndex++;
-                            if (oldProvidersForPairing != null
-                                && pairIndex < oldProvidersForPairing.Count
-                                && provider.HasValueChanged(oldProvidersForPairing[pairIndex]))
+                            var pairKey = TakeProviderPairKey(walk, provider, fragmentKeyScope, nodeIndex);
+                            // No old Provider at this position means this one is mounting here: its consumers
+                            // mount with it and read the live cursor, so there is nothing to notify.
+                            if (walk.OldProvidersForPairing != null
+                                && walk.OldProvidersForPairing.TryGetValue(pairKey, out var oldProvider)
+                                && provider.HasValueChanged(oldProvider))
                             {
                                 NotifyContextValueChange(provider);
                             }

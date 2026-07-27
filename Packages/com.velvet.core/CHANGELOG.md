@@ -98,6 +98,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (or plain) form as the base, or render one direction class computed in C#. The `gap-*` polyfill
   resolves its axis from the same precedence and was updated in lockstep, so spacing still follows the
   axis the container actually renders on.
+- A consumer below a `V.Provider` could keep rendering the previous context value indefinitely when the
+  set of Providers around it changed in the same render as the value. It showed up wherever a Provider
+  shares a parent with something that can add or drop a Provider of its own — a `V.Suspense` whose
+  primary subtree provides a value while the fallback is showing, a Provider inside a fallback beside one
+  in the primary, or simply a conditional `cond ? V.Provider(...) : null` sibling appearing — and only
+  below a memoized boundary (a `[Component(Memoize = true)]` consumer, or one behind `V.Memoized`), since
+  an ordinary consumer is re-rendered by the surrounding walk anyway. A theme or locale change while a
+  route's data is still loading, with the skeleton widgets memoized, is the everyday shape: the skeleton
+  kept the old theme until the fetch resolved. Providers on the two sides of the diff are now matched by
+  their position in the tree rather than by their order of appearance, so a nearby Provider appearing or
+  disappearing no longer displaces the comparison.
 - The VEL100 exhaustive-deps analyzer now also covers `Hooks.UseInsertionEffect` and `Hooks.UseBlocker`.
   Both take a closure plus a deps array, but neither was listed as a deps-comparing hook, so a captured
   value missing from their deps went unreported.
