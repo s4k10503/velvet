@@ -192,10 +192,45 @@ manipulator's own events. It is re-applied from three sources:
    children, so an add / remove / reorder during a reconcile pass immediately re-spaces. This is also
    the path that makes it correct in EditMode, where layout never ticks.
 2. **`GeometryChangedEvent`.** Catches child mutations driven by an *unrelated* reconcile pass at
-   runtime (e.g. a nested component re-render that adds a child under this container).
+   runtime (e.g. a nested component re-render that adds a child under this container). Registered on
+   the attached element **and**, when it differs, on the inner box the verdict is read from (below),
+   because `GeometryChangedEvent` neither bubbles nor trickles.
 3. **`AttachToPanelEvent`.** Re-resolves plain `gap-*`'s axis, and every axis's reversed-edge flip,
    once `resolvedStyle.flexDirection` is valid — needed for the one case no class marker can cover
-   (below).
+   (below). Registered on the attached element only, since the inner box attaches in its subtree pass.
+
+**Which element the verdict is read from: the container the children are actually in.** Both
+manipulators are attached to the element the class string is written on, but they resolve, iterate and
+read from the element that element's children are *reconciled into*. For a plain element those are the
+same. A **composite widget** redirects its children into an inner box, so a direction (or `flex-wrap`)
+class on one lays out the **widget's own** box — a `ScrollView`'s viewport and scrollers, a `Foldout`'s
+toggle above its content — and leaves the content untouched. The spacing follows the content: in
+`V.ScrollView("flex flex-row-reverse gap-x-4", …)` the gap stays on the leading edge, and in
+`V.ScrollView("flex flex-row gap-4", …)` a plain `gap-4` spaces **vertically**, the axis its content
+actually stacks on. The rule is keyed on the redirect itself, not on a list of widgets — `V.Custom<T>`
+mounts any `VisualElement` subclass with children. The engine's redirecting widgets include `ScrollView`,
+`Foldout`, `Tab`, `TabView`, `TwoPaneSplitView`, `RadioButtonGroup`, `ToggleButtonGroup` and
+`PopupWindow`; the collection views (`ListView`, `TreeView`, `MultiColumnListView`) parent nothing and
+build their rows themselves, so nothing here spaces them.
+
+A class string only reaches the element it is written on, so no direction class can land on an inner box:
+its verdict comes from the `resolvedStyle` fallback below, over whatever the widget's own built-in USS
+gives it. Off-panel an inner box falls back to the **engine's** default (column) rather than to `.flex`'s
+row, since the row default mirrors what `.flex` means on an element an author wrote a class on. For most
+widgets that makes the off-panel answer equal the on-panel one, which matters because most of this
+behavior is asserted off-panel.
+
+**The residue, where the two disagree:** a widget whose own USS overrides the engine default, so its
+inner box is a **row** — a horizontally scrolling `ScrollView`, a `TwoPaneSplitView`, a
+`ToggleButtonGroup`, and any other whose built-in USS does the same. Only a live panel has the answer
+there; off-panel they still resolve as a column. That costs a frame: the first application runs before
+the widget attaches, writes the column edge, and moves to the row edge on the first geometry event. The
+same residue applies to `flex-wrap` on an inner box whose built-in USS wraps, and is worse there — wrap
+is the only mode that writes the container's own margin.
+
+No **direction or wrap** utility reaches inside a composite widget to lay its content out; the spacing
+utilities do reach the inner box's children, which is the point of the paragraphs above.
+Nest a plain container inside the widget and put the direction class there when the content needs one.
 
 **Direction source: a single resolved verdict from the class list, by USS precedence, not
 `resolvedStyle` — on a panel included.** `flex` / `flex-row` / `flex-col` / `flex-row-reverse` /
@@ -262,17 +297,27 @@ Under wrap, any two adjacent items (either axis, including across wrapped lines)
 `gap/2 + gap/2 == gap`, and the container's negative margin cancels the children's outer-edge
 half-margins so content stays flush to the container edge. A reversed container (e.g.
 `flex-row-reverse flex-wrap`) still uses this same symmetric half-margin polyfill — direction never
-changes which edges wrap spaces, only non-wrap's single leading/trailing edge choice. Wrap is detected
-the same way direction is, and for the same staleness reason: the `flex-wrap` / `flex-nowrap` /
-`flex-wrap-reverse` class markers first (by `_layout.uss` declaration order — `flex-wrap-reverse`
-beats `flex-nowrap` beats `flex-wrap` when more than one is present); when none of those three are
-present, `flex` / `flex-row` / `flex-col` / `flex-row-reverse` / `flex-col-reverse` — none of which
-touch `flex-wrap` themselves — mean Yoga's own default (no wrap) applies, so an OFF-state toggle like
-`wrapped ? "flex flex-wrap gap-4" : "flex gap-4"` still converges without a wrap class in its OFF
-state; `resolvedStyle.flexWrap` is the fallback only when none of those eight classes are on the
-element at all. Getting this wrong is worse than getting direction wrong: wrap is the only mode that
+changes which edges wrap spaces, only non-wrap's single leading/trailing edge choice. Wrap is read
+from the same element the direction is (see "Which element the verdict is read from" above), and in the
+same shape, for the same staleness reason: the `flex-wrap` / `flex-nowrap` / `flex-wrap-reverse` class
+markers first (by `_layout.uss` declaration order — `flex-wrap-reverse` beats `flex-nowrap` beats
+`flex-wrap` when more than one is present), then `resolvedStyle.flexWrap` whenever none of those three
+is present. Unlike the direction scan there is no further "a direction class implies a default" tier:
+`flex` / `flex-row(-reverse)` / `flex-col(-reverse)` say nothing about `flex-wrap`, and since nearly
+every real container carries one, counting them as evidence of no-wrap would take the `resolvedStyle`
+fallback away from almost all of them and misread a genuinely wrapping inline-styled one as
+non-wrapping. One consequence: removing a `flex-wrap` class does not converge on its own, because the
+verdict drops to `resolvedStyle.flexWrap`, which can read one pass stale. Spell the OFF state
+`flex-nowrap` — `wrapped ? "flex flex-wrap gap-4" : "flex flex-nowrap gap-4"` — and the marker tier
+answers immediately.
+Getting this wrong is worse than getting direction wrong: wrap is the only mode that
 writes the CONTAINER's own margin, so a stuck stale "wrap" verdict leaves a fixed-size container
 bleeding its negative margin outward over its siblings until something unrelated forces a re-apply.
+
+A corollary on a **composite widget**: a `flex-wrap` class wraps the widget, never its content, so the
+half-margin path is **unreachable from class strings** there. It is still reachable by anything setting
+the inner box's own `flex-wrap` (a custom stylesheet rule, a `refCallback` reaching in) and by a widget
+whose built-in USS wraps. Nest a plain container inside the widget for a wrapping gap from a class.
 
 `grid` also sets `flex-direction: row` (and `flex-wrap: wrap`) in `_layout.uss`, but a `grid` /
 `grid-cols-*` class routes an element's gap through the separate grid manipulator entirely —

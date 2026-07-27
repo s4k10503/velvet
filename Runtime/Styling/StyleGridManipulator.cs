@@ -41,7 +41,7 @@ namespace Velvet
     // container, keeps it in ReconcilerContext.GridManipulators, and removes it on cleanup / dispose.
     // UnregisterCallbacksFromTarget clears the widths + margins it wrote so removing the grid class (or
     // unmounting) leaves no residue. Like the gap manipulator it iterates FiberNodePatcher.GetChildContainer,
-    // so the sizing lands on the reconciled content and never on a ScrollView's internal hierarchy.
+    // so the sizing lands on the reconciled content and never on a composite widget's internal hierarchy.
     //
     // Out-of-flow children (position: absolute) are excluded from the column/row walk — see
     // StyleOutOfFlowChild — matching CSS Grid, whose auto-placement never assigns a cell to an
