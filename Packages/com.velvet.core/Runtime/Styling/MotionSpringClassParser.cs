@@ -250,9 +250,8 @@ namespace Velvet
         /// the plain class swap, which lands it instantly. A length pair whose two sides carry DIFFERENT units
         /// falls back the same way: a percentage resolves against a laid-out parent this path cannot consult, so
         /// there is no common space to interpolate a px↔% pair in.
-        /// A shorthand and one of its own longhands in the same delta both animate, written widest-first so the
-        /// shared slot ends up where the cascade puts it — unless one of the two cannot animate, in which case
-        /// the whole overlapping group falls back to the swap. See <see cref="DropUnanimatableOverlapGroups"/>.
+        /// A shorthand and one of its own longhands in the same delta drop BOTH — see
+        /// <see cref="DropOverlappingProperties"/>.
         /// </summary>
         private static void PairProperties(Dictionary<ArbitraryProperty, ArbitraryStyle>? fromProperties,
             Dictionary<ArbitraryProperty, ArbitraryStyle>? toProperties, ref SpringPlan plan)
@@ -280,7 +279,7 @@ namespace Velvet
             {
                 return;
             }
-            DropUnanimatableOverlapGroups(paired, fromProperties, toProperties);
+            DropOverlappingProperties(paired, fromProperties, toProperties);
 
             foreach (var property in paired)
             {
@@ -295,63 +294,65 @@ namespace Velvet
                 (plan.Lengths ??= new List<LengthChannelPlan>())
                     .Add(new LengthChannelPlan(property, from.Value, to.Value, from.Unit));
             }
-
-            // Widest footprint first, narrowest last, so a shorthand and one of its longhands land in the order
-            // the cascade resolves them: the longhand overwrites the slot they share on every tick, exactly as
-            // it wins that slot at rest. Unordered, the in-flight winner would be whichever channel the
-            // enumeration happened to visit last, which can disagree with the resting winner. Colors never
-            // overlap (border-color is the only utility writing the four border colors), so only the length
-            // list needs the ordering.
-            plan.Lengths?.Sort(static (a, b)
-                => MotionPropertyClassParser.SlotCount(b.Property).CompareTo(MotionPropertyClassParser.SlotCount(a.Property)));
         }
 
         /// <summary>
-        /// Removes from <paramref name="paired"/> every property sharing a style slot with a property the delta
-        /// names but that is NOT itself animating — a shorthand beside a one-sided or mixed-unit longhand.
+        /// Removes from <paramref name="paired"/> every property sharing a style slot with another property the
+        /// delta names — a shorthand meeting one of its own longhands (<c>p-8</c> beside <c>pt-2</c>).
         /// </summary>
         /// <remarks>
-        /// Channels are keyed by property, so a shorthand and a longhand are otherwise independent. Both
-        /// animating is fine and wanted: they interpolate together, and the widest-first write ordering in
-        /// <see cref="PairProperties"/> leaves the same one holding the shared slot that holds it at rest. One
-        /// of them being UNABLE to animate is the broken case — the survivor would drive the shared slot toward
-        /// a value the other was going to overrule, for the whole play, then pop to the cascade's at the end —
-        /// so the whole overlapping group falls back to the plain class swap and lands together.
-        /// Dropping repeats to a fixed point: removing one member can orphan a third property that only
-        /// overlapped an animating partner through it, and that one has to fall out too.
-        /// Only properties this parser RECOGNIZES take part. A longhand it cannot read a magnitude from
-        /// (<c>rounded-tl-full</c> beside <c>rounded-3xl</c>) is invisible here, so the shorthand still drives
-        /// the slot the longhand owns at rest — documented in the motion guide rather than guessed at.
+        /// Channels are keyed by property, so a shorthand and a longhand are otherwise independent, and both
+        /// would drive the slot they share: one side naming only the longhand leaves the shorthand animating
+        /// toward a value the cascade overrules at the end of every play, and both sides naming both leaves the
+        /// in-flight winner decided by the order the channels are visited.
+        /// <para>
+        /// Ordering the writes cannot fix this, because the winner they would have to agree with is not
+        /// derivable from the properties alone. For preset utilities it is stylesheet declaration order, which
+        /// is NOT a function of how many slots a utility writes: <c>.size-*</c> is declared after
+        /// <c>.w-*</c>/<c>.h-*</c>, so the two-slot shorthand wins width at rest while a one-slot longhand wins
+        /// it everywhere else. For bracket-form tokens it is not declaration order at all but class-array
+        /// position, since inline-resolved tokens apply in sequence and the last one holds the slot. And the
+        /// four radius half-shorthands write two slots each AND overlap pairwise, so a slot-count key cannot
+        /// even order them against each other. Reproducing all three rules means a hand-maintained declaration
+        /// table that would itself drift against the stylesheets.
+        /// </para>
+        /// <para>
+        /// The whole overlapping group is therefore dropped and lands with the class swap, which is always the
+        /// value the cascade resolves. Only properties this parser RECOGNIZES take part: a longhand it cannot
+        /// read a magnitude from (<c>rounded-tl-full</c> beside <c>rounded-3xl</c>) is invisible here, so the
+        /// shorthand still drives the slot the longhand owns at rest — documented in the motion guide rather
+        /// than guessed at.
+        /// </para>
         /// </remarks>
-        private static void DropUnanimatableOverlapGroups(HashSet<ArbitraryProperty> paired,
+        private static void DropOverlappingProperties(HashSet<ArbitraryProperty> paired,
             Dictionary<ArbitraryProperty, ArbitraryStyle> fromProperties,
             Dictionary<ArbitraryProperty, ArbitraryStyle> toProperties)
         {
-            bool dropped;
-            do
+            List<ArbitraryProperty>? overlapping = null;
+            foreach (var property in paired)
             {
-                dropped = false;
-                foreach (var property in paired)
+                if (OverlapsAnotherNamedProperty(property, fromProperties)
+                    || OverlapsAnotherNamedProperty(property, toProperties))
                 {
-                    if (!OverlapsAnUnpairedProperty(property, paired, fromProperties)
-                        && !OverlapsAnUnpairedProperty(property, paired, toProperties))
-                    {
-                        continue;
-                    }
-                    paired.Remove(property);
-                    dropped = true;
-                    break; // The set was just mutated, so restart the scan rather than continue enumerating it.
+                    (overlapping ??= new List<ArbitraryProperty>()).Add(property);
                 }
             }
-            while (dropped);
+            if (overlapping == null)
+            {
+                return;
+            }
+            foreach (var property in overlapping)
+            {
+                paired.Remove(property);
+            }
         }
 
-        private static bool OverlapsAnUnpairedProperty(ArbitraryProperty property,
-            HashSet<ArbitraryProperty> paired, Dictionary<ArbitraryProperty, ArbitraryStyle> named)
+        private static bool OverlapsAnotherNamedProperty(ArbitraryProperty property,
+            Dictionary<ArbitraryProperty, ArbitraryStyle> named)
         {
             foreach (var other in named.Keys)
             {
-                if (!paired.Contains(other) && MotionPropertyClassParser.WritesOverlappingSlots(property, other))
+                if (MotionPropertyClassParser.WritesOverlappingSlots(property, other))
                 {
                     return true;
                 }

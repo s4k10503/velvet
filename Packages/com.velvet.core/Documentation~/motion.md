@@ -208,18 +208,16 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   "transparent"), so a property only one side names is **not** animated: the swap lands it
   instantly. The same applies to a pair whose two sides carry different units (`w-1/2` →
   `w-[200px]`) — a percentage resolves against a laid-out parent this path cannot consult.
-- **A shorthand beside its own longhand animates only when both can.** `p-8` with `pt-2` — or
-  `size-*` with `w-*`, `inset-*` with `top-*`, `rounded-*` with `rounded-tl-*`, `border-*` with
-  `border-t-*` — has two utilities claiming one slot. When **both** sides of the delta name both,
-  both animate: the shorthand is written first and the longhand last on every tick, so the shared
-  slot is held by the same utility that holds it at rest, matching CSS longhand-after-shorthand
-  resolution. When one of them **cannot** animate (named on one side only, or a mixed-unit pair),
-  the whole overlapping group drops out and lands with the class swap instead — the survivor would
-  otherwise drive the shared slot toward a value the other was going to overrule, and pop at the
-  end. One caveat: the rule only sees utilities whose value is resolvable, so an unreadable longhand
-  beside a readable shorthand (`rounded-3xl rounded-tl-full`, `size-32 w-full`) is invisible to it
-  and the shorthand still drives the slot the longhand owns at rest. Prefer one or the other on a
-  given axis.
+- **A shorthand and a longhand naming the same slot both snap.** `p-8` with `pt-2` — or `size-*`
+  with `w-*`, `inset-*` with `top-*`, `rounded-*` with `rounded-tl-*`, `border-*` with
+  `border-t-*` — has two utilities claiming one slot, so neither animates and the swap lands them
+  both. Which of the two holds the shared slot at rest is not something the animation can derive:
+  for preset classes it is stylesheet declaration order (and `.size-*` is declared *after* `.w-*`,
+  so there the shorthand wins width, the opposite of every other family), while for bracket-form
+  tokens it is class-array position instead. Use one or the other on a given axis. One caveat: the
+  rule only sees utilities whose value is readable, so an unreadable longhand beside a readable
+  shorthand (`rounded-3xl rounded-tl-full`) is invisible to it and the shorthand still drives the
+  corner the longhand owns at rest.
 - **Not driven,** each because the class alone yields no number to interpolate or because another
   subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
   `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
@@ -233,10 +231,17 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   the painted value trailing for the whole play, easing in at the end instead of landing. Whether
   that applies is decided from the element's **class list**: `transition-transform` names
   translate/scale/rotate, `transition-colors` names the three colours, `transition-colors-scale`
-  and `transition-colors-scale-opacity` add those, `transition-all` names everything, and
-  `transition-filter` declares no `transition-property` at all. A play suspends only where its own
-  channels intersect that set — a `transition-colors` element running a fade/slide keeps its hover
-  fade, while the same play on a `transition-transform` or `transition-all` element suspends.
+  and `transition-colors-scale-opacity` add those, and `transition-all` names everything. Anything
+  that supplies only a duration — `transition-filter`, or a bare `duration-*` — leaves
+  `transition-property` at its UI Toolkit default of `all`, so those elements transition
+  *everything* natively and a play on them always suspends. An element with no transition utility
+  at all has a 0s duration and transitions nothing, so nothing suspends. A play suspends only where
+  its own channels intersect that set — a `transition-colors` element running a fade/slide keeps
+  its hover fade, while the same play on a `transition-transform`, `transition-all` or
+  `transition-filter` element suspends. Two blind spots: the check runs once at play start, so a
+  variant turning on `transition-all` mid-play is not picked up until the next play, and a
+  whole-property transition written as an inline style by something other than a `duration-*`
+  utility is not seen.
   When it does suspend, the suspension is **element-wide**: UI Toolkit's `transition-property` is a
   positive list with no "everything except these" spelling, so the element's *other* transitions
   land instantly too, across the play's `DelaySec` and stagger slot as well as its motion — the

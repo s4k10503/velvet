@@ -36,6 +36,10 @@ namespace Velvet.Tests
     {
         private const float FixedDeltaSec = 1f / 60f;
 
+        // Colors (3) + sizing/basis (8) + inset (7) + padding (7) + margin (7) + radius (9) + border width (5)
+        // + font size + letter spacing. Updated deliberately when the drivable set changes.
+        private const int DrivablePropertyCount = 48;
+
         // The linear identity curve: CubicBezierEvaluator returns t unchanged for x1==y1 && x2==y2, so a step
         // to half the duration lands the channel at exactly half its travel.
         private const float LinearX1 = 0f;
@@ -470,34 +474,32 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AShorthandBesideABothSidedLonghand_When_Resolved_Then_TheLonghandChannelIsWrittenLast()
+        public void Given_AShorthandBesideABothSidedLonghand_When_Resolved_Then_TheOverlappingGroupIsNotPlanned()
         {
-            // Arrange / Act — both sides name both utilities, so both CAN animate; the shared top edge stays
-            // coherent as long as the longhand is written after the shorthand it overrules at rest.
-            var plan = MotionSpringClassParser.Resolve(new[] { "p-0", "pt-4" }, new[] { "p-8", "pt-2" });
+            // Arrange — the control is the same shorthand pair without the longhand, so a wholesale loss of
+            // property recognition fails this case instead of passing it vacuously.
+            var control = MotionSpringClassParser.Resolve(new[] { "p-0" }, new[] { "p-8" });
 
-            // Assert — widest footprint first, so the per-tick winner for the top edge is the same utility the
-            // cascade leaves holding it once the play has landed.
-            Assert.That(
-                (plan.Lengths?.Count ?? 0, plan.Lengths?[0].Property, plan.Lengths?[1].Property),
-                Is.EqualTo((2, (ArbitraryProperty?)ArbitraryProperty.Padding,
-                    (ArbitraryProperty?)ArbitraryProperty.PaddingTop)));
+            // Act — both utilities claim the top edge, and which of them holds it at rest is not derivable from
+            // the properties alone, so neither animates.
+            var overlapping = MotionSpringClassParser.Resolve(new[] { "p-0", "pt-4" }, new[] { "p-8", "pt-2" });
+
+            // Assert
+            Assert.That((control.Lengths?.Count ?? 0, overlapping.IsEmpty), Is.EqualTo((1, true)));
         }
 
         [Test]
-        public void Given_AShorthandAndLonghandBothAnimating_When_SteppedToHalfTheDuration_Then_TheLonghandOwnsTheSharedEdge()
+        public void Given_ASizeShorthandBesideAWidthLonghand_When_Resolved_Then_TheOverlappingGroupIsNotPlanned()
         {
-            // Arrange
-            var element = new VisualElement();
+            // Arrange — the control pins that size-* animates on its own.
+            var control = MotionSpringClassParser.Resolve(new[] { "size-4" }, new[] { "size-8" });
 
-            // Act — p-0 -> p-8 (0 to 32px) alongside pt-4 -> pt-2 (16 to 8px) on the top edge.
-            var state = CreateHalfway(element, new[] { "p-0", "pt-4" }, new[] { "p-8", "pt-2" });
+            // Act — .size-* is declared AFTER .w-*, so here the two-slot shorthand is what wins width at rest,
+            // the opposite of every other family. Dropping both is what keeps the landing correct.
+            var overlapping = MotionSpringClassParser.Resolve(new[] { "w-4", "size-4" }, new[] { "w-20", "size-8" });
 
-            // Assert — the top edge reads the longhand's midpoint, the others the shorthand's.
-            var edges = state == null
-                ? default
-                : (element.style.paddingTop.value, element.style.paddingLeft.value);
-            Assert.That(edges, Is.EqualTo((new Length(12f, LengthUnit.Pixel), new Length(16f, LengthUnit.Pixel))));
+            // Assert
+            Assert.That((control.Lengths?.Count ?? 0, overlapping.IsEmpty), Is.EqualTo((1, true)));
         }
 
         [Test]
@@ -573,6 +575,56 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADurationOnlyTransitionUtility_When_APlayDrivesTheElement_Then_TheNativeTransitionIsSuspended()
+        {
+            // Arrange — .transition-filter sets duration and timing ONLY, so transition-property is left at UI
+            // Toolkit's initial `all` and the element natively transitions every animatable property.
+            var element = new VisualElement();
+            element.AddToClassList("transition-filter");
+
+            // Act
+            var state = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
+
+            // Assert
+            var declared = element.style.transitionProperty.value;
+            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
+                Is.True);
+        }
+
+        [Test]
+        public void Given_ABareDurationUtility_When_APlayDrivesTheElement_Then_TheNativeTransitionIsSuspended()
+        {
+            // Arrange — a duration with no transition-property utility leaves the initial `all` standing too.
+            var element = new VisualElement();
+            element.AddToClassList("duration-300");
+
+            // Act
+            var state = CreateHalfway(element, new[] { "-translate-x-8" }, new[] { "translate-x-0" });
+
+            // Assert
+            var declared = element.style.transitionProperty.value;
+            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
+                Is.True);
+        }
+
+        [Test]
+        public void Given_ATransitionNoneUtility_When_APlayDrivesTheElement_Then_ItsTransitionIsUntouched()
+        {
+            // Arrange — transition-none pins transition-property to nothing, so a duration beside it still
+            // transitions nothing and there is no conflict to suspend for.
+            var element = new VisualElement();
+            element.AddToClassList("transition-none");
+            element.AddToClassList("duration-300");
+
+            // Act
+            var state = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
+
+            // Assert
+            Assert.That((state != null, element.style.transitionProperty.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
         public void Given_AnElementWithNoTransitionUtility_When_APlayDrivesItsColors_Then_ItsTransitionIsUntouched()
         {
             // Arrange — nothing declares a transition, so there is nothing for the driver's writes to fight.
@@ -626,8 +678,11 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert
-            Assert.That(disagreements, Is.Empty);
+            // Assert — the population count rides along so an IsDrivable that stopped matching anything cannot
+            // leave this green with nothing compared. The disagreements join into the message rather than being
+            // compared as a list, which a tuple would compare by reference.
+            Assert.That((drivable.Count, string.Join("; ", disagreements)),
+                Is.EqualTo((DrivablePropertyCount, string.Empty)));
         }
 
         // Every inline slot a drivable property can write, by name, for the drift guard above. Reading the

@@ -17,15 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (palette tokens, the `/alpha` modifier, the spacing/radius scales, and the bracket forms), so a
   property named by only ONE side of the delta, a pair mixing units (`w-1/2` → `w-[200px]`), a
   semantic theme token, or a keyword length still lands instantly instead of animating. A shorthand
-  and one of its own longhands in the same delta (`p-8` with `pt-2`) animate together, the longhand
-  written last so it holds the slot they share exactly as it does at rest; if either side cannot
-  animate, the whole overlapping group lands with the swap rather than half-driving the slot.
+  and one of its own longhands naming the same slot in one delta (`p-8` with `pt-2`) both snap,
+  since which of the two holds that slot at rest is not derivable from the utilities alone.
 - A spring or bezier play now suspends the element's own USS transitions for its duration when
   those transitions cover a property it drives — decided from the element's class list, so a
   `transition-transform` or `transition-all` element no longer paints a translate that trails the
   driver for the whole play and then eases in, while a `transition-colors` element running a
-  fade/slide keeps its hover fade. Overlapping plays each hold their own claim, so the first to
-  settle cannot un-suspend the second.
+  fade/slide keeps its hover fade. A class that supplies only a duration (`transition-filter`, a
+  bare `duration-*`) leaves `transition-property` at UI Toolkit's `all` default and so counts as
+  covering everything. Overlapping plays each hold their own claim, so the first to settle cannot
+  un-suspend the second.
 
 ### Changed
 

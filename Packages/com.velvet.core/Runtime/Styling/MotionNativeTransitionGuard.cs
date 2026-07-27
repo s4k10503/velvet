@@ -44,9 +44,10 @@ namespace Velvet
     /// worth paying where the conflict is real, so the decision is made from the element's own CLASS LIST — the
     /// transition utilities are a small closed set with known property sets, and reading class strings is how
     /// the rest of this feature derives its answers off-panel. A play suspends only when the slots it drives
-    /// intersect what those utilities name: a <c>transition-colors</c> element running an opacity/translate
-    /// play keeps its hover fade, while the same play on a <c>transition-transform</c> or <c>transition-all</c>
-    /// element does suspend, because there the class covers the very slots the driver is writing.
+    /// intersect what those classes leave transitionable (see <see cref="DeclaredSlots"/>): a
+    /// <c>transition-colors</c> element running an opacity/translate play keeps its hover fade, while the same
+    /// play on a <c>transition-transform</c> or <c>transition-all</c> element does suspend, because there the
+    /// class covers the very slots the driver is writing.
     /// </para>
     /// <para>
     /// Suspension is tracked by OWNER because two drivers can write one element at once (a scheduler variant
@@ -93,32 +94,44 @@ namespace Velvet
         }
 
         /// <summary>
-        /// The slots the element's own transition utilities declare. Mirrors the <c>transition-*</c> rules in
-        /// <c>_state_variants.uss</c> / <c>_effects.uss</c>; a class outside that closed set contributes
-        /// nothing, and <c>transition-filter</c> deliberately declares no <c>transition-property</c> at all (its
-        /// driver reads only the duration), so it contributes nothing either.
+        /// The slots the element's own classes leave natively transitionable.
         /// </summary>
+        /// <remarks>
+        /// UI Toolkit's INITIAL <c>transition-property</c> is <c>all</c> and its initial duration is 0s, so an
+        /// element transitions everything as soon as anything gives it a duration — and nothing at all until
+        /// then. That makes the answer three-way rather than a union: a <c>transition-*</c> utility that
+        /// declares a property list (mirroring <c>_state_variants.uss</c> / <c>_effects.uss</c>) pins the set;
+        /// otherwise a duration-only source (<c>transition-filter</c>, which deliberately sets duration and
+        /// timing alone, or any <c>duration-*</c> utility, including the bracket form the resolver applies as an
+        /// inline value rather than a class) leaves the initial <c>all</c> standing; otherwise there is no
+        /// duration and nothing transitions.
+        /// <para>
+        /// Two residual blind spots, both accepted rather than fixed: an inline whole-property value written by
+        /// something other than a duration utility (the scheduler's own tween swap sets one, though never on a
+        /// spring or bezier play) is not read here, and the answer is computed once at play start, so a variant
+        /// that turns on <c>transition-all</c> midway through a play is not picked up until the next one.
+        /// </para>
+        /// </remarks>
         internal static MotionTransitionSlots DeclaredSlots(VisualElement element)
         {
-            var declared = MotionTransitionSlots.None;
-            foreach (var raw in element.GetClasses())
+            var declaredByUtility = MotionTransitionSlots.None;
+            var sawPropertyUtility = false;
+            var sawDurationOnly = false;
+            foreach (var core in element.GetClasses())
             {
-                if (string.IsNullOrEmpty(raw))
+                if (string.IsNullOrEmpty(core))
                 {
                     continue;
                 }
-                // A variant-prefixed spelling (hover:transition-all) declares the same property set whenever it
-                // is active, and whether it is active right now is not knowable here — so it counts, erring
-                // toward suspending rather than toward leaving a driven slot exposed.
-                var core = StyleArbitraryValueResolver.StripImportant(raw, out _);
-                var colon = core.LastIndexOf(':');
-                if (colon >= 0)
+                if (core.StartsWith("duration-", StringComparison.Ordinal))
                 {
-                    core = core.Substring(colon + 1);
+                    sawDurationOnly = true;
+                    continue;
                 }
-                declared |= core switch
+                var declared = core switch
                 {
                     "transition-all" => MotionTransitionSlots.All,
+                    "transition-none" => MotionTransitionSlots.None,
                     "transition-opacity" => MotionTransitionSlots.Opacity,
                     "transition-colors" => MotionTransitionSlots.Color,
                     "transition-colors-scale" => MotionTransitionSlots.Color | MotionTransitionSlots.Scale,
@@ -126,10 +139,31 @@ namespace Velvet
                         => MotionTransitionSlots.Color | MotionTransitionSlots.Scale | MotionTransitionSlots.Opacity,
                     "transition-transform"
                         => MotionTransitionSlots.Translate | MotionTransitionSlots.Scale | MotionTransitionSlots.Rotate,
-                    _ => MotionTransitionSlots.None,
+                    // Sets duration and timing only, so it leaves transition-property at its initial `all`.
+                    "transition-filter" => MotionTransitionSlots.None,
+                    _ => (MotionTransitionSlots?)null,
                 };
+                if (declared == null)
+                {
+                    continue;
+                }
+                if (core == "transition-filter")
+                {
+                    sawDurationOnly = true;
+                    continue;
+                }
+                sawPropertyUtility = true;
+                declaredByUtility |= declared.Value;
             }
-            return declared;
+            if (sawPropertyUtility)
+            {
+                return declaredByUtility;
+            }
+            // duration-[400ms] resolves to an inline value rather than a class, so the class scan cannot see it;
+            // the inline slot can.
+            return sawDurationOnly || element.style.transitionDuration.keyword != StyleKeyword.Null
+                ? MotionTransitionSlots.All
+                : MotionTransitionSlots.None;
         }
 
         /// <summary>Drops one owner, handing the element back to the cascade once the LAST owner has let go.</summary>
