@@ -5,12 +5,18 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Framework-level divide-* polyfill. The divide-x / divide-y utilities draw a border between adjacent
-    // children (`& > * + *`): a left border on every child but the first for divide-x, a top border for
+    // children (`& > * + *`): a border on every child but the first, horizontal for divide-x, vertical for
     // divide-y. UI Toolkit (6000.3) has no :first-child / :first-of-type and no `> *` child combinator,
     // so a USS rule cannot express "border on all children except the first." Velvet owns the ordered
-    // child list, so this manipulator writes the inter-child LEADING border (border-left for an x divide,
-    // border-top for a y divide) on every child EXCEPT the first — a divider strictly BETWEEN children,
-    // no leading or trailing edge.
+    // child list, so this manipulator writes the inter-child border on every child EXCEPT the first — a
+    // divider strictly BETWEEN children, never on the container's outer edges.
+    //
+    // Which physical edge of the axis carries that border follows the container's resolved direction (see
+    // ResolveEdge): a row-reverse / column-reverse container paints its children in the opposite order, so
+    // the edge that sits between a given pair is the axis's TRAILING one (border-right / border-bottom).
+    // Picking the edge from the axis alone would draw one rule on the container's outer edge and leave the
+    // boundary between the visually adjacent pair blank. divide-x-reverse / divide-y-reverse ask for that
+    // same trailing edge unconditionally.
     //
     // Lifecycle mirrors StyleGapManipulator: the reconciler attaches one per divide container, keeps it
     // in ReconcilerContext.DivideManipulators, and removes it on cleanup / dispose.
@@ -18,8 +24,9 @@ namespace Velvet
     // unmounting) leaves no residue. Re-application has the same three sources as the gap manipulator:
     // the reconciler's post-child-reconcile call (the panel-independent path that also covers EditMode),
     // GeometryChangedEvent (child add / remove / reorder from an unrelated reconcile), and
-    // AttachToPanelEvent. A signature makes a redundant Apply (notably the GeometryChanged feedback its
-    // own writes provoke) a no-op.
+    // AttachToPanelEvent (the one path that can answer a direction set outside the class list). A
+    // signature makes a redundant Apply (notably the GeometryChanged feedback its own writes provoke) a
+    // no-op.
     //
     // Line style: divide-solid is a plain inline border. divide-dashed / divide-dotted have no UI Toolkit
     // border-style, so the manipulator still reserves the SAME gutter (the real width) but masks the color
@@ -50,9 +57,16 @@ namespace Velvet
         private DivideSpec _spec;
         private readonly ReconcilerContext _ctx;
 
-        // Which edge is currently written, so an axis flip clears the old edge before writing the new one.
-        private enum Edge { None, Left, Top }
-        private Edge _applied = Edge.None;
+        // Which of the four edges is currently written, so an axis flip OR a same-axis leading↔trailing flip
+        // (a reverse marker appearing, a container becoming reversed) clears the abandoned edge before
+        // writing the new one. Null until the first application.
+        private DivideEdge? _applied;
+
+        // Bit per DivideEdge this manipulator has applied at least once. A child that leaves the container
+        // may still carry a border from an edge an earlier flip abandoned while that child was a member, so
+        // the departure / teardown reset needs the union rather than just the current edge — and no more than
+        // the union, so a child's own border on an edge this divide never claimed survives.
+        private int _everApplied;
 
         // Every child this manipulator has written a divider border to. On each Apply / Clear any tracked
         // element no longer a current child has its divider border reset, so a child reparented or removed
@@ -68,7 +82,7 @@ namespace Velvet
             _ctx = ctx;
         }
 
-        // Swaps the spec and re-applies, clearing the old edge first if the axis changed.
+        // Swaps the spec and re-applies, clearing the old edge first if the resolved edge changed.
         public void UpdateSpec(DivideSpec spec)
         {
             _spec = spec;
@@ -101,8 +115,8 @@ namespace Velvet
         private VisualElement? ChildContainer
             => target == null ? null : FiberNodePatcher.GetChildContainer(target);
 
-        // Writes the inter-child border for the current spec: the leading edge (left for x, top for y) on
-        // every child except the first. Clears the opposite edge first on an axis flip. Early-returns when
+        // Writes the inter-child border for the current spec on the edge ResolveEdge picks, on every child
+        // except the first. Clears the abandoned edge first whenever that edge changed. Early-returns when
         // nothing relevant (spec, edge, child set) changed since the last successful application.
         public void Apply()
         {
@@ -112,7 +126,8 @@ namespace Velvet
                 return;
             }
 
-            var signature = ComputeSignature(container);
+            var edge = ResolveEdge();
+            var signature = ComputeSignature(container, edge);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
@@ -122,14 +137,14 @@ namespace Velvet
             // that left the container.
             ResetStaleBordered(container);
 
-            var edge = _spec.Axis == DivideAxis.Horizontal ? Edge.Left : Edge.Top;
-
-            // An axis flip (divide-x ↔ divide-y) leaves the old edge behind; clear it before switching.
-            if (_applied != Edge.None && _applied != edge)
+            // Any of the four edges may be the one abandoned — an axis flip (divide-x ↔ divide-y) or a
+            // same-axis leading↔trailing flip (a reverse marker, or the container's direction changing).
+            if (_applied.HasValue && _applied.Value != edge)
             {
-                ClearEdge(container, _applied);
+                ClearEdge(container, _applied.Value);
             }
             _applied = edge;
+            _everApplied |= 1 << (int)edge;
             _bordered.Clear();
 
             var count = container.childCount;
@@ -143,7 +158,7 @@ namespace Velvet
                 {
                     continue;
                 }
-                // The first child has no leading divider (the `> * + *` rule starts at the second child).
+                // The first child has no divider (the `> * + *` rule starts at the second child).
                 var isDivider = logicalIndex != 0;
                 ApplyToChild(child, edge, isDivider);
                 _bordered.Add(child);
@@ -157,7 +172,7 @@ namespace Velvet
         // Writes one child's divider on the given edge. Solid keeps the plain inline-border path verbatim; a
         // dashed / dotted divider reserves the same gutter width, masks the native color with the sentinel, and
         // paints the stroke on the child's own generateVisualContent (DivideDashChildBinding).
-        private void ApplyToChild(VisualElement child, Edge edge, bool isDivider)
+        private void ApplyToChild(VisualElement child, DivideEdge edge, bool isDivider)
         {
             // A skew silhouette or a drop shadow owns the child's border face and repaints a solid border, so a
             // dashed divider on the same child would fight it — route it through the solid path (documented known
@@ -193,15 +208,32 @@ namespace Velvet
             // the dashed / dotted paint shows.
             WriteEdge(child, edge, new StyleFloat(_spec.Width), new StyleColor(SilhouetteFace.SuppressedColor));
 
-            var axis = edge == Edge.Left ? DivideAxis.Horizontal : DivideAxis.Vertical;
             if (hasBinding)
             {
-                DivideDashPainter.Update(child, binding!, axis, _spec.Width, paintColor, _spec.Style);
+                DivideDashPainter.Update(child, binding!, edge, _spec.Width, paintColor, _spec.Style);
             }
             else
             {
-                _ctx.DivideDashBindings[child] = DivideDashPainter.Attach(child, axis, _spec.Width, paintColor, _spec.Style);
+                _ctx.DivideDashBindings[child] = DivideDashPainter.Attach(child, edge, _spec.Width, paintColor, _spec.Style);
             }
+        }
+
+        // The physical edge of each divided child that carries the border. The axis is fixed by the class
+        // (divide-x / divide-y); within it the divider moves to the TRAILING edge (Left→Right, Top→Bottom)
+        // when EITHER the axis's own reverse marker is set OR the container's resolved direction is reversed
+        // on that SAME axis — the marker and a detected row-reverse / column-reverse OR together (both mean
+        // "trailing"), never XOR, so flex-row-reverse divide-x divide-x-reverse still lands trailing. The
+        // flip is per-axis: a horizontal divide never reacts to column-reverse, and a vertical divide never
+        // reacts to row-reverse — StyleFlexDirectionResolver returns ONE mutually-exclusive verdict per call,
+        // so there is no stale leftover from a different family to react to.
+        private DivideEdge ResolveEdge()
+        {
+            var direction = StyleFlexDirectionResolver.Resolve(target);
+            if (_spec.Axis == DivideAxis.Horizontal)
+            {
+                return (_spec.Reverse || direction == FlexDirection.RowReverse) ? DivideEdge.Right : DivideEdge.Left;
+            }
+            return (_spec.Reverse || direction == FlexDirection.ColumnReverse) ? DivideEdge.Bottom : DivideEdge.Top;
         }
 
         // The child's would-be border color for an implicit (no divide-{color}) dashed divider, re-resolved every
@@ -210,9 +242,9 @@ namespace Velvet
         // write, re-applied before this manipulator runs) wins; an unset inline slot reads the USS color via
         // resolvedStyle; and the previous pass's own suppression sentinel keeps the last captured color rather than
         // reading the mask back.
-        private static Color ResolveImplicitColor(VisualElement child, Edge edge, Color? captured)
+        private static Color ResolveImplicitColor(VisualElement child, DivideEdge edge, Color? captured)
         {
-            var inline = edge == Edge.Left ? child.style.borderLeftColor.value : child.style.borderTopColor.value;
+            var inline = InlineColor(child, edge);
             if (!SilhouetteFace.IsUnset(inline) && !SilhouetteFace.IsSentinel(inline))
             {
                 return inline;
@@ -221,20 +253,45 @@ namespace Velvet
             {
                 return captured.Value;
             }
-            return edge == Edge.Left ? child.resolvedStyle.borderLeftColor : child.resolvedStyle.borderTopColor;
+            return ResolvedColor(child, edge);
         }
 
-        private static void WriteEdge(VisualElement child, Edge edge, StyleFloat width, StyleColor color)
+        private static Color InlineColor(VisualElement child, DivideEdge edge) => edge switch
         {
-            if (edge == Edge.Left)
+            DivideEdge.Left => child.style.borderLeftColor.value,
+            DivideEdge.Right => child.style.borderRightColor.value,
+            DivideEdge.Top => child.style.borderTopColor.value,
+            _ => child.style.borderBottomColor.value,
+        };
+
+        private static Color ResolvedColor(VisualElement child, DivideEdge edge) => edge switch
+        {
+            DivideEdge.Left => child.resolvedStyle.borderLeftColor,
+            DivideEdge.Right => child.resolvedStyle.borderRightColor,
+            DivideEdge.Top => child.resolvedStyle.borderTopColor,
+            _ => child.resolvedStyle.borderBottomColor,
+        };
+
+        private static void WriteEdge(VisualElement child, DivideEdge edge, StyleFloat width, StyleColor color)
+        {
+            switch (edge)
             {
-                child.style.borderLeftWidth = width;
-                child.style.borderLeftColor = color;
-            }
-            else
-            {
-                child.style.borderTopWidth = width;
-                child.style.borderTopColor = color;
+                case DivideEdge.Left:
+                    child.style.borderLeftWidth = width;
+                    child.style.borderLeftColor = color;
+                    break;
+                case DivideEdge.Right:
+                    child.style.borderRightWidth = width;
+                    child.style.borderRightColor = color;
+                    break;
+                case DivideEdge.Top:
+                    child.style.borderTopWidth = width;
+                    child.style.borderTopColor = color;
+                    break;
+                case DivideEdge.Bottom:
+                    child.style.borderBottomWidth = width;
+                    child.style.borderBottomColor = color;
+                    break;
             }
         }
 
@@ -254,17 +311,26 @@ namespace Velvet
             if (container != null)
             {
                 ResetStaleBordered(container);
-                if (_applied != Edge.None)
+                if (_applied.HasValue)
                 {
-                    ClearEdge(container, _applied);
-                    _applied = Edge.None;
+                    ClearEdge(container, _applied.Value);
+                    _applied = null;
                 }
             }
             ResetAllBordered();
             _hasSignature = false;
         }
 
-        private void ClearEdge(VisualElement container, Edge edge)
+        // Unlike the Apply walk, this does NOT skip out-of-flow children — it clears the ABANDONED edge on
+        // every current child unconditionally, including a PopLayout ghost mid-exit. That ghost's inline
+        // position was computed by GeneralPathReconciler.PinExitingChildOutOfFlow against the box it had when
+        // it was pinned, so an edge flip landing here while it is still exiting changes its border box under
+        // it. The consequence is milder than the same window in the gap manipulator: the pin folds a child's
+        // MARGIN into the compensated left/top it computes, so clearing a margin edge shifts the ghost by the
+        // full gap, whereas a border width it never folded in only changes the ghost's own content inset by
+        // the divider width. Skipping ghosts instead would be worse — a ghost that outlives the flip would
+        // keep painting a rule on an edge no live sibling still uses.
+        private void ClearEdge(VisualElement container, DivideEdge edge)
         {
             if (container == null)
             {
@@ -288,8 +354,7 @@ namespace Velvet
                 if (child.parent != container)
                 {
                     DetachDash(child);
-                    ResetEdge(child, Edge.Left);
-                    ResetEdge(child, Edge.Top);
+                    ResetOwnedEdges(child);
                     _bordered.RemoveAt(i);
                 }
             }
@@ -300,37 +365,48 @@ namespace Velvet
             foreach (var child in _bordered)
             {
                 DetachDash(child);
-                ResetEdge(child, Edge.Left);
-                ResetEdge(child, Edge.Top);
+                ResetOwnedEdges(child);
             }
             _bordered.Clear();
         }
 
-        // Resets the divider border width + color this manipulator may have written on an edge.
-        private static void ResetEdge(VisualElement child, Edge edge)
+        // Resets every edge this manipulator has ever written, not just the currently applied one: an element
+        // reaching here has left the container (or the manipulator is being torn down), so it may still carry
+        // a border from an edge an earlier flip abandoned while it was still a member. It is deliberately not
+        // all four edges — this manipulator only claims the divider's own edge (an app-authored border on any
+        // other edge of a divided child is preserved), and a blanket reset would erase a child's own
+        // border-r/border-b on the way out.
+        private void ResetOwnedEdges(VisualElement child)
         {
-            if (edge == Edge.Left)
+            for (var edge = DivideEdge.Left; edge <= DivideEdge.Bottom; edge++)
             {
-                child.style.borderLeftWidth = new StyleFloat(StyleKeyword.Null);
-                child.style.borderLeftColor = new StyleColor(StyleKeyword.Null);
-            }
-            else if (edge == Edge.Top)
-            {
-                child.style.borderTopWidth = new StyleFloat(StyleKeyword.Null);
-                child.style.borderTopColor = new StyleColor(StyleKeyword.Null);
+                if ((_everApplied & (1 << (int)edge)) != 0)
+                {
+                    ResetEdge(child, edge);
+                }
             }
         }
 
+        // Resets the divider border width + color this manipulator may have written on an edge. Both channels
+        // go together: the width is the gutter that participates in the box model, and the color is the
+        // channel a colored or sentinel-masked divider wrote alongside it.
+        private static void ResetEdge(VisualElement child, DivideEdge edge)
+            => WriteEdge(child, edge, new StyleFloat(StyleKeyword.Null), new StyleColor(StyleKeyword.Null));
+
         // Order-sensitive hash of the inputs that change the applied borders: width, color, edge, line style,
-        // and the current child identity sequence. Apply() early-returns when this matches the last application.
-        private int ComputeSignature(VisualElement container)
+        // and the current child identity sequence. Apply() early-returns when this matches the last
+        // application. The edge term must distinguish all FOUR edges, not just the axis: Left→Right and
+        // Top→Bottom are same-axis flips (a reverse marker, or the container's direction changing, with the
+        // spec otherwise untouched), and a signature collision there would skip the re-apply that moves the
+        // border to the new edge.
+        private int ComputeSignature(VisualElement container, DivideEdge edge)
         {
             unchecked
             {
                 var hash = 17;
                 hash = hash * 31 + _spec.Width.GetHashCode();
                 hash = hash * 31 + (_spec.HasColor ? _spec.Color.GetHashCode() : 0);
-                hash = hash * 31 + (_spec.Axis == DivideAxis.Horizontal ? 1 : 2);
+                hash = hash * 31 + (int)edge;
                 hash = hash * 31 + (int)_spec.Style;
                 var count = container.childCount;
                 hash = hash * 31 + count;

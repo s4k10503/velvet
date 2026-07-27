@@ -2605,10 +2605,10 @@ namespace Velvet
             Configure<GapOp, StyleGapManipulator>(element, hasGap, new GapOp(gap, axis, xReverse, yReverse));
         }
 
-        // Configures the element's StyleDivideManipulator from the divide-x / divide-y (+ width / color)
-        // tokens in classNames and (re-)applies it so the inter-child borders reflect the current child
-        // set. Mirrors ApplyGapManipulator — call AFTER the container's children have been reconciled so
-        // the manipulator sees the final child list.
+        // Configures the element's StyleDivideManipulator from the divide-x / divide-y (+ width / color /
+        // reverse marker) tokens in classNames and (re-)applies it so the inter-child borders reflect the
+        // current child set. Mirrors ApplyGapManipulator — call AFTER the container's children have been
+        // reconciled so the manipulator sees the final child list.
         internal void ApplyDivideManipulator(VisualElement element, string[] classNames)
         {
             // Fast early-out for the ~99% of elements with no divide class and no existing manipulator.
