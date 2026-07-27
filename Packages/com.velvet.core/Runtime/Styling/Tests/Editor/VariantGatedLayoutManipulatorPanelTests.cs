@@ -140,6 +140,8 @@ namespace Velvet.Tests
             // margin-left 16. The margins are what the user actually sees, so this pins the layout rather
             // than the manipulator bookkeeping.
             var container = MountAndResolveAt(WidePanel, ResponsiveGridClass, childCount: 4);
+            Assume.That(container.panel.visualTree.resolvedStyle.width, Is.GreaterThanOrEqualTo(MdBreakpoint),
+                "Precondition: the panel root resolved at least the md breakpoint wide");
 
             // Assert — the fourth child starts a row, so it carries no column gap.
             Assert.That(container[3].style.marginLeft.value.value, Is.EqualTo(0f));
@@ -248,6 +250,50 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ADarkGatedTextBalanceBesideAMaxWidth_When_TheThemeTurnsLight_Then_TheUtilitysMaxWidthIsRestored()
+        {
+            // Arrange — the variant analogue of the literal co-present-max-width contract: text-balance
+            // borrows the element's max-width slot and nulls it on detach, so the utility's own value has
+            // to come back. max-w-[50px] is inline-resolved, so it is exactly the kind of token that never
+            // appears on the live class list the variant path re-derives from.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Label(className: "max-w-[50px] dark:text-balance", text: "hello") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
+            var label = scope.Root.Q<Label>();
+            VelvetTheme.IsDark = true;
+            Assume.That(scope.Reconciler.Context.TextBalanceManipulators.Count, Is.EqualTo(1),
+                "Precondition: the dark payload attached the manipulator that borrows the slot");
+
+            // Act — the only thing that changes is the theme; nothing re-renders.
+            VelvetTheme.IsDark = false;
+
+            // Assert
+            Assert.That(label.style.maxWidth.value.value, Is.EqualTo(50f));
+        }
+
+        [Test]
+        public void Given_ATrackedElementWithALiteralTextBalanceBesideAMaxWidth_When_TextBalanceIsRenderedAway_Then_TheUtilitysMaxWidthIsRestored()
+        {
+            // Arrange — no variant gates text-balance here; the dark:gap-4 is only there to put the element
+            // in the variant-applied table, which is what switches its layout gates onto the live class
+            // list. The teardown then runs on an ordinary re-render, with no variant toggle involved.
+            using var scope = new ReconcilerScope();
+            var tree1 = new VNode[] { V.Label(className: "max-w-[50px] text-balance dark:gap-4", text: "hello") };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
+            var label = scope.Root.Q<Label>();
+            VelvetTheme.IsDark = true;
+            Assume.That(label.ClassListContains("gap-4"), Is.True,
+                "Precondition: the dark payload put a layout gate class on the live class list");
+
+            // Act — re-render without the text-balance token, everything else unchanged.
+            var tree2 = new VNode[] { V.Label(className: "max-w-[50px] dark:gap-4", text: "hello") };
+            scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
+
+            // Assert
+            Assert.That(label.style.maxWidth.value.value, Is.EqualTo(50f));
         }
     }
 }

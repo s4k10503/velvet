@@ -146,6 +146,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   children with no spacing at all: the arriving gap manipulator wrote its margins before the departing
   grid manipulator cleared the margins IT had written, and that clear took the new ones with it.
   Whichever of the two is departing now releases its writes first.
+- Removing a `text-balance` class from an element that also carries a `max-w-[…]` utility restores that
+  utility's own max-width reliably. `text-balance` borrows the element's inline max-width while active
+  and nulls it on detach, and the restore used to re-scan the class list — which cannot see a bracket
+  value, since those resolve to inline style instead of entering the class list. It now restores from
+  the recorded value directly, so a max-width supplied by a variant (`dark:max-w-[80px]`) comes back too.
+- A `clip-path-*` payload carried by a structural (`first:`), `has-[.class]:`, `data-`/`aria-` or
+  `supports-` variant now re-resolves the element's clip mask when it toggles. UI Toolkit has no
+  `clip-path` property, so the class toggle alone does nothing and the mask has to be re-derived from
+  the live class list; the state, theme and relational variants already did this and these four did not.
 - The VEL100 exhaustive-deps analyzer now also covers `Hooks.UseInsertionEffect` and `Hooks.UseBlocker`.
   Both take a closure plus a deps array, but neither was listed as a deps-comparing hook, so a captured
   value missing from their deps went unreported.

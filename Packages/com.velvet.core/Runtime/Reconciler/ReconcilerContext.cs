@@ -311,6 +311,12 @@ namespace Velvet
         // set actually changed — so the caller signals a re-derive exactly once per real change. Set
         // semantics rather than a counter: a manipulator may re-assert an already-applied payload, and an
         // off-toggle for a payload that was never on is a no-op, either of which would drift a count.
+        // The set deliberately mirrors the class list rather than reference-counting it, because the class
+        // list itself is not reference-counted: two variants asking for the SAME token (dark:gap-4 beside
+        // md:gap-4) already lose the class when whichever one turns off first removes it. Counting here
+        // would only make this table disagree with the element. What changed is the visible consequence —
+        // the token now also decides which layout manipulator the element carries, so that pre-existing
+        // lost toggle reads as a layout change rather than just a lost utility.
         internal bool TrackVariantLayoutClass(VisualElement target, string cls, bool on)
         {
             if (on)
