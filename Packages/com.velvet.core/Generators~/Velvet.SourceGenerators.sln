@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Velvet.SourceGenerators.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Velvet.SourceGenerators.CodeFixes", "src\Velvet.SourceGenerators.CodeFixes\Velvet.SourceGenerators.CodeFixes.csproj", "{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000003}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Velvet.StyleTable", "src\Velvet.StyleTable\Velvet.StyleTable.csproj", "{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000004}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000003}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000003}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000003}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000004}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000004}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000004}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000004}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
