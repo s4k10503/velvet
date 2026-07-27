@@ -34,11 +34,9 @@ namespace Velvet
     // the dashed / dotted stroke on the child's own generateVisualContent — so switching between solid and
     // dashed is layout-identical and only the paint differs.
     //
-    // Child container. Like the gap manipulator it resolves and iterates
-    // FiberNodePatcher.GetChildContainer(target) (a composite widget's inner box; else self), so the
-    // divider lands on the reconciled content and never on the widget's internal hierarchy. The direction
-    // verdict comes from that same child container too — a direction class on such a widget reverses the
-    // widget's own box, not the content the dividers separate.
+    // Child container. Like the gap manipulator it iterates, and resolves its direction from,
+    // FiberNodePatcher.GetChildContainer(target) — a composite widget's inner box; else self. A direction
+    // class on such a widget reverses the widget's own box, not the content the dividers separate.
     //
     // Limitations: an explicit per-child border on the SAME edge the divider draws on (e.g. border-l on a
     // child of a divide-x row) is OVERWRITTEN — this manipulator owns that edge, exactly as the gap
@@ -78,8 +76,7 @@ namespace Velvet
         private int _lastSignature;
         private bool _hasSignature;
 
-        // The inner box this manipulator additionally watches for geometry changes, when the child
-        // container is not the target itself. Null for a plain element. See ObserveChildContainer.
+        // Null unless the child container is a separate element — see ObserveChildContainer.
         private VisualElement? _observed;
 
         public StyleDivideManipulator(DivideSpec spec, ReconcilerContext ctx)
@@ -116,10 +113,7 @@ namespace Velvet
             }
         }
 
-        // Watches a child container that is NOT the target, for the reason StyleGapManipulator's own
-        // ObserveChildContainer gives: the direction verdict is read from a composite widget's inner box,
-        // and GeometryChangedEvent neither bubbles nor trickles, so a re-layout confined to that box
-        // reaches nothing registered on the target.
+        // GeometryChangedEvent neither bubbles nor trickles — see StyleGapManipulator.ObserveChildContainer.
         private void ObserveChildContainer()
         {
             var container = ChildContainer;

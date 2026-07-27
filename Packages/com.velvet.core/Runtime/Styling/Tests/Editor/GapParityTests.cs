@@ -43,10 +43,9 @@ namespace Velvet.Tests
     /// the produced spacing is observable via <c>element.style.margin*</c> without attaching to a panel or
     /// ticking layout — off-panel, both direction and wrap fall back from the class markers (the only source
     /// available) to the same defaults their on-panel <c>resolvedStyle</c> fallback would produce. That
-    /// agreement extends to a composite widget's inner box, which no class marker can reach: its off-panel
-    /// direction default is the engine's column rather than <c>.flex</c>'s row precisely so the two answers
-    /// match, and its wrap default was already the engine's. It does NOT extend to a widget whose own
-    /// built-in USS lays that box out as a row — a horizontally scrolling <c>ScrollView</c>, a
+    /// agreement extends to a composite widget's inner box, whose off-panel direction default is the
+    /// engine's column rather than <c>.flex</c>'s row so that the two answers match. It does NOT extend to a
+    /// widget whose built-in USS lays that box out as a row — a horizontally scrolling <c>ScrollView</c>, a
     /// <c>TwoPaneSplitView</c>, a <c>ToggleButtonGroup</c> — which only a live panel reports; that case is
     /// covered in <see cref="CompositeWidgetSpacingDirectionPanelTests"/>. A USS
     /// child-selector approach to gap would resolve only under a live panel and produce no inline margins at
@@ -426,9 +425,8 @@ namespace Velvet.Tests
         // landing there would shift the whole scroller instead of just the content. We assert both: content
         // is spaced, and the container margin is on the contentContainer with the ScrollView's own margin
         // left untouched.
-        // The wrap verdict is read from the content container as well, so the class that makes it wrap has
-        // to sit there: a flex-wrap in the ScrollView's own class string wraps only the ScrollView's box,
-        // which holds the viewport and the scrollers rather than the spaced children.
+        // The wrap class sits on the contentContainer because that is where the wrap verdict is read from —
+        // a flex-wrap in the ScrollView's own class string wraps only the ScrollView's box.
         [Test]
         public void Given_ScrollViewWrapGap4_When_Reconciled_Then_ContainerMarginOnContentNotScrollView()
         {
@@ -488,12 +486,10 @@ namespace Velvet.Tests
             Assert.That(content[2].style.marginTop.value.value, Is.EqualTo(Space2), "gap before 3rd content child");
         }
 
-        // The off-panel half of the plain-gap axis verdict for a redirecting widget. The direction class is on
-        // the ScrollView, which no child of the content container is laid out by, and no class marker can
-        // reach the content container itself — so the axis comes from the off-panel default for a widget's own
-        // inner box, which is the engine's column. Its on-panel twin (CompositeWidgetSpacingDirectionPanelTests)
-        // resolves the same container through resolvedStyle and must land on the same edge: a default that
-        // disagreed with the resolved answer would let an off-panel test pin what an on-panel one refutes.
+        // No class marker can reach the content container, so off-panel the axis comes from the inner-box
+        // default, the engine's column. The on-panel twin in CompositeWidgetSpacingDirectionPanelTests
+        // resolves the same container and must land on the same edge — a default disagreeing with the
+        // resolved answer would let one of the two pin what the other refutes.
         [Test]
         public void Given_ScrollViewRowGap4_When_ReconciledOffPanel_Then_TheAxisFollowsTheContentContainer()
         {

@@ -9,19 +9,15 @@ namespace Velvet
     // one; a manipulator that picked its edge from the axis alone would put its margin / border on an outer
     // edge of the container and leave the boundary between the visually adjacent pair unmarked.
     //
-    // The element handed in is the CHILD CONTAINER — the one the spaced children are actually parented to,
-    // which is FiberNodePatcher.GetChildContainer's answer. It is deliberately NOT the element a manipulator
-    // is attached to. A composite widget (ScrollView, Foldout, TabView, Tab, TwoPaneSplitView) redirects its
-    // children into an inner box, so a direction class written on the widget lays out the WIDGET's own box —
-    // a ScrollView's viewport and scrollers, a Foldout's toggle above its content — while the children being
-    // spaced sit one level down under the inner box's own direction. An edge picked from the attached
-    // element would then move the margin / border to the trailing side of a pair that is not painted in
-    // reverse order at all. For a plain element the two are the same element, so this is the same read.
+    // The element handed in is the CHILD CONTAINER (FiberNodePatcher.GetChildContainer), NOT the element a
+    // manipulator is attached to. A composite widget redirects its children into an inner box, so a
+    // direction class on the widget lays out the widget's own box — a ScrollView's viewport and scrollers —
+    // while the spaced children sit one level down under the inner box's direction. For a plain element the
+    // two are the same element.
     //
-    // Consequence for every redirecting widget: a class string only ever reaches the element it is written
-    // on, so none of the five direction classes can land on an inner box and its verdict always comes from
-    // the resolvedStyle fallback (or, off-panel, the widgetOwned default) below. That is the honest answer —
-    // what lays an inner box out is the widget's own built-in USS, which no Velvet utility reaches.
+    // A class string only reaches the element it is written on, so none of the five direction classes can
+    // land on an inner box: its verdict always comes from the resolvedStyle fallback (off-panel, the
+    // widgetOwned default) below, and what lays it out is the widget's own built-in USS.
     //
     // The five direction/display classes are consulted FIRST — even on a panel — in the SAME precedence USS
     // itself uses when more than one matches the element (equal specificity, so the LAST declared RULE wins):
@@ -63,8 +59,7 @@ namespace Velvet
     // answer than omitting it does.
     internal static class StyleFlexDirectionResolver
     {
-        // widgetOwned marks a child container that is a widget's own inner box rather than the element the
-        // class string was written on — see the header. It selects the off-panel default only.
+        // widgetOwned marks a widget's own inner box; it selects the off-panel default only.
         public static FlexDirection Resolve(VisualElement childContainer, bool widgetOwned)
         {
             if (childContainer.ClassListContains("flex-row-reverse"))
@@ -91,14 +86,12 @@ namespace Velvet
             {
                 return childContainer.resolvedStyle.flexDirection;
             }
-            // No direction/display class and no panel to resolve against. A widget's own inner box takes the
-            // ENGINE's default, column: the row default below exists only to mirror what .flex means on an
-            // element an author wrote a class string on, and no class string ever reaches here, so there is
-            // no such intent to mirror — what will actually lay this box out is the widget's own USS over
-            // Yoga's raw column default. Answering row instead would make the off-panel verdict disagree
-            // with the on-panel one for the same tree, and each would then pin the other's bug. A widget
-            // whose USS overrides that default (a horizontally scrolling ScrollView, a horizontal
-            // TwoPaneSplitView) is exactly what the resolvedStyle branch above is for, and needs a panel.
+            // No direction/display class and no panel. An inner box takes the ENGINE's default, column: the
+            // row default below mirrors what .flex means on an element an author wrote a class on, and no
+            // class reaches an inner box — what lays it out is the widget's own USS over Yoga's column.
+            // Answering row here would make the off-panel verdict disagree with the on-panel one for the
+            // same tree, so each could pin the other's bug. A widget whose USS overrides that default (a
+            // horizontally scrolling ScrollView, a TwoPaneSplitView) needs the panel branch above.
             if (widgetOwned)
             {
                 return FlexDirection.Column;

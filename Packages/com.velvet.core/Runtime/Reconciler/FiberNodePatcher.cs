@@ -2775,21 +2775,15 @@ namespace Velvet
 
         #region Helpers
 
-        // The element a child added to this one actually lands under: its contentContainer, or the
-        // element itself when it does not redirect. This is the same rule VisualElement.Add follows, and it
-        // is keyed on the redirect rather than on a widget type so it holds for every composite a caller can
-        // reach. V.Custom<T> mounts ANY VisualElement subclass with children, so the redirecting widgets are
-        // not a closed set Velvet chooses: ScrollView, Foldout, TabView, Tab and TwoPaneSplitView all parent
-        // their children in an inner container, and all of them place a real reconciled child list there.
-        // Everything downstream — where children are reconciled, and which box the layout manipulators read
-        // their direction / wrap from and write a container margin to — has to name that same element or it
-        // describes a layout the children are not in.
+        // The element a child added to this one actually lands under — the rule VisualElement.Add follows.
+        // Keyed on the redirect, not on a widget type: V.Custom<T> mounts ANY VisualElement subclass with
+        // children, so the composites that redirect are not a set Velvet gets to choose. Every caller that
+        // names "the children's container" must name this same element — the reconcile target, and the box
+        // the layout manipulators read direction / wrap from and write a container margin to.
         //
-        // A null contentContainer (ListView, which parents nothing and builds its rows from its own item
-        // source) answers with the element. That is not a workaround for a crash: VisualElement is null-safe
-        // throughout for this — childCount reads 0, the indexer yields nothing — so a caller walking "the
-        // children" of one simply finds none. Insert quietly does nothing there, which is why nothing should
-        // be reconciled into such a widget in the first place.
+        // A null contentContainer (the collection views, which build their rows themselves) answers with the
+        // element. Not a crash guard: VisualElement is null-safe throughout — childCount reads 0, the indexer
+        // yields nothing. Insert quietly does nothing there, so nothing should be reconciled into one.
         internal static VisualElement GetChildContainer(VisualElement element)
         {
             var content = element.contentContainer;
