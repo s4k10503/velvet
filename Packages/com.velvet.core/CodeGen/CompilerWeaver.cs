@@ -46,12 +46,15 @@ namespace Velvet.CodeGen
     // e.g. in a test fixture) is skipped so the weaver does not memoize it a second time.
     internal static class CompilerWeaver
     {
-        private const string ComponentAttrFullName = "Velvet.ComponentAttribute";
-        private const string CompilerPropertyName = "Compiler";
-        private const string HooksTypeFullName = "Velvet.Hooks";
-        private const string VNodeFullName = "Velvet.VNode";
-        private const string SystemVoidFullName = "System.Void";
-        private const string TryGetMemoizedVNodeName = "TryGetMemoizedVNode";
+        // This assembly references Velvet, so every name it matches against is taken from the type system
+        // rather than spelled out: a rename on the runtime side then fails to compile here instead of
+        // turning the weaver into a silent no-op.
+        private static readonly string ComponentAttrFullName = typeof(Velvet.ComponentAttribute).FullName;
+        private const string CompilerPropertyName = nameof(Velvet.ComponentAttribute.Compiler);
+        private static readonly string HooksTypeFullName = typeof(Velvet.Hooks).FullName;
+        private static readonly string VNodeFullName = typeof(Velvet.VNode).FullName;
+        private static readonly string SystemVoidFullName = typeof(void).FullName;
+        private const string TryGetMemoizedVNodeName = nameof(Velvet.Hooks.TryGetMemoizedVNode);
 
         private static readonly HashSet<string> PositionalHookMethodNames =
             new(Velvet.PositionalHookNames.All);
@@ -1005,29 +1008,31 @@ namespace Velvet.CodeGen
         {
             failure = string.Empty;
 
-            var hooksType = module.GetType("Velvet.Hooks")
-                ?? WeaverDiagnostics.ResolveExternal(module, "Velvet.Hooks");
+            var hooksTypeName = typeof(Velvet.Hooks).FullName;
+            var hooksType = module.GetType(hooksTypeName)
+                ?? WeaverDiagnostics.ResolveExternal(module, hooksTypeName);
             if (hooksType == null)
             {
-                failure = "the type 'Velvet.Hooks' could not be resolved from the assembly's references.";
+                failure = $"the type '{hooksTypeName}' could not be resolved from the assembly's references.";
                 return null;
             }
 
-            var vnodeType = module.GetType("Velvet.VNode")
-                ?? WeaverDiagnostics.ResolveExternal(module, "Velvet.VNode");
+            var vnodeTypeName = typeof(Velvet.VNode).FullName;
+            var vnodeType = module.GetType(vnodeTypeName)
+                ?? WeaverDiagnostics.ResolveExternal(module, vnodeTypeName);
             if (vnodeType == null)
             {
-                failure = "the type 'Velvet.VNode' could not be resolved from the assembly's references.";
+                failure = $"the type '{vnodeTypeName}' could not be resolved from the assembly's references.";
                 return null;
             }
 
-            var tryGet = ResolveHookMethod(hooksType, "TryGetMemoizedVNode");
-            var store = ResolveHookMethod(hooksType, "StoreMemoizedVNode");
+            var tryGet = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.TryGetMemoizedVNode));
+            var store = ResolveHookMethod(hooksType, nameof(Velvet.Hooks.StoreMemoizedVNode));
             if (tryGet == null || store == null)
             {
-                failure = "the memoization methods 'Velvet.Hooks.TryGetMemoizedVNode' /"
-                    + " 'Velvet.Hooks.StoreMemoizedVNode' could not be resolved on the referenced"
-                    + " Velvet assembly.";
+                failure = $"the memoization methods '{hooksTypeName}.{nameof(Velvet.Hooks.TryGetMemoizedVNode)}' /"
+                    + $" '{hooksTypeName}.{nameof(Velvet.Hooks.StoreMemoizedVNode)}' could not be resolved on the"
+                    + " referenced Velvet assembly.";
                 return null;
             }
 

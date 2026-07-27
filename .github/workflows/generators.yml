@@ -1,20 +1,26 @@
 name: Source generators
 
-# The Roslyn generators are a standalone dotnet solution: only changes under
-# Generators~ (or this workflow) can affect the result, so nothing else
-# triggers it. Generator changes reach the Unity side as committed DLLs under
-# Runtime/Plugins, which the Unity test workflow picks up on its own paths.
+# The Roslyn generators are a standalone dotnet solution, so changes under
+# Generators~ (or this workflow) trigger it. The runtime sources are listed too:
+# the hook-surface drift guard re-derives the hook and type surface by parsing
+# them, so a rename there — not a generator edit — is exactly what must fail
+# this job. Generator changes reach the Unity side as committed DLLs under
+# Runtime/Plugins, which the Unity test workflow picks up on its own paths; that
+# workflow keeps excluding Generators~, so a generator-only change still runs
+# here alone.
 on:
   push:
     branches: [main]
     paths:
       - 'Packages/com.velvet.core/Generators~/**'
+      - 'Packages/com.velvet.core/Runtime/**'
       - '.github/workflows/generators.yml'
       - '!**.md'
   pull_request:
     branches: [main]
     paths:
       - 'Packages/com.velvet.core/Generators~/**'
+      - 'Packages/com.velvet.core/Runtime/**'
       - '.github/workflows/generators.yml'
       - '!**.md'
   workflow_dispatch:

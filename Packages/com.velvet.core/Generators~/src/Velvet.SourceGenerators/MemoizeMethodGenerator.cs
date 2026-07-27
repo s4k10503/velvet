@@ -27,7 +27,6 @@ namespace Velvet.SourceGenerators
     [Generator(LanguageNames.CSharp)]
     public sealed class MemoizeMethodGenerator : IIncrementalGenerator
     {
-        private const string MemoizeMethodAttributeMetadataName = "Velvet.MemoizeMethodAttribute";
         private const string ImplSuffix = "_Impl";
         internal const int MinArity = 0;
         internal const int MaxArity = 8;
@@ -36,7 +35,7 @@ namespace Velvet.SourceGenerators
         {
             var methodCandidates = context.SyntaxProvider
                 .ForAttributeWithMetadataName(
-                    MemoizeMethodAttributeMetadataName,
+                    VelvetWellKnownNames.MemoizeMethodAttributeFullName,
                     predicate: static (node, _) => node is MethodDeclarationSyntax,
                     transform: static (ctx, ct) => BuildCandidate(ctx, ct))
                 .Where(static c => c is not null)!
