@@ -73,7 +73,7 @@ This README is now scoped to **contributor concerns** (build / test / DLL shippi
 
 `.github/workflows/generators.yml` has a single job with one build/test step: check out, install the .NET SDK pinned by `global.json`, then `dotnet test Velvet.SourceGenerators.sln -c Release --nologo` (which restores and builds as part of the run). No Unity license is required.
 
-It triggers on `Runtime/**` as well as `Generators~/**`, because `HookSurfaceDriftTests` reads the runtime sources: a PR that only renames a hook must still run this job.
+Which paths trigger it is stated in the repository's `CLAUDE.md`; the reason `Runtime/**` is among them is that `HookSurfaceDriftTests` reads the runtime sources, so a PR that only renames a hook must still run this job.
 
 **CI does not check the committed DLLs under `../Runtime/Plugins/` at all.** It tests the sources; it never compares the deployed assemblies against a rebuild, so a PR that edits generator sources and forgets to rerun `build.sh` goes green while Unity keeps consuming the stale binaries. Rebuilding and committing them is the contributor's responsibility.
 
