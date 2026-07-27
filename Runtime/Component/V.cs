@@ -39,11 +39,6 @@ namespace Velvet
         internal const int MaxClassNameCacheSize = 256;
 
 #if UNITY_EDITOR
-        /// <summary>Test-only: drains the cache to isolate cache-bound regression coverage.</summary>
-        internal static void ClearClassNameCacheForTesting() => s_classNameCache.Clear();
-#endif
-
-#if UNITY_EDITOR
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStaticFields()
         {
