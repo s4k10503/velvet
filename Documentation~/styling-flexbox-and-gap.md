@@ -1,4 +1,4 @@
-# Styling notes: Flexbox direction & gap
+# Styling notes: Flexbox direction, gap & divide
 
 Velvet's utility classes are Tailwind-inspired, but they run on Unity UI Toolkit's
 layout engine (Yoga), which implements a **subset of Flexbox** and behaves differently
@@ -150,7 +150,39 @@ deviation from plain CSS (where `space-x-*` has no native realization at all, so
 `> * + *` margin rule needs the marker to ever move off the leading edge); it exists here only
 because Velvet's `space-*` and `gap-*` share one direction-aware implementation.
 
+### `divide-x-*` / `divide-y-*` follow the same rule
+
+`divide-x-*` / `divide-y-*` draw a **border** between adjacent children — Tailwind's `> * + *`
+divider — and UI Toolkit has no `:first-child` and no `> *` child combinator either, so Velvet
+realizes them through the same kind of per-container manipulator (`StyleDivideManipulator`): the
+border goes on every child **except the first**, never on the container's outer edges.
+
+Which physical edge carries that border follows **exactly** the rule "Reversed containers" above
+states for gap — the same trailing-edge move on `flex-row-reverse` / `flex-col-reverse`, the same
+OR-not-XOR combination with the reverse marker, the same per-axis independence, and the same
+class-list-before-`resolvedStyle` direction source. Read that section for the rule; only the two
+differences are restated here. The axis is always fixed by the class (`divide-x` is horizontal,
+`divide-y` is vertical — there is no direction-following `Auto` form that a plain `gap-*` has), and
+the marker is spelled `divide-x-reverse` / `divide-y-reverse` rather than `space-x-reverse` /
+`space-y-reverse`.
+
+| Utility | Axis | Effect |
+|---|---|---|
+| `divide-x-*` | always horizontal | `border-left` between columns, or `border-right` on a `flex-row-reverse` container / with `divide-x-reverse` |
+| `divide-y-*` | always vertical | `border-top` between rows, or `border-bottom` on a `flex-col-reverse` container / with `divide-y-reverse` |
+
+A lone `divide-x-reverse` does nothing on its own — like `divide-{color}`, it needs a `divide-x` /
+`divide-y` to give it a width to move. Because a divider is a real border, the edge it lands on also
+carries its **color** and its share of the box model: the manipulator owns the width *and* color
+channel of that one edge and releases both when the edge changes. The other three edges are left
+alone, so a child's own `border-b` under a `divide-x` row is preserved. Unlike gap, divide has no
+wrap-specific strategy: a wrapping container still gets a single per-child divider edge, not a
+symmetric one, so dividers between wrapped *lines* are not drawn.
+
 ### How re-spacing stays correct
+
+Everything below is written for `gap-*`, but the divider manipulator resolves its direction the same
+way and re-applies on the same three events, so it holds for `divide-*` too.
 
 The spacing depends on the child set and, for every axis (not just plain `gap-*`'s axis choice — a
 `gap-x-*` / `gap-y-*`'s reversed-edge flip too), the resolved direction. Both can change outside the
@@ -173,7 +205,7 @@ from a variant" above — so at equal specificity (one class selector each) a
 *later*-declared rule always overrides an earlier one when an element carries more than one of them at
 once, which is routine once a responsive/state variant is involved (`flex flex-col md:flex-row`
 leaves BOTH `flex-col` and `flex-row` on the live class list above the breakpoint).
-`StyleGapManipulator.ResolveDirection` reproduces that exact precedence — checking
+`StyleFlexDirectionResolver` reproduces that exact precedence — checking
 `flex-row-reverse`, then `flex-row`, then `flex-col-reverse`, then `flex-col`, then `flex`, in that
 order —
 and resolves it into ONE mutually-exclusive verdict (axis + reversed-or-not together), rather than an
@@ -248,8 +280,9 @@ bleeding its negative margin outward over its siblings until something unrelated
 `grid` also sets `flex-direction: row` (and `flex-wrap: wrap`) in `_layout.uss`, but a `grid` /
 `grid-cols-*` class routes an element's gap through the separate grid manipulator entirely —
 `StyleGapManipulator` is suppressed and removed for that element rather than ever computing a
-direction or wrap verdict for it, so neither class scan needs to (or does) recognize `grid` at all;
-see `StyleGapManipulator.ResolveDirection`'s own comment for the mechanics.
+direction or wrap verdict for it — the suppression itself lives in
+`FiberNodePatcher.ApplyGapManipulator`, which checks for the grid class before the manipulator is
+ever created or updated — so neither class scan needs to (or does) recognize `grid` at all.
 
 ```csharp
 // Wrapping grid: gap-4 now spaces BOTH the row direction and between wrapped rows.

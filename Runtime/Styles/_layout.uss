@@ -45,8 +45,8 @@
  * `flex-row md:flex-row-reverse` take effect while their mirrors do not.
  * `.flex` / `.grid` above set flex-direction too and are declared before all four, so any explicit
  * direction utility outranks them.
- * StyleGapManipulator.ResolveDirection reproduces this precedence to place the gap margin on the
- * axis the element actually lays out on, so it must be updated in lockstep with any change here.
+ * StyleFlexDirectionResolver reproduces this precedence to place the gap margin and the divide border
+ * on the axis the element actually lays out on, so it must be updated in lockstep with any change here.
  */
 .flex-col { flex-direction: column; }
 .flex-col-reverse { flex-direction: column-reverse; }

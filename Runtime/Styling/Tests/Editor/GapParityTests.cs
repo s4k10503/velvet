@@ -29,7 +29,7 @@ namespace Velvet.Tests
     /// must carry no residual gap margin; <see cref="StyleGapManipulator.Apply"/> must no-op when nothing
     /// relevant changed so the GeometryChanged feedback its own writes provoke does not re-churn), and the
     /// RUNTIME axis flip: an Auto-axis gap resolves its edge from the direction class marker — the class list
-    /// is consulted before <c>resolvedStyle</c> even on a panel, see <see cref="StyleGapManipulator.ResolveDirection"/>
+    /// is consulted before <c>resolvedStyle</c> even on a panel, see <see cref="StyleFlexDirectionResolver"/>
     /// — so a re-render that swaps <c>flex-row</c> ↔ <c>flex-col</c> must move the inter-child margin to the new
     /// edge AND clear the edge it abandoned. Also specifies the <c>space-x-*</c> / <c>space-y-*</c> alias onto
     /// the same gap machinery (<c>space-*</c> is CSS's own inter-child-margin selector, <c>&gt; * + *</c>, which
@@ -1113,7 +1113,7 @@ namespace Velvet.Tests
     /// one <see cref="GapReverseRuntimeFlipTests"/> below uses. <c>flex-row-reverse</c> /
     /// <c>flex-col-reverse</c> are USS-only rules (<c>_layout.uss</c>) with no C# parse path of their own —
     /// <c>resolvedStyle.flexDirection</c> never actually reports <c>RowReverse</c> without the bundled
-    /// <c>StyleUtilities.uss</c> attached to a real panel. Since <see cref="StyleGapManipulator.ResolveDirection"/>
+    /// <c>StyleUtilities.uss</c> attached to a real panel. Since <see cref="StyleFlexDirectionResolver"/>
     /// reads the class markers before resolvedStyle even on a panel, the first test below is class-marker
     /// coverage on a panel, not resolvedStyle coverage — the second test is the one that actually proves the
     /// resolvedStyle FALLBACK, by withholding every direction/display class entirely.
@@ -1158,7 +1158,7 @@ namespace Velvet.Tests
         {
             // Arrange — flex-direction set via an inline style (standing in for a custom stylesheet rule),
             // with NONE of the five direction/display classes (flex / flex-row(-reverse) /
-            // flex-col(-reverse)) anywhere on the element — the one case ResolveDirection's class scan
+            // flex-col(-reverse)) anywhere on the element — the one case the direction resolver's class scan
             // cannot answer, so it must fall through to resolvedStyle. A VisualElement is a flex container
             // by Yoga's own default regardless of a "flex" class, so the inline flex-direction alone is
             // enough to produce a real RowReverse layout.

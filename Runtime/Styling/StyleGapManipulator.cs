@@ -46,8 +46,9 @@ namespace Velvet
     // container's children (the panel-independent path that also covers EditMode, where layout never
     // ticks); (2) GeometryChangedEvent catches child add / remove / reorder driven by an
     // unrelated reconcile pass at runtime; (3) AttachToPanelEvent re-resolves once resolvedStyle is
-    // valid, for the one case no class can cover (see ResolveDirection: the five direction/display
-    // classes are the PRIMARY direction source, even on a panel — resolvedStyle is only the fallback).
+    // valid, for the one case no class can cover (see StyleFlexDirectionResolver: the five
+    // direction/display classes are the PRIMARY direction source, even on a panel — resolvedStyle is only
+    // the fallback).
     // A signature (_lastSignature) makes repeated Apply calls with no relevant change — notably the
     // GeometryChanged feedback the manipulator's own margin writes provoke — into no-ops.
     // Reparent / removal. The manipulator tracks every element it wrote a margin to
@@ -114,10 +115,10 @@ namespace Velvet
         // OWN classNames array at gap-config time (FiberNodePatcher.ApplyGapManipulator), the same source
         // StyleGapClass.TryExtract already reads the gap value and axis from — so a variant-prefixed
         // md:space-x-reverse resolves however the variant system resolves md: classes generally (it either
-        // is or isn't in THIS render's classNames, before any manipulator ever runs). ResolveDirection
-        // below, by contrast, reads the live element's classList, because unlike the gap spec itself the
-        // direction can change out from under the manipulator without a matching gap-config patch (see
-        // ResolveDirection). The two halves of this feature therefore consult different lists on principle,
+        // is or isn't in THIS render's classNames, before any manipulator ever runs).
+        // StyleFlexDirectionResolver, by contrast, reads the live element's classList, because unlike the
+        // gap spec itself the direction can change out from under the manipulator without a matching
+        // gap-config patch. The two halves of this feature therefore consult different lists on principle,
         // not by accident — each is authoritative for what it answers.
         private bool _xReverse;
         private bool _yReverse;
@@ -489,107 +490,29 @@ namespace Velvet
         // detected row-reverse/column-reverse OR together (both mean "trailing"), never XOR, so
         // flex-row-reverse space-x-4 space-x-reverse still lands trailing. The flip is per-axis: a
         // horizontal gap never reacts to column-reverse, and a vertical gap never reacts to row-reverse —
-        // ResolveDirection resolves ONE mutually-exclusive verdict per call, so there is no stale leftover
-        // from a different family to react to.
+        // StyleFlexDirectionResolver resolves ONE mutually-exclusive verdict per call, so there is no stale
+        // leftover from a different family to react to.
         private Edge ResolveEdge()
         {
-            var direction = ResolveDirection();
+            var direction = StyleFlexDirectionResolver.Resolve(target);
             switch (_axis)
             {
                 case GapAxis.Horizontal:
-                    return (_xReverse || direction == Direction.RowReverse) ? Edge.Right : Edge.Left;
+                    return (_xReverse || direction == FlexDirection.RowReverse) ? Edge.Right : Edge.Left;
                 case GapAxis.Vertical:
-                    return (_yReverse || direction == Direction.ColumnReverse) ? Edge.Bottom : Edge.Top;
+                    return (_yReverse || direction == FlexDirection.ColumnReverse) ? Edge.Bottom : Edge.Top;
                 default:
-                    return direction == Direction.Row || direction == Direction.RowReverse
-                        ? ((_xReverse || direction == Direction.RowReverse) ? Edge.Right : Edge.Left)
-                        : ((_yReverse || direction == Direction.ColumnReverse) ? Edge.Bottom : Edge.Top);
+                    return direction == FlexDirection.Row || direction == FlexDirection.RowReverse
+                        ? ((_xReverse || direction == FlexDirection.RowReverse) ? Edge.Right : Edge.Left)
+                        : ((_yReverse || direction == FlexDirection.ColumnReverse) ? Edge.Bottom : Edge.Top);
             }
-        }
-
-        // The container's resolved flex-direction, collapsed to the four values that matter here (axis +
-        // reversed-or-not). A single mutually-exclusive verdict — rather than an axis check and a
-        // reversed-family check answered independently — is required for correctness, not just tidiness:
-        // gap-x-4 patched straight from flex-row-reverse to flex-col-reverse (no row-family class survives
-        // the patch) must forget RowReverse entirely and see ColumnReverse fresh, which a same-family-only
-        // check cannot do since it never looks at the other family at all.
-        private enum Direction { Row, RowReverse, Column, ColumnReverse }
-
-        // Resolves the direction: the five direction/display classes are consulted FIRST — even on a panel —
-        // in the SAME precedence USS itself uses when more than one matches the element (equal specificity,
-        // so the LAST declared RULE wins): _layout.uss declares .flex-col, .flex-col-reverse, .flex-row,
-        // .flex-row-reverse in that source order, so flex-row-reverse beats flex-row beats flex-col-reverse
-        // beats flex-col beats the bare .flex row default, regardless of which classes ended up on the
-        // element or in what order — a responsive/state variant routinely leaves TWO direction classes on
-        // the live list at once (e.g. "flex flex-col md:flex-row" above the breakpoint), and only
-        // checking one family (row OR column) would silently pick the wrong one. The bare .flex is checked
-        // LAST rather than folded in with flex-row, because it is declared before all four direction
-        // utilities and so loses to every one of them, flex-col included. This also single-sources
-        // why classes beat resolvedStyle.flexDirection generally: flex-row(-reverse) / flex-col(-reverse)
-        // are USS-only rules with no C# inline flex-direction write, so resolvedStyle only catches up after
-        // the panel's NEXT style pass, and a same-rect direction toggle (children reorder; the container
-        // itself never resizes) fires no GeometryChangedEvent to trigger a re-derive — a toggle driven
-        // through resolvedStyle could converge once by luck (an unrelated rect change) and never again.
-        // The class list, by contrast, is already the FINAL one by the time ApplyGapManipulator runs
-        // (SyncClassDrivenStyling patches it during PatchBaseElement, before the post-children passes that
-        // include the gap manipulator), so it is synchronously correct exactly when this needs it.
-        // resolvedStyle is the fallback for the one case no class can cover: flex-direction set some other
-        // way (a custom stylesheet rule, an inline style) with NONE of the five classes on the element — a
-        // direction class, when present, always outranks a custom stylesheet or inline flexDirection.
-        // .grid also sets flex-direction: row in _layout.uss, but is deliberately NOT part of this scan:
-        // FiberNodePatcher.ApplyGapManipulator checks StyleGridClass.HasGridClass against the reconciled
-        // classNames array before this manipulator is ever created or updated, and that check matches the
-        // literal string "grid" too, so a "grid" present in THAT array suppresses the manipulator — its gap
-        // is owned by StyleGridManipulator instead. (This does not make "grid" provably unreachable on the
-        // LIVE class list this method actually reads: a variant-gated class, e.g. a responsive md:grid,
-        // is added straight to the live element by the conditional-variant manipulator once its breakpoint
-        // is met, outside the reconciled classNames array HasGridClass checked — a pre-existing gap in that
-        // suppression, not something introduced here. It happens not to matter: "grid" implies Row, which
-        // coincides with this method's own eventual fallback default, so omitting the check never produces
-        // a different answer — it just reaches the same answer by a different path.)
-        private Direction ResolveDirection()
-        {
-            if (target.ClassListContains("flex-row-reverse"))
-            {
-                return Direction.RowReverse;
-            }
-            if (target.ClassListContains("flex-row"))
-            {
-                return Direction.Row;
-            }
-            if (target.ClassListContains("flex-col-reverse"))
-            {
-                return Direction.ColumnReverse;
-            }
-            if (target.ClassListContains("flex-col"))
-            {
-                return Direction.Column;
-            }
-            if (target.ClassListContains("flex"))
-            {
-                return Direction.Row;
-            }
-            if (target.panel != null)
-            {
-                return target.resolvedStyle.flexDirection switch
-                {
-                    FlexDirection.RowReverse => Direction.RowReverse,
-                    FlexDirection.Column => Direction.Column,
-                    FlexDirection.ColumnReverse => Direction.ColumnReverse,
-                    _ => Direction.Row,
-                };
-            }
-            // No direction/display class and no panel to resolve against: mirror the .flex=row default —
-            // the one place this deliberately disagrees with the raw engine, whose own default is column
-            // (see this file's own guide, "The engine's raw flex default is a column, not a row").
-            return Direction.Row;
         }
 
         // True when the container wraps (selects the four-side half-margin path). The flex-wrap /
         // flex-nowrap / flex-wrap-reverse class markers are consulted first, in _layout.uss's own
         // declaration order (flex-wrap, flex-nowrap, flex-wrap-reverse — so flex-wrap-reverse beats
-        // flex-nowrap beats flex-wrap when more than one is present). UNLIKE ResolveDirection, there is no
-        // further "direction class implies a default" tier here: flex / flex-row(-reverse) /
+        // flex-nowrap beats flex-wrap when more than one is present). UNLIKE the direction resolve, there is
+        // no further "direction class implies a default" tier here: flex / flex-row(-reverse) /
         // flex-col(-reverse) set flex-direction only — they say nothing about flex-wrap — so their
         // presence is not evidence either way. resolvedStyle.flexWrap is the fallback whenever none of the
         // three wrap classes is present, which is the catch-all for wrap set some other way (a custom
@@ -597,7 +520,7 @@ namespace Velvet
         // folding direction classes into this check (as an earlier revision of this method did) would have
         // taken that fallback away for almost all of them, misreading a genuinely wrapping inline-styled
         // container as non-wrapping. This fallback CAN read one pass stale on a same-rect toggle, the same
-        // risk ResolveDirection has — but unlike a direction flip, gaining or losing a wrapped line usually
+        // risk StyleFlexDirectionResolver has — but unlike a direction flip, gaining or losing a wrapped line usually
         // changes the container's own measured size, so the resulting GeometryChangedEvent self-corrects it
         // in the common case; see the guide for the residual fixed-size exception.
         private bool IsWrap()

@@ -4,22 +4,24 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Per-child bookkeeping for a dashed / dotted divider drawn on ONE divided child's leading edge
-    // (border-left for divide-x, border-top for divide-y). A solid divider is a plain inline border the
-    // StyleDivideManipulator writes; a dashed / dotted divider has no UI Toolkit border-style, so it is
-    // painted by the CHILD's own generateVisualContent. The child still reserves the SAME layout gutter (the
-    // manipulator writes the real border width inline and masks only the color with the sentinel), so
-    // switching a divider between solid and dashed is layout-identical — only the paint differs.
+    // Per-child bookkeeping for a dashed / dotted divider drawn on ONE divided child's divider edge. A solid
+    // divider is a plain inline border the StyleDivideManipulator writes; a dashed / dotted divider has no UI
+    // Toolkit border-style, so it is painted by the CHILD's own generateVisualContent. The child still
+    // reserves the SAME layout gutter (the manipulator writes the real border width inline and masks only the
+    // color with the sentinel), so switching a divider between solid and dashed is layout-identical — only
+    // the paint differs. The binding stores the physical EDGE rather than the axis: on a reversed container
+    // the divider is on the axis's trailing edge, and the stroke has to be drawn where the solid border of
+    // the same divider would paint.
     internal sealed class DivideDashChildBinding
     {
         public Action<MeshGenerationContext>? OnGenerate;
-        public DivideAxis Axis;
+        public DivideEdge Edge;
         public float Width;
         public Color Color;
         public BorderLineStyle Style;
 
-        // Reusable 2-point buffer for the leading-edge segment (rebuilt each Draw from the live layout).
-        public readonly Vector2[] Edge = new Vector2[2];
+        // Reusable 2-point buffer for the divider segment (rebuilt each Draw from the live layout).
+        public readonly Vector2[] Segment = new Vector2[2];
     }
 
     // Attaches / updates / detaches a divided child's dashed / dotted divider paint. The binding must register
@@ -30,20 +32,20 @@ namespace Velvet
     // recycling one child independently of its container is still caught) and swept by Reconciler.Dispose.
     internal static class DivideDashPainter
     {
-        public static DivideDashChildBinding Attach(VisualElement child, DivideAxis axis, float width, Color color, BorderLineStyle style)
+        public static DivideDashChildBinding Attach(VisualElement child, DivideEdge edge, float width, Color color, BorderLineStyle style)
         {
-            var binding = new DivideDashChildBinding { Axis = axis, Width = width, Color = color, Style = style };
+            var binding = new DivideDashChildBinding { Edge = edge, Width = width, Color = color, Style = style };
             binding.OnGenerate = mgc => Draw(mgc, child, binding);
-            // Appended (not prepended): the divider sits ON the child's leading edge over its own content, the
+            // Appended (not prepended): the divider sits ON the child's divider edge over its own content, the
             // same place a solid inline border paints (over the child's background edge).
             child.generateVisualContent += binding.OnGenerate;
             child.MarkDirtyRepaint();
             return binding;
         }
 
-        public static void Update(VisualElement child, DivideDashChildBinding binding, DivideAxis axis, float width, Color color, BorderLineStyle style)
+        public static void Update(VisualElement child, DivideDashChildBinding binding, DivideEdge edge, float width, Color color, BorderLineStyle style)
         {
-            binding.Axis = axis;
+            binding.Edge = edge;
             binding.Width = width;
             binding.Color = color;
             binding.Style = style;
@@ -69,22 +71,29 @@ namespace Velvet
                 return;
             }
 
-            // The leading edge in the child's own local space, centered on the border's half-width so the
-            // dashed line straddles the edge exactly where a solid inline border of the same width would sit.
+            // The divider edge in the child's own local space, inset by the border's half-width so the dashed
+            // line straddles the edge exactly where a solid inline border of the same width would sit.
             var half = binding.Width * 0.5f;
-            if (binding.Axis == DivideAxis.Horizontal)
+            switch (binding.Edge)
             {
-                // border-left: a vertical line down the left edge.
-                binding.Edge[0] = new Vector2(half, 0f);
-                binding.Edge[1] = new Vector2(half, h);
+                case DivideEdge.Left:
+                    binding.Segment[0] = new Vector2(half, 0f);
+                    binding.Segment[1] = new Vector2(half, h);
+                    break;
+                case DivideEdge.Right:
+                    binding.Segment[0] = new Vector2(w - half, 0f);
+                    binding.Segment[1] = new Vector2(w - half, h);
+                    break;
+                case DivideEdge.Top:
+                    binding.Segment[0] = new Vector2(0f, half);
+                    binding.Segment[1] = new Vector2(w, half);
+                    break;
+                case DivideEdge.Bottom:
+                    binding.Segment[0] = new Vector2(0f, h - half);
+                    binding.Segment[1] = new Vector2(w, h - half);
+                    break;
             }
-            else
-            {
-                // border-top: a horizontal line across the top edge.
-                binding.Edge[0] = new Vector2(0f, half);
-                binding.Edge[1] = new Vector2(w, half);
-            }
-            DashedBorderPainter.StrokeDashed(mgc.painter2D, binding.Edge, closed: false, binding.Width, binding.Color, binding.Style);
+            DashedBorderPainter.StrokeDashed(mgc.painter2D, binding.Segment, closed: false, binding.Width, binding.Color, binding.Style);
         }
     }
 }
