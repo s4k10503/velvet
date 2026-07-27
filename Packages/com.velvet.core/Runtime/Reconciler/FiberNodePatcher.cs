@@ -2742,11 +2742,16 @@ namespace Velvet
                     element.RemoveManipulator(stale);
                     _ctx.TextBalanceManipulators.Remove(element);
                     // Detach unconditionally nulls the shared maxWidth slot text-balance owned while
-                    // present; restore a co-present max-w-* utility's own value the same way a detached
-                    // Hue/Pulse motion's shared inline slot is restored
-                    // (FiberAnimateMotionApplier.RestoreSharedInlineSlot) — otherwise removing JUST the
-                    // text-balance token would also erase an unrelated max-width the element still carries.
-                    ReapplyArbitraryValues(element, classNames);
+                    // present, so a co-present max-w-* utility's own value has to be put back — otherwise
+                    // removing JUST the text-balance token would also erase an unrelated max-width the
+                    // element still carries, permanently (the class diff only re-applies a token on a
+                    // removal, so nothing else would ever re-assert it).
+                    // Restored from the arbitrary-value LAYER MAP, not by re-scanning a class array: a
+                    // max-w-[600px] is inline-resolved, so it never enters the USS class list, and the
+                    // array this method is gated from may be the live class list (see ResolveLayoutClasses)
+                    // — which would silently restore nothing. The map is authoritative on both paths, and
+                    // covers a variant-registered layer as well.
+                    StyleArbitraryValueResolver.ReapplyLayeredValue(element, ArbitraryProperty.MaxWidth);
                 }
                 return;
             }
