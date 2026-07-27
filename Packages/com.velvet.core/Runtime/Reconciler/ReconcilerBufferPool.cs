@@ -92,10 +92,10 @@ namespace Velvet
 
         #region ChildReconciler — for inline ContextProviderNode tracking
 
-        private readonly ClearablePool<List<ContextProviderNode>> _providerListPool = new(l => l.Clear());
+        private readonly ClearablePool<GeneralPathReconciler.ProviderPairTable> _providerTablePool = new(t => t.Clear());
 
-        public List<ContextProviderNode> RentProviderList() => _providerListPool.Rent();
-        public void ReturnProviderList(List<ContextProviderNode> list) => _providerListPool.Return(list);
+        public GeneralPathReconciler.ProviderPairTable RentProviderTable() => _providerTablePool.Rent();
+        public void ReturnProviderTable(GeneralPathReconciler.ProviderPairTable table) => _providerTablePool.Return(table);
 
         #endregion
 
