@@ -22,6 +22,13 @@ namespace Velvet.Tests
     /// <item>A Provider whose own sibling index moves — a preceding child appearing in a longer children
     /// array — still notifies its consumers: a position with no counterpart on the old side falls back to
     /// pairing in walk order rather than treating the Provider as newly mounted.</item>
+    /// <item>Two Providers each at index 0 of their own unkeyed Fragment hold distinct positions, so one of
+    /// those Fragments appearing does not displace the other Provider's comparison. Neither Fragment reaches
+    /// the fiber-keying scope chain — it stays null for both Providers — so this is the case that requires
+    /// the position to be a structural path of its own rather than that scope.</item>
+    /// <item>A Provider matched by position takes its place in walk order all the same, so a later Provider
+    /// that falls back to walk order lands on its own counterpart rather than on the one already matched
+    /// ahead of it.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -140,6 +147,40 @@ namespace Velvet.Tests
                 "A non-Provider child appearing ahead of it moves the Provider's sibling index but not its place in walk order");
         }
 
+        [Test]
+        public void Given_ProvidersInSeparateFragments_When_OneFragmentAppearsAsValueChanges_Then_ConsumerRendersNewValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(SeparateFragmentsHostRender, key: "host"));
+            Assume.That(_root.Q<Label>("consumer")?.text, Is.EqualTo("initial"),
+                "Precondition: the consumer mounted with the initial value under the second Fragment");
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("consumer")?.text, Is.EqualTo("updated"),
+                "Each Fragment gives the Provider under it a position of its own, which the fiber-keying scope alone does not");
+        }
+
+        [Test]
+        public void Given_ProviderMatchedByPosition_When_ALaterProviderFallsBackToWalkOrder_Then_ConsumerRendersNewValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PositionHitThenMissHostRender, key: "host"));
+            Assume.That(_root.Q<Label>("consumer")?.text, Is.EqualTo("initial"),
+                "Precondition: the consumer mounted with the initial value under the second Provider");
+
+            // Act
+            s_setTick.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.Q<Label>("consumer")?.text, Is.EqualTo("updated"),
+                "The Provider matched by position still takes walk-order slot 0, leaving slot 1 for the one that falls back");
+        }
+
         #region Consumer
 
         // Memoized with no props: only a context notification can re-render it, so its Label goes stale
@@ -197,6 +238,51 @@ namespace Velvet.Tests
             return V.Div(name: "host", children: tick == 0
                 ? new VNode[] { themeProvider }
                 : new VNode[] { V.Label(text: "banner"), themeProvider });
+        }
+
+        // Each Provider is the only child of its own unkeyed Fragment, so both sit at node index 0 and neither
+        // Fragment contributes to the fiber-keying scope (it stays null throughout). Only a position that
+        // descends through the Fragments themselves tells the two apart.
+        [Component]
+        private static VNode SeparateFragmentsHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            return V.Div(name: "host", children: new VNode[]
+            {
+                tick == 0
+                    ? null
+                    : V.Fragment(new VNode[]
+                    {
+                        V.Provider(OtherContext, "leading", new VNode[] { V.Label(text: "leading") }),
+                    }),
+                V.Fragment(new VNode[]
+                {
+                    V.Provider(ThemeContext, tick == 0 ? "initial" : "updated", new VNode[]
+                    {
+                        V.Component(MemoizedConsumerRender, key: "consumer"),
+                    }),
+                }),
+            });
+        }
+
+        // The first Provider keeps its index and so is matched by position; the second is pushed along by the
+        // appearing banner and falls back to walk order. Both provide the same context, and the first one's
+        // value is what the second one is changing TO — so pairing the second against the first reads as "no
+        // change" and notifies nobody, which is what makes the ordinal a position hit consumes observable.
+        [Component]
+        private static VNode PositionHitThenMissHostRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setTick = setTick;
+            var pinned = V.Provider(ThemeContext, "updated", new VNode[] { V.Label(text: "pinned") });
+            var observed = V.Provider(ThemeContext, tick == 0 ? "initial" : "updated", new VNode[]
+            {
+                V.Component(MemoizedConsumerRender, key: "consumer"),
+            });
+            return V.Div(name: "host", children: tick == 0
+                ? new VNode[] { pinned, observed }
+                : new VNode[] { pinned, V.Label(text: "banner"), observed });
         }
 
         [Component]

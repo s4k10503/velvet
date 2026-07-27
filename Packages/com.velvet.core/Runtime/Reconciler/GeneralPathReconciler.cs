@@ -432,8 +432,9 @@ namespace Velvet
         // index, so `cond ? new[]{ p } : new[]{ banner, p }` moves it even though the Provider sequence itself
         // never changed. Falling back to walk order there keeps that case pairing as it always did, and makes
         // the whole scheme monotone — a position hit can only be more accurate than the ordinal it replaces,
-        // and a position miss is never worse than the behavior it replaced. Give a Provider an explicit key to
-        // pin its position through such a shift.
+        // and a position miss is never worse than the behavior it replaced. An explicit key on the Provider
+        // pins its OWN contribution through such a shift, but not the levels above it: an unkeyed Fragment or
+        // Component that moves takes the key's subtree with it.
         internal sealed class ProviderPairTable
         {
             private readonly Dictionary<ProviderPairKey, ContextProviderNode> _byPosition = new();
@@ -441,9 +442,13 @@ namespace Velvet
 
             public void Record(ProviderPairKey key, ContextProviderNode provider)
             {
-                // Two Providers cannot share a structural position (siblings differ by index or key, nesting
-                // differs by path), so this only ever guards against a path hash collision — where keeping the
-                // first preserves walk order rather than rebinding an earlier position to a later Provider.
+                // Two Providers DO share a position when siblings share one explicit key: a key replaces the
+                // node index, so the pair is genuinely indistinguishable here (and, far more remotely, on a
+                // path hash collision). Keeping the first is what walk order would have done; the second then
+                // pairs by walk order instead, and its consumers are re-notified every reconcile while the two
+                // values differ. Unlike the duplicate-key guards in the leaf and ComponentNode branches, this
+                // one does not warn: the duplicate is only visible from the OLD side here, whereas those warn
+                // where the repeated sibling is emitted.
                 _byPosition.TryAdd(key, provider);
                 _inWalkOrder.Add(provider);
             }

@@ -49,9 +49,16 @@ namespace Velvet
     // Path is a 64-bit rolling hash of those contributions rather than the composed string Scope is: composing
     // a string per level would allocate on the walk's hottest path, which today allocates nothing at all in
     // the scope-less regime. The cost of that choice is stated rather than hidden — two DIFFERENT paths that
-    // hash alike pair the wrong Providers, which for the ~100 Provider positions one walk can hold is a
-    // ~1e-16 event per reconcile. A Provider whose path is NOT found does not guess: it falls back to the
-    // walk-order pairing that predates position pairing (see GeneralPathReconciler.ProviderPairTable).
+    // hash alike pair the wrong Providers, which is usually a spurious notification but is a stale consumer
+    // when the Provider wrongly paired against carries the same context and an equal value. Every
+    // contribution, an explicit key's characters included, is folded into the full 64-bit accumulator, so the
+    // bound is uniform: ~1e-16 for the ~100 Provider positions one walk can hold. Folding a key through its
+    // 32-bit string hash instead would make sibling keys the dominant term at ~1e-6 for a 100-item keyed
+    // list — and, string hashing being deterministic within a process, a colliding pair would collide on
+    // every render rather than being a per-reconcile roll of the dice.
+    //
+    // A Provider whose path is NOT found does not guess: it falls back to the walk-order pairing that
+    // predates position pairing (see GeneralPathReconciler.ProviderPairTable).
     internal readonly struct WalkPosition
     {
         internal readonly string? Scope;
@@ -124,7 +131,14 @@ namespace Velvet
         internal static WalkPosition WalkRoot => new(null, unchecked((long)PathSeed));
 
         // One level's contribution to the structural path. An explicit key replaces the positional index —
-        // mirroring the Scope rule — so a keyed node keeps its path when siblings shift around it.
+        // mirroring the Scope rule — so a keyed node keeps this ONE level's contribution when its siblings
+        // shift around it. It does not pin the levels above: an unkeyed Fragment or Component that moves
+        // changes the parent path, and the key below it moves with it.
+        //
+        // The key is folded CHARACTER BY CHARACTER into the 64-bit accumulator, not through its 32-bit
+        // string hash: two keyed siblings differ only by their key's contribution, and routing that through
+        // 32 bits would leave a ~1e-6 collision for a 100-item keyed list — deterministic per process, so a
+        // colliding pair would mispair on every render rather than once in a blue moon.
         private static long ExtendPath(long parentPath, WalkPathKind kind, string? key, int nodeIndex)
         {
             unchecked
@@ -133,7 +147,10 @@ namespace Velvet
                 if (key != null)
                 {
                     hash = (hash ^ KeyedContributionMarker) * PathPrime;
-                    hash = (hash ^ (uint)key.GetHashCode()) * PathPrime;
+                    foreach (var ch in key)
+                    {
+                        hash = (hash ^ ch) * PathPrime;
+                    }
                 }
                 else
                 {

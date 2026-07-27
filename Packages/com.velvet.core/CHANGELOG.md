@@ -111,7 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   position has no counterpart, so a Provider appearing or disappearing elsewhere no longer displaces the
   comparison. A provider's position includes its own sibling index, which a conditional sibling rendered
   as `null` preserves; give it an explicit `key` when the index itself moves, such as a provider appended
-  after a variable number of siblings.
+  after a variable number of siblings — keying the provider pins its own place among its siblings, so an
+  unkeyed fragment or component enclosing it needs a key of its own if that is what moves.
 - The VEL100 exhaustive-deps analyzer now also covers `Hooks.UseInsertionEffect` and `Hooks.UseBlocker`.
   Both take a closure plus a deps array, but neither was listed as a deps-comparing hook, so a captured
   value missing from their deps went unreported.

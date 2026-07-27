@@ -1452,7 +1452,8 @@ namespace Velvet
         /// the ordinary cases, including a conditional sibling rendered as <c>null</c>, which keeps its slot.
         /// Give the provider an explicit <paramref name="key"/> when the index itself can move — it follows a
         /// variable number of siblings, or is appended after a mapped list — so it stays identified across
-        /// the shift.
+        /// the shift. The key pins the provider's own place among its siblings, not the path above it: if an
+        /// unkeyed fragment or component enclosing it is what moves, key the moving ancestor too.
         /// </remarks>
         /// <typeparam name="T">Context value type.</typeparam>
         /// <param name="context">Context object whose value is being provided.</param>
