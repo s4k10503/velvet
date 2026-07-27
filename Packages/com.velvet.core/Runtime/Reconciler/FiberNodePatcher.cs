@@ -2603,8 +2603,11 @@ namespace Velvet
         // re-scan for it.
         // Divide and text-balance are in no such handoff: divide writes only the border width and color of
         // the one edge it draws on (and nulls that same pair on teardown), text-balance writes only the
-        // element's own max-width, and neither gap nor grid writes a border at all — so the three write
-        // sets are disjoint and the position of these two in the sequence is not load-bearing.
+        // element's OWN width, and neither gap nor grid writes a border at all — so the three write sets
+        // are disjoint and the position of these two in the sequence is not load-bearing. Grid writes its
+        // CHILDREN's widths, which is the one slot text-balance also writes, and the handoff for that is
+        // the child's own: a text-balance element inside a grid container stands down entirely (see
+        // StyleTextBalanceManipulator's grid-parent check).
         private void ApplyResolvedLayoutManipulators(VisualElement element, string[] classNames)
         {
             if (StyleGridClass.HasGridClass(classNames))
@@ -2722,19 +2725,9 @@ namespace Velvet
                 new GridOp(new GridSpec(columns, columnGap, rowGap)));
         }
 
-        // Configures the element's StyleTextBalanceManipulator from the `text-balance` token in
-        // classNames. Unlike Gap/Grid/Divide, text-balance carries no per-element spec value to diff (it
-        // is a bare flag the manipulator re-derives entirely from its own events) — but it still needs an
-        // "update existing manipulator" branch that runs every patch: Refresh() forces a full re-derive so
-        // text-balance re-wins its inline maxWidth slot even when a co-present max-w-* utility's inline
-        // write — applied earlier in this SAME patch by DiffClassList/ApplyClassNames — changed value
-        // without anything the manipulator's own events would otherwise catch. Mirrors
-        // ApplyGapManipulator's timing — call AFTER the container's children have been reconciled
-        // (harmless here since text-balance does not read children, but keeps every per-element style
-        // manipulator attached at the same, single, well-known point in the pass).
-        // Kept outside the shared Configure step: its teardown owes the element an extra restore of the
-        // shared inline maxWidth slot, and the shared body has no way to signal that tail step. Folding
-        // it in would add a teardown hook the eight other families would carry for nothing.
+        // Carries no per-element spec to diff, unlike Gap/Grid/Divide — the manipulator re-derives
+        // everything itself. Kept outside the shared Configure step because its teardown owes the element a
+        // restore of the shared inline width slot, which the shared body has no way to signal.
         private void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)
         {
             // Fast early-out for the ~99% of elements with no text-balance class and no existing manipulator.
@@ -2744,17 +2737,11 @@ namespace Velvet
                 {
                     element.RemoveManipulator(stale);
                     _ctx.TextBalanceManipulators.Remove(element);
-                    // Detach unconditionally nulls the shared maxWidth slot text-balance owned while
-                    // present, so a co-present max-w-* utility's own value has to be put back — otherwise
-                    // removing JUST the text-balance token would also erase an unrelated max-width the
-                    // element still carries, permanently (the class diff only re-applies a token on a
-                    // removal, so nothing else would ever re-assert it).
-                    // Restored from the arbitrary-value LAYER MAP, not by re-scanning a class array: a
-                    // max-w-[600px] is inline-resolved, so it never enters the USS class list, and the
-                    // array this method is gated from may be the live class list (see ResolveLayoutClasses)
-                    // — which would silently restore nothing. The map is authoritative on both paths, and
-                    // covers a variant-registered layer as well.
-                    StyleArbitraryValueResolver.ReapplyLayeredValue(element, ArbitraryProperty.MaxWidth);
+                    // Detach nulls the borrowed width slot, taking a w-[..] or size-[..] applied in this
+                    // same patch with it — the class diff re-applies a token only on a change. The layer
+                    // map rather than a class array: a w-[600px] never enters the class list, and the array
+                    // here may be the live one (see ResolveLayoutClasses), which carries no bracket tokens.
+                    StyleArbitraryValueResolver.ReapplyWidthSlot(element);
                 }
                 return;
             }
@@ -2765,7 +2752,7 @@ namespace Velvet
             }
             else
             {
-                var manipulator = new StyleTextBalanceManipulator();
+                var manipulator = new StyleTextBalanceManipulator(_ctx);
                 element.AddManipulator(manipulator);
                 _ctx.TextBalanceManipulators[element] = manipulator;
             }

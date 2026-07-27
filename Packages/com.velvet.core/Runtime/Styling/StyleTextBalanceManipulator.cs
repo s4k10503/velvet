@@ -3,140 +3,85 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Framework-level approximation of CSS `text-wrap: balance` for a TextElement (Label / Button / …)
-    // carrying the `text-balance` class. UI Toolkit's text engine exposes no line-break hook — there is
-    // no way to influence WHERE a line wraps — so balance cannot be realized the way a browser does it
-    // (re-flowing line breaks within a fixed box). Instead this manipulator narrows the box itself:
-    // TextElement.MeasureTextSize(text, width, widthMode, height, heightMode) is the same public method
-    // the engine's own measure callback (TextElement.DoMeasure) already calls every autosize pass, so a
-    // bounded binary search over it — a handful of calls — costs the same order of work UI Toolkit
-    // already pays, and:
-    //   1. measures the natural height at the element's available width (the height a normal, unbalanced
-    //      layout would take);
-    //   2. binary-searches the NARROWEST width that keeps the measured height at or under that natural
-    //      height (font metrics are constant across candidates, so comparing HEIGHTS is a stand-in for
-    //      comparing line counts — a narrower width that adds a line always measures taller);
-    //   3. writes that width as an inline `maxWidth`, so the box shrinks and the same text redistributes
-    //      across its existing line count more evenly instead of leaving a near-empty last line.
+    // Approximates CSS `text-wrap: balance` on a TextElement carrying `text-balance`. UI Toolkit's text
+    // engine exposes no line-break hook, so rather than moving line breaks inside a fixed box this narrows
+    // the box: a bounded binary search over TextElement.MeasureTextSize — the same method the engine's own
+    // measure pass calls — for the narrowest inline `width` whose measured height still matches the height
+    // a normal layout takes at the available width. Font metrics are constant across candidates, so
+    // comparing heights stands in for comparing line counts. Resizing the box at all is a deviation from
+    // CSS; see Documentation~/fonts.md.
     //
-    // Deviation from CSS (documented, not solved): real `text-wrap: balance` never changes the box's own
-    // width — only where lines break inside it. Our approximation narrows the box via `maxWidth`, so the
-    // element's outer width (and anything sized from it — a background, a sibling relying on its bounds)
-    // can shrink on balanced multi-line text, and text alignment then reads relative to that SMALLER box
-    // rather than the original one. See Documentation~/fonts.md for the full writeup.
+    // `width` rather than `maxWidth`, for two engine facts: the engine clamps a written width to the
+    // element's own max-width, so a declared ceiling holds whatever this manipulator computes; and
+    // resolvedStyle.maxWidth then reports the cascade instead of this manipulator's own output, which is
+    // what makes the ceiling readable at all.
     //
-    // The available-width problem. The width to balance AGAINST is the box's width BEFORE this
-    // manipulator's own constraint — but this manipulator is the thing that writes the element's OWN
-    // maxWidth, so target.contentRect.width is self-contaminated the moment a narrower maxWidth has
-    // already taken effect: re-deriving "natural" from an already-balanced width would ratchet narrower
-    // every pass instead of converging. StyleGridManipulator sidesteps the analogous problem by reading a
-    // width it never writes (the container's, while it sizes the CHILDREN) — this manipulator mirrors
-    // that discipline by reading the PARENT's contentRect (never written by this manipulator) minus the
-    // target's own resolved horizontal margin, instead of the target's own contentRect. This is exact
-    // when the target is the parent's sole / stretch-to-fill child (the common paragraph/heading case)
-    // and an OVER-estimate when siblings share the row or the target carries its own narrower width /
-    // max-width utility — but an over-estimate only makes the search less aggressive (maxWidth resolves
-    // wide enough to never bind, so the box falls back to whatever flex would have given it anyway); it
-    // never widens the box past what normal layout would already produce, so the deviation is a
-    // conservative under-balance, not a wrong one. text-balance therefore OWNS the element's inline
-    // maxWidth outright while its class is present — like StyleGridManipulator owns a column's width — so
-    // a co-present max-w-* utility's inline write is overwritten. Unlike a one-time attach-time overwrite,
-    // this ownership is enforced every patch: FiberNodePatcher.ApplyTextBalanceManipulator calls Refresh()
-    // on an already-attached manipulator on every pass where the class remains present (mirroring
-    // StyleGridManipulator.UpdateSpec / StyleGapManipulator.UpdateGap), so a same-patch max-w-* write that
-    // lands earlier in the same pass (DiffClassList / ApplyClassNames apply class-driven inline styles
-    // before this manipulator runs) is always re-overwritten before the patch ends, rather than sitting
-    // exposed until an unrelated geometry event happens to fire. Ownership ends when the text-balance
-    // class itself is removed: the teardown that clears the inline maxWidth then restores a co-present
-    // max-w-* utility's own value by re-resolving that one slot from the arbitrary-value layer map
-    // (StyleArbitraryValueResolver.ReapplyLayeredValue) — serving the same purpose as the
-    // shared-inline-slot restore FiberAnimateMotionApplier.RestoreSharedInlineSlot performs after
-    // detaching a Hue/Pulse motion — so removing just the text-balance token does not also erase an
-    // unrelated max-width the element still carries. The map rather than a scan of the element's class
-    // list, because a max-w-[600px] resolves to inline style and so never appears in that list at all.
+    // Available width comes from the PARENT's contentRect, through FiberNodePatcher.GetChildContainer,
+    // which follows UI Toolkit's own contentContainer redirect and so answers with a composite widget's
+    // inner box. For a RECONCILED child that redirect has already happened — the reconciler adds into the
+    // inner box, so the element's parent IS it — which makes the call idempotent here and the element this
+    // subscribes to the same one it measures. The target's own contentRect is never the source: that is
+    // this manipulator's output.
     //
-    // Single-line gate. CSS balance is a visual no-op on a single line. Since this approximation instead
-    // shrinks the box, applying it to a single line would shrink a label to its tight text width and
-    // change its box (background, centering-within-box) for no CSS-parity benefit — so Apply only writes
-    // a narrower maxWidth when the text actually wraps (natural height at the available width exceeds the
-    // unconstrained single-line height); otherwise any previously-written inline maxWidth is cleared.
-    // Feeding a nowrap element through the same comparison naturally reaches the same "single line"
-    // verdict without a separate white-space check, because MeasureTextSize already accounts for the
-    // element's own resolved white-space when it measures.
+    // A hug-width parent defeats that indirection, since the parent's width follows the target's: the
+    // search input then narrows every pass. With a fixed ceiling it converges. With a PERCENTAGE ceiling
+    // it oscillates instead — the bound decays to a release, the released box re-widens the parent, and
+    // the next pass starts over — so that combination needs a parent with a definite width.
     //
-    // Prerequisite: Velvet's Label ships with no bundled base white-space rule, so its engine default is
-    // nowrap. text-balance alone is therefore a silent no-op on a default Label — it also needs
-    // `text-wrap` / `whitespace-normal` (or another wrap-enabling white-space) applied, or MeasureTextSize
-    // reaches the single-line gate above on every measurement regardless of the text's length.
+    // Balance stands down entirely when something else owns the box: a declared width, releasing the slot
+    // back to it, or a grid parent, whose StyleGridManipulator writes this same child.style.width and is
+    // left to hold it. Both are re-checked per derive rather than delivered per patch, because a variant
+    // payload lands on the element outside any patch of its own.
     //
-    // Re-application / staleness. Re-derives on: AttachToPanelEvent (first resolve, and re-resolve after
-    // a reparent that lands on an already-appropriately-sized rect with no fresh GeometryChangedEvent);
-    // GeometryChangedEvent on the TARGET (the target's own resolved rect changed — covers the feedback its
-    // own maxWidth write provokes, guarded below); GeometryChangedEvent on the PARENT (see the
-    // ancestor-resize discussion below); and ChangeEvent<string> (TextElement dispatches this whenever
-    // `.text` is set to a new value WHILE attached to a panel — see TextElement's
-    // INotifyValueChanged<string>.value setter — so a text swap that happens to keep the exact same
-    // wrapped box size, and would therefore raise no GeometryChangedEvent, is still caught).
+    // Ownership of the inline width lasts only while a balanced value sits in it. Every release re-resolves
+    // the slot from the arbitrary-value layer map, which matters for a w-[..] applied in the same patch
+    // that ends the ownership; a USS-spelled width needs nothing, since clearing the inline value reveals
+    // the class again.
     //
-    // The ancestor-resize problem. Listening on the target alone is not enough: the maxWidth THIS
-    // manipulator writes pins the target's own resolved size, so once it is narrower than the parent, an
-    // ancestor WIDENING never changes the target's own rect at all (it stays clamped at the old maxWidth)
-    // — no GeometryChangedEvent fires on the target, and the search stays stuck at the old, now-too-narrow
-    // value forever; a narrowing ancestor that does not yet cross the clamped value is missed the same
-    // way. Grid/Gap do not have this problem because they listen on the exact element whose contentRect
-    // their own sizing reads (their own target IS the container); here that element is the PARENT (see
-    // the available-width discussion above), so this manipulator additionally subscribes
-    // GeometryChangedEvent on textElement.parent directly — the plain hierarchy parent, not
-    // FiberNodePatcher.GetChildContainer(parent), to keep the subscribe/unsubscribe bookkeeping as simple
-    // as the target's own listeners already are. The subscription is (re-)synced at the top of every
-    // Apply() call, not only from AttachToPanelEvent, so a mid-life reparent is picked up by whichever
-    // event fires next regardless of exactly how UI Toolkit sequences Attach/Detach for a same-panel
-    // reparent. What remains uncovered: a resize confined entirely to a composite-widget parent's OWN inner
-    // box (GetChildContainer's redirect case, e.g. a ScrollView's content container) with no accompanying
-    // change to the widget's own outer rect — a scrollbar toggling, say — since the subscription is the
-    // widget itself, not its inner box. A grandparent-or-higher resize is NOT a separate gap: available is
-    // read from the parent's own contentRect, so if the parent's rect is genuinely unaffected by a
-    // grandparent change, there is nothing that needed re-deriving in the first place.
+    // Single-line gate: CSS balance is a no-op on one line, and narrowing a single-line box would shrink it
+    // for no parity benefit. Measured at the ceiling-clamped width, so text that fits the parent but wraps
+    // inside the ceiling still balances. A nowrap element reaches the same verdict through the same
+    // comparison, since MeasureTextSize honors the element's own resolved white-space.
     //
-    // Feedback-loop guard. A signature over the available width (rounded), the text's hash, and the
-    // resolved font size makes a GeometryChangedEvent that this manipulator's own maxWidth write provoked
-    // — with none of those inputs actually different — a no-op regardless of which of the two
-    // GeometryChangedEvent listeners fired it, mirroring StyleGridManipulator's documented discipline
-    // exactly.
+    // Prerequisite: Velvet's Label ships no base white-space rule, so its engine default is nowrap and
+    // `text-balance` alone is a silent no-op — it needs `text-wrap` / `whitespace-normal` alongside.
     //
-    // Lifecycle mirrors the other per-element style manipulators (StyleGapManipulator /
-    // StyleGridManipulator): the reconciler attaches one per text-balance element, keeps it in
-    // ReconcilerContext.TextBalanceManipulators, and removes it on cleanup / dispose.
-    // UnregisterCallbacksFromTarget clears the inline maxWidth it wrote (and drops the parent
-    // subscription above) so removing the class or unmounting leaves no residue on the TARGET; a class
-    // removal additionally has the reconciler restore a co-present max-w-* utility right after, per the
-    // ownership paragraph above (a full unmount has no "current class list" to restore against, so it
-    // does not). FiberElementPoolReset also nulls maxWidth generically on every pooled element as a
-    // second line of defense against a pooled Label ghosting a prior consumer's balanced width.
+    // Re-derives on attach, on its own and its PARENT's GeometryChangedEvent, and on ChangeEvent<string>
+    // (a text swap that keeps the same box size raises no geometry event). The parent subscription is what
+    // catches an ancestor WIDENING: the written width pins the target's own rect, so nothing fires on the
+    // target. A signature over the clamped available width, the text and the font size absorbs the
+    // GeometryChangedEvent this manipulator's own write provokes.
+    //
+    // Lifecycle mirrors StyleGapManipulator / StyleGridManipulator: the reconciler attaches one per
+    // element, tracks it in ReconcilerContext.TextBalanceManipulators, and removes it on cleanup. Detach
+    // clears the inline width and the reconciler restores a co-present w-* right after; a full unmount
+    // does not, since the element's layer record is dropped and FiberElementPoolReset nulls width anyway.
     internal sealed class StyleTextBalanceManipulator : Manipulator
     {
-        // Bounded binary-search depth: enough precision to land within a fraction of a pixel of the true
-        // narrowest width without an unbounded measure-call budget.
         private const int MaxIterations = 8;
 
-        // Floor for the search range, expressed as a fraction of the available width, so the search never
-        // measures a degenerate near-zero width. A too-narrow candidate simply measures TALLER than the
-        // natural height and is rejected by the comparison, so this floor only bounds the search range —
-        // it does not need to equal the longest word's width for correctness.
+        // Search floor as a fraction of the available width. Bounds the range only — a too-narrow
+        // candidate measures taller and is rejected anyway, so it need not equal the longest word.
         private const float MinWidthFraction = 0.1f;
 
-        // Sub-pixel tolerance on height comparisons, mirroring StyleGridManipulator's WrapSafetyPx: absorbs
-        // float rounding so an unchanged wrap outcome does not misregister as "one line taller".
+        // Absorbs float rounding so an unchanged wrap outcome does not misregister as "one line taller",
+        // mirroring StyleGridManipulator's WrapSafetyPx.
         private const float HeightEpsilonPx = 0.5f;
+
+        // A ceiling at or below this leaves nothing to redistribute, and keeps the search from being
+        // entered with a floor above its own upper bound.
+        private const float MinBalanceableWidthPx = 1f;
+
+        // Answers whether the target's parent is a grid container, whose manipulator writes the same slot.
+        private readonly ReconcilerContext _ctx;
 
         private int _lastSignature;
         private bool _hasSignature;
 
-        // The parent currently subscribed for OnParentGeometryChanged — see the class doc's
-        // ancestor-resize discussion. Tracked (rather than re-derived on every check) so SyncParentSubscription
-        // can cheaply no-op when the parent has not changed, and so it can unregister the exact callback it
-        // registered when the parent DOES change (or the manipulator detaches).
+        // Tracked so the callback can be unregistered from the exact element it was registered on.
         private VisualElement? _subscribedParent;
+
+        internal StyleTextBalanceManipulator(ReconcilerContext ctx) => _ctx = ctx;
 
         protected override void RegisterCallbacksOnTarget()
         {
@@ -154,13 +99,7 @@ namespace Velvet
             target.UnregisterCallback<ChangeEvent<string>>(OnTextChanged);
         }
 
-        // Forces the next Apply() to fully re-derive even when nothing this manipulator's own signature
-        // tracks has changed — mirrors StyleGridManipulator.UpdateSpec / StyleGapManipulator.UpdateGap.
-        // FiberNodePatcher.ApplyTextBalanceManipulator calls this on an already-attached manipulator every
-        // patch the text-balance class remains present, so a co-present max-w-* utility's inline write —
-        // applied earlier in the SAME patch by DiffClassList / ApplyClassNames — is always re-overwritten
-        // before the patch ends, instead of silently winning the shared maxWidth slot until an unrelated
-        // geometry event happens to fire.
+        // Forces a full re-derive, mirroring StyleGridManipulator.UpdateSpec / StyleGapManipulator.UpdateGap.
         public void Refresh()
         {
             _hasSignature = false;
@@ -177,15 +116,10 @@ namespace Velvet
 
         private void OnTextChanged(ChangeEvent<string> evt) => Apply();
 
-        // Re-fires Apply() when the PARENT's own resolved rect changes — the half of ancestor-resize
-        // staleness the target's own GeometryChangedEvent cannot see once a narrower inline maxWidth pins
-        // the target's size (see the class doc's ancestor-resize discussion).
         private void OnParentGeometryChanged(GeometryChangedEvent evt) => Apply();
 
-        // Keeps the parent subscription in sync with the CURRENT hierarchy parent. Called at the top of
-        // every Apply() — not only from AttachToPanelEvent — so a mid-life reparent is picked up by
-        // whichever event happens to fire next, without needing to know whether UI Toolkit raises
-        // Attach/Detach for a same-panel reparent. Cheap no-op when the parent has not changed.
+        // Re-pointed from every Apply, not only from AttachToPanelEvent, so a mid-life reparent is caught
+        // without depending on how UI Toolkit sequences Attach/Detach for a same-panel reparent.
         private void SyncParentSubscription(VisualElement? parent)
         {
             if (ReferenceEquals(parent, _subscribedParent))
@@ -197,8 +131,6 @@ namespace Velvet
             _subscribedParent?.RegisterCallback<GeometryChangedEvent>(OnParentGeometryChanged);
         }
 
-        // Recomputes the balanced width from the current text / available width / font size, early-out
-        // when nothing relevant to the last application has changed.
         private void Apply()
         {
             if (target is not TextElement textElement)
@@ -207,22 +139,26 @@ namespace Velvet
             }
 
             var parent = textElement.parent;
-            // Re-sync BEFORE the parent-null early-out (not just from AttachToPanelEvent) so every Apply()
-            // call — from whichever event triggered it — keeps the subscription pointed at the CURRENT
-            // parent. See the class doc's ancestor-resize discussion.
             SyncParentSubscription(parent);
             if (parent == null)
             {
-                // Off-panel / detached: nothing meaningful to measure against yet. Defer to the next
-                // AttachToPanelEvent / GeometryChangedEvent, mirroring StyleGridManipulator's off-panel
-                // deferral (it re-arms _hasSignature so a later resolve is never skipped as a false repeat).
+                // Re-arms so a later resolve is never skipped as a false repeat, mirroring
+                // StyleGridManipulator's off-panel deferral.
                 _hasSignature = false;
                 return;
             }
 
-            // The PARENT's content width is never written by this manipulator (only the target's OWN
-            // maxWidth is), so — unlike target.contentRect.width — it cannot be self-contaminated by a
-            // previous pass's narrower write. See the available-width discussion in the class doc comment.
+            if (StyleTextBalanceClass.DeclaresWidthLayer(textElement))
+            {
+                // In FRONT of the signature guard: two dictionary lookups, no allocation. This is what
+                // sees an inline-resolved variant width (md:w-[200px]) on both edges — its layer flips
+                // without moving anything else this manipulator watches, and the release below re-arms the
+                // signature so the OFF edge re-balances.
+                ReleaseWidth(textElement);
+                _hasSignature = false;
+                return;
+            }
+
             var container = FiberNodePatcher.GetChildContainer(parent);
             var available = container.contentRect.width
                 - textElement.resolvedStyle.marginLeft - textElement.resolvedStyle.marginRight;
@@ -233,6 +169,13 @@ namespace Velvet
                 return;
             }
 
+            // Clamped before the signature is computed, so a ceiling change that can alter the outcome
+            // re-derives and one that cannot leaves the signature untouched.
+            if (TryGetDeclaredCeiling(textElement, out var ceiling))
+            {
+                available = Mathf.Min(available, ceiling);
+            }
+
             var text = textElement.text ?? string.Empty;
             var fontSize = textElement.resolvedStyle.fontSize;
             var signature = ComputeSignature(available, text, fontSize);
@@ -241,42 +184,63 @@ namespace Velvet
                 return;
             }
 
+            // Behind the signature guard because the class walk below allocates; see DeclaresWidthClass
+            // for which paths deliver a change and the one that does not.
+            if (IsSizedByGridParent(parent))
+            {
+                // Left untouched rather than released: the grid writes this same slot with no layer behind
+                // it, so clearing it would destroy the column width rather than a value of ours. The grid
+                // cannot repair a write of ours either — its own re-derive is gated on the container's
+                // contentRect WIDTH, which a child re-wrapping does not move.
+                _hasSignature = false;
+                return;
+            }
+
+            if (StyleTextBalanceClass.DeclaresWidthClass(textElement))
+            {
+                // Released rather than skipped, so a declaration arriving while a balanced value is held
+                // takes effect at once.
+                ReleaseWidth(textElement);
+                _hasSignature = false;
+                return;
+            }
+
             if (string.IsNullOrEmpty(text))
             {
-                ClearMaxWidth(textElement);
+                ReleaseWidth(textElement);
                 _lastSignature = signature;
                 _hasSignature = true;
                 return;
             }
 
-            // The text's own preferred size with no width constraint at all — the single-line reference
-            // (or however many hard line breaks it already carries, but no SOFT wrap on top of those).
+            if (available < MinBalanceableWidthPx)
+            {
+                // The engine applies a ceiling this narrow to the released box on its own.
+                ReleaseWidth(textElement);
+                _lastSignature = signature;
+                _hasSignature = true;
+                return;
+            }
+
+            // Unconstrained: the single-line reference, carrying any hard line breaks but no soft wrap.
             var singleLineHeight = textElement.MeasureTextSize(
                 text, float.NaN, VisualElement.MeasureMode.Undefined,
                 float.NaN, VisualElement.MeasureMode.Undefined).y;
-            // The height a normal (unbalanced) layout would take at the full available width.
             var naturalHeight = textElement.MeasureTextSize(
                 text, available, VisualElement.MeasureMode.Exactly,
                 float.NaN, VisualElement.MeasureMode.Undefined).y;
 
             if (naturalHeight <= 0f || float.IsNaN(naturalHeight))
             {
-                // Degenerate measurement (e.g. the font has not resolved yet): return WITHOUT recording
-                // _lastSignature/_hasSignature for this signature. Caching a verdict derived from a
-                // degenerate height would make a later, valid measurement with the same available
-                // width/text/font-size early-out forever at the top-of-method signature check — the
-                // signature alone cannot distinguish "genuinely unchanged" from "the font resolved since".
-                // Leaving _hasSignature as-is lets the next triggering event retry from scratch.
+                // The font has not resolved yet. Recording this signature would make the later, valid
+                // measurement early-out forever, since the signature cannot tell "unchanged" from "the
+                // font resolved since".
                 return;
             }
 
             if (naturalHeight <= singleLineHeight + HeightEpsilonPx)
             {
-                // Single line at the available width (includes an element whose resolved white-space is
-                // nowrap, since MeasureTextSize already measures against the element's own resolved
-                // style): CSS balance is a visual no-op here, and our box-narrowing approximation would
-                // only shrink the box for no parity benefit, so leave it alone.
-                ClearMaxWidth(textElement);
+                ReleaseWidth(textElement);
                 _lastSignature = signature;
                 _hasSignature = true;
                 return;
@@ -284,15 +248,14 @@ namespace Velvet
 
             var minWidth = Mathf.Max(1f, available * MinWidthFraction);
             var narrowest = FindNarrowestWidth(textElement, text, minWidth, available, naturalHeight);
-            textElement.style.maxWidth = new StyleLength(narrowest);
+            textElement.style.width = new StyleLength(narrowest);
 
             _lastSignature = signature;
             _hasSignature = true;
         }
 
-        // Binary search over [lo, hi] for the narrowest width whose measured height still fits under
-        // naturalHeight. hi (the available width) is always feasible by construction (its own measured
-        // height IS naturalHeight), so it is a safe fallback if the loop's precision never beats it.
+        // hi is feasible by construction — its own measured height IS naturalHeight — so it is a safe
+        // fallback when the loop's precision never beats it.
         private static float FindNarrowestWidth(
             TextElement textElement, string text, float lo, float hi, float naturalHeight)
         {
@@ -305,9 +268,6 @@ namespace Velvet
                     float.NaN, VisualElement.MeasureMode.Undefined).y;
                 if (height <= naturalHeight + HeightEpsilonPx)
                 {
-                    // Still fits the natural line count at this narrower width: it is feasible, so record
-                    // it and keep searching narrower. A too-narrow candidate instead measures TALLER (an
-                    // extra wrapped line) and falls into the else branch, which the search rejects.
                     best = mid;
                     hi = mid;
                 }
@@ -319,29 +279,68 @@ namespace Velvet
             return best;
         }
 
-        private static void ClearMaxWidth(TextElement textElement)
+        private static void ClearWidth(TextElement textElement)
         {
-            textElement.style.maxWidth = new StyleLength(StyleKeyword.Null);
+            textElement.style.width = new StyleLength(StyleKeyword.Null);
         }
 
-        // Clears the inline maxWidth this manipulator wrote and drops the parent subscription (invoked on
-        // detach / removal). Putting a co-present max-w-* value BACK is the caller's job (see the class
-        // doc's ownership paragraph): this manipulator knows only that it borrowed the slot, not what the
-        // element's cascade says belongs in it. The caller restores on a class removal and skips it on a
-        // full unmount, where the element's whole layer record is dropped moments later regardless.
+        // The null covers an element with no arbitrary layers at all, for which the re-assert early-returns;
+        // the re-assert covers a w-[..] or size-[..] whose inline write the null would otherwise take with
+        // it, including one a variant registered.
+        private static void ReleaseWidth(TextElement textElement)
+        {
+            ClearWidth(textElement);
+            StyleArbitraryValueResolver.ReapplyWidthSlot(textElement);
+        }
+
+        // Uncontaminated because this manipulator writes `width`, so every spelling — bracket, variant,
+        // USS scale, percentage — reads back here. An absent max-width reports the None keyword while a
+        // declared zero reports a value, so the two never blur; Auto is a third keyword no max-width
+        // utility can currently produce, and would read as a ceiling of whatever value accompanies it.
+        private static bool TryGetDeclaredCeiling(VisualElement element, out float ceilingPx)
+        {
+            var declared = element.resolvedStyle.maxWidth;
+            ceilingPx = declared.value;
+            return declared.keyword != StyleKeyword.None;
+        }
+
+        // StyleGridManipulator writes its children's own style.width. Asks the registry of attached grid
+        // manipulators rather than re-deriving the grid's class condition, so the two cannot drift apart.
+        // Walks ancestors because the grid sizes the children of GetChildContainer(target), and on any
+        // widget carrying a contentContainer redirect — ScrollView, Foldout, TabView, … — that inner box
+        // sits below the element the manipulator is keyed on; the match is that container being this
+        // element's own parent, so no unrelated ancestor grid can claim it.
+        private bool IsSizedByGridParent(VisualElement parent)
+        {
+            if (_ctx.GridManipulators.Count == 0)
+            {
+                return false;
+            }
+            for (var ancestor = parent; ancestor != null; ancestor = ancestor.parent)
+            {
+                if (_ctx.GridManipulators.ContainsKey(ancestor)
+                    && ReferenceEquals(FiberNodePatcher.GetChildContainer(ancestor), parent))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Stops at the clear: only the caller can tell a class removal, which owes the element its
+        // co-present w-* back, from an unmount, whose layer record is dropped moments later.
         private void Clear()
         {
             if (target is TextElement textElement)
             {
-                ClearMaxWidth(textElement);
+                ClearWidth(textElement);
             }
             SyncParentSubscription(null);
             _hasSignature = false;
         }
 
-        // A hash of the inputs that change the balanced width: the available width (rounded to skip float
-        // jitter), the full text (a length-only signature would miss a same-length text swap), and the
-        // resolved font size (a size change re-wraps the same text differently).
+        // The available width is already ceiling-clamped, so a ceiling change that can alter the outcome
+        // changes the signature. The full text rather than its length, which would miss a same-length swap.
         private static int ComputeSignature(float available, string text, float fontSize)
         {
             unchecked
