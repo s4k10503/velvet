@@ -17,7 +17,7 @@ namespace Velvet
         // On a panel this reads the resolved position (reflects both an inline override — the way a PopLayout
         // pin sets it — and a class-driven one). Off-panel (EditMode, pre-attach) resolvedStyle is not yet
         // meaningful, so this falls back to the .absolute utility class marker, mirroring the off-panel idiom
-        // StyleGapManipulator.IsRow/IsWrap already use for flex-direction / flex-wrap.
+        // StyleGapManipulator.ResolveDirection/IsWrap already use for flex-direction / flex-wrap.
         internal static bool IsOutOfFlow(VisualElement child)
         {
             // The filter bounds-spacer is always out of flow (position:absolute) and must never occupy a

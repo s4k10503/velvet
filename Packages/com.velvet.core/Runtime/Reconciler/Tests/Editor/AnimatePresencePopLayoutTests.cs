@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEditor.UIElements.TestFramework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -464,6 +465,130 @@ namespace Velvet.Tests
 
             // Assert — the survivor now leads the row (no leading gap margin, no reserved slot).
             Assert.That(Root.Q<VisualElement>("item-b").layout.x, Is.EqualTo(0f).Within(0.5f));
+        }
+    }
+
+    /// <summary>
+    /// PopLayout inside an actual <c>flex-row-reverse</c> container (as opposed to a
+    /// <c>space-x-reverse</c> marker on a non-reversed row): the gap emulation's margin lands on the
+    /// TRAILING edge (<c>margin-right</c>), the one edge <see cref="GeneralPathReconciler.PinExitingChildOutOfFlow"/>
+    /// does NOT subtract (it only reads <c>marginLeft</c>/<c>marginTop</c>) — reasoning says the pin still
+    /// reproduces the exact last laid-out position because that subtraction is 0, so this locks it with a
+    /// test instead of trusting the reasoning. Runs in its OWN isolated <c>EditorPanelSimulator</c> with the
+    /// bundled <c>StyleUtilities.uss</c> attached (<c>flex-row-reverse</c> is a USS-only rule — see
+    /// <c>Documentation~/styling-flexbox-and-gap.md</c>), kept separate from
+    /// <see cref="AnimatePresencePopLayoutFlowTests"/> so attaching a stylesheet here cannot perturb that
+    /// fixture's existing (deliberately stylesheet-less) assertions.
+    /// </summary>
+    [TestFixture]
+    internal sealed class AnimatePresencePopLayoutReversedRowTests
+    {
+        private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
+
+        private static readonly Dictionary<string, string> s_fade = new()
+        {
+            ["hidden"] = "opacity-0",
+            ["visible"] = "opacity-100",
+        };
+
+        private readonly record struct SetState(string Keys);
+
+        private sealed class SetStore : Store<SetState>
+        {
+            public SetStore(string initial) : base(new SetState(initial)) { }
+            public void Set(string keys) => SetState(_ => new SetState(keys));
+            protected override void ResetCore() => SetState(_ => new SetState("ab"));
+        }
+
+        private static SetStore s_store;
+
+        private EditorPanelSimulator _sim;
+
+        [SetUp]
+        public void SetUp()
+        {
+            PanelSimulator.ResetCurrentTime();
+            _sim = new EditorPanelSimulator { panelSize = new Vector2(800, 600) };
+            _sim.ResetTimePerSimulatedFrameToDefault();
+            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetPath);
+            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
+            _sim.rootVisualElement.styleSheets.Add(sheet);
+            s_store = null;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _sim?.Dispose();
+            _sim = null;
+        }
+
+        private VisualElement Root => _sim.rootVisualElement;
+
+        private void Tick() => _sim.FrameUpdateMs(16);
+
+        [Component]
+        private static VNode PopRowReversed()
+        {
+            var keys = Hooks.UseStore(s_store, s => s.Keys);
+            var children = new List<VNode>();
+            foreach (var key in keys)
+            {
+                children.Add(V.Motion(name: "item-" + key, key: key.ToString(), className: "h-[20px] w-[40px]",
+                    variants: s_fade, animate: "visible", exit: "hidden",
+                    transition: new StyleTransitionConfig { DurationSec = 0.3f }));
+            }
+            return V.Div(name: "row", className: "flex flex-row-reverse gap-x-2", children: new VNode[]
+            {
+                V.AnimatePresence(key: "presence", initial: false,
+                    mode: AnimatePresenceMode.PopLayout, children: children.ToArray()),
+            });
+        }
+
+        [Test]
+        public void Given_ATrailingGapMarginedChildInAReversedRow_When_ItsPopLayoutExitStarts_Then_ItStaysAtItsLastLaidOutPosition()
+        {
+            // Arrange — [a,b] under an actual flex-row-reverse container: b (not a — the first child never
+            // carries a gap margin) carries margin-right (trailing), not margin-left, so
+            // PinExitingChildOutOfFlow's marginLeft/marginTop-only subtraction sees a zero leading margin on
+            // the very element it pins.
+            using var store = new SetStore("ab");
+            s_store = store;
+            using var mounted = V.Mount(Root, V.Component(PopRowReversed, key: "row"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            Tick();
+            Tick();
+            var b = Root.Q<VisualElement>("item-b");
+            var xBefore = b.layout.x;
+            Assume.That(b.style.marginRight.value.value, Is.GreaterThan(0f),
+                "Precondition: b carries the trailing gap margin in the reversed container");
+
+            // Act — remove b (the child whose OWN margin is the trailing one) and let PopLayout pin it.
+            store.Set("a");
+            scheduler.DrainImmediateForTest();
+            Tick();
+
+            // Assert — the pinned ghost (b) has not moved from its last laid-out position.
+            Assert.That(b.layout.x, Is.EqualTo(xBefore).Within(0.5f));
+        }
+
+        // The pin test above deliberately keeps its trailing-margin check as an Assume (the pin, not the
+        // edge, is its subject — a tolerance comparison belongs on the pin assertion, not welded onto a
+        // precondition). If the edge-flip regressed, that Assume would report Inconclusive rather than
+        // Failed, which would not reliably turn CI red. This test asserts the same arrangement directly, so
+        // a regression here fails loudly instead of merely invalidating a precondition elsewhere.
+        [Test]
+        public void Given_AFlexRowReverseGapContainer_When_Reconciled_Then_TheSecondChildCarriesTheTrailingMargin()
+        {
+            // Arrange / Act
+            using var store = new SetStore("ab");
+            s_store = store;
+            using var mounted = V.Mount(Root, V.Component(PopRowReversed, key: "row"));
+            Tick();
+            Tick();
+
+            // Assert — gap-x-2 == 8px (see _tokens.uss).
+            Assert.That(Root.Q<VisualElement>("item-b").style.marginRight.value.value, Is.EqualTo(8f));
         }
     }
 }
