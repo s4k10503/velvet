@@ -517,12 +517,14 @@ namespace Velvet
 
         // Resolves the direction: the five direction/display classes are consulted FIRST — even on a panel —
         // in the SAME precedence USS itself uses when more than one matches the element (equal specificity,
-        // so the LAST declared RULE wins): _layout.uss declares .flex-row, .flex-col, .flex-row-reverse,
-        // .flex-col-reverse in that source order, so flex-col-reverse beats flex-row-reverse beats flex-col
-        // beats flex-row beats the bare .flex row default, regardless of which classes ended up on the
+        // so the LAST declared RULE wins): _layout.uss declares .flex-col, .flex-col-reverse, .flex-row,
+        // .flex-row-reverse in that source order, so flex-row-reverse beats flex-row beats flex-col-reverse
+        // beats flex-col beats the bare .flex row default, regardless of which classes ended up on the
         // element or in what order — a responsive/state variant routinely leaves TWO direction classes on
-        // the live list at once (e.g. "flex flex-col md:flex-row-reverse" above the breakpoint), and only
-        // checking one family (row OR column) would silently pick the wrong one. This also single-sources
+        // the live list at once (e.g. "flex flex-col md:flex-row" above the breakpoint), and only
+        // checking one family (row OR column) would silently pick the wrong one. The bare .flex is checked
+        // LAST rather than folded in with flex-row, because it is declared before all four direction
+        // utilities and so loses to every one of them, flex-col included. This also single-sources
         // why classes beat resolvedStyle.flexDirection generally: flex-row(-reverse) / flex-col(-reverse)
         // are USS-only rules with no C# inline flex-direction write, so resolvedStyle only catches up after
         // the panel's NEXT style pass, and a same-rect direction toggle (children reorder; the container
@@ -547,19 +549,23 @@ namespace Velvet
         // a different answer — it just reaches the same answer by a different path.)
         private Direction ResolveDirection()
         {
-            if (target.ClassListContains("flex-col-reverse"))
-            {
-                return Direction.ColumnReverse;
-            }
             if (target.ClassListContains("flex-row-reverse"))
             {
                 return Direction.RowReverse;
+            }
+            if (target.ClassListContains("flex-row"))
+            {
+                return Direction.Row;
+            }
+            if (target.ClassListContains("flex-col-reverse"))
+            {
+                return Direction.ColumnReverse;
             }
             if (target.ClassListContains("flex-col"))
             {
                 return Direction.Column;
             }
-            if (target.ClassListContains("flex-row") || target.ClassListContains("flex"))
+            if (target.ClassListContains("flex"))
             {
                 return Direction.Row;
             }
@@ -581,7 +587,7 @@ namespace Velvet
 
         // True when the container wraps (selects the four-side half-margin path). The flex-wrap /
         // flex-nowrap / flex-wrap-reverse class markers are consulted first, in _layout.uss's own
-        // declaration order (flex-wrap, flex-nowrap, …, flex-wrap-reverse — so flex-wrap-reverse beats
+        // declaration order (flex-wrap, flex-nowrap, flex-wrap-reverse — so flex-wrap-reverse beats
         // flex-nowrap beats flex-wrap when more than one is present). UNLIKE ResolveDirection, there is no
         // further "direction class implies a default" tier here: flex / flex-row(-reverse) /
         // flex-col(-reverse) set flex-direction only — they say nothing about flex-wrap — so their

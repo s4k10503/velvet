@@ -25,19 +25,34 @@
 .relative { position: relative; }
 .absolute { position: absolute; }
 
-/* Flex Direction */
-.flex-row { flex-direction: row; }
+/*
+ * Flex Direction
+ *
+ * DECLARATION ORDER IS LOAD-BEARING. A responsive/state variant is realized by adding the BARE
+ * utility to the live class list, so `flex flex-col md:flex-row` carries BOTH .flex-col and
+ * .flex-row above the breakpoint. All four selectors are single-class, so specificity ties and the
+ * LATER declaration wins — declaration order alone decides which of two concurrent directions the
+ * element lays out on, and no order can make both `flex-col md:flex-row` and `flex-row md:flex-col`
+ * work. The column family is therefore declared BEFORE the row family so a variant can turn a
+ * COLUMN INTO A ROW: that is the mobile-first idiom (a narrow-screen stack that becomes a wide-screen
+ * row, `flex flex-col md:flex-row`) documented in Documentation~/styling-variants.md. The reverse
+ * override — a base row that a variant turns back into a column — cannot work through the cascade;
+ * express it as a column base plus a variant row instead. Within each axis the plain form comes
+ * first, so `flex-col sm:flex-col-reverse` and `flex-row md:flex-row-reverse` both take effect.
+ * `.flex` / `.grid` above set flex-direction too and are declared before all four, so any explicit
+ * direction utility outranks them.
+ * StyleGapManipulator.ResolveDirection reproduces this precedence to place the gap margin on the
+ * axis the element actually lays out on, so it must be updated in lockstep with any change here.
+ */
 .flex-col { flex-direction: column; }
+.flex-col-reverse { flex-direction: column-reverse; }
+.flex-row { flex-direction: row; }
+.flex-row-reverse { flex-direction: row-reverse; }
 
-/* Flex Wrap */
+/* Flex Wrap. Same tie-break as the direction block above: flex-wrap-reverse beats flex-nowrap beats
+   flex-wrap when a variant leaves more than one on the element. StyleGapManipulator.IsWrap mirrors it. */
 .flex-wrap { flex-wrap: wrap; }
 .flex-nowrap { flex-wrap: nowrap; }
-
-/* Flex Direction (reverse) */
-.flex-row-reverse { flex-direction: row-reverse; }
-.flex-col-reverse { flex-direction: column-reverse; }
-
-/* Flex Wrap (reverse) */
 .flex-wrap-reverse { flex-wrap: wrap-reverse; }
 
 /* Align Items (cross axis) */

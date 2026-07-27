@@ -27,11 +27,32 @@ as the matching signal changes.
 V.Button(className: "bg-primary hover:bg-primary-600 active:scale-95", text: "Save");
 
 // Theme: a dark-mode surface color.
-V.Div(className: "bg-white dark:bg-neutral-900", ...);
+V.Div(className: "bg-neutral-50 dark:bg-neutral-900", ...);
 
 // Responsive: full-width below md, a fixed column from md up.
 V.Div(className: "w-full md:w-[320px]", ...);
 ```
+
+### Variants and the USS cascade
+
+A **USS-class** payload is toggled on the element's live class list, so above the breakpoint
+`"flex flex-col md:flex-row"` carries both `flex-col` and `flex-row`. Both are single-class
+selectors, so specificity ties and the **later-declared rule in the bundled stylesheet wins** —
+a variant does not automatically outrank the base utility the way a CSS media-query rule does.
+Two consequences:
+
+- Within a family, a variant can only override in the direction the stylesheet declares. The
+  direction utilities are ordered for the mobile-first idiom, so `flex flex-col md:flex-row`
+  works while `flex flex-row md:flex-col` does not — see
+  [styling-flexbox-and-gap.md](styling-flexbox-and-gap.md) for the full precedence table. Other
+  families follow their own declaration order: ascending for the numeric scales
+  (`p-2 md:p-8`, `text-sm md:text-2xl`), source order for the palettes
+  (`bg-neutral-50 dark:bg-neutral-900`). When an override does not take effect, swap which value
+  is the base and which is the variant.
+- An **arbitrary-value** payload (`md:w-[320px]`, `hover:bg-[#fff]`) is exempt: it is applied as
+  an inline style on a priority layer, so it always beats the base utility and falls back cleanly
+  when the variant turns off. The bracket form is the reliable way to force an override the
+  declaration order will not give you.
 
 ### Responsive breakpoints
 

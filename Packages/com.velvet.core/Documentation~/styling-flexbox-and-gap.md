@@ -33,6 +33,28 @@ only place the raw engine default (column) still surfaces is a flex container bu
 the `.flex` utility class — e.g. a bare `VisualElement` styled entirely through `refCallback` or a
 custom manipulator.
 
+### Overriding the direction from a variant
+
+A variant is realized by adding the **bare** utility to the live class list, so
+`"flex flex-col md:flex-row"` carries both `flex-col` and `flex-row` above the breakpoint. Every
+direction utility is a single-class selector, so specificity ties and **the later-declared rule
+wins**. `_layout.uss` therefore declares the column family before the row family:
+
+| Declaration order in `_layout.uss` | Precedence |
+|---|---|
+| `.flex-col` → `.flex-col-reverse` → `.flex-row` → `.flex-row-reverse` | `flex-row-reverse` > `flex-row` > `flex-col-reverse` > `flex-col` > `flex` / `grid` |
+
+That is chosen for the mobile-first idiom: a variant can turn a **column into a row**
+(`flex flex-col md:flex-row` — a narrow-screen stack that becomes a wide-screen row), and within
+an axis it can reverse a base direction (`flex-col sm:flex-col-reverse`,
+`flex-row md:flex-row-reverse`). No declaration order can make both `flex-col md:flex-row` and
+`flex-row md:flex-col` work, because equal specificity leaves only one total order. **A base row
+that a variant turns back into a column does not work** — write it the other way round, as a
+column base with a variant row.
+
+`.flex` and `.grid` set `flex-direction: row` too, and are declared before all four, so any
+explicit direction utility outranks them.
+
 ## 2. `gap-*` is a framework-level CSS-`gap` polyfill (no USS rules)
 
 Unity UI Toolkit (6000.3) has **no** native flex `gap` / `row-gap` / `column-gap` and **no**
@@ -117,13 +139,14 @@ manipulator's own events. It is re-applied from three sources:
 **Direction source: a single resolved verdict from the class list, by USS precedence, not
 `resolvedStyle` — on a panel included.** `flex` / `flex-row` / `flex-col` / `flex-row-reverse` /
 `flex-col-reverse` are all direction-bearing (`flex` sets `flex-direction: row`, same as a bare
-`flex-row`), and `_layout.uss` declares them in that order — `flex-row`, `flex-col`,
-`flex-row-reverse`, `flex-col-reverse` — so at equal specificity (one class selector each) a
+`flex-row`), and `_layout.uss` declares them in the order given under "Overriding the direction
+from a variant" above — so at equal specificity (one class selector each) a
 *later*-declared rule always overrides an earlier one when an element carries more than one of them at
-once, which is routine once a responsive/state variant is involved (`flex flex-col md:flex-row-reverse`
-leaves BOTH `flex-col` and `flex-row-reverse` on the live class list above the breakpoint).
+once, which is routine once a responsive/state variant is involved (`flex flex-col md:flex-row`
+leaves BOTH `flex-col` and `flex-row` on the live class list above the breakpoint).
 `StyleGapManipulator.ResolveDirection` reproduces that exact precedence — checking
-`flex-col-reverse`, then `flex-row-reverse`, then `flex-col`, then `flex-row`/`flex`, in that order —
+`flex-row-reverse`, then `flex-row`, then `flex-col-reverse`, then `flex-col`, then `flex`, in that
+order —
 and resolves it into ONE mutually-exclusive verdict (axis + reversed-or-not together), rather than an
 axis check and a reversed check answered independently: a `gap-x-4` container patched straight from
 `flex-row-reverse` to `flex-col-reverse` (no row-family class survives the patch) needs the reversed
