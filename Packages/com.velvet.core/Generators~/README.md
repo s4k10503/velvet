@@ -57,9 +57,10 @@ Generators~/
 │   ├── Velvet.StyleTable.csproj              (force-added — the root .gitignore ignores *.csproj)
 │   ├── Program.cs                            (CLI: --styles <dir> --output <file>)
 │   ├── UssStyleSheetParser.cs                (rules and declarations, straight off the text)
+│   ├── UssCascadeOrder.cs                    (the @import order the importer flattens the sheets to)
 │   ├── UssSelector.cs                        (which selector shapes the table can model)
 │   ├── UssPropertyVocabulary.cs              (UI Toolkit longhands + the shorthands that expand into them)
-│   ├── UssProblem.cs                         (USS001-008 — why a derivation refused to write)
+│   ├── UssProblem.cs                         (USS001-USS011 — why a derivation refused to write)
 │   ├── StyleUtilityTableBuilder.cs           (stylesheets → class → property set)
 │   └── StyleUtilityTableEmitter.cs           (property set → C# source)
 └── tests/Velvet.SourceGenerators.Tests/      (abridged)
@@ -88,7 +89,7 @@ It is a build-time tool rather than a source generator because the answer is a f
 
 Committing generated source is only safe with a guard, and `BundledStyleSheetCensusTests` is it: it re-derives from the stylesheets and compares against the committed file. Unlike the two DLLs — which embed the git `HEAD` commit id and so can never be byte-compared against a rebuild — the emitted C# is deterministic, so the comparison is exact. `generators.yml` triggers on `Runtime/**`, so a stylesheet edit runs it whether or not any code changed.
 
-Failures are reported as `USS001`-`USS008` and refuse to write the table. They are deliberately outside the `VEL###` space the analyzers use: nothing can suppress a build-script failure through an `.editorconfig` severity, and sharing the namespace would invite someone to try. Each code marks an assumption the table depends on — that `:root` declares only custom properties, that a utility declares no custom property, that every property name resolves to the pinned UI Toolkit vocabulary, that one class carries one gate — so the assumption cannot rot silently.
+Failures are reported as `USS001`-`USS011` and refuse to write the table. They are deliberately outside the `VEL###` space the analyzers use: nothing can suppress a build-script failure through an `.editorconfig` severity, and sharing the namespace would invite someone to try. Each code marks an assumption the table depends on — that `:root` declares only custom properties, that a utility declares no custom property, that every property name resolves to the pinned UI Toolkit vocabulary, that one class carries one gate, that the sheets arrive in the aggregator's `@import` order, that no gated rule declares `transition-property` — so the assumption cannot rot silently.
 
 Four partials declare no rules and are expected to: `StyleUtilities.uss` is nothing but `@import`, and `_gap.uss`, `_presets.uss` and `_states.uss` describe utility families Velvet realises in C# rather than in USS (each says so in its own header). Their classes are therefore absent from the table, which from the table's side looks identical to a class that sets nothing — `BundledStyleSheetCensusTests` pins the list so the distinction stays visible.
 

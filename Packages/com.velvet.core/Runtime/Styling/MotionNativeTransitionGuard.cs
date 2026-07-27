@@ -6,8 +6,8 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     /// <summary>
-    /// The style slots a per-frame Motion driver can write, grouped the way the bundled <c>transition-*</c>
-    /// utilities group them, so a play's driven set and an element's declared set intersect directly.
+    /// The style slots a per-frame Motion driver can write, at the granularity a play can report driving one,
+    /// so a play's driven set and an element's declared set intersect directly.
     /// </summary>
     [Flags]
     internal enum MotionTransitionSlots
@@ -17,11 +17,10 @@ namespace Velvet
         Translate = 1 << 1,
         Scale = 1 << 2,
         Rotate = 1 << 3,
-        // background-color / color / border-color move together: every transition utility that names one names
-        // all three, and no driver channel writes them independently of that grouping.
+        // A play's colour channels are resolved from its own delta, so a driver reports "writes colours"
+        // without saying which; splitting the declared side finer could not change an intersection result.
         Color = 1 << 4,
-        // Every length-valued property. Only `transition-all` covers these, so a finer split would never change
-        // an intersection result.
+        // Every length-valued property, grouped for the same reason as Color.
         Length = 1 << 5,
         All = Opacity | Translate | Scale | Rotate | Color | Length,
     }
@@ -41,13 +40,13 @@ namespace Velvet
     /// UI Toolkit's <c>transition-property</c> is a positive list with no "everything except these" spelling, and
     /// the RESOLVED list cannot be read before the element is on a panel, so the suspension is necessarily
     /// element-wide: for its duration the element's OTHER transitions land instantly too. That cost is only
-    /// worth paying where the conflict is real, so the decision is made from the element's own CLASS LIST — the
-    /// transition utilities are a small closed set with known property sets, and reading class strings is how
-    /// the rest of this feature derives its answers off-panel. A play suspends only when the slots it drives
-    /// intersect what those classes leave transitionable (see <see cref="DeclaredSlots"/>): a
-    /// <c>transition-colors</c> element running an opacity/translate play keeps its hover fade, while the same
-    /// play on a <c>transition-transform</c> or <c>transition-all</c> element does suspend, because there the
-    /// class covers the very slots the driver is writing.
+    /// worth paying where the conflict is real, so the decision is made from the element's own CLASS LIST,
+    /// resolved against the table <c>Generators~/src/Velvet.StyleTable</c> derives from the bundled
+    /// stylesheets. A play suspends only when the slots it drives intersect what those classes leave
+    /// transitionable (see <see cref="DeclaredSlots"/>): a <c>transition-colors</c> element running an
+    /// opacity/translate play keeps its hover fade, while the same play on a <c>transition-transform</c> or
+    /// <c>transition-all</c> element does suspend, because there the class covers the very slots the driver is
+    /// writing.
     /// </para>
     /// <para>
     /// Suspension is tracked by OWNER because two drivers can write one element at once (a scheduler variant
@@ -99,12 +98,11 @@ namespace Velvet
         /// <remarks>
         /// UI Toolkit's INITIAL <c>transition-property</c> is <c>all</c> and its initial duration is 0s, so an
         /// element transitions everything as soon as anything gives it a duration — and nothing at all until
-        /// then. That makes the answer three-way rather than a union: a <c>transition-*</c> utility that
-        /// declares a property list (mirroring <c>_state_variants.uss</c> / <c>_effects.uss</c>) pins the set;
-        /// otherwise a duration-only source (<c>transition-filter</c>, which deliberately sets duration and
-        /// timing alone, or any <c>duration-*</c> utility, including the bracket form the resolver applies as an
-        /// inline value rather than a class) leaves the initial <c>all</c> standing; otherwise there is no
-        /// duration and nothing transitions.
+        /// then. The classes that set <c>transition-property</c> do not combine: it holds one value, so the
+        /// LAST of them declared wins outright and the earlier ones contribute nothing, which is the ordering
+        /// <see cref="StyleTransitionUtilities"/> records. Failing one of those, a duration from any source —
+        /// a <c>duration-*</c> utility, or the bracket form the resolver applies as an inline value rather than
+        /// a class — leaves the initial <c>all</c> standing. Failing that too, nothing transitions.
         /// <para>
         /// Two residual blind spots, both accepted rather than fixed: an inline whole-property value written by
         /// something other than a duration utility (the scheduler's own tween swap sets one, though never on a
@@ -114,56 +112,99 @@ namespace Velvet
         /// </remarks>
         internal static MotionTransitionSlots DeclaredSlots(VisualElement element)
         {
-            var declaredByUtility = MotionTransitionSlots.None;
-            var sawPropertyUtility = false;
-            var sawDurationOnly = false;
+            var winningPosition = -1;
+            var declared = StyleLonghandSet.Empty;
+            var sawDuration = false;
             foreach (var core in element.GetClasses())
             {
-                if (string.IsNullOrEmpty(core))
+                if (StyleTransitionUtilities.TryGet(core, out var position, out var properties))
                 {
+                    if (position > winningPosition)
+                    {
+                        winningPosition = position;
+                        declared = properties;
+                    }
                     continue;
                 }
-                if (core.StartsWith("duration-", StringComparison.Ordinal))
-                {
-                    sawDurationOnly = true;
-                    continue;
-                }
-                var declared = core switch
-                {
-                    "transition-all" => MotionTransitionSlots.All,
-                    "transition-none" => MotionTransitionSlots.None,
-                    "transition-opacity" => MotionTransitionSlots.Opacity,
-                    "transition-colors" => MotionTransitionSlots.Color,
-                    "transition-colors-scale" => MotionTransitionSlots.Color | MotionTransitionSlots.Scale,
-                    "transition-colors-scale-opacity"
-                        => MotionTransitionSlots.Color | MotionTransitionSlots.Scale | MotionTransitionSlots.Opacity,
-                    "transition-transform"
-                        => MotionTransitionSlots.Translate | MotionTransitionSlots.Scale | MotionTransitionSlots.Rotate,
-                    // Sets duration and timing only, so it leaves transition-property at its initial `all`.
-                    "transition-filter" => MotionTransitionSlots.None,
-                    _ => (MotionTransitionSlots?)null,
-                };
-                if (declared == null)
-                {
-                    continue;
-                }
-                if (core == "transition-filter")
-                {
-                    sawDurationOnly = true;
-                    continue;
-                }
-                sawPropertyUtility = true;
-                declaredByUtility |= declared.Value;
+                sawDuration = sawDuration
+                    || (StyleUtilityProperties.TryGet(core, out var rule)
+                        && rule.Gate == StyleUtilityGate.None
+                        && rule.Properties.Contains(StyleLonghand.TransitionDuration));
             }
-            if (sawPropertyUtility)
+            if (winningPosition >= 0)
             {
-                return declaredByUtility;
+                return SlotsOf(declared);
             }
             // duration-[400ms] resolves to an inline value rather than a class, so the class scan cannot see it;
             // the inline slot can.
-            return sawDurationOnly || element.style.transitionDuration.keyword != StyleKeyword.Null
+            return sawDuration || element.style.transitionDuration.keyword != StyleKeyword.Null
                 ? MotionTransitionSlots.All
                 : MotionTransitionSlots.None;
+        }
+
+        // Every property the matching driver channel can write, which is what the grouped slot stands for.
+        // Both sets track MotionSpringClassParser's channel resolution: a property it can put in a delta and
+        // neither set names is a property a play would drive without ever asking the engine to stand down.
+        private static readonly StyleLonghandSet s_colorProperties = SetOf(
+            StyleLonghand.BackgroundColor,
+            StyleLonghand.Color,
+            StyleLonghand.BorderTopColor,
+            StyleLonghand.BorderRightColor,
+            StyleLonghand.BorderBottomColor,
+            StyleLonghand.BorderLeftColor);
+
+        private static readonly StyleLonghandSet s_lengthProperties = SetOf(
+            StyleLonghand.Width,
+            StyleLonghand.Height,
+            StyleLonghand.MinWidth,
+            StyleLonghand.MinHeight,
+            StyleLonghand.MaxWidth,
+            StyleLonghand.MaxHeight,
+            StyleLonghand.Top,
+            StyleLonghand.Right,
+            StyleLonghand.Bottom,
+            StyleLonghand.Left,
+            StyleLonghand.PaddingTop,
+            StyleLonghand.PaddingRight,
+            StyleLonghand.PaddingBottom,
+            StyleLonghand.PaddingLeft,
+            StyleLonghand.MarginTop,
+            StyleLonghand.MarginRight,
+            StyleLonghand.MarginBottom,
+            StyleLonghand.MarginLeft,
+            StyleLonghand.BorderTopLeftRadius,
+            StyleLonghand.BorderTopRightRadius,
+            StyleLonghand.BorderBottomLeftRadius,
+            StyleLonghand.BorderBottomRightRadius,
+            StyleLonghand.BorderTopWidth,
+            StyleLonghand.BorderRightWidth,
+            StyleLonghand.BorderBottomWidth,
+            StyleLonghand.BorderLeftWidth,
+            StyleLonghand.FlexBasis,
+            StyleLonghand.FontSize,
+            StyleLonghand.LetterSpacing);
+
+        /// <summary>The driver channels that would contend for the properties a declaration names.</summary>
+        private static MotionTransitionSlots SlotsOf(StyleLonghandSet declared)
+        {
+            var slots = MotionTransitionSlots.None;
+            if (declared.Contains(StyleLonghand.Opacity)) slots |= MotionTransitionSlots.Opacity;
+            if (declared.Contains(StyleLonghand.Translate)) slots |= MotionTransitionSlots.Translate;
+            if (declared.Contains(StyleLonghand.Scale)) slots |= MotionTransitionSlots.Scale;
+            if (declared.Contains(StyleLonghand.Rotate)) slots |= MotionTransitionSlots.Rotate;
+            if (declared.Overlaps(s_colorProperties)) slots |= MotionTransitionSlots.Color;
+            if (declared.Overlaps(s_lengthProperties)) slots |= MotionTransitionSlots.Length;
+            return slots;
+        }
+
+        private static StyleLonghandSet SetOf(params StyleLonghand[] longhands)
+        {
+            var set = StyleLonghandSet.Empty;
+            foreach (var longhand in longhands)
+            {
+                set = set.Union(StyleLonghandSet.Of(longhand));
+            }
+            return set;
         }
 
         /// <summary>Drops one owner, handing the element back to the cascade once the LAST owner has let go.</summary>

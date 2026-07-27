@@ -28,6 +28,7 @@ namespace Velvet.SourceGenerators.Tests
         private const int SurveyedSingleClassRuleCount = 2094;
         private const int SurveyedDistinctPropertyNameCount = 63;
         private const int SurveyedUtilityClassCount = 2138;
+        private const int SurveyedTransitionUtilityCount = 36;
 
         private static readonly Census Surveyed = Census.OfBundledStyleSheets();
 
@@ -86,6 +87,82 @@ namespace Velvet.SourceGenerators.Tests
 
             // Assert
             Assert.Equal(new[] { "background-color" }, shared);
+        }
+
+        [Fact]
+        public void Given_TheDerivedTable_When_Compiled_Then_ItRecordsEveryTransitionPropertyDeclaration()
+        {
+            // Arrange
+            var sheets = BundledStyleSheets();
+            Assume.NotEmpty(sheets, "the bundled stylesheets were located");
+
+            // Act
+            var count = StyleTableTestHelper.Load(StyleTableTestHelper.Derive(sheets)).TransitionCount;
+
+            // Assert
+            Assert.Equal(SurveyedTransitionUtilityCount, count);
+        }
+
+        [Fact]
+        public void Given_TheDerivedTable_When_Compiled_Then_TheTransitionUtilitiesAreInTheOrderTheSheetsDeclareThem()
+        {
+            // Arrange — transition-none sits between transition-all and the property-specific utilities rather
+            // than ahead of both, which is the deviation from the reference cascade BundledStyleSheetOrderTests
+            // exempts.
+            var sheets = BundledStyleSheets();
+            Assume.NotEmpty(sheets, "the bundled stylesheets were located");
+            var probe = StyleTableTestHelper.Load(StyleTableTestHelper.Derive(sheets));
+
+            // Act
+            var ordered = probe.TransitionUtilitiesInCascadeOrder()
+                .Where(name => name.StartsWith("transition-", StringComparison.Ordinal))
+                .ToArray();
+
+            // Assert
+            Assert.Equal(
+                new[]
+                {
+                    "transition-transform", "transition-filter", "transition-all", "transition-none",
+                    "transition-opacity", "transition-colors", "transition-colors-scale",
+                    "transition-colors-scale-opacity",
+                },
+                ordered);
+        }
+
+        [Fact]
+        public void Given_TheDerivedTable_When_Compiled_Then_EveryAnimationPresetOutranksEveryTransitionUtility()
+        {
+            // Arrange — _animations.uss is imported last so a scheduler-applied preset replaces whatever
+            // transition-* the element already carried for the length of the play.
+            var sheets = BundledStyleSheets();
+            Assume.NotEmpty(sheets, "the bundled stylesheets were located");
+            var ordered = StyleTableTestHelper.Load(StyleTableTestHelper.Derive(sheets))
+                .TransitionUtilitiesInCascadeOrder();
+
+            // Act
+            var firstPreset = ordered
+                .TakeWhile(name => !name.StartsWith("anim-", StringComparison.Ordinal))
+                .Count();
+
+            // Assert
+            Assert.Equal(
+                ordered.Count(name => !name.StartsWith("anim-", StringComparison.Ordinal)),
+                firstPreset);
+        }
+
+        [Fact]
+        public void Given_TheDerivedTable_When_Compiled_Then_TransitionFilterNamesFilterAlone()
+        {
+            // Arrange
+            var sheets = BundledStyleSheets();
+            Assume.NotEmpty(sheets, "the bundled stylesheets were located");
+
+            // Act
+            var properties = StyleTableTestHelper.Load(StyleTableTestHelper.Derive(sheets))
+                .TransitionPropertiesOf("transition-filter");
+
+            // Assert
+            Assert.Equal(new[] { "filter" }, properties);
         }
 
         [Fact]
@@ -344,14 +421,20 @@ namespace Velvet.SourceGenerators.Tests
         private static string CommittedTablePath() =>
             Path.Combine(SolutionPaths.RuntimeRoot(), "Styling", "StyleUtilityProperties.g.cs");
 
+        /// <summary>
+        /// In cascade order, the same as the build script supplies them: the derivation records which of two
+        /// utilities setting one property wins, so a differently ordered input would derive a different table.
+        /// </summary>
         private static StyleSheetInput[] BundledStyleSheets() =>
-            BundledStyleSheetPaths()
-                .Select(path => new StyleSheetInput(path, File.ReadAllText(path)))
+            UssCascadeOrder.SheetsIn(BundledStyleSheetDirectory())
+                .Select(sheet => new StyleSheetInput(sheet.Path, sheet.Text))
                 .ToArray();
 
         private static IEnumerable<string> BundledStyleSheetPaths() =>
-            Directory.EnumerateFiles(Path.Combine(SolutionPaths.RuntimeRoot(), "Styles"), "*.uss")
-                .OrderBy(path => path, StringComparer.Ordinal);
+            UssCascadeOrder.SheetsIn(BundledStyleSheetDirectory()).Select(sheet => sheet.Path);
+
+        private static string BundledStyleSheetDirectory() =>
+            Path.Combine(SolutionPaths.RuntimeRoot(), "Styles");
 
         /// <summary>The surveyed shapes, named so a histogram failure says which shape moved.</summary>
         private enum SelectorShape

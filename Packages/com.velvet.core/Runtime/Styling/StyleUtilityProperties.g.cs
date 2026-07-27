@@ -2554,4 +2554,116 @@ namespace Velvet
             return false;
         }
     }
+
+    /// <summary>
+    /// The bundled utilities that declare <c>transition-property</c>, in cascade order, with the properties
+    /// each one's value names. <c>MotionNativeTransitionGuard.DeclaredSlots</c> is the only consumer and
+    /// states what the order means.
+    /// </summary>
+    /// <remarks>
+    /// Only ungated rules reach here: the derivation refuses a gated <c>transition-property</c> rather than
+    /// record one, since no reader working from a class list can tell whether the gate holds.
+    /// </remarks>
+    internal static class StyleTransitionUtilities
+    {
+        private static readonly StyleLonghandSet[] Declared =
+        {
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080600UL),
+            new StyleLonghandSet(0x0000400000000000UL, 0x0000000000000000UL),
+            new StyleLonghandSet(0xFFFFFFFFFFFFFFFFUL, 0x0000000000FFFFFFUL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000000UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000002UL),
+            new StyleLonghandSet(0x0000085441000000UL, 0x0000000000000000UL),
+            new StyleLonghandSet(0x0000085441000000UL, 0x0000000000000400UL),
+            new StyleLonghandSet(0x0000085441000000UL, 0x0000000000000402UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000402UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000402UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000402UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000000402UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+            new StyleLonghandSet(0x0000000000000000UL, 0x0000000000080002UL),
+        };
+
+        private static readonly Dictionary<string, int> ByClassName =
+            new Dictionary<string, int>(36, StringComparer.Ordinal)
+        {
+            { "transition-transform", 0 },
+            { "transition-filter", 1 },
+            { "transition-all", 2 },
+            { "transition-none", 3 },
+            { "transition-opacity", 4 },
+            { "transition-colors", 5 },
+            { "transition-colors-scale", 6 },
+            { "transition-colors-scale-opacity", 7 },
+            { "anim-fade-enter-from", 8 },
+            { "anim-fade-enter-to", 9 },
+            { "anim-fade-exit-from", 10 },
+            { "anim-fade-exit-to", 11 },
+            { "anim-slide-up-enter-from", 12 },
+            { "anim-slide-up-enter-to", 13 },
+            { "anim-slide-up-exit-from", 14 },
+            { "anim-slide-up-exit-to", 15 },
+            { "anim-slide-down-enter-from", 16 },
+            { "anim-slide-down-enter-to", 17 },
+            { "anim-slide-down-exit-from", 18 },
+            { "anim-slide-down-exit-to", 19 },
+            { "anim-slide-left-enter-from", 20 },
+            { "anim-slide-left-enter-to", 21 },
+            { "anim-slide-left-exit-from", 22 },
+            { "anim-slide-left-exit-to", 23 },
+            { "anim-slide-right-enter-from", 24 },
+            { "anim-slide-right-enter-to", 25 },
+            { "anim-slide-right-exit-from", 26 },
+            { "anim-slide-right-exit-to", 27 },
+            { "anim-scale-enter-from", 28 },
+            { "anim-scale-enter-to", 29 },
+            { "anim-scale-exit-from", 30 },
+            { "anim-scale-exit-to", 31 },
+            { "anim-fade-slide-up-enter-from", 32 },
+            { "anim-fade-slide-up-enter-to", 33 },
+            { "anim-fade-slide-up-exit-from", 34 },
+            { "anim-fade-slide-up-exit-to", 35 },
+        };
+
+        /// <summary>How many bundled utilities declare <c>transition-property</c>.</summary>
+        public static int Count => ByClassName.Count;
+
+        /// <summary>
+        /// The cascade position of <paramref name="className"/> among the utilities that declare
+        /// <c>transition-property</c>, and the properties its declaration names.
+        /// </summary>
+        public static bool TryGet(string className, out int cascadePosition, out StyleLonghandSet properties)
+        {
+            if (className != null && ByClassName.TryGetValue(className, out cascadePosition))
+            {
+                properties = Declared[cascadePosition];
+                return true;
+            }
+            cascadePosition = -1;
+            properties = StyleLonghandSet.Empty;
+            return false;
+        }
+    }
 }

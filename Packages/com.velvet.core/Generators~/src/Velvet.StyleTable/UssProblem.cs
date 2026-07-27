@@ -35,6 +35,15 @@ namespace Velvet.StyleTable
 
         /// <summary>The derivation was handed no stylesheet to read.</summary>
         public const string NoStyleSheets = "USS008";
+
+        /// <summary>The sheets were supplied in an order the aggregator's <c>@import</c> list contradicts.</summary>
+        public const string StyleSheetOrderMismatch = "USS009";
+
+        /// <summary>A <c>transition-property</c> value named something the engine has no property for.</summary>
+        public const string UnknownTransitionProperty = "USS010";
+
+        /// <summary>A gated rule declared <c>transition-property</c>.</summary>
+        public const string GatedTransitionProperty = "USS011";
     }
 
     /// <summary>One reason the table could not be derived, located in the stylesheet that caused it.</summary>
