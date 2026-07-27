@@ -1643,11 +1643,235 @@ namespace Velvet
 
         #endregion
 
+        #region Manipulator Configure
+
+        // One manipulator family's tracking table, constructor and update call. Implementations must be
+        // structs: Configure is constrained to a struct so every instantiation is specialized and each
+        // member below binds to a direct call. A class implementation, or a delegate parameter in place of
+        // this interface, would allocate once per element per patch on a path that runs for every styled
+        // element in the tree.
+        // Create takes the context because most families' manipulators resolve their payloads through
+        // it; gap and grid write only their own target's child margins and ignore it.
+        private interface IManipulatorOp<TManip> where TManip : Manipulator
+        {
+            Dictionary<VisualElement, TManip> Table(ReconcilerContext ctx);
+            TManip Create(ReconcilerContext ctx);
+            void Update(TManip manipulator);
+        }
+
+        // Creates, updates or tears down element's manipulator of the family described by op. wanted is
+        // the family's own verdict on whether the current class list still asks for the manipulator;
+        // each caller computes it from its own token scan (an emptiness check, a parse result, or the
+        // prefix scan it already ran to early-out).
+        // The table entry is dropped only AFTER the element has released the manipulator. These tables
+        // are the index FiberElementCleaner detaches from, so an entry cleared ahead of a detach that
+        // throws or re-enters would strand an attached manipulator nothing can reach.
+        // `default` is a legal op ONLY where wanted is statically false: a default op carries zeroed
+        // fields, so a computed wanted that turns out true would build a manipulator out of them.
+        // op is taken by value. `where TOp : struct` does not promise the concrete type is readonly, so
+        // an `in` parameter would make each member call below copy defensively rather than copying once
+        // at the call site.
+        private void Configure<TOp, TManip>(VisualElement element, bool wanted, TOp op)
+            where TOp : struct, IManipulatorOp<TManip>
+            where TManip : Manipulator
+        {
+            var table = op.Table(_ctx);
+            if (table.TryGetValue(element, out var existing))
+            {
+                if (wanted)
+                {
+                    // Keep this unconditional — never gate it on "the spec is unchanged". Gap / divide /
+                    // grid re-derive against the CURRENT child set and text-balance re-wins a shared
+                    // inline slot, both of which move without any class token changing.
+                    op.Update(existing);
+                }
+                else
+                {
+                    element.RemoveManipulator(existing);
+                    table.Remove(element);
+                }
+            }
+            else if (wanted)
+            {
+                var manipulator = op.Create(_ctx);
+                element.AddManipulator(manipulator);
+                table[element] = manipulator;
+            }
+        }
+
+        private readonly struct VariantOp : IManipulatorOp<StyleVariantManipulator>
+        {
+            private readonly string[] _hover;
+            private readonly string[] _focus;
+            private readonly string[] _focusVisible;
+            private readonly string[] _active;
+            private readonly string[] _checked;
+
+            internal VariantOp(string[] hover, string[] focus, string[] focusVisible, string[] active,
+                string[] @checked)
+            {
+                _hover = hover;
+                _focus = focus;
+                _focusVisible = focusVisible;
+                _active = active;
+                _checked = @checked;
+            }
+
+            public Dictionary<VisualElement, StyleVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.VariantManipulators;
+
+            public StyleVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleVariantManipulator(ctx, _hover, _focus, _focusVisible, _active, _checked);
+
+            public void Update(StyleVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_hover, _focus, _focusVisible, _active, _checked);
+        }
+
+        private readonly struct ConditionalVariantOp : IManipulatorOp<StyleConditionalVariantManipulator>
+        {
+            private readonly string[][] _responsive;
+            private readonly string[] _dark;
+
+            internal ConditionalVariantOp(string[][] responsive, string[] dark)
+            {
+                _responsive = responsive;
+                _dark = dark;
+            }
+
+            public Dictionary<VisualElement, StyleConditionalVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.ConditionalVariantManipulators;
+
+            public StyleConditionalVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleConditionalVariantManipulator(ctx, _responsive, _dark);
+
+            public void Update(StyleConditionalVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_responsive, _dark);
+        }
+
+        private readonly struct RelationalVariantOp : IManipulatorOp<StyleRelationalVariantManipulator>
+        {
+            private readonly List<RelationalBindingConfig>? _configs;
+
+            internal RelationalVariantOp(List<RelationalBindingConfig>? configs)
+            {
+                _configs = configs;
+            }
+
+            public Dictionary<VisualElement, StyleRelationalVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.RelationalVariantManipulators;
+
+            public StyleRelationalVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleRelationalVariantManipulator(ctx, _configs);
+
+            public void Update(StyleRelationalVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_configs);
+        }
+
+        private readonly struct HasVariantOp : IManipulatorOp<StyleHasVariantManipulator>
+        {
+            private readonly string[] _checked;
+            private readonly string[] _focus;
+
+            internal HasVariantOp(string[] @checked, string[] focus)
+            {
+                _checked = @checked;
+                _focus = focus;
+            }
+
+            public Dictionary<VisualElement, StyleHasVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.HasVariantManipulators;
+
+            public StyleHasVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleHasVariantManipulator(ctx, _checked, _focus);
+
+            public void Update(StyleHasVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_checked, _focus);
+        }
+
+        private readonly struct ChildVariantOp : IManipulatorOp<StyleChildVariantManipulator>
+        {
+            private readonly string[] _payloads;
+
+            internal ChildVariantOp(string[] payloads)
+            {
+                _payloads = payloads;
+            }
+
+            public Dictionary<VisualElement, StyleChildVariantManipulator> Table(ReconcilerContext ctx)
+                => ctx.ChildVariantManipulators;
+
+            public StyleChildVariantManipulator Create(ReconcilerContext ctx)
+                => new StyleChildVariantManipulator(ctx, _payloads);
+
+            public void Update(StyleChildVariantManipulator manipulator)
+                => manipulator.UpdatePayloads(_payloads);
+        }
+
+        private readonly struct GapOp : IManipulatorOp<StyleGapManipulator>
+        {
+            private readonly float _gap;
+            private readonly GapAxis _axis;
+
+            internal GapOp(float gap, GapAxis axis)
+            {
+                _gap = gap;
+                _axis = axis;
+            }
+
+            public Dictionary<VisualElement, StyleGapManipulator> Table(ReconcilerContext ctx)
+                => ctx.GapManipulators;
+
+            public StyleGapManipulator Create(ReconcilerContext ctx)
+                => new StyleGapManipulator(_gap, _axis);
+
+            public void Update(StyleGapManipulator manipulator)
+                => manipulator.UpdateGap(_gap, _axis);
+        }
+
+        private readonly struct DivideOp : IManipulatorOp<StyleDivideManipulator>
+        {
+            private readonly DivideSpec _spec;
+
+            internal DivideOp(DivideSpec spec)
+            {
+                _spec = spec;
+            }
+
+            public Dictionary<VisualElement, StyleDivideManipulator> Table(ReconcilerContext ctx)
+                => ctx.DivideManipulators;
+
+            public StyleDivideManipulator Create(ReconcilerContext ctx)
+                => new StyleDivideManipulator(_spec, ctx);
+
+            public void Update(StyleDivideManipulator manipulator)
+                => manipulator.UpdateSpec(_spec);
+        }
+
+        private readonly struct GridOp : IManipulatorOp<StyleGridManipulator>
+        {
+            private readonly GridSpec _spec;
+
+            internal GridOp(GridSpec spec)
+            {
+                _spec = spec;
+            }
+
+            public Dictionary<VisualElement, StyleGridManipulator> Table(ReconcilerContext ctx)
+                => ctx.GridManipulators;
+
+            public StyleGridManipulator Create(ReconcilerContext ctx)
+                => new StyleGridManipulator(_spec);
+
+            public void Update(StyleGridManipulator manipulator)
+                => manipulator.UpdateSpec(_spec);
+        }
+
+        #endregion
+
         #region Variant Manipulator
 
         // Configures (creates / updates / removes) the element's StyleVariantManipulator
         // from the state-variant tokens (hover:/focus:/active:) found in classNames.
-        // Mirrors ApplyGestureManipulator.
         internal void ApplyVariantManipulator(VisualElement element, string[] classNames)
         {
             var hover = ExtractVariant(classNames, StyleVariantKind.Hover);
@@ -1658,24 +1882,8 @@ namespace Velvet
             var hasAny = hover.Length > 0 || focus.Length > 0 || focusVisible.Length > 0
                 || active.Length > 0 || @checked.Length > 0;
 
-            if (_ctx.VariantManipulators.TryGetValue(element, out var existing))
-            {
-                if (hasAny)
-                {
-                    existing.UpdatePayloads(hover, focus, focusVisible, active, @checked);
-                }
-                else
-                {
-                    element.RemoveManipulator(existing);
-                    _ctx.VariantManipulators.Remove(element);
-                }
-            }
-            else if (hasAny)
-            {
-                var manipulator = new StyleVariantManipulator(_ctx, hover, focus, focusVisible, active, @checked);
-                element.AddManipulator(manipulator);
-                _ctx.VariantManipulators[element] = manipulator;
-            }
+            Configure<VariantOp, StyleVariantManipulator>(element, hasAny,
+                new VariantOp(hover, focus, focusVisible, active, @checked));
         }
 
         private static string[] ExtractVariant(string[] classNames, StyleVariantKind kind)
@@ -1698,8 +1906,7 @@ namespace Velvet
         }
 
         // Configures the element's StyleConditionalVariantManipulator from the responsive
-        // (sm:/md:/lg:/xl:/2xl:) and dark: tokens in classNames. Mirrors
-        // ApplyVariantManipulator.
+        // (sm:/md:/lg:/xl:/2xl:) and dark: tokens in classNames.
         internal void ApplyConditionalVariantManipulator(VisualElement element, string[] classNames)
         {
             var responsive = new[]
@@ -1718,51 +1925,19 @@ namespace Velvet
                 hasAny = responsive[i].Length > 0;
             }
 
-            if (_ctx.ConditionalVariantManipulators.TryGetValue(element, out var existing))
-            {
-                if (hasAny)
-                {
-                    existing.UpdatePayloads(responsive, dark);
-                }
-                else
-                {
-                    element.RemoveManipulator(existing);
-                    _ctx.ConditionalVariantManipulators.Remove(element);
-                }
-            }
-            else if (hasAny)
-            {
-                var manipulator = new StyleConditionalVariantManipulator(_ctx, responsive, dark);
-                element.AddManipulator(manipulator);
-                _ctx.ConditionalVariantManipulators[element] = manipulator;
-            }
+            Configure<ConditionalVariantOp, StyleConditionalVariantManipulator>(element, hasAny,
+                new ConditionalVariantOp(responsive, dark));
         }
 
         // Configures the element's StyleRelationalVariantManipulator from the group-*/peer- tokens (incl. the
-        // named group-*/name · peer-*/name forms) in classNames. Mirrors ApplyVariantManipulator.
+        // named group-*/name · peer-*/name forms) in classNames.
         internal void ApplyRelationalVariantManipulator(VisualElement element, string[] classNames)
         {
             var configs = BuildRelationalConfigs(classNames);
             var hasAny = configs != null && configs.Count > 0;
 
-            if (_ctx.RelationalVariantManipulators.TryGetValue(element, out var existing))
-            {
-                if (hasAny)
-                {
-                    existing.UpdatePayloads(configs);
-                }
-                else
-                {
-                    element.RemoveManipulator(existing);
-                    _ctx.RelationalVariantManipulators.Remove(element);
-                }
-            }
-            else if (hasAny)
-            {
-                var manipulator = new StyleRelationalVariantManipulator(_ctx, configs);
-                element.AddManipulator(manipulator);
-                _ctx.RelationalVariantManipulators[element] = manipulator;
-            }
+            Configure<RelationalVariantOp, StyleRelationalVariantManipulator>(element, hasAny,
+                new RelationalVariantOp(configs));
         }
 
         // Groups the relational tokens by (relation, name) into one binding config each — so the unnamed
@@ -1835,33 +2010,17 @@ namespace Velvet
         }
 
         // Configures (creates / updates / removes) the element's StyleHasVariantManipulator from the
-        // event-driven has- tokens (has-[:checked]: / has-[:focus]:) in classNames. Mirrors
-        // ApplyVariantManipulator. The has-[.class]: form is handled separately by
-        // ApplyHasClassVariantConfig (a side-table, not an event manipulator).
+        // event-driven has- tokens (has-[:checked]: / has-[:focus]:) in classNames. The has-[.class]:
+        // form is handled separately by ApplyHasClassVariantConfig (a side-table, not an event
+        // manipulator).
         internal void ApplyHasVariantManipulator(VisualElement element, string[] classNames)
         {
             var @checked = ExtractHas(classNames, StyleHasKind.Checked);
             var focus = ExtractHas(classNames, StyleHasKind.Focus);
             var hasAny = @checked.Length > 0 || focus.Length > 0;
 
-            if (_ctx.HasVariantManipulators.TryGetValue(element, out var existing))
-            {
-                if (hasAny)
-                {
-                    existing.UpdatePayloads(@checked, focus);
-                }
-                else
-                {
-                    element.RemoveManipulator(existing);
-                    _ctx.HasVariantManipulators.Remove(element);
-                }
-            }
-            else if (hasAny)
-            {
-                var manipulator = new StyleHasVariantManipulator(_ctx, @checked, focus);
-                element.AddManipulator(manipulator);
-                _ctx.HasVariantManipulators[element] = manipulator;
-            }
+            Configure<HasVariantOp, StyleHasVariantManipulator>(element, hasAny,
+                new HasVariantOp(@checked, focus));
         }
 
         // Collects the payloads of every has-[:checked]: / has-[:focus]: token of the given kind. A payload
@@ -2401,11 +2560,7 @@ namespace Velvet
             // Fast early-out for the ~99% of elements with no [&>*]: class and no existing manipulator.
             if (!StyleChildVariantClass.HasChildVariantClass(classNames))
             {
-                if (_ctx.ChildVariantManipulators.TryGetValue(element, out var stale))
-                {
-                    element.RemoveManipulator(stale);
-                    _ctx.ChildVariantManipulators.Remove(element);
-                }
+                Configure<ChildVariantOp, StyleChildVariantManipulator>(element, wanted: false, default);
                 return;
             }
 
@@ -2413,30 +2568,14 @@ namespace Velvet
             // structural / has- / attribute- / supports-), so the real gate is TryExtract, not the prefix scan.
             var hasPayloads = StyleChildVariantClass.TryExtract(classNames, out var payloads);
 
-            if (_ctx.ChildVariantManipulators.TryGetValue(element, out var existing))
-            {
-                if (hasPayloads)
-                {
-                    existing.UpdatePayloads(payloads);
-                }
-                else
-                {
-                    element.RemoveManipulator(existing);
-                    _ctx.ChildVariantManipulators.Remove(element);
-                }
-            }
-            else if (hasPayloads)
-            {
-                var manipulator = new StyleChildVariantManipulator(_ctx, payloads);
-                element.AddManipulator(manipulator);
-                _ctx.ChildVariantManipulators[element] = manipulator;
-            }
+            Configure<ChildVariantOp, StyleChildVariantManipulator>(element, hasPayloads,
+                new ChildVariantOp(payloads));
         }
 
-        // Configures the element's StyleGapManipulator from the gap-* / gap-x-*
-        // / gap-y-* token in classNames and (re-)applies it so the inter-child
-        // margins reflect the current child set. Mirrors ApplyVariantManipulator. Call this
-        // AFTER the container's children have been reconciled so the manipulator sees the final child list.
+        // Configures the element's StyleGapManipulator from the gap-* / gap-x-* / gap-y-* token in
+        // classNames and (re-)applies it so the inter-child margins reflect the current child set. Call
+        // this AFTER the container's children have been reconciled so the manipulator sees the final
+        // child list.
         internal void ApplyGapManipulator(VisualElement element, string[] classNames)
         {
             // A grid container routes its gap through StyleGridManipulator (the grid owns the children's
@@ -2444,11 +2583,7 @@ namespace Velvet
             // Suppress the gap manipulator entirely when a grid-cols-* spec is present.
             if (StyleGridClass.HasGridClass(classNames))
             {
-                if (_ctx.GapManipulators.TryGetValue(element, out var gridOwned))
-                {
-                    element.RemoveManipulator(gridOwned);
-                    _ctx.GapManipulators.Remove(element);
-                }
+                Configure<GapOp, StyleGapManipulator>(element, wanted: false, default);
                 return;
             }
 
@@ -2456,34 +2591,13 @@ namespace Velvet
             // cheap prefix scan (no dictionary lookup, no substring) before the full TryExtract parse.
             if (!StyleGapClass.HasGapClass(classNames))
             {
-                if (_ctx.GapManipulators.TryGetValue(element, out var stale))
-                {
-                    element.RemoveManipulator(stale);
-                    _ctx.GapManipulators.Remove(element);
-                }
+                Configure<GapOp, StyleGapManipulator>(element, wanted: false, default);
                 return;
             }
 
             var hasGap = StyleGapClass.TryExtract(classNames, out var gap, out var axis);
 
-            if (_ctx.GapManipulators.TryGetValue(element, out var existing))
-            {
-                if (hasGap)
-                {
-                    existing.UpdateGap(gap, axis);
-                }
-                else
-                {
-                    element.RemoveManipulator(existing);
-                    _ctx.GapManipulators.Remove(element);
-                }
-            }
-            else if (hasGap)
-            {
-                var manipulator = new StyleGapManipulator(gap, axis);
-                element.AddManipulator(manipulator);
-                _ctx.GapManipulators[element] = manipulator;
-            }
+            Configure<GapOp, StyleGapManipulator>(element, hasGap, new GapOp(gap, axis));
         }
 
         // Configures the element's StyleDivideManipulator from the divide-x / divide-y (+ width / color)
@@ -2495,34 +2609,13 @@ namespace Velvet
             // Fast early-out for the ~99% of elements with no divide class and no existing manipulator.
             if (!StyleDivideClass.HasDivideClass(classNames))
             {
-                if (_ctx.DivideManipulators.TryGetValue(element, out var stale))
-                {
-                    element.RemoveManipulator(stale);
-                    _ctx.DivideManipulators.Remove(element);
-                }
+                Configure<DivideOp, StyleDivideManipulator>(element, wanted: false, default);
                 return;
             }
 
             var hasDivide = StyleDivideClass.TryExtract(classNames, out var spec);
 
-            if (_ctx.DivideManipulators.TryGetValue(element, out var existing))
-            {
-                if (hasDivide)
-                {
-                    existing.UpdateSpec(spec);
-                }
-                else
-                {
-                    element.RemoveManipulator(existing);
-                    _ctx.DivideManipulators.Remove(element);
-                }
-            }
-            else if (hasDivide)
-            {
-                var manipulator = new StyleDivideManipulator(spec, _ctx);
-                element.AddManipulator(manipulator);
-                _ctx.DivideManipulators[element] = manipulator;
-            }
+            Configure<DivideOp, StyleDivideManipulator>(element, hasDivide, new DivideOp(spec));
         }
 
         // Configures the element's StyleGridManipulator from the grid-cols-* token (and the gap-* it owns) in
@@ -2534,36 +2627,15 @@ namespace Velvet
             // Fast early-out for the ~99% of elements with no grid-cols class and no existing manipulator.
             if (!StyleGridClass.HasGridClass(classNames))
             {
-                if (_ctx.GridManipulators.TryGetValue(element, out var stale))
-                {
-                    element.RemoveManipulator(stale);
-                    _ctx.GridManipulators.Remove(element);
-                }
+                Configure<GridOp, StyleGridManipulator>(element, wanted: false, default);
                 return;
             }
 
             var hasGrid = StyleGridClass.TryExtract(classNames, out var columns);
             StyleGridClass.ExtractGaps(classNames, out var columnGap, out var rowGap);
-            var spec = new GridSpec(columns, columnGap, rowGap);
 
-            if (_ctx.GridManipulators.TryGetValue(element, out var existing))
-            {
-                if (hasGrid)
-                {
-                    existing.UpdateSpec(spec);
-                }
-                else
-                {
-                    element.RemoveManipulator(existing);
-                    _ctx.GridManipulators.Remove(element);
-                }
-            }
-            else if (hasGrid)
-            {
-                var manipulator = new StyleGridManipulator(spec);
-                element.AddManipulator(manipulator);
-                _ctx.GridManipulators[element] = manipulator;
-            }
+            Configure<GridOp, StyleGridManipulator>(element, hasGrid,
+                new GridOp(new GridSpec(columns, columnGap, rowGap)));
         }
 
         // Configures the element's StyleTextBalanceManipulator from the `text-balance` token in
@@ -2576,6 +2648,9 @@ namespace Velvet
         // ApplyGapManipulator's timing — call AFTER the container's children have been reconciled
         // (harmless here since text-balance does not read children, but keeps every per-element style
         // manipulator attached at the same, single, well-known point in the pass).
+        // Kept outside the shared Configure step: its teardown owes the element an extra restore of the
+        // shared inline maxWidth slot, and the shared body has no way to signal that tail step. Folding
+        // it in would add a teardown hook the eight other families would carry for nothing.
         internal void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)
         {
             // Fast early-out for the ~99% of elements with no text-balance class and no existing manipulator.
