@@ -4,14 +4,21 @@ Roslyn Incremental Source Generators bundled with `com.velvet.core`.
 
 ## Build
 
-Run one of the following inside the `Generators~/` directory to regenerate `../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`:
+Run the following inside the `Generators~/` directory:
 
 ```bash
 ./build.sh    # macOS / Linux
 ./build.ps1   # Windows
 ```
 
-Commit the rebuilt DLL. The distribution model assumes Unity users do not need to install `dotnet`.
+`build.sh` rebuilds and deploys both shipped assemblies:
+
+- `../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`
+- `../Runtime/Plugins/Analyzers/Velvet.SourceGenerators.CodeFixes.dll`
+
+`build.ps1` currently deploys only the first; after changing the CodeFixes project on Windows, build and copy that assembly by hand.
+
+Commit both rebuilt DLLs. The distribution model assumes Unity users do not need to install `dotnet`.
 
 ## Test
 
@@ -31,15 +38,18 @@ Generators~/
 ├── README.md                                 (this file)
 ├── .gitignore                                (bin/, obj/)
 ├── Velvet.SourceGenerators.sln
-├── build.sh / build.ps1                      (build the DLL and stage it)
-├── src/Velvet.SourceGenerators/
+├── build.sh / build.ps1                      (build the assemblies and stage them)
+├── src/Velvet.SourceGenerators/              (abridged — generators, analyzers, shared helpers)
 │   ├── Velvet.SourceGenerators.csproj
 │   ├── MemoOverloadGenerator.cs              (auto-generates Memoized<T1..T8>)
 │   ├── MemoizeMethodGenerator.cs             ([MemoizeMethod] → V.Memoized wrapper expansion)
+│   ├── AutoDeps/                             (VEL100 exhaustive-deps analyzer + its hook descriptor table)
+│   ├── RulesOfHooks/                         (VEL101 rules-of-hooks analyzer)
 │   ├── Diagnostics/MemoizeDiagnostics.cs     (diagnostic descriptors — see Documentation~/memoization.md)
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
-│   └── Shared/SourceBuilder.cs               (shared helpers)
-└── tests/Velvet.SourceGenerators.Tests/
+│   └── Shared/                               (SourceBuilder, VelvetWellKnownNames, …)
+├── src/Velvet.SourceGenerators.CodeFixes/    (ships to ../Runtime/Plugins/Analyzers/)
+└── tests/Velvet.SourceGenerators.Tests/      (abridged)
     ├── Velvet.SourceGenerators.Tests.csproj
     ├── SourceBuilderTests.cs
     ├── MemoOverloadGeneratorTests.cs
@@ -61,11 +71,10 @@ This README is now scoped to **contributor concerns** (build / test / DLL shippi
 
 ## CI
 
-`.github/workflows/generators.yml` runs:
-
-1. `dotnet restore` / `dotnet build -c Release` / `dotnet test`
-2. `git diff --exit-code Runtime/Plugins/Generators/` to confirm the committed DLL matches the rebuilt output
+`.github/workflows/generators.yml` has a single job with one build/test step: check out, install the .NET SDK pinned by `global.json`, then `dotnet test Velvet.SourceGenerators.sln -c Release --nologo` (which restores and builds as part of the run). No Unity license is required.
 
 It triggers on `Runtime/**` as well as `Generators~/**`, because `HookSurfaceDriftTests` reads the runtime sources: a PR that only renames a hook must still run this job.
 
-Always rebuild and commit the DLL after updating the generator sources.
+**CI does not check the committed DLLs under `../Runtime/Plugins/` at all.** It tests the sources; it never compares the deployed assemblies against a rebuild, so a PR that edits generator sources and forgets to rerun `build.sh` goes green while Unity keeps consuming the stale binaries. Rebuilding and committing them is the contributor's responsibility.
+
+A plain `git diff --exit-code` on the deployed DLLs would not close that gap either: the build embeds the git `HEAD` commit id in the assembly, so rebuilding at commit *N* never reproduces the DLL committed *in* commit *N* (it was necessarily built at *N-1*). The build is otherwise deterministic — repeated rebuilds of unchanged sources at the same `HEAD` are byte-identical.
