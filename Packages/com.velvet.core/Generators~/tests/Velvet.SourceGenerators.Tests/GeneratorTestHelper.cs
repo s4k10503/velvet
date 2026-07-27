@@ -13,6 +13,13 @@ namespace Velvet.SourceGenerators.Tests
     /// of the required Velvet types to drive the generator. Helper for retrieving MemoizeMethodGenerator
     /// execution results.
     /// </summary>
+    /// <remarks>
+    /// The stub is a subset, never a variant: it may leave a runtime type or member out, but whatever it does
+    /// declare carries the runtime's exact signature, so a diagnostic verified here is verified for a call
+    /// shape a user can actually write. <see cref="StubSurfaceDriftTests"/> re-derives the runtime signatures
+    /// from source and fails on any divergence this file introduces, including a runtime overload the stub
+    /// declares the name of but not the shape of.
+    /// </remarks>
     internal static class GeneratorTestHelper
     {
         internal const string VelvetStubSource = @"
@@ -21,20 +28,27 @@ namespace Velvet
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, Inherited = false)]
     public sealed class MemoizeMethodAttribute : global::System.Attribute { }
 
-    [global::System.AttributeUsage(global::System.AttributeTargets.Method | global::System.AttributeTargets.Constructor, Inherited = false)]
+    [global::System.AttributeUsage(global::System.AttributeTargets.Method, Inherited = false)]
     public sealed class PureAttribute : global::System.Attribute { }
 
     [global::System.AttributeUsage(global::System.AttributeTargets.Method, Inherited = false)]
     public sealed class ComponentAttribute : global::System.Attribute
     {
-        public bool IsErrorBoundary { get; set; } = false;
-        public bool Memoize { get; set; } = false;
-        public string DisplayName { get; set; }
+        public bool IsErrorBoundary { get; init; } = false;
+        public bool Memoize { get; init; } = false;
+        public bool Compiler { get; init; } = true;
+        public string DisplayName { get; init; }
     }
 
     public class VNode
     {
-        [global::Velvet.PureAttribute] public VNode() { }
+        public string Key { get; internal set; }
+    }
+
+    public sealed class MemoNode : VNode
+    {
+        public required global::System.Func<VNode> Factory { get; init; }
+        public object[] Dependencies { get; init; }
     }
 
     public sealed class MutableRef<T>
@@ -43,15 +57,20 @@ namespace Velvet
         public T Current { get; set; }
     }
 
+    public sealed class Ref<T> where T : class { }
+
+    public sealed class ComponentContext<T> { }
+
+    public readonly struct StateUpdater<T>
+    {
+        public void Invoke(T next) { }
+        public void Invoke(global::System.Func<T, T> updater) { }
+    }
+
+    public readonly struct TransitionStarter { }
+
     public sealed class NavigationAttempt { }
     public sealed class RouteBlockerState { }
-
-    public sealed class MemoNode : VNode
-    {
-        public string Key;
-        public global::System.Func<VNode> Factory;
-        public object[] Dependencies;
-    }
 
     public static partial class V
     {
@@ -80,29 +99,47 @@ namespace Velvet
         }
         public static void StoreMemoizedVNode(int slotIndex, object[] deps, VNode result) { }
 
-        // Static API stubs for the positional hooks a functional-component test fixture may call.
-        // params on the deps argument mirrors the runtime Hooks signatures so loose-arg deps typecheck.
-        public static void UseEffect(global::System.Func<global::System.Action> factory, object[] deps) { }
-        public static void UseLayoutEffect(global::System.Func<global::System.Action> factory, object[] deps) { }
-        public static void UseInsertionEffect(global::System.Func<global::System.Action> factory, object[] deps) { }
+        // Static API stubs for the positional hooks a functional-component test fixture may call. Every
+        // overload the runtime declares of a name appearing here is modelled, so a fixture cannot pick a
+        // shape that only exists because the narrower overloads are missing.
+        public static void UseEffect(global::System.Func<global::System.Action> factory, object[] deps = null) { }
+        public static void UseEffect(global::System.Func<global::System.IDisposable> factory, object[] deps = null) { }
+        public static void UseLayoutEffect(global::System.Func<global::System.Action> factory, object[] deps = null) { }
+        public static void UseLayoutEffect(global::System.Func<global::System.IDisposable> factory, object[] deps = null) { }
+        public static void UseInsertionEffect(global::System.Func<global::System.Action> factory, object[] deps = null) { }
+        public static void UseInsertionEffect(global::System.Func<global::System.IDisposable> factory, object[] deps = null) { }
+        public static T UseCallback<T>(T callback) where T : global::System.Delegate => callback;
         public static T UseCallback<T>(T callback, params object[] deps) where T : global::System.Delegate => callback;
+        public static T UseMemo<T>(global::System.Func<T> factory) => factory();
         public static T UseMemo<T>(global::System.Func<T> factory, params object[] deps) => factory();
         public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock, params object[] deps) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
                 global::Cysharp.Threading.Tasks.UniTask<bool>> shouldBlock, params object[] deps) => null;
-        public static (T value, global::System.Action<T> setValue) UseState<T>(T initial) =>
+        public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(T initial) =>
+            (initial, default);
+        public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(global::System.Func<T> initialFactory) =>
+            (default, default);
+        public static (TState state, global::System.Action<TAction> dispatch) UseReducer<TState, TAction>(
+            global::System.Func<TState, TAction, TState> reducer, TState initial) =>
             (initial, _ => { });
-        public static (TState state, global::System.Action<TAction> dispatch) UseReducer<TState, TAction>(global::System.Func<TState, TAction, TState> reducer, TState initial) =>
-            (initial, _ => { });
-        public static T UseContext<T>(object contextRef) where T : class => null;
-        public static (bool isPending, global::System.Action<global::System.Action> startTransition) UseTransition() =>
-            (false, _ => { });
-        public static T UseRef<T>(T initial) where T : class => initial;
+        public static (TState state, global::System.Action<TAction> dispatch) UseReducer<TArg, TState, TAction>(
+            global::System.Func<TState, TAction, TState> reducer, TArg initialArg, global::System.Func<TArg, TState> init) =>
+            (default, _ => { });
+        public static T UseContext<T>(global::Velvet.ComponentContext<T> context) => default;
+        public static (bool isPending, global::Velvet.TransitionStarter startTransition) UseTransition() =>
+            (false, default);
+        public static global::Velvet.Ref<T> UseRef<T>() where T : class => null;
+        public static global::Velvet.Ref<T> UseRef<T>(global::System.Func<T> initialFactory) where T : class => null;
         public static global::Velvet.MutableRef<T> UseMutableRef<T>(T initial) =>
             new global::Velvet.MutableRef<T>(initial);
-        public static void UseImperativeHandle<T>(object refTarget, global::System.Func<T> factory, params object[] deps) { }
+        public static global::Velvet.MutableRef<T> UseMutableRef<T>(global::System.Func<T> initialFactory) =>
+            new global::Velvet.MutableRef<T>(default);
+        public static void UseImperativeHandle<THandle>(
+            global::Velvet.Ref<THandle> handleRef, global::System.Func<THandle> factory) where THandle : class { }
+        public static void UseImperativeHandle<THandle>(
+            global::Velvet.Ref<THandle> handleRef, global::System.Func<THandle> factory, params object[] deps) where THandle : class { }
     }
 }
 
