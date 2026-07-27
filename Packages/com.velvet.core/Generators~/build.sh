@@ -12,15 +12,18 @@ CODEFIX_PROJECT="src/Velvet.SourceGenerators.CodeFixes/Velvet.SourceGenerators.C
 CODEFIX_DLL="src/Velvet.SourceGenerators.CodeFixes/bin/${CONFIGURATION}/netstandard2.0/Velvet.SourceGenerators.CodeFixes.dll"
 CODEFIX_DEPLOY_DIR="../Runtime/Plugins/Analyzers"
 
+# Both assemblies build before either is deployed: a failure in the second build
+# would otherwise leave one refreshed DLL beside one stale DLL, which is the
+# mismatch the deployed pair exists to avoid.
 echo "[Velvet.SourceGenerators] dotnet build -c ${CONFIGURATION}"
 dotnet build "${PROJECT}" -c "${CONFIGURATION}" --nologo
+
+echo "[Velvet.SourceGenerators.CodeFixes] dotnet build -c ${CONFIGURATION}"
+dotnet build "${CODEFIX_PROJECT}" -c "${CONFIGURATION}" --nologo
 
 mkdir -p "${DEPLOY_DIR}"
 cp -f "${OUTPUT_DLL}" "${DEPLOY_DIR}/Velvet.SourceGenerators.dll"
 echo "[Velvet.SourceGenerators] Deployed to ${DEPLOY_DIR}/Velvet.SourceGenerators.dll"
-
-echo "[Velvet.SourceGenerators.CodeFixes] dotnet build -c ${CONFIGURATION}"
-dotnet build "${CODEFIX_PROJECT}" -c "${CONFIGURATION}" --nologo
 
 mkdir -p "${CODEFIX_DEPLOY_DIR}"
 cp -f "${CODEFIX_DLL}" "${CODEFIX_DEPLOY_DIR}/Velvet.SourceGenerators.CodeFixes.dll"
