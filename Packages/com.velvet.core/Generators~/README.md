@@ -11,12 +11,12 @@ Run the following inside the `Generators~/` directory:
 ./build.ps1   # Windows
 ```
 
-`build.sh` rebuilds and deploys both shipped assemblies:
+On Windows, run `build.ps1` from PowerShell 7 (`pwsh`) and close Unity and any IDE first: Windows PowerShell 5.1's default execution policy refuses unsigned scripts, and Windows cannot overwrite an analyzer assembly a Roslyn host still holds open.
+
+Either script rebuilds and deploys both shipped assemblies, leaving the tree in the same state:
 
 - `../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`
 - `../Runtime/Plugins/Analyzers/Velvet.SourceGenerators.CodeFixes.dll`
-
-`build.ps1` currently deploys only the first; after changing the CodeFixes project on Windows, build and copy that assembly by hand.
 
 Commit both rebuilt DLLs. The distribution model assumes Unity users do not need to install `dotnet`.
 
@@ -78,6 +78,6 @@ This README is now scoped to **contributor concerns** (build / test / DLL shippi
 
 Which paths trigger it is stated in the repository's `CLAUDE.md`; the reason `Runtime/**` is among them is that the two drift guards read the runtime sources, so a PR that only renames a hook or reshapes its signature must still run this job.
 
-**CI does not check the committed DLLs under `../Runtime/Plugins/` at all.** It tests the sources; it never compares the deployed assemblies against a rebuild, so a PR that edits generator sources and forgets to rerun `build.sh` goes green while Unity keeps consuming the stale binaries. Rebuilding and committing them is the contributor's responsibility.
+**CI does not check the committed DLLs under `../Runtime/Plugins/` at all.** It tests the sources; it never compares the deployed assemblies against a rebuild, so a PR that edits generator sources and forgets to rerun the build script goes green while Unity keeps consuming the stale binaries. Rebuilding and committing them is the contributor's responsibility.
 
 A plain `git diff --exit-code` on the deployed DLLs would not close that gap either: the build embeds the git `HEAD` commit id in the assembly, so rebuilding at commit *N* never reproduces the DLL committed *in* commit *N* (it was necessarily built at *N-1*). The build is otherwise deterministic — repeated rebuilds of unchanged sources at the same `HEAD` are byte-identical.

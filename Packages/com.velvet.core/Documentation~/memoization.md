@@ -54,5 +54,5 @@ For a complete list including the `ReactiveScopeAnalyzer` and `PurityAnalyzer` d
 
 ## See also
 
-- [`Generators~/README.md`](https://github.com/s4k10503/velvet/blob/main/Packages/com.velvet.core/Generators~/README.md) — contributor guide for building, testing, and shipping the Source Generator DLL
+- [`Generators~/README.md`](https://github.com/s4k10503/velvet/blob/main/Packages/com.velvet.core/Generators~/README.md) — contributor guide for building, testing, and shipping the generator and code-fix assemblies
 - `[Component(Memoize = true)]` — component-level memoization (`React.memo` equivalent)
