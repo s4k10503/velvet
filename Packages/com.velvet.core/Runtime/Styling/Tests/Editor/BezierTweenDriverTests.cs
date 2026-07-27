@@ -31,7 +31,10 @@ namespace Velvet.Tests
     /// same WebKit UnitBezier Newton/bisection algorithm every browser's <c>cubic-bezier()</c> is built on. The
     /// warn-once static is reset before/after every test (reflection, mirroring DropShadowBakeTests) so the
     /// out-of-range cases stay deterministic regardless of run order or of another fixture having already tripped
-    /// the same one-shot flag. GWT, one assert per case (Assume for preconditions).
+    /// the same one-shot flag. GWT, one assert per case: every fact a case depends on — channel recognition
+    /// or a captured intermediate reading — folds into that single assertion via a nullable/NaN/tuple
+    /// sentinel, so a regression in any of them turns the case red instead of skipping it (see
+    /// <see cref="MotionPropertyChannelTests"/> for the pattern this fixture follows).
     /// </remarks>
     [TestFixture]
     internal sealed class BezierTweenDriverTests
@@ -83,21 +86,28 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, durationSec: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
-            BezierTweenDriver.ApplyCurrentValues(element, state!);
-            Assume.That(element.style.opacity.value, Is.EqualTo(0f), "Precondition: starts at the from-value");
+            if (state != null)
+            {
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+            }
 
-            // Act — a handful of early ticks, then many more later ticks.
-            for (var i = 0; i < 5; i++)
+            // Act — a handful of early ticks, then many more later ticks. The sentinel readings survive when
+            // no channel resolved, so both stay equal and fail below instead of the case being skipped.
+            var earlyOpacity = -1f;
+            var laterOpacity = -1f;
+            if (state != null)
             {
-                BezierTweenDriver.Step(element, state!, FixedDeltaSec);
+                for (var i = 0; i < 5; i++)
+                {
+                    BezierTweenDriver.Step(element, state, FixedDeltaSec);
+                }
+                earlyOpacity = element.style.opacity.value;
+                for (var i = 0; i < 40; i++)
+                {
+                    BezierTweenDriver.Step(element, state, FixedDeltaSec);
+                }
+                laterOpacity = element.style.opacity.value;
             }
-            var earlyOpacity = element.style.opacity.value;
-            for (var i = 0; i < 40; i++)
-            {
-                BezierTweenDriver.Step(element, state!, FixedDeltaSec);
-            }
-            var laterOpacity = element.style.opacity.value;
 
             // Assert — opacity has moved further toward the target (1) as more ticks run.
             Assert.That(laterOpacity, Is.GreaterThan(earlyOpacity));
@@ -110,44 +120,61 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, durationSec: 0.3f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
-            BezierTweenDriver.ApplyCurrentValues(element, state!);
-
-            // Act — step until elapsed reaches the fixed duration (the cap only guards against a regression that
-            // never completes).
-            var completed = false;
-            for (var i = 0; i < 600 && !completed; i++)
+            if (state != null)
             {
-                completed = BezierTweenDriver.Step(element, state!, FixedDeltaSec);
+                BezierTweenDriver.ApplyCurrentValues(element, state);
             }
-            Assume.That(completed, Is.True, "Precondition: the tween completed within the tick budget");
 
-            // Assert — the t>=1 early-return is exact, so the value rests EXACTLY at the target (tighter than a
-            // spring's convergence-based settle).
-            Assert.That(element.style.opacity.value, Is.EqualTo(1f));
+            // Act — step until elapsed reaches the fixed duration (the cap only guards against a regression
+            // that never completes). NaN stands in for either failure mode (no channel resolved, or a tween
+            // that never completed), so both fail the exact-value comparison rather than skipping the case.
+            var restingOpacity = float.NaN;
+            if (state != null)
+            {
+                var completed = false;
+                for (var i = 0; i < 600 && !completed; i++)
+                {
+                    completed = BezierTweenDriver.Step(element, state, FixedDeltaSec);
+                }
+                if (completed)
+                {
+                    restingOpacity = element.style.opacity.value;
+                }
+            }
+
+            // Assert — the t>=1 early-return is exact, so the value rests EXACTLY at the target (tighter than
+            // a spring's convergence-based settle).
+            Assert.That(restingOpacity, Is.EqualTo(1f));
         }
 
         [Test]
         public void Given_ASettledBezierChannel_When_InlineOverridesCleared_Then_TheOpacityStyleIsRemoved()
         {
-            // Arrange — run the tween to completion first (Assume guards the precondition).
+            // Arrange — run the tween to completion first.
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, durationSec: 0.3f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
-            BezierTweenDriver.ApplyCurrentValues(element, state!);
             var completed = false;
-            for (var i = 0; i < 600 && !completed; i++)
+            if (state != null)
             {
-                completed = BezierTweenDriver.Step(element, state!, FixedDeltaSec);
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+                for (var i = 0; i < 600 && !completed; i++)
+                {
+                    completed = BezierTweenDriver.Step(element, state, FixedDeltaSec);
+                }
             }
-            Assume.That(completed, Is.True, "Precondition: the tween completed within the tick budget");
+            // A style that was never driven to completion is trivially "removed", so the assertion has to see
+            // that it was held first.
+            var heldWhileTicking = completed && element.style.opacity.keyword != StyleKeyword.Null;
 
             // Act — the scheduler calls this on completion so the resting classes' own opacity takes back over.
-            BezierTweenDriver.ClearInlineOverrides(element, state!);
+            if (state != null)
+            {
+                BezierTweenDriver.ClearInlineOverrides(element, state);
+            }
 
             // Assert
-            Assert.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
+            Assert.That((heldWhileTicking, element.style.opacity.keyword), Is.EqualTo((true, StyleKeyword.Null)));
         }
 
         [Test]
@@ -158,19 +185,30 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-100" }, new[] { "opacity-0" });
             var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, durationSec: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
-            BezierTweenDriver.ApplyCurrentValues(element, state!);
-            for (var i = 0; i < 5; i++)
+            var toMidExit = float.NaN;
+            if (state != null)
             {
-                BezierTweenDriver.Step(element, state!, FixedDeltaSec);
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+                for (var i = 0; i < 5; i++)
+                {
+                    BezierTweenDriver.Step(element, state, FixedDeltaSec);
+                }
+                toMidExit = state.Opacity!.To;
             }
-            Assume.That(state!.Opacity!.To, Is.EqualTo(0f), "Precondition: heading toward the exit value");
 
             // Act — an exit-cancel (the key re-entered mid-exit): retarget back toward the resting value.
-            BezierTweenDriver.Retarget(state!);
+            // NaN stands in for a plan that resolved no channel, failing the comparison below the same way a
+            // wrong target would.
+            var toAfterRetarget = float.NaN;
+            if (state != null)
+            {
+                BezierTweenDriver.Retarget(state);
+                toAfterRetarget = state.Opacity!.To;
+            }
 
-            // Assert — the channel's goal flipped to the value it originally started from (its RestingTarget).
-            Assert.That(state!.Opacity!.To, Is.EqualTo(1f));
+            // Assert — the channel was genuinely heading toward the exit value (0) before the retarget, and
+            // its goal flipped to the value it originally started from (its RestingTarget, 1) afterward.
+            Assert.That((toMidExit, toAfterRetarget), Is.EqualTo((0f, 1f)));
         }
 
         [Test]
@@ -181,19 +219,29 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-100" }, new[] { "opacity-0" });
             var state = BezierTweenDriver.Create(plan, X1, Y1, X2, Y2, durationSec: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
-            BezierTweenDriver.ApplyCurrentValues(element, state!);
-            for (var i = 0; i < 5; i++)
+            var advancedBeforeRetarget = false;
+            if (state != null)
             {
-                BezierTweenDriver.Step(element, state!, FixedDeltaSec);
+                BezierTweenDriver.ApplyCurrentValues(element, state);
+                for (var i = 0; i < 5; i++)
+                {
+                    BezierTweenDriver.Step(element, state, FixedDeltaSec);
+                }
+                advancedBeforeRetarget = state.ElapsedSec > 0f;
             }
-            Assume.That(state!.ElapsedSec, Is.GreaterThan(0f), "Precondition: the forward tween has advanced");
 
-            // Act
-            BezierTweenDriver.Retarget(state!);
+            // Act — NaN stands in for a plan that resolved no channel, failing the comparison below the same
+            // way a clock that never reset would.
+            var elapsedAfterRetarget = float.NaN;
+            if (state != null)
+            {
+                BezierTweenDriver.Retarget(state);
+                elapsedAfterRetarget = state.ElapsedSec;
+            }
 
-            // Assert — the reversal starts from a clean clock.
-            Assert.That(state!.ElapsedSec, Is.EqualTo(0f));
+            // Assert — the forward tween had genuinely advanced before the reversal starts it from a clean
+            // clock.
+            Assert.That((advancedBeforeRetarget, elapsedAfterRetarget), Is.EqualTo((true, 0f)));
         }
 
         [Test]
@@ -205,13 +253,19 @@ namespace Velvet.Tests
             var element = new VisualElement();
             var plan = MotionSpringClassParser.Resolve(new[] { "opacity-0" }, new[] { "opacity-100" });
             var state = BezierTweenDriver.Create(plan, 0.34f, 1.56f, 0.64f, 1f, durationSec: 1f);
-            Assume.That(state, Is.Not.Null, "Precondition: the plan resolves an opacity channel");
 
             // Act — advance to 60% of the duration, where the overshoot curve is already past its target.
-            BezierTweenDriver.Step(element, state!, 0.6f);
+            // NaN stands in for a plan that resolved no channel, failing the "exceeds 1" comparison below the
+            // same way a value that never overshot would.
+            var opacity = float.NaN;
+            if (state != null)
+            {
+                BezierTweenDriver.Step(element, state, 0.6f);
+                opacity = element.style.opacity.value;
+            }
 
             // Assert — the inline value momentarily exceeds the target (1), i.e. it actually overshoots.
-            Assert.That(element.style.opacity.value, Is.GreaterThan(1f));
+            Assert.That(opacity, Is.GreaterThan(1f));
         }
 
         [Test]
