@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -77,6 +78,23 @@ namespace Velvet
         {
             if (element == null) return;
 
+            // Clearing ANY inline property restores the matched-rules value THROUGH the transition system, so
+            // while the element is still on a panel every clear below can become a running animation instead —
+            // one that keeps painting what the reset just removed, and that the transition-longhand nulls at
+            // the end of the scrub cannot stop (nulling restores the matched-rules value rather than disabling
+            // the transition). Writing a transition longhand recomputes that data, and a zero total time
+            // contributes no transition at all, so the clears cancel instead of animating. Must precede the
+            // scrub to cover all of it. Scoped to that INLINE scrub: the name / enabled-state resets after it
+            // change which rules match, and whatever the next styles pass transitions from that is its own.
+            // A detached element is not style-initialized, which already takes every clear down the cancel
+            // path — which is why no shipped caller can reach the defect, since they all detach first.
+            // Skipping the write there also keeps the pool return free of the managed entry it would otherwise
+            // create for the trailing null to tear down again.
+            if (element.panel != null)
+            {
+                element.style.transitionDuration = new StyleList<TimeValue>(s_zeroDuration);
+            }
+
             ResetInlineStyle(element.style);
 
             element.userData = null;
@@ -91,6 +109,11 @@ namespace Velvet
             element.viewDataKey = null;
             element.SetEnabled(true);
         }
+
+        // Source for the zero transition duration written above. Shared because the inline-style write path
+        // copies a list value into its own storage instead of aliasing the one handed to it, and this runs
+        // once per recycled element on the reconciler's steady-state hot path.
+        private static readonly List<TimeValue> s_zeroDuration = new() { new TimeValue(0f) };
 
         private static void ResetInlineStyle(IStyle style)
         {

@@ -395,7 +395,7 @@ namespace Velvet
         // side-tables); FiberElementCleaner / Reconciler.Dispose call StyleAnimateDriver.Detach.
         public Dictionary<VisualElement, StyleAnimateBinding> AnimationBindings { get; } = new();
 
-        // Per-element filter-* transition (transition-filter opt-in), keyed by the element itself — the tween
+        // Per-element filter-* transition (the transition-filter class), keyed by the element itself — the tween
         // drives the element's own inline filter with no wrapper. The binding holds a one-shot scheduled tick,
         // so cleanup must PAUSE it (unlike the pure side-tables); FiberElementCleaner / Reconciler.Dispose call
         // StyleFilterTransitionDriver.Detach. The driver's own ConditionalWeakTable is the lookup the resolver

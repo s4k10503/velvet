@@ -40,8 +40,9 @@ namespace Velvet
 
         internal static bool IsSaturate(FilterFunctionDefinition? def) => def != null && ReferenceEquals(def, s_saturate);
 
-        // True for either first-party built-in definition — the ones that interpolate like a native float
-        // filter, as opposed to a user filter-[name:args] custom whose parameters carry no tween semantics.
+        // True for either first-party built-in definition. Used to tell Velvet's own brightness/saturate
+        // customs apart from a user filter-[name:args] one; both kinds interpolate, but only the user kind is
+        // limited to one distinct definition per add/remove transition (they share a canonical compose slot).
         internal static bool IsBuiltIn(FilterFunctionDefinition? def) => IsBrightness(def) || IsSaturate(def);
 
         // A cached definition is reusable only while both it and the material its single pass binds are live.

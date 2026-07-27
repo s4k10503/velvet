@@ -349,6 +349,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TransitionFilterClass_When_Resolved_Then_TransitionsFilterOnly()
+        {
+            // Arrange / Act — the utility must name filter. A whole-property value would hand the change to
+            // the inline-filter setter's own uncancellable animation instead, and Velvet's tween reads this
+            // resolved value to decide whether it owns the motion. (The driver accepts any list CONTAINING
+            // filter; this utility contributes exactly the one name.)
+            var leaf = MountAndResolve("transition-filter");
+            var properties = leaf.resolvedStyle.transitionProperty.Select(p => p.ToString()).ToArray();
+
+            // Assert
+            Assert.That(properties, Is.EqualTo(new[] { "filter" }));
+        }
+
+        [Test]
         public void Given_ArbitraryDurationMs_When_Resolved_Then_AppliesTransitionDurationInSeconds()
         {
             // duration-[400ms] carries a TIME value (not a length) and resolves to a 0.4s transition-duration.

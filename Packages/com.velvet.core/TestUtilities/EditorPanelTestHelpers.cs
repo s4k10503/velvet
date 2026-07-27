@@ -54,6 +54,23 @@ namespace Velvet.TestUtilities
         }
 
         /// <summary>
+        /// Runs the panel's animation phase once — the same call a live panel issues once per frame — so an
+        /// EditMode fixture can advance the engine's own style transitions deterministically (the batchmode
+        /// PlayerLoop never ticks them). Pair with <see cref="SetPanelTimeFunction"/>: the animation phase
+        /// reads elapsed time through the panel's time function. Internal engine surface, reached by walking
+        /// the panel's type chain for its animation-update entry point.
+        /// </summary>
+        public static void DriveAnimationsOnce(IPanel panel)
+        {
+            var update = FindPanelMethod(panel, "UpdateAnimations");
+            if (update == null)
+            {
+                throw new MissingMethodException(panel.GetType().FullName, "UpdateAnimations");
+            }
+            update.Invoke(panel, null);
+        }
+
+        /// <summary>
         /// Installs a fake clock on the panel: the scheduler and every scheduled item read time
         /// exclusively through the panel's own time function (double seconds), so an EditMode fixture
         /// can drive cadence deterministically regardless of machine load. Internal engine surface,
@@ -68,6 +85,24 @@ namespace Velvet.TestUtilities
             }
             var del = Delegate.CreateDelegate(prop.PropertyType, secondsClock.Target, secondsClock.Method);
             prop.SetValue(panel, del);
+        }
+
+        // Walks the panel's type chain for an inherited method, for the same reason FindPanelProperty
+        // walks it for a property: the engine declares these on an internal base the concrete panel type
+        // inherits, which a plain GetMethod on the concrete type misses.
+        private static MethodInfo FindPanelMethod(IPanel panel, string name)
+        {
+            for (var t = panel.GetType(); t != null; t = t.BaseType)
+            {
+                var method = t.GetMethod(name,
+                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly,
+                    binder: null, types: Type.EmptyTypes, modifiers: null);
+                if (method != null)
+                {
+                    return method;
+                }
+            }
+            return null;
         }
 
         // Walks the panel's type chain for an internal property: the engine members these helpers
