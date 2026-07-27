@@ -719,6 +719,42 @@ namespace Velvet
             ResolveAndApply(element, ArbitraryProperty.FilterCustom, map);
         }
 
+        // Re-asserts the winning layer for EVERY property this element still has layers registered for.
+        //
+        // The release path of a per-frame driver (MotionSpringDriver / BezierTweenDriver) needs this because
+        // ClearInline nulls whole shorthand fan-outs — a driven `padding` channel owns all four edges — while an
+        // authored longhand (pt-[2px]) is registered against ONE of those edges. Nulling the four and stopping
+        // would leave that edge on whatever the driver last wrote, permanently: the layer map still records the
+        // authored value, so nothing else re-applies it, and the next unrelated variant release on that property
+        // would resurrect it out of nowhere. Re-asserting the whole map instead of the driven properties alone is
+        // what makes that correct regardless of which shorthand overlapped which longhand.
+        //
+        // Reads the map without mutating it, so a driver that never registered a layer leaves it untouched and
+        // the recorded cascade stays exactly what the class diff put there. A slot another live driver currently
+        // owns can be taken back for a frame here, and that driver's next tick re-asserts it.
+        //
+        // The filter family is exempt, for the same reason the class-diff reapply exempts it: re-resolving a
+        // filter property runs the combined-filter path, whose tail hands the composed list to the filter
+        // transition driver and restarts its tween — so a spring settling beside an in-flight blur would reset
+        // that blur to a fresh full duration, and a settle during teardown would start a tick on an element on
+        // its way to the pool. No per-frame driver here ever writes `filter` (StyleFilterTransitionDriver owns
+        // it), so this family holds nothing of theirs to restore.
+        internal static void ReapplyLayeredValues(VisualElement element)
+        {
+            if (element == null || !s_layers.TryGetValue(element, out var map))
+            {
+                return;
+            }
+            foreach (var property in map.Keys)
+            {
+                if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
+                {
+                    continue;
+                }
+                ResolveAndApply(element, property, map);
+            }
+        }
+
         // Drops all arbitrary-value layers tracked for element. Called when the element is
         // cleaned up / returned to a pool so a later reuse does not inherit a prior consumer's layers.
         public static void ClearAll(VisualElement element)
@@ -1068,9 +1104,13 @@ namespace Velvet
             return fn;
         }
 
-        // Writes a single ArbitraryStyle to the element's inline style (no layering). Internal: callers go
-        // through Apply / Clear so per-property layering is respected.
-        private static void ApplyInline(VisualElement element, in ArbitraryStyle style)
+        // Writes a single ArbitraryStyle to the element's inline style (no layering), fanning a shorthand out to
+        // every slot it owns (padding → four edges, border-color → four sides, size → width + height).
+        // Class-diff callers must go through Apply / Clear instead so per-property layering is respected; the
+        // layer-bypassing form is for a per-frame driver that OWNS the slot for the duration of its play and
+        // hands it back through ClearInline (see MotionSpringDriver / BezierTweenDriver), where registering and
+        // unregistering a layer on every tick would only churn the layer map.
+        internal static void ApplyInline(VisualElement element, in ArbitraryStyle style)
         {
             // Transform properties (scale / translate / rotate) are not StyleLength and
             // are written through their dedicated UITK style properties.
@@ -1125,9 +1165,10 @@ namespace Velvet
             }
         }
 
-        // Clears the inline style for the given property (StyleKeyword.Null reverts to the USS default).
-        // Internal: callers go through Clear so a surviving lower-priority layer is re-applied.
-        private static void ClearInline(VisualElement element, ArbitraryProperty property)
+        // Clears the inline style for the given property (StyleKeyword.Null reverts to the USS default), fanning
+        // out to the same slot set ApplyInline writes. Class-diff callers go through Clear so a surviving
+        // lower-priority layer is re-applied; the layer-bypassing form pairs with the ApplyInline above.
+        internal static void ClearInline(VisualElement element, ArbitraryProperty property)
         {
             switch (property)
             {
@@ -1204,7 +1245,13 @@ namespace Velvet
             }
         }
 
-        private static bool TryGetProperty(string prefix, out ArbitraryProperty property)
+        // Single source for the utility-prefix → target-property mapping, shared so a non-bracket preset
+        // recognizer (MotionPropertyClassParser, which pairs a prefix with the numeric scale its USS family
+        // uses) resolves the SAME prefix table instead of holding a second copy that could drift — mirroring
+        // TryGetSpacingPx's precedent. Which numeric SCALE a prefix's suffix is read against is deliberately
+        // not encoded here: this table is shared by families on different scales (spacing, radius, border
+        // width), and only the caller knows which family it is claiming.
+        internal static bool TryGetProperty(string prefix, out ArbitraryProperty property)
         {
             // prefix includes the trailing '-' (e.g. "h-", "min-h-", "mt-", "rounded-").
             // No need to match shorthand prefixes longest-first; switch matches exactly.

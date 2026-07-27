@@ -1103,8 +1103,10 @@ namespace Velvet
 
                 // An exit's completion callback normally runs long after this method has returned (a tween's
                 // scheduled timeout, a spring's settled tick). A spring exit whose variant pair touches no
-                // spring-animatable channel (MotionSpringDriver.Create returns null — e.g. a color-only exit
-                // variant) is the one case that completes SYNCHRONOUSLY, from inside the PlayExit call below,
+                // spring-animatable channel (MotionSpringDriver.Create returns null — e.g. an exit variant whose
+                // only delta is a keyword length like `w-auto` or a semantic theme token, neither of which
+                // carries a number to interpolate) is the one case that completes SYNCHRONOUSLY, from inside
+                // the PlayExit call below,
                 // before this pass has finished building nextCommitted for every other key and before this
                 // pass's own state.ExitComplete.Clear() further down. Running such a completion's bookkeeping
                 // immediately would have that same Clear() wipe the ExitComplete entry it just added, so the

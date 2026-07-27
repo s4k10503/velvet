@@ -69,11 +69,10 @@ V.Div(name: "row", className: "flex flex-row gap-x-2", children: new VNode[]
   including inline geometry the pose had overwritten.
 - **What an exit animates:** under the default Tween driver, any USS-transitionable property the
   pose swap changed animates — `transition-property: all` picks up the whole class delta, not a
-  fixed channel set. Spring and cubic-bezier exits are narrower, driving only `opacity` and the
-  `translate` / `scale` / `rotate` transform trio (see Springs and Cubic-bezier easing below); UI
-  Toolkit has no animatable `transform` shorthand, so those two drivers express movement with the
-  three transform utilities, not a combined `transform`. A `skew-*` exit never animates under any
-  driver, because skew is a silhouette paint rather than a transform.
+  fixed channel set. Spring and cubic-bezier exits drive the channels they can resolve a number
+  for out of the class strings; *Driven channels* below is the single list of what that covers and
+  what it deliberately leaves out. A `skew-*` exit never animates under any driver, because skew
+  is a silhouette paint rather than a transform.
 
 ### `PopLayout` mode
 
@@ -115,6 +114,13 @@ V.Motion(key: "list", animate: label, className: "flex flex-col gap-2",
 - `V.AnimatePresence(staggerSec: …, delayChildrenSec: …, staggerDirection: …)` provides the
   presence-side equivalent for enter/exit plays — the same stagger/delay knobs, scoped to a
   list of children entering or exiting under one presence boundary.
+- A **staggered animated list** is that composition and nothing more: a keyed `V.List` inside
+  `V.AnimatePresence(staggerSec: …)`, with each item rendered as a `V.Motion` carrying its own
+  `variants` / `initial` / `animate` / `exit`. Velvet ships no single `AnimatedList` factory
+  wrapping the three, matching Framer, whose canonical animated-list recipe is likewise
+  `AnimatePresence` + a mapped list + `motion.li`. Because `V.AnimatePresence` renders no element
+  of its own, the `flex` / `flex-col` / `gap-*` classes belong on the surrounding parent, not on
+  the presence.
 
 Orchestration delays each child's **swap itself**: once a child's slot elapses, the swap fires
 and tweens (or springs) on that child's own `StyleTransitionConfig`.
@@ -154,15 +160,97 @@ new StyleTransitionConfig
 }
 ```
 
-- Springs drive the numeric channels of a variant delta — `opacity`, `translate`, `scale`,
-  `rotate` — with a velocity-preserving integrator: **interrupting a spring retargets from the
-  current value *and velocity***, Framer's signature interruptible feel. An exit whose delta has
-  no spring channel (e.g. colors only) completes immediately.
+- Springs drive the channels of a variant delta (see *Driven channels* below) with a
+  velocity-preserving integrator: **interrupting a spring retargets from the current value *and
+  velocity***, Framer's signature interruptible feel. An exit whose delta resolves no channel at
+  all completes immediately.
 - `DurationSec` is ignored for springs — settling time comes from the physics.
 - Springs drive mount enters, presence exits, and runtime `animate` label swaps alike — flipping
   a label mid-spring retargets from the current value and velocity.
 - Non-finite / non-positive `Stiffness` / `Damping` / `Mass` log a warning and complete
   immediately rather than freezing the element mid-pose.
+
+## Driven channels (Spring and Bezier)
+
+Both non-CSS drivers write inline styles every tick rather than handing the change to UI Toolkit's
+own transition system, so what they can animate is exactly what they can read a number for **out
+of the class strings themselves** — there is no resolved style to sample, since the class swap and
+the plan are built in one synchronous call, off-panel, before any style resolution.
+
+- **The transform quartet.** `opacity` and the `translate` / `scale` / `rotate` trio. UI Toolkit
+  has no animatable `transform` shorthand, so movement is expressed with the three separate
+  transform utilities. Each of these has an identity value (opacity 1, scale 1, translate 0,
+  rotate 0deg), so naming it on **one** side of the delta is enough — the silent side falls back
+  to identity, matching the usual "declare only what changes" authoring style.
+- **Colors.** `background-color`, `color` and `border-color`, from palette utilities
+  (`bg-red-500`), the alpha modifier (`bg-red-500/50`) and the bracket forms (`bg-[#1e293b]`).
+  Interpolation is straight RGBA, the same path UI Toolkit's own color transition takes, so
+  switching a config between `Tween` and `Spring` never changes which colors the element passes
+  through. `border-color` fans out to all four sides.
+- **`border-radius`,** from the `rounded-*` scale and the bracket forms, including the per-side and
+  per-corner spellings.
+- **Spacing-scale lengths:** width / height / min / max / `size-*`, padding, margin, inset (`top-*`
+  … `inset-y-*`) and `basis-*`, from the `--space-*` scale (`p-4`, `w-64`, `-mt-2`), the sizing
+  fractions (`w-1/2`), and the bracket forms. These dirty Yoga layout on every tick — the whole
+  subtree relayouts each frame for the length of the play — so reach for a transform channel first
+  and animate a length only where the reflow is the point.
+- **Border widths,** from the `border-*` width utilities (`border`, `border-2`, `border-t-4`) and
+  the bracket forms. These read a **separate literal scale mirroring the stylesheet's own
+  declarations**, not the spacing scale — `border-2` is 2px, not `--space-2`. Same per-tick layout
+  cost as the lengths above.
+- **Font size and letter spacing, bracket forms only:** `text-[20px]` and `tracking-[2px]` are
+  driven. The named presets are not — `text-lg` resolves through a `--text-*` token and
+  `tracking-wide` through a fixed named step, neither of which has a C# mirror to read a magnitude
+  from — so a `text-sm` → `text-2xl` delta lands instantly while `text-[14px]` → `text-[24px]`
+  animates. Reach for the bracket form when you want the size to move.
+- **Both sides must name the property.** Unlike the quartet, a color or a length has no identity
+  value the silent side could stand in for ("no background color declared" is not the statement
+  "transparent"), so a property only one side names is **not** animated: the swap lands it
+  instantly. The same applies to a pair whose two sides carry different units (`w-1/2` →
+  `w-[200px]`) — a percentage resolves against a laid-out parent this path cannot consult.
+- **A shorthand and a longhand naming the same slot both snap.** `p-8` with `pt-2` — or `size-*`
+  with `w-*`, `inset-*` with `top-*`, `rounded-*` with `rounded-tl-*`, `border-*` with
+  `border-t-*` — has two utilities claiming one slot, so neither animates and the swap lands them
+  both. Which of the two holds the shared slot at rest is not something the animation can derive:
+  for preset classes it is stylesheet declaration order (and `.size-*` is declared *after* `.w-*`,
+  so there the shorthand wins width, the opposite of every other family), while for bracket-form
+  tokens it is class-array position instead. Use one or the other on a given axis. One caveat: the
+  rule only sees utilities whose value is readable, so an unreadable longhand beside a readable
+  shorthand (`rounded-3xl rounded-tl-full`) is invisible to it and the shorthand still drives the
+  corner the longhand owns at rest.
+- **Not driven,** each because the class alone yields no number to interpolate or because another
+  subsystem owns the slot: semantic theme tokens (`bg-primary`, `text-current`) resolve through
+  `--color-*` with no C# mirror; the preset font-size (`text-lg`) and letter-spacing
+  (`tracking-wide`) names likewise, per the bullet above; keyword lengths (`w-auto`, `w-full`) are
+  modes, not magnitudes; `rounded-full` is a saturating pill sentinel; `shadow-*`, `skew-*` and
+  gradients are baked silhouette paints; `filter-*` is driven by its own opt-in
+  `transition-filter`; `z-*` is a physical reparent.
+- **A play suspends the element's own USS transitions when they cover what it drives.** A driver
+  writes the exact value the curve or the physics calls for on that frame, so a transition utility
+  naming that same property restarts a native transition on every one of those writes and leaves
+  the painted value trailing for the whole play, easing in at the end instead of landing. Whether
+  that applies is decided from the element's **class list**: `transition-transform` names
+  translate/scale/rotate, `transition-colors` names the three colours, `transition-colors-scale`
+  and `transition-colors-scale-opacity` add those, and `transition-all` names everything. Anything
+  that supplies only a duration — `transition-filter`, or a bare `duration-*` — leaves
+  `transition-property` at its UI Toolkit default of `all`, so those elements transition
+  *everything* natively and a play on them always suspends. An element with no transition utility
+  at all has a 0s duration and transitions nothing, so nothing suspends. A play suspends only where
+  its own channels intersect that set — a `transition-colors` element running a fade/slide keeps
+  its hover fade, while the same play on a `transition-transform`, `transition-all` or
+  `transition-filter` element suspends. Two blind spots: the check runs once at play start, so a
+  variant turning on `transition-all` mid-play is not picked up until the next play, and a
+  whole-property transition written as an inline style by something other than a `duration-*`
+  utility is not seen.
+  When it does suspend, the suspension is **element-wide**: UI Toolkit's `transition-property` is a
+  positive list with no "everything except these" spelling, so the element's *other* transitions
+  land instantly too, across the play's `DelaySec` and stagger slot as well as its motion — the
+  element is already parked at its from-pose over that window. This is **narrower than Framer
+  Motion**, which takes over only the values it animates and leaves the element's other CSS
+  transitions running; UI Toolkit gives no way to express that. Two overlapping plays each hold
+  their own claim, so the first to finish cannot un-suspend the second, and the suspension lifts as
+  soon as the last one settles or is cancelled. Reach for `Tween` when you want the class's own
+  transition to do the work instead.
 
 ## Cubic-bezier easing
 
@@ -170,8 +258,8 @@ new StyleTransitionConfig
 curves, it samples an exact numeric CSS `cubic-bezier(x1,y1,x2,y2)` curve every tick — the same
 algorithm every browser's `cubic-bezier()` runs — via `BezierX1` / `BezierY1` / `BezierX2` /
 `BezierY2`. Unlike a spring it keeps a fixed `DurationSec`, exactly like a plain tween; only the
-shape of the easing differs. It shares Spring's channel scope (opacity and the
-translate/scale/rotate transform trio only) and its one-curve-drives-both-directions contract —
+shape of the easing differs. It shares Spring's channel scope (*Driven channels* above) and its
+one-curve-drives-both-directions contract —
 there is no separate exit curve, and `PropertyOverrides` is not read. Defaults to Tailwind's own
 default curve, `cubic-bezier(0.4, 0, 0.2, 1)`, the exact curve the bundled USS only approximates
 with the `ease-in-out` keyword. `BezierX1` / `BezierX2` must stay in `[0,1]`, since a CSS timing

@@ -495,10 +495,10 @@ namespace Velvet
 
         // Starts a spring-driven variant enter/exit (StyleTransitionConfig.Type == Spring). Unlike the tween
         // path, a spring needs no CSS-transition-triggering frame boundary, so the from→to class swap lands
-        // IMMEDIATELY at rest; MotionSpringClassParser then resolves whatever numeric channels that swap
-        // touches (opacity / translate / scale / rotate) into a from/to pair each, and a per-frame physics tick
-        // (StartSpringTick) drives them via inline styles until they settle — replacing the tween's fixed-
-        // duration completion timeout with a dynamic settle check.
+        // IMMEDIATELY at rest; MotionSpringClassParser then resolves whatever channels that swap touches
+        // (opacity / translate / scale / rotate, plus the color- and length-valued properties) into a from/to
+        // pair each, and a per-frame physics tick (StartSpringTick) drives them via inline styles until they
+        // settle — replacing the tween's fixed-duration completion timeout with a dynamic settle check.
         // restingClasses: the persistent resting set a cancel must restore — a variant exit's from-classes
         // (restoreFromOnCancel) or a variant enter's to-classes; null for preset plays, whose classes are
         // all transient. See PendingAnimation.RestingClasses.
@@ -837,10 +837,10 @@ namespace Velvet
             return false;
         }
 
-        // A driver's ClearInlineOverrides (spring or bezier) nulls whichever style slots it wrote (opacity /
-        // translate / scale / rotate), letting the cascade take back over — but a class the element still
-        // carries can OWN one of those same slots as a resolver-applied inline value with no USS rule behind
-        // it at all (translate-x-4, translate-x-[100px], opacity-[.5] — see MotionSpringClassParser's own scope
+        // A driver's ClearInlineOverrides (spring or bezier) nulls whichever style slots it wrote, letting the
+        // cascade take back over — but a class the element still carries can OWN one of those same slots as a
+        // resolver-applied inline value with no USS rule behind it at all (translate-x-4, translate-x-[100px],
+        // opacity-[.5], w-[240px], bg-[#fff] — see MotionSpringClassParser's own scope
         // note: translate has no USS form whatsoever), so clearing the slot loses that value instead of letting
         // it fall back to a cascade rule that does not exist. DiffClassList only re-applies such a value when a
         // class REMOVAL triggers it; nothing removes a class here (the swap already landed its classes back
