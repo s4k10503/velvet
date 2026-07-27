@@ -73,4 +73,29 @@ Tests are **colocated** with the code: `Runtime/<Area>/Tests/Editor/` and `.../T
 - Commits use Conventional Commits with the `velvet` scope (e.g. `fix(velvet): …`, `feat(velvet): …`, `refactor(velvet): …`).
 - Everything in this repo is written in English: code, comments, commit messages, and PR titles/bodies. PR descriptions state what changed and why — never the local workflow that produced the change (audit/review process, agent tooling, session details).
 - A PR that adds, changes, or removes a feature updates the corresponding `Documentation~` guide (and the `Documentation~/README.md` index table) in the same PR. If the change has no doc impact, say so explicitly in the PR body. `DocumentationDriftTests` (EditMode) and the Generators~ diagnostic-table tests catch API references and diagnostic IDs that no longer exist, but they cannot verify that a behavior description is still accurate — that stays the PR author's responsibility.
-- Documentation is single-source-of-truth: a given fact (the hooks table, the factory list, the diagnostic-ID table, a feature's behavior description) lives in exactly one owning document. Other documents link to it and add at most a one-line summary instead of restating it. Duplicated statements are how docs drift — when the fact changes, only one copy gets updated.
+- Documentation is single-source-of-truth: a given fact (the hooks table, the factory list, the diagnostic-ID table, a feature's behavior description) lives in exactly one owning document. Other documents link to it and add at most a one-line summary instead of restating it. Duplicated statements are how docs drift — when the fact changes, only one copy gets updated. This holds for comments too: name a sibling's mechanism ("same ownership rule as `StyleGapManipulator`"), never re-explain it.
+
+## Comment length
+
+A comment states why, never what — and states it once. Length is not capped, but every sentence must survive the **deletion test**: delete it; if a competent reader of the surrounding code plus the remaining sentences would still get it right, the sentence was carrying nothing. Delete it for real.
+
+Four things reliably fail the test and should not be written:
+
+- a restatement of the declaration below the comment — its name, signature, or next lines;
+- a consequence that follows from a constraint already stated above it;
+- an argument that a non-problem is not a problem;
+- a sibling file's mechanism re-explained instead of named.
+
+Four things pass, and stay however long they need to be:
+
+- engine behavior that had to be measured, decompiled, or read out of Unity's source;
+- an ordering constraint between passes, writes, or events;
+- an invariant a future edit could silently break;
+- a rejected alternative and the one reason it was rejected.
+
+Two checks that need no judgement:
+
+- A comment's first sentence may not open by restating the identifier it sits above. `// Resolves the direction:` over `ResolveDirection()` is dead text — open with the constraint.
+- A block over 12 lines is a review trigger, not an error: the PR states what its load-bearing facts are. Long is fine; unexamined-long is not.
+
+Prose in `Documentation~` is held to the same test. A guide for a polyfill tends to justify the polyfill at length; state what the behavior is and where it deviates, not why the deviation is defensible.

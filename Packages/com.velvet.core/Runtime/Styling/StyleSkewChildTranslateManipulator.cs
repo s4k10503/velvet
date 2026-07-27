@@ -108,7 +108,7 @@ namespace Velvet
 
         private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
 
-        // The children are reconciled into (a ScrollView's contentContainer; else the caster itself).
+        // The children are reconciled into (a composite widget's inner box; else the caster itself).
         private VisualElement? ChildContainer
             => target == null ? null : FiberNodePatcher.GetChildContainer(target);
 
@@ -124,9 +124,9 @@ namespace Velvet
             }
 
             // The shear box is the CASTER's OWN layout — the box SkewSilhouette.Draw shears the silhouette at.
-            // For a ScrollView the children live in contentContainer, whose resolved height is the full unclamped
-            // content extent, not the visible caster box; reading the box from the container would centre the
-            // shear on the content midpoint and seat every child against a line the silhouette never paints.
+            // For a composite widget the children live in its inner box — a ScrollView's content container has the
+            // full unclamped content extent, not the visible caster box; reading the box from the container would
+            // centre the shear on the content midpoint and seat every child against a line the silhouette never paints.
             // Children are still enumerated from the container, where their laid-out centroids live; for a plain
             // element the container IS the caster, so the two boxes coincide.
             var box = target.layout;

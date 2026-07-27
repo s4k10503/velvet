@@ -22,8 +22,11 @@
 .vs/
 .idea/
 .vscode/
-*.csproj
-*.sln
+# Unity regenerates these at the project root. Anchored so the hand-authored projects
+# under Generators~ and docs/ stay committed — an unanchored rule drops a new one
+# silently and only fails on a fresh clone.
+/*.csproj
+/*.sln
 *.user
 *.userprefs
 *.unityproj

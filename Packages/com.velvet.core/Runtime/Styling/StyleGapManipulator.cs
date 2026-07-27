@@ -33,13 +33,11 @@ namespace Velvet
     // reconciler attaches one per gap container, keeps it in ReconcilerContext.GapManipulators,
     // and removes it on cleanup / dispose. UnregisterCallbacksFromTarget clears the
     // margins it wrote so removing the gap class (or unmounting) leaves no residue.
-    // Child container. The manipulator is attached to the gap ELEMENT, but its
-    // children are reconciled into FiberNodePatcher.GetChildContainer(element) — for a
-    // ScrollView that is the contentContainer, not the ScrollView itself (which
-    // wraps internal viewport / scroller elements). The manipulator therefore resolves and iterates
-    // that same child container (ChildContainer); the wrap path's negative margin is
-    // written on the child container too, so gap lands on the reconciled content and never on a
-    // ScrollView's internal hierarchy.
+    // Child container. The manipulator is attached to the gap ELEMENT, but its children are reconciled
+    // into FiberNodePatcher.GetChildContainer(element) — a composite widget's inner box, not the widget.
+    // Everything naming a container names that one: the iteration, the wrap path's negative margin, and
+    // the direction / wrap verdicts (ResolveEdge, IsWrap). A direction or wrap class on the widget governs
+    // the WIDGET's box, which is not the box the spaced children are in.
     // Re-application. The spacing depends on the child set and, for every axis, the resolved
     // direction, both of which change outside this manipulator's own events. It is re-applied
     // from three sources: (1) the reconciler calls Apply right after it reconciles the
@@ -72,9 +70,8 @@ namespace Velvet
     // sides of EVERY child and -gap/2 on all four sides of the CHILD CONTAINER. Adjacent items
     // (in either axis, including across wrapped lines) are then separated by gap/2 + gap/2 == gap,
     // and the container's negative margin pulls content flush to its edge.
-    // Wrap is detected on-panel via resolvedStyle.flexWrap (Wrap / WrapReverse) and
-    // off-panel (EditMode) via the flex-wrap / flex-wrap-reverse class markers. The half-margin path
-    // writes layout-independent margins, so it is fully resolved (and assertable) without a layout tick.
+    // Wrap is detected from the child container — see IsWrap. The half-margin path writes
+    // layout-independent margins, so it is fully resolved (and assertable) without a layout tick.
     // Direction never changes which edges wrap spaces (always symmetric), only non-wrap's edge choice.
     // Residual gaps versus native CSS gap (documented, not solved):
     // An explicit per-child margin on the SAME logical edge as the gap (e.g. ml-2 on a
@@ -116,10 +113,8 @@ namespace Velvet
         // variant-prefixed md:space-x-reverse resolves with the rest of the spec — the patcher switches
         // that array to the element's live class list once a variant has toggled any layout gate class onto
         // it, which is what carries the marker across a breakpoint.
-        // StyleFlexDirectionResolver, by contrast, reads the live element's classList unconditionally,
-        // because unlike the gap spec itself the direction can change out from under the manipulator
-        // without a matching gap-config patch. The two halves of this feature therefore reach the live list
-        // by different routes on principle, not by accident — each is authoritative for what it answers.
+        // StyleFlexDirectionResolver, by contrast, reads the live child container's classList
+        // unconditionally: unlike the gap spec, the direction can change with no matching gap-config patch.
         private bool _xReverse;
         private bool _yReverse;
 
@@ -158,6 +153,9 @@ namespace Velvet
         private int _lastSignature;
         private bool _hasSignature;
 
+        // Null unless the child container is a separate element — see ObserveChildContainer.
+        private VisualElement? _observed;
+
         public StyleGapManipulator(float gap, GapAxis axis, bool xReverse, bool yReverse)
         {
             _gap = gap;
@@ -184,6 +182,7 @@ namespace Velvet
         {
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            ObserveChildContainer();
             Apply();
         }
 
@@ -192,6 +191,26 @@ namespace Velvet
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            if (_observed != null)
+            {
+                _observed.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+                _observed = null;
+            }
+        }
+
+        // GeometryChangedEvent neither bubbles nor trickles, so a re-layout confined to a composite widget's
+        // inner box — the box the verdicts come from — reaches nothing registered on the target.
+        // AttachToPanelEvent is not doubled: the inner box attaches in the target's own subtree pass.
+        // The element is remembered, not re-derived, so teardown releases what registration took.
+        private void ObserveChildContainer()
+        {
+            var container = ChildContainer;
+            if (container == null || ReferenceEquals(container, target))
+            {
+                return;
+            }
+            _observed = container;
+            container.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
         }
 
         private void OnAttach(AttachToPanelEvent evt)
@@ -203,7 +222,7 @@ namespace Velvet
 
         private void OnGeometryChanged(GeometryChangedEvent evt) => Apply();
 
-        // The container children are reconciled into (a ScrollView's contentContainer; else self).
+        // The container children are reconciled into (a composite widget's inner box; else self).
         private VisualElement? ChildContainer
             => target == null ? null : FiberNodePatcher.GetChildContainer(target);
 
@@ -221,7 +240,7 @@ namespace Velvet
                 return;
             }
 
-            var wrap = IsWrap();
+            var wrap = IsWrap(container);
             var signature = ComputeSignature(container, wrap);
             if (_hasSignature && signature == _lastSignature)
             {
@@ -247,7 +266,7 @@ namespace Velvet
 
         private void ApplyLeading(VisualElement container)
         {
-            var edge = ResolveEdge();
+            var edge = ResolveEdge(container);
 
             // Clear whatever the previous pass wrote when the strategy changed: a stale wrap half-margin
             // set, or the previous leading edge after an Auto row↔column direction flip or a reverse-marker
@@ -475,7 +494,7 @@ namespace Velvet
             {
                 var hash = 17;
                 hash = hash * 31 + _gap.GetHashCode();
-                hash = hash * 31 + (wrap ? 1 : 100 + (int)ResolveEdge());
+                hash = hash * 31 + (wrap ? 1 : 100 + (int)ResolveEdge(container));
                 var count = container.childCount;
                 hash = hash * 31 + count;
                 hash = StyleOutOfFlowChild.HashChildSequence(hash, container);
@@ -492,9 +511,9 @@ namespace Velvet
         // horizontal gap never reacts to column-reverse, and a vertical gap never reacts to row-reverse —
         // StyleFlexDirectionResolver resolves ONE mutually-exclusive verdict per call, so there is no stale
         // leftover from a different family to react to.
-        private Edge ResolveEdge()
+        private Edge ResolveEdge(VisualElement container)
         {
-            var direction = StyleFlexDirectionResolver.Resolve(target);
+            var direction = StyleFlexDirectionResolver.Resolve(container, !ReferenceEquals(container, target));
             switch (_axis)
             {
                 case GapAxis.Horizontal:
@@ -508,38 +527,39 @@ namespace Velvet
             }
         }
 
-        // True when the container wraps (selects the four-side half-margin path). The flex-wrap /
-        // flex-nowrap / flex-wrap-reverse class markers are consulted first, in _layout.uss's own
-        // declaration order (flex-wrap, flex-nowrap, flex-wrap-reverse — so flex-wrap-reverse beats
-        // flex-nowrap beats flex-wrap when more than one is present). UNLIKE the direction resolve, there is
-        // no further "direction class implies a default" tier here: flex / flex-row(-reverse) /
-        // flex-col(-reverse) set flex-direction only — they say nothing about flex-wrap — so their
-        // presence is not evidence either way. resolvedStyle.flexWrap is the fallback whenever none of the
-        // three wrap classes is present, which is the catch-all for wrap set some other way (a custom
-        // stylesheet rule, an inline style) — nearly every real container carries a direction class, so
-        // folding direction classes into this check (as an earlier revision of this method did) would have
-        // taken that fallback away for almost all of them, misreading a genuinely wrapping inline-styled
-        // container as non-wrapping. This fallback CAN read one pass stale on a same-rect toggle, the same
-        // risk StyleFlexDirectionResolver has — but unlike a direction flip, gaining or losing a wrapped line usually
-        // changes the container's own measured size, so the resulting GeometryChangedEvent self-corrects it
-        // in the common case; see the guide for the residual fixed-size exception.
-        private bool IsWrap()
+        // True when the child container wraps (selects the four-side half-margin path). Read from the child
+        // container, like the direction (see StyleFlexDirectionResolver): a wrap class on a composite widget
+        // sets only the widget's own. This needs no engine-default variant for an inner box the way the
+        // direction resolve does — the fallback below is already the engine's own no-wrap. The residue is
+        // an inner box whose built-in USS wraps, which only a live panel reports; it bites harder here than
+        // for direction, since wrap is the only mode that writes the container's own margin.
+        // The flex-wrap / flex-nowrap / flex-wrap-reverse markers are consulted first, in _layout.uss's
+        // declaration order (flex-wrap-reverse beats flex-nowrap beats flex-wrap when more than one is
+        // present). There is no further "direction class implies a default" tier: flex / flex-row(-reverse)
+        // / flex-col(-reverse) set flex-direction only, and since nearly every real container carries one,
+        // treating them as evidence would take the resolvedStyle fallback away from almost all of them and
+        // misread a genuinely wrapping inline-styled container as non-wrapping. That fallback is the
+        // catch-all for wrap set some other way (a custom stylesheet rule, an inline style), and CAN read
+        // one pass stale on a same-rect toggle — but unlike a direction flip, gaining or losing a wrapped
+        // line usually changes the container's measured size, so the GeometryChangedEvent self-corrects it;
+        // see the guide for the residual fixed-size exception.
+        private static bool IsWrap(VisualElement container)
         {
-            if (target.ClassListContains("flex-wrap-reverse"))
+            if (container.ClassListContains("flex-wrap-reverse"))
             {
                 return true;
             }
-            if (target.ClassListContains("flex-nowrap"))
+            if (container.ClassListContains("flex-nowrap"))
             {
                 return false;
             }
-            if (target.ClassListContains("flex-wrap"))
+            if (container.ClassListContains("flex-wrap"))
             {
                 return true;
             }
-            if (target.panel != null)
+            if (container.panel != null)
             {
-                var wrap = target.resolvedStyle.flexWrap;
+                var wrap = container.resolvedStyle.flexWrap;
                 return wrap == Wrap.Wrap || wrap == Wrap.WrapReverse;
             }
             return false;

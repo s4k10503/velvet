@@ -2775,15 +2775,19 @@ namespace Velvet
 
         #region Helpers
 
-        // Returns contentContainer when the element is a ScrollView; otherwise returns the element itself.
+        // The element a child added to this one actually lands under — the rule VisualElement.Add follows.
+        // Keyed on the redirect, not on a widget type: V.Custom<T> mounts ANY VisualElement subclass with
+        // children, so the composites that redirect are not a set Velvet gets to choose. Every caller that
+        // names "the children's container" must name this same element — the reconcile target, and the box
+        // the layout manipulators read direction / wrap from and write a container margin to.
+        //
+        // A null contentContainer (the collection views, which build their rows themselves) answers with the
+        // element. Not a crash guard: VisualElement is null-safe throughout — childCount reads 0, the indexer
+        // yields nothing. Insert quietly does nothing there, so nothing should be reconciled into one.
         internal static VisualElement GetChildContainer(VisualElement element)
         {
-            if (element is ScrollView scrollView)
-            {
-                return scrollView.contentContainer;
-            }
-
-            return element;
+            var content = element.contentContainer;
+            return content ?? element;
         }
 
         #endregion

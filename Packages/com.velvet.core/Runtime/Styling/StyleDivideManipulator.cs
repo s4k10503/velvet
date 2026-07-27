@@ -34,9 +34,9 @@ namespace Velvet
     // the dashed / dotted stroke on the child's own generateVisualContent — so switching between solid and
     // dashed is layout-identical and only the paint differs.
     //
-    // Child container. Like the gap manipulator it resolves and iterates
-    // FiberNodePatcher.GetChildContainer(target) (a ScrollView's contentContainer; else self), so the
-    // divider lands on the reconciled content and never on a ScrollView's internal hierarchy.
+    // Child container. Like the gap manipulator it iterates, and resolves its direction from,
+    // FiberNodePatcher.GetChildContainer(target) — a composite widget's inner box; else self. A direction
+    // class on such a widget reverses the widget's own box, not the content the dividers separate.
     //
     // Limitations: an explicit per-child border on the SAME edge the divider draws on (e.g. border-l on a
     // child of a divide-x row) is OVERWRITTEN — this manipulator owns that edge, exactly as the gap
@@ -76,6 +76,9 @@ namespace Velvet
         private int _lastSignature;
         private bool _hasSignature;
 
+        // Null unless the child container is a separate element — see ObserveChildContainer.
+        private VisualElement? _observed;
+
         public StyleDivideManipulator(DivideSpec spec, ReconcilerContext ctx)
         {
             _spec = spec;
@@ -94,6 +97,7 @@ namespace Velvet
         {
             target.RegisterCallback<AttachToPanelEvent>(OnAttach);
             target.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            ObserveChildContainer();
             Apply();
         }
 
@@ -102,6 +106,23 @@ namespace Velvet
             Clear();
             target.UnregisterCallback<AttachToPanelEvent>(OnAttach);
             target.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+            if (_observed != null)
+            {
+                _observed.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+                _observed = null;
+            }
+        }
+
+        // GeometryChangedEvent neither bubbles nor trickles — see StyleGapManipulator.ObserveChildContainer.
+        private void ObserveChildContainer()
+        {
+            var container = ChildContainer;
+            if (container == null || ReferenceEquals(container, target))
+            {
+                return;
+            }
+            _observed = container;
+            container.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
         }
 
         private void OnAttach(AttachToPanelEvent evt)
@@ -126,7 +147,7 @@ namespace Velvet
                 return;
             }
 
-            var edge = ResolveEdge();
+            var edge = ResolveEdge(container);
             var signature = ComputeSignature(container, edge);
             if (_hasSignature && signature == _lastSignature)
             {
@@ -226,9 +247,9 @@ namespace Velvet
         // flip is per-axis: a horizontal divide never reacts to column-reverse, and a vertical divide never
         // reacts to row-reverse — StyleFlexDirectionResolver returns ONE mutually-exclusive verdict per call,
         // so there is no stale leftover from a different family to react to.
-        private DivideEdge ResolveEdge()
+        private DivideEdge ResolveEdge(VisualElement container)
         {
-            var direction = StyleFlexDirectionResolver.Resolve(target);
+            var direction = StyleFlexDirectionResolver.Resolve(container, !ReferenceEquals(container, target));
             if (_spec.Axis == DivideAxis.Horizontal)
             {
                 return (_spec.Reverse || direction == FlexDirection.RowReverse) ? DivideEdge.Right : DivideEdge.Left;
