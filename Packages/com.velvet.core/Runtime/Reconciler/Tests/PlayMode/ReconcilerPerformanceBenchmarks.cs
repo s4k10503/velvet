@@ -208,6 +208,50 @@ namespace Velvet.Tests.Performance
 
         #endregion
 
+        #region B-1-c-2: Re-reconcile — inline-expansion path (Provider / Fragment / Component)
+
+        // Pins the general (inline-expansion) walk, which the Label-only benchmarks above never reach:
+        // a flat host-leaf array routes to the Indexed/Keyed fast path, so the expansion walk early-outs
+        // before its first recursion. The allocation column is the load-bearing one — the walk's own
+        // per-call state is pooled, so a steady-state re-reconcile must not allocate for it.
+        [Test, Performance]
+        public void Reconcile_Expansion_NoChange_100Nodes()
+        {
+            var nodes = BenchmarkHelpers.BuildExpansionNodes(100);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), nodes);
+
+            Measure.Method(() =>
+            {
+                _reconciler.Reconcile(_root, nodes, nodes);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        // Same walk with every emitted leaf changing, so each recursion also runs the commit
+        // (CommitLeaf -> PatchNode) rather than only the structural descent.
+        [Test, Performance]
+        public void Reconcile_Expansion_AllChange_100Nodes()
+        {
+            var oldNodes = BenchmarkHelpers.BuildExpansionNodes(100, prefix: "old-");
+            var newNodes = BenchmarkHelpers.BuildExpansionNodes(100, prefix: "new-");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), oldNodes);
+
+            Measure.Method(() =>
+            {
+                _reconciler.Reconcile(_root, oldNodes, newNodes);
+                _reconciler.Reconcile(_root, newNodes, oldNodes);
+            })
+            .GC()
+            .WarmupCount(5)
+            .MeasurementCount(20)
+            .Run();
+        }
+
+        #endregion
+
         #region B-1-d: Pooled-widget recycle (mount -> unmount -> remount)
 
         // Pins the primitive-element pool's recycle path: VNodePool.ReturnLabel / ReturnButton (invoked
