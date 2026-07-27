@@ -48,10 +48,12 @@ namespace Velvet
     // before this manipulator runs) is always re-overwritten before the patch ends, rather than sitting
     // exposed until an unrelated geometry event happens to fire. Ownership ends when the text-balance
     // class itself is removed: the teardown that clears the inline maxWidth then restores a co-present
-    // max-w-* utility's own value via FiberNodePatcher.ReapplyArbitraryValues — the same shared-inline-slot
-    // restore FiberAnimateMotionApplier.RestoreSharedInlineSlot performs after detaching a Hue/Pulse
-    // motion — so removing just the text-balance token does not also erase an unrelated max-width the
-    // element still carries.
+    // max-w-* utility's own value by re-resolving that one slot from the arbitrary-value layer map
+    // (StyleArbitraryValueResolver.ReapplyLayeredValue) — serving the same purpose as the
+    // shared-inline-slot restore FiberAnimateMotionApplier.RestoreSharedInlineSlot performs after
+    // detaching a Hue/Pulse motion — so removing just the text-balance token does not also erase an
+    // unrelated max-width the element still carries. The map rather than a scan of the element's class
+    // list, because a max-w-[600px] resolves to inline style and so never appears in that list at all.
     //
     // Single-line gate. CSS balance is a visual no-op on a single line. Since this approximation instead
     // shrinks the box, applying it to a single line would shrink a label to its tight text width and
@@ -323,10 +325,10 @@ namespace Velvet
         }
 
         // Clears the inline maxWidth this manipulator wrote and drops the parent subscription (invoked on
-        // detach / removal). Restoring a co-present max-w-* utility's own value, when this is a class
-        // removal rather than a full unmount, is the CALLER's job (FiberNodePatcher.ReapplyArbitraryValues
-        // — see the class doc's ownership paragraph): this manipulator has no access to the element's
-        // current class list, only FiberNodePatcher does.
+        // detach / removal). Putting a co-present max-w-* value BACK is the caller's job (see the class
+        // doc's ownership paragraph): this manipulator knows only that it borrowed the slot, not what the
+        // element's cascade says belongs in it. The caller restores on a class removal and skips it on a
+        // full unmount, where the element's whole layer record is dropped moments later regardless.
         private void Clear()
         {
             if (target is TextElement textElement)
