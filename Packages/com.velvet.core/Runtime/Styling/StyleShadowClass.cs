@@ -92,6 +92,14 @@ namespace Velvet
             ["3xl"] = 24f,
         };
 
+        // Single source for the --radius-* scale, keyed by the suffix after a rounded-* prefix (the empty
+        // string being bare `rounded`) — shared so a per-class radius recognizer (MotionPropertyClassParser)
+        // resolves the SAME magnitudes instead of holding a second copy that could drift, mirroring
+        // StyleArbitraryValueResolver.TryGetSpacingPx's precedent. `full` is deliberately absent: it is a
+        // saturating pill sentinel (--radius-full is far larger than any element), not a magnitude a caller
+        // can interpolate through.
+        internal static bool TryGetRadiusPx(string suffix, out float px) => RadiusScale.TryGetValue(suffix, out px);
+
         // Cheap early-out gate: true when ANY class is shadow or begins with shadow-. Used
         // to skip the full parse on the ~99% of elements that carry no shadow class and no binding.
         public static bool HasShadowClass(string[] classNames)

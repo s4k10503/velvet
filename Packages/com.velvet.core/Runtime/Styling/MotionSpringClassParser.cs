@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -22,19 +23,58 @@ namespace Velvet
     /// classes' own known definitions instead.
     /// </summary>
     /// <remarks>
-    /// Scope: only <see cref="SpringAxis.Opacity"/> and the transform trio (translate x/y in PIXELS, uniform
-    /// scale, rotate degrees) are recognized — matching the utilities <c>_effects.uss</c> / <c>_transforms.uss</c>
+    /// Scope: <see cref="SpringAxis.Opacity"/> and the transform trio (translate x/y in PIXELS, uniform scale,
+    /// rotate degrees) are recognized here — matching the utilities <c>_effects.uss</c> / <c>_transforms.uss</c>
     /// define plus their arbitrary-value/spacing-scale equivalents in <see cref="StyleArbitraryValueResolver"/>.
-    /// A class the parser does not recognize (a color, an arbitrary length on an unrelated property, a
-    /// percentage-based translate like <c>translate-x-1/2</c>/<c>translate-x-full</c>, or a per-axis
-    /// <c>scale-x-</c>/<c>scale-y-</c>) is simply skipped: it still applies as a plain class (untouched by the
-    /// class-swap step), it just is not animated by the spring.
+    /// The color- and length-valued properties are recognized by <see cref="MotionPropertyClassParser"/> and
+    /// carried in the same plan (see <see cref="SpringPlan.Colors"/> / <see cref="SpringPlan.Lengths"/>). A class
+    /// neither parser recognizes (a percentage-based translate like <c>translate-x-1/2</c>/<c>translate-x-full</c>,
+    /// a per-axis <c>scale-x-</c>/<c>scale-y-</c>, or anything outside the property parser's own documented
+    /// scope) is simply skipped: it still applies as a plain class (untouched by the class-swap step), it just is
+    /// not animated by the spring.
     /// </remarks>
     internal static class MotionSpringClassParser
     {
+        /// <summary>One property-valued channel: which property to write, and the color it interpolates between.</summary>
+        internal readonly struct ColorChannelPlan
+        {
+            public readonly ArbitraryProperty Property;
+            public readonly Color From;
+            public readonly Color To;
+
+            public ColorChannelPlan(ArbitraryProperty property, Color from, Color to)
+            {
+                Property = property;
+                From = from;
+                To = to;
+            }
+        }
+
+        /// <summary>
+        /// One length-valued channel: which property to write, the magnitudes it interpolates between, and the
+        /// unit BOTH sides carry (a mixed-unit pair never becomes a channel — see <see cref="Resolve"/>).
+        /// </summary>
+        internal readonly struct LengthChannelPlan
+        {
+            public readonly ArbitraryProperty Property;
+            public readonly float From;
+            public readonly float To;
+            public readonly LengthUnit Unit;
+
+            public LengthChannelPlan(ArbitraryProperty property, float from, float to, LengthUnit unit)
+            {
+                Property = property;
+                From = from;
+                To = to;
+                Unit = unit;
+            }
+        }
+
         /// <summary>
         /// A resolved (from, to) pair per channel; null when neither side of the swap named that channel (out of
-        /// scope for this play, or simply unchanged).
+        /// scope for this play, or simply unchanged). The five fixed axes have identity values to fall back on,
+        /// so one side naming an axis is enough; the property channels have none and are collected in the two
+        /// lists instead, populated only when BOTH sides name the property.
         /// </summary>
         internal struct SpringPlan
         {
@@ -43,9 +83,11 @@ namespace Velvet
             public (float from, float to)? TranslateY;
             public (float from, float to)? Scale;
             public (float from, float to)? Rotate;
+            public List<ColorChannelPlan>? Colors;
+            public List<LengthChannelPlan>? Lengths;
 
             public bool IsEmpty => Opacity == null && TranslateX == null && TranslateY == null
-                && Scale == null && Rotate == null;
+                && Scale == null && Rotate == null && Colors == null && Lengths == null;
         }
 
         // Mirrors _effects.uss's fixed opacity scale exactly (a class outside this exact set has no matching
@@ -143,16 +185,18 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Builds the spring plan for a from/to class-array swap: each channel named by EITHER side is in
-        /// scope, with the un-naming side falling back to that channel's identity value (opacity 1, translate 0,
-        /// scale 1, rotate 0deg) — the common "declare only what changes" authoring style (e.g. a `visible`
-        /// variant that only sets `opacity-100` and relies on the default scale/rotate/position). A resting
-        /// baseline set by some OTHER, unrelated class on the element is not accounted for (undocumented — see
-        /// the type doc's scope note), EXCEPT for translate: since translate x/y always compose onto one inline
-        /// style (see below), naming only one axis still forces a channel for the other, and <paramref
+        /// Builds the spring plan for a from/to class-array swap. Each of the five fixed AXES named by EITHER
+        /// side is in scope, with the un-naming side falling back to that axis's identity value (opacity 1,
+        /// translate 0, scale 1, rotate 0deg) — the common "declare only what changes" authoring style (e.g. a
+        /// `visible` variant that only sets `opacity-100` and relies on the default scale/rotate/position). A
+        /// resting baseline set by some OTHER, unrelated class on the element is not accounted for (undocumented
+        /// — see the type doc's scope note), EXCEPT for translate: since translate x/y always compose onto one
+        /// inline style (see below), naming only one axis still forces a channel for the other, and <paramref
         /// name="restingTranslateX"/> / <paramref name="restingTranslateY"/> — the element's own current inline
         /// translate, read by the caller before the swap lands — let that forced channel sit at wherever the
         /// element's OWN (unrelated) classes already put it instead of snapping it to identity.
+        /// The color- and length-valued PROPERTY channels follow the stricter both-sides rule instead — see
+        /// <see cref="PairProperties"/>.
         /// </summary>
         internal static SpringPlan Resolve(string[]? fromClasses, string[]? toClasses,
             float restingTranslateX = 0f, float restingTranslateY = 0f)
@@ -162,11 +206,13 @@ namespace Velvet
             float? fromY = null, toY = null;
             float? fromScale = null, toScale = null;
             float? fromRotate = null, toRotate = null;
+            Dictionary<ArbitraryProperty, ArbitraryStyle>? fromProperties = null, toProperties = null;
 
-            Scan(fromClasses, ref fromOpacity, ref fromX, ref fromY, ref fromScale, ref fromRotate);
-            Scan(toClasses, ref toOpacity, ref toX, ref toY, ref toScale, ref toRotate);
+            Scan(fromClasses, ref fromOpacity, ref fromX, ref fromY, ref fromScale, ref fromRotate, ref fromProperties);
+            Scan(toClasses, ref toOpacity, ref toX, ref toY, ref toScale, ref toRotate, ref toProperties);
 
             var plan = new SpringPlan();
+            PairProperties(fromProperties, toProperties, ref plan);
             if (fromOpacity.HasValue || toOpacity.HasValue)
             {
                 plan.Opacity = (fromOpacity ?? 1f, toOpacity ?? 1f);
@@ -196,8 +242,45 @@ namespace Velvet
             return plan;
         }
 
+        /// <summary>
+        /// Turns the two sides' property tables into channels. A property BOTH sides name becomes a channel; a
+        /// property only one side names does not. Unlike the five fixed axes there is no identity value to
+        /// substitute for the silent side — "no background color declared" is not the same statement as
+        /// "transparent", and a length has no neutral magnitude at all — so a one-sided property falls back to
+        /// the plain class swap, which lands it instantly. A length pair whose two sides carry DIFFERENT units
+        /// falls back the same way: a percentage resolves against a laid-out parent this path cannot consult, so
+        /// there is no common space to interpolate a px↔% pair in.
+        /// </summary>
+        private static void PairProperties(Dictionary<ArbitraryProperty, ArbitraryStyle>? fromProperties,
+            Dictionary<ArbitraryProperty, ArbitraryStyle>? toProperties, ref SpringPlan plan)
+        {
+            if (fromProperties == null || toProperties == null)
+            {
+                return;
+            }
+            foreach (var (property, from) in fromProperties)
+            {
+                if (!toProperties.TryGetValue(property, out var to))
+                {
+                    continue;
+                }
+                if (MotionPropertyClassParser.IsColor(property))
+                {
+                    (plan.Colors ??= new List<ColorChannelPlan>())
+                        .Add(new ColorChannelPlan(property, from.Color, to.Color));
+                    continue;
+                }
+                if (from.Unit != to.Unit)
+                {
+                    continue;
+                }
+                (plan.Lengths ??= new List<LengthChannelPlan>())
+                    .Add(new LengthChannelPlan(property, from.Value, to.Value, from.Unit));
+            }
+        }
+
         private static void Scan(string[]? classes, ref float? opacity, ref float? translateX, ref float? translateY,
-            ref float? scale, ref float? rotate)
+            ref float? scale, ref float? rotate, ref Dictionary<ArbitraryProperty, ArbitraryStyle>? properties)
         {
             if (classes == null)
             {
@@ -207,6 +290,12 @@ namespace Velvet
             {
                 if (!TryParseAxisValue(cls, out var axis, out var value))
                 {
+                    // Later classes win, mirroring the CSS cascade: two utilities on the same property in one
+                    // variant resolve to the last one, exactly as the class list itself would.
+                    if (MotionPropertyClassParser.TryParse(cls, out var style))
+                    {
+                        (properties ??= new Dictionary<ArbitraryProperty, ArbitraryStyle>())[style.Property] = style;
+                    }
                     continue;
                 }
                 switch (axis)

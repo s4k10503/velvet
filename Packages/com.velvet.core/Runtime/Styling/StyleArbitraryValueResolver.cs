@@ -1068,9 +1068,13 @@ namespace Velvet
             return fn;
         }
 
-        // Writes a single ArbitraryStyle to the element's inline style (no layering). Internal: callers go
-        // through Apply / Clear so per-property layering is respected.
-        private static void ApplyInline(VisualElement element, in ArbitraryStyle style)
+        // Writes a single ArbitraryStyle to the element's inline style (no layering), fanning a shorthand out to
+        // every slot it owns (padding → four edges, border-color → four sides, size → width + height).
+        // Class-diff callers must go through Apply / Clear instead so per-property layering is respected; the
+        // layer-bypassing form is for a per-frame driver that OWNS the slot for the duration of its play and
+        // hands it back through ClearInline (see MotionSpringDriver / BezierTweenDriver), where registering and
+        // unregistering a layer on every tick would only churn the layer map.
+        internal static void ApplyInline(VisualElement element, in ArbitraryStyle style)
         {
             // Transform properties (scale / translate / rotate) are not StyleLength and
             // are written through their dedicated UITK style properties.
@@ -1125,9 +1129,10 @@ namespace Velvet
             }
         }
 
-        // Clears the inline style for the given property (StyleKeyword.Null reverts to the USS default).
-        // Internal: callers go through Clear so a surviving lower-priority layer is re-applied.
-        private static void ClearInline(VisualElement element, ArbitraryProperty property)
+        // Clears the inline style for the given property (StyleKeyword.Null reverts to the USS default), fanning
+        // out to the same slot set ApplyInline writes. Class-diff callers go through Clear so a surviving
+        // lower-priority layer is re-applied; the layer-bypassing form pairs with the ApplyInline above.
+        internal static void ClearInline(VisualElement element, ArbitraryProperty property)
         {
             switch (property)
             {
@@ -1204,7 +1209,13 @@ namespace Velvet
             }
         }
 
-        private static bool TryGetProperty(string prefix, out ArbitraryProperty property)
+        // Single source for the utility-prefix → target-property mapping, shared so a non-bracket preset
+        // recognizer (MotionPropertyClassParser, which pairs a prefix with the numeric scale its USS family
+        // uses) resolves the SAME prefix table instead of holding a second copy that could drift — mirroring
+        // TryGetSpacingPx's precedent. Which numeric SCALE a prefix's suffix is read against is deliberately
+        // not encoded here: this table is shared by families on different scales (spacing, radius, border
+        // width), and only the caller knows which family it is claiming.
+        internal static bool TryGetProperty(string prefix, out ArbitraryProperty property)
         {
             // prefix includes the trailing '-' (e.g. "h-", "min-h-", "mt-", "rounded-").
             // No need to match shorthand prefixes longest-first; switch matches exactly.

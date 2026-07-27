@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `TransitionType.Spring` and `TransitionType.Bezier` variant transitions now animate the
+  color-valued (`background-color`, `color`, `border-color`) and length-valued (sizing, padding,
+  margin, inset, flex-basis, border width, `border-radius`) properties of a variant delta, not just
+  `opacity` and the `translate`/`scale`/`rotate` trio — closing most of the gap to Framer Motion,
+  which animates any animatable property. Values are still derived entirely from the class strings
+  (palette tokens, the `/alpha` modifier, the spacing/radius scales, and the bracket forms), so a
+  property named by only ONE side of the delta, a pair mixing units (`w-1/2` → `w-[200px]`), a
+  semantic theme token, or a keyword length still lands instantly instead of animating. While one
+  of these drivers owns an element's inline styles the element's own USS transition is suspended,
+  and restored on settle, so a `transition-colors` / `transition-all` class can no longer leave the
+  painted value trailing the driver for the whole play.
+
 ### Changed
 
 - Scheduling a fiber re-render no longer allocates a per-fiber sorted set for the pending-lane

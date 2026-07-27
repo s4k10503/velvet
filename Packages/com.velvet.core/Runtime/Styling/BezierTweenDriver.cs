@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -25,11 +26,51 @@ namespace Velvet
     }
 
     /// <summary>
-    /// Running state for one bezier-driven Motion variant enter/exit: up to five channels (see
+    /// One bezier-driven color channel: a scalar 0→1 progress channel feeding a straight-RGBA lerp between the
+    /// endpoints — the bezier sibling of <see cref="SpringColorChannel"/>, whose doc carries the rationale for
+    /// interpolating one progress value rather than four per-component ones.
+    /// </summary>
+    internal sealed class BezierColorChannel
+    {
+        public readonly ArbitraryProperty Property;
+        public readonly Color From;
+        public readonly Color To;
+        public readonly BezierTweenChannel Progress;
+
+        public BezierColorChannel(ArbitraryProperty property, Color from, Color to)
+        {
+            Property = property;
+            From = from;
+            To = to;
+            Progress = new BezierTweenChannel(0f, 1f);
+        }
+    }
+
+    /// <summary>
+    /// One bezier-driven length channel: the property to write, the unit both endpoints share, and the
+    /// magnitude channel itself. The bezier sibling of <see cref="SpringLengthChannel"/>.
+    /// </summary>
+    internal sealed class BezierLengthChannel
+    {
+        public readonly ArbitraryProperty Property;
+        public readonly LengthUnit Unit;
+        public readonly BezierTweenChannel Value;
+
+        public BezierLengthChannel(ArbitraryProperty property, float from, float to, LengthUnit unit)
+        {
+            Property = property;
+            Unit = unit;
+            Value = new BezierTweenChannel(from, to);
+        }
+    }
+
+    /// <summary>
+    /// Running state for one bezier-driven Motion variant enter/exit: the five fixed axes (see
     /// <see cref="SpringAxis"/>; translate x/y are always present together, never alone — see
-    /// <see cref="MotionSpringClassParser.Resolve"/>), the four cubic-bezier control-point coordinates, the
-    /// fixed duration, elapsed time, the recurring tick handle, and the completion callback. Owned by
-    /// <c>StyleAnimationScheduler</c>'s <c>PendingAnimation</c>.
+    /// <see cref="MotionSpringClassParser.Resolve"/>) plus any color/length property channels the delta
+    /// resolved, the four cubic-bezier control-point coordinates, the fixed duration, elapsed time, the
+    /// recurring tick handle, and the completion callback. Owned by <c>StyleAnimationScheduler</c>'s
+    /// <c>PendingAnimation</c>.
     /// </summary>
     internal sealed class BezierTweenState
     {
@@ -38,6 +79,8 @@ namespace Velvet
         public BezierTweenChannel? TranslateY;
         public BezierTweenChannel? Scale;
         public BezierTweenChannel? Rotate;
+        public List<BezierColorChannel>? Colors;
+        public List<BezierLengthChannel>? Lengths;
 
         // CSS-parameter order: cubic-bezier(X1,Y1,X2,Y2).
         public float X1;
@@ -95,16 +138,38 @@ namespace Velvet
             if (plan.TranslateY is { } ty) state.TranslateY = new BezierTweenChannel(ty.from, ty.to);
             if (plan.Scale is { } s) state.Scale = new BezierTweenChannel(s.from, s.to);
             if (plan.Rotate is { } r) state.Rotate = new BezierTweenChannel(r.from, r.to);
+            if (plan.Colors != null)
+            {
+                var colors = new List<BezierColorChannel>(plan.Colors.Count);
+                foreach (var c in plan.Colors)
+                {
+                    colors.Add(new BezierColorChannel(c.Property, c.From, c.To));
+                }
+                state.Colors = colors;
+            }
+            if (plan.Lengths != null)
+            {
+                var lengths = new List<BezierLengthChannel>(plan.Lengths.Count);
+                foreach (var l in plan.Lengths)
+                {
+                    lengths.Add(new BezierLengthChannel(l.Property, l.From, l.To, l.Unit));
+                }
+                state.Lengths = lengths;
+            }
             return state;
         }
 
         /// <summary>
-        /// Writes each channel's CURRENT eased value as an inline style, synchronously — so the element shows the
-        /// from-pose on the very first rendered frame instead of flashing at the (already-applied) resting
-        /// classes' value until the first tick runs.
+        /// Suspends the element's native transitions for the rest of this play (see
+        /// <see cref="MotionNativeTransitionGuard"/>) and writes each channel's CURRENT eased value as an inline
+        /// style, synchronously — so the element shows the from-pose on the very first rendered frame instead of
+        /// flashing at the (already-applied) resting classes' value until the first tick runs.
         /// </summary>
         public static void ApplyCurrentValues(VisualElement element, BezierTweenState state)
-            => ApplyEased(element, state, CurrentEased(state));
+        {
+            MotionNativeTransitionGuard.Suspend(element);
+            ApplyEased(element, state, CurrentEased(state));
+        }
 
         /// <summary>
         /// Advances elapsed time by <paramref name="dtSec"/> and re-applies the inline styles at the newly eased
@@ -121,13 +186,25 @@ namespace Velvet
             return state.ElapsedSec >= state.DurationSec;
         }
 
-        /// <summary>Clears every inline override this state ever wrote, letting the (already-resting) classes take back over.</summary>
+        /// <summary>
+        /// Clears every inline override this state ever wrote — including the transition suspension
+        /// <see cref="ApplyCurrentValues"/> put in place — letting the (already-resting) classes take back over.
+        /// </summary>
         public static void ClearInlineOverrides(VisualElement element, BezierTweenState state)
         {
             if (state.Opacity != null) element.style.opacity = StyleKeyword.Null;
             if (state.TranslateX != null || state.TranslateY != null) element.style.translate = StyleKeyword.Null;
             if (state.Scale != null) element.style.scale = StyleKeyword.Null;
             if (state.Rotate != null) element.style.rotate = StyleKeyword.Null;
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) StyleArbitraryValueResolver.ClearInline(element, c.Property);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) StyleArbitraryValueResolver.ClearInline(element, l.Property);
+            }
+            MotionNativeTransitionGuard.Restore(element);
         }
 
         /// <summary>
@@ -145,6 +222,14 @@ namespace Velvet
             RetargetChannel(state.TranslateY, eased);
             RetargetChannel(state.Scale, eased);
             RetargetChannel(state.Rotate, eased);
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors) RetargetChannel(c.Progress, eased);
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths) RetargetChannel(l.Value, eased);
+            }
             state.ElapsedSec = 0f;
         }
 
@@ -192,6 +277,23 @@ namespace Velvet
             {
                 var v = Mathf.LerpUnclamped(state.Rotate.From, state.Rotate.To, eased);
                 element.style.rotate = new Rotate(Angle.Degrees(v));
+            }
+            if (state.Colors != null)
+            {
+                foreach (var c in state.Colors)
+                {
+                    var progress = Mathf.LerpUnclamped(c.Progress.From, c.Progress.To, eased);
+                    StyleArbitraryValueResolver.ApplyInline(element,
+                        new ArbitraryStyle(c.Property, MotionPropertyInterpolation.LerpColor(c.From, c.To, progress)));
+                }
+            }
+            if (state.Lengths != null)
+            {
+                foreach (var l in state.Lengths)
+                {
+                    var v = Mathf.LerpUnclamped(l.Value.From, l.Value.To, eased);
+                    StyleArbitraryValueResolver.ApplyInline(element, new ArbitraryStyle(l.Property, v, l.Unit));
+                }
             }
         }
     }
