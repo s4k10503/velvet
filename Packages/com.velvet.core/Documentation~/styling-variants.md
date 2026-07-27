@@ -39,20 +39,38 @@ A **USS-class** payload is toggled on the element's live class list, so above th
 `"flex flex-col md:flex-row"` carries both `flex-col` and `flex-row`. Both are single-class
 selectors, so specificity ties and the **later-declared rule in the bundled stylesheet wins** —
 a variant does not automatically outrank the base utility the way a CSS media-query rule does.
-Two consequences:
+Upstream Tailwind emits variant utilities into a later layer, so this is a limit of Velvet's
+current class-toggle mechanism rather than of the cascade itself. Two consequences:
 
-- Within a family, a variant can only override in the direction the stylesheet declares. The
-  direction utilities are ordered for the mobile-first idiom, so `flex flex-col md:flex-row`
-  works while `flex flex-row md:flex-col` does not — see
-  [styling-flexbox-and-gap.md](styling-flexbox-and-gap.md) for the full precedence table. Other
-  families follow their own declaration order: ascending for the numeric scales
-  (`p-2 md:p-8`, `text-sm md:text-2xl`), source order for the palettes
-  (`bg-neutral-50 dark:bg-neutral-900`). When an override does not take effect, swap which value
-  is the base and which is the variant.
-- An **arbitrary-value** payload (`md:w-[320px]`, `hover:bg-[#fff]`) is exempt: it is applied as
-  an inline style on a priority layer, so it always beats the base utility and falls back cleanly
-  when the variant turns off. The bracket form is the reliable way to force an override the
-  declaration order will not give you.
+- **A class payload only overrides in the direction its family is declared in.** Half of every
+  override pair is therefore a silent no-op — the variant class lands on the element and loses.
+  The direction utilities are ordered for the mobile-first idiom, so `flex flex-col md:flex-row`
+  works while `flex flex-row md:flex-col` does not; see
+  [styling-flexbox-and-gap.md](styling-flexbox-and-gap.md) for the full table. Every other family
+  follows its own source order, and there is no single rule covering them: the numeric scales
+  ascend (`p-2 md:p-8`, `text-sm md:text-2xl`) but their keyword members are declared last, so
+  `w-64 md:w-full` works while `w-full md:w-64` does not; the palettes follow palette source order
+  (`bg-neutral-50 dark:bg-neutral-900`); and the enumerated families (`items-*`, `justify-*`,
+  `self-*`, `content-*`, `text-left`/`center`/`right`) have no ordering intuition at all —
+  `items-start md:items-center` works, `items-center md:items-start` and
+  `text-left md:text-center` do not. **Check the partial in `Runtime/Styles/` when an override does
+  not take effect.**
+- **An arbitrary-value payload is exempt** (`md:w-[320px]`, `hover:bg-[#fff]`): it is applied as an
+  inline style on a priority layer, so it always beats the base utility, layers correctly against
+  other variants, and falls back cleanly when it turns off. Where a family has a bracket parse
+  path, that is the reliable way to force an override the declaration order will not give you.
+
+Neither workaround is universal, so do not assume one is always available:
+
+- Swapping base and variant changes the design, not just the spelling. Responsive variants are
+  **min-width only**, so `flex-col md:flex-row` says "column when narrow, row when wide"; it does
+  not express "row when narrow, column when wide", which currently has no utility spelling.
+- Families with no arbitrary-value parser have no bracket form at all — `flex-direction`,
+  `display`, and the alignment families among them. `md:flex-[column]` is not recognized and
+  silently adds a class matching no rule.
+
+When a layout needs an override neither route offers, compute the class string in C# from state
+the component owns and render exactly one member of the family.
 
 ### Responsive breakpoints
 

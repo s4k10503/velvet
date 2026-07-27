@@ -1,5 +1,4 @@
 using NUnit.Framework;
-using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -20,18 +19,12 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class DirectionVariantCascadePanelTests : PanelTestBase
     {
-        private const string StyleSheetPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
         private const float MdBreakpoint = 768f;
         private const float WideWidth = 1000f;
         private const float NarrowWidth = 500f;
         private const float Space4 = 16f;
 
-        protected override void LoadStyleSheets()
-        {
-            var sheet = AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetPath);
-            Assume.That(sheet, Is.Not.Null, "Precondition: the bundled StyleUtilities.uss loads");
-            _window.rootVisualElement.styleSheets.Add(sheet);
-        }
+        protected override void LoadStyleSheets() => _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
 
         // Mounts a container at the given panel width and resolves it: the panel needs a forced layout pass
         // before resolvedStyle.width exists, and the responsive manipulator re-reads that width off a

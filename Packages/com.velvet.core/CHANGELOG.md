@@ -83,17 +83,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `"flex flex-col md:flex-row"` — the documented "stack on narrow screens, row on wide ones" idiom —
-  laid out as a column at every width. A responsive or state variant adds the BARE utility to the live
-  class list, so above the breakpoint the element carried both `flex-col` and `flex-row`; both are
-  single-class selectors, and `_layout.uss` declared `.flex-col` after `.flex-row`, so the base column
-  won the cascade and the variant row never took effect. The direction utilities are now declared
-  column family first (`.flex-col`, `.flex-col-reverse`, `.flex-row`, `.flex-row-reverse`), so a variant
-  can turn a column into a row and, within an axis, reverse a base direction. Equal specificity leaves
-  only one total order, so the opposite override — a base `flex-row` that a variant turns into a column
-  (`"flex flex-row md:flex-col"`) — now resolves to a row at every width instead; write it as a column
-  base with a variant row. The `gap-*` polyfill resolves its axis from the same precedence and was
-  updated in lockstep, so spacing still follows the axis the container actually renders on.
+- **BREAKING:** `"flex flex-col md:flex-row"` — the documented "stack on narrow screens, row on wide
+  ones" idiom — laid out as a column at every width. A responsive or state variant adds the BARE
+  utility to the live class list, so above the breakpoint the element carried both `flex-col` and
+  `flex-row`; both are single-class selectors, and `_layout.uss` declared `.flex-col` after
+  `.flex-row`, so the base column won the cascade and the variant row never took effect. The
+  direction utilities are now declared column family first (`.flex-col`, `.flex-col-reverse`,
+  `.flex-row`, `.flex-row-reverse`), so a variant can turn a column into a row and, within an axis,
+  turn a plain direction into its reversed form. The class-toggle mechanism leaves the cascade unable
+  to tell a variant-applied class from a base one, so exactly one side of each pair can win: the
+  opposite overrides — `"flex flex-row md:flex-col"`, `"flex flex-col-reverse md:flex-col"`,
+  `"flex flex-row-reverse md:flex-row"` — **silently reverse behavior**, resolving to the base
+  direction at every width where they previously followed the variant. Rewrite them with the column
+  (or plain) form as the base, or render one direction class computed in C#. The `gap-*` polyfill
+  resolves its axis from the same precedence and was updated in lockstep, so spacing still follows the
+  axis the container actually renders on.
 - The VEL100 exhaustive-deps analyzer now also covers `Hooks.UseInsertionEffect` and `Hooks.UseBlocker`.
   Both take a closure plus a deps array, but neither was listed as a deps-comparing hook, so a captured
   value missing from their deps went unreported.

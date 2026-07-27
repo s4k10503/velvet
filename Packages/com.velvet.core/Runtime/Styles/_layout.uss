@@ -32,13 +32,17 @@
  * utility to the live class list, so `flex flex-col md:flex-row` carries BOTH .flex-col and
  * .flex-row above the breakpoint. All four selectors are single-class, so specificity ties and the
  * LATER declaration wins — declaration order alone decides which of two concurrent directions the
- * element lays out on, and no order can make both `flex-col md:flex-row` and `flex-row md:flex-col`
- * work. The column family is therefore declared BEFORE the row family so a variant can turn a
+ * element lays out on. The toggled class carries no record of having come from a variant, so no
+ * order can serve both `flex-col md:flex-row` and `flex-row md:flex-col`: that is a limit of the
+ * class-toggle mechanism, not of the cascade — a variant emitted into a later layer, the way
+ * upstream Tailwind does it, would win either way.
+ * The column family is therefore declared BEFORE the row family so a variant can turn a
  * COLUMN INTO A ROW: that is the mobile-first idiom (a narrow-screen stack that becomes a wide-screen
- * row, `flex flex-col md:flex-row`) documented in Documentation~/styling-variants.md. The reverse
- * override — a base row that a variant turns back into a column — cannot work through the cascade;
- * express it as a column base plus a variant row instead. Within each axis the plain form comes
- * first, so `flex-col sm:flex-col-reverse` and `flex-row md:flex-row-reverse` both take effect.
+ * row, `flex flex-col md:flex-row`) documented in Documentation~/styling-variants.md. The opposite
+ * override — a base row that a variant turns back into a column — is a SILENT no-op: the variant
+ * class lands on the element and loses. Express it as a column base plus a variant row instead.
+ * Within each axis the plain form comes first, so `flex-col sm:flex-col-reverse` and
+ * `flex-row md:flex-row-reverse` take effect while their mirrors do not.
  * `.flex` / `.grid` above set flex-direction too and are declared before all four, so any explicit
  * direction utility outranks them.
  * StyleGapManipulator.ResolveDirection reproduces this precedence to place the gap margin on the
