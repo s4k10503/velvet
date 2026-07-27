@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Machine-checks the shipped Documentation~ guides (plus both README.md files) against the actual
+    /// Machine-checks the shipped Documentation~ guides (plus both README.md files and CLAUDE.md) against the actual
     /// runtime API surface, so a doc referencing a renamed/removed <c>V.*</c> factory or <c>Hooks.*</c> hook,
     /// or an index that has drifted from the files on disk, fails a test instead of shipping silently wrong.
     /// Each check pins a failure mode that has actually shipped: a guide referencing a never-implemented
@@ -43,6 +43,7 @@ namespace Velvet.Tests
             }
             yield return (Path.GetFullPath("README.md"), "README.md (repo root)");
             yield return (Path.GetFullPath("Packages/com.velvet.core/README.md"), "Packages/com.velvet.core/README.md");
+            yield return (Path.GetFullPath("CLAUDE.md"), "CLAUDE.md");
         }
 
         [Test]
