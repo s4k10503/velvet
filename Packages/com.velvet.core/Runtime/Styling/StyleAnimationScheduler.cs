@@ -885,6 +885,49 @@ namespace Velvet
         // Whether the given element is currently exiting.
         public bool IsExiting(VisualElement element) => _pendingExits.ContainsKey(element);
 
+        // Enrolls a drop-shadow paint that came into existence AFTER an animation covering its caster
+        // started, into every such animation's co-fade. Each play snapshots the shadow bindings under its
+        // subtree when it begins, so a paint attached later — a hover:/md: payload toggling shadow-* mid-fade,
+        // or a re-render adding one — is in no snapshot, and would paint at full strength through a caster
+        // the fade has already made translucent. Enrolling at the caster's currently sampled opacity joins it
+        // to the fade where the rest of the subtree already is.
+        // A binding torn down again before the play ends stays in that play's list until it completes: the
+        // tick keeps writing a factor onto a paint nothing draws, which is inert, and the count is bounded by
+        // the toggles one animation's duration can hold.
+        internal void AdoptShadowForCoFade(VisualElement element, DropShadowBinding binding)
+        {
+            AdoptShadowInto(_pendingEnters, element, binding);
+            AdoptShadowInto(_pendingExits, element, binding);
+        }
+
+        private static void AdoptShadowInto(Dictionary<VisualElement, PendingAnimation> map,
+            VisualElement element, DropShadowBinding binding)
+        {
+            foreach (var pending in map.Values)
+            {
+                var animating = pending.AnimatingElement;
+                if (animating != null && CoversElement(animating, element))
+                {
+                    ShadowCoFadeCoordinator.AdoptShadow(pending, animating, element, binding);
+                }
+            }
+        }
+
+        // Whether animating is element itself or one of its ancestors — the same "under the animating
+        // subtree" relation CollectShadowsForCoFade's downward walk expresses, asked from the other end
+        // because only the one element is known here.
+        private static bool CoversElement(VisualElement animating, VisualElement element)
+        {
+            for (var current = element; current != null; current = current.hierarchy.parent)
+            {
+                if (ReferenceEquals(current, animating))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         // Cancels every animation and removes the applied CSS classes and inline styles.
         public void CancelAll()
         {
@@ -1428,6 +1471,23 @@ namespace Velvet
                 for (var i = 0; i < count; i++)
                 {
                     CollectShadows(element[i], ref shadows);
+                }
+            }
+
+            // Registers one late-arriving shadow as this animation's co-fade subject, at the caster's current
+            // opacity, and starts the tick if this play had no shadow to drive when it began.
+            internal static void AdoptShadow(StyleAnimationScheduler.PendingAnimation pending,
+                VisualElement animating, VisualElement element, DropShadowBinding binding)
+            {
+                var raw = animating.resolvedStyle.opacity;
+                DropShadowSilhouette.SetCoFade(binding, element, pending,
+                    float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw));
+                var started = pending.Shadows != null;
+                (pending.Shadows ??= new List<(VisualElement element, DropShadowBinding binding)>())
+                    .Add((element, binding));
+                if (!started)
+                {
+                    StartShadowCoFadeTick(pending);
                 }
             }
 

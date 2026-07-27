@@ -12,12 +12,10 @@ class selectors cannot contain `:`, so these tokens are never written to the ele
 list; the reconciler routes each one to a **manipulator** that toggles the payload on and off
 as the matching signal changes.
 
-A payload may be one of the utilities that is itself realised by a manipulator rather than by a
-USS rule — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance`. Those are
-re-derived when the variant toggles them, so a variant-gated one behaves exactly like a literal
-class, including the ownership rules between them: `className="gap-4 md:grid md:grid-cols-3"` is a
-gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from
-`md` up.
+A payload may also be one of the utilities Velvet realises itself rather than through a USS rule.
+Those need re-deriving when the variant toggles, and nearly all of them get it — see
+[Payloads Velvet realises itself](#payloads-velvet-realises-itself) for the one family that does not
+and for the class channels that are not variants at all.
 
 A payload occupies one slot per `(priority, token)` pair. Declaring the same token literally and
 behind a variant is therefore safe — in `gap-4 md:gap-4` the `md:` payload turning off leaves the
@@ -25,6 +23,25 @@ literal `gap-4` alone — and so is declaring it behind two variants of differen
 (`dark:gap-4 md:gap-4`). What still shares a slot is the same token behind two payloads of the **same**
 precedence. Declaring the base value once and letting
 the variant override it (`gap-4 md:gap-8`) remains the idiomatic form.
+
+> **Two shapes to watch for, both when several variants name the same utility from
+> [Payloads Velvet realises itself](#payloads-velvet-realises-itself).** Ordinary USS utilities are
+> unaffected by either, since the ranking above governs them.
+>
+> *Same token, no literal base* — `"dark:gap-4 md:gap-4"`, `"dark:shadow-lg has-[.sel]:shadow-lg"`.
+> When the first of the two turns off, the class stays on the element exactly as described above, but
+> stops being *driven*: the spacing disappears and the shadow stops painting while `gap-4` /
+> `shadow-lg` is still sitting in the class list. A literal base is immune — `"gap-4 md:gap-4"` keeps
+> its gap.
+>
+> *Same family, different values* — `"bg-white md:shadow-sm dark:shadow-lg"`. Which one wins is decided
+> by the order the two signals happened to fire, not by the precedence table: go dark and then widen
+> past `md` and you get `shadow-sm`; widen first and then go dark and you get `shadow-lg`. The end
+> state is identical either way, so the same window can render differently depending on how the user
+> got there.
+>
+> Both come from the same gap — these utilities have no USS property set for the ranking to work from —
+> and the idiomatic `"gap-4 md:gap-8"` shape, one base plus one variant per element, avoids both.
 
 ## The variant set
 
@@ -178,6 +195,53 @@ nesting another gate. Stacking composes any of the families above (state / theme
 // Underline on hover, but only in dark mode and only from md up.
 V.Label(className: "md:dark:hover:underline", text: "Docs");
 ```
+
+### Payloads Velvet realises itself
+
+Most payloads are plain USS classes, and putting one on the element's live class list is the whole
+job. A few utilities are not USS rules at all: UI Toolkit has no property for them, so Velvet builds
+them from the class array the reconciler last reconciled — an array that never contains a variant's
+payload, since `md:shadow-lg` is a variant token and `shadow-lg` is what it resolves to. Those
+utilities have to be re-derived when the variant toggles.
+
+**Re-derived, so the variant behaves exactly like a literal class.** The manipulator-backed layout
+utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance` — and the
+wrapper-less paints — `skew-*`, `shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its
+`from-` / `via-` / `to-` stops), `animate-*`, and `border-dashed` / `border-dotted`. Each resolves at
+mount and on every toggle in both directions, and the order they compose in is preserved on a toggle
+just as on a render — so `className="gap-4 md:grid md:grid-cols-3"` is a gapped flex row below `md`
+and a three-column grid (spaced by the grid, which owns its gap) from `md` up, and
+`className="bg-white shadow-sm md:shadow-lg"` deepens its shadow from `md` up.
+
+**`ring-*` is the exception: a ring variant is inert.** `focus:ring-2` toggles a class that draws
+nothing. A ring is not a paint — UI Toolkit has neither `box-shadow` nor `outline`, so Velvet draws
+the band on a wrapper element placed around the target, and only a reconcile pass may add or remove a
+wrapper. Doing it from the pointer callback or breakpoint notification a variant fires in is not
+available, and the alternative — wrapping every element that so much as mentions a ring variant, for
+its whole life — is worse than the missing feature: the wrapper is layout-transparent for `flex-grow`
+and `flex-shrink` only, so a percentage-width or stretch-sized inner would begin measuring against the
+wrapper instead of the real parent. Declare `ring-*` literally, or compute the class in C# from your
+own state so it reaches the element through the reconciler.
+
+**Class channels that are not variants drive none of this.** `whileHoverClass`, `whileTapClass` and
+`whileFocusClass`, the transient enter / exit classes an `AnimatePresence` play applies for the
+duration of an animation, and the drag-and-drop channels (`whileDraggingClass`, `whileOverClass`,
+`whileDragActiveClass`) all write their utilities straight onto the live class list without telling
+the reconciler. So `V.Div(whileHoverClass: "shadow-lg")` toggles a class nothing paints — use
+`hover:shadow-lg`. What these channels *do* carry is any utility backed by a plain USS rule —
+`bg-red-500`, `opacity-50`, `px-4`, `border-red-500`, `scale-105`, `rotate-3`. Read that as the list in
+the first paragraph above versus everything else, not as whole categories: `gap-4` is spacing and
+`skew-x-6` is a transform, yet both are in that list and neither works here. A `V.Motion`'s resting
+`variants` classes go through the reconciler and are unaffected.
+
+**`[&>*]:` reaches the paints late, and inconsistently.** It is the only family whose payload is
+spelled on the *container* rather than on the element it lands on, and a child is fully built before
+the container applies it. The layout utilities still re-derive at mount, so `[&>*]:gap-2` spaces
+immediately. The paints depend on something the child cannot be relied on to have: if the child
+declares a variant-gated payload **of its own** — any one, `hover:gap-4` is enough — it was already
+recorded at create and `[&>*]:shadow-lg` paints at mount; if it declares none, the same class paints
+only from that child's next render. Do not lean on either outcome. Put the utility on the child, or
+behind a variant the child declares itself.
 
 ## Container queries — `@container`
 

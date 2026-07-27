@@ -24,11 +24,11 @@ namespace Velvet
                 return;
             }
 
-            // Set when this call toggled a layout gate token (gap / grid / divide / text-balance) on the
-            // live class list. Signalled once after the whole payload array rather than per token, so
-            // `md:grid md:grid-cols-3` re-derives the grid from its FINAL token set instead of first
-            // building a one-column grid from the half-applied one.
-            var layoutGateChanged = false;
+            // Set when this call toggled a gate token (see IsVariantGateToken) on the live class list.
+            // Signalled once after the whole payload array rather than per token, so `md:grid md:grid-cols-3`
+            // re-derives the grid from its FINAL token set instead of first building a one-column grid from
+            // the half-applied one.
+            var gateChanged = false;
             // A USS-spelled width payload has to re-sync the layout manipulators: it decides whether
             // text-balance stands down, and it loses to balance's own inline width, so it moves nothing the
             // engine would raise a geometry event for. Kept out of the gate set above because it needs only
@@ -83,13 +83,13 @@ namespace Velvet
                 else if (on)
                 {
                     StyleClassProjection.Add(target, core, effectivePriority);
-                    layoutGateChanged |= TrackLayoutGate(ctx, target, core, true);
+                    gateChanged |= TrackVariantGate(ctx, target, core, true);
                     reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
                 }
                 else
                 {
                     StyleClassProjection.Remove(target, core, effectivePriority);
-                    layoutGateChanged |= TrackLayoutGate(ctx, target, core, false);
+                    gateChanged |= TrackVariantGate(ctx, target, core, false);
                     reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
                 }
 
@@ -103,34 +103,75 @@ namespace Velvet
                 }
             }
 
-            if (layoutGateChanged || reSyncOnly)
+            if (gateChanged || reSyncOnly)
             {
-                // A gap / grid / divide / text-balance class just appeared on (or left) the live class list
-                // without passing through the reconciler, so the manipulators those tokens gate must be
+                // A gate class just appeared on (or left) the live class list without passing through the
+                // reconciler, so the layout manipulators and paint layers those tokens gate must be
                 // re-derived here — nothing else will run until the element's next patch, which may never
                 // come (a breakpoint crossing re-renders nothing).
-                ctx?.LayoutManipulatorReSync?.Invoke(target);
+                ctx?.VariantGatedReSync?.Invoke(target);
             }
         }
 
-        // Records a toggled payload that is one of the layout gate tokens, returning true when the tracked
-        // set changed. Returns false without touching anything for the parameterless callers (no context to
-        // record into) and for the overwhelmingly common non-layout payload.
-        private static bool TrackLayoutGate(ReconcilerContext? ctx, VisualElement target, string core, bool on)
-            => ctx != null && IsLayoutGateToken(core) && ctx.TrackVariantLayoutClass(target, core, on);
+        // True when any token in classNames is a VARIANT whose payload is a gate token — the question "could
+        // a toggle on this element ever change what a class-driven pass builds", which the reconciler asks so
+        // it can put the array aside for a re-sync that will have none of its own.
+        //
+        // The peel is the last ':' rather than each family's own parser: every variant syntax spells its
+        // payload after a colon, no gate token contains one, and this only ever opens an entry — so a token
+        // shape it reads too generously costs one dictionary slot, while one it failed to recognize would
+        // cost the payload its effect.
+        public static bool DeclaresGatePayload(string[] classNames)
+        {
+            if (classNames == null)
+            {
+                return false;
+            }
+            foreach (var cls in classNames)
+            {
+                if (string.IsNullOrEmpty(cls))
+                {
+                    continue;
+                }
+                var colon = cls.LastIndexOf(':');
+                if (colon < 0 || colon == cls.Length - 1)
+                {
+                    continue;
+                }
+                var payload = StyleArbitraryValueResolver.StripImportant(
+                    cls.Substring(colon + 1), out _);
+                if (IsVariantGateToken(payload))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
 
-        // The utility tokens whose mere PRESENCE decides whether a layout manipulator exists on an element
-        // (FiberNodePatcher.ApplyLayoutManipulators). Each family answers for its own prefix set so this
-        // gate cannot drift from the array scans the manipulator passes run.
+        // Records a toggled payload that is one of the gate tokens, returning true when the tracked set
+        // changed. Returns false without touching anything for the parameterless callers (no context to
+        // record into) and for the overwhelmingly common non-gate payload.
+        private static bool TrackVariantGate(ReconcilerContext? ctx, VisualElement target, string core, bool on)
+            => ctx != null && IsVariantGateToken(core) && ctx.TrackVariantGateClass(target, core, on);
+
+        // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
+        // the four layout manipulators (FiberNodePatcher.ApplyLayoutManipulators) and the five wrapper-less
+        // paint layers (FiberNodePatcher.ApplyResolvedClassPasses). Each family answers for its own prefix
+        // set so this gate cannot drift from the array scans those passes run.
         //
         // Deliberately NOT the same set as the re-sync trigger: entering this one also routes the element
-        // to the live-class-list path on every later patch, which costs an array per patch, and that is
-        // only worth paying for a token a manipulator pass has to READ back out of the class array. A width
-        // payload needs the trigger and nothing else — text-balance reads the live list directly.
-        private static bool IsLayoutGateToken(string core)
+        // to the composed class source on every later patch, which costs an array per patch, and that is
+        // only worth paying for a token a pass has to READ back out of the class array. A width payload
+        // needs the trigger and nothing else — text-balance reads the live list directly.
+        private static bool IsVariantGateToken(string core)
             => StyleGapClass.IsGapToken(core)
                 || StyleGridClass.IsGridToken(core)
                 || StyleDivideClass.IsDivideToken(core)
-                || StyleTextBalanceClass.IsTextBalanceToken(core);
+                || StyleTextBalanceClass.IsTextBalanceToken(core)
+                || StyleSkewClass.IsSkewClass(core)
+                || StyleShadowClass.IsShadowClass(core)
+                || StyleGradientClass.IsGradientClass(core)
+                || StyleAnimateClass.IsAnimateClass(core)
+                || StyleBorderStyleClass.IsBorderStyleClass(core);
     }
 }

@@ -177,6 +177,99 @@ namespace Velvet.Tests.Performance
     }
 
     /// <summary>
+    /// Benchmarks the wrapper-less PAINT sequence — skew, drop shadow, gradient, animate-* and
+    /// border-dashed — which the manipulator fixture above cannot reach: its rows carry no paint token at
+    /// all, so every one of those passes early-outs on its first scan there.
+    /// <para>
+    /// Two row shapes, because the paint passes read one of two class sources. A row whose paint tokens are
+    /// literal reads the reconciled array straight through; a row whose paint tokens arrive through a variant
+    /// reads a source composed from the reconciled array plus what the live class list adds, and pays for
+    /// that composition on every patch. Measuring the pair is what says how much the second costs.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// <c>animate-none</c> rather than a live motion: the parse cost per class is identical (the extractor is
+    /// its own gate, so it scans either way), while a live one would schedule a recurring tick per row and
+    /// leave a hundred of them running underneath the measurement.
+    /// </remarks>
+    internal sealed class PaintPassReconcileBenchmarks
+    {
+        private const int k_Rows = 100;
+        private const int k_WarmupCount = 5;
+        private const int k_MeasurementCount = 20;
+
+        // One live token of every paint family. Skew owns the face, so the shadow paints only its quad, the
+        // gradient rides the sheared mesh and the dashed layer defers — the fully-contended shape, which is
+        // the one whose ordering the passes actually have to resolve.
+        private const string k_PaintTokens =
+            "-skew-x-6 shadow-lg border-dashed bg-gradient-to-r from-blue-500 to-blue-900 animate-none";
+
+        private const string k_PlainRowClass = "flex flex-row " + k_PaintTokens;
+
+        // The same set behind a theme variant. Nothing else differs, so the delta against the plain row is
+        // the composed source and what it costs to keep up to date.
+        private const string k_VariantRowClass =
+            "flex flex-row dark:-skew-x-6 dark:shadow-lg dark:border-dashed dark:bg-gradient-to-r "
+            + "dark:from-blue-500 dark:to-blue-900 dark:animate-none";
+
+        private Reconciler _reconciler = null!;
+        private VisualElement _root = null!;
+        private bool _darkBefore;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _reconciler = new Reconciler();
+            _root = new VisualElement();
+            _darkBefore = VelvetTheme.IsDark;
+            VelvetTheme.IsDark = false;
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _reconciler.Dispose();
+            VelvetTheme.IsDark = _darkBefore;
+        }
+
+        [Test, Performance]
+        public void Reconcile_UnchangedClassList_100LiteralPaintRows() => Run(k_PlainRowClass, dark: false);
+
+        [Test, Performance]
+        public void Reconcile_UnchangedClassList_100VariantGatedPaintRows() => Run(k_VariantRowClass, dark: true);
+
+        // Distinct VNode instances carrying the same tokens in freshly parsed arrays, so the class diff runs
+        // its full content comparison and every row is really patched — the same shape the manipulator
+        // fixture measures, pointed at the paint sequence.
+        private void Run(string rowClass, bool dark)
+        {
+            var mounted = BuildRows(rowClass);
+            ClassNameCacheTestAccess.ClearForTest();
+            var repeat = BuildRows(rowClass);
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), mounted);
+            // After the mount, so the payloads land through the theme signal the way they do in a live panel
+            // (the conditional manipulator evaluates at attach or on a change, and this root has no panel).
+            VelvetTheme.IsDark = dark;
+
+            Measure.Method(() => _reconciler.Reconcile(_root, mounted, repeat))
+                .GC()
+                .WarmupCount(k_WarmupCount)
+                .MeasurementCount(k_MeasurementCount)
+                .Run();
+        }
+
+        private static VNode[] BuildRows(string rowClass)
+        {
+            var rows = new VNode[k_Rows];
+            for (var i = 0; i < k_Rows; i++)
+            {
+                rows[i] = V.Div(rowClass, V.Label(text: "cell"));
+            }
+            return rows;
+        }
+    }
+
+    /// <summary>
     /// Benchmarks the class projection on the shape that builds one most often and carries the most
     /// classes: a long list of rows toggling the <c>Visible</c> prop, which writes <c>hidden</c> into the
     /// projection and so forces a recompute per row per toggle. The manipulator fixture above cannot stand

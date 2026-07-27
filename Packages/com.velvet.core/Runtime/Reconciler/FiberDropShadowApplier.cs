@@ -59,7 +59,7 @@ namespace Velvet
         // The shadow is a paint, not a wrapper, so a Motion can carry a shadow paint without becoming an
         // AnimatePresence anchor (nothing structural is added).
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
-            float skewXDeg = 0f)
+            float skewXDeg, bool canReleaseFace)
         {
             var bound = _ctx.ShadowBindings.TryGetValue(element, out var binding);
             // Fast path: no shadow anywhere near this element.
@@ -71,14 +71,15 @@ namespace Velvet
             var spec = default(ShadowSpec);
             var want = !clipActive && StyleShadowClass.TryExtract(classNames, out spec);
 
-            // ApplySkewOnPatch ran before this (PatchElement order), so the SkewBindings entry is in its
+            // ApplySkewOnPatch ran before this (the shared pass order), so the SkewBindings entry is in its
             // post-patch state: a skewed caster's face is owned by its SkewSilhouette, an upright caster's by
             // this shadow paint. Tracks skew-y too (a skewXDeg-0 yet skewed caster keeps a SkewBinding).
             var casterSkewed = _ctx.SkewBindings.ContainsKey(element);
 
             if (want && bound)
             {
-                DropShadowSilhouette.Sync(element, binding, spec, classNames, skewXDeg, casterSkewed);
+                DropShadowSilhouette.Sync(element, binding, spec, classNames, skewXDeg, casterSkewed,
+                    canReleaseFace);
                 DropShadowSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
             }
             else if (want)
@@ -86,6 +87,11 @@ namespace Velvet
                 var fresh = DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
                 _ctx.ShadowBindings[element] = fresh;
                 DropShadowSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(classNames), classNames);
+                // A paint that appears while an enter / exit covering this element is already running has to
+                // join that fade: the play snapshotted the subtree's shadows when it began, and this one was
+                // not there, so nothing else would ever scale its alpha and it would paint at full strength
+                // through an already-translucent caster.
+                _ctx.StyleAnimationScheduler.AdoptShadowForCoFade(element, fresh);
             }
             else if (bound)
             {

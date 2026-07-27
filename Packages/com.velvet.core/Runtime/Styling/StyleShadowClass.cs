@@ -100,6 +100,14 @@ namespace Velvet
         // can interpolate through.
         internal static bool TryGetRadiusPx(string suffix, out float px) => RadiusScale.TryGetValue(suffix, out px);
 
+        // True when cls belongs to either shadow family this layer owns (recognized or not-yet-valid).
+        // Both the array gate below and the variant-payload gate answer through this one predicate, so
+        // which tokens count as "a shadow utility" is defined in exactly one place.
+        public static bool IsShadowClass(string cls)
+            => !string.IsNullOrEmpty(cls)
+                && (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal)
+                    || cls == "drop-shadow" || cls.StartsWith("drop-shadow-", StringComparison.Ordinal));
+
         // Cheap early-out gate: true when ANY class is shadow or begins with shadow-. Used
         // to skip the full parse on the ~99% of elements that carry no shadow class and no binding.
         public static bool HasShadowClass(string[] classNames)
@@ -110,12 +118,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (string.IsNullOrEmpty(cls))
-                {
-                    continue;
-                }
-                if (cls == "shadow" || cls.StartsWith("shadow-", StringComparison.Ordinal)
-                    || cls == "drop-shadow" || cls.StartsWith("drop-shadow-", StringComparison.Ordinal))
+                if (IsShadowClass(cls))
                 {
                     return true;
                 }
