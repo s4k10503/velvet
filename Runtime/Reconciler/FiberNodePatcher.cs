@@ -393,7 +393,7 @@ namespace Velvet
             StyleTextEffectResolver.Apply(_ctx, element, classNames);
             _appliers.ApplyGradientOnPatch(element, classNames, skewable: gradientSkewable);
             _appliers.ApplyAnimateOnPatch(element, classNames);
-            // transition-filter opt-in: attach/keep/detach the tween binding against the new class list. The
+            // transition-filter: attach/keep/detach the tween binding against the new class list. The
             // shared hook for both the element and Motion patch paths (a filter can be Motion-hosted).
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
             // Here, not in the Particles-settings diff: the spacer follows the class list (a filter comes and
