@@ -427,6 +427,129 @@ namespace MyApp.Pages
         }
 
         [Fact]
+        public void Reports_When_UseInsertionEffect_Lambda_Captures_Local_Missing_From_Deps()
+        {
+            // Arrange
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var local = 5;
+            global::Velvet.Hooks.UseInsertionEffect(() => () => System.Console.WriteLine(local), new object[] { });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Contains("local", Assert.Single(diagnostics.Where(d => d.Id == "VEL100")).GetMessage());
+        }
+
+        [Fact]
+        public void DoesNotReport_When_UseInsertionEffect_Captured_Local_Is_In_Deps()
+        {
+            // Arrange
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var count = 5;
+            global::Velvet.Hooks.UseInsertionEffect(() => () => System.Console.WriteLine(count), new object[] { count });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
+        }
+
+        [Fact]
+        public void Reports_When_UseBlocker_Predicate_Captures_Local_Missing_From_Deps()
+        {
+            // Arrange
+            // UseBlocker's predicate receives the navigation attempt, so it is the one deps-comparing factory
+            // whose lambda is not parameterless.
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var isDirty = true;
+            global::Velvet.Hooks.UseBlocker(attempt => isDirty, new object[] { });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Contains("isDirty", Assert.Single(diagnostics.Where(d => d.Id == "VEL100")).GetMessage());
+        }
+
+        [Fact]
+        public void DoesNotReport_When_UseBlocker_Predicate_Captured_Local_Is_In_Deps()
+        {
+            // Arrange
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var isDirty = true;
+            global::Velvet.Hooks.UseBlocker(attempt => isDirty, new object[] { isDirty });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
+        }
+
+        [Fact]
+        public void DoesNotReport_When_UseBlocker_Predicate_Only_Reads_Its_Own_Parameter()
+        {
+            // Arrange
+            // Admitting a parameterized factory must not turn the lambda's own parameter into a dependency:
+            // it is supplied per invocation, not captured from the render scope.
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            global::Velvet.Hooks.UseBlocker(attempt => attempt != null, new object[] { });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
+        }
+
+        [Fact]
         public void Reports_When_UseImperativeHandle_Factory_Captures_Local_Missing_From_Deps()
         {
             // UseImperativeHandle's deps-comparing argument is the factory at index 1 (refTarget is index 0).

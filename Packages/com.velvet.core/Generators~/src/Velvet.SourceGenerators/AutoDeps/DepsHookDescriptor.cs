@@ -6,16 +6,23 @@ namespace Velvet.SourceGenerators.AutoDeps
     /// Describes how the deps-comparison analyzer locates the closure factory and the deps argument for a
     /// single deps-comparing Velvet hook. Velvet's hooks place these arguments at different positions
     /// (e.g. <c>UseImperativeHandle(refTarget, factory, deps)</c> vs <c>UseEffect(factory, deps)</c>), and
-    /// <c>UseCallback</c> / <c>UseImperativeHandle</c> pass deps as <c>params</c> (loose trailing arguments).
+    /// <c>UseCallback</c> / <c>UseImperativeHandle</c> / <c>UseBlocker</c> pass deps as <c>params</c> (loose
+    /// trailing arguments).
     /// </summary>
     internal readonly struct DepsHookDescriptor
     {
-        private DepsHookDescriptor(string containingTypeFullName, int factoryArgIndex, int depsArgIndex, bool depsAreParams)
+        private DepsHookDescriptor(
+            string containingTypeFullName,
+            int factoryArgIndex,
+            int depsArgIndex,
+            bool depsAreParams,
+            int maxFactoryParameterCount = 0)
         {
             ContainingTypeFullName = containingTypeFullName;
             FactoryArgIndex = factoryArgIndex;
             DepsArgIndex = depsArgIndex;
             DepsAreParams = depsAreParams;
+            MaxFactoryParameterCount = maxFactoryParameterCount;
         }
 
         /// <summary>
@@ -38,11 +45,26 @@ namespace Velvet.SourceGenerators.AutoDeps
         public bool DepsAreParams { get; }
 
         /// <summary>
+        /// Largest lambda arity the widest overload of this hook's factory accepts. Most factories are
+        /// parameterless (0); <c>UseBlocker</c> passes the navigation attempt (and, on the async overload, a
+        /// cancellation token) into the predicate. A lambda with more parameters than this is not the hook's
+        /// factory shape — notably <c>V.Memo&lt;TProps&gt;(Func&lt;TProps,VNode&gt;, props, …)</c>, whose
+        /// props lambda must stay out of the deps-comparison pipeline.
+        /// </summary>
+        public int MaxFactoryParameterCount { get; }
+
+        /// <summary>
         /// Maps a Velvet deps-comparing method name to its descriptor, or returns false for non-deps methods.
         /// Covers the deps-comparison surface across both Velvet.Hooks (UseEffect / UseLayoutEffect /
-        /// UseCallback / UseMemo / UseImperativeHandle) and the V DSL's memoized-subtree-node primitives
-        /// (V.Memoized / V.MemoizedWithKey).
+        /// UseInsertionEffect / UseCallback / UseMemo / UseImperativeHandle / UseBlocker) and the V DSL's
+        /// memoized-subtree-node primitives (V.Memoized / V.MemoizedWithKey).
         /// </summary>
+        /// <remarks>
+        /// This table is the analyzer's whole notion of which hooks compare deps, and it is expressed in
+        /// strings that no compiler checks against the runtime. The Generators~ hook-surface drift guard
+        /// asserts that every runtime hook taking both a delegate and a <c>deps</c> parameter appears here,
+        /// so a hook added on the runtime side cannot silently fall out of exhaustive-deps coverage.
+        /// </remarks>
         public static bool TryGet(string methodName, out DepsHookDescriptor descriptor)
         {
             switch (methodName)
@@ -51,6 +73,9 @@ namespace Velvet.SourceGenerators.AutoDeps
                     descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 0, depsArgIndex: 1, depsAreParams: false);
                     return true;
                 case VelvetWellKnownNames.UseLayoutEffectMethodName:
+                    descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 0, depsArgIndex: 1, depsAreParams: false);
+                    return true;
+                case VelvetWellKnownNames.UseInsertionEffectMethodName:
                     descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 0, depsArgIndex: 1, depsAreParams: false);
                     return true;
                 case VelvetWellKnownNames.UseCallbackMethodName:
@@ -63,6 +88,16 @@ namespace Velvet.SourceGenerators.AutoDeps
                     return true;
                 case VelvetWellKnownNames.UseImperativeHandleMethodName:
                     descriptor = new DepsHookDescriptor(VelvetWellKnownNames.HooksTypeFullName, factoryArgIndex: 1, depsArgIndex: 2, depsAreParams: true);
+                    return true;
+                case VelvetWellKnownNames.UseBlockerMethodName:
+                    // The blocker predicate receives the navigation attempt (plus a cancellation token on the
+                    // async overload), so unlike every other entry its factory lambda is not parameterless.
+                    descriptor = new DepsHookDescriptor(
+                        VelvetWellKnownNames.HooksTypeFullName,
+                        factoryArgIndex: 0,
+                        depsArgIndex: 1,
+                        depsAreParams: true,
+                        maxFactoryParameterCount: 2);
                     return true;
                 case VelvetWellKnownNames.VMemoizedMethodName:
                     // V.Memoized(Func<VNode> factory, params object[] deps) — the DSL's memoized-subtree-node

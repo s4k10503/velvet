@@ -22,6 +22,7 @@ dotnet test Velvet.SourceGenerators.sln
 - `SourceBuilderTests` — unit tests for the indent / block helpers in `Shared/SourceBuilder.cs`
 - `MemoOverloadGeneratorTests` — snapshot comparison that verifies the generated `V.Memoized<T1..T8>` output
 - `MemoizeMethodGeneratorTests` — verifies `[MemoizeMethod]`-driven `V.Memoized(...)` wrapper expansion and its diagnostics (see [Documentation~/memoization.md](../Documentation~/memoization.md) for what they mean and the complete list)
+- `HookSurfaceDriftTests` — pins the analyzer's hook-name and type-name strings to the runtime surface by parsing `../Runtime/` with Roslyn (syntax only, no Unity assemblies). Nothing else notices a hook rename or a newly added deps-comparing hook on this side of the compile boundary, so the guard turns both into a red test instead of silently narrowed exhaustive-deps coverage
 
 ## Directory layout
 
@@ -43,6 +44,7 @@ Generators~/
     ├── SourceBuilderTests.cs
     ├── MemoOverloadGeneratorTests.cs
     ├── MemoizeMethodGeneratorTests.cs
+    ├── HookSurfaceDriftTests.cs               (pins the analyzer name lists to ../Runtime/)
     ├── GeneratorTestHelper.cs
     └── Snapshots/                            (verified golden files)
         ├── Memoized_Arity*/MemoizedWithKey_Arity*    (MemoOverloadGenerator)
@@ -63,5 +65,7 @@ This README is now scoped to **contributor concerns** (build / test / DLL shippi
 
 1. `dotnet restore` / `dotnet build -c Release` / `dotnet test`
 2. `git diff --exit-code Runtime/Plugins/Generators/` to confirm the committed DLL matches the rebuilt output
+
+It triggers on `Runtime/**` as well as `Generators~/**`, because `HookSurfaceDriftTests` reads the runtime sources: a PR that only renames a hook must still run this job.
 
 Always rebuild and commit the DLL after updating the generator sources.

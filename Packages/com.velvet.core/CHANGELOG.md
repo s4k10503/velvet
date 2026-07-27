@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The VEL100 exhaustive-deps analyzer now also covers `Hooks.UseInsertionEffect` and `Hooks.UseBlocker`.
+  Both take a closure plus a deps array, but neither was listed as a deps-comparing hook, so a captured
+  value missing from their deps went unreported. `UseBlocker`'s predicate receives the navigation attempt,
+  and a factory lambda that takes parameters was previously skipped outright; the predicate's own
+  parameter is supplied per invocation and is still never treated as a dependency.
 - A `FocusScope` with `restoreFocus: true` did not hand focus back to the prior element when the
   scope's ROOT element itself (rather than a descendant) held focus at unmount: the guard used
   `VisualElement.Contains`, which does not count an element as containing itself, so a focused root
