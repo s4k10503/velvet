@@ -19,12 +19,13 @@ Unity test runs require the editor to be **closed** (it holds the project lock).
 UNITY=/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity
 "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
   -testResults /tmp/results.xml -logFile /tmp/run.log
+python3 scripts/assert-no-inconclusive.py /tmp/results.xml
 ```
 
 - **Run a subset / single fixture:** add `-testFilter "Velvet.Tests.SomeFixture"` (semicolon-separates multiple; matches fully-qualified class or method names).
 - **PlayMode:** `-testPlatform PlayMode`.
-- **Do NOT pass `-nographics`.** Tests that mount a real panel (an `EditorWindow.rootVisualElement`, or anything reading `resolvedStyle` / firing pointer/focus events) fail with "No graphic device is available" under `-nographics`. Graphics-free tests still pass with graphics on, so just always omit the flag.
-- Results land in the JUnit-style XML (`grep -o 'passed="[0-9]*"\|failed="[0-9]*"'`); compile errors appear only in the `-logFile` (`grep "error CS"`).
+- **Do NOT pass `-nographics`.** Everything that needs a real panel (an `EditorWindow.rootVisualElement`, or anything reading `resolvedStyle` / firing pointer/focus events) goes through `TestGraphics.IgnoreIfHeadless`, so the flag does not fail those tests — it **skips** them, and the run reports green having exercised none of the panel behavior. Graphics-free tests all pass with graphics on, so the flag buys nothing and costs the half of the suite that is hardest to get right.
+- Results land in the JUnit-style XML (`grep -o 'passed="[0-9]*"\|failed="[0-9]*"'`); compile errors appear only in the `-logFile` (`grep "error CS"`). Neither the exit code nor any reporter treats an inconclusive case as a failure, which is why the run ends with `assert-no-inconclusive.py` — CI runs the same script.
 - Interactively, the same suites run from **Window ▸ General ▸ Test Runner**.
 
 ### Source generators (separate .NET solution)
@@ -34,24 +35,25 @@ The Roslyn analyzers/generators under `Packages/com.velvet.core/Generators~/` ar
 ```bash
 cd Packages/com.velvet.core/Generators~
 dotnet test Velvet.SourceGenerators.sln -c Release   # generator unit tests (no Unity license needed)
-./build.sh                                            # rebuild + redeploy DLLs to Runtime/Plugins, then commit them
 ```
 
-CI is split by what a change can affect: `.github/workflows/generators.yml` runs `source-generators` (no license) for `Generators~/**` changes and for `Runtime/**` changes (the analyzer's hook-name lists are pinned against the runtime sources, so a rename there must run the generator suite), and `.github/workflows/test.yml` runs `unity-tests` (EditMode/PlayMode, **skipped unless a `UNITY_LICENSE` secret is set** — see CONTRIBUTING.md) only for package/project changes; docs and markdown trigger neither. Docs (`docs/`) are DocFX-generated from XML comments via `docs/build.sh`.
+A generator change is complete only once the redeployed DLLs are committed with it; `Generators~/README.md` owns the build and deploy steps.
+
+CI is split by what a change can affect: `.github/workflows/generators.yml` runs `source-generators` (no license) for `Generators~/**` changes and for `Runtime/**` changes (its drift guards re-derive the hook surface and the generator test stub's signatures from the runtime sources, so a rename there must run the generator suite), and `.github/workflows/test.yml` runs `unity-tests` (EditMode/PlayMode, **skipped unless a `UNITY_LICENSE` secret is set** — see CONTRIBUTING.md) only for package/project changes; docs and markdown trigger neither. Docs (`docs/`) are DocFX-generated from XML comments via `docs/build.sh`.
 
 ## Architecture (the parts that span many files)
 
 The render pipeline, in dependency order under `Runtime/`:
 
-1. **`Component/`** — the `V.*` factories build an immutable **`VNode`** tree (`VNodeTypes.cs`); `V.Mount` attaches it. `V.Component(Foo.Render)` wraps a `[Component] static VNode Foo()`. `V.List` / `V.When` / `V.Fragment` / `V.Provider` are the JSX-construct equivalents. `VNodePool.cs` pools the poolable primitives.
+1. **`Component/`** — the `V.*` factories build an immutable **`VNode`** tree (`VNodeTypes.cs`); `V.Mount` attaches it. `V.Component(Foo.Render)` wraps the `[Component] static VNode Render()` declared on a static class `Foo`. `V.List` / `V.When` / `V.Fragment` / `V.Provider` are the JSX-construct equivalents. `VNodePool.cs` pools the poolable primitives.
 2. **`Reconciler/`** — diffs the new VNode tree against the live fiber tree and patches the underlying `VisualElement`s. Key seams: `FiberRenderer` (mount/flush/dispose), `ChildReconciler` (keyed/positional diff + `FlattenAndFilter`, which drops `null` children — so `cond ? node : null` is the idiomatic "render nothing"), `FiberBatchScheduler` (lane-based, coalesced frame-boundary drains), `FiberNodeFactory`/`FiberNodePatcher` (create/patch + attach styling manipulators), `FiberElementCleaner` + `FiberPrimitiveElementPool`/`FiberElementPoolReset` (resource cleanup + reset-before-pool — a recurring bug class is state ghosting across pool reuse, so a reset helper must scrub **every** field a node may have set).
 3. **`Hooks/`** — `Hooks.cs` is the public surface (`UseState`/`UseEffect`/`UseStore`/`UseRef`/…). Hook state lives on the `ComponentFiber`; `StateUpdater<T>` (the setter) is reference-stable across renders and supports the functional form `setX.Invoke(prev => next)`.
 4. **`Store/`** — `Store<T>` (Zustand-style immutable state + subscribers); `UseStore(store, selector)` subscribes synchronously at render and unsubscribes on unmount.
 5. **`Styling/`** — utility-first className resolution (no per-component USS). `StyleRecipe`/`StyleSlotRecipe` are the cva/tailwind-variants equivalent; `StyleArbitraryValueResolver` handles `w-[120px]`-style JIT values; variant **manipulators** (`StyleVariantManipulator` = `hover:`/`focus:`/`active:`, `StyleConditionalVariantManipulator` = `dark:`/`sm:`…, `StyleRelationalVariantManipulator` = `group-`/`peer-`, `StyleGapManipulator`) attach as UI Toolkit `Manipulator`s and are tracked in `ReconcilerContext` so cleanup can remove them.
-6. **`Routing/`** — React-Router-style `Router`/`Outlet`/navigation hooks.
+6. **`Routing/`** — React-Router-style routing: the router, the route matcher and the navigation hooks. The `V.Outlet` factory itself sits with every other factory in `Component/V.cs`.
 
 **Two memoization axes (independent), both `[Component]` knobs in `Component/ComponentAttribute.cs`:**
-- `Compiler` (default `true`) = the **React Compiler equivalent**: the ILPP under `CodeGen/` (`CompilerWeaver`, driven by `VelvetCompilerILPostProcessor`) weaves auto-memoization of a component's VNode construction keyed on its hook inputs + props. It processes **every assembly that references `Velvet`** (including samples), bailing gracefully (no diagnostic) on memo-unsafe hooks. Opt a component out with `[Component(Compiler = false)]`.
+- `Compiler` (default `true`) = the **React Compiler equivalent**: the ILPP under `CodeGen/` (`CompilerWeaver`, driven by `VelvetCompilerILPostProcessor`) weaves auto-memoization of a component's VNode construction keyed on its hook inputs + props. It processes the `Velvet` assembly and **every assembly that references it**, skipping only the `*.CodeGen.Tests` assemblies and anything handed to it without PE or PDB data, and bails gracefully (no diagnostic) on memo-unsafe hooks. Opt a component out with `[Component(Compiler = false)]`.
 - `Memoize` (default `false`) = the **`React.memo` equivalent**: a props-bail at the reconcile boundary (skip a parent-driven re-render when props are shallow-equal). The component's own store/state updates still re-render it. Note auto-memo is keyed on props too, so an unstable callback prop (fresh delegate each render) defeats both axes — stabilize with `UseCallback`.
 
 Do not confuse either axis with the standalone method-level `[MemoizeMethod]` attribute (`Component/MemoizeMethodAttribute.cs`): that is an unrelated source-generator marker that wraps a partial method's body in `V.Memoized(factory, deps)` (see `Documentation~/memoization.md`). Shared name root, independent mechanism.
@@ -64,15 +66,23 @@ Tests are **colocated** with the code: `Runtime/<Area>/Tests/Editor/` and `.../T
 
 - `SimulateClick()` / `SimulateChange()` / `SimulateEvent<TEvent>()` — fire events through an element's callback registry without a live panel (the only way to exercise the discrete-event commit path, e.g. `button.SimulateClick()` which runs the handler + a synchronous `FlushImmediate`).
 - `DrainImmediateForTest()` (on `FiberBatchScheduler` via `mounted.Root.Reconciler.Context.BatchScheduler`) and `FlushEffectsForTest()` / `FlushStateForTest()` — the EditMode scheduler/PlayerLoop does not tick, so flush manually.
-- EditMode batchmode does not run layout; force it via the panel's `ApplyStyles`/`UpdateForRepaint` (reflection) when a test reads `resolvedStyle` (see `StyleUtilitiesUssTests`, `ResponsiveBreakpointPanelTests`).
+- EditMode batchmode drives neither layout, the panel scheduler, nor animations. `EditorPanelTestHelpers` reaches each of them by reflection — a styles/layout pass so `resolvedStyle` populates, one scheduler tick, one animation tick, and a substitute panel clock — and `PanelTestBase` packages the host window, the headless guard and that layout pass for a fixture that needs a real panel. Read `TestUtilities/` before hand-rolling any of it.
 
 **Test convention for this repo:** Given/When/Then naming (`Given_..._When_..._Then_...`) for method names, with `// Arrange`/`// Act`/`// Assert` sections in the body, **exactly one assert per test**, and `Assume.That` for preconditions. Verify a regression test is RED without the fix and GREEN with it. Test fixtures are `internal sealed class` (the Unity Test Framework discovers internal fixtures; bases are `internal`/`public abstract`). Comments must not carry issue/PR numbers — state the reason in terms of behavior so it is self-contained. Templates: `ButtonChildPoolReuseTests.cs`, `ClickDrivenHookLifecycleTests.cs`.
+
+Four ways a green test has lied here:
+
+- An `Assume` that gates the behavior under test is folded into the assertion — one comparison over a tuple of the gated state and the state under test — rather than deleted; deletion is correct only when the assertion alone would still fail on the broken behavior.
+- A threshold compared against a measured value is platform-dependent, since font metrics and layout land differently on a CI runner than on a developer machine: assert declared values, and where a measured one must take part, let the floating-point margin separate the right outcome from the wrong one rather than a hand-picked pixel budget.
+- `GC.GetAllocatedBytesForCurrentThread()` and `GC.GetTotalMemory()` both report 0 under Unity's Mono while allocation is happening, so "no allocations" holds only after a canary that allocates a known amount moves the instrument — `Unity.PerformanceTesting`'s `.GC()` recorder is the one that measures.
+- A benchmark is evidence only for the code its fixture drives — a paint change measured free on the manipulator-reconcile fixture, whose class strings never take the paint path it changed — so confirm the code under test runs in a fixture before citing its numbers.
 
 ## Conventions
 
 - Commits use Conventional Commits with the `velvet` scope (e.g. `fix(velvet): …`, `feat(velvet): …`, `refactor(velvet): …`).
 - Everything in this repo is written in English: code, comments, commit messages, and PR titles/bodies. PR descriptions state what changed and why — never the local workflow that produced the change (audit/review process, agent tooling, session details).
 - A PR that adds, changes, or removes a feature updates the corresponding `Documentation~` guide (and the `Documentation~/README.md` index table) in the same PR. If the change has no doc impact, say so explicitly in the PR body. `DocumentationDriftTests` (EditMode) and the Generators~ diagnostic-table tests catch API references and diagnostic IDs that no longer exist, but they cannot verify that a behavior description is still accurate — that stays the PR author's responsibility.
+- A fact the bundled stylesheets own — the longhands a utility writes, where it sits in the cascade — is derived from them rather than restated in C#: `Generators~/src/Velvet.StyleTable` reads `Runtime/Styles/*.uss` and emits `Runtime/Styling/StyleUtilityProperties.g.cs`. Where a mirror is genuinely unavoidable it is pinned by a test that fails when the stylesheet moves, because an unpinned one drifts silently — a guard that unioned property sets where the cascade takes only the last declaration suspended the transitions it existed to protect.
 - Documentation is single-source-of-truth: a given fact (the hooks table, the factory list, the diagnostic-ID table, a feature's behavior description) lives in exactly one owning document. Other documents link to it and add at most a one-line summary instead of restating it. Duplicated statements are how docs drift — when the fact changes, only one copy gets updated. This holds for comments too: name a sibling's mechanism ("same ownership rule as `StyleGapManipulator`"), never re-explain it.
 
 ## Comment length
