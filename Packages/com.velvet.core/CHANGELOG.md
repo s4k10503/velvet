@@ -16,10 +16,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which animates any animatable property. Values are still derived entirely from the class strings
   (palette tokens, the `/alpha` modifier, the spacing/radius scales, and the bracket forms), so a
   property named by only ONE side of the delta, a pair mixing units (`w-1/2` → `w-[200px]`), a
-  semantic theme token, or a keyword length still lands instantly instead of animating. While one
-  of these drivers owns an element's inline styles the element's own USS transition is suspended,
-  and restored on settle, so a `transition-colors` / `transition-all` class can no longer leave the
-  painted value trailing the driver for the whole play.
+  semantic theme token, or a keyword length still lands instantly instead of animating. A shorthand
+  and one of its own longhands in the same delta (`p-8` with `pt-2`) animate together, the longhand
+  written last so it holds the slot they share exactly as it does at rest; if either side cannot
+  animate, the whole overlapping group lands with the swap rather than half-driving the slot.
+- A spring or bezier play now suspends the element's own USS transitions for its duration when
+  those transitions cover a property it drives — decided from the element's class list, so a
+  `transition-transform` or `transition-all` element no longer paints a translate that trails the
+  driver for the whole play and then eases in, while a `transition-colors` element running a
+  fade/slide keeps its hover fade. Overlapping plays each hold their own claim, so the first to
+  settle cannot un-suspend the second.
 
 ### Changed
 

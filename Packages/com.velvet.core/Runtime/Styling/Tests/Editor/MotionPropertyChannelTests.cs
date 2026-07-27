@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -455,23 +457,47 @@ namespace Velvet.Tests
         [Test]
         public void Given_AShorthandBesideAOneSidedLonghand_When_Resolved_Then_TheOverlappingGroupIsNotPlanned()
         {
-            // Arrange / Act — pt-2 is unpaired, so animating the p- shorthand alone would drive the top edge
-            // toward 32 and then pop it to 8 at the end of every play.
-            var plan = MotionSpringClassParser.Resolve(new[] { "p-0" }, new[] { "p-8", "pt-2" });
+            // Arrange — the control is the SAME shorthand pair WITHOUT the longhand, so a wholesale loss of
+            // property recognition fails this case instead of passing it vacuously.
+            var control = MotionSpringClassParser.Resolve(new[] { "p-0" }, new[] { "p-8" });
+
+            // Act — pt-2 is unpaired, so animating the p- shorthand alone would drive the top edge toward 32
+            // and then pop it to 8 at the end of every play.
+            var overlapping = MotionSpringClassParser.Resolve(new[] { "p-0" }, new[] { "p-8", "pt-2" });
 
             // Assert
-            Assert.That(plan.IsEmpty, Is.True);
+            Assert.That((control.Lengths?.Count ?? 0, overlapping.IsEmpty), Is.EqualTo((1, true)));
         }
 
         [Test]
-        public void Given_AShorthandBesideABothSidedLonghand_When_Resolved_Then_TheOverlappingGroupIsNotPlanned()
+        public void Given_AShorthandBesideABothSidedLonghand_When_Resolved_Then_TheLonghandChannelIsWrittenLast()
         {
-            // Arrange / Act — two channels writing one slot would let the order they happen to be visited, not
-            // the specificity that decides the resting value, pick the winner for the length of the play.
+            // Arrange / Act — both sides name both utilities, so both CAN animate; the shared top edge stays
+            // coherent as long as the longhand is written after the shorthand it overrules at rest.
             var plan = MotionSpringClassParser.Resolve(new[] { "p-0", "pt-4" }, new[] { "p-8", "pt-2" });
 
-            // Assert
-            Assert.That(plan.IsEmpty, Is.True);
+            // Assert — widest footprint first, so the per-tick winner for the top edge is the same utility the
+            // cascade leaves holding it once the play has landed.
+            Assert.That(
+                (plan.Lengths?.Count ?? 0, plan.Lengths?[0].Property, plan.Lengths?[1].Property),
+                Is.EqualTo((2, (ArbitraryProperty?)ArbitraryProperty.Padding,
+                    (ArbitraryProperty?)ArbitraryProperty.PaddingTop)));
+        }
+
+        [Test]
+        public void Given_AShorthandAndLonghandBothAnimating_When_SteppedToHalfTheDuration_Then_TheLonghandOwnsTheSharedEdge()
+        {
+            // Arrange
+            var element = new VisualElement();
+
+            // Act — p-0 -> p-8 (0 to 32px) alongside pt-4 -> pt-2 (16 to 8px) on the top edge.
+            var state = CreateHalfway(element, new[] { "p-0", "pt-4" }, new[] { "p-8", "pt-2" });
+
+            // Assert — the top edge reads the longhand's midpoint, the others the shorthand's.
+            var edges = state == null
+                ? default
+                : (element.style.paddingTop.value, element.style.paddingLeft.value);
+            Assert.That(edges, Is.EqualTo((new Length(12f, LengthUnit.Pixel), new Length(16f, LengthUnit.Pixel))));
         }
 
         [Test]
@@ -479,7 +505,9 @@ namespace Velvet.Tests
         {
             // Arrange — the patcher can start a scheduler play and a layoutId spring against one element, so an
             // absolute restore would let whichever settles first un-suspend the one still writing every frame.
+            // .transition-all covers both plays' slots, so both take a claim on the suspension.
             var element = new VisualElement();
+            element.AddToClassList("transition-all");
             var first = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
             var second = CreateHalfway(element, new[] { "rounded-none" }, new[] { "rounded-3xl" });
 
@@ -495,19 +523,163 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_APlayConfinedToTheTransformQuartet_When_Started_Then_TheElementsOwnTransitionIsUntouched()
+        public void Given_APlayWhoseSlotsTheElementsTransitionDoesNotName_When_Started_Then_ItsTransitionIsUntouched()
         {
-            // Arrange — .transition-colors names no property this play drives, so suspending would cost the
-            // element its hover fade for the whole play and buy nothing.
+            // Arrange — .transition-colors names background-color / border-color / color, none of which this
+            // play drives, so suspending would cost the element its hover fade and buy nothing.
             var element = new VisualElement();
             element.AddToClassList("transition-colors");
+
+            // Act
+            var state = CreateHalfway(element, new[] { "opacity-0", "-translate-x-8" }, new[] { "opacity-100", "translate-x-0" });
+
+            // Assert
+            Assert.That((state != null, element.style.transitionProperty.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ATransformOnlyPlayOnATransitionTransformElement_When_Started_Then_TheNativeTransitionIsSuspended()
+        {
+            // Arrange — .transition-transform names translate / scale / rotate, the exact slots this play writes
+            // every tick, so the painted value would trail the spring for the whole play and then ease instead
+            // of landing. No color or length channel is involved.
+            var element = new VisualElement();
+            element.AddToClassList("transition-transform");
+
+            // Act
+            var state = CreateHalfway(element, new[] { "-translate-x-8" }, new[] { "translate-x-0" });
+
+            // Assert
+            var declared = element.style.transitionProperty.value;
+            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
+                Is.True);
+        }
+
+        [Test]
+        public void Given_ATransformOnlyPlayOnATransitionAllElement_When_Started_Then_TheNativeTransitionIsSuspended()
+        {
+            // Arrange — .transition-all names every animatable property, so it covers whatever a play drives.
+            var element = new VisualElement();
+            element.AddToClassList("transition-all");
 
             // Act
             var state = CreateHalfway(element, new[] { "opacity-0" }, new[] { "opacity-100" });
 
             // Assert
+            var declared = element.style.transitionProperty.value;
+            Assert.That(state != null && declared is { Count: 1 } && StylePropertyName.IsNullOrEmpty(declared[0]),
+                Is.True);
+        }
+
+        [Test]
+        public void Given_AnElementWithNoTransitionUtility_When_APlayDrivesItsColors_Then_ItsTransitionIsUntouched()
+        {
+            // Arrange — nothing declares a transition, so there is nothing for the driver's writes to fight.
+            var element = new VisualElement();
+
+            // Act
+            var state = CreateHalfway(element, new[] { "bg-black" }, new[] { "bg-white" });
+
+            // Assert
             Assert.That((state != null, element.style.transitionProperty.keyword),
                 Is.EqualTo((true, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_EveryDrivableProperty_When_ItsSlotFootprintIsComparedToWhatItWrites_Then_TheyAgree()
+        {
+            // Arrange — the slot mask is a second description of the resolver's setter tables with no
+            // mechanical link to them, and both directions of drift are silent: a mask that misses an overlap
+            // lets two channels fight over a slot, one that invents an overlap silently stops animating a pair
+            // that was fine. Probing what each property ACTUALLY writes onto a fresh element re-derives the
+            // truth from the setter tables themselves.
+            var drivable = new List<ArbitraryProperty>();
+            var written = new Dictionary<ArbitraryProperty, HashSet<string>>();
+            foreach (ArbitraryProperty property in Enum.GetValues(typeof(ArbitraryProperty)))
+            {
+                if (!MotionPropertyClassParser.IsDrivable(property))
+                {
+                    continue;
+                }
+                drivable.Add(property);
+                var probe = new VisualElement();
+                StyleArbitraryValueResolver.ApplyInline(probe, MotionPropertyClassParser.IsColor(property)
+                    ? new ArbitraryStyle(property, Color.red)
+                    : new ArbitraryStyle(property, 7f, LengthUnit.Pixel));
+                written[property] = OccupiedSlots(probe);
+            }
+
+            // Act — every unordered pair, comparing the mask's verdict against the probed slot sets.
+            var disagreements = new List<string>();
+            for (var i = 0; i < drivable.Count; i++)
+            {
+                for (var j = i + 1; j < drivable.Count; j++)
+                {
+                    var a = drivable[i];
+                    var b = drivable[j];
+                    var observed = written[a].Overlaps(written[b]);
+                    if (observed != MotionPropertyClassParser.WritesOverlappingSlots(a, b))
+                    {
+                        disagreements.Add($"{a} vs {b}: mask says {!observed}, inline writes say {observed}");
+                    }
+                }
+            }
+
+            // Assert
+            Assert.That(disagreements, Is.Empty);
+        }
+
+        // Every inline slot a drivable property can write, by name, for the drift guard above. Reading the
+        // keyword rather than the value is what distinguishes "this property set it" from "it happens to be
+        // zero"; a freshly constructed element has none of them set.
+        private static HashSet<string> OccupiedSlots(VisualElement e)
+        {
+            var s = e.style;
+            var occupied = new HashSet<string>();
+            void Probe(string name, StyleKeyword keyword)
+            {
+                if (keyword != StyleKeyword.Null)
+                {
+                    occupied.Add(name);
+                }
+            }
+            Probe("width", s.width.keyword);
+            Probe("height", s.height.keyword);
+            Probe("minWidth", s.minWidth.keyword);
+            Probe("minHeight", s.minHeight.keyword);
+            Probe("maxWidth", s.maxWidth.keyword);
+            Probe("maxHeight", s.maxHeight.keyword);
+            Probe("flexBasis", s.flexBasis.keyword);
+            Probe("top", s.top.keyword);
+            Probe("right", s.right.keyword);
+            Probe("bottom", s.bottom.keyword);
+            Probe("left", s.left.keyword);
+            Probe("paddingTop", s.paddingTop.keyword);
+            Probe("paddingRight", s.paddingRight.keyword);
+            Probe("paddingBottom", s.paddingBottom.keyword);
+            Probe("paddingLeft", s.paddingLeft.keyword);
+            Probe("marginTop", s.marginTop.keyword);
+            Probe("marginRight", s.marginRight.keyword);
+            Probe("marginBottom", s.marginBottom.keyword);
+            Probe("marginLeft", s.marginLeft.keyword);
+            Probe("borderTopLeftRadius", s.borderTopLeftRadius.keyword);
+            Probe("borderTopRightRadius", s.borderTopRightRadius.keyword);
+            Probe("borderBottomLeftRadius", s.borderBottomLeftRadius.keyword);
+            Probe("borderBottomRightRadius", s.borderBottomRightRadius.keyword);
+            Probe("borderTopWidth", s.borderTopWidth.keyword);
+            Probe("borderRightWidth", s.borderRightWidth.keyword);
+            Probe("borderBottomWidth", s.borderBottomWidth.keyword);
+            Probe("borderLeftWidth", s.borderLeftWidth.keyword);
+            Probe("fontSize", s.fontSize.keyword);
+            Probe("letterSpacing", s.letterSpacing.keyword);
+            Probe("color", s.color.keyword);
+            Probe("backgroundColor", s.backgroundColor.keyword);
+            Probe("borderTopColor", s.borderTopColor.keyword);
+            Probe("borderRightColor", s.borderRightColor.keyword);
+            Probe("borderBottomColor", s.borderBottomColor.keyword);
+            Probe("borderLeftColor", s.borderLeftColor.keyword);
+            return occupied;
         }
 
         [Test]

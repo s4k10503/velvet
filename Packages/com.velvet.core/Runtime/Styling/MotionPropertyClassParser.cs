@@ -119,6 +119,23 @@ namespace Velvet
             return familyA == familyB && familyA != SlotFamily.None && (maskA & maskB) != 0;
         }
 
+        /// <summary>
+        /// How many style slots <paramref name="property"/> writes — the ordering key for two channels that
+        /// share one. Writing the widest footprint FIRST and the narrowest LAST leaves the most specific
+        /// utility holding the slot, which is the winner the cascade itself picks once the play has landed.
+        /// </summary>
+        internal static int SlotCount(ArbitraryProperty property)
+        {
+            var (_, mask) = SlotFootprint(property);
+            var count = 0;
+            while (mask != 0)
+            {
+                mask &= mask - 1;
+                count++;
+            }
+            return count;
+        }
+
         // Slot letters are positional within a family: Edge / Padding / Margin / BorderWidth read A..D as
         // top / right / bottom / left, Radius as top-left / top-right / bottom-left / bottom-right, Sizing as
         // width / height / min-width / min-height / max-width / max-height.
@@ -198,7 +215,7 @@ namespace Velvet
         // translate/scale composition their shared inline styles need); filter-* is excluded because
         // StyleFilterTransitionDriver owns the composed inline filter list; aspect-ratio and
         // transition-duration are excluded as configuration rather than visual magnitudes.
-        private static bool IsDrivable(ArbitraryProperty property) => property switch
+        internal static bool IsDrivable(ArbitraryProperty property) => property switch
         {
             ArbitraryProperty.TextColor or ArbitraryProperty.BackgroundColor or ArbitraryProperty.BorderColor => true,
             ArbitraryProperty.Width or ArbitraryProperty.Height or ArbitraryProperty.MinWidth

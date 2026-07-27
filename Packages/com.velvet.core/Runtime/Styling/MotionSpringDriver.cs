@@ -172,11 +172,22 @@ namespace Velvet
         /// </remarks>
         public static void ApplyCurrentValues(VisualElement element, MotionSpringState state)
         {
-            if (state.Colors != null || state.Lengths != null)
-            {
-                MotionNativeTransitionGuard.Suspend(element, state);
-            }
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state));
             WriteChannelValues(element, state);
+        }
+
+        // The slot groups this play writes, for the guard's intersection against what the element's own
+        // transition utilities declare.
+        private static MotionTransitionSlots DrivenSlots(MotionSpringState state)
+        {
+            var slots = MotionTransitionSlots.None;
+            if (state.Opacity != null) slots |= MotionTransitionSlots.Opacity;
+            if (state.TranslateX != null || state.TranslateY != null) slots |= MotionTransitionSlots.Translate;
+            if (state.Scale != null) slots |= MotionTransitionSlots.Scale;
+            if (state.Rotate != null) slots |= MotionTransitionSlots.Rotate;
+            if (state.Colors != null) slots |= MotionTransitionSlots.Color;
+            if (state.Lengths != null) slots |= MotionTransitionSlots.Length;
+            return slots;
         }
 
         // The style writes themselves, without the once-per-play transition suspension above: re-asserting the

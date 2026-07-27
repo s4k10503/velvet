@@ -730,7 +730,15 @@ namespace Velvet
         // what makes that correct regardless of which shorthand overlapped which longhand.
         //
         // Reads the map without mutating it, so a driver that never registered a layer leaves it untouched and
-        // the recorded cascade stays exactly what the class diff put there.
+        // the recorded cascade stays exactly what the class diff put there. A slot another live driver currently
+        // owns can be taken back for a frame here, and that driver's next tick re-asserts it.
+        //
+        // The filter family is exempt, for the same reason the class-diff reapply exempts it: re-resolving a
+        // filter property runs the combined-filter path, whose tail hands the composed list to the filter
+        // transition driver and restarts its tween — so a spring settling beside an in-flight blur would reset
+        // that blur to a fresh full duration, and a settle during teardown would start a tick on an element on
+        // its way to the pool. No per-frame driver here ever writes `filter` (StyleFilterTransitionDriver owns
+        // it), so this family holds nothing of theirs to restore.
         internal static void ReapplyLayeredValues(VisualElement element)
         {
             if (element == null || !s_layers.TryGetValue(element, out var map))
@@ -739,6 +747,10 @@ namespace Velvet
             }
             foreach (var property in map.Keys)
             {
+                if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
+                {
+                    continue;
+                }
                 ResolveAndApply(element, property, map);
             }
         }

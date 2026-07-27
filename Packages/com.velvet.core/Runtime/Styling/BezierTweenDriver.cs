@@ -169,11 +169,21 @@ namespace Velvet
         /// </summary>
         public static void ApplyCurrentValues(VisualElement element, BezierTweenState state)
         {
-            if (state.Colors != null || state.Lengths != null)
-            {
-                MotionNativeTransitionGuard.Suspend(element, state);
-            }
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, state, DrivenSlots(state));
             ApplyEased(element, state, CurrentEased(state));
+        }
+
+        // The slot groups this play writes — the bezier sibling of MotionSpringDriver's own.
+        private static MotionTransitionSlots DrivenSlots(BezierTweenState state)
+        {
+            var slots = MotionTransitionSlots.None;
+            if (state.Opacity != null) slots |= MotionTransitionSlots.Opacity;
+            if (state.TranslateX != null || state.TranslateY != null) slots |= MotionTransitionSlots.Translate;
+            if (state.Scale != null) slots |= MotionTransitionSlots.Scale;
+            if (state.Rotate != null) slots |= MotionTransitionSlots.Rotate;
+            if (state.Colors != null) slots |= MotionTransitionSlots.Color;
+            if (state.Lengths != null) slots |= MotionTransitionSlots.Length;
+            return slots;
         }
 
         /// <summary>

@@ -250,8 +250,9 @@ namespace Velvet
         /// the plain class swap, which lands it instantly. A length pair whose two sides carry DIFFERENT units
         /// falls back the same way: a percentage resolves against a laid-out parent this path cannot consult, so
         /// there is no common space to interpolate a px↔% pair in.
-        /// A shorthand and one of its own longhands appearing in the same delta drops BOTH — see
-        /// <see cref="OverlapsAnotherNamedProperty"/>.
+        /// A shorthand and one of its own longhands in the same delta both animate, written widest-first so the
+        /// shared slot ends up where the cascade puts it — unless one of the two cannot animate, in which case
+        /// the whole overlapping group falls back to the swap. See <see cref="DropUnanimatableOverlapGroups"/>.
         /// </summary>
         private static void PairProperties(Dictionary<ArbitraryProperty, ArbitraryStyle>? fromProperties,
             Dictionary<ArbitraryProperty, ArbitraryStyle>? toProperties, ref SpringPlan plan)
@@ -260,59 +261,97 @@ namespace Velvet
             {
                 return;
             }
+            HashSet<ArbitraryProperty>? paired = null;
             foreach (var (property, from) in fromProperties)
             {
-                if (!toProperties.TryGetValue(property, out var to)
-                    || OverlapsAnotherNamedProperty(property, fromProperties, toProperties))
+                if (!toProperties.TryGetValue(property, out var to))
                 {
                     continue;
                 }
+                // A length pair whose sides disagree on unit cannot animate, so it never counts as paired —
+                // which is also what makes an overlapping partner fall out below instead of half-driving a slot.
+                if (!MotionPropertyClassParser.IsColor(property) && from.Unit != to.Unit)
+                {
+                    continue;
+                }
+                (paired ??= new HashSet<ArbitraryProperty>()).Add(property);
+            }
+            if (paired == null)
+            {
+                return;
+            }
+            DropUnanimatableOverlapGroups(paired, fromProperties, toProperties);
+
+            foreach (var property in paired)
+            {
+                var from = fromProperties[property];
+                var to = toProperties[property];
                 if (MotionPropertyClassParser.IsColor(property))
                 {
                     (plan.Colors ??= new List<ColorChannelPlan>())
                         .Add(new ColorChannelPlan(property, from.Color, to.Color));
                     continue;
                 }
-                if (from.Unit != to.Unit)
-                {
-                    continue;
-                }
                 (plan.Lengths ??= new List<LengthChannelPlan>())
                     .Add(new LengthChannelPlan(property, from.Value, to.Value, from.Unit));
             }
+
+            // Widest footprint first, narrowest last, so a shorthand and one of its longhands land in the order
+            // the cascade resolves them: the longhand overwrites the slot they share on every tick, exactly as
+            // it wins that slot at rest. Unordered, the in-flight winner would be whichever channel the
+            // enumeration happened to visit last, which can disagree with the resting winner. Colors never
+            // overlap (border-color is the only utility writing the four border colors), so only the length
+            // list needs the ordering.
+            plan.Lengths?.Sort(static (a, b)
+                => MotionPropertyClassParser.SlotCount(b.Property).CompareTo(MotionPropertyClassParser.SlotCount(a.Property)));
         }
 
         /// <summary>
-        /// True when any OTHER property either side names writes a style slot <paramref name="property"/> also
-        /// writes — a shorthand meeting one of its own longhands (<c>p-8</c> beside <c>pt-2</c>).
+        /// Removes from <paramref name="paired"/> every property sharing a style slot with a property the delta
+        /// names but that is NOT itself animating — a shorthand beside a one-sided or mixed-unit longhand.
         /// </summary>
         /// <remarks>
-        /// Channels are keyed by property, so a shorthand and a longhand would otherwise be independent: one
-        /// side naming only the longhand leaves it unpaired while the shorthand keeps animating the slot it
-        /// shares, popping to the cascade's value at the end of every play; both sides naming both produces two
-        /// channels writing one slot, whose in-flight winner is the order the channels happen to be visited
-        /// rather than the specificity that decides the resting value.
-        /// The whole overlapping group is therefore dropped and lands with the class swap. The alternative —
-        /// keeping the longhand and dropping only the shorthand — would still split the family, gliding one edge
-        /// while the other three jump, so it trades an incoherent ending for an incoherent middle. Declaring a
-        /// shorthand and its longhand in one variant is already ambiguous authoring (the arbitrary-value layer
-        /// map documents the same "use one or the other" rule for its own layers); this makes the animation
-        /// decline the ambiguity rather than resolve it arbitrarily.
+        /// Channels are keyed by property, so a shorthand and a longhand are otherwise independent. Both
+        /// animating is fine and wanted: they interpolate together, and the widest-first write ordering in
+        /// <see cref="PairProperties"/> leaves the same one holding the shared slot that holds it at rest. One
+        /// of them being UNABLE to animate is the broken case — the survivor would drive the shared slot toward
+        /// a value the other was going to overrule, for the whole play, then pop to the cascade's at the end —
+        /// so the whole overlapping group falls back to the plain class swap and lands together.
+        /// Dropping repeats to a fixed point: removing one member can orphan a third property that only
+        /// overlapped an animating partner through it, and that one has to fall out too.
+        /// Only properties this parser RECOGNIZES take part. A longhand it cannot read a magnitude from
+        /// (<c>rounded-tl-full</c> beside <c>rounded-3xl</c>) is invisible here, so the shorthand still drives
+        /// the slot the longhand owns at rest — documented in the motion guide rather than guessed at.
         /// </remarks>
-        private static bool OverlapsAnotherNamedProperty(ArbitraryProperty property,
+        private static void DropUnanimatableOverlapGroups(HashSet<ArbitraryProperty> paired,
             Dictionary<ArbitraryProperty, ArbitraryStyle> fromProperties,
             Dictionary<ArbitraryProperty, ArbitraryStyle> toProperties)
         {
-            foreach (var other in fromProperties.Keys)
+            bool dropped;
+            do
             {
-                if (MotionPropertyClassParser.WritesOverlappingSlots(property, other))
+                dropped = false;
+                foreach (var property in paired)
                 {
-                    return true;
+                    if (!OverlapsAnUnpairedProperty(property, paired, fromProperties)
+                        && !OverlapsAnUnpairedProperty(property, paired, toProperties))
+                    {
+                        continue;
+                    }
+                    paired.Remove(property);
+                    dropped = true;
+                    break; // The set was just mutated, so restart the scan rather than continue enumerating it.
                 }
             }
-            foreach (var other in toProperties.Keys)
+            while (dropped);
+        }
+
+        private static bool OverlapsAnUnpairedProperty(ArbitraryProperty property,
+            HashSet<ArbitraryProperty> paired, Dictionary<ArbitraryProperty, ArbitraryStyle> named)
+        {
+            foreach (var other in named.Keys)
             {
-                if (MotionPropertyClassParser.WritesOverlappingSlots(property, other))
+                if (!paired.Contains(other) && MotionPropertyClassParser.WritesOverlappingSlots(property, other))
                 {
                     return true;
                 }
