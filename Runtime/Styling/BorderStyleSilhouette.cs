@@ -138,8 +138,9 @@ namespace Velvet
 
         // Patch-time stash sync, delegated to the shared border-only face stash. Runs AFTER the per-patch
         // styling is applied (the inline border slot is shared with the arbitrary-value resolver).
-        public static void SyncStashOnPatch(VisualElement element, BorderStyleBinding binding, bool classesChanged)
-            => binding.Face.SyncOnPatch(element, classesChanged);
+        public static void SyncStashOnPatch(VisualElement element, BorderStyleBinding binding, bool classesChanged,
+            bool canReleaseFace)
+            => binding.Face.SyncOnPatch(element, classesChanged, canReleaseFace);
 
         private static void Draw(MeshGenerationContext mgc, VisualElement ve, BorderStyleBinding binding)
         {

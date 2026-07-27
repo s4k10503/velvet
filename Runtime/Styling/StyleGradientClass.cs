@@ -170,6 +170,18 @@ namespace Velvet
                 || cls.StartsWith(ConicActivator, StringComparison.Ordinal);
         }
 
+        // True when cls is any token TryExtract reads — a shape activator OR a from-/via-/to- colour stop.
+        // Deliberately wider than the activator gate below: that one answers "could this element have a
+        // gradient at all", while this answers "would this token change the resolved gradient", which is
+        // the question a variant payload has to be judged by — `bg-gradient-to-r from-blue-500
+        // hover:from-red-500` changes the gradient through a stop, with no activator in the payload.
+        public static bool IsGradientClass(string cls)
+            => !string.IsNullOrEmpty(cls)
+                && (MatchesActivatorPrefix(cls)
+                    || cls.StartsWith(FromPrefix, StringComparison.Ordinal)
+                    || cls.StartsWith(ViaPrefix, StringComparison.Ordinal)
+                    || cls.StartsWith(ToPrefix, StringComparison.Ordinal));
+
         // Cheap early-out gate: true when ANY class LOOKS LIKE a gradient shape activator. A pure
         // prefix scan — no substring allocation, no angle/position parsing — so it never
         // duplicates TryExtract's parse cost. May false-positive on a malformed activator (e.g. an

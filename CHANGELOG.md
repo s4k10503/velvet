@@ -189,14 +189,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `.flex-row`, so the base column won the cascade and the variant row never took effect. The
   direction utilities are now declared column family first (`.flex-col`, `.flex-col-reverse`,
   `.flex-row`, `.flex-row-reverse`), so a variant can turn a column into a row and, within an axis,
-  turn a plain direction into its reversed form. The class-toggle mechanism leaves the cascade unable
-  to tell a variant-applied class from a base one, so exactly one side of each pair can win: the
-  opposite overrides — `"flex flex-row md:flex-col"`, `"flex flex-col-reverse md:flex-col"`,
-  `"flex flex-row-reverse md:flex-row"` — **silently reverse behavior**, resolving to the base
-  direction at every width where they previously followed the variant. Rewrite them with the column
-  (or plain) form as the base, or render one direction class computed in C#. The `gap-*` polyfill
-  resolves its axis from the same precedence and was updated in lockstep, so spacing still follows the
-  axis the container actually renders on.
+  turn a plain direction into its reversed form. The opposite overrides — `"flex flex-row md:flex-col"`,
+  `"flex flex-col-reverse md:flex-col"`, `"flex flex-row-reverse md:flex-row"` — need no rewrite, and it
+  takes both mechanisms together: the class-payload ranking listed under *Changed* above displaces the
+  direction base outright, while the `flex-direction` that `.flex` sets alongside `display` is beaten by
+  declaration order instead, since a direction utility holds only part of what `.flex` writes and so can
+  never displace it. What the order still settles is the case the ranking leaves open: two direction
+  utilities at the **same** priority, where the later declaration wins — so a literal
+  `"flex-col flex-row"` lays out as a **row**. See `Documentation~/styling-flexbox-and-gap.md`. The
+  `gap-*` polyfill resolves its axis from the same precedence and was updated in lockstep, so spacing
+  still follows the axis the container actually renders on.
 - A consumer below a `V.Provider` could keep rendering the previous context value indefinitely when the
   set of Providers around it changed in the same render as the value. It showed up wherever a Provider
   shares a parent with something that can add or drop a Provider of its own — a `V.Suspense` whose
@@ -235,11 +237,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same shape left `md:gap-4` spacing nothing. Each of the four is now re-derived when a variant
   toggles it, in either direction, so a variant-gated class behaves exactly like a literal one —
   including the ownership handoff between gap and grid (the grid owns its children's margins, and the
-  gap manipulator is suppressed for it). One consequence to know: declaring the same token BOTH
-  literally and behind a variant (`gap-4 md:gap-4`) now loses the manipulator when the variant
-  deactivates, because a variant payload is toggled on the class list rather than reference-counted
-  against the literal. Declare the base once and let the variant override it (`gap-4 md:gap-8`) — see
-  `Documentation~/styling-variants.md`.
+  gap manipulator is suppressed for it). One limitation to know, shared with the paint utilities
+  below: two variants naming the same one of these utilities with **no literal base**
+  (`dark:gap-4 md:gap-4`) keep the class when the first of the two turns off — the class list is
+  ranked per priority layer, so the other layer still holds it — but stop driving the manipulator, so
+  the spacing goes while `gap-4` is still on the element. A literal base (`gap-4 md:gap-4`) is
+  unaffected. The same missing ranking shows a second way: two payloads of one family
+  (`md:shadow-sm dark:shadow-lg`) resolve by the order their signals fired rather than by the
+  precedence table, so going dark then widening past `md` leaves `shadow-sm` winning while the reverse
+  order leaves `shadow-lg` — the same end state rendered two ways. Declaring the base once and letting
+  one variant override it (`gap-4 md:gap-8`) hits neither — see `Documentation~/styling-variants.md`.
+- A `skew-*`, `shadow-*` / `drop-shadow-*`, gradient (`bg-gradient-*` and its `from-` / `via-` / `to-`
+  stops), `animate-*` or `border-dashed` / `border-dotted` class reached through a variant
+  (`md:shadow-lg`, `hover:animate-pulse`, `dark:bg-gradient-to-r`, `focus:-skew-x-6`) painted nothing
+  until some unrelated re-render happened to bring the bare token in literally. Same root as the layout
+  fix above: UI Toolkit has no property for any of these, so Velvet paints them from the class array
+  the reconciler reconciled, which a variant payload never passes through. All five now resolve at
+  mount and on every toggle in both directions, and they keep the order they compose in on a toggle
+  just as on a render — a skewed caster's shadow still follows the sheared silhouette, and a
+  co-arriving `border-dashed` still defers to a shadow that owns the face. This covers every variant
+  family whose payload is spelled on the element's own class list, which is all of them except
+  `[&>*]:`. A `[&>*]:` paint lands inconsistently, because a child is fully built before its container
+  applies the rule: `[&>*]:shadow-lg` paints at mount on a child that declares some variant-gated
+  payload of its own (any one — `hover:gap-4` suffices), and only from the child's next render on a
+  child that declares none. Put the utility on the child rather than relying on either.
+- **`ring-*` is deliberately NOT among them: a ring variant such as `focus:ring-2` stays inert.** A
+  ring is not a paint — UI Toolkit has neither `box-shadow` nor `outline`, so the band is drawn on a
+  wrapper element, and only a reconcile pass may add or remove a wrapper. The alternative, wrapping
+  every element that mentions a ring variant for its whole life, would impose the wrapper's layout
+  limitation permanently: it is transparent for `flex-grow` / `flex-shrink` only, so a
+  percentage-width or stretch-sized inner would start measuring against the wrapper instead of its
+  real parent. Declare `ring-*` literally, or compute the class in C#.
+- The class channels that are not variants — `whileHoverClass` / `whileTapClass` / `whileFocusClass`,
+  the transient enter / exit classes an `AnimatePresence` play applies, and drag-and-drop's
+  `whileDraggingClass` / `whileOverClass` / `whileDragActiveClass` — write their utilities onto the
+  element without notifying the reconciler, so none of them drive the utilities above either:
+  `V.Div(whileHoverClass: "shadow-lg")` toggles a class nothing paints. Use `hover:shadow-lg`. Any
+  utility backed by a plain USS rule still works on every channel — the split is that list versus
+  everything else, not whole categories, since `gap-4` is spacing and `skew-x-6` is a transform yet
+  neither works there. See `Documentation~/styling-variants.md`.
+- A drop shadow attached while an enter / exit animation covering its caster was already running
+  painted at full strength through the already-translucent caster. Each play snapshots the shadows
+  under its subtree when it begins, so one arriving mid-play — from a variant toggle, or from a
+  re-render that patches an element already on screen — was in no snapshot and nothing ever scaled its
+  alpha. Such a shadow now joins the running fade at the caster's current opacity. An element MOUNTED
+  mid-play is not covered: it is not yet parented when its shadow attaches, so the walk that decides
+  which animations cover it has nothing to walk.
 - Losing a `grid` class while keeping a `gap-*` one (`grid grid-cols-3 gap-4` → `flex gap-4`) left the
   children with no spacing at all: the arriving gap manipulator wrote its margins before the departing
   grid manipulator cleared the margins IT had written, and that clear took the new ones with it.

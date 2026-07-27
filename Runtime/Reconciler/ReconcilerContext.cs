@@ -104,6 +104,45 @@ namespace Velvet
     }
 
 
+    // Per-element bookkeeping for the class-driven passes a variant payload can change, held in
+    // ReconcilerContext.VariantGateClasses. An entry is opened by whichever comes first: the reconcile pass
+    // that sees the element DECLARE a gated payload (FiberNodePatcher.RecordVariantGateSource), or the
+    // payload toggle itself for an element whose own class list declares none — which only a [&>*]: rule on
+    // its PARENT produces, since every other family (first: and has-[.class]: included) spells its payload on
+    // the subject's own class list. It outlives an emptied token set, because the array it holds is what the
+    // NEXT toggle will need and no reconcile need ever run again to re-record it.
+    internal sealed class VariantGateState
+    {
+        // The gate tokens a variant currently has applied, in the order they arrived. Empty means the element
+        // declares one but has none lit, which is what puts it back on the cheap reconciled-array path.
+        // A list, not a set: these are appended to the reconciled array to form the class source the passes
+        // read, every family there resolves last-token-wins, and a set would leave two payloads of the same
+        // family ranked by hash order. Membership is checked linearly, which is what a handful of tokens
+        // wants anyway.
+        public readonly List<string> Tokens = new();
+
+        // The class array this element's last reconcile pass was given — the only source carrying the tokens
+        // no class list can hold (variant tokens, and the bracket / static-scale values that resolve to
+        // inline style), which is why the resolved array is built ON it rather than from the live list alone.
+        public string[]? Reconciled;
+
+        // The array the passes were last given. Returned again, by reference, whenever the freshly composed
+        // one matches it token for token — so a tracked element allocates only on a real change, and the
+        // paint layers' "did the classes change" question is answered by a reference compare.
+        public string[]? Resolved;
+
+        // Whether this element's reconcile path runs the wrapper-less paint tail (skew / shadow /
+        // border-style): true for an ElementNode, false for a Motion, which deliberately paints none of the
+        // three. Null while a [&>*]: rule on the parent is the only thing that has ever named this element,
+        // because the child is fully created before that rule runs and so no pass of its own has resolved it.
+        // The re-sync then drives the layout gates alone rather than guess, which is what keeps a payload
+        // from attaching to a Motion what the Motion's own patch would refuse; the element's next patch
+        // records the answer and the paint follows from there. A child that declares any gated payload of its
+        // OWN was recorded at create, so the same [&>*]: payload paints at mount for it — see
+        // FiberNodePatcher.ReSyncVariantGatedPasses for why that inconsistency is preferred to a guess.
+        public bool? PaintTail;
+    }
+
     // Shared infrastructure between Reconciler subsystems.
     // Holds the host-platform element operations and shared reconcile state injected into each subsystem.
     internal sealed class ReconcilerContext
@@ -286,60 +325,68 @@ namespace Velvet
         // GridManipulators; removed on cleanup / dispose.
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
 
-        // Layout utility tokens (gap-* / space-* / grid / grid-cols-* / divide-* / text-balance) a VARIANT
-        // currently has toggled onto an element, keyed by that element. The four manipulators those tokens
-        // gate are configured from the RECONCILED class array, which never carries them: `md:grid` is a
-        // variant token, and the bare `grid` it resolves to is written straight onto the live class list by
-        // the conditional manipulator without passing back through the reconciler. An entry here marks the
-        // element as one whose gates must be re-derived from the LIVE class list instead (see
-        // FiberNodePatcher.ApplyLayoutManipulators), so `gap-4 md:grid md:grid-cols-3` lays out as a spaced
-        // grid above the breakpoint and as a gapped flex row below it. Only the gate tokens are tracked, so
-        // an ordinary `hover:bg-red` element never gets an entry and never pays the live-list read. Written
-        // by StyleVariantPayload.Apply for EVERY variant family (state / conditional / relational / child /
-        // stacked / has-), since any of them can carry such a payload. A pure side-table (teardown is a
-        // plain Remove), so it is enrolled in _pureElementSideTables.
-        public Dictionary<VisualElement, HashSet<string>> VariantLayoutClasses { get; } = new();
+        // Elements a VARIANT currently has a gate token toggled onto, keyed by that element. A gate token is
+        // one whose mere presence in a class array decides what a class-driven pass builds — the four layout
+        // manipulators (gap-* / space-* / grid / grid-cols-* / divide-* / text-balance) and the five paint
+        // layers (skew-*, shadow-*, bg-gradient-* and its stops, animate-*, border-dashed / -dotted). Those
+        // passes are configured from the RECONCILED class array, which never carries such a token: `md:grid`
+        // is a variant token, and the bare `grid` it resolves to is written straight onto the live class list
+        // by the conditional manipulator without passing back through the reconciler. An entry here marks the
+        // element as one whose passes must read a class source that APPENDS the tokens recorded below to that
+        // array (see FiberNodePatcher.ResolveVariantClasses), so `gap-4 md:grid md:grid-cols-3` lays out as a
+        // spaced grid above the breakpoint and as a gapped flex row below it, and `md:shadow-lg` paints a
+        // shadow. Only the gate tokens are tracked, so an ordinary `hover:bg-red` element never gets an entry
+        // and never pays the composition. Written by StyleVariantPayload.Apply for EVERY variant family (state
+        // / conditional / relational / child / stacked / has-), since any of them can carry such a payload. A
+        // pure side-table (teardown is a plain Remove), so it is enrolled in _pureElementSideTables.
+        public Dictionary<VisualElement, VariantGateState> VariantGateClasses { get; } = new();
 
-        // Hook to re-derive an element's layout manipulators (gap / divide / grid / text-balance) from its
-        // live class list, set by FiberNodePatcher. StyleVariantPayload.Apply invokes it after a variant
-        // toggles one of the gate tokens above: that toggle happens outside any reconcile pass (a breakpoint
-        // crossing, a theme flip, a pointer state change), so nothing else would re-run those passes.
-        // Null until the patcher wires it.
-        public System.Action<VisualElement> LayoutManipulatorReSync { get; set; } = null!;
+        // Hook to re-run every class-driven pass a variant payload can change (the layout manipulators and
+        // the paint layers) against the element's current class source, set by FiberNodePatcher.
+        // StyleVariantPayload.Apply invokes it after a variant toggles one of the gate tokens above: that
+        // toggle happens outside any reconcile pass (a breakpoint crossing, a theme flip, a pointer state
+        // change), so nothing else would re-run those passes. Null until the patcher wires it.
+        public System.Action<VisualElement> VariantGatedReSync { get; set; } = null!;
 
-        // Records / drops one variant-applied layout gate token for target, returning true when the tracked
+        // Records / drops one variant-applied gate token for target, returning true when the tracked
         // set actually changed — so the caller signals a re-derive exactly once per real change. Set
         // semantics rather than a counter: a manipulator may re-assert an already-applied payload, and an
         // off-toggle for a payload that was never on is a no-op, either of which would drift a count.
-        // The set deliberately mirrors the class list rather than reference-counting it, because the class
-        // list itself is not reference-counted: two variants asking for the SAME token (dark:gap-4 beside
-        // md:gap-4) already lose the class when whichever one turns off first removes it. Counting here
-        // would only make this table disagree with the element. What changed is the visible consequence —
-        // the token now also decides which layout manipulator the element carries, so that pre-existing
-        // lost toggle reads as a layout change rather than just a lost utility.
-        internal bool TrackVariantLayoutClass(VisualElement target, string cls, bool on)
+        // KNOWN LIMITATION, two faces of one cause: the tokens carry no priority, while StyleClassProjection —
+        // which owns the class list — ranks by it. None of these utilities has a USS property set, so the
+        // projection cannot rank them and this table is the only thing ordering them.
+        // - Two variants supplying the SAME token with no literal base (dark:gap-4 beside md:gap-4) diverge
+        //   when the first turns off: the projection keeps the class, because the other layer still wants it,
+        //   while the token leaves here and the gate the class drives turns off with it. A literal base is
+        //   unaffected — the composed source is built ON the reconciled array, which carries it.
+        // - Two payloads of one FAMILY (md:shadow-sm beside dark:shadow-lg) resolve by arrival rather than by
+        //   priority, because every family reads last-token-wins off the composed array. Lighting dark first
+        //   and then crossing md leaves shadow-sm winning, though the precedence table ranks dark: above md:;
+        //   the opposite order gives shadow-lg. Same end state, two renderings, decided by signal history.
+        // Both need the same fix: key the tokens by the priority the payload was applied at, the way the
+        // projection does, and order the composition by it instead of by arrival.
+        internal bool TrackVariantGateClass(VisualElement target, string cls, bool on)
         {
             if (on)
             {
-                if (!VariantLayoutClasses.TryGetValue(target, out var applied))
+                if (!VariantGateClasses.TryGetValue(target, out var state))
                 {
-                    applied = new HashSet<string>();
-                    VariantLayoutClasses[target] = applied;
+                    state = new VariantGateState();
+                    VariantGateClasses[target] = state;
                 }
-                return applied.Add(cls);
+                if (state.Tokens.Contains(cls))
+                {
+                    return false;
+                }
+                state.Tokens.Add(cls);
+                return true;
             }
 
-            if (!VariantLayoutClasses.TryGetValue(target, out var current) || !current.Remove(cls))
-            {
-                return false;
-            }
-            if (current.Count == 0)
-            {
-                // Drop the entry so the element falls back to the cheap reconciled-array path once its last
-                // variant-applied gate token is gone.
-                VariantLayoutClasses.Remove(target);
-            }
-            return true;
+            // The entry stays behind once its last token leaves: an empty token set is already what puts the
+            // element back on the cheap reconciled-array path, and the recorded array is what the NEXT toggle
+            // composes from — dropping it would leave a payload that turns on again with nothing to build on,
+            // since no reconcile need ever run in between to re-record it.
+            return VariantGateClasses.TryGetValue(target, out var current) && current.Tokens.Remove(cls);
         }
 
         // Per-divided-child dashed / dotted divider paint (divide-dashed / divide-dotted), keyed by the CHILD
@@ -1021,7 +1068,7 @@ namespace Velvet
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,
-                VariantLayoutClasses,
+                VariantGateClasses,
                 ZLayerHosts,
                 ZLayerMembers,
             };

@@ -65,6 +65,12 @@ namespace Velvet
         private const float DefaultHueSec = 4f;
         private const float DefaultPulseSec = 2f;
 
+        // True when cls is an animate-* utility this layer owns. Covers the unrecognized names too
+        // (animate-spin, a future mode): the namespace is claimed as a whole so a variant payload naming one
+        // routes here rather than being judged token by token against the recognized set.
+        public static bool IsAnimateClass(string cls)
+            => !string.IsNullOrEmpty(cls) && cls.StartsWith(Prefix, StringComparison.Ordinal);
+
         // Resolves the winning animate-* utility: the LAST recognized token wins (cascade). Returns false
         // when none is present, or when the winner is animate-none (an explicit cancel). This is itself the
         // gate — a no-animation element pays one per-class probe pass, not two — so the reconciler calls it

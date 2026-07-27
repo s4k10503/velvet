@@ -22,10 +22,11 @@ namespace Velvet
             // Let the variant manipulators (via StyleVariantPayload) re-resolve a clip-path mask when a
             // hover:/focus:/dark: clip payload toggles — the class toggle alone does nothing in UITK.
             _ctx.ClipPathReResolve = _appliers.ReResolveClipPathLive;
-            // Same seam for the layout manipulators: a variant that toggles gap / grid / divide /
-            // text-balance changes which of them the element should carry, and that toggle never reaches
+            // Same seam for every other class-driven pass a variant can change — the layout manipulators and
+            // the paint layers (skew / gradient / animate / shadow / border-style). A variant that toggles
+            // one of their gate tokens changes what the element should carry, and that toggle never reaches
             // the reconciled class array those passes are otherwise configured from.
-            _ctx.LayoutManipulatorReSync = ReSyncLayoutManipulators;
+            _ctx.VariantGatedReSync = ReSyncVariantGatedPasses;
         }
 
         // The className-driven effect appliers (skew/gradient/motion/shadow/ring/clip-path/gesture).
@@ -271,28 +272,20 @@ namespace Velvet
         {
             PatchBaseElement(element, oldNode, newNode);
             DiffStyles(element, oldNode.Styles, newNode.Styles);
+            // clip-path decides a structural WRAPPER, which is parent surgery, so only a reconcile pass may
+            // run it — hence its place here rather than inside the shared, re-runnable pass sequence. It runs
+            // BEFORE the shadow paint: a clip clips the box-shadow too (CSS), so the shadow reads this verdict
+            // (clipActive) and suppresses the paint while a clip is active.
+            var clipActive = _appliers.ApplyClipPathOnPatch(element, newNode.ClassNames);
             // The shared post-children passes run after PatchCommon (which reconciles children) AND
             // DiffStyles — keeping gap after DiffStyles preserves the ordering invariant that the
             // manipulator's container-margin writes are never clobbered by a later inline-style diff on
             // the same element. (Today DiffStyles only touches color properties, but the invariant must
             // hold if a margin-writing StyleOverride is ever added.)
-            ApplyPostChildrenClassPasses(element, newNode.ClassNames, gradientSkewable: true);
-            // After the shared passes: reconcile the paint + wrapper effect layers against the new class
-            // list. They run last so each is the final word on this element. Skew and
-            // shadow are wrapper-less paints (the silhouette / shadow are the element's own
-            // generateVisualContent); their stash / spec sync must observe this patch's freshly-applied class
-            // styling. clip-path runs BEFORE shadow: a clip clips the box-shadow too (CSS), so the shadow
-            // patch reads the post-clip result (clipActive) and suppresses the paint while a clip is active.
-            // The clip / skew results are forwarded so the shadow gate never re-parses those class families.
-            var skewXDeg = _appliers.ApplySkewOnPatch(element, oldNode.ClassNames, newNode.ClassNames);
-            var clipActive = _appliers.ApplyClipPathOnPatch(element, newNode.ClassNames);
-            _appliers.ApplyShadowOnPatch(element, newNode.ClassNames, clipActive, skewXDeg);
-            // border-dashed / border-dotted paint: runs strictly AFTER the skew and shadow patches so it reads
-            // their final post-patch ownership — while either owns the face the dashed layer defers (the border
-            // stays solid), so an add/remove of skew/shadow in the same patch resolves without a race.
-            _appliers.ApplyBorderStyleOnPatch(element, oldNode.ClassNames, newNode.ClassNames);
+            ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames,
+                paintTail: true, clipActive);
             // Ring is the lowest-precedence WRAPPER layer: suppressed only when clip owns the wrapper (the two
-            // are mutually exclusive — one wrapper per element). The shadow is now a paint, so a ring composes
+            // are mutually exclusive — one wrapper per element). The shadow is a paint, so a ring composes
             // with it rather than competing for the wrapper.
             _appliers.ApplyRingOnPatch(element, newNode.ClassNames, suppress: clipActive, allowWrap: true);
         }
@@ -370,34 +363,72 @@ namespace Velvet
         // - has-[:checked]: / has-[:focus]: re-scanned at the same timing — a checked / focused descendant
         //   added or removed fires no event, so the manipulator must re-derive from the live subtree.
         // - text-transform / -decoration cascade (post-children so it reaches descendant text leaves).
-        // - Gradient runs after the node-style diff so its background-image is the last word on this
-        //   element — DiffStyles only writes background-image on an actual node-style change, which a
-        //   gradient element never carries, so the two never fight. gradientSkewable is the one per-path
-        //   knob: an ElementNode may render a sheared silhouette, a Motion never does (see PatchMotion).
-        // - animate-* motion runs after the gradient (a pan mode reads the live gradient) and reconciles
-        //   its own restart/attach/detach against the new class list.
-        // The element-only paint/wrapper tail (skew / clip-path / shadow, then ring) stays with the
-        // callers: PatchMotion intentionally omits the trio and passes different ring flags.
-        private void ApplyPostChildrenClassPasses(VisualElement element, string[] classNames, bool gradientSkewable)
+        // - The paint sequence last, from a class source resolved HERE rather than at the top: the has- /
+        //   attribute / supports passes just above apply payloads to this very element, so a gate token they
+        //   toggle has to be in the source the paint layers read, and an array resolved before them would not
+        //   carry it. The re-sync those passes raise also runs, a few lines earlier, against the same
+        //   composition — so the two agree instead of the later one undoing the earlier.
+        // The wrapper layers stay with the callers: they are parent surgery, which only a reconcile pass may
+        // perform, and PatchMotion passes different ring flags.
+        private void ApplyPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
+            string[] newClassNames, bool paintTail, bool clipActive)
         {
             // Before gap / divide / grid: on a SHARED style property ([&>*]:ml-[2px] alongside gap-x-4) those
             // three own the edge and must win, exactly as they already win over a child's own explicit margin
             // — running [&>*]: first makes it behave as if the child itself carried the wrapped class.
-            ApplyChildVariantManipulator(element, classNames);
-            ApplyLayoutManipulators(element, classNames);
+            ApplyChildVariantManipulator(element, newClassNames);
+            ApplyLayoutManipulators(element, newClassNames);
             ApplyStructuralVariants(element);
             ApplyHasClassVariants(element);
             ApplyHasVariantManipulators(element);
-            StyleTextEffectResolver.Apply(_ctx, element, classNames);
-            _appliers.ApplyGradientOnPatch(element, classNames, skewable: gradientSkewable);
+            StyleTextEffectResolver.Apply(_ctx, element, newClassNames);
+            var resolved = ResolveVariantClasses(element, oldClassNames, newClassNames, paintTail,
+                out var classesChanged);
+            // canReleaseFace: a reconcile pass may let the silhouette stashes release, because this same
+            // sequence runs on the element's next patch and re-takes the stash. The re-sync below cannot.
+            ApplyResolvedClassPasses(element, resolved, classesChanged, paintTail, clipActive,
+                canReleaseFace: true);
+        }
+
+        // The ordered paint-pass sequence, shared by the reconcile path and the variant re-sync so the two
+        // cannot drift and so a re-run produces exactly what a full pass would. Every pass here reads its
+        // class source and nothing else about the element's position, which is what makes it re-runnable
+        // outside a reconcile — unlike the clip and ring wrapper layers, which mutate the parent and are
+        // therefore forbidden inside a pointer / focus callback or a breakpoint notification.
+        // The ORDER is load-bearing:
+        // - Gradient runs after the node-style diff so its background-image is the last word on this
+        //   element — DiffStyles only writes background-image on an actual node-style change, which a
+        //   gradient element never carries, so the two never fight.
+        // - animate-* motion runs after the gradient (a pan mode reads the live gradient) and reconciles
+        //   its own restart/attach/detach against the new class list.
+        // - Skew is a wrapper-less paint (the sheared silhouette is the element's own generateVisualContent);
+        //   its stash / spec sync must observe this patch's freshly-applied class styling, so it follows the
+        //   passes that apply it. Its resolved X angle is forwarded so the shadow gate never re-parses the
+        //   skew family.
+        // - The shadow paint follows skew (a skewed caster's shadow follows the sheared silhouette) and reads
+        //   the caller's clipActive verdict.
+        // - border-dashed / border-dotted runs strictly AFTER skew and shadow so it reads their final
+        //   ownership — while either owns the face the dashed layer defers (the border stays solid), so an
+        //   add/remove of skew/shadow in the same pass resolves without a race.
+        // The particles spacer is here, not in the Particles-settings diff, because it follows the CLASS list
+        // (a filter comes and goes via a class swap or a variant).
+        // paintTail is the one per-path knob, and it is the same distinction the gradient's skewable flag
+        // draws: an ElementNode may render a sheared silhouette, a Motion never does, so a Motion's gradient
+        // stays on the straight background-image path and the three silhouette layers stand down entirely.
+        private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
+            bool paintTail, bool clipActive, bool canReleaseFace)
+        {
+            _appliers.ApplyGradientOnPatch(element, classNames, skewable: paintTail);
             _appliers.ApplyAnimateOnPatch(element, classNames);
-            // transition-filter: attach/keep/detach the tween binding against the new class list. The
-            // shared hook for both the element and Motion patch paths (a filter can be Motion-hosted).
             _appliers.ApplyFilterTransitionOnPatch(element, classNames);
-            // Here, not in the Particles-settings diff: the spacer follows the class list (a filter comes and
-            // goes via a class swap or variant), and this pass is the one hook shared by the element and Motion
-            // patch paths — a particle can be Motion-hosted.
             _appliers.ApplyParticlesSpacer(element, classNames);
+            if (!paintTail)
+            {
+                return;
+            }
+            var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
+            _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
+            _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
         }
 
         private void PatchText(Label label, TextNode oldNode, TextNode newNode)
@@ -590,8 +621,9 @@ namespace Velvet
             // MotionNode has no Styles diff, so the shared passes follow PatchCommon (which reconciles
             // children) directly. A Motion never renders skew (the animation node never attaches a sheared
             // silhouette), so its gradient always takes the straight background-image path even with skew
-            // classes present (gradientSkewable: false).
-            ApplyPostChildrenClassPasses(element, appliedNew, gradientSkewable: false);
+            // classes present, and the three silhouette paints stand down (skewable: false). A Motion also
+            // carries no clip wrapper, so nothing can suppress a paint here.
+            ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, paintTail: false, clipActive: false);
             // A Motion carries no shadow paint: the create path warns and skips a shadow-* on a Motion (the
             // animation node owns its transition; a shadow belongs on a wrapped Div), so there is never a
             // binding to update — and the patch must not start attaching one. Ring likewise never wraps a
@@ -2009,6 +2041,7 @@ namespace Velvet
         // call. The gap manipulator is deliberately excluded — it must run AFTER children are reconciled.
         internal void ApplyVariantManipulators(VisualElement element, string[] classNames)
         {
+            RecordVariantGateSource(element, classNames);
             ApplyVariantManipulator(element, classNames);
             ApplyConditionalVariantManipulator(element, classNames);
             ApplyRelationalVariantManipulator(element, classNames);
@@ -2584,21 +2617,75 @@ namespace Velvet
         }
 
         // Configures the four manipulators whose existence is gated purely on a layout utility class being
-        // present: gap, divide, grid, text-balance. They are configured as a unit because the source they
-        // read is decided as a unit (ResolveLayoutClasses) and because gap and grid share one ownership
-        // rule — a grid owns its children's margins, so the gap manipulator must be suppressed for exactly
-        // the class lists that produce a grid manipulator. Call AFTER the container's children have been
-        // reconciled so each sees the final child list.
+        // present: gap, divide, grid, text-balance. They are configured as a unit because gap and grid share
+        // one ownership rule — a grid owns its children's margins, so the gap manipulator must be suppressed
+        // for exactly the class lists that produce a grid manipulator. Call AFTER the container's children
+        // have been reconciled so each sees the final child list.
+        // Resolves its own class source rather than taking the one the paint passes use: those resolve after
+        // the structural / has- passes (see ApplyPostChildrenClassPasses), and gap has to run before them.
         internal void ApplyLayoutManipulators(VisualElement element, string[] classNames)
             => ApplyResolvedLayoutManipulators(element, ResolveLayoutClasses(element, classNames));
 
-        // Re-derives the same four manipulators for an element a VARIANT just changed a gate class on
-        // (wired to ReconcilerContext.LayoutManipulatorReSync). Reads the live class list unconditionally:
-        // the caller has no reconciled array to offer, and this runs on both the on- and the off-edge — an
-        // element that just lost its last variant-applied gate class must still be re-derived from
-        // everything it literally carries, not from an empty set.
-        private void ReSyncLayoutManipulators(VisualElement element)
-            => ApplyResolvedLayoutManipulators(element, LiveClasses(element));
+        // Re-runs every class-driven pass a variant payload can change, for an element a variant just
+        // toggled a gate token on (wired to ReconcilerContext.VariantGatedReSync). Runs the same bodies the
+        // reconcile path runs, against the same composed source, so a toggle lands where a full patch would
+        // put it — bar the two wrapper layers, whose parent surgery is forbidden in the pointer / focus
+        // callback or breakpoint notification this is called from.
+        private void ReSyncVariantGatedPasses(VisualElement element)
+        {
+            _ctx.VariantGateClasses.TryGetValue(element, out var state);
+            // The array the element's own reconcile pass last applied, or none when no pass ever recorded
+            // one: the trigger was a width payload, which gates nothing and so never earns an entry, or the
+            // payload came from a [&>*]: rule on the PARENT, whose children are fully created before it runs.
+            // The live list stands in for the layout gates in both cases — every token those four families
+            // parse is a plain USS class — while the paint sequence stands down, since PaintTail is unknown
+            // and a Motion must not be given a silhouette.
+            // That makes a [&>*]: paint land inconsistently, which is the cost of not guessing: a child that
+            // declares ANY gated payload of its own was recorded at create, so the parent's payload finds
+            // PaintTail set and paints at mount, while a child that declares none paints only from its next
+            // patch. Recording how a child is driven before its parent's rules run would close it.
+            var reconciled = state?.Reconciled;
+            var resolved = reconciled == null
+                ? LiveClasses(element)
+                : ComposeVariantClasses(reconciled, state!.Tokens, state.Resolved);
+            var classesChanged = !ReferenceEquals(state?.Resolved, resolved);
+            if (state != null)
+            {
+                state.Resolved = resolved;
+            }
+            ApplyResolvedLayoutManipulators(element, resolved);
+            var paintTail = state?.PaintTail;
+            if (paintTail == null)
+            {
+                return;
+            }
+            // Both recorded answers run the sequence — a Motion still carries the gradient, the animate driver
+            // and the filter tween, and only the three silhouette layers stand down. The clip verdict is the
+            // same one the reconcile path forwards from its own clip patch: that call returns exactly its own
+            // wantWrap answer, so reading the predicate here cannot disagree. Only the shadow reads it, so the
+            // Motion path skips the scan the way PatchMotion hard-codes the answer.
+            ApplyResolvedClassPasses(element, resolved, classesChanged, paintTail.Value,
+                paintTail.Value && StyleClipPathClass.WantsClipWrapper(resolved), canReleaseFace: false);
+        }
+
+        // Records the class array an element that DECLARES a variant-gated payload will need if that payload
+        // ever fires. The re-sync has no reconciled array of its own to compose from, and the toggle that
+        // wakes it can arrive with no reconcile anywhere in sight (a breakpoint crossing, a theme flip), so
+        // the array has to be put aside while a pass still holds it. Runs where the variant manipulators are
+        // configured, which is exactly the create + class-content-changed pair; a class list whose content
+        // did not change leaves an equivalent array already recorded.
+        private void RecordVariantGateSource(VisualElement element, string[] classNames)
+        {
+            if (_ctx.VariantGateClasses.TryGetValue(element, out var state))
+            {
+                state.Reconciled = classNames;
+                return;
+            }
+            if (StyleVariantPayload.DeclaresGatePayload(classNames))
+            {
+                _ctx.VariantGateClasses[element] = new VariantGateState { Reconciled = classNames };
+            }
+        }
 
         // The ordered configure sequence, shared by the reconcile path and the variant re-sync so the two
         // cannot drift.
@@ -2632,30 +2719,152 @@ namespace Velvet
             ApplyTextBalanceManipulator(element, classNames);
         }
 
-        // Picks the class array the four layout gates are derived from. Normally the reconciled array: it
-        // allocates nothing and is the source every other pass here reads, so the gates stay consistent
-        // with them. The exception is an element a variant has toggled a gate class onto — a token like
-        // `md:grid` resolves to a bare `grid` written straight onto the live class list, and the bare form
-        // is the only one the gates recognize — so for those elements the live list is the source instead.
-        // It substitutes completely: every token these four families parse is a plain USS class (none of
-        // the gap / grid / divide / text-balance prefixes is claimed by StyleArbitraryValueResolver, so
-        // even their bracket forms — gap-[20px], grid-cols-[5] — land on the class list rather than
-        // resolving to an inline style), and what the live list omits by comparison is the variant tokens
-        // themselves, which are never gate tokens. The two sources therefore agree wherever both apply.
-        // The global Count check keeps a tree that uses no variant-gated layout class on the array path
+        // The class source every gate-driven pass reads: the reconciled array, followed by each gate token a
+        // variant currently has applied that the reconciled array does not already name.
+        //
+        // A variant payload is realized by writing its bare utility onto the live class list, and the bare
+        // form is the only one the gates recognize — `md:shadow-lg` is not a shadow token, `shadow-lg` is —
+        // so the reconciled array alone can never see it. The live list alone cannot stand in for the
+        // reconciled array either: it structurally cannot hold a variant token, a bracket or static-scale
+        // value (those resolve to inline style), or a class the projection has suppressed, and the passes
+        // read all three (the bounds spacer parses border-[8px], the gradient teardown asks whether a
+        // bg-[addr:…] owns the background-image, the animate teardown re-asserts every inline-resolved
+        // token). Appending rather than substituting keeps both, which is what lets every pass here take one
+        // array and lets a pass be added later without auditing which source it needs.
+        //
+        // Appending the payloads LAST is what ranks them above the base utilities: each of these families
+        // resolves last-token-wins, and a payload outranks the base it overrides. Composing them that way
+        // makes it structural rather than a property of the live list's own append order, which the class
+        // diff can invert by re-adding a base token after a payload that is already lit.
+        // It ranks payloads against BASES only. Two payloads of one family rank against each other by arrival
+        // instead of by priority — see ReconcilerContext.TrackVariantGateClass for that known limitation.
+        //
+        // changed reports whether the result differs from what this element was last resolved to, which is
+        // what the skew and border-style stashes need: a release-and-re-stash on a pass that changed nothing
+        // would drop the suppression and re-expose the native rectangle behind the silhouette, and the
+        // re-stash depends on events a variant toggle does not fire.
+        //
+        // paintTail records how this element is driven, so the re-sync can read it back and never attach a
+        // silhouette a Motion's own patch would not have attached.
+        //
+        // The global Count check keeps a tree that uses no variant-gated class on the reconciled-array path
         // entirely, at one int compare per element per patch.
-        private string[] ResolveLayoutClasses(VisualElement element, string[] classNames)
+        private string[] ResolveVariantClasses(VisualElement element, string[] oldClassNames,
+            string[] newClassNames, bool paintTail, out bool changed)
         {
-            if (_ctx.VariantLayoutClasses.Count == 0 || !_ctx.VariantLayoutClasses.ContainsKey(element))
+            if (_ctx.VariantGateClasses.Count == 0
+                || !_ctx.VariantGateClasses.TryGetValue(element, out var state))
+            {
+                changed = !ReferenceEquals(oldClassNames, newClassNames);
+                return newClassNames;
+            }
+
+            // An element that DECLARES a gated payload but has none applied right now reads its reconciled
+            // array unchanged — there is no token to append — so the common `hover:shadow-lg` element pays
+            // the composition only while it is actually hovered, and a dictionary probe the rest of the time.
+            var resolved = state.Tokens.Count == 0
+                ? newClassNames
+                : ComposeVariantClasses(newClassNames, state.Tokens, state.Resolved);
+            changed = !ReferenceEquals(oldClassNames, newClassNames)
+                || !ReferenceEquals(state.Resolved, resolved);
+            state.Reconciled = newClassNames;
+            state.Resolved = resolved;
+            state.PaintTail = paintTail;
+            return resolved;
+        }
+
+        // The same source for the CREATE path, which has no previous array to compare against — every layer
+        // is being attached for the first time, so the change verdict has no reader. Call it at the same
+        // point in the create sequence the patch path resolves at: AFTER the structural / has- passes, whose
+        // payloads land on this very element.
+        internal string[] ResolveVariantClassesOnCreate(VisualElement element, string[] classNames, bool paintTail)
+            => ResolveVariantClasses(element, classNames, classNames, paintTail, out _);
+
+        // The same source for the four layout gates, which resolve at their own point in the sequence (see
+        // ApplyLayoutManipulators). It reads the cached array but does not REPLACE it: the paint resolve a few
+        // passes later answers "did the classes change" by comparing against that same record, and advancing it
+        // here would swallow a payload one of the has- / attribute passes in between had just toggled.
+        private string[] ResolveLayoutClasses(VisualElement element, string[] classNames)
+            => _ctx.VariantGateClasses.Count == 0
+                || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
+                || state.Tokens.Count == 0
+                    ? classNames
+                    : ComposeVariantClasses(classNames, state.Tokens, state.Resolved);
+
+        // Builds classNames plus every variant-applied gate token it does not already name, handing back
+        // reuse unchanged when the result would match it token for token, and classNames itself when the
+        // tokens add nothing.
+        //
+        // The tracked tokens rather than the element's live class list: they are the same set for every
+        // family these passes read, they are already ordered by when each payload arrived, and reading them
+        // costs no enumerator — where walking the live list costs one per element per patch, plus a
+        // membership test per class on it. The narrowing that buys is real and deliberate: a bare utility
+        // written by a subsystem that raises no signal (whileHoverClass / whileTapClass / whileFocusClass,
+        // the animation scheduler, the drag layer) is on the live list but never in this source, so it drives
+        // no gate. Only a signalling writer can, and a writer with no signal could not keep a pass correct
+        // across the toggle back off anyway.
+        //
+        // Two passes so the steady state allocates NOTHING: the first counts the additions and checks them
+        // against reuse as it goes, and only a genuine change reaches the second, which materializes the
+        // array. This runs on every patch of every element a variant has a gate token applied to.
+        private static string[] ComposeVariantClasses(string[] classNames, List<string> tokens, string[]? reuse)
+        {
+            var extra = 0;
+            var reusable = reuse != null && reuse.Length >= classNames.Length;
+            foreach (var token in tokens)
+            {
+                // Declaring a token literally AND behind a variant is legal (gap-4 md:gap-4), and every
+                // family read from this source resolves last-token-wins, so appending a duplicate of one the
+                // reconciled array already names would change nothing but the allocation.
+                if (Array.IndexOf(classNames, token) >= 0)
+                {
+                    continue;
+                }
+                var slot = classNames.Length + extra;
+                reusable = reusable && slot < reuse!.Length && reuse[slot] == token;
+                extra++;
+            }
+
+            if (extra == 0)
             {
                 return classNames;
             }
-            return LiveClasses(element);
+            if (reusable && reuse!.Length == classNames.Length + extra && HeadEquals(reuse, classNames))
+            {
+                return reuse;
+            }
+
+            var composed = new string[classNames.Length + extra];
+            Array.Copy(classNames, composed, classNames.Length);
+            var next = classNames.Length;
+            foreach (var token in tokens)
+            {
+                if (Array.IndexOf(classNames, token) < 0)
+                {
+                    composed[next++] = token;
+                }
+            }
+            return composed;
         }
 
-        // Materializes the element's live USS class list. Allocates, so it is reached only for the elements
-        // a variant has actually toggled a layout gate class onto — a fresh list per call rather than a
-        // shared buffer because a patch can re-enter this path through a nested reconcile.
+        // Whether array opens with exactly head's tokens. The reconciled array can be a fresh instance
+        // carrying the same tokens on every render, so the cached composition is still reusable then — but
+        // only once its head is confirmed, since that is the half the token walk above never inspects.
+        private static bool HeadEquals(string[] array, string[] head)
+        {
+            for (var i = 0; i < head.Length; i++)
+            {
+                if (array[i] != head[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Materializes the element's live USS class list, for the one caller that has no recorded array to
+        // compose on (see ReSyncVariantGatedPasses). Allocates a fresh list per call rather than reusing a
+        // shared buffer, because a patch can re-enter this path through a nested reconcile.
         private static string[] LiveClasses(VisualElement element)
         {
             var classes = new List<string>();
@@ -2748,7 +2957,8 @@ namespace Velvet
                     // Detach nulls the borrowed width slot, taking a w-[..] or size-[..] applied in this
                     // same patch with it — the class diff re-applies a token only on a change. The layer
                     // map rather than a class array: a w-[600px] never enters the class list, and the array
-                    // here may be the live one (see ResolveLayoutClasses), which carries no bracket tokens.
+                    // here may be the element's LIVE one — ReSyncVariantGatedPasses substitutes it for an
+                    // element no pass has recorded a reconciled array for — which carries no bracket tokens.
                     StyleArbitraryValueResolver.ReapplyWidthSlot(element);
                 }
                 return;

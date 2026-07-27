@@ -36,10 +36,14 @@ namespace Velvet
 
         // Patch-time reconciliation of an element's border line-style against its new class list. Mirrors the
         // skew paint layer's four cases (update the spec, attach, detach, or no-op the steady state). Runs AFTER
-        // ApplySkewOnPatch and ApplyShadowOnPatch (PatchElement order) so it observes the final post-patch skew
-        // / shadow ownership: while either owns the face the layer stands down (defer/detach), so an add/remove
-        // of skew/shadow in the same patch resolves without a race.
-        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] oldClassNames, string[] newClassNames)
+        // ApplySkewOnPatch and ApplyShadowOnPatch (the shared pass order) so it observes the final post-patch
+        // skew / shadow ownership: while either owns the face the layer stands down (defer/detach), so an
+        // add/remove of skew/shadow in the same pass resolves without a race.
+        // classesChanged is the caller's, for the same reason as ApplySkewOnPatch's: on a variant re-sync the
+        // change lives in what the live class list added, not in a difference between two reconciled arrays.
+        // canReleaseFace rides along for the same reason it does there.
+        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] newClassNames, bool classesChanged,
+            bool canReleaseFace)
         {
             var bound = _ctx.BorderStyleBindings.TryGetValue(element, out var binding);
             var has = StyleBorderStyleClass.TryGetWinningBorderStyleClass(newClassNames, out var winner);
@@ -52,13 +56,11 @@ namespace Velvet
                 return;
             }
 
-            var classesChanged = !ReferenceEquals(oldClassNames, newClassNames);
-
             // Steady state: the winning token is exactly what the live binding was built from and no higher
             // layer took the face — skip the parse, but keep the color stash in sync with this patch's styling.
             if (bound && has && !deferred && binding.Spec.Source == winner)
             {
-                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged);
+                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged, canReleaseFace);
                 return;
             }
 
@@ -68,7 +70,7 @@ namespace Velvet
             if (want && bound)
             {
                 binding.Spec = spec;
-                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged: true);
+                BorderStyleSilhouette.SyncStashOnPatch(element, binding, classesChanged: true, canReleaseFace);
                 element.MarkDirtyRepaint();
                 return;
             }
@@ -76,7 +78,7 @@ namespace Velvet
             {
                 var fresh = BorderStyleSilhouette.Attach(element, spec);
                 _ctx.BorderStyleBindings[element] = fresh;
-                BorderStyleSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true);
+                BorderStyleSilhouette.SyncStashOnPatch(element, fresh, classesChanged: true, canReleaseFace);
                 return;
             }
             if (bound)

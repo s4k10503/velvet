@@ -47,8 +47,9 @@ namespace Velvet
         internal void ApplySkewOnCreate(VisualElement element, string[] classNames)
             => _skew.ApplySkewOnCreate(element, classNames);
 
-        internal float ApplySkewOnPatch(VisualElement element, string[] oldClassNames, string[] newClassNames)
-            => _skew.ApplySkewOnPatch(element, oldClassNames, newClassNames);
+        internal float ApplySkewOnPatch(VisualElement element, string[] classNames, bool classesChanged,
+            bool canReleaseFace)
+            => _skew.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
 
         internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)
             => _gradient.ApplyGradientOnCreate(element, classNames);
@@ -72,14 +73,15 @@ namespace Velvet
             => _dropShadow.ApplyShadowOnCreate(element, classNames);
 
         internal void ApplyShadowOnPatch(VisualElement element, string[] classNames, bool clipActive,
-            float skewXDeg = 0f)
-            => _dropShadow.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg);
+            float skewXDeg, bool canReleaseFace)
+            => _dropShadow.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
 
         internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)
             => _borderStyle.ApplyBorderStyleOnCreate(element, classNames);
 
-        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] oldClassNames, string[] newClassNames)
-            => _borderStyle.ApplyBorderStyleOnPatch(element, oldClassNames, newClassNames);
+        internal void ApplyBorderStyleOnPatch(VisualElement element, string[] classNames, bool classesChanged,
+            bool canReleaseFace)
+            => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
 
         // USS class on the structural wrapper Velvet emits to host a ring-*/outline-* overlay. UI Toolkit has
         // no CSS box-shadow / outline, so the outset (or inset) HARD border these utilities describe is drawn

@@ -259,7 +259,13 @@ namespace Velvet
         //   releasing it on an unrelated add-only class change would drop the fill and re-expose the native
         //   rectangle (the double-image regression), since the resolver does not re-write an inline value that was
         //   not itself removed.
-        public void SyncOnPatch(VisualElement element, bool classesChanged)
+        // canReleaseFace is the caller's promise that a re-stash will in fact follow, which only a reconcile pass
+        // can make: this method runs on EVERY patch, so a later one re-enters with HasStash false and
+        // re-captures. A variant re-sync cannot promise it — it moves no rect, so no GeometryChangedEvent fires;
+        // Velvet's utilities consume var(--…) without declaring a custom property, so UI Toolkit dispatches no
+        // CustomStyleResolvedEvent either; and no further patch need ever come. A release taken there is
+        // permanent, and the native rectangle paints behind the silhouette for good.
+        public void SyncOnPatch(VisualElement element, bool classesChanged, bool canReleaseFace)
         {
             if (!HasStash)
             {
@@ -281,8 +287,11 @@ namespace Velvet
             // regression). Documented limitation of the shared-slot scheme: a MIXED element (one inline face +
             // one USS face) whose USS face color changes beneath the sentinel is not picked up until the next
             // resolver write — a full per-face release would need separable suppression. (For a border-only
-            // stash BgFromInline stays false, so this reduces to the border authority test.)
-            if (classesChanged && !BgFromInline && !BorderFromInline)
+            // stash BgFromInline stays false, so this reduces to the border authority test.) Withholding the
+            // release costs only that same delay. The release is two-phase even where it IS allowed: the patch
+            // taking it only clears the stash, and the re-capture lands on the patch AFTER, which is the first
+            // to re-enter with HasStash false.
+            if (classesChanged && canReleaseFace && !BgFromInline && !BorderFromInline)
             {
                 Release(element);
                 element.MarkDirtyRepaint();

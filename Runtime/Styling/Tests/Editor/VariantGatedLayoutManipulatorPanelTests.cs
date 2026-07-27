@@ -253,12 +253,12 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ADarkGatedWidth_When_TheThemeTurnsDark_Then_TheElementIsNotTrackedForLiveClassResolution()
+        public void Given_ADarkGatedWidth_When_TheThemeTurnsDark_Then_TheElementIsNotGateTracked()
         {
             // Arrange — a width payload has to re-sync the layout manipulators, since it decides whether
-            // text-balance stands down. It must not join the variant-layout tracking table while doing so:
-            // membership there routes the element through a fresh class ARRAY on every later patch, which
-            // is only worth paying where a manipulator pass reads a token back out of that array.
+            // text-balance stands down. It must not join the variant-gate tracking table while doing so:
+            // membership there routes the element through a composed class ARRAY for as long as a payload is
+            // lit, which is only worth paying where a pass reads a token back out of that array.
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { V.Label(className: "text-balance dark:w-40", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree);
@@ -270,7 +270,7 @@ namespace Velvet.Tests
                 "Precondition: the dark payload put the width class on the live class list");
 
             // Assert
-            Assert.That(scope.Reconciler.Context.VariantLayoutClasses.ContainsKey(label), Is.False);
+            Assert.That(scope.Reconciler.Context.VariantGateClasses.ContainsKey(label), Is.False);
         }
 
         [Test]

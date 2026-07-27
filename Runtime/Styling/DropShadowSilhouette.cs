@@ -295,7 +295,7 @@ namespace Velvet
         // LOST its skew, this paint re-stashes the face it must now own. The skew layer is reconciled before
         // the shadow, so its binding is already in its post-patch state when this runs.
         public static void Sync(VisualElement element, DropShadowBinding binding, ShadowSpec spec,
-            string[] classNames, float skewXDeg, bool casterSkewed = false)
+            string[] classNames, float skewXDeg, bool casterSkewed, bool canReleaseFace)
         {
             binding.Spec = spec;
             binding.ClassNames = classNames;
@@ -329,7 +329,7 @@ namespace Velvet
             {
                 // Steady upright: keep the face stash synced with this patch's styling, exactly as the skew
                 // layer does (the shared inline bg/border slot is also written by the arbitrary-value resolver).
-                binding.Face.SyncOnPatch(element, classesChanged: true);
+                binding.Face.SyncOnPatch(element, classesChanged: true, canReleaseFace);
             }
 
             element.MarkDirtyRepaint();
