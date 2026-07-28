@@ -657,22 +657,6 @@ namespace Velvet
                         if (_ctx.IsAborted) break;
                         var identity = component.ResolvedIdentity;
                         var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(positionCounters, identity, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
-                        // When recursing into fiber.PreviousTree, the descendants' slotKeys must be
-                        // scoped to THIS fiber's body output — not shared with the surrounding
-                        // siblings' position counters. Otherwise the same descendant would compute
-                        // different slotKeys when the enclosing fiber re-renders independently
-                        // (setState) vs when its outer parent re-renders (where preceding siblings
-                        // share the position scope and shift the counters). A registry lookup
-                        // mismatch would dispose the descendant fiber and reset its state.
-                        //
-                        // FiberStack.Push around the recursion is required so that nested inline
-                        // ComponentNodes encountered while walking fiber.PreviousTree are appended
-                        // as children of THIS fiber, not the outer caller's current fiber. Without
-                        // it, a Parent → Child component chain would link Child.Parent to the outer
-                        // root fiber (the caller's Current), bypassing the Parent fiber entirely and
-                        // breaking ErrorBoundary search / context propagation walks. The same invariant
-                        // applies here: a fiber stays the current work-in-progress
-                        // while its children are created from its body output.
                         if (isNewSide)
                         {
                             // Direct, live-context descent: the component renders
@@ -704,26 +688,8 @@ namespace Velvet
                             var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
                                 component, parentFiber, slotKey, parent, currentSlotStart);
                             newFibers.Add(fiber);
-                            // FiberStack.Push keeps nested inline components linked under THIS fiber
-                            // (a fiber stays the current work-in-progress while its
-                            // children are created from its body output).
                             var preCount = emittedCount;
-                            if (fiber.PreviousTree != null && fiber.PreviousTree.Length > 0)
-                            {
-                                var childCounters = _ctx.BufferPool.RentPositionCounter();
-                                _ctx.FiberStack.Push(fiber);
-                                try
-                                {
-                                    var componentPosition = FiberKeying.ComponentChild(
-                                        position, component.Key, nodeIndex);
-                                    ExpandInlineRecursive(walk, fiber.PreviousTree, childCounters, componentPosition);
-                                }
-                                finally
-                                {
-                                    _ctx.FiberStack.Pop();
-                                    _ctx.BufferPool.ReturnPositionCounter(childCounters);
-                                }
-                            }
+                            ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
                             fiber.MountSlotCount = (commit != null ? commit.NewElements.Count : result!.Count) - preCount;
                         }
                         else
@@ -737,22 +703,7 @@ namespace Velvet
                             var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity);
                             if (fiber != null)
                             {
-                                if (fiber.PreviousTree != null && fiber.PreviousTree.Length > 0)
-                                {
-                                    var childCounters = _ctx.BufferPool.RentPositionCounter();
-                                    _ctx.FiberStack.Push(fiber);
-                                    try
-                                    {
-                                        var componentPosition = FiberKeying.ComponentChild(
-                                            position, component.Key, nodeIndex);
-                                        ExpandInlineRecursive(walk, fiber.PreviousTree, childCounters, componentPosition);
-                                    }
-                                    finally
-                                    {
-                                        _ctx.FiberStack.Pop();
-                                        _ctx.BufferPool.ReturnPositionCounter(childCounters);
-                                    }
-                                }
+                                ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
                                 // Post-order add: a directly-nested component must precede its
                                 // parent in oldFibers so the orphan sweep's forward walk tears the
                                 // subtree down bottom-up — a descendant's effect cleanups complete
@@ -814,6 +765,43 @@ namespace Velvet
             }
         }
 
+        // The descendants' slotKeys must be scoped to THIS fiber's body output — not shared with the
+        // surrounding siblings' position counters. Otherwise the same descendant would compute different
+        // slotKeys when the enclosing fiber re-renders independently (setState) vs when its outer parent
+        // re-renders (where preceding siblings share the position scope and shift the counters). A registry
+        // lookup mismatch would dispose the descendant fiber and reset its state.
+        //
+        // FiberStack.Push around the recursion is required so that nested inline ComponentNodes encountered
+        // while walking fiber.PreviousTree are appended as children of THIS fiber, not the outer caller's
+        // current fiber. Without it, a Parent → Child component chain would link Child.Parent to the outer
+        // root fiber (the caller's Current), bypassing the Parent fiber entirely and breaking ErrorBoundary
+        // search / context propagation walks. The same invariant applies here: a fiber stays the current
+        // work-in-progress while its children are created from its body output.
+        //
+        // Both sides of the walk descend identically; only how they obtained the fiber differs.
+        private void ExpandFiberPreviousTree(
+            InlineWalk walk,
+            ComponentFiber fiber,
+            ComponentNode component,
+            WalkPosition position,
+            int nodeIndex)
+        {
+            if (fiber.PreviousTree == null || fiber.PreviousTree.Length == 0) return;
+
+            var childCounters = _ctx.BufferPool.RentPositionCounter();
+            _ctx.FiberStack.Push(fiber);
+            try
+            {
+                var componentPosition = FiberKeying.ComponentChild(position, component.Key, nodeIndex);
+                ExpandInlineRecursive(walk, fiber.PreviousTree, childCounters, componentPosition);
+            }
+            finally
+            {
+                _ctx.FiberStack.Pop();
+                _ctx.BufferPool.ReturnPositionCounter(childCounters);
+            }
+        }
+
         // Inline-expands a MemoNode. A memo component emits no DOM — it resolves to
         // an inner element that is reconciled like any other child. The dep cache is keyed by a
         // stable position scope (fragment scope + node index) — not a per-pass visitation counter —
@@ -842,18 +830,10 @@ namespace Velvet
                     FiberTreeReturn.NormalizeToArray(previousCached), _ctx.FiberStack.Current);
             }
             if (inner == null) return;
-            var counters = _ctx.BufferPool.RentPositionCounter();
-            try
-            {
-                // Recurse under this memo's own scope so a nested Memo's position key (or an inner
-                // Component's slot key) cannot collide with this memo's scope — e.g. an outer and an
-                // inner unkeyed Memo both at node index 0 would otherwise share cacheKey "{scope}/m0".
-                ExpandInlineRecursive(walk, new[] { inner }, counters, innerPosition);
-            }
-            finally
-            {
-                _ctx.BufferPool.ReturnPositionCounter(counters);
-            }
+            // Recurse under this memo's own scope so a nested Memo's position key (or an inner
+            // Component's slot key) cannot collide with this memo's scope — e.g. an outer and an
+            // inner unkeyed Memo both at node index 0 would otherwise share cacheKey "{scope}/m0".
+            ExpandInlineScoped(walk, new[] { inner }, innerPosition);
         }
 
         // Bumps the propagation generation (only on the first change of this reconcile pass to
@@ -887,6 +867,48 @@ namespace Velvet
         #endregion
 
         #region Suspense
+
+        // A reused (bailed-out) child does not re-throw FiberSuspendSignal, so an unrelated parent
+        // re-render would otherwise reveal an empty primary while a descendant is still loading. The scan
+        // is scoped to the children added during this expansion (not the whole boundary subtree) so an
+        // async sibling outside the Suspense does not keep the boundary suspended.
+        //
+        // A nested Suspense boundary owns its own descendants' suspension, so its pending primary must not
+        // keep the outer boundary suspended: nested boundary fibers, and any fiber whose nearest boundary
+        // is a nested one, are skipped. The delta already contains every fiber in this Suspense's primary
+        // subtree, so a per-fiber own-slot check covers descendants without re-walking.
+        private static bool AnyPrimaryChildStillPending(
+            HashSet<ComponentFiber> newFibers,
+            HashSet<ComponentFiber> fibersBefore,
+            ComponentFiber? boundaryFiber)
+        {
+            foreach (var fiber in newFibers)
+            {
+                if (fibersBefore.Contains(fiber)) continue;
+                if (fiber.IsSuspenseBoundary) continue;
+                var nested = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber);
+                if (nested != null && !ReferenceEquals(nested, boundaryFiber)) continue;
+                if (ComponentBoundarySearch.HasPendingAsyncSlot(fiber)) return true;
+            }
+
+            return false;
+        }
+
+        // Rent/return pairing around an expansion whose descendants must not share the surrounding
+        // siblings' position counters — the first constraint ExpandFiberPreviousTree states. Nothing is
+        // pushed onto FiberStack here; the caller's current fiber stays the parent.
+        private void ExpandInlineScoped(InlineWalk walk, VNode?[] nodes, WalkPosition position)
+        {
+            var counters = _ctx.BufferPool.RentPositionCounter();
+            try
+            {
+                ExpandInlineRecursive(walk, nodes, counters, position);
+            }
+            finally
+            {
+                _ctx.BufferPool.ReturnPositionCounter(counters);
+            }
+        }
 
         // Wrapper-less Suspense expansion. The Suspense emits no container
         // VisualElement: its children are expanded inline into result so they sit
@@ -944,32 +966,9 @@ namespace Velvet
                             _ctx.BufferPool.ReturnPositionCounter(counters);
                         }
                     }
-                    // A reused (bailed-out) child does not re-throw FiberSuspendSignal, so an unrelated
-                    // parent re-render would otherwise reveal an empty primary while a descendant is still
-                    // loading. If any of THIS Suspense's primary children still holds a pending async
-                    // resource, keep the fallback. Scope the scan to the children added during this
-                    // expansion (not the whole boundary subtree) so an async sibling outside the Suspense
-                    // does not keep the boundary suspended (suspension is scoped to the boundary subtree).
                     if (!suspended)
                     {
-                        foreach (var f in newFibers)
-                        {
-                            if (fibersBefore.Contains(f)) continue;
-                            // A nested Suspense boundary owns its own descendants' suspension, so its
-                            // pending primary must not keep THIS (outer) boundary suspended.
-                            // Skip nested boundary fibers and any fiber whose nearest boundary
-                            // is a nested one. The delta already contains every fiber in this Suspense's
-                            // primary subtree, so a per-fiber own-slot check covers descendants without
-                            // re-walking (and without crossing nested boundaries).
-                            if (f.IsSuspenseBoundary) continue;
-                            var nested = ComponentBoundarySearch.FindNearestSuspenseBoundary(f);
-                            if (nested != null && !ReferenceEquals(nested, boundaryFiber)) continue;
-                            if (ComponentBoundarySearch.HasPendingAsyncSlot(f))
-                            {
-                                suspended = true;
-                                break;
-                            }
-                        }
+                        suspended = AnyPrimaryChildStillPending(newFibers, fibersBefore, boundaryFiber);
                     }
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
@@ -990,15 +989,7 @@ namespace Velvet
                         else if (result!.Count > preCount) result.RemoveRange(preCount, result.Count - preCount);
                         if (suspense.Fallback != null)
                         {
-                            var fbCounters = _ctx.BufferPool.RentPositionCounter();
-                            try
-                            {
-                                ExpandInlineRecursive(walk, new[] { suspense.Fallback }, fbCounters, fallbackPosition);
-                            }
-                            finally
-                            {
-                                _ctx.BufferPool.ReturnPositionCounter(fbCounters);
-                            }
+                            ExpandInlineScoped(walk, new[] { suspense.Fallback }, fallbackPosition);
                         }
                     }
                 }
@@ -1550,61 +1541,64 @@ namespace Velvet
                 }
 
                 var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
-                if (isEnter)
+                if (isEnter && motion?.Transition != null)
                 {
-                    if (motion?.Transition != null)
+                    // The Initial flag only suppresses the enter animation on the AnimatePresence's
+                    // very first mount; later additions always animate.
+                    if (!firstRender || presence.Initial)
                     {
-                        // The Initial flag only suppresses the enter animation on the AnimatePresence's
-                        // very first mount; later additions always animate.
-                        if (!firstRender || presence.Initial)
-                        {
-                            // A variant Motion (carrying variants + animate) manages its resting state
-                            // through variant classes: variants[animate] is applied at mount and restored
-                            // by CancelExit on an exit-cancel. So it only ever plays a VARIANT enter (when
-                            // an `initial` label is declared) and must NOT fall through to the classic
-                            // preset enter — the default StyleTransition.Fade would replay a fade-in on
-                            // top of the resting variant on every add / interrupt. The variant swap
-                            // targets the Motion's OWN element (where those resting classes live), which
-                            // for a wrapped Motion is not the anchor; without a resolved element the
-                            // variant path is unavailable and the classic enter plays on the anchor.
-                            var isVariantMotion = motionElement != null
-                                && motion.Variants != null && motion.Animate != null;
-                            // A cancelled exit reproduces the SAME still-attached element —
-                            // not a first mount — so `initial` does not reapply: CancelExit
-                            // already reverses the element toward its resting variant with
-                            // the transition kept alive, and replaying initial→animate here
-                            // would re-seed the declared initial pose (a jump) and restart
-                            // the full enter duration from it.
-                            if (isVariantMotion && !wasExiting
-                                && TryResolveVariantInitial(motion, out var fromClasses, out var toClasses))
-                            {
-                                // `initial`: enter from variants[initial] to variants[animate]
-                                // (kept as the persistent resting state).
-                                var t = motion.Transition;
-                                _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
-                                    t, motion.OnEnterComplete, presence.StaggerDelaySec(visualIndex, newKeyed.Count));
-                            }
-                            else if (isVariantMotion)
-                            {
-                                // Variant Motion without `initial`: rest at variants[animate], no enter anim.
-                                motion.OnEnterComplete?.Invoke();
-                            }
-                            else
-                            {
-                                _ctx.StyleAnimationScheduler.PlayEnter(anchor, motion.Transition,
-                                    motion.OnEnterComplete, presence.StaggerDelaySec(visualIndex, newKeyed.Count));
-                            }
-                        }
-                        else
-                        {
-                            motion.OnEnterComplete?.Invoke();
-                        }
+                        DispatchPresenceEnter(motion, anchor, motionElement, wasExiting,
+                            presence.StaggerDelaySec(visualIndex, newKeyed.Count));
+                    }
+                    else
+                    {
+                        motion.OnEnterComplete?.Invoke();
                     }
                 }
             }
 
             nextCommitted.Add((key, node));
             visualIndex++;
+        }
+
+        // A variant Motion (carrying variants + animate) manages its resting state through variant classes:
+        // variants[animate] is applied at mount and restored by CancelExit on an exit-cancel. So it only ever
+        // plays a VARIANT enter (when an `initial` label is declared) and must NOT fall through to the classic
+        // preset enter — the default StyleTransition.Fade would replay a fade-in on top of the resting variant
+        // on every add / interrupt. The variant swap targets the Motion's OWN element (where those resting
+        // classes live), which for a wrapped Motion is not the anchor; without a resolved element the variant
+        // path is unavailable and the classic enter plays on the anchor.
+        //
+        // A cancelled exit reproduces the SAME still-attached element — not a first mount — so `initial` does
+        // not reapply: CancelExit already reverses the element toward its resting variant with the transition
+        // kept alive, and replaying initial→animate here would re-seed the declared initial pose (a jump) and
+        // restart the full enter duration from it.
+        private void DispatchPresenceEnter(
+            MotionNode motion,
+            VisualElement? anchor,
+            VisualElement? motionElement,
+            bool wasExiting,
+            float staggerDelaySec)
+        {
+            var isVariantMotion = motionElement != null && motion.Variants != null && motion.Animate != null;
+            if (isVariantMotion && !wasExiting
+                && TryResolveVariantInitial(motion, out var fromClasses, out var toClasses))
+            {
+                // `initial`: enter from variants[initial] to variants[animate] (kept as the persistent
+                // resting state).
+                _ctx.StyleAnimationScheduler.PlayVariantEnter(motionElement, fromClasses, toClasses,
+                    motion.Transition, motion.OnEnterComplete, staggerDelaySec);
+            }
+            else if (isVariantMotion)
+            {
+                // Variant Motion without `initial`: rest at variants[animate], no enter anim.
+                motion.OnEnterComplete?.Invoke();
+            }
+            else
+            {
+                _ctx.StyleAnimationScheduler.PlayEnter(anchor, motion.Transition,
+                    motion.OnEnterComplete, staggerDelaySec);
+            }
         }
 
         private static bool PresenceContainsKey(
