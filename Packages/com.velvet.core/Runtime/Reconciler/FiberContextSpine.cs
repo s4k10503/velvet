@@ -367,36 +367,12 @@ namespace Velvet
                         break;
 
                     case AnimatePresenceNode presence:
-                    {
-                        // AnimatePresence is DOM-less: GeneralPathReconciler.ExpandAnimatePresenceInline expands each
-                        // keyed child directly into the parent's slot range, each under its own PresenceChildScope
-                        // with a FRESH position counter (EmitPresenceChild rents one per child). A wrapper-hosted
-                        // spine child therefore registers under THIS ancestor by its own slotKey, exactly like an
-                        // inline child — the only reason the canonical descent misses it is that the walker never
-                        // steps THROUGH the AnimatePresenceNode. Descend into each current child (mirroring
-                        // BuildKeyedMapCopy's keying) so the ComponentNode arm matches the spine child and the
-                        // enclosing Providers / MotionContext stay pushed. Only currently-present children are
-                        // walked (not still-exiting ghosts): the covered case is an isolated re-render of a
-                        // persisting descendant. Mirrors the Suspense arm (descend the committed subtree).
-                        if (presence.Children != null)
+                        if (PushPresenceChildren(presence, nodeIndex, ancestor, spineChild, fragmentKeyScope,
+                                stack, pushed, registry, memoCache, isInlineSpineChild))
                         {
-                            var autoIndex = 0;
-                            foreach (var child in presence.Children)
-                            {
-                                if (child == null || child is FragmentNode) continue;
-                                var childKey = child.Key ?? FiberNodeFactory.AutoKeyPrefix + autoIndex++;
-                                var childScope = FiberKeying.PresenceChildScope(presenceScope: FiberKeying.PresenceKey(
-                                    fragmentKeyScope, presence.Key, nodeIndex), childKey: childKey);
-                                var childCounters = new Dictionary<object, int>();
-                                if (PushEnclosingProviders(new[] { child }, ancestor, spineChild, childCounters,
-                                        childScope, stack, pushed, registry, memoCache, isInlineSpineChild))
-                                {
-                                    return true;
-                                }
-                            }
+                            return true;
                         }
                         break;
-                    }
 
                     default:
                         // Reaching a wrapper-emitting leaf (Portal / VirtualList) here means it sits in this
@@ -408,6 +384,48 @@ namespace Velvet
                         break;
                 }
             }
+            return false;
+        }
+
+        // AnimatePresence is DOM-less: GeneralPathReconciler.ExpandAnimatePresenceInline expands each
+        // keyed child directly into the parent's slot range, each under its own PresenceChildScope
+        // with a FRESH position counter (EmitPresenceChild rents one per child). A wrapper-hosted
+        // spine child therefore registers under THIS ancestor by its own slotKey, exactly like an
+        // inline child — the only reason the canonical descent misses it is that the walker never
+        // steps THROUGH the AnimatePresenceNode. Descend into each current child (mirroring
+        // BuildKeyedMapCopy's keying) so the ComponentNode arm matches the spine child and the
+        // enclosing Providers / MotionContext stay pushed. Only currently-present children are
+        // walked (not still-exiting ghosts): the covered case is an isolated re-render of a
+        // persisting descendant. Mirrors the Suspense arm (descend the committed subtree).
+        private static bool PushPresenceChildren(
+            AnimatePresenceNode presence,
+            int nodeIndex,
+            ComponentFiber ancestor,
+            ComponentFiber spineChild,
+            string? fragmentKeyScope,
+            ComponentContextStack stack,
+            List<ContextProviderNode> pushed,
+            ComponentRegistry registry,
+            FiberMemoCache memoCache,
+            bool isInlineSpineChild)
+        {
+            if (presence.Children == null) return false;
+
+            var presenceScope = FiberKeying.PresenceKey(fragmentKeyScope, presence.Key, nodeIndex);
+            var autoIndex = 0;
+            foreach (var child in presence.Children)
+            {
+                if (child == null || child is FragmentNode) continue;
+                var childKey = child.Key ?? FiberNodeFactory.AutoKeyPrefix + autoIndex++;
+                var childScope = FiberKeying.PresenceChildScope(presenceScope, childKey);
+                var childCounters = new Dictionary<object, int>();
+                if (PushEnclosingProviders(new[] { child }, ancestor, spineChild, childCounters,
+                        childScope, stack, pushed, registry, memoCache, isInlineSpineChild))
+                {
+                    return true;
+                }
+            }
+
             return false;
         }
     }
