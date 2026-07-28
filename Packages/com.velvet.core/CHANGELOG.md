@@ -133,6 +133,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `shadow-*` / `drop-shadow-*` paint now tracks an enter or exit animation covering it in the two
+  mount-time cases that previously escaped. An element mounted with the utility already in its class
+  list, under a play that was already running, joined that play's fade nowhere and stayed at resting
+  strength for the rest of it; and a `V.Motion` playing its own mount enter re-sampled a shadow the
+  play had already picked up, at a moment when the caster's from-class has not resolved yet, so the
+  shadow snapped back to resting strength over an `opacity-0` card until the next animation frame —
+  for a staggered `AnimatePresence` list, for the whole stagger delay. A shadow that arrived through
+  a later class change was already handled.
 - **BREAKING:** A utility whose property set contains another's is now declared before the narrower
   one in the bundled stylesheets, so the narrower utility wins the properties they share. Bundled
   utilities are single-class selectors, so two on one element tie on specificity and the later

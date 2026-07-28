@@ -1479,6 +1479,18 @@ namespace Velvet
             internal static void AdoptShadow(StyleAnimationScheduler.PendingAnimation pending,
                 VisualElement animating, VisualElement element, DropShadowBinding binding)
             {
+                // A play that began while its subtree was still detached (a Motion's mount enter, a presence
+                // enter dispatched before the entering element is placed) has already walked that subtree and
+                // seeded this binding at its from-value. Re-seeding it here would sample an opacity the panel
+                // has not resolved yet — AttachToPanelEvent is dispatched BEFORE the style invalidation the
+                // play's own class swap triggers, so an element carrying `opacity-0` still reports
+                // resolvedStyle.opacity 1 at that moment — and would replace a correct 0 with 1 until the next
+                // driver frame. Idempotence per play is also what keeps the subject list one-for-one with the
+                // EndCoFade that unwinds it.
+                if (pending.Shadows != null && AlreadyDriving(pending.Shadows, binding))
+                {
+                    return;
+                }
                 var raw = animating.resolvedStyle.opacity;
                 DropShadowSilhouette.SetCoFade(binding, element, pending,
                     float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw));
@@ -1489,6 +1501,19 @@ namespace Velvet
                 {
                     StartShadowCoFadeTick(pending);
                 }
+            }
+
+            private static bool AlreadyDriving(
+                List<(VisualElement element, DropShadowBinding binding)> shadows, DropShadowBinding binding)
+            {
+                for (var i = 0; i < shadows.Count; i++)
+                {
+                    if (ReferenceEquals(shadows[i].binding, binding))
+                    {
+                        return true;
+                    }
+                }
+                return false;
             }
 
             // Starts the recurring co-fade tick: every frame, sample the animating element's current (transition-

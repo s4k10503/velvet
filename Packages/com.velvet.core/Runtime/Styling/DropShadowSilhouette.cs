@@ -46,15 +46,24 @@ namespace Velvet
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
+        // Set while a co-fade enrolment is still waiting for the caster to enter the tree; see
+        // FiberDropShadowApplier's deferral. Held here so Detach can unregister it with the rest.
+        public EventCallback<AttachToPanelEvent>? OnAttachedToPanel;
 
         // The native-face stash + sentinel suppression (UPRIGHT casters only). Shared with the skew layer; a
         // skewed caster leaves this untouched (HasStash false) because its SkewSilhouette owns the face.
         public readonly SilhouetteFaceStash Face = new();
 
-        // Multiplier applied to the shadow's alpha at paint time (Draw). The baked quad does NOT honor UI
-        // Toolkit opacity, so an enter / exit fade drives this from the caster's animated opacity (see
-        // SetCoFade / EndCoFade) and the shadow fades together with its element, like a CSS box-shadow, instead
-        // of showing through the still-translucent caster as a flat box. 1 = fully shown (at rest).
+        // Multiplier applied to the shadow's alpha at paint time (Draw), driven by each enter / exit fade
+        // covering the caster (see SetCoFade / EndCoFade). 1 = fully shown (at rest).
+        //
+        // Measured on 6000.3.11f1 by reading back a render-texture panel: UI Toolkit scales a textured
+        // mgc.Allocate quad by the element's own opacity AND by an animating ancestor's, byte-for-byte the same
+        // as it scales painter2D output (white-on-black at opacity 0.5 reads 128 for both, at opacity 1 reads
+        // 255 for both). So this multiplier is a SECOND application of an opacity the renderer has already
+        // applied, and a fading shadow lands at opacity squared rather than at the caster's opacity. Whether
+        // the correction should exist at all is unresolved; do not restore the claim that the baked quad is
+        // opacity-blind without re-measuring, because that claim is what this note replaces.
         public float ShadowOpacity = 1f;
 
         // Co-fade drivers: each in-flight enter / exit covering this shadow contributes a [0,1] factor, and
@@ -243,6 +252,11 @@ namespace Velvet
             {
                 element.UnregisterCallback(binding.OnStyleResolved);
             }
+            if (binding.OnAttachedToPanel != null)
+            {
+                element.UnregisterCallback(binding.OnAttachedToPanel);
+                binding.OnAttachedToPanel = null;
+            }
             if (binding.Face.SuppressionApplied)
             {
                 binding.Face.Release(element);
@@ -340,12 +354,12 @@ namespace Velvet
         public static DropShadowBinding? TryGet(VisualElement element)
             => s_byElement.TryGetValue(element, out var binding) ? binding : null;
 
-        // Registers / updates an enter or exit animation's co-fade factor on this shadow and repaints. The
-        // baked-quad paint does not inherit UITK opacity, so the scheduler samples the caster's animated
-        // opacity each frame and pushes it here; Draw multiplies the shadow alpha by the resulting ShadowOpacity
-        // so the shadow fades together with its element. factor 0 = fully faded, 1 = at rest. OVERLAPPING
-        // drivers compose multiplicatively (see DropShadowBinding), so the shadow can never out-shine the
-        // most-faded fade covering it.
+        // Registers / updates an enter or exit animation's co-fade factor on this shadow and repaints: the
+        // scheduler samples the caster's animated opacity each frame and pushes it here, and Draw multiplies
+        // the shadow alpha by the resulting ShadowOpacity (whose own note carries what the renderer already
+        // does with that opacity). factor 0 = fully faded, 1 = at rest. OVERLAPPING drivers compose
+        // multiplicatively (see DropShadowBinding), so the shadow can never out-shine the most-faded fade
+        // covering it.
         public static void SetCoFade(DropShadowBinding binding, VisualElement element, object driver, float factor)
         {
             binding.SetCoFadeFactor(driver, factor);
@@ -388,9 +402,9 @@ namespace Velvet
         // interior and its offset-up overlap, leaving only the outer halo. A SKEWED caster skips (2)/(3): its
         // SkewSilhouette repaints the sheared fill/border just after this paint. Skipped before layout gives a
         // real size. During an enter / exit only the shadow QUAD's alpha is scaled by the co-fade ShadowOpacity
-        // (DrawShadowQuad) so it fades with its element; the repainted upright fill/border are left at full
-        // alpha because UI Toolkit already scales them by the caster's own animated opacity (only the
-        // opacity-blind baked quad needs the correction).
+        // (DrawShadowQuad); the repainted upright fill/border are left at full alpha because UI Toolkit already
+        // scales them by the caster's own animated opacity — which, as measured, it also does to the quad (see
+        // DropShadowBinding.ShadowOpacity), so the asymmetry between the two is not the engine's.
         private static void Draw(MeshGenerationContext mgc, VisualElement ve, DropShadowBinding binding)
         {
             var w = ve.layout.width;
@@ -419,8 +433,8 @@ namespace Velvet
             float w, float h)
         {
             var spec = binding.Spec;
-            // Scale the shadow alpha by the co-fade multiplier so the opacity-blind baked quad fades with its
-            // element during an enter / exit (1 at rest). Bail before baking when effectively invisible.
+            // Scale the shadow alpha by the co-fade multiplier (1 at rest). Bail before baking when
+            // effectively invisible.
             var alpha = spec.Color.a * binding.ShadowOpacity;
             if (alpha <= 0.004f)
             {

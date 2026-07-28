@@ -264,8 +264,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ADarkGatedShadowOnAMotion_When_TheThemeTurnsDark_Then_NoShadowPaintIsAttached()
         {
-            // Arrange — a Motion never paints a drop shadow (an enter/exit fade hides shadow paints, so one
-            // on the animating element itself could never show), and a variant must not be a way in.
+            // Arrange — a Motion never paints a drop shadow (the silhouette paints stand down on a Motion, so
+            // nothing would reconcile one afterwards), and a variant must not be a way in.
             using var scope = new ReconcilerScope();
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(),
                 new VNode[] { V.Motion(className: "bg-[#FFFFFF] dark:shadow-lg", name: "mover") });
