@@ -61,6 +61,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `ring-*` / `outline-*` behind a variant now renders. `focus:ring-2`, `hover:ring-1`,
+  `dark:outline-2` and every other variant form used to toggle a class that drew nothing; they now
+  raise and drop the band as the state changes. The band no longer wraps the ringed element either:
+  it is drawn on a separate element positioned over it, so a ringed element keeps every layout
+  relationship with its parent that it declares — `w-full`, a parent's cross-axis stretch,
+  `absolute` / `inset-0`, `self-*`, `mx-auto`, grid cell sizing and a parent's `[&>*]:` rules all
+  behave on a ringed element exactly as they do without the ring, where the wrapper altered all of
+  them for the element's whole lifetime. Three hosting-visible deviations are documented in
+  `Documentation~/styling-variants.md`: the band paints above the ringed element's later siblings,
+  `ring-inset` paints over an opaque full-bleed child, and a ring on a `V.Motion` is ignored with a
+  warning (it sits outside the Motion's opacity and so could not fade with an enter or exit).
 - A variant payload spelled as a **USS class** (`dark:bg-neutral-900`, `md:flex-col`) now overrides a
   base utility writing the same properties regardless of the order the bundled stylesheets declare
   them in. Previously the payload was added to the live class list as a bare utility, where it tied

@@ -629,14 +629,19 @@ namespace Velvet
         // property), so the clip wrapper's mask must be re-derived. Null until the patcher wires it.
         public System.Action<VisualElement> ClipPathReResolve { get; set; } = null!;
 
-        // Per-element ring-* / outline-* bookkeeping, keyed by the INNER (real) element. An entry means the
-        // element is wrapped in a passthrough wrapper (also in WrapperToInnerMap) holding a native-border
-        // overlay that paints the outset (or inset) ring band. No GPU resource to dispose (unlike clip): the
-        // overlay is a plain bordered VisualElement, so cleanup just unwraps + drops the entry. Mutually
-        // exclusive with ClipPathBindings on the same element (one structural wrapper per element — ring is
-        // the lowest-precedence wrapper layer). The shadow is a paint (no wrapper), so it composes with a
-        // ring rather than competing for the wrapper.
+        // Per-element ring-* / outline-* bookkeeping, keyed by the element itself. An entry means a
+        // native-border overlay painting the outset (or inset) band is hosted as a reconciler-invisible
+        // sibling of the element (RingOverlay). No GPU resource to dispose (unlike clip), but cleanup must
+        // still remove the overlay from the hierarchy: it lives in the element's parent, so it does not leave
+        // with the element's own subtree. Suppressed by an active clip-path-* (CSS clip-path clips an outline)
+        // — a suppression gate, not a competition for a wrapper, since this layer adds none.
         public Dictionary<VisualElement, RingBinding> RingBindings { get; } = new();
+
+        // Elements whose ring overlay still needs a host, drained at the top-level reconcile boundary
+        // (Reconciler.Reconcile) — the first point at which an element created during the pass is in its
+        // final parent. A create-time attach cannot place the overlay itself: the factory returns the element
+        // for the caller to insert, so element.parent is still null while the binding is being built.
+        public List<VisualElement> PendingRingPlacements { get; } = new();
 
         // Sheared-silhouette bookkeeping for skew-x-*/skew-y-* elements (SkewSilhouette). Keyed by
         // the element itself — skew paints via the element's own generateVisualContent, no wrapper.

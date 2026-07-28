@@ -294,13 +294,11 @@ namespace Velvet
             }
             if (_ctx.RingBindings.TryGetValue(element, out var ringBinding))
             {
-                // Keyed by the INNER element. The ring overlay is a plain native-border VisualElement (no GPU
-                // resource), so teardown only unregisters the geometry callback and drops the entry — the
-                // wrapper + overlay leave with the element's subtree.
-                if (ringBinding.OnGeometry != null)
-                {
-                    element.UnregisterCallback(ringBinding.OnGeometry);
-                }
+                // The overlay is a plain native-border VisualElement (no GPU resource), but it lives in the
+                // element's PARENT rather than in its subtree, so it does not leave with the element being
+                // removed — Detach is what takes it out of the hierarchy as well as unregistering the
+                // callbacks, and skipping it would strand a live band beside an unmounted element.
+                RingOverlay.Detach(element, ringBinding);
                 _ctx.RingBindings.Remove(element);
             }
             if (_ctx.SkewBindings.TryGetValue(element, out var skewBinding))

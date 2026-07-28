@@ -4,18 +4,18 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The className-driven effect appliers: the wrapper-less PAINT layers (skew silhouettes, gradient
-    // backgrounds, drop shadow, animate-* motion — each the element's own generateVisualContent / inline
-    // style, no structural element added) and the two structural-WRAPPER layers (ring/outline, clip-path),
-    // plus the gesture (whileHover/whileTap/whileFocus) manipulator. The patcher's PatchElement/PatchMotion
-    // and the node factory orchestrate these at patch/create time; the shared wrap/unwrap surgery and
-    // wrapper<->inner resolution live in WrapperInfrastructure, which both this and the patcher reference.
-    // Each subsystem's own logic lives in its own FiberXxxApplier (constructed once here and held for the
-    // life of this instance); this class is the stable per-subsystem dispatch surface the factory/patcher
-    // call into. Helpers genuinely shared by more than one subsystem live on WrapperInfrastructure instead,
-    // so each FiberXxxApplier depends only on ReconcilerContext and WrapperInfrastructure — the sole
-    // exception is the RingWrapperClass/ClipPathWrapperClass constants, kept on this facade because tests
-    // reference them through this type; do not add any other applier-to-facade dependency.
+    // The className-driven effect appliers: the wrapper-less layers (skew silhouettes, gradient backgrounds,
+    // drop shadow, animate-* motion, ring/outline — each the element's own generateVisualContent / inline
+    // style or a reconciler-invisible sibling, no structural element in the element's own slot) and the one
+    // structural-WRAPPER layer (clip-path), plus the gesture (whileHover/whileTap/whileFocus) manipulator.
+    // The patcher's PatchElement/PatchMotion and the node factory orchestrate these at patch/create time; the
+    // shared wrap/unwrap surgery and wrapper<->inner resolution live in WrapperInfrastructure, which both this
+    // and the patcher reference. Each subsystem's own logic lives in its own FiberXxxApplier (constructed once
+    // here and held for the life of this instance); this class is the stable per-subsystem dispatch surface
+    // the factory/patcher call into. Helpers genuinely shared by more than one subsystem live on
+    // WrapperInfrastructure instead, so each FiberXxxApplier depends only on ReconcilerContext and
+    // WrapperInfrastructure — the sole exception is the ClipPathWrapperClass constant, kept on this facade
+    // because tests reference it through this type; do not add any other applier-to-facade dependency.
     internal sealed class FiberWrapperElementAppliers
     {
         private readonly ReconcilerContext _ctx;
@@ -39,7 +39,7 @@ namespace Velvet
             _filterTransition = new FiberFilterTransitionApplier(ctx);
             _dropShadow = new FiberDropShadowApplier(ctx);
             _borderStyle = new FiberBorderStyleApplier(ctx);
-            _ring = new FiberRingApplier(ctx, wrappers);
+            _ring = new FiberRingApplier(ctx);
             _clipPath = new FiberClipPathApplier(ctx, wrappers);
             _gesture = new FiberGestureApplier(ctx);
         }
@@ -83,20 +83,11 @@ namespace Velvet
             bool canReleaseFace)
             => _borderStyle.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
 
-        // USS class on the structural wrapper Velvet emits to host a ring-*/outline-* overlay. UI Toolkit has
-        // no CSS box-shadow / outline, so the outset (or inset) HARD border these utilities describe is drawn
-        // as a native rounded-border OVERLAY element — hardware-rendered, follows rounded-* corners, with no
-        // custom material / draw-order hazard (unlike the soft, blurred drop shadow, which needs an SDF shader).
-        // Lower precedence of the two structural-WRAPPER layers: clip-path takes the wrapper first, so a
-        // clipped element carries no ring wrapper (the two wrappers are mutually exclusive — one per element).
-        // The drop shadow is a wrapper-less paint, so a ring composes with a shadow (it does not compete).
-        internal const string RingWrapperClass = "velvet-ring-wrapper";
-
-        internal VisualElement ApplyRingOnCreate(VisualElement element, string[] classNames)
+        internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
             => _ring.ApplyRingOnCreate(element, classNames);
 
-        internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool suppress, bool allowWrap)
-            => _ring.ApplyRingOnPatch(element, classNames, suppress, allowWrap);
+        internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool clipActive)
+            => _ring.ApplyRingOnPatch(element, classNames, clipActive);
 
         // USS class on the structural wrapper Velvet emits to host a clip-path-* element. UI Toolkit
         // (6000.3) has no USS clip-path; the supported arbitrary-shape mask is an overflow-hidden

@@ -46,10 +46,9 @@ namespace Velvet
         // (see PatchElement): clip-path clips the box-shadow (CSS), so the shadow patch reads this result
         // and suppresses its paint while a clip is active.
         // Returns whether a clip WRAPPER owns this element after the patch (PatchElement forwards it so the
-        // shadow paint self-suppresses and the lower-precedence ring layer does not also wrap). KNOWN
-        // LIMITATION: this is "a clip can apply" (base or any variant), not "a clip is applied right now" —
-        // the clip / ring WRAPPERS are mutually exclusive (one wrapper per element) and the shadow paint
-        // suppression keys off the same gate, so a clip VARIANT on an element that also has a base shadow-* /
+        // shadow and ring layers self-suppress). KNOWN LIMITATION: this is "a clip can apply" (base or any
+        // variant), not "a clip is applied right now" — both suppressions key off this one gate, so a clip
+        // VARIANT on an element that also has a base shadow-* /
         // ring-* suppresses that shadow / ring at ALL times, not only while the variant's state is on. The
         // (rare) combo `shadow-lg hover:clip-*` therefore shows no shadow even at rest. Pure base clip-path
         // and pure shadow/ring are unaffected.
@@ -82,16 +81,9 @@ namespace Velvet
             }
             if (wantWrap)
             {
-                // A clip added to an element that was ring-wrapped on a previous render: the ring patch
-                // (suppressed by the active clip) will not unwrap this pass, so swap wrappers here — clip-path
-                // clips the ring, and the two are mutually-exclusive wrappers (one per element). The shadow is
-                // a paint, not a wrapper, so it needs no unwrap here: the shadow patch runs after this one,
-                // sees the now-active clip (clipActive), and detaches the paint (clip-path clips the shadow).
-                if (_ctx.RingBindings.TryGetValue(element, out var staleRing))
-                {
-                    WrapperInfrastructure.UnwrapRingInPlace(_ctx, element, staleRing);
-                }
-                // Honor the user wrapElement opt-out on patch too (same rule as the ring layer).
+                // Neither the shadow nor the ring needs tearing down here: both are wrapper-less and both run
+                // AFTER this pass, see the now-active clip (clipActive) and detach themselves.
+                // Honor the user wrapElement opt-out on patch too.
                 if (_wrappers.IsAlreadyWrapped(element))
                 {
                     return true;
@@ -125,8 +117,8 @@ namespace Velvet
             SyncClipPathGeometry(element, binding);
         }
 
-        // Builds the clip wrapper around element: a layout-passthrough container (same passthrough
-        // styling as the ring wrapper) that additionally hides overflow and carries the baked
+        // Builds the clip wrapper around element: a layout-passthrough container that additionally
+        // hides overflow and carries the baked
         // vector shape as its background — the combination UIR stencil-clips descendants to.
         // Does NOT touch any parent — the caller inserts the returned wrapper.
         private VisualElement BuildClipPathWrapper(VisualElement element, ClipPathSpec? spec)
@@ -184,8 +176,8 @@ namespace Velvet
             WrapperInfrastructure.RemoveWrapperRestoreInner(element, wrapper);
         }
 
-        // Keeps the mask tracking its target: forwards the inner's flex to the wrapper (same rule as
-        // the ring wrapper) and (re)bakes the vector shape at the inner's resolved box. The baked
+        // Keeps the mask tracking its target: forwards the inner's flex to the wrapper and (re)bakes
+        // the vector shape at the inner's resolved box. The baked
         // VectorImage stores TIGHT bounds, so the background is explicitly positioned and sized by
         // the analytic path bounds, anchored at the inner's layout origin within the wrapper.
         // innerAtWrapperOrigin: true on the wrap-time call, when element.layout still holds

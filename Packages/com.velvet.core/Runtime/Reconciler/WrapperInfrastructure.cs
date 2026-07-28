@@ -4,8 +4,8 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Shared plumbing for the className-driven structural wrapper layers (shadow-*, ring-*,
-    // clip-path-*). Both the patcher (wrapper<->inner resolution exposed to the reconciler) and the
+    // Shared plumbing for the structural wrapper layers — the className-driven clip-path-* wrapper and the
+    // user wrapElement opt-in. Both the patcher (wrapper<->inner resolution exposed to the reconciler) and the
     // wrapper element appliers (the wrap/unwrap surgery) depend on these, so the pieces below are the
     // parts whose two copies must never drift: the passthrough style block, the slot-preserving unwrap
     // surgery (which ChildReconciler's keyed-move re-fetch depends on), and the flex-forwarding contract.
@@ -37,7 +37,7 @@ namespace Velvet
 
         // True when element is already the inner of a wrapper (its direct parent maps to
         // it in ReconcilerContext.WrapperToInnerMap) — e.g. a user wrapElement wrapper.
-        // Used to avoid stacking a className clip/ring wrapper on top of an existing wrapper.
+        // Used to avoid stacking a className clip wrapper on top of an existing wrapper.
         // Same predicate as ResolveOuter (which returns the wrapper instead of a bool), so it is
         // expressed in those terms to keep the wrapper-identity rule defined in exactly one place.
         internal bool IsAlreadyWrapped(VisualElement element)
@@ -108,7 +108,8 @@ namespace Velvet
         // that widens boundingBox. The spacer must exist whenever a filter COULD apply (a variant applies its
         // payload at state time, outside this reconcile pass), so both checks peel variant layers to the leaf.
         // Shared by the skew, drop-shadow and particles spacer gates above, so it lives here rather than on any
-        // one of those subsystems.
+        // one of those subsystems. The ring is NOT one of them: its band is hosted beside the element rather
+        // than inside the element's own offscreen filter tree, so no filter pass can clip it.
         internal static bool CarriesFilter(string[] classNames)
         {
             if (classNames == null)
@@ -132,21 +133,6 @@ namespace Velvet
                 }
             }
             return false;
-        }
-
-        // Removes the ring wrapper, restoring element at the wrapper's slot. Shared by the ring layer's own
-        // unwrap case and the clip-path layer's wrapper swap (a clip added to an already ring-wrapped
-        // element steals the wrapper slot), so it lives here rather than on either one, taking the owning
-        // ReconcilerContext explicitly since it has no instance of its own to read it from.
-        internal static void UnwrapRingInPlace(ReconcilerContext ctx, VisualElement element, RingBinding binding)
-        {
-            if (binding.OnGeometry != null)
-            {
-                element.UnregisterCallback(binding.OnGeometry);
-            }
-            ctx.RingBindings.Remove(element);
-            ctx.WrapperToInnerMap.Remove(binding.Wrapper);
-            WrapperInfrastructure.RemoveWrapperRestoreInner(element, binding.Wrapper);
         }
     }
 }

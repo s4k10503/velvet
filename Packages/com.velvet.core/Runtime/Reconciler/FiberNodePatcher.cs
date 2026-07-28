@@ -296,10 +296,6 @@ namespace Velvet
             // hold if a margin-writing StyleOverride is ever added.)
             ApplyPostChildrenClassPasses(element, oldNode.ClassNames, newNode.ClassNames,
                 paintTail: true, clipActive);
-            // Ring is the lowest-precedence WRAPPER layer: suppressed only when clip owns the wrapper (the two
-            // are mutually exclusive — one wrapper per element). The shadow is a paint, so a ring composes
-            // with it rather than competing for the wrapper.
-            _appliers.ApplyRingOnPatch(element, newNode.ClassNames, suppress: clipActive, allowWrap: true);
         }
 
         // Applies the oldNode -> newNode diff when EITHER side is z-managed (FiberZLayerCoordinator.
@@ -380,8 +376,8 @@ namespace Velvet
         //   toggle has to be in the source the paint layers read, and an array resolved before them would not
         //   carry it. The re-sync those passes raise also runs, a few lines earlier, against the same
         //   composition — so the two agree instead of the later one undoing the earlier.
-        // The wrapper layers stay with the callers: they are parent surgery, which only a reconcile pass may
-        // perform, and PatchMotion passes different ring flags.
+        // The clip-path wrapper stays with the callers: it is parent surgery on the element's own slot, which
+        // only a reconcile pass may perform.
         private void ApplyPostChildrenClassPasses(VisualElement element, string[] oldClassNames,
             string[] newClassNames, bool paintTail, bool clipActive)
         {
@@ -405,8 +401,11 @@ namespace Velvet
         // The ordered paint-pass sequence, shared by the reconcile path and the variant re-sync so the two
         // cannot drift and so a re-run produces exactly what a full pass would. Every pass here reads its
         // class source and nothing else about the element's position, which is what makes it re-runnable
-        // outside a reconcile — unlike the clip and ring wrapper layers, which mutate the parent and are
-        // therefore forbidden inside a pointer / focus callback or a breakpoint notification.
+        // outside a reconcile — unlike the clip-path wrapper layer, which swaps which element occupies the
+        // element's own slot and is therefore forbidden inside a pointer / focus callback or a breakpoint
+        // notification. The ring layer's overlay is a TRAILING, spacer-marked sibling, which occupies no slot
+        // (SilhouetteBoundsSpacer.NonSpacerChildCount trims it), so adding and removing it here is safe — and
+        // that is precisely what makes focus:ring-* render instead of toggling an inert class.
         // The ORDER is load-bearing:
         // - Gradient runs after the node-style diff so its background-image is the last word on this
         //   element — DiffStyles only writes background-image on an actual node-style change, which a
@@ -422,6 +421,9 @@ namespace Velvet
         // - border-dashed / border-dotted runs strictly AFTER skew and shadow so it reads their final
         //   ownership — while either owns the face the dashed layer defers (the border stays solid), so an
         //   add/remove of skew/shadow in the same pass resolves without a race.
+        // - The ring overlay runs last. It owns no part of the element's face and contends with none of the
+        //   layers above, so its position here is not load-bearing; it sits at the end because it is the only
+        //   one that touches the element's PARENT rather than the element.
         // The particles spacer is here, not in the Particles-settings diff, because it follows the CLASS list
         // (a filter comes and goes via a class swap or a variant).
         // paintTail is the one per-path knob, and it is the same distinction the gradient's skewable flag
@@ -441,6 +443,7 @@ namespace Velvet
             var skewXDeg = _appliers.ApplySkewOnPatch(element, classNames, classesChanged, canReleaseFace);
             _appliers.ApplyShadowOnPatch(element, classNames, clipActive, skewXDeg, canReleaseFace);
             _appliers.ApplyBorderStyleOnPatch(element, classNames, classesChanged, canReleaseFace);
+            _appliers.ApplyRingOnPatch(element, classNames, clipActive);
         }
 
         private void PatchText(Label label, TextNode oldNode, TextNode newNode)
@@ -632,12 +635,9 @@ namespace Velvet
             // classes present, and the three silhouette paints stand down (skewable: false). A Motion also
             // carries no clip wrapper, so nothing can suppress a paint here.
             ApplyPostChildrenClassPasses(element, appliedOld, appliedNew, paintTail: false, clipActive: false);
-            // A Motion carries no shadow paint: the create path warns and skips a shadow-* on a Motion (the
-            // animation node owns its transition; a shadow belongs on a wrapped Div), so there is never a
-            // binding to update — and the patch must not start attaching one. Ring likewise never wraps a
-            // Motion (allowWrap false); a Motion thus carries no ring binding, so this only updates/unwraps an
-            // (absent by this rule) binding.
-            _appliers.ApplyRingOnPatch(element, appliedNew, suppress: false, allowWrap: false);
+            // A Motion carries neither a shadow paint nor a ring overlay: the create path warns and skips both
+            // on a Motion, and paintTail:false above keeps the patch from attaching one — so there is nothing
+            // here to update.
 
             // Shared-element layout animation (layoutId): independent of the variant swap
             // above — runs from the ACTUAL resolved-rect delta, not a class-defined from/to pair — so

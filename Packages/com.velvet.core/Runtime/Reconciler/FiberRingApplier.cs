@@ -1,194 +1,78 @@
-using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // The structural-WRAPPER layer for ring-*/outline-* utilities. UI Toolkit has no CSS box-shadow /
-    // outline, so the outset (or inset) HARD border these utilities describe is drawn as a native
-    // rounded-border OVERLAY element — hardware-rendered, follows rounded-* corners, with no custom
-    // material / draw-order hazard (unlike the soft, blurred drop shadow, which needs an SDF shader).
-    // Lower precedence than clip-path (FiberClipPathApplier): a clipped element carries no ring wrapper,
-    // since the two structural wrappers are mutually exclusive (one per element). The drop shadow is a
-    // wrapper-less paint, so a ring composes with a shadow (it does not compete).
+    // The wrapper-less layer for ring-*/outline-* utilities: a native-border overlay hosted as a
+    // reconciler-invisible SIBLING of the ringed element (see RingOverlay for why a sibling rather than a
+    // wrapper around it or a paint inside it). Adding no wrapper is what lets a ring be attached and detached
+    // from a variant re-sync — which runs outside a reconcile pass, where parent surgery on a real slot is
+    // forbidden — so focus:ring-* renders instead of toggling an inert class.
     internal sealed class FiberRingApplier
     {
         private readonly ReconcilerContext _ctx;
-        private readonly WrapperInfrastructure _wrappers;
 
-        public FiberRingApplier(ReconcilerContext ctx, WrapperInfrastructure wrappers)
+        public FiberRingApplier(ReconcilerContext ctx)
         {
             _ctx = ctx;
-            _wrappers = wrappers;
         }
 
-        // Create-time entry point: when classNames resolves to a ring/outline (and the element was not already
-        // wrapped), wraps element in a ring container and returns the wrapper; else returns element unchanged.
-        // Mirrors ApplyShadowOnCreate. The factory calls this AFTER clip-path and shadow (lowest precedence).
-        internal VisualElement ApplyRingOnCreate(VisualElement element, string[] classNames)
+        // Create-time entry point. The element is NOT yet in the hierarchy here; RingOverlay places the
+        // overlay on the element's attach instead.
+        internal void ApplyRingOnCreate(VisualElement element, string[] classNames)
         {
             if (!StyleRingClass.HasRingClass(classNames) || !StyleRingClass.TryExtract(classNames, out var spec))
             {
-                return element;
+                return;
             }
-            return BuildRingWrapper(element, spec, classNames);
+            // A clip-path-* on the same element clips the ring too (CSS semantics), and the clip is a
+            // structural wrapper the ring no longer competes with — so this is a plain suppression gate,
+            // exactly as ApplyShadowOnCreate does it. WantsClipWrapper (not just an active base clip) mirrors
+            // the patch path's clipActive gate: variant activation state is not resolved at this call site, so
+            // a clip VARIANT on a base-ring element suppresses the ring unconditionally. Pure base clip and
+            // pure ring are unaffected.
+            if (StyleClipPathClass.WantsClipWrapper(classNames))
+            {
+                return;
+            }
+            _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames);
+            // The element is not in the hierarchy yet, so the overlay has no host to sit beside; the drain at
+            // the reconcile boundary places it once the caller has inserted the element.
+            RingOverlay.RequestPlacement(_ctx, element);
         }
 
-        // Patch-time reconciliation of an element's ring state. element is the resolved INNER. Mirrors
-        // ApplyShadowOnPatch's four cases (update / wrap / unwrap / nothing). suppress is true when a
-        // higher-precedence layer (clip-path or shadow) owns the wrapper, so the ring must not also wrap
-        // (mutual exclusion) — a suppressed element with an existing ring binding is unwrapped. allowWrap is
-        // false on the Motion patch path (a structural wrapper would become the AnimatePresence enter/exit
-        // anchor while the transition stays on the inner Motion, breaking it — same rule the shadow layer keeps).
-        internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool suppress, bool allowWrap)
+        // Patch-time reconciliation of an element's ring state against its new class list. Mirrors the other
+        // wrapper-less layers' four cases: update the existing overlay's spec, attach a newly-ringed element,
+        // detach one whose ring was removed, or do nothing.
+        // clipActive: whether the class list resolves to an active clip-path-* — resolved ONCE by the caller.
+        internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool clipActive)
         {
-            var wrapped = _ctx.RingBindings.TryGetValue(element, out var binding);
-            if (!wrapped && !StyleRingClass.HasRingClass(classNames))
+            var bound = _ctx.RingBindings.TryGetValue(element, out var binding);
+            // Fast path: no ring anywhere near this element.
+            if (!bound && !StyleRingClass.HasRingClass(classNames))
             {
                 return;
             }
 
             var spec = default(RingSpec);
-            var want = !suppress && StyleRingClass.TryExtract(classNames, out spec);
+            var want = !clipActive && StyleRingClass.TryExtract(classNames, out spec);
 
-            if (want && wrapped)
+            if (want && bound)
             {
-                binding.ClassNames = classNames;
-                binding.Spec = spec;
-                ApplyRingSpec(binding.Overlay, spec);
-                SyncRingGeometry(element, binding, classNames);
+                RingOverlay.Sync(element, binding, spec, classNames);
             }
             else if (want)
             {
-                if (!allowWrap || _wrappers.IsAlreadyWrapped(element))
-                {
-                    return;
-                }
-                WrapRingInPlace(element, spec, classNames);
+                _ctx.RingBindings[element] = RingOverlay.Attach(element, spec, classNames);
+                // A patch-time attach usually has its parent already, and Attach places the overlay itself;
+                // queue a retry anyway for the one case that does not — an element created earlier in this
+                // same pass whose ring arrived through a variant payload before the caller inserted it.
+                RingOverlay.RequestPlacement(_ctx, element);
             }
-            else if (wrapped)
+            else if (bound)
             {
-                WrapperInfrastructure.UnwrapRingInPlace(_ctx, element, binding);
+                RingOverlay.Detach(element, binding);
+                _ctx.RingBindings.Remove(element);
             }
-        }
-
-        // Builds the ring wrapper around element: a layout-passthrough container holding element plus an
-        // absolutely-positioned native-border overlay as its LAST child (so an inset band paints over the
-        // inner edge; an outset band never overlaps the inner anyway). Does NOT touch any parent — the caller
-        // inserts the returned wrapper.
-        private VisualElement BuildRingWrapper(VisualElement element, RingSpec spec, string[] classNames)
-        {
-            var wrapper = WrapperInfrastructure.CreatePassthroughWrapper(FiberWrapperElementAppliers.RingWrapperClass);
-
-            var overlay = new VisualElement
-            {
-                pickingMode = PickingMode.Ignore,
-                style = { position = Position.Absolute, backgroundColor = Color.clear },
-            };
-            ApplyRingSpec(overlay, spec);
-
-            wrapper.Add(element); // reparents element from its current parent (if any) into the wrapper
-            wrapper.Add(overlay);
-
-            var binding = new RingBinding(wrapper, overlay) { ClassNames = classNames, Spec = spec };
-            binding.OnGeometry = _ => SyncRingGeometry(element, binding, binding.ClassNames);
-            element.RegisterCallback(binding.OnGeometry);
-
-            _ctx.RingBindings[element] = binding;
-            _ctx.WrapperToInnerMap[wrapper] = element;
-
-            // Resolve geometry now so EditMode / pre-layout reads a sensible band without a tick.
-            SyncRingGeometry(element, binding, classNames);
-            return wrapper;
-        }
-
-        private void WrapRingInPlace(VisualElement element, RingSpec spec, string[] classNames)
-        {
-            var parent = element.parent;
-            if (parent == null)
-            {
-                BuildRingWrapper(element, spec, classNames);
-                return;
-            }
-            var index = parent.IndexOf(element);
-            var wrapper = BuildRingWrapper(element, spec, classNames); // removes element from parent
-            parent.Insert(index, wrapper);
-        }
-
-        // Paints the spec onto the overlay (native border width + color, all four sides). The band's geometry
-        // (size / position / corner radius) is set by SyncRingGeometry once the inner is laid out.
-        private static void ApplyRingSpec(VisualElement overlay, RingSpec spec)
-        {
-            overlay.style.borderTopWidth = spec.Width;
-            overlay.style.borderRightWidth = spec.Width;
-            overlay.style.borderBottomWidth = spec.Width;
-            overlay.style.borderLeftWidth = spec.Width;
-            overlay.style.borderTopColor = spec.Color;
-            overlay.style.borderRightColor = spec.Color;
-            overlay.style.borderBottomColor = spec.Color;
-            overlay.style.borderLeftColor = spec.Color;
-        }
-
-        // Keeps the ring overlay tracking its target: forwards the inner's flex to the wrapper, then sizes and
-        // positions the overlay to the inner's resolved box. Outset (default): the band sits OUTSIDE the inner
-        // edge by Offset, so the overlay inflates by (Offset + Width) per side and its outer corner radius is
-        // innerRadius + Offset + Width. Inset (ring-inset): the band sits inside, so the overlay matches the
-        // inner box exactly at the inner radius. Radius prefers the laid-out resolvedStyle.borderTopLeftRadius
-        // (handles %, arbitrary, inline radii), falling back to the rounded-* class scale pre-layout. Pre-layout
-        // (no resolved size) it defers to the geometry callback.
-        private static void SyncRingGeometry(VisualElement element, RingBinding binding, string[] classNames)
-        {
-            if (binding == null)
-            {
-                return;
-            }
-            var overlay = binding.Overlay;
-            var spec = binding.Spec;
-
-            float innerRadius;
-            var resolvedRadius = element.resolvedStyle.borderTopLeftRadius;
-            // Prefer a NON-ZERO laid-out radius (handles %, arbitrary, inline radii). The `> 0f` is deliberate:
-            // a USS rounded-* class does not always reflect into
-            // resolvedStyle.borderTopLeftRadius off-screen / pre-layout (it reads 0 there), so a resolved 0
-            // must fall back to the rounded-* class scale rather than being trusted as "no rounding" — else a
-            // rounded card would get a square ring. A genuine no-rounding element resolves 0 here and also
-            // misses the class scale, landing at 0 correctly.
-            if (element.panel != null && !float.IsNaN(resolvedRadius) && resolvedRadius > 0f)
-            {
-                innerRadius = resolvedRadius;
-            }
-            else if (StyleRingClass.TryResolveCornerRadius(classNames, out var classRadius))
-            {
-                innerRadius = classRadius;
-            }
-            else
-            {
-                innerRadius = 0f;
-            }
-
-            WrapperInfrastructure.ForwardInnerFlexToWrapper(element, binding.Wrapper);
-
-            var width = element.resolvedStyle.width;
-            var height = element.resolvedStyle.height;
-            if (float.IsNaN(width) || float.IsNaN(height) || width <= 0 || height <= 0)
-            {
-                return;
-            }
-            var originX = element.layout.x;
-            var originY = element.layout.y;
-            if (float.IsNaN(originX)) originX = 0f;
-            if (float.IsNaN(originY)) originY = 0f;
-
-            var grow = spec.Inset ? 0f : spec.Offset + spec.Width;
-            overlay.style.left = originX - grow;
-            overlay.style.top = originY - grow;
-            overlay.style.width = width + (grow * 2f);
-            overlay.style.height = height + (grow * 2f);
-
-            var outerRadius = spec.Inset ? innerRadius : innerRadius + spec.Offset + spec.Width;
-            overlay.style.borderTopLeftRadius = outerRadius;
-            overlay.style.borderTopRightRadius = outerRadius;
-            overlay.style.borderBottomLeftRadius = outerRadius;
-            overlay.style.borderBottomRightRadius = outerRadius;
         }
     }
 }

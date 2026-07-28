@@ -208,21 +208,29 @@ utilities have to be re-derived when the variant toggles.
 **Re-derived, so the variant behaves exactly like a literal class.** The manipulator-backed layout
 utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance` — and the
 wrapper-less paints — `skew-*`, `shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its
-`from-` / `via-` / `to-` stops), `animate-*`, and `border-dashed` / `border-dotted`. Each resolves at
-mount and on every toggle in both directions, and the order they compose in is preserved on a toggle
-just as on a render — so `className="gap-4 md:grid md:grid-cols-3"` is a gapped flex row below `md`
-and a three-column grid (spaced by the grid, which owns its gap) from `md` up, and
-`className="bg-white shadow-sm md:shadow-lg"` deepens its shadow from `md` up.
+`from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
+`outline-*`. Each resolves at mount and on every toggle in both directions, and the order they compose
+in is preserved on a toggle just as on a render — so `className="gap-4 md:grid md:grid-cols-3"` is a
+gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from `md`
+up, `className="bg-white shadow-sm md:shadow-lg"` deepens its shadow from `md` up, and
+`className="focus:ring-2"` shows a ring while focused and none otherwise.
 
-**`ring-*` is the exception: a ring variant is inert.** `focus:ring-2` toggles a class that draws
-nothing. A ring is not a paint — UI Toolkit has neither `box-shadow` nor `outline`, so Velvet draws
-the band on a wrapper element placed around the target, and only a reconcile pass may add or remove a
-wrapper. Doing it from the pointer callback or breakpoint notification a variant fires in is not
-available, and the alternative — wrapping every element that so much as mentions a ring variant, for
-its whole life — is worse than the missing feature: the wrapper is layout-transparent for `flex-grow`
-and `flex-shrink` only, so a percentage-width or stretch-sized inner would begin measuring against the
-wrapper instead of the real parent. Declare `ring-*` literally, or compute the class in C# from your
-own state so it reaches the element through the reconciler.
+**Where `ring-*` deviates from CSS.** UI Toolkit has neither `box-shadow` nor `outline`, so Velvet
+draws the band on its own element, positioned over the ringed element and hosted as a hidden sibling
+of it inside the same parent. The ringed element's own layout is untouched, but the hosting is
+visible in three places:
+
+- The band paints **above the ringed element's later siblings**, where CSS paints an outline in the
+  element's own position in the stacking order. Overlapping siblings that follow a ringed element
+  are drawn under its band.
+- `ring-inset` paints **over** an opaque full-bleed child rather than under it. This matches the
+  order CSS gives an inset box-shadow, not an inset outline.
+- A ring on a `V.Motion` is ignored, with a warning. The band is outside the Motion's own opacity, so
+  it could not fade with an enter or exit. Put the ring on a `Div` the Motion wraps. For the same
+  reason a ring on an element inside a `V.AnimatePresence` does not fade with that element's exit.
+
+An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
+`overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.
 
 **Class channels that are not variants drive none of this.** `whileHoverClass`, `whileTapClass` and
 `whileFocusClass`, the transient enter / exit classes an `AnimatePresence` play applies for the

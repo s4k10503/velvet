@@ -6,10 +6,11 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // A resolved ring / outline preset. UI Toolkit has no CSS box-shadow or outline, so Velvet draws the
-    // outset hard border these utilities describe as a native rounded-border OVERLAY around the element
+    // outset hard border these utilities describe as a native rounded-border OVERLAY tracking the element
     // (hardware-rendered, follows rounded-* corners, no custom material / draw-order hazard — unlike the
-    // soft, blurred DropShadow which needs an SDF shader). Corner radius is NOT part of the spec: the overlay
-    // follows the target's own rounded-* radius (plus the ring width + offset), like ShadowSpec.
+    // soft, blurred DropShadow which needs an SDF shader); RingOverlay owns where that overlay lives. Corner
+    // radius is NOT part of the spec: the overlay follows the target's own rounded-* radius (plus the ring
+    // width + offset), like ShadowSpec.
     //
     // ring and outline collapse onto ONE spec because they render identically — an outset band of Width at
     // Offset distance, in Color. Their only modelled differences are defaults (ring defaults to blue-500 at
@@ -284,25 +285,5 @@ namespace Velvet
         // arbitrary radii (resolved from resolvedStyle once laid out) and when no rounding class is present.
         public static bool TryResolveCornerRadius(string[]? classNames, out float radius)
             => StyleShadowClass.TryResolveCornerRadius(classNames, out radius);
-    }
-
-    // Reconciler-side bookkeeping for one ringed element, keyed in ReconcilerContext.RingBindings by the
-    // INNER (real) element. Mirrors ShadowBinding: holds the structural wrapper ([inner, ring overlay], also
-    // in WrapperToInnerMap), the absolutely-positioned native-border Overlay element that paints the ring,
-    // the geometry callback on the inner (so the band tracks the inner's size + resolved corner radius), the
-    // latest class list, and the resolved spec (so the geometry sync knows the width/offset/inset to lay out).
-    internal sealed class RingBinding
-    {
-        public readonly VisualElement Wrapper;
-        public readonly VisualElement Overlay;
-        public EventCallback<GeometryChangedEvent> OnGeometry = null!;
-        public string[] ClassNames = null!;
-        public RingSpec Spec;
-
-        public RingBinding(VisualElement wrapper, VisualElement overlay)
-        {
-            Wrapper = wrapper;
-            Overlay = overlay;
-        }
     }
 }
