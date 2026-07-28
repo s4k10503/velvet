@@ -11,9 +11,10 @@ namespace Velvet.Tests
     /// <summary>
     /// Machine-checks the shipped Documentation~ guides (plus both README.md files and CLAUDE.md) against the actual
     /// runtime API surface, so a doc referencing a renamed/removed <c>V.*</c> factory or <c>Hooks.*</c> hook,
-    /// or an index that has drifted from the files on disk, fails a test instead of shipping silently wrong.
-    /// Each check pins a failure mode that has actually shipped: a guide referencing a never-implemented
-    /// factory, a hook table drifting from the real hook surface, and an index missing real guide files.
+    /// a path or a type that no longer exists, or an index that has drifted from the files on disk, fails a
+    /// test instead of shipping silently wrong. Each check pins a failure mode that has actually shipped: a
+    /// guide referencing a never-implemented factory, a hook table drifting from the real hook surface, an
+    /// index missing real guide files, and a type name written for a file that holds differently-named types.
     /// </summary>
     [TestFixture]
     internal sealed class DocumentationDriftTests
@@ -23,10 +24,94 @@ namespace Velvet.Tests
         // the same role "<X/>" plays in the JSX column of the same row — not a reference to a real V.* factory.
         private static readonly HashSet<string> VReferenceAllowlist = new() { "X" };
 
+        // Names that resolve nowhere in this repo's code for a reason. Three groups, each a different one:
+        // meta-syntactic placeholders standing in for something the reader supplies; API belonging to the
+        // upstream libraries Velvet mirrors, which exists there and deliberately not here; and names from
+        // Unity or the BCL — types, enum values, event names, asset labels — that the docs mention but no
+        // source file in this repo uses as code.
+        private static readonly HashSet<string> IdentifierAllowlist = new()
+        {
+            "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "ResolveDirection", "Inter", "CS",
+            "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration",
+            "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
+            "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
+            "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
+        };
+
+        private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef" };
+
+        // The walk is rooted rather than filtered because this repo's own workflow puts full checkouts of
+        // itself under .claude/worktrees/ while a suite runs: an exclusion list has to anticipate every such
+        // directory, and one it misses resolves every name the docs carry against a copy of the very sources
+        // the rename was supposed to remove them from — leaving the check structurally green on a developer
+        // machine and red only on CI.
+        private static readonly string[] WalkedRoots =
+            { "Packages", "Assets", ".github", "scripts", "ProjectSettings", "docs" };
+
+        // Build output and generated documentation: nothing a document names lives there, DocFX's api/ and
+        // _site/ carry a stale copy of every runtime type name until docs/build.sh is re-run, and Library
+        // alone would make the walk the slowest thing in this fixture.
+        private static readonly HashSet<string> UnwalkedDirectories =
+            new() { ".git", "Library", "Temp", "Logs", "Build", "UserSettings", "obj", "bin", "api", "_site" };
+
         private static readonly Regex VReferencePattern = new(@"\bV\.([A-Z][A-Za-z0-9_]*)", RegexOptions.Compiled);
-        private static readonly Regex BacktickSpanPattern = new(@"`([^`\n]*)`", RegexOptions.Compiled);
         private static readonly Regex HookReferencePattern = new(@"\bUse[A-Z]\w*", RegexOptions.Compiled);
         private static readonly Regex DocLinkPattern = new(@"\]\(([A-Za-z0-9_.-]+\.md)\)", RegexOptions.Compiled);
+
+        // A backticked span is treated as a repo path only when it ends in one of the extensions this repo
+        // actually keeps or in a directory slash. Everything the docs write with a slash for other reasons —
+        // a Tailwind opacity or fraction (bg-red-500/50, w-1/2), an npm package (@dnd-kit/sortable), a Unity
+        // shader name (Velvet/FilterBrightness) — carries neither, and so never reaches the filesystem check.
+        // A leading dot must be followed by a segment and a slash, which admits .github/workflows/test.yml
+        // while excluding a bare extension written as prose (`.uss`) and the "..." elision in a path sketch.
+        private static readonly Regex PathReferencePattern = new(
+            @"^(\.[A-Za-z0-9_-]+/)?[A-Za-z0-9_~@][A-Za-z0-9_./~*-]*(\.(cs|uss|md|json|yml|py|sh|txt|asmdef|dll)|/)$",
+            RegexOptions.Compiled);
+
+        // Every PascalCase word INSIDE a span, not the span as a whole: the test-mechanism names are written
+        // with call parens (SimulateClick()), the memoization knobs as attributes ([Component(Compiler = false)])
+        // and the scheduler reached through a lowercase chain — a whole-span match resolves none of them, which
+        // leaves the part of CLAUDE.md that exists nowhere else in the repo the least checked part of it.
+        private static readonly Regex IdentifierTokenPattern =
+            new(@"(?<![<A-Za-z0-9_])[A-Z][A-Za-z0-9_]*", RegexOptions.Compiled);
+
+        // A JSX element name is React's, not Velvet's: react-migration.md's comparison tables spell the React
+        // column in it, and both READMEs mirror those rows.
+        private static readonly Regex JsxElementPattern =
+            new(@"<\s*/?\s*[A-Z][A-Za-z0-9_]*", RegexOptions.Compiled);
+
+        // Fenced samples are removed before spans are read: their triple backticks otherwise pair with the
+        // inline ones and swallow the prose between them, which both hides real references and feeds English
+        // words to the identifier check. The samples themselves stay unchecked — they are the densest
+        // concentration of type names in the guides, and reaching them wants a parser, not a regex.
+        private static readonly Regex FencedBlockPattern =
+            new(@"^```.*?^```", RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.Multiline);
+
+        // An inline span may wrap a line but not a blank one: markdown allows the wrap, and a span that ran
+        // past a paragraph break would be a mis-paired backtick rather than a reference.
+        private static readonly Regex BacktickSpanPattern =
+            new(@"`((?:[^`\n]|\n(?!\s*\n))*)`", RegexOptions.Compiled);
+
+        // Comments and string literals are stripped from C# before it is tokenised. A rename tool rewrites
+        // declarations and call sites; it does not rewrite the prose around them, so an old name lingering in
+        // a comment or a test-case label would resolve a documentation reference that names something no
+        // longer there. This fixture's own allowlist is the sharpest instance — every entry in it is a string
+        // literal, and unstripped it would resolve itself.
+        //
+        // One alternation, not two passes, because the two forms nest: `Route("Files/*")` opens a block
+        // comment for a comment-first pass, which then runs to the next `*/` anywhere in the file and deletes
+        // the real declarations in between, while `AppendLine("// <auto-generated/>")` is the mirror case for
+        // a string-first pass. Scanning left to right with strings ordered ahead of comments is what makes a
+        // delimiter inside the other form inert. Char literals lead, so a lone quote cannot open a string.
+        // The raw-string alternative leads because its delimiter starts with the one the ordinary string form
+        // would match. Nothing in the package uses it — Unity's runtime tree is C# 9 — but `Generators~` pins
+        // an SDK that allows it, and a raw string is the idiomatic modern spelling for the verbatim analyzer
+        // fixtures there, so the alternation would otherwise leak fixture source into the corpus the day one
+        // is rewritten.
+        private static readonly Regex CSharpCommentOrStringPattern = new(
+            "\"\"\"(?:[^\"]|\"(?!\"\"))*\"\"\"|'(?:\\\\.|[^'\\\\\n])*'|@\"(?:[^\"]|\"\")*\""
+            + "|\"(?:\\\\.|[^\"\\\\\n])*\"|/\\*.*?\\*/|//[^\n]*",
+            RegexOptions.Compiled | RegexOptions.Singleline);
 
         // Unity's CWD during a test run is the project root (see CLAUDE.md), so these resolve the same way
         // whether the suite runs from the Editor or from -runTests batchmode.
@@ -78,7 +163,13 @@ namespace Velvet.Tests
             // Act
             var unresolved = FindUnresolvedReferences(
                 HookReferencePattern,
-                text => string.Join("\n", BacktickSpanPattern.Matches(text).Select(m => m.Groups[1].Value)),
+                // Fenced samples are removed here too: an inline span may now wrap a line, which lets a
+                // fence's third backtick pair with the closing fence's first and turn a whole sample body
+                // into one span. The V.* check above keeps scanning them, because it reads the whole text
+                // rather than spans and so never sees a fence as a delimiter.
+                text => string.Join("\n", BacktickSpanPattern
+                    .Matches(FencedBlockPattern.Replace(text, "\n"))
+                    .Select(m => m.Groups[1].Value)),
                 knownHooks.Contains,
                 prefix: string.Empty);
 
@@ -108,6 +199,167 @@ namespace Velvet.Tests
             Assert.That(diff, Is.Empty,
                 "Documentation~/README.md's index is out of sync with the directory's actual .md files:\n" + string.Join("\n", diff));
         }
+
+        [Test]
+        public void Given_ProjectMarkdown_When_ScannedForBacktickedPaths_Then_EveryPathExistsInTheRepo()
+        {
+            // Arrange / Act
+            var unresolved = ScanBacktickSpans((label, reference) =>
+                PathReferencePattern.IsMatch(reference) && !PathReferenceResolves(reference)
+                    ? new[] { $"{label}: {reference}" }
+                    : Array.Empty<string>());
+
+            // Assert
+            Assert.That(unresolved, Is.Empty,
+                "Documentation names paths that do not exist:\n" + string.Join("\n", unresolved));
+        }
+
+        [Test]
+        public void Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_Then_EveryIdentifierAppearsInASource()
+        {
+            // Arrange / Act
+            var unresolved = ScanBacktickSpans((label, reference) =>
+                // A file name is claimed by the path check first, which resolves it against the filesystem —
+                // the stronger question. Without this, VNodePool.cs would also be read as two identifiers.
+                PathReferencePattern.IsMatch(reference)
+                    // An elision leaves out the part that would say what is being named: a naming convention
+                    // written as a shape, a signature with its arguments dropped. The V.* and Hooks.* checks
+                    // still resolve the head of a dropped-argument call, so what this gives up is a span whose
+                    // head is neither — and the alternative is reporting the elision's own fragments.
+                    || reference.Contains("...")
+                        ? Array.Empty<string>()
+                        : IdentifierTokenPattern.Matches(JsxElementPattern.Replace(reference, " "))
+                            .Select(token => token.Value)
+                            .Where(token => !SourceIdentifiers.Value.Contains(token)
+                                            && !IdentifierAllowlist.Contains(token))
+                            .Select(token => $"{label}: {token} (in `{reference}`)"));
+
+            // Assert
+            Assert.That(unresolved, Is.Empty,
+                "Documentation names identifiers that appear in no source file:\n" + string.Join("\n", unresolved));
+        }
+
+        // Runs `extract` over every backticked span of every target file. An absolute path is skipped outright:
+        // it names something on the machine running the docs, not in the repo.
+        private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract)
+        {
+            var unresolved = new List<string>();
+            foreach (var (path, label) in TargetMarkdownFiles())
+            {
+                var prose = FencedBlockPattern.Replace(File.ReadAllText(path), "\n");
+                foreach (Match span in BacktickSpanPattern.Matches(prose))
+                {
+                    var reference = string.Join(" ", span.Groups[1].Value.Split((char[])null!,
+                        StringSplitOptions.RemoveEmptyEntries));
+                    if (reference.Length == 0 || reference[0] == '/')
+                    {
+                        continue;
+                    }
+                    unresolved.AddRange(extract(label, reference));
+                }
+            }
+            return unresolved.Distinct().ToList();
+        }
+
+        // Every entry under the walked roots, repo-relative and slash-separated, so a path reference can be
+        // matched as a SUFFIX: the docs write `Component/V.cs` for a file under Packages/com.velvet.core/Runtime.
+        // A directory that vanishes mid-walk is skipped rather than thrown from — this repo creates and deletes
+        // worktrees while suites run, and Lazy caches a thrown exception for the rest of the domain, which would
+        // turn one transient miss into a permanently failing fixture.
+        private static readonly Lazy<List<string>> RepoEntries = new(() =>
+        {
+            var root = Path.GetFullPath(".");
+            var entries = new List<string>();
+            // Depth-bounded rather than visited-set guarded: a symlink cycle yields a FRESH path string every
+            // lap, so a set keyed on the path never closes it, and the link-resolving API that would is not in
+            // Unity's target framework. The deepest real directory here sits at 7, so a bound of 32 stops a
+            // cycle while leaving room the layout will not reach.
+            const int maxDepth = 32;
+            var pending = new Stack<(string Directory, int Depth)>(
+                WalkedRoots.Select(Path.GetFullPath).Where(Directory.Exists).Select(walked => (walked, 1)));
+            entries.AddRange(WalkedRoots.Where(walked => Directory.Exists(Path.GetFullPath(walked))));
+            entries.AddRange(Directory.EnumerateFiles(root).Select(file => Path.GetFileName(file)));
+            while (pending.Count > 0)
+            {
+                var (directory, depth) = pending.Pop();
+                string[] children;
+                try
+                {
+                    children = Directory.GetFileSystemEntries(directory);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    continue;
+                }
+                foreach (var entry in children)
+                {
+                    if (UnwalkedDirectories.Contains(Path.GetFileName(entry)))
+                    {
+                        continue;
+                    }
+                    entries.Add(Path.GetRelativePath(root, entry).Replace('\\', '/'));
+                    if (Directory.Exists(entry) && depth < maxDepth)
+                    {
+                        pending.Push((entry, depth + 1));
+                    }
+                }
+            }
+            return entries;
+        });
+
+        // Every identifier-shaped word in the repo's own CODE. A name surviving nowhere in it was renamed or
+        // deleted, which is the drift this checks for. It deliberately does not care WHERE the word occurs:
+        // resolving this mix of runtime types, Unity types, generator symbols and CI variables against their
+        // real declarations would need every one of those toolchains loaded into the test. What it does care
+        // about is that the word is code — see the stripping patterns for why prose cannot be trusted here.
+        // Only C# is stripped: a string in USS, JSON, YAML or an asmdef IS the content, not a label for it,
+        // and the CI variable names a document cites live in exactly those.
+        private static readonly Lazy<HashSet<string>> SourceIdentifiers = new(() =>
+        {
+            var words = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
+            var identifiers = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in RepoEntries.Value)
+            {
+                if (!SourceExtensions.Any(extension => entry.EndsWith(extension, StringComparison.Ordinal))
+                    || !File.Exists(entry))
+                {
+                    continue;
+                }
+                var text = File.ReadAllText(entry);
+                if (entry.EndsWith(".cs", StringComparison.Ordinal))
+                {
+                    text = CSharpCommentOrStringPattern.Replace(text, " ");
+                }
+                foreach (Match match in words.Matches(text))
+                {
+                    identifiers.Add(match.Value);
+                }
+            }
+            return identifiers;
+        });
+
+        // A wildcard leaf (Runtime/Styles/*.uss) resolves only when its directory actually holds a matching
+        // file: the directory existing is not the claim the document made. A wildcard anywhere EARLIER in the
+        // path is not resolved at all — treating it as a literal would report every such reference as missing.
+        private static bool PathReferenceResolves(string reference)
+        {
+            var trimmed = reference.TrimEnd('/');
+            var separator = trimmed.LastIndexOf('/');
+            var leaf = trimmed[(separator + 1)..];
+            if (!leaf.Contains('*'))
+            {
+                return trimmed.Contains('*') || RepoEntries.Value.Any(entry => IsSuffixPath(entry, trimmed));
+            }
+            var directory = separator < 0 ? string.Empty : trimmed[..separator];
+            var extension = leaf.TrimStart('*');
+            return RepoEntries.Value.Any(entry =>
+                entry.EndsWith(extension, StringComparison.Ordinal)
+                && entry.LastIndexOf('/') >= 0
+                && IsSuffixPath(entry[..entry.LastIndexOf('/')], directory));
+        }
+
+        private static bool IsSuffixPath(string entry, string suffix) =>
+            entry == suffix || entry.EndsWith("/" + suffix, StringComparison.Ordinal);
 
         // Shared scan: for every target markdown file, project its text through `select` (identity for the
         // V.* scan, backtick-span extraction for the Hooks scan), extract every reference `pattern` matches,
