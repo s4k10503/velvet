@@ -556,6 +556,21 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsLayerContainer()
+        {
+            // A z-* absolute element is relocated out of its ordinary slot into a layer container, leaving a
+            // placeholder behind. The band is hosted on the element's parent, so it has to follow — placement
+            // is drained at the reconcile boundary, AFTER the relocation, and re-derives the host from the
+            // element rather than caching the parent it had at create time.
+            using var scope = new ReconcilerScope();
+
+            Mount(scope, new VNode[] { V.Div(className: "absolute z-10 ring-2", name: "card") });
+
+            var card = scope.Root.Q<VisualElement>("card");
+            Assert.That(RingOverlayIn(card.parent), Is.Not.Null);
+        }
+
+        [Test]
         public void Given_ARingedElement_When_Unmounted_Then_NoRingBindingResidueRemains()
         {
             using var scope = new ReconcilerScope();
