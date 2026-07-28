@@ -92,8 +92,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_ShadowOnMotion_When_Reconciled_Then_NoPaintBindingIsCreated()
         {
-            // Arrange — a Motion carrying a shadow-* utility. A shadow on the animating element itself cannot
-            // show: the enter/exit fade hides shadow paints, so the shadow belongs on a wrapped Div.
+            // Arrange — a Motion carrying a shadow-* utility. The silhouette paints stand down on a Motion, so
+            // one attached here would be a binding its own patch path never reconciles; the shadow belongs on
+            // a wrapped Div.
             using var scope = new ReconcilerScope();
             LogAssert.Expect(LogType.Warning, new Regex(@"shadow-\* utility on a Motion is ignored"));
 

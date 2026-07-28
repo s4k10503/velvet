@@ -265,20 +265,19 @@ namespace Velvet
                     // transition-filter on a Motion host: a Motion can carry filter utilities + that class
                     // just like a plain element, so register the tween binding here too.
                     _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
-                    // Motion does NOT paint a drop shadow: the animation scheduler hides a subtree's shadow
-                    // paints for the lifetime of an enter / exit (the opacity-blind shadow would otherwise
-                    // show through the fading caster as a dark box), and a shadow ON the animating Motion
-                    // itself would be the very paint that must stay hidden — so the shadow belongs on a Div the
-                    // Motion wraps (the Div carries the shadow, the Motion carries the transition). Warn and
-                    // skip the paint. Warn only for an ACTIVE shadow (shadow-none deliberately cancelling the
-                    // cascade is not "ignored" — nothing would render anywhere).
+                    // Motion does NOT paint a drop shadow: the three silhouette paints stand down on a Motion
+                    // on BOTH halves — here, and on the patch path through ApplyResolvedClassPasses' paintTail
+                    // gate — so attaching one here would leave a binding the Motion's own patch never syncs
+                    // against a class change and never detaches. The shadow belongs on a Div the Motion wraps
+                    // (the Div carries the shadow, the Motion carries the transition). Warn and skip the paint.
+                    // Warn only for an ACTIVE shadow (shadow-none deliberately cancelling the cascade is not
+                    // "ignored" — nothing would render anywhere).
                     if (StyleShadowClass.HasShadowClass(appliedClasses)
                         && StyleShadowClass.TryExtract(appliedClasses, out _))
                     {
                         FiberLogger.LogWarning("Motion",
-                            "A shadow-* utility on a Motion is ignored: the enter/exit fade hides shadow paints, "
-                            + "so a shadow on the animating element itself cannot show. "
-                            + "Wrap the Motion around a shadowed Div instead.");
+                            "A shadow-* utility on a Motion is ignored: a Motion carries the transition, not "
+                            + "the paint layers. Wrap the Motion around a shadowed Div instead.");
                     }
                     // clip-path-* is a structural wrapper, which would become the AnimatePresence anchor while
                     // the enter/exit transition stays on the inner Motion: ignored on a Motion, never wrapped.
