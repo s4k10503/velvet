@@ -282,40 +282,14 @@ namespace Velvet
 
                 if (seg.IsOptional)
                 {
-                    // Greedily try to match the optional segment. The capture must not leak into the
-                    // skip branch (or sibling ranking attempts) when the downstream match fails, so
-                    // snapshot the param key around the "present" attempt and restore it on failure.
-                    if (si < segments.Length)
+                    // Greedily try the optional segment as present before falling through to the skip
+                    // branch, which consumes no path segment.
+                    if (si < segments.Length &&
+                        TryConsumeOptionalPresent(pattern, pi, segments, si, seg, ref captured))
                     {
-                        var keyExisted = false;
-                        string snap = "";
-                        if (seg.IsParam && captured != null)
-                        {
-                            keyExisted = captured.TryGetValue(seg.Value, out snap);
-                        }
-
-                        if (TryMatchSingle(seg, segments[si], ref captured) &&
-                            TryConsume(pattern, pi + 1, segments, si + 1, ref captured))
-                        {
-                            return true;
-                        }
-
-                        // The failed "present" attempt may have been what created the dictionary, so
-                        // it can be non-null here even when the snapshot above saw null.
-                        if (seg.IsParam && captured != null)
-                        {
-                            if (keyExisted)
-                            {
-                                captured[seg.Value] = snap;
-                            }
-                            else
-                            {
-                                captured.Remove(seg.Value);
-                            }
-                        }
+                        return true;
                     }
 
-                    // Skip the optional segment without consuming a path segment.
                     return TryConsume(pattern, pi + 1, segments, si, ref captured);
                 }
 
@@ -330,6 +304,48 @@ namespace Velvet
 
             // Pattern exhausted: succeed only when the path is also fully consumed.
             return si == segments.Length;
+        }
+
+        /// <summary>
+        /// Matches an optional segment as present and consumes the rest of the pattern behind it.
+        /// </summary>
+        /// <remarks>
+        /// A capture made here must not leak into the caller's skip branch, nor into a sibling branch the
+        /// ranking loop probes afterwards, so the param key is snapshotted and restored when the downstream
+        /// match fails.
+        /// </remarks>
+        private static bool TryConsumeOptionalPresent(
+            List<RouteSegment> pattern, int pi, string[] segments, int si, RouteSegment seg,
+            ref Dictionary<string, string>? captured)
+        {
+            var keyExisted = false;
+            string snap = "";
+            if (seg.IsParam && captured != null)
+            {
+                keyExisted = captured.TryGetValue(seg.Value, out snap);
+            }
+
+            if (TryMatchSingle(seg, segments[si], ref captured) &&
+                TryConsume(pattern, pi + 1, segments, si + 1, ref captured))
+            {
+                return true;
+            }
+
+            // The failed attempt may have been what created the dictionary, so it can be non-null here
+            // even when the snapshot above saw null.
+            if (seg.IsParam && captured != null)
+            {
+                if (keyExisted)
+                {
+                    captured[seg.Value] = snap;
+                }
+                else
+                {
+                    captured.Remove(seg.Value);
+                }
+            }
+
+            return false;
         }
 
         private static bool TryMatchSingle(RouteSegment seg, string pathSeg, ref Dictionary<string, string>? captured)
