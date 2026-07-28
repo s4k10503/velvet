@@ -401,15 +401,5 @@ namespace Velvet
             _onDrainBegin = null;
             _onDrainEnd = null;
         }
-
-        // Runs the next-frame (Normal / Urgent) drain synchronously, simulating one frame-boundary
-        // scheduler callback firing. Tests use this because the UIToolkit scheduler does not advance in
-        // EditMode. Not used by production.
-        internal void DrainImmediateForTest() => DrainImmediate();
-
-        // Runs the delayed (Deferred / Transition) drain synchronously, simulating the delayed scheduler
-        // callback firing. Tests use this because the UIToolkit scheduler does not advance in EditMode.
-        // Not used by production.
-        internal void DrainDelayedForTest() => DrainDelayed();
     }
 }

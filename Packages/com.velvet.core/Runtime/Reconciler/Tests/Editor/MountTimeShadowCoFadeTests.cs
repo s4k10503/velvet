@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using UnityEngine.UIElements.TestFramework;
 using UnityEditor.UIElements.TestFramework;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
