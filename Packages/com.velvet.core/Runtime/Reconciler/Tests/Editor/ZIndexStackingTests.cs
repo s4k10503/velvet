@@ -13,6 +13,15 @@ namespace Velvet.Tests
     /// the reconciler, structural variants, and focus order. None of this needs a live panel: physical DOM
     /// structure, element identity across patches, and reconciler slot-range correctness are all observable on
     /// a bare (unattached) tree. GWT, one assert per case.
+    /// <para>
+    /// Every fact about the coordinator itself that a case depends on — a layer container exists, an element is
+    /// z-managed, the transition under test actually ran — is a term inside that case's single assertion rather
+    /// than an <c>Assume</c>. A coordinator that attaches no layer container still satisfies most of these
+    /// assertions on their own, so stating those facts as preconditions reports Inconclusive, which no reporter
+    /// counts as a failure. The reads below tolerate a null element so that an unattached container — which
+    /// puts the real element out of reach of the <c>Q</c> query that fetched it — reports which term went
+    /// wrong instead of a thrown lookup.
+    /// </para>
     /// </summary>
     [TestFixture]
     internal sealed class ZIndexStackingTests
@@ -101,6 +110,12 @@ namespace Velvet.Tests
             return null;
         }
 
+        private static bool IsZManaged(ReconcilerContext ctx, VisualElement element)
+            => element != null && ctx.ZLayerMembers.ContainsKey(element);
+
+        private static ulong? ZOrder(ReconcilerContext ctx, VisualElement element)
+            => element != null && ctx.ZLayerMembers.TryGetValue(element, out var member) ? member.Order : null;
+
         #region Physical order
 
         [Test]
@@ -116,11 +131,11 @@ namespace Velvet.Tests
                 V.Div(name: "z20", className: "absolute z-20"),
             }));
             var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
-            Assume.That(front, Is.Not.Null, "Precondition: a front z-layer container was created");
 
             // Assert
-            Assert.That((front.ElementAt(0).name, front.ElementAt(1).name, front.ElementAt(2).name),
-                Is.EqualTo(("z10", "z20", "z30")));
+            Assert.That(
+                (front != null, front?.ElementAt(0).name, front?.ElementAt(1).name, front?.ElementAt(2).name),
+                Is.EqualTo((true, "z10", "z20", "z30")));
         }
 
         [Test]
@@ -156,26 +171,39 @@ namespace Velvet.Tests
                     V.Div(name: "negz", className: "absolute -z-10"),
                 }),
             }));
-            Assume.That(FindLayerContainer(root.Q<VisualElement>("parent"), front: false), Is.Not.Null,
-                "Precondition: a back container exists under parent");
 
             // Assert — "before" is still the grandparent's first child; "parent" was never reordered around it.
-            Assert.That(root.Q<VisualElement>("grandparent").ElementAt(0).name, Is.EqualTo("before"));
+            Assert.That(
+                (FindLayerContainer(root.Q<VisualElement>("parent"), front: false) != null,
+                    root.Q<VisualElement>("grandparent").ElementAt(0).name),
+                Is.EqualTo((true, "before")));
         }
 
         [Test]
-        public void Given_AnInFlowElementWithAZClassButNoAbsolute_When_Mounted_Then_NoLayerContainerIsEverCreated()
+        public void Given_AZClassOnAnInFlowChildAndOnAnOutOfFlowSibling_When_Mounted_Then_OnlyTheOutOfFlowChildsParentGrowsALayerContainer()
         {
-            // Arrange / Act — z-10 without "absolute": the scope gate requires ALSO being out-of-flow, so this
-            // is a documented no-op.
+            // Arrange / Act — two stacking-parent candidates identical but for their own child's "absolute":
+            // the scope gate requires z-* to ALSO be out-of-flow, so the in-flow one is a documented no-op.
+            // The control parent is what makes the absent container a claim about that gate rather than about
+            // nothing — a coordinator that creates no container for anyone reads identically on its own.
             var root = new VisualElement();
-            using var mounted = V.Mount(root, V.Div(name: "parent", children: new VNode[]
+            using var mounted = V.Mount(root, V.Div(name: "wrapper", children: new VNode[]
             {
-                V.Div(name: "child", className: "z-10"),
+                V.Div(name: "parent", className: "relative", children: new VNode[]
+                {
+                    V.Div(name: "child", className: "z-10"),
+                }),
+                V.Div(name: "control-parent", className: "relative", children: new VNode[]
+                {
+                    V.Div(name: "control-child", className: "absolute z-10"),
+                }),
             }));
 
             // Assert
-            Assert.That(FindLayerContainer(root.Q<VisualElement>("parent"), front: true), Is.Null);
+            Assert.That(
+                (FindLayerContainer(root.Q<VisualElement>("control-parent"), front: true) != null,
+                    FindLayerContainer(root.Q<VisualElement>("parent"), front: true) != null),
+                Is.EqualTo((true, false)));
         }
 
         [Component]
@@ -199,15 +227,18 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(TypeFlipHost, key: "root"));
             var parent = root.Q<VisualElement>("parent");
-            Assume.That(FindLayerContainer(parent, front: false), Is.Not.Null,
-                "Precondition: the back layer container exists");
+            var backContainerExistedBeforeTheFlip = FindLayerContainer(parent, front: false) != null;
 
             // Act — declares [Button, negz]: a positional type-flip at slot 0.
             store.Set(true);
             mounted.FlushStateForTest();
 
             // Assert — the back container is still parent's first physical child, not displaced behind Button.
-            Assert.That(parent.ElementAt(0), Is.SameAs(FindLayerContainer(parent, front: false)));
+            var backContainerAfterTheFlip = FindLayerContainer(parent, front: false);
+            Assert.That(
+                (backContainerExistedBeforeTheFlip,
+                    ReferenceEquals(parent.ElementAt(0), backContainerAfterTheFlip)),
+                Is.EqualTo((true, true)));
         }
 
         #endregion
@@ -235,8 +266,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(ChurnList, key: "root"));
             var list = root.Q<VisualElement>("list");
-            Assume.That(FindLayerContainer(list, front: false), Is.Not.Null,
-                "Precondition: the back layer container exists");
+            var backContainerExistedBeforeTheChurn = FindLayerContainer(list, front: false) != null;
 
             // Act — reorder, then insert, then remove ordinary keyed siblings across successive re-renders
             // while the leading back-layer container stays present the whole time: an insertion/removal shifts
@@ -255,7 +285,8 @@ namespace Velvet.Tests
             // slot-range math was never corrupted by the interspersed leading container, across reorder,
             // insert, and remove alike.
             var names = list.Query<Button>().ToList().ConvertAll(b => b.name);
-            Assert.That(names, Is.EqualTo(new[] { "item-a", "item-c", "item-d" }));
+            Assert.That((backContainerExistedBeforeTheChurn, string.Join(",", names)),
+                Is.EqualTo((true, "item-a,item-c,item-d")));
         }
 
         #endregion
@@ -286,23 +317,24 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(ReuseHost, key: "root"));
             var ctx = mounted.Root.Reconciler.Context;
             var original = root.Q<Button>("b");
+            var originalMountedZManaged = IsZManaged(ctx, original);
             store.Set(1);
             mounted.FlushStateForTest();
-            Assume.That(ctx.ZLayerMembers.Count, Is.EqualTo(0),
-                "Precondition: unmounting tore down the z-managed button's registration");
 
             // Act — a plain (non-z) button mounts, renting the same pooled Button instance back.
             store.Set(2);
             mounted.FlushStateForTest();
             var rented = root.Q<Button>("b");
 
-            // Assert — folded into one tuple: the plain button actually rented the SAME pooled instance (not a
-            // fresh one) AND that instance carries no leftover z-layer registration. A bare
-            // ContainsKey(rented)==false assert alone would pass vacuously on a fresh (non-pooled) instance, and
-            // a separate Assume for the pooling fact would report Inconclusive instead of Failed on a cleanup
-            // regression.
-            Assert.That((ReferenceEquals(rented, original), ctx.ZLayerMembers.ContainsKey(rented)),
-                Is.EqualTo((true, false)));
+            // Assert — the button really was z-managed before it was pooled, the plain button actually rented
+            // the SAME instance back (not a fresh one), and that instance carries no leftover registration.
+            // Every one of the last two terms is satisfied by a coordinator that classifies nothing at all —
+            // ordinary pooling plus a permanently empty registry — so the first term is what makes this a
+            // z-layer case. The unmount teardown the arrange step depends on needs no term of its own: the
+            // same instance still registered after it would fail the third.
+            Assert.That(
+                (originalMountedZManaged, ReferenceEquals(rented, original), ctx.ZLayerMembers.ContainsKey(rented)),
+                Is.EqualTo((true, true, false)));
         }
 
         [Component]
@@ -323,15 +355,16 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(TeardownHost, key: "root"));
             var parent = root.Q<VisualElement>("parent");
-            Assume.That(FindLayerContainer(parent, front: true), Is.Not.Null,
-                "Precondition: the front layer container exists");
+            var containerExistedBeforeTheUnmount = FindLayerContainer(parent, front: true) != null;
 
             // Act
             store.Set(false);
             mounted.FlushStateForTest();
 
             // Assert
-            Assert.That(FindLayerContainer(parent, front: true), Is.Null);
+            Assert.That(
+                (containerExistedBeforeTheUnmount, FindLayerContainer(parent, front: true) != null),
+                Is.EqualTo((true, false)));
         }
 
         #endregion
@@ -358,14 +391,17 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(ZToNoneHost, key: "root"));
             var child = root.Q<VisualElement>("child");
             var ctx = mounted.Root.Reconciler.Context;
-            Assume.That(ctx.ZLayerMembers.ContainsKey(child), Is.True, "Precondition: the child is z-managed");
+            var zManagedBeforeTheChange = IsZManaged(ctx, child);
 
             // Act
             store.Set(false);
             mounted.FlushStateForTest();
 
             // Assert — the SAME instance now occupies the parent's ordinary slot directly.
-            Assert.That(ReferenceEquals(root.Q<VisualElement>("parent").ElementAt(0), child), Is.True);
+            Assert.That(
+                (zManagedBeforeTheChange,
+                    ReferenceEquals(root.Q<VisualElement>("parent").ElementAt(0), child)),
+                Is.EqualTo((true, true)));
         }
 
         [Component]
@@ -388,15 +424,19 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(NoneToZHost, key: "root"));
             var child = root.Q<VisualElement>("child");
             var ctx = mounted.Root.Reconciler.Context;
-            Assume.That(ReferenceEquals(root.Q<VisualElement>("parent").ElementAt(0), child), Is.True,
-                "Precondition: the child starts as an ordinary direct child");
+            var startedAsAnOrdinaryDirectChild = ReferenceEquals(root.Q<VisualElement>("parent").ElementAt(0), child);
 
             // Act
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — the SAME instance is now registered as z-managed (relocated into the front layer).
-            Assert.That(ctx.ZLayerMembers.ContainsKey(child), Is.True);
+            // Assert — the SAME instance is now registered as z-managed AND physically sits in the front layer.
+            // Registration alone survives a coordinator that never attaches a container, which would leave the
+            // relocation this case is named for unmeasured.
+            Assert.That(
+                (startedAsAnOrdinaryDirectChild, IsZManaged(ctx, child),
+                    ReferenceEquals(child.parent, FindLayerContainer(root.Q<VisualElement>("parent"), front: true))),
+                Is.EqualTo((true, true, true)));
         }
 
         [Component]
@@ -421,15 +461,17 @@ namespace Velvet.Tests
             var a = root.Q<VisualElement>("a");
             var b = root.Q<VisualElement>("b");
             var front = FindLayerContainer(root.Q<VisualElement>("parent"), front: true);
-            Assume.That(ReferenceEquals(front.ElementAt(0), a) && ReferenceEquals(front.ElementAt(1), b), Is.True,
-                "Precondition: a (z-10) sorts before b (z-30)");
+            var sortedAThenB = front is { childCount: 2 }
+                && ReferenceEquals(front.ElementAt(0), a) && ReferenceEquals(front.ElementAt(1), b);
 
             // Act — swap: a becomes z-30, b becomes z-10.
             store.Set(true);
             mounted.FlushStateForTest();
 
             // Assert — the front container's order flips, using the SAME two element instances.
-            Assert.That(ReferenceEquals(front.ElementAt(0), b) && ReferenceEquals(front.ElementAt(1), a), Is.True);
+            var sortedBThenA = front is { childCount: 2 }
+                && ReferenceEquals(front.ElementAt(0), b) && ReferenceEquals(front.ElementAt(1), a);
+            Assert.That((sortedAThenB, sortedBThenA), Is.EqualTo((true, true)));
         }
 
         [Component]
@@ -452,11 +494,8 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(SignFlipHost, key: "root"));
             var ctx = mounted.Root.Reconciler.Context;
             var child = root.Q<VisualElement>("child");
-            Assume.That(ctx.ZLayerMembers.ContainsKey(child), Is.True,
-                "Precondition: child mounted z-managed under z-10");
-            var originalOrder = ctx.ZLayerMembers[child].Order;
-            Assume.That(FindLayerContainer(root.Q<VisualElement>("parent"), front: false), Is.Null,
-                "Precondition: no back container exists yet");
+            var originalOrder = ZOrder(ctx, child);
+            var noBackContainerBeforeTheFlip = FindLayerContainer(root.Q<VisualElement>("parent"), front: false) == null;
 
             // Act — flip to -z-10: Reposition finds no existing back container for this parent and defers
             // through the same enqueue/drain path a fresh mount uses, carrying the element's mount-order
@@ -464,13 +503,14 @@ namespace Velvet.Tests
             store.Set(true);
             mounted.FlushStateForTest();
 
-            // Assert — folded into one tuple: the flip actually created a fresh back container (the deferred/
-            // enqueue branch ran, not a same-container Reposition no-op — which would leave Order untouched and
-            // pass vacuously) AND the SAME order value survived the deferred round-trip (a fresh assignment
-            // would differ).
+            // Assert — folded into one tuple: the child mounted z-managed with no back container to flip into,
+            // the flip actually created a fresh one (the deferred/enqueue branch ran, not a same-container
+            // Reposition no-op — which would leave Order untouched and pass vacuously) AND the SAME order value
+            // survived the deferred round-trip (a fresh assignment would differ).
             Assert.That(
-                (FindLayerContainer(root.Q<VisualElement>("parent"), front: false) != null, ctx.ZLayerMembers[child].Order),
-                Is.EqualTo((true, originalOrder)));
+                (originalOrder != null, noBackContainerBeforeTheFlip,
+                    FindLayerContainer(root.Q<VisualElement>("parent"), front: false) != null, ZOrder(ctx, child)),
+                Is.EqualTo((true, true, true, originalOrder)));
         }
 
         #endregion
@@ -490,13 +530,16 @@ namespace Velvet.Tests
                 V.Div(name: "consumer", className: "absolute z-10"),
             }));
             var ctx = mounted.Root.Reconciler.Context;
+            var consumer = root.Q<VisualElement>("consumer");
 
             // Act
-            var found = StyleRelationalVariantManipulator.FindPrevSiblingWithClass(
-                root.Q<VisualElement>("consumer"), "peer", ctx);
+            var found = StyleRelationalVariantManipulator.FindPrevSiblingWithClass(consumer, "peer", ctx);
 
-            // Assert
-            Assert.That(found, Is.SameAs(root.Q<VisualElement>("source")));
+            // Assert — the consumer's relocation is a term: left at its ordinary slot it is "source"'s own
+            // physical next sibling, and the search resolves without ever consulting a placeholder.
+            Assert.That(
+                (IsZManaged(ctx, consumer), ReferenceEquals(found, root.Q<VisualElement>("source"))),
+                Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -513,13 +556,15 @@ namespace Velvet.Tests
                 V.Div(name: "consumer"),
             }));
             var ctx = mounted.Root.Reconciler.Context;
+            var source = root.Q<VisualElement>("source");
 
             // Act
             var found = StyleRelationalVariantManipulator.FindPrevSiblingWithClass(
                 root.Q<VisualElement>("consumer"), "peer", ctx);
 
-            // Assert
-            Assert.That(found, Is.Null);
+            // Assert — the source's relocation is a term: an out-of-flow source that was never relocated is
+            // skipped by the search for its own unrelated reason, giving the identical null.
+            Assert.That((IsZManaged(ctx, source), found == null), Is.EqualTo((true, true)));
         }
 
         #endregion
@@ -547,12 +592,13 @@ namespace Velvet.Tests
             }));
             var frontA = FindLayerContainer(root.Q<VisualElement>("parentA"), front: true);
             var frontB = FindLayerContainer(root.Q<VisualElement>("parentB"), front: true);
-            Assume.That(frontA, Is.Not.SameAs(frontB), "Precondition: each stacking parent grew its own container");
 
             // Assert — parentA's container holds only its own two children, correctly sorted, unaffected by
             // parentB's own separate single member.
-            Assert.That((frontA.childCount, frontA.ElementAt(0).name, frontA.ElementAt(1).name),
-                Is.EqualTo((2, "a2", "a1")));
+            Assert.That(
+                (frontA != null, ReferenceEquals(frontA, frontB), frontA?.childCount == 2,
+                    frontA?.ElementAt(0).name, frontA?.ElementAt(1).name),
+                Is.EqualTo((true, false, true, "a2", "a1")));
         }
 
         #endregion
@@ -573,11 +619,12 @@ namespace Velvet.Tests
             }));
             var ctx = mounted.Root.Reconciler.Context;
             var child = root.Q<VisualElement>("child");
-            Assume.That(child.ClassListContains("absolute"), Is.False,
-                "Precondition: the child carries no \"absolute\" utility class");
+            var carriesNoAbsoluteClass = child != null && !child.ClassListContains("absolute");
 
-            // Assert — TryClassify's Props.Anchored half classified it anyway.
-            Assert.That(ctx.ZLayerMembers.ContainsKey(child), Is.True);
+            // Assert — TryClassify's Props.Anchored half classified it anyway. The absent utility class is a
+            // term rather than a precondition because the class-based half would classify the child on its own,
+            // so gaining it would make this pass for the wrong reason.
+            Assert.That((carriesNoAbsoluteClass, IsZManaged(ctx, child)), Is.EqualTo((true, true)));
         }
 
         #endregion
@@ -605,8 +652,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(root, V.Component(MoveZManagedHost, key: "root"));
             var ctx = mounted.Root.Reconciler.Context;
             var zchild = root.Q<VisualElement>("zchild");
-            Assume.That(ctx.ZLayerMembers.ContainsKey(zchild), Is.True,
-                "Precondition: the z-managed child is registered before the move");
+            var registeredBeforeTheMove = IsZManaged(ctx, zchild);
 
             // Act — the keyed reorder moves the z-managed item to the LAST logical position.
             store.Set(true);
@@ -618,11 +664,12 @@ namespace Velvet.Tests
             // default (false/null Placeholder) if the registration itself was lost, so this also proves the
             // "stays registered" half.
             var list = root.Q<VisualElement>("list");
-            ctx.ZLayerMembers.TryGetValue(zchild, out var memberAfter);
+            var memberAfter = default(ZLayerMember);
+            if (zchild != null) { ctx.ZLayerMembers.TryGetValue(zchild, out memberAfter); }
             var lastLogicalIndex = SilhouetteBoundsSpacer.NonSpacerChildCount(list) - 1;
             var stillRegisteredAtTrackedPosition = memberAfter.Placeholder != null
                 && ReferenceEquals(list.ElementAt(lastLogicalIndex), memberAfter.Placeholder);
-            Assert.That(stillRegisteredAtTrackedPosition, Is.True);
+            Assert.That((registeredBeforeTheMove, stillRegisteredAtTrackedPosition), Is.EqualTo((true, true)));
         }
 
         #endregion
@@ -646,14 +693,17 @@ namespace Velvet.Tests
                 }),
             }));
             var outerFront = FindLayerContainer(root.Q<VisualElement>("outer"), front: true);
-            Assume.That(outerFront, Is.Not.Null, "Precondition: outer's own front container exists");
             var innerParent = root.Q<VisualElement>("innerParent");
-            var innerFront = FindLayerContainer(innerParent, front: true);
+            var innerFront = innerParent == null ? null : FindLayerContainer(innerParent, front: true);
 
             // Assert — innerParent (reached inside mid's relocated real content) grew its OWN front container,
-            // holding "inner", independent of mid's own relocation under outer.
-            Assert.That(innerFront != null && ReferenceEquals(innerFront.ElementAt(0), root.Q<VisualElement>("inner")),
-                Is.True);
+            // holding "inner", independent of mid's own relocation under outer. Both layers are terms of the
+            // same comparison: "independently" is a claim about the pair, so outer's own container cannot be a
+            // precondition to it.
+            Assert.That(
+                (outerFront != null,
+                    innerFront != null && ReferenceEquals(innerFront.ElementAt(0), root.Q<VisualElement>("inner"))),
+                Is.EqualTo((true, true)));
         }
 
         #endregion
@@ -731,8 +781,7 @@ namespace Velvet.Tests
             s_zParkZManaged = false;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(ZParkHost, key: "root"));
-            Assume.That(FindLayerContainer(root, front: false), Is.Null,
-                "Precondition: no back container exists before the timed re-render");
+            var noBackContainerBeforeTheReRender = FindLayerContainer(root, front: false) == null;
 
             // Act — item0 turns z-managed under a tiny forced budget: the Common-phase loop patches item0's
             // class, relocates it out (enqueuing the deferred z-mount) since no back container exists yet, then
@@ -749,8 +798,12 @@ namespace Velvet.Tests
             // RED without the fix: the resumed slice keeps reading one slot short of where the container's
             // insertion actually left each row, so each iteration patches (and renames, via PatchCommon) the
             // WRONG physical element — a cascading off-by-one that leaves a stale/duplicated name in this join.
-            Assert.That((parkedAfterItem0, TrailingItemOrder(root)),
-                Is.EqualTo((true, ExpectedTrailingItemOrder)));
+            // The shift itself is a term too: with no container created there is nothing to rebase against and
+            // the order alone reads correct.
+            Assert.That(
+                (noBackContainerBeforeTheReRender, parkedAfterItem0,
+                    FindLayerContainer(root, front: false) != null, TrailingItemOrder(root)),
+                Is.EqualTo((true, true, true, ExpectedTrailingItemOrder)));
         }
 
         [Test]
@@ -761,8 +814,7 @@ namespace Velvet.Tests
             s_zParkZManaged = true;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(ZParkHost, key: "root"));
-            Assume.That(FindLayerContainer(root, front: false), Is.Not.Null,
-                "Precondition: the back container exists before the timed re-render");
+            var backContainerExistedBeforeTheReRender = FindLayerContainer(root, front: false) != null;
 
             // Act — item0 turns back to ordinary under a tiny forced budget: the Common-phase loop patches
             // item0's class, synchronously detaches it from the (now-empty) back container and marks the
@@ -777,8 +829,10 @@ namespace Velvet.Tests
 
             // Assert — mirrors the creation-direction test above, in the opposite (-1) direction: every trailing
             // item resumed at its correct (post-shift) physical index instead of one slot past it.
-            Assert.That((parkedAfterItem0, TrailingItemOrder(root)),
-                Is.EqualTo((true, ExpectedTrailingItemOrder)));
+            Assert.That(
+                (backContainerExistedBeforeTheReRender, parkedAfterItem0,
+                    FindLayerContainer(root, front: false) == null, TrailingItemOrder(root)),
+                Is.EqualTo((true, true, true, ExpectedTrailingItemOrder)));
         }
 
         #endregion
@@ -847,8 +901,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossFiberSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-fiber-host");
-            Assume.That(FindLayerContainer(host, front: false), Is.Null,
-                "Precondition: no back container exists before A's own transition");
+            var noBackContainerBeforeATransition = FindLayerContainer(host, front: false) == null;
 
             // Act — A turns its own first item z-managed: A's own Reconcile() call's top-level finally
             // creates the back container synchronously within that SAME call, before A's own before/after
@@ -856,8 +909,7 @@ namespace Velvet.Tests
             s_crossFiberAZManaged = true;
             s_crossFiberAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossFiberAFiber);
-            Assume.That(FindLayerContainer(host, front: false), Is.Not.Null,
-                "Precondition: A's own transition actually created the shared host's first back container");
+            var aCreatedTheBackContainer = FindLayerContainer(host, front: false) != null;
 
             // Act — B re-renders independently, renaming its own first item.
             s_crossFiberBName = "b0-renamed";
@@ -868,7 +920,9 @@ namespace Velvet.Tests
             // MountSlotStart, so B's diff runs one physical slot high — it patches the element that is
             // actually its own "b1" with "b0"'s new name and creates a duplicate "b1" past the end,
             // leaving a stale, untouched "b0" behind instead of the single renamed item in order.
-            Assert.That(CrossFiberBOrder(host), Is.EqualTo("b0-renamed,b1"));
+            Assert.That(
+                (noBackContainerBeforeATransition, aCreatedTheBackContainer, CrossFiberBOrder(host)),
+                Is.EqualTo((true, true, "b0-renamed,b1")));
         }
 
         [Test]
@@ -881,8 +935,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossFiberSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-fiber-host");
-            Assume.That(FindLayerContainer(host, front: false), Is.Not.Null,
-                "Precondition: the back container exists before A's own teardown");
+            var backContainerExistedBeforeATeardown = FindLayerContainer(host, front: false) != null;
 
             // Act — A removes its own item's z class: A's own Reconcile() call's top-level finally REMOVES
             // the now-empty back container synchronously within that SAME call — the teardown-direction
@@ -890,8 +943,7 @@ namespace Velvet.Tests
             s_crossFiberAZManaged = false;
             s_crossFiberAFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossFiberAFiber);
-            Assume.That(FindLayerContainer(host, front: false), Is.Null,
-                "Precondition: A's own teardown actually removed the now-empty back container");
+            var aRemovedTheBackContainer = FindLayerContainer(host, front: false) == null;
 
             // Act — B re-renders independently, renaming its own first item.
             s_crossFiberBName = "b0-renamed";
@@ -900,7 +952,9 @@ namespace Velvet.Tests
 
             // Assert — the teardown (-1) direction stays consistent with the creation (+1) direction
             // above: nothing breaks after the un-contamination.
-            Assert.That(CrossFiberBOrder(host), Is.EqualTo("b0-renamed,b1"));
+            Assert.That(
+                (backContainerExistedBeforeATeardown, aRemovedTheBackContainer, CrossFiberBOrder(host)),
+                Is.EqualTo((true, true, "b0-renamed,b1")));
         }
 
         #endregion
@@ -965,8 +1019,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossParkSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-host");
-            Assume.That(FindLayerContainer(host, front: false), Is.Null,
-                "Precondition: no back container exists before B's own z-transition");
+            var noBackContainerBeforeBTransition = FindLayerContainer(host, front: false) == null;
             var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
@@ -986,8 +1039,7 @@ namespace Velvet.Tests
             s_crossParkBZManaged = true;
             s_crossParkBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkBFiber);
-            Assume.That(FindLayerContainer(host, front: false), Is.Not.Null,
-                "Precondition: B's own render actually created the shared host's first back container");
+            var bCreatedTheBackContainer = FindLayerContainer(host, front: false) != null;
 
             // Act — drive A's still-parked pass to completion.
             s_crossParkAFiber.DrainTimeSlicedReconcileForTest();
@@ -1001,8 +1053,10 @@ namespace Velvet.Tests
             // propagation.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpa" + i); }
-            Assert.That((aParked, aRegisteredAsParkedBaseline, CrossParkAOrder(host)),
-                Is.EqualTo((true, true, string.Join(",", expected))));
+            Assert.That(
+                (noBackContainerBeforeBTransition, aParked, aRegisteredAsParkedBaseline,
+                    bCreatedTheBackContainer, CrossParkAOrder(host)),
+                Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
         [Test]
@@ -1016,8 +1070,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossParkSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-host");
-            Assume.That(FindLayerContainer(host, front: false), Is.Not.Null,
-                "Precondition: the back container exists before B's own teardown");
+            var backContainerExistedBeforeBTeardown = FindLayerContainer(host, front: false) != null;
             var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
@@ -1036,8 +1089,7 @@ namespace Velvet.Tests
             s_crossParkBZManaged = false;
             s_crossParkBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkBFiber);
-            Assume.That(FindLayerContainer(host, front: false), Is.Null,
-                "Precondition: B's own render actually removed the shared host's now-empty back container");
+            var bRemovedTheBackContainer = FindLayerContainer(host, front: false) == null;
 
             // Act — drive A's still-parked pass to completion.
             s_crossParkAFiber.DrainTimeSlicedReconcileForTest();
@@ -1046,8 +1098,10 @@ namespace Velvet.Tests
             // order — the -1 teardown direction stays consistent with the +1 creation direction above.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpa" + i); }
-            Assert.That((aParked, aRegisteredAsParkedBaseline, CrossParkAOrder(host)),
-                Is.EqualTo((true, true, string.Join(",", expected))));
+            Assert.That(
+                (backContainerExistedBeforeBTeardown, aParked, aRegisteredAsParkedBaseline,
+                    bRemovedTheBackContainer, CrossParkAOrder(host)),
+                Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
         // Keyed mirror of CrossParkARender/CrossParkSiblingHost: every one of A's own children carries an
@@ -1110,8 +1164,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossParkKeyedSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-keyed-host");
-            Assume.That(FindLayerContainer(host, front: false), Is.Null,
-                "Precondition: no back container exists before B's own z-transition");
+            var noBackContainerBeforeBTransition = FindLayerContainer(host, front: false) == null;
             var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; the pass is left
@@ -1129,8 +1182,7 @@ namespace Velvet.Tests
             s_crossParkKeyedBZManaged = true;
             s_crossParkKeyedBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkKeyedBFiber);
-            Assume.That(FindLayerContainer(host, front: false), Is.Not.Null,
-                "Precondition: B's own render actually created the shared host's first back container");
+            var bCreatedTheBackContainer = FindLayerContainer(host, front: false) != null;
 
             // Act — drive A's still-parked pass to completion.
             s_crossParkKeyedAFiber.DrainTimeSlicedReconcileForTest();
@@ -1140,8 +1192,10 @@ namespace Velvet.Tests
             // resume writes one slot short of where the container's insertion actually left each row.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpka" + i); }
-            Assert.That((aParked, aRegisteredAsParkedBaseline, CrossParkKeyedAOrder(host)),
-                Is.EqualTo((true, true, string.Join(",", expected))));
+            Assert.That(
+                (noBackContainerBeforeBTransition, aParked, aRegisteredAsParkedBaseline,
+                    bCreatedTheBackContainer, CrossParkKeyedAOrder(host)),
+                Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
         [Test]
@@ -1155,8 +1209,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(CrossParkKeyedSiblingHost, key: "root"));
             var host = root.Q<VisualElement>("cross-park-keyed-host");
-            Assume.That(FindLayerContainer(host, front: false), Is.Not.Null,
-                "Precondition: the back container exists before B's own teardown");
+            var backContainerExistedBeforeBTeardown = FindLayerContainer(host, front: false) != null;
             var ctx = mounted.Root.Reconciler.Context;
 
             // Act — A re-renders under a tiny Transition budget and parks mid-commit; left parked while
@@ -1173,8 +1226,7 @@ namespace Velvet.Tests
             s_crossParkKeyedBZManaged = false;
             s_crossParkKeyedBFiber.ScheduleRerenderForTest(FiberUpdatePriority.Normal);
             FiberWorkLoop.FlushState(s_crossParkKeyedBFiber);
-            Assume.That(FindLayerContainer(host, front: false), Is.Null,
-                "Precondition: B's own render actually removed the shared host's now-empty back container");
+            var bRemovedTheBackContainer = FindLayerContainer(host, front: false) == null;
 
             // Act — drive A's still-parked pass to completion.
             s_crossParkKeyedAFiber.DrainTimeSlicedReconcileForTest();
@@ -1183,8 +1235,10 @@ namespace Velvet.Tests
             // keyed branch too: every one of A's 60 items landed at its correct (post-shift-back) slot.
             var expected = new List<string>();
             for (var i = 0; i < 60; i++) { expected.Add("cpka" + i); }
-            Assert.That((aParked, aRegisteredAsParkedBaseline, CrossParkKeyedAOrder(host)),
-                Is.EqualTo((true, true, string.Join(",", expected))));
+            Assert.That(
+                (backContainerExistedBeforeBTeardown, aParked, aRegisteredAsParkedBaseline,
+                    bRemovedTheBackContainer, CrossParkKeyedAOrder(host)),
+                Is.EqualTo((true, true, true, true, string.Join(",", expected))));
         }
 
         #endregion
@@ -1214,8 +1268,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(DrainZLayerHost, key: "root"));
             var item1 = root.Q<VisualElement>("item1");
-            Assume.That(FindLayerContainer(root, front: false), Is.Null,
-                "Precondition: no back container exists before the timed re-render");
+            var noBackContainerBeforeTheReRender = FindLayerContainer(root, front: false) == null;
 
             // Act — item1 turns z-managed under a tiny forced budget: the first slice parks right after
             // item0's own iteration, BEFORE the diff even reaches item1 — so item1's own transition (and
@@ -1233,8 +1286,10 @@ namespace Velvet.Tests
             // orphaned (parent null), so BOTH sides must be pinned non-null — a bare reference comparison
             // would let null == null pass for exactly the broken state.
             var backContainer = FindLayerContainer(root, front: false);
-            Assert.That((parkedBeforeItem1, backContainer != null, ReferenceEquals(item1.parent, backContainer)),
-                Is.EqualTo((true, true, true)));
+            Assert.That(
+                (noBackContainerBeforeTheReRender, parkedBeforeItem1, backContainer != null,
+                    ReferenceEquals(item1.parent, backContainer)),
+                Is.EqualTo((true, true, true, true)));
         }
 
         #endregion
@@ -1250,8 +1305,7 @@ namespace Velvet.Tests
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(DrainZLayerHost, key: "root"));
             var ctx = mounted.Root.Reconciler.Context;
-            Assume.That(FindLayerContainer(root, front: false), Is.Null,
-                "Precondition: no back container exists before the timed re-render");
+            var noBackContainerBeforeTheReRender = FindLayerContainer(root, front: false) == null;
 
             // Act — tick 1 (via FlushState): item0 parks first, which is what registers the fiber in
             // ParkedBaselineFibers BEFORE its own later container-creating tick runs.
@@ -1267,8 +1321,7 @@ namespace Velvet.Tests
             // ParkedBaselineFibers at the exact moment RebaseParkedSlotsForContainerChange runs, alongside
             // its own current.RebasePendingSlotStartIfTargeting call on the very same PendingIndexedState.
             FiberWorkLoop.ContinueReconcile(s_drainFiber);
-            Assume.That(FindLayerContainer(root, front: false), Is.Not.Null,
-                "Precondition: this single resume tick actually created the shared parent's first back container");
+            var resumeTickCreatedTheBackContainer = FindLayerContainer(root, front: false) != null;
             var reParkedWhileStillRegistered = s_drainFiber.HasPendingReconcileWorkForTest();
 
             // Act — drain the remainder; the double-rebase this test targets is already fully determined by
@@ -1281,8 +1334,9 @@ namespace Velvet.Tests
             // every trailing item resumes two physical slots ahead of where the container's single
             // insertion actually left it.
             Assert.That(
-                (parkedAfterItem0, registeredAsParkedBaseline, reParkedWhileStillRegistered, TrailingItemOrder(root)),
-                Is.EqualTo((true, true, true, "item2,item3,item4,item5,item6,item7,item8,item9")));
+                (noBackContainerBeforeTheReRender, parkedAfterItem0, registeredAsParkedBaseline,
+                    resumeTickCreatedTheBackContainer, reParkedWhileStillRegistered, TrailingItemOrder(root)),
+                Is.EqualTo((true, true, true, true, true, "item2,item3,item4,item5,item6,item7,item8,item9")));
         }
 
         #endregion
@@ -1325,11 +1379,8 @@ namespace Velvet.Tests
             s_structuralSweepStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(StructuralSweepHost, key: "root"));
-            Assume.That(
-                (FindLayerContainer(root.Q<VisualElement>("parent"), front: false) != null,
-                    root.Q<VisualElement>("ordinary").ClassListContains("bg-mark")),
-                Is.EqualTo((true, true)),
-                "Precondition: the back container exists and ordinary already carries its mount-time payload");
+            var backContainerExistedAtMount = FindLayerContainer(root.Q<VisualElement>("parent"), front: false) != null;
+            var ordinaryCarriedItsMountTimePayload = root.Q<VisualElement>("ordinary").ClassListContains("bg-mark");
 
             // Act — append an unrelated new sibling: "parent" itself re-patches (a genuine child-count change),
             // so its own post-children pass re-derives every position via the container sweep
@@ -1342,9 +1393,10 @@ namespace Velvet.Tests
             // first: nor nth-child(2) (which expects 0-based index 1) — un-applying the payload each correctly
             // held after the mount.
             Assert.That(
-                (root.Q<VisualElement>("ordinary").ClassListContains("bg-mark"),
+                (backContainerExistedAtMount, ordinaryCarriedItsMountTimePayload,
+                    root.Q<VisualElement>("ordinary").ClassListContains("bg-mark"),
                     root.Q<VisualElement>("second").ClassListContains("bg-mark")),
-                Is.EqualTo((true, true)));
+                Is.EqualTo((true, true, true, true)));
         }
 
         // "ordinary" is its OWN inline-mounted child component (declared before negz, so it is genuinely
@@ -1378,8 +1430,7 @@ namespace Velvet.Tests
             s_structuralPatchStore = store;
             var root = new VisualElement();
             using var mounted = V.Mount(root, V.Component(StructuralPatchParentHost, key: "root"));
-            Assume.That(FindLayerContainer(root.Q<VisualElement>("parent"), front: false), Is.Not.Null,
-                "Precondition: the back container already exists before the patch");
+            var backContainerExistedBeforeThePatch = FindLayerContainer(root.Q<VisualElement>("parent"), front: false) != null;
 
             // Act — "ordinary"'s own fiber re-renders (StructuralPatchParentHost's own fiber is never marked
             // dirty and stays untouched), patching its className to add first: while it is already parented —
@@ -1390,7 +1441,9 @@ namespace Velvet.Tests
             // Assert — RED without subtracting LeadingOffset in ApplyStructuralVariantConfig specifically: the
             // immediate evaluation would read "ordinary"'s raw physical index (1, the back container counted as
             // index 0) against the raw count, never matching first: (which expects index 0).
-            Assert.That(root.Q<VisualElement>("ordinary").ClassListContains("bg-mark"), Is.True);
+            Assert.That(
+                (backContainerExistedBeforeThePatch, root.Q<VisualElement>("ordinary").ClassListContains("bg-mark")),
+                Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -1407,11 +1460,13 @@ namespace Velvet.Tests
                 V.Div(name: "zlast", className: "absolute z-10 last:bg-mark"),
             }));
             var ctx = mounted.Root.Reconciler.Context;
-            Assume.That(ctx.ZLayerMembers.ContainsKey(root.Q<VisualElement>("zlast")), Is.True,
-                "Precondition: zlast actually relocated into the front layer container");
+            var zlast = root.Q<VisualElement>("zlast");
 
-            // Assert
-            Assert.That(root.Q<VisualElement>("zlast").ClassListContains("bg-mark"), Is.True);
+            // Assert — the relocation is a term: left at its ordinary slot, zlast is parent's own last child
+            // and last: resolves against the physical position anyway, so the payload alone proves nothing.
+            Assert.That(
+                (IsZManaged(ctx, zlast), zlast != null && zlast.ClassListContains("bg-mark")),
+                Is.EqualTo((true, true)));
         }
 
         #endregion
