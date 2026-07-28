@@ -107,9 +107,12 @@ namespace Velvet.Tests
         // would match. Nothing in the package uses it — Unity's runtime tree is C# 9 — but `Generators~` pins
         // an SDK that allows it, and a raw string is the idiomatic modern spelling for the verbatim analyzer
         // fixtures there, so the alternation would otherwise leak fixture source into the corpus the day one
-        // is rewritten.
+        // is rewritten. The opening run is captured and back-referenced rather than written as three quotes,
+        // because C# closes a raw string with a run of the SAME length and allows any length from three up:
+        // a fixture demonstrating a raw string needs four, and against a fixed three that spelling matches
+        // three of the four and desyncs everything after it.
         private static readonly Regex CSharpCommentOrStringPattern = new(
-            "\"\"\"(?:[^\"]|\"(?!\"\"))*\"\"\"|'(?:\\\\.|[^'\\\\\n])*'|@\"(?:[^\"]|\"\")*\""
+            "(\"{3,})(?:(?!\\1)[\\s\\S])*?\\1(?!\")|'(?:\\\\.|[^'\\\\\n])*'|@\"(?:[^\"]|\"\")*\""
             + "|\"(?:\\\\.|[^\"\\\\\n])*\"|/\\*.*?\\*/|//[^\n]*",
             RegexOptions.Compiled | RegexOptions.Singleline);
 
