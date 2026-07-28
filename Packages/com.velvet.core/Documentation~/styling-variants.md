@@ -24,24 +24,25 @@ literal `gap-4` alone — and so is declaring it behind two variants of differen
 precedence. Declaring the base value once and letting
 the variant override it (`gap-4 md:gap-8`) remains the idiomatic form.
 
-> **Two shapes to watch for, both when several variants name the same utility from
-> [Payloads Velvet realises itself](#payloads-velvet-realises-itself).** Ordinary USS utilities are
-> unaffected by either, since the ranking above governs them.
->
-> *Same token, no literal base* — `"dark:gap-4 md:gap-4"`, `"dark:shadow-lg has-[.sel]:shadow-lg"`.
-> When the first of the two turns off, the class stays on the element exactly as described above, but
-> stops being *driven*: the spacing disappears and the shadow stops painting while `gap-4` /
-> `shadow-lg` is still sitting in the class list. A literal base is immune — `"gap-4 md:gap-4"` keeps
-> its gap.
->
-> *Same family, different values* — `"bg-white md:shadow-sm dark:shadow-lg"`. Which one wins is decided
-> by the order the two signals happened to fire, not by the precedence table: go dark and then widen
-> past `md` and you get `shadow-sm`; widen first and then go dark and you get `shadow-lg`. The end
-> state is identical either way, so the same window can render differently depending on how the user
-> got there.
->
-> Both come from the same gap — these utilities have no USS property set for the ranking to work from —
-> and the idiomatic `"gap-4 md:gap-8"` shape, one base plus one variant per element, avoids both.
+The utilities from [Payloads Velvet realises itself](#payloads-velvet-realises-itself) are ranked by
+that same `(priority, token)` model directly rather than through the class list, since the class list
+records only *whether* a class is present and these are read out of it as a family. Two consequences
+worth knowing, both when several variants name one such utility:
+
+- *Same token, no literal base* — `"dark:gap-4 md:gap-4"`, `"dark:shadow-lg has-[.sel]:shadow-lg"`.
+  One of the two turning off leaves the other driving, so the spacing and the shadow stay. Two
+  payloads of the **same** precedence still share one slot, per the paragraph above, so there the
+  first to turn off takes the utility with it.
+- *Same family, different values* — `"bg-white md:shadow-sm dark:shadow-lg"` resolves by the
+  precedence table, not by the order the two signals fired. `dark:` outranks `md:`, so both lit paint
+  `shadow-lg` whichever way the window got there. Where the precedence table cannot separate them —
+  two `data-[…]:` rules, two `has-[.class]:` rules — the one written later in the className wins, the
+  way source order settles a tie between equal-specificity CSS rules. Only rules that actually apply
+  take part: a `lg:` rule below the breakpoint, a `peer-` rule with no peer, and a `[&>*]:` rule (which
+  lands on the children) rank nothing on this element, so adding one never moves what it paints.
+  A stacked variant is ranked by its own position too: `dark:hover:` layers at the stronger of its two
+  parts, which is the plain `hover:` layer, so `"dark:hover:shadow-lg hover:shadow-sm"` resolves to the
+  later-written `shadow-sm` while both are active.
 
 ## The variant set
 

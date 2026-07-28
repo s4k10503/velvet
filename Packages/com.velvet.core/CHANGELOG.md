@@ -141,6 +141,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shadow snapped back to resting strength over an `opacity-0` card until the next animation frame —
   for a staggered `AnimatePresence` list, for the whole stagger delay. A shadow that arrived through
   a later class change was already handled.
+- Two variants naming one of the utilities Velvet realises itself — `gap-*` / `space-*`, `grid` /
+  `grid-cols-*`, `divide-*`, `text-balance`, `skew-*`, `shadow-*`, the gradients, `animate-*`,
+  `border-dashed` / `border-dotted` — now rank against each other by the precedence table, and within
+  one precedence layer by their order in the className, instead of by the order their signals happened
+  to fire. Two variants supplying the SAME utility with no literal base (`"dark:gap-4 md:gap-4"`) kept
+  the class on the element but stopped driving it as soon as either turned off, dropping the spacing;
+  two payloads of one family (`"bg-white md:shadow-sm dark:shadow-lg"`) resolved to whichever lit
+  last, so one end state rendered two ways depending on the path the user took to reach it; and that
+  second shape held equally for two payloads the precedence table cannot separate, such as two
+  `data-[…]:` rules or two `has-[.class]:` rules on one element. A literal base re-asserted by the
+  stronger of two variants (`"shadow-lg dark:shadow-sm hover:shadow-lg"`) was likewise outranked by
+  the weaker payload. Only a rule that actually applies takes part in a tie, so adding one that cannot
+  — a `lg:` rule below the breakpoint, a `peer-` rule with no peer, a `[&>*]:` rule that lands on the
+  children — never moves what the element paints. A stacked variant is ranked by the position of the
+  stacked class itself, so `"dark:hover:shadow-lg hover:shadow-sm"` resolves to the later-written
+  payload rather than to whichever manipulator attached first.
+  See `Documentation~/styling-variants.md`.
 - **BREAKING:** A utility whose property set contains another's is now declared before the narrower
   one in the bundled stylesheets, so the narrower utility wins the properties they share. Bundled
   utilities are single-class selectors, so two on one element tie on specificity and the later

@@ -18,6 +18,10 @@ namespace Velvet
         private readonly string _innerName; // relational name of a NAMED inner (group-hover/sidebar:), else ""
         private readonly string[] _leaf;
         private readonly int _priority;
+        // The position of the WHOLE stacked class (dark:hover:shadow-lg) in the className, not of the leaf it
+        // peels to — one written token is one declaration site, and that is the position a reader would point
+        // at when this leaf ties with a plain hover: payload on the shared layer.
+        private readonly int[] _declarations;
 
         private bool _outerOn;
         private bool _innerOn;
@@ -27,8 +31,10 @@ namespace Velvet
         private RelationalVariantSignals _relSignals = null!;
 
         public StyleStackedVariantManipulator(
-            ReconcilerContext ctx, StyleVariantKind innerKind, string? innerName, string?[] leaf, int priority)
+            ReconcilerContext ctx, StyleVariantKind innerKind, string? innerName, string?[] leaf, int priority,
+            int declaration)
         {
+            _declarations = new[] { declaration };
             _ctx = ctx;
             _innerKind = innerKind;
             _innerName = innerName ?? string.Empty;
@@ -263,7 +269,7 @@ namespace Velvet
                 return;
             }
             _applied = want;
-            StyleVariantPayload.Apply(target, _leaf, want, _priority, _ctx, this);
+            StyleVariantPayload.Apply(target, _leaf, want, _priority, _ctx, this, _declarations);
         }
 
         private void ClearApplied()
@@ -273,7 +279,7 @@ namespace Velvet
                 return;
             }
             _applied = false;
-            StyleVariantPayload.Apply(target, _leaf, false, _priority, _ctx, this);
+            StyleVariantPayload.Apply(target, _leaf, false, _priority, _ctx, this, _declarations);
         }
         #endregion
     }
