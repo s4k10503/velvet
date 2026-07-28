@@ -1,26 +1,28 @@
 name: Source generators
 
-# The Roslyn generators are a standalone dotnet solution, so changes under
-# Generators~ (or this workflow) trigger it. The runtime sources are listed too:
-# the drift guards re-derive the hook surface and the test stub's signatures by
-# parsing them, so a rename or a reshaped signature there — not a generator
-# edit — is exactly what must fail this job. Generator changes reach the Unity side as committed DLLs under
-# Runtime/Plugins, which the Unity test workflow picks up on its own paths; that
-# workflow keeps excluding Generators~, so a generator-only change still runs
-# here alone.
+# The Roslyn generators are a standalone dotnet solution, but this job is triggered by the whole package
+# rather than by Generators~ alone, because its drift guards read the package: they re-derive the hook
+# surface and the test stub's signatures from the runtime sources, and CodeShapeOptInDriftTests enumerates
+# every asmdef under the package to check it opts into the code-shape rules. Listing directories one by one
+# is what let assemblies outside Runtime/ escape that guard: an asmdef added under Editor/, CodeGen/ or
+# TestUtilities/ did trigger test.yml, but that workflow runs Unity — it never runs the dotnet suite the
+# guard lives in, and it is skipped outright without a UNITY_LICENSE secret. So the guard is only ever
+# reached from here, and its path set has to be the package rather than a list of its current directories.
+#
+# Generator changes reach the Unity side as committed DLLs under Runtime/Plugins, which the Unity test
+# workflow picks up on its own paths; that workflow keeps excluding Generators~, so a generator-only change
+# still runs here alone.
 on:
   push:
     branches: [main]
     paths:
-      - 'Packages/com.velvet.core/Generators~/**'
-      - 'Packages/com.velvet.core/Runtime/**'
+      - 'Packages/com.velvet.core/**'
       - '.github/workflows/generators.yml'
       - '!**.md'
   pull_request:
     branches: [main]
     paths:
-      - 'Packages/com.velvet.core/Generators~/**'
-      - 'Packages/com.velvet.core/Runtime/**'
+      - 'Packages/com.velvet.core/**'
       - '.github/workflows/generators.yml'
       - '!**.md'
   workflow_dispatch:
