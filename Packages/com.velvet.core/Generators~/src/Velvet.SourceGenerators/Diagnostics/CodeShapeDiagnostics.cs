@@ -20,5 +20,14 @@ namespace Velvet.SourceGenerators.Diagnostics
             DiagnosticSeverity.Error,
             isEnabledByDefault: true,
             "The body nests control flow deeper than the limit. Extract the deepest block into its own member, invert a condition into a guard clause, or replace a nested branch with an else-if chain; wrapping the block in a nested function does not help, since its body is counted at the level it appears.");
+
+        public static readonly DiagnosticDescriptor Vel501BranchCountExceeded = new(
+            "VEL501",
+            "Member branch count exceeds the limit",
+            "Member '{0}' makes {1} branching decisions; the limit is {2}",
+            Category,
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            "The body makes more branching decisions than the limit. Split it along the axis the branches already divide it by — one member per case group, or a table lookup in place of a chain of comparisons; flattening nesting into width does not help, since width is what this counts.");
     }
 }

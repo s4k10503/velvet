@@ -10,43 +10,13 @@ namespace Velvet.SourceGenerators.CodeShape
 {
     /// <summary>
     /// Reports a member body whose control flow nests deeper than <see cref="MaxDepth"/>, in assemblies that
-    /// opt in. <c>Generators~/README.md</c> owns what counts as a level and why the rule is opt-in.
+    /// opt in (<see cref="CodeShapeMembers"/> owns the gate and the member surface).
+    /// <c>Generators~/README.md</c> owns what counts as a level and why the rule is opt-in.
     /// </summary>
-    /// <remarks>
-    /// <see cref="OptsIntoCodeShapeRules"/> is the whole of the consumer-safety boundary: this diagnostic is
-    /// an error, and every assembly referencing Velvet loads the analyzer, so a gate that admits an assembly
-    /// it should not have breaks a build whose sources this package cannot edit. Both halves of the marker
-    /// carry weight — a gate that matched the key and ignored the value would turn a future
-    /// <c>("Velvet.CodeShape", "off")</c> into an opt-in.
-    /// </remarks>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     internal sealed class NestingDepthAnalyzer : DiagnosticAnalyzer
     {
         internal const int MaxDepth = 4;
-
-        internal const string MarkerAttribute = "System.Reflection.AssemblyMetadataAttribute";
-
-        internal const string MarkerKey = "Velvet.CodeShape";
-
-        internal const string MarkerValue = "enforce";
-
-        private static readonly SyntaxKind[] MemberKinds =
-        {
-            SyntaxKind.MethodDeclaration,
-            SyntaxKind.ConstructorDeclaration,
-            SyntaxKind.DestructorDeclaration,
-            SyntaxKind.OperatorDeclaration,
-            SyntaxKind.ConversionOperatorDeclaration,
-            SyntaxKind.PropertyDeclaration,
-            SyntaxKind.IndexerDeclaration,
-            SyntaxKind.FieldDeclaration,
-            SyntaxKind.EventFieldDeclaration,
-            SyntaxKind.GetAccessorDeclaration,
-            SyntaxKind.SetAccessorDeclaration,
-            SyntaxKind.InitAccessorDeclaration,
-            SyntaxKind.AddAccessorDeclaration,
-            SyntaxKind.RemoveAccessorDeclaration,
-        };
 
         public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
             ImmutableArray.Create(CodeShapeDiagnostics.Vel500NestingDepthExceeded);
@@ -59,8 +29,8 @@ namespace Velvet.SourceGenerators.CodeShape
             // one attribute scan for the whole compile and registers no per-node work at all.
             context.RegisterCompilationStartAction(start =>
             {
-                if (!OptsIntoCodeShapeRules(start.Compilation.Assembly)) return;
-                start.RegisterSyntaxNodeAction(AnalyzeMember, MemberKinds);
+                if (!CodeShapeMembers.OptsIntoCodeShapeRules(start.Compilation.Assembly)) return;
+                start.RegisterSyntaxNodeAction(AnalyzeMember, CodeShapeMembers.MemberKinds);
             });
         }
 
@@ -91,22 +61,9 @@ namespace Velvet.SourceGenerators.CodeShape
             return max;
         }
 
-        internal static bool OptsIntoCodeShapeRules(IAssemblySymbol assembly)
-        {
-            foreach (var attribute in assembly.GetAttributes())
-            {
-                if (attribute.AttributeClass?.ToDisplayString() != MarkerAttribute) continue;
-                if (attribute.ConstructorArguments.Length != 2) continue;
-                if (attribute.ConstructorArguments[0].Value as string != MarkerKey) continue;
-                if (attribute.ConstructorArguments[1].Value as string == MarkerValue) return true;
-            }
-
-            return false;
-        }
-
         private static void AnalyzeMember(SyntaxNodeAnalysisContext ctx)
         {
-            foreach (var (body, nameToken, displayName) in BodiesOf(ctx.Node))
+            foreach (var (body, nameToken, displayName) in CodeShapeMembers.BodiesOf(ctx.Node))
             {
                 var depth = Measure(body);
                 if (depth <= MaxDepth) continue;
@@ -132,85 +89,5 @@ namespace Velvet.SourceGenerators.CodeShape
             LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax => true,
             _ => false,
         };
-
-        /// <summary>
-        /// Every body the declaration carries, each with the token to report it on. A field declaration
-        /// yields one entry per declarator so <c>A = ..., B = ...</c> names and points at the offending one
-        /// rather than at whichever came first. A property's accessors are separate declarations reporting
-        /// under their own names, so no body is counted twice.
-        /// </summary>
-        private static IEnumerable<(SyntaxNode Body, SyntaxToken Name, string Display)> BodiesOf(SyntaxNode node)
-        {
-            switch (node)
-            {
-                case MethodDeclarationSyntax method:
-                    foreach (var entry in MethodBodies(method, method.Identifier, method.Identifier.ValueText))
-                        yield return entry;
-                    break;
-                case ConstructorDeclarationSyntax constructor:
-                    foreach (var entry in MethodBodies(constructor, constructor.Identifier,
-                                 constructor.Identifier.ValueText))
-                        yield return entry;
-                    break;
-                case DestructorDeclarationSyntax destructor:
-                    foreach (var entry in MethodBodies(destructor, destructor.Identifier,
-                                 "~" + destructor.Identifier.ValueText))
-                        yield return entry;
-                    break;
-                case OperatorDeclarationSyntax op:
-                    foreach (var entry in MethodBodies(op, op.OperatorToken,
-                                 "operator " + op.OperatorToken.ValueText))
-                        yield return entry;
-                    break;
-                case ConversionOperatorDeclarationSyntax conversion:
-                    foreach (var entry in MethodBodies(conversion, conversion.ImplicitOrExplicitKeyword,
-                                 "operator " + conversion.Type))
-                        yield return entry;
-                    break;
-                case AccessorDeclarationSyntax accessor:
-                    if (accessor.Body != null)
-                        yield return (accessor.Body, accessor.Keyword, AccessorDisplayName(accessor));
-                    else if (accessor.ExpressionBody != null)
-                        yield return (accessor.ExpressionBody, accessor.Keyword, AccessorDisplayName(accessor));
-                    break;
-                case PropertyDeclarationSyntax property:
-                    if (property.ExpressionBody != null)
-                        yield return (property.ExpressionBody, property.Identifier, property.Identifier.ValueText);
-                    if (property.Initializer != null)
-                        yield return (property.Initializer, property.Identifier, property.Identifier.ValueText);
-                    break;
-                case IndexerDeclarationSyntax indexer:
-                    if (indexer.ExpressionBody != null)
-                        yield return (indexer.ExpressionBody, indexer.ThisKeyword, "this[]");
-                    break;
-                case BaseFieldDeclarationSyntax field:
-                    foreach (var declarator in field.Declaration.Variables)
-                    {
-                        if (declarator.Initializer != null)
-                            yield return (declarator.Initializer, declarator.Identifier,
-                                declarator.Identifier.ValueText);
-                    }
-                    break;
-            }
-        }
-
-        private static IEnumerable<(SyntaxNode Body, SyntaxToken Name, string Display)> MethodBodies(
-            BaseMethodDeclarationSyntax method, SyntaxToken name, string display)
-        {
-            if (method.Body != null) yield return (method.Body, name, display);
-            else if (method.ExpressionBody != null) yield return (method.ExpressionBody, name, display);
-        }
-
-        private static string AccessorDisplayName(AccessorDeclarationSyntax accessor)
-        {
-            var owner = accessor.Parent?.Parent switch
-            {
-                PropertyDeclarationSyntax property => property.Identifier.ValueText,
-                IndexerDeclarationSyntax => "this[]",
-                EventDeclarationSyntax @event => @event.Identifier.ValueText,
-                _ => "?",
-            };
-            return owner + "." + accessor.Keyword.ValueText;
-        }
     }
 }
