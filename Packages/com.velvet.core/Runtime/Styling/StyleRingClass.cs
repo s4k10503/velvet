@@ -85,6 +85,15 @@ namespace Velvet
             ["0"] = 0f, ["1"] = 1f, ["2"] = 2f, ["4"] = 4f, ["8"] = 8f,
         };
 
+        // True when cls belongs to either family this layer owns (recognized or not-yet-valid). Both the
+        // array gate below and the variant-payload gate answer through this one predicate, so which tokens
+        // count as "a ring utility" is defined in exactly one place — mirroring StyleShadowClass.IsShadowClass.
+        public static bool IsRingClass(string cls)
+            => !string.IsNullOrEmpty(cls)
+                && (cls == "ring" || cls == "outline"
+                    || cls.StartsWith("ring-", StringComparison.Ordinal)
+                    || cls.StartsWith("outline-", StringComparison.Ordinal));
+
         // Cheap early-out gate: true when ANY class is ring/outline or begins with ring-/outline-. Skips the
         // full parse on the ~99% of elements that carry no ring/outline class and no binding.
         public static bool HasRingClass(string[] classNames)
@@ -95,13 +104,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (string.IsNullOrEmpty(cls))
-                {
-                    continue;
-                }
-                if (cls == "ring" || cls == "outline"
-                    || cls.StartsWith("ring-", StringComparison.Ordinal)
-                    || cls.StartsWith("outline-", StringComparison.Ordinal))
+                if (IsRingClass(cls))
                 {
                     return true;
                 }
