@@ -403,8 +403,11 @@ namespace Velvet.Tests
             return V.Div(name: "host", children: new VNode[] { s_render(mode) });
         }
 
-        // Drives a configured → removed → plain recycle and returns the recycled element by name.
-        private T Recycle<T>(Func<int, VNode> render, string name) where T : VisualElement
+        // Drives a configured → removed → plain recycle. Whether the configured widget actually went away is
+        // handed back rather than assumed: each caller's assertion reads default state, which a widget that
+        // was never removed and never reset can also carry, so the two only pin the reset together.
+        private (bool RemovedWhileHidden, T Recycled) Recycle<T>(Func<int, VNode> render, string name)
+            where T : VisualElement
         {
             s_render = render;
             using var store = new ModeStore();
@@ -413,12 +416,10 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             store.Set(1);
             scheduler.DrainImmediateForTest();
-            Assume.That(_root.Q<T>(name), Is.Null, "Precondition: the configured widget is removed while hidden");
+            var removedWhileHidden = _root.Q<T>(name) == null;
             store.Set(2);
             scheduler.DrainImmediateForTest();
-            var recycled = _root.Q<T>(name);
-            Assume.That(recycled, Is.Not.Null, "Precondition: a plain widget was recreated from the pool");
-            return recycled;
+            return (removedWhileHidden, _root.Q<T>(name));
         }
 
         [Test]
@@ -444,28 +445,28 @@ namespace Velvet.Tests
         public void Given_ACheckedToggleWasRemoved_When_APlainToggleIsRecreatedFromThePool_Then_ItIsUnchecked()
         {
             // Arrange/Act — a checked toggle is pooled and a plain toggle (no value) is rented back.
-            var toggle = Recycle<Toggle>(
+            var (removedWhileHidden, toggle) = Recycle<Toggle>(
                 mode => mode == 0 ? V.Toggle(name: "t", value: true)
                       : mode == 2 ? V.Toggle(name: "t")
                       : V.Fragment(Array.Empty<VNode>()),
                 "t");
 
             // Assert — the recycled toggle does not ghost the prior checked state.
-            Assert.IsFalse(toggle.value);
+            Assert.That((removedWhileHidden, toggle.value), Is.EqualTo((true, false)));
         }
 
         [Test]
         public void Given_ALabelledToggleWasRemoved_When_APlainToggleIsRecreatedFromThePool_Then_ItHasNoLabel()
         {
             // Arrange/Act — a labelled toggle is pooled and a plain toggle (no label) is rented back.
-            var toggle = Recycle<Toggle>(
+            var (removedWhileHidden, toggle) = Recycle<Toggle>(
                 mode => mode == 0 ? V.Toggle(name: "t", label: "Stale")
                       : mode == 2 ? V.Toggle(name: "t")
                       : V.Fragment(Array.Empty<VNode>()),
                 "t");
 
             // Assert — the recycled toggle carries no leftover label.
-            Assert.AreEqual(string.Empty, toggle.label);
+            Assert.That((removedWhileHidden, toggle.label), Is.EqualTo((true, string.Empty)));
         }
 
         // TextField (security-critical)
@@ -474,42 +475,42 @@ namespace Velvet.Tests
         public void Given_ATextFieldHeldPii_When_APlainTextFieldIsRecreatedFromThePool_Then_ItHasNoStaleValue()
         {
             // Arrange/Act — a field holding PII is pooled and a plain field (no value) is rented back.
-            var field = Recycle<TextField>(
+            var (removedWhileHidden, field) = Recycle<TextField>(
                 mode => mode == 0 ? V.TextField(name: "tf", value: "secret@example.com")
                       : mode == 2 ? V.TextField(name: "tf")
                       : V.Fragment(Array.Empty<VNode>()),
                 "tf");
 
             // Assert — the recycled field surfaces no prior value (PII must not ghost across pool reuse).
-            Assert.AreEqual(string.Empty, field.value);
+            Assert.That((removedWhileHidden, field.value), Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
         public void Given_APasswordTextFieldWasRemoved_When_APlainTextFieldIsRecreatedFromThePool_Then_ItIsNotMasked()
         {
             // Arrange/Act — a password (masked) field is pooled and a plain field is rented back.
-            var field = Recycle<TextField>(
+            var (removedWhileHidden, field) = Recycle<TextField>(
                 mode => mode == 0 ? V.TextField(name: "tf", value: "pw", isPasswordField: true)
                       : mode == 2 ? V.TextField(name: "tf")
                       : V.Fragment(Array.Empty<VNode>()),
                 "tf");
 
             // Assert — the recycled field is not still masking input from the previous consumer.
-            Assert.IsFalse(field.textEdition.isPassword);
+            Assert.That((removedWhileHidden, field.textEdition.isPassword), Is.EqualTo((true, false)));
         }
 
         [Test]
         public void Given_ALabelledTextFieldWasRemoved_When_APlainTextFieldIsRecreatedFromThePool_Then_ItHasNoLabel()
         {
             // Arrange/Act — a labelled field is pooled and a plain field (no label) is rented back.
-            var field = Recycle<TextField>(
+            var (removedWhileHidden, field) = Recycle<TextField>(
                 mode => mode == 0 ? V.TextField(name: "tf", label: "Email")
                       : mode == 2 ? V.TextField(name: "tf")
                       : V.Fragment(Array.Empty<VNode>()),
                 "tf");
 
             // Assert — the recycled field carries no leftover label.
-            Assert.AreEqual(string.Empty, field.label);
+            Assert.That((removedWhileHidden, field.label), Is.EqualTo((true, string.Empty)));
         }
 
         // Slider
@@ -518,28 +519,28 @@ namespace Velvet.Tests
         public void Given_ASliderWithCustomRangeWasRemoved_When_APlainSliderIsRecreatedFromThePool_Then_ItHasTheDefaultHighValue()
         {
             // Arrange/Act — a slider with a widened range is pooled and a plain slider (default range) is rented back.
-            var slider = Recycle<Slider>(
+            var (removedWhileHidden, slider) = Recycle<Slider>(
                 mode => mode == 0 ? V.Slider(name: "s", value: 80f, lowValue: 0f, highValue: 100f)
                       : mode == 2 ? V.Slider(name: "s")
                       : V.Fragment(Array.Empty<VNode>()),
                 "s");
 
             // Assert — the recycled slider is restored to Unity's default highValue (10), not the prior 100.
-            Assert.AreEqual(10f, slider.highValue);
+            Assert.That((removedWhileHidden, slider.highValue), Is.EqualTo((true, 10f)));
         }
 
         [Test]
         public void Given_ASliderWithAValueWasRemoved_When_APlainSliderIsRecreatedFromThePool_Then_ItHasNoStaleValue()
         {
             // Arrange/Act — a slider carrying a value is pooled and a plain slider (no value) is rented back.
-            var slider = Recycle<Slider>(
+            var (removedWhileHidden, slider) = Recycle<Slider>(
                 mode => mode == 0 ? V.Slider(name: "s", value: 7f, lowValue: 0f, highValue: 10f)
                       : mode == 2 ? V.Slider(name: "s")
                       : V.Fragment(Array.Empty<VNode>()),
                 "s");
 
             // Assert — the recycled slider does not ghost the prior value.
-            Assert.AreEqual(0f, slider.value);
+            Assert.That((removedWhileHidden, slider.value), Is.EqualTo((true, 0f)));
         }
     }
 }

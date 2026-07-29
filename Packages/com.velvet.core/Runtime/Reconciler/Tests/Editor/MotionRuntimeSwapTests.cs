@@ -328,8 +328,7 @@ namespace Velvet.Tests
             Tick();
             labels.Set("visible");
             scheduler.DrainImmediateForTest();
-            Assume.That(InlineDurationIsSet(Root.Q<VisualElement>("item-x")), Is.True,
-                "Precondition: the child's runtime-swap play started, claimed behind its 500ms stagger slot");
+            var swapClaimedBeforeExit = InlineDurationIsSet(Root.Q<VisualElement>("item-x"));
 
             // Act — remove the key inside the parked window; the exit (its own 0.3s duration, no delay of
             // its own) must cancel the parked swap and start immediately.
@@ -339,8 +338,10 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
 
             // Assert — the ghost is already gone well before the original 500ms claim would have elapsed:
-            // the exit ran on its own schedule instead of being postponed by the cancelled swap.
-            Assert.That(Root.Q<VisualElement>("item-x"), Is.Null);
+            // the exit ran on its own schedule instead of being postponed by the cancelled swap. The claim is
+            // asserted with it, because an exit that never had a claim to cancel finishes on time anyway.
+            Assert.That((swapClaimedBeforeExit, Root.Q<VisualElement>("item-x") == null),
+                Is.EqualTo((true, true)));
         }
     }
 }
