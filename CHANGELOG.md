@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `VEL500`, a compile-time analyzer that reports a member body nesting control flow more than four levels
+  deep, at error severity. It does not fire on your code: the rule is opt-in per assembly and only the
+  package's own assemblies opt in, so upgrading cannot break a build that compiled before. An assembly that
+  wants the limit declares `[assembly: System.Reflection.AssemblyMetadata("Velvet.CodeShape", "enforce")]`.
+  [`Generators~/README.md`](https://github.com/s4k10503/velvet/blob/main/Packages/com.velvet.core/Generators~/README.md)
+  defines what counts as a level — linked absolutely because `Generators~` is stripped from the published
+  package.
 - `TransitionType.Spring` and `TransitionType.Bezier` variant transitions now animate the
   color-valued (`background-color`, `color`, `border-color`) and length-valued (sizing, padding,
   margin, inset, flex-basis, border width, `border-radius`) properties of a variant delta, not just

@@ -75,7 +75,9 @@ Generators~/
 │   ├── MemoizeMethodGenerator.cs             ([MemoizeMethod] → V.Memoized wrapper expansion)
 │   ├── AutoDeps/                             (VEL100 exhaustive-deps analyzer + its hook descriptor table)
 │   ├── RulesOfHooks/                         (VEL101 rules-of-hooks analyzer)
+│   ├── CodeShape/                            (VEL500 nesting-depth analyzer)
 │   ├── Diagnostics/MemoizeDiagnostics.cs     (diagnostic descriptors — see Documentation~/memoization.md)
+│   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The nesting-depth limit")
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
 │   └── Shared/                               (SourceBuilder, VelvetWellKnownNames, …)
 ├── src/Velvet.SourceGenerators.CodeFixes/    (ships to ../Runtime/Plugins/Analyzers/)
@@ -118,6 +120,55 @@ Committing generated source is only safe with a guard, and `BundledStyleSheetCen
 Failures are reported as `USS001`-`USS011` and refuse to write the table. They are deliberately outside the `VEL###` space the analyzers use: nothing can suppress a build-script failure through an `.editorconfig` severity, and sharing the namespace would invite someone to try. Each code marks an assumption the table depends on — that `:root` declares only custom properties, that a utility declares no custom property, that every property name resolves to the pinned UI Toolkit vocabulary, that one class carries one gate, that the sheets arrive in the aggregator's `@import` order, that no gated rule declares `transition-property` — so the assumption cannot rot silently.
 
 Four partials declare no rules and are expected to: `StyleUtilities.uss` is nothing but `@import`, and `_gap.uss`, `_presets.uss` and `_states.uss` describe utility families Velvet realises in C# rather than in USS (each says so in its own header). Their classes are therefore absent from the table, which from the table's side looks identical to a class that sets nothing — `BundledStyleSheetCensusTests` pins the list so the distinction stays visible.
+
+## The nesting-depth limit
+
+`VEL500` is an error on any member body nesting control flow more than **4** levels deep. Every diagnostic
+this repository defines is listed in [AnalyzerReleases.Unshipped.md](src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md);
+what follows is only the definition of "depth", which no table can carry.
+
+Depth is the height of the nesting tree, not a count of indentation or of braces. A construct that opens a
+level contributes one to everything beneath it, and a block is transparent — so `if (x) return;` and
+`if (x) { return; }` measure the same, and dropping braces is not an escape.
+
+Opens a level: `if`, `for`, `foreach`, `while`, `do`, `switch` (statement), `try`, `using` (statement form),
+`lock`, and the body of a nested function — lambda, anonymous method or local function.
+
+Transparent: the `if` of an `else if` (a chain is one level, so the flat multiway branch is not charged more
+than the nested rewrite it replaces); `catch` and `finally` (siblings of their `try`, like the branches of an
+`if`); the `using var` declaration form (no body); the expression-level branch forms `?:`, `switch`
+expressions, `&&` and query expressions, which carry no statements and are themselves the flattening device;
+and `unsafe` / `fixed` / `checked` blocks, which change compilation context rather than control flow.
+
+Bodies measured: method, constructor, destructor, operator and accessor bodies, expression-bodied members,
+and field and property initializers. Initializers count because they are the other place a deep lambda could
+be parked without moving it.
+
+A nested function is measured where it sits rather than resetting, so a block cannot satisfy the limit by
+being wrapped in a lambda in place. Extraction to a sibling member is the remedy the rule pushes toward, and
+that does reset — each member is measured from its own body.
+
+### Why the rule is opt-in per assembly
+
+The analyzer ships in the package and the `RoslynAnalyzer` label propagates it to every assembly that
+references Velvet, which in this project includes the default `Assembly-CSharp-Editor` and in a consumer's
+project includes their game code. An error must have every site it fires on fixed by whoever ships it, and
+this package cannot fix a consumer's game code. So VEL500 fires only in an assembly that declares
+
+```csharp
+[assembly: System.Reflection.AssemblyMetadata("Velvet.CodeShape", "enforce")]
+```
+
+Every asmdef under `Packages/com.velvet.core/` carries this in an `AssemblyInfo.cs`, and
+`CodeShapeOptInDriftTests` fails when a new one does not — an assembly that silently escapes the rule looks
+exactly like an assembly that satisfies it.
+
+The marker is an assembly attribute rather than a check on the assembly name because a name cannot separate
+the two populations in either direction: `Unity.Velvet.CodeGen` belongs to the package without carrying a
+`Velvet.` prefix, and nothing stops a consumer from naming an assembly whatever pattern the check looked
+for.
+
+A consumer who wants the limit on their own assembly opts in with the same line.
 
 ## Using `[MemoizeMethod]`
 

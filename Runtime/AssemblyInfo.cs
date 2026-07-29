@@ -14,3 +14,6 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Velvet.TestUtilities")]
 [assembly: InternalsVisibleTo("Velvet.Editor")]
 [assembly: InternalsVisibleTo("Unity.Velvet.CodeGen")]
+
+// See Generators~/README.md for the code-shape rules and why they are opt-in.
+[assembly: System.Reflection.AssemblyMetadata("Velvet.CodeShape", "enforce")]

@@ -7,9 +7,12 @@
 ;   VEL200-VEL299  Velvet.Routing       (reserved)
 ;   VEL300-VEL399  Velvet.Reactive      (reserved)
 ;   VEL400-VEL499  Velvet.Style         (reserved)
+;   VEL500-VEL599  Velvet.Shape         Mechanical code-shape limits (nesting depth)
 ; New IDs follow the convention so IDE category filtering (e.g.
-; `dotnet_diagnostic.category-Velvet.Memoize.severity = none`) doesn't accidentally
-; silence diagnostics from unrelated subsystems.
+; `dotnet_analyzer_diagnostic.category-Velvet.Memoize.severity = none`) doesn't accidentally
+; silence diagnostics from unrelated subsystems. The bulk key is `dotnet_analyzer_diagnostic`;
+; `dotnet_diagnostic` takes only single IDs and silently ignores a `category-` suffix. Either key
+; needs `is_global = true` on the first line of a `.globalconfig` or the whole file is ignored.
 
 ### New Rules
 
@@ -26,3 +29,4 @@ VEL008 | Velvet.Memoize | Warning | [MemoizeMethod] method must return Velvet.VN
 VEL009 | Velvet.Memoize | Warning | [MemoizeMethod] partial method declaration must not have a body
 VEL100 | Velvet.Hooks | Warning | Hook lambda captures a local that is not in the deps array (exhaustive-deps)
 VEL101 | Velvet.Hooks | Warning | Hook call inside conditional control flow (Rules of Hooks)
+VEL500 | Velvet.Shape | Error | Member body nests control flow more than 4 levels deep

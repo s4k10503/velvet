@@ -56,8 +56,8 @@ namespace Velvet
         // The anchor set is written into the caller-owned lisIndices; the caller controls its
         // lifetime (the time-sliced path keeps it in KeyedReconcileState.LisIndices across a yield
         // boundary, the synchronous paths return it in their own try/finally). Every other scratch
-        // buffer (domPosMap / domIndices / lisResult / lisAncestors / pileTop) is rented and returned
-        // here, so the call allocates nothing in steady state.
+        // buffer is rented and returned within the call — domPosMap / domIndices / lisResult here,
+        // lisAncestors / pileTop in AccumulateLisAnchors — so the call allocates nothing in steady state.
         //
         // slotStart anchors the slot-local coordinate conversion; scanStart is the first DOM index to
         // map (slotStart + linearEnd for the keyed paths, slotStart for the general path). The scan
@@ -103,59 +103,70 @@ namespace Velvet
                     domIndices.Add(isExisting && element != null && domPosMap.TryGetValue(element, out var pos) ? pos : -1);
                 }
 
-                // pileTop[k] is the index (into newElements) of the most recently placed element on
-                // pile k, giving each element's predecessor in O(1) for the reverse reconstruction.
-                var lisAncestors = pool.RentIntList();
-                var pileTop = pool.RentIntList();
-                try
-                {
-                    for (var i = 0; i < newElements.Count; i++)
-                    {
-                        lisAncestors.Add(-1);
-                        pileTop.Add(-1);
-                    }
-
-                    for (var i = 0; i < newElements.Count; i++)
-                    {
-                        var v = domIndices[i];
-                        if (v < 0) continue; // Created/replaced orphan: never an anchor.
-
-                        // Binary search for the first pile tail strictly greater than v.
-                        var lo = 0;
-                        var hi = lisResult.Count;
-                        while (lo < hi)
-                        {
-                            var mid = (lo + hi) >> 1;
-                            if (lisResult[mid] < v) lo = mid + 1; else hi = mid;
-                        }
-
-                        if (lo < lisResult.Count) lisResult[lo] = v; else lisResult.Add(v);
-                        lisAncestors[i] = lo > 0 ? pileTop[lo - 1] : -1;
-                        pileTop[lo] = i;
-                    }
-
-                    // Reconstruct the LIS in reverse from the tail to fix the anchor set.
-                    if (lisResult.Count > 0)
-                    {
-                        var cur = pileTop[lisResult.Count - 1];
-                        while (cur >= 0)
-                        {
-                            lisIndices.Add(cur);
-                            cur = lisAncestors[cur];
-                        }
-                    }
-                }
-                finally
-                {
-                    pool.ReturnIntList(lisAncestors);
-                    pool.ReturnIntList(pileTop);
-                }
+                AccumulateLisAnchors(domIndices, lisResult, newElements.Count, lisIndices);
             }
             finally
             {
                 pool.ReturnElementIndexMap(domPosMap);
                 pool.ReturnIntList(domIndices);
                 pool.ReturnIntList(lisResult);
+            }
+        }
+
+        // Patience sort over domIndices, adding the LIS members to lisIndices. lisResult arrives empty and
+        // leaves holding the minimum tail value of each pile; the caller owns it because it also owns the
+        // rent/return of the buffers the position mapping needed.
+        //
+        // pileTop[k] is the index (into the new-element order) of the most recently placed element on pile
+        // k, which is what gives each element its predecessor in O(1) for the reverse reconstruction.
+        private void AccumulateLisAnchors(
+            List<int> domIndices, List<int> lisResult, int count, HashSet<int> lisIndices)
+        {
+            var pool = _pool;
+            var lisAncestors = pool.RentIntList();
+            var pileTop = pool.RentIntList();
+            try
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    lisAncestors.Add(-1);
+                    pileTop.Add(-1);
+                }
+
+                for (var i = 0; i < count; i++)
+                {
+                    var v = domIndices[i];
+                    if (v < 0) continue; // Created/replaced orphan: never an anchor.
+
+                    // Binary search for the first pile tail strictly greater than v.
+                    var lo = 0;
+                    var hi = lisResult.Count;
+                    while (lo < hi)
+                    {
+                        var mid = (lo + hi) >> 1;
+                        if (lisResult[mid] < v) lo = mid + 1; else hi = mid;
+                    }
+
+                    if (lo < lisResult.Count) lisResult[lo] = v; else lisResult.Add(v);
+                    lisAncestors[i] = lo > 0 ? pileTop[lo - 1] : -1;
+                    pileTop[lo] = i;
+                }
+
+                // Reconstruct the LIS in reverse from the tail to fix the anchor set.
+                if (lisResult.Count > 0)
+                {
+                    var cur = pileTop[lisResult.Count - 1];
+                    while (cur >= 0)
+                    {
+                        lisIndices.Add(cur);
+                        cur = lisAncestors[cur];
+                    }
+                }
+            }
+            finally
+            {
+                pool.ReturnIntList(lisAncestors);
+                pool.ReturnIntList(pileTop);
             }
         }
 

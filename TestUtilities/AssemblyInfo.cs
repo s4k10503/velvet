@@ -16,3 +16,6 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Velvet.Tests.Store.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Styling.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Styling.PlayMode")]
+
+// See Generators~/README.md for the code-shape rules and why they are opt-in.
+[assembly: System.Reflection.AssemblyMetadata("Velvet.CodeShape", "enforce")]
