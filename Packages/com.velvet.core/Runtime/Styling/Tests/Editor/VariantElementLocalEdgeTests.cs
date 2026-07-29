@@ -183,7 +183,8 @@ namespace Velvet.Tests
                 Assume.That(leaf.ClassListContains("bg-hot"), Is.True, "Precondition: old hover payload on while hovered");
 
                 // Act — the className changes so the hover payload becomes bg-cold (re-applied under the new set).
-                ManipulatorOf(leaf).UpdatePayloads(new[] { "bg-cold" }, null, null, null, null,
+                ManipulatorOf(leaf).UpdatePayloads(
+                    new VariantPayloads(new[] { "bg-cold" }, null, null, null, null),
                     VariantDeclarations.None);
 
                 // Assert — the previously-applied old payload class is cleared.
@@ -199,7 +200,8 @@ namespace Velvet.Tests
                 Assume.That(leaf.ClassListContains("bg-cold"), Is.False, "Precondition: new payload not yet present");
 
                 // Act — the className changes so the hover payload becomes bg-cold.
-                ManipulatorOf(leaf).UpdatePayloads(new[] { "bg-cold" }, null, null, null, null,
+                ManipulatorOf(leaf).UpdatePayloads(
+                    new VariantPayloads(new[] { "bg-cold" }, null, null, null, null),
                     VariantDeclarations.None);
 
                 // Assert — the new payload class is applied under the still-hovered state.

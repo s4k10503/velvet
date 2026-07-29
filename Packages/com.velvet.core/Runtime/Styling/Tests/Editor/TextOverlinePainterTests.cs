@@ -21,8 +21,8 @@ namespace Velvet.Tests
             Rect contentRect, float measuredWidth, float textBlockHeight, float fontSize, TextAnchor align)
         {
             var ok = TextOverlinePainter.TryComputeGeometry(
-                contentRect, measuredWidth, textBlockHeight, fontSize, align, out var from, out var to, out var lineWidth);
-            return (ok, from, to, lineWidth);
+                contentRect, measuredWidth, textBlockHeight, fontSize, align, out var rule);
+            return (ok, rule.From, rule.To, rule.LineWidth);
         }
 
         [Test]

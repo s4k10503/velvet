@@ -26,6 +26,18 @@ namespace Velvet
         // convention (AnchoredDriver, SceneViewDriver, ParticlesDriver).
         private const long DelayTickIntervalMs = 16;
 
+        // Where one session starts: the pressed draggable, the scope enclosing it, and the panel root the
+        // PENDING phase listens on. Resolved together at arm time — a session exists only once all three
+        // resolve — and none of them changes for the session's life.
+        internal readonly struct DragOrigin
+        {
+            internal VisualElement ScopeElement { get; init; }
+            internal DndScopeBinding Scope { get; init; }
+            internal VisualElement Source { get; init; }
+            internal DndDraggableBinding Draggable { get; init; }
+            internal VisualElement PanelRoot { get; init; }
+        }
+
         private readonly ReconcilerContext _ctx;
         private readonly VisualElement _scopeElement;
         private readonly DndScopeBinding _scope;
@@ -146,25 +158,33 @@ namespace Velvet
             // activeId recipe swapping the source out) must find ctx.ActiveDrag set, or every teardown
             // interlock is bypassed and the closed session would be installed afterward, wedging arming
             // for the tree's lifetime.
-            var session = new DndActiveDrag(ctx, scopeElement, scope, source, draggable, panelRoot, evt);
+            var origin = new DragOrigin
+            {
+                ScopeElement = scopeElement,
+                Scope = scope,
+                Source = source,
+                Draggable = draggable,
+                PanelRoot = panelRoot,
+            };
+            var session = new DndActiveDrag(ctx, in origin, evt);
             ctx.ActiveDrag = session;
             session.Begin();
         }
 
-        private DndActiveDrag(
-            ReconcilerContext ctx, VisualElement scopeElement, DndScopeBinding scope,
-            VisualElement source, DndDraggableBinding draggable, VisualElement panelRoot, PointerDownEvent evt)
+        private DndActiveDrag(ReconcilerContext ctx, in DragOrigin origin, PointerDownEvent evt)
         {
             _ctx = ctx;
-            _scopeElement = scopeElement;
-            _scope = scope;
-            _source = source;
-            _draggable = draggable;
-            _panelRoot = panelRoot;
+            _scopeElement = origin.ScopeElement;
+            _scope = origin.Scope;
+            _source = origin.Source;
+            _draggable = origin.Draggable;
+            _panelRoot = origin.PanelRoot;
             _pointerId = evt.pointerId;
             _pressPosition = evt.position;
             _lastPointerPosition = _pressPosition;
-            _activation = draggable.Settings.Activation ?? scope.Settings.Activation ?? DragActivation.Default;
+            _activation = origin.Draggable.Settings.Activation
+                ?? origin.Scope.Settings.Activation
+                ?? DragActivation.Default;
         }
 
         private void Begin()

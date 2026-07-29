@@ -117,8 +117,13 @@ namespace Velvet
 
             if (want && bound)
             {
-                DropShadowSilhouette.Sync(element, binding, spec, classNames, skewXDeg, casterSkewed,
-                    canReleaseFace);
+                DropShadowSilhouette.Sync(element, binding, new DropShadowSyncRequest
+                {
+                    Spec = spec,
+                    ClassNames = classNames,
+                    SkewXDeg = skewXDeg,
+                    CasterSkewed = casterSkewed,
+                }, canReleaseFace);
                 DropShadowSilhouette.SetWantSpacer(element, binding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
             }
             else if (want)

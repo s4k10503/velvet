@@ -78,8 +78,6 @@ namespace Velvet
         //     parent.childCount on a desync-shortened range; the keyed scan's slotStart + i is always
         //     in range on its own and must NOT be clamped (clamping would silently misplace an insert
         //     once slotStart + i legitimately reaches parent.childCount, i.e. a tail slot).
-        //   checkAbortAfterCreate: whether to stop the caller's scan (return true) after CreateElement
-        //     observes an error-boundary abort. Does NOT discard newElement either way — see below.
         //   Removal deliberately stays BEFORE CreateElement (remove-then-create), not
         //     create-then-remove: an inline-mounted component fiber is keyed by
         //     (parentFiber, positionKey, identity) — NOT by which VisualElement currently hosts it
@@ -103,18 +101,17 @@ namespace Velvet
         //     never leave the DOM with nothing where its fallback should be. Velvet has no render/commit
         //     phase split that could defer this decision, so the nearest equivalent is "don't throw away
         //     content the boundary already finished building".
-        //     checkAbortAfterCreate's true meaning is narrower: stop scanning further siblings in THIS
-        //     pass, because the boundary already resolved the failure and any later slot's patch/replace
-        //     would be racing a reconcile the caller no longer owns end-to-end.
-        // Returns true when the caller must stop scanning further siblings (an abort was observed and
-        // the caller opted in via checkAbortAfterCreate); newElement has already been inserted either way.
+        // Returns true when the caller must stop scanning further siblings, which is narrower than
+        // discarding anything: the boundary already resolved the failure, so any later slot's
+        // patch/replace would be racing a reconcile the caller no longer owns end-to-end.
         private bool PatchOrReplaceAtSlot(
-            VisualElement parent, int slotStart, int i, VNode? oldNode, VNode? newNode,
-            bool slotExists, bool clampInsertIndex, bool checkAbortAfterCreate)
+            in ChildSlot slot, VNode? oldNode, VNode? newNode, bool slotExists, bool clampInsertIndex)
         {
+            var parent = slot.Parent;
+            var domIndex = slot.SlotStart + slot.Index;
             if (slotExists && ReconcileKeying.CanPatch(oldNode, newNode))
             {
-                var domElement = parent.ElementAt(slotStart + i);
+                var domElement = parent.ElementAt(domIndex);
                 var actualElement = _patcher.ResolveWrapped(domElement);
                 _patcher.PatchNode(actualElement, oldNode, newNode);
                 return false;
@@ -122,12 +119,36 @@ namespace Velvet
 
             if (slotExists)
             {
-                _cleaner.RemoveElement(parent, slotStart + i);
+                _cleaner.RemoveElement(parent, domIndex);
             }
             var newElement = _factory.CreateElement(newNode);
-            var insertIndex = clampInsertIndex ? Math.Min(slotStart + i, SilhouetteBoundsSpacer.NonSpacerChildCount(parent)) : slotStart + i;
+            var insertIndex = clampInsertIndex
+                ? Math.Min(domIndex, SilhouetteBoundsSpacer.NonSpacerChildCount(parent))
+                : domIndex;
             parent.Insert(insertIndex, newElement);
-            return checkAbortAfterCreate && _ctx.IsAborted;
+            return _ctx.IsAborted;
+        }
+
+        // One child's address inside its parent. The range start stays separate from the sibling index
+        // rather than being pre-summed: the keyed path reconciles an unkeyed node by its raw index while
+        // addressing the DOM at the sum, so collapsing the two would lose the keying coordinate.
+        internal readonly struct ChildSlot
+        {
+            internal VisualElement Parent { get; init; }
+            internal int SlotStart { get; init; }
+            internal int Index { get; init; }
+        }
+
+        // The old-key map, the two consumed-key sets and the result list that one keyed Pass 2 threads
+        // through every node it processes. Bundled because the per-node step is shared by the synchronous
+        // loop and by the time-sliced one, which restores the same four from its parked state — and a
+        // combination mixing one pass's tables with another's would silently misplace a row.
+        internal readonly struct KeyedPassTables
+        {
+            internal Dictionary<ChildKey, (int index, VNode? node)> OldKeyMap { get; init; }
+            internal HashSet<ChildKey> UsedKeys { get; init; }
+            internal HashSet<ChildKey> ReplacedKeys { get; init; }
+            internal List<(VisualElement? element, bool isExisting)> NewElements { get; init; }
         }
 
         public void Reconcile(VisualElement? parent, VNode?[] oldChildren, VNode?[] newChildren,
@@ -182,6 +203,12 @@ namespace Velvet
             var oldProviders = _ctx.BufferPool.RentProviderTable();
             var oldFibers = _ctx.BufferPool.RentFiberList();
             var newFibers = _ctx.BufferPool.RentFiberSet();
+            var pairing = new GeneralPathReconciler.InlinePairing
+            {
+                OldFibers = oldFibers,
+                NewFibers = newFibers,
+                OldProviders = oldProviders,
+            };
             VNode?[] oldNodes;
             try
             {
@@ -195,7 +222,7 @@ namespace Velvet
                     // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so
                     // element descendants render in-scope without a pre-captured snapshot. Orphan
                     // effect-cleanup + sweep and the LIS reorder are performed inside.
-                    _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, oldFibers, newFibers, oldProviders);
+                    _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing);
                 }
                 else
                 {
@@ -741,8 +768,9 @@ namespace Velvet
                 // tenant childCount includes the following sibling's rows, so an unbounded check would treat a
                 // sibling row as this fiber's and PATCH it. Out of range → create within this fiber's range.
                 var slotExists = slotStart + i < Math.Min(SilhouetteBoundsSpacer.NonSpacerChildCount(parent), slotLimit);
-                if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
-                        slotExists, clampInsertIndex: true, checkAbortAfterCreate: true))
+                var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
+                        slotExists, clampInsertIndex: true))
                 {
                     return true;
                 }
@@ -926,8 +954,9 @@ namespace Velvet
                     var newKey = _keying.EffectiveKey(newNodes[i]);
                     if (oldKey != newKey) break;
 
-                    if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
-                            slotExists: true, clampInsertIndex: false, checkAbortAfterCreate: true))
+                    var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                    if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
+                            slotExists: true, clampInsertIndex: false))
                     {
                         return false;
                     }
@@ -1065,6 +1094,13 @@ namespace Velvet
             var usedKeys = pool.RentKeySet();
             var replacedKeys = pool.RentReplacedKeySet();
             var newElements = pool.RentElementList();
+            var tables = new KeyedPassTables
+            {
+                OldKeyMap = oldKeyMap,
+                UsedKeys = usedKeys,
+                ReplacedKeys = replacedKeys,
+                NewElements = newElements,
+            };
             // Records indices of old elements overwritten by a duplicate key.
             // Normally empty; only used when a duplicate-key warning is triggered.
             var orphanedOldIndices = pool.RentOrphanedIndexSet();
@@ -1085,8 +1121,8 @@ namespace Velvet
                 for (var i = linearEnd; i < newNodes.Length; i++)
                 {
                     if (_ctx.IsAborted) return;
-                    if (ProcessKeyedNode(parent, slotStart, newNodes[i], i,
-                            oldKeyMap, usedKeys, replacedKeys, newElements)) return;
+                    var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                    if (ProcessKeyedNode(in slot, newNodes[i], in tables)) return;
                 }
 
                 // Reverse walk so each RemoveElement leaves not-yet-visited indices intact. An
@@ -1103,8 +1139,14 @@ namespace Velvet
                 // element.parent == parent; created/replaced orphans have parent == null). Compute the
                 // LIS over their current positions — the anchors that stay put — then re-place the rest.
                 // The region starts at slotStart + linearEnd (the linear-prefix matches are in place).
-                _placement.ComputeAnchorsAndReorder(parent, newElements, slotStart, slotStart + linearEnd,
-                    oldNodes.Length, newNodes.Length);
+                var range = new ChildElementPlacement.PlacementRange
+                {
+                    SlotStart = slotStart,
+                    ScanStart = slotStart + linearEnd,
+                    OldLen = oldNodes.Length,
+                    LogicalNewLen = newNodes.Length,
+                };
+                _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
             }
             finally
             {
@@ -1214,8 +1256,9 @@ namespace Velvet
                     var newKey = _keying.EffectiveKey(newNodes[i]);
                     if (oldKey != newKey) break;
 
-                    if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
-                            slotExists: true, clampInsertIndex: false, checkAbortAfterCreate: true))
+                    var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                    if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
+                            slotExists: true, clampInsertIndex: false))
                     {
                         state.Phase = KeyedReconcilePhase.Done;
                         return true;
@@ -1324,6 +1367,13 @@ namespace Velvet
             var usedKeys = state.UsedKeys!;
             var replacedKeys = state.ReplacedKeys!;
             var newElements = state.NewElements!;
+            var tables = new KeyedPassTables
+            {
+                OldKeyMap = oldKeyMap,
+                UsedKeys = usedKeys,
+                ReplacedKeys = replacedKeys,
+                NewElements = newElements,
+            };
             var slotStart = state.SlotStart;
 
             for (var i = state.ResumeIndex; i < newNodes.Length; i++)
@@ -1333,8 +1383,8 @@ namespace Velvet
                 // ProcessKeyedNode checks _ctx.IsAborted internally and returns true mid-node on abort; the
                 // time-sliced loop owns the state.Phase = Done transition (what AbortIfCanceled does for the
                 // loop-boundary checks).
-                if (ProcessKeyedNode(parent, slotStart, newNodes[i], i,
-                        oldKeyMap, usedKeys, replacedKeys, newElements))
+                var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
+                if (ProcessKeyedNode(in slot, newNodes[i], in tables))
                 {
                     state.Phase = KeyedReconcilePhase.Done;
                     return true;
@@ -1431,8 +1481,14 @@ namespace Velvet
             var lisIndices = _ctx.BufferPool.RentIntSet();
             state.LisIndices = lisIndices;
 
-            _placement.ComputeLisAnchors(parent!, state.NewElements!, slotStart, slotStart + state.LinearEnd,
-                state.OldNodes!.Length, state.NewNodes!.Length, lisIndices);
+            var range = new ChildElementPlacement.PlacementRange
+            {
+                SlotStart = slotStart,
+                ScanStart = slotStart + state.LinearEnd,
+                OldLen = state.OldNodes!.Length,
+                LogicalNewLen = state.NewNodes!.Length,
+            };
+            _placement.ComputeLisAnchors(parent!, state.NewElements!, in range, lisIndices);
         }
 
 
@@ -1592,17 +1648,16 @@ namespace Velvet
         // eagerly, appends to a newElements list instead of inserting at a live DOM index, and re-fetches
         // the patched element to observe a WrapElement swap — three real differences in shape, not just
         // naming, so forcing this through the same helper would need as many bool flags as it has callers.
-        private bool ProcessKeyedNode(
-            VisualElement parent, int slotStart, VNode? newNode, int i,
-            Dictionary<ChildKey, (int index, VNode? node)> oldKeyMap,
-            HashSet<ChildKey> usedKeys, HashSet<ChildKey> replacedKeys,
-            List<(VisualElement? element, bool isExisting)> newElements)
+        private bool ProcessKeyedNode(in ChildSlot slot, VNode? newNode, in KeyedPassTables tables)
         {
-            var key = _keying.ReconcileKey(newNode, i);
+            var parent = slot.Parent;
+            var slotStart = slot.SlotStart;
+            var newElements = tables.NewElements;
+            var key = _keying.ReconcileKey(newNode, slot.Index);
 
-            if (oldKeyMap.TryGetValue(key, out var old))
+            if (tables.OldKeyMap.TryGetValue(key, out var old))
             {
-                if (!usedKeys.Add(key))
+                if (!tables.UsedKeys.Add(key))
                 {
                     // A second new-side sibling resolved the same old entry. Re-matching would alias
                     // two logical rows onto one element (the reorder pass then collapses them,
@@ -1639,7 +1694,7 @@ namespace Velvet
                 }
                 else
                 {
-                    replacedKeys.Add(key);
+                    tables.ReplacedKeys.Add(key);
                     var newElement = _factory.CreateElement(newNode);
                     if (_ctx.IsAborted) return true;
                     UnityEngine.Debug.Assert(newElement.parent == null,

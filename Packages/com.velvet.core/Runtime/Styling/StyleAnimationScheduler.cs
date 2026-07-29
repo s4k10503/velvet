@@ -27,6 +27,26 @@ namespace Velvet
         private static void ResetStaticFields() => s_easingCache.Clear();
 #endif
 
+        // The half of a play that is the same whichever driver runs it: which element, which class sets the
+        // swap moves between, what a cancel must put back, when the swap may start, and what to run once it
+        // lands. A struct taken by `in` so the three drivers share one definition of a play without putting an
+        // object on the heap — one of these is built per element per enter on a Motion mount.
+        private readonly struct VariantPlay
+        {
+            internal VisualElement Element { get; init; }
+            internal string[] FromClasses { get; init; }
+            internal string[] ToClasses { get; init; }
+            // The persistent resting set a cancel must restore — a variant exit's from-classes, a variant
+            // enter's to-classes; null for preset plays, whose classes are all transient.
+            internal string[]? RestingClasses { get; init; }
+            internal Action? OnComplete { get; init; }
+            internal float DelaySec { get; init; }
+            internal float AdditionalDelaySec { get; init; }
+            // Selects both the exit-shaped self-cancel and which bookkeeping map the play registers into — a
+            // separate map field would only ever repeat that same choice.
+            internal bool IsExit { get; init; }
+        }
+
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingExits = new();
         private readonly Dictionary<VisualElement, PendingAnimation> _pendingEnters = new();
         // Scoped to this scheduler instance so a leaked or double-returned rent stays contained to it instead
@@ -43,15 +63,27 @@ namespace Velvet
                 return;
             }
 
+            // A classic (non-variant) enter's classes are all transient overlays on top of the element's base
+            // classes, so nothing rests and RestingClasses stays null on every branch below.
+            var play = new VariantPlay
+            {
+                Element = element,
+                FromClasses = config.EnterFromClasses,
+                ToClasses = config.EnterToClasses,
+                RestingClasses = null,
+                OnComplete = onComplete,
+                DelaySec = config.DelaySec,
+                AdditionalDelaySec = additionalDelaySec,
+                IsExit = false,
+            };
+
             if (config.Type == TransitionType.Spring)
             {
                 // Reachable only in principle: a classic (non-variant) transition's EnterFromClass/EnterToClass
                 // are internal-setter-only, so a caller-authored spring config passed here has none set and this
                 // no-ops to an immediate complete (see StartSpringVariant) — kept for completeness/symmetry with
                 // PlayVariantEnter / PlayExit rather than silently ignoring Type on this call path.
-                StartSpringVariant(element, config.EnterFromClasses, config.EnterToClasses, config.DelaySec,
-                    config.Stiffness, config.Damping, config.Mass, onComplete, additionalDelaySec,
-                    restingClasses: null, isExit: false);
+                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass);
                 return;
             }
 
@@ -59,18 +91,16 @@ namespace Velvet
             {
                 // Same "reachable only in principle" caveat as the Spring branch above: a classic (non-variant)
                 // config carries no enter classes, so this no-ops to an immediate complete — kept for symmetry.
-                StartBezierVariant(element, config.EnterFromClasses, config.EnterToClasses, config.DelaySec,
-                    config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, config.DurationSec,
-                    onComplete, additionalDelaySec, restingClasses: null, isExit: false);
+                StartBezierVariant(in play, config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2,
+                    config.DurationSec);
                 return;
             }
 
-            // Classic transition enter: the to-classes are a TRANSIENT overlay (resting state = the element's
-            // base classes), so they are removed on completion (variantMode: false). Per-property overrides are
-            // wired only where a variant swap sets transition-property: all (see PlayVariantEnter / PlayExit); a
-            // preset's own USS-declared transition-property is untouched, so PropertyOverrides is not read here.
-            PlayEnterInternal(element, config.EnterFromClasses, config.EnterToClasses,
-                config.DurationSec, config.Easing, config.DelaySec, onComplete, additionalDelaySec,
+            // Classic transition enter: the to-classes are a TRANSIENT overlay, so they are removed on
+            // completion (variantMode: false). Per-property overrides are wired only where a variant swap sets
+            // transition-property: all (see PlayVariantEnter / PlayExit); a preset's own USS-declared
+            // transition-property is untouched, so PropertyOverrides is not read here.
+            PlayEnterInternal(in play, config.DurationSec, config.Easing,
                 variantMode: false, propertyOverrides: null);
         }
 
@@ -110,32 +140,43 @@ namespace Velvet
                 return;
             }
 
+            // The to-classes are the persistent resting state on every branch, so a cancel must restore them.
+            var resolvedTo = toClasses ?? System.Array.Empty<string>();
+            var play = new VariantPlay
+            {
+                Element = element,
+                FromClasses = fromClasses ?? System.Array.Empty<string>(),
+                ToClasses = resolvedTo,
+                RestingClasses = resolvedTo,
+                OnComplete = onComplete,
+                DelaySec = delaySec,
+                AdditionalDelaySec = additionalDelaySec,
+                IsExit = false,
+            };
+
             if (type == TransitionType.Spring)
             {
-                // restingClasses mirrors the tween path's variant-enter pending: the to-classes are the
-                // persistent resting state, and a cancel must restore them (see PlayEnterInternal).
-                StartSpringVariant(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
-                    delaySec, stiffness, damping, mass, onComplete, additionalDelaySec,
-                    restingClasses: toClasses ?? System.Array.Empty<string>(), isExit: false);
+                StartSpringVariant(in play, stiffness, damping, mass);
                 return;
             }
 
             if (type == TransitionType.Bezier)
             {
-                StartBezierVariant(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
-                    delaySec, bezierX1, bezierY1, bezierX2, bezierY2, durationSec, onComplete, additionalDelaySec,
-                    restingClasses: toClasses ?? System.Array.Empty<string>(), isExit: false);
+                StartBezierVariant(in play, bezierX1, bezierY1, bezierX2, bezierY2, durationSec);
                 return;
             }
 
-            PlayEnterInternal(element, fromClasses ?? System.Array.Empty<string>(), toClasses ?? System.Array.Empty<string>(),
-                durationSec, easing, delaySec, onComplete, additionalDelaySec, variantMode: true, propertyOverrides);
+            PlayEnterInternal(in play, durationSec, easing, variantMode: true, propertyOverrides);
         }
 
-        private void PlayEnterInternal(VisualElement element, string[] fromClasses, string[] toClasses,
-            float durationSec, EasingMode easing, float delaySec, Action? onComplete, float additionalDelaySec, bool variantMode,
-            IReadOnlyList<StylePropertyTransition>? propertyOverrides)
+        private void PlayEnterInternal(in VariantPlay play, float durationSec, EasingMode easing,
+            bool variantMode, IReadOnlyList<StylePropertyTransition>? propertyOverrides)
         {
+            var element = play.Element;
+            var fromClasses = play.FromClasses;
+            var toClasses = play.ToClasses;
+            var onComplete = play.OnComplete;
+
             // DurationSec=0 / invalid: complete immediately. For variantMode this happens BEFORE any strip, so
             // the element keeps its already-applied resting (to) classes and mounts directly at animate.
             if (!ValidateDuration(durationSec, onComplete))
@@ -146,11 +187,11 @@ namespace Velvet
             // Cancel any existing enter animation.
             CancelEnter(element);
 
-            var staggerDelayMs = (long)(additionalDelaySec * 1000);
+            var staggerDelayMs = (long)(play.AdditionalDelaySec * 1000);
 
             // Step 1: set duration / easing as inline styles, then show the from-state. In variantMode the
             // element already carries the resting to-classes, so strip them first so they don't fight the from-state.
-            var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, delaySec,
+            var (durationList, delayList) = ApplyTransitionStyles(element, durationSec, easing, play.DelaySec,
                 allProperties: variantMode, propertyOverrides: propertyOverrides);
             if (variantMode)
             {
@@ -167,7 +208,7 @@ namespace Velvet
                 // removed — a cancel (an exit starting mid-enter, a teardown) must put them back, or the
                 // element is left without its resting variant for whatever follows (a classic exit with no
                 // variant from-classes to re-add them would play out on a stripped element).
-                RestingClasses = variantMode ? toClasses : null,
+                RestingClasses = play.RestingClasses,
                 DurationList = durationList,
                 DelayList = delayList,
                 AnimatingElement = element,
@@ -203,7 +244,7 @@ namespace Velvet
                 var host = panel.visualTree;
 
                 var startAction = new Action(() =>
-                    RunEnterStartAction(element, fromClasses, toClasses, pending, durationList, delayList, host, variantMode, onComplete));
+                    RunEnterStartAction(pending, host, variantMode, onComplete));
 
                 if (staggerDelayMs > 0)
                 {
@@ -247,16 +288,19 @@ namespace Velvet
         // The deferred-swap body PlayEnterInternal's ScheduleOnHost runs once attached (immediately, or after
         // the stagger/next-frame delay): swaps the from/to classes (firing the CSS transition), starts the
         // shadow co-fade tick, then schedules the completion timeout.
-        private void RunEnterStartAction(VisualElement element, string[] fromClasses, string[] toClasses,
-            PendingAnimation pending, List<TimeValue> durationList, List<TimeValue>? delayList,
-            VisualElement host, bool variantMode, Action? onComplete)
+        private void RunEnterStartAction(PendingAnimation pending, VisualElement host, bool variantMode,
+            Action? onComplete)
         {
+            // Every value this needs beyond the host and the two completion knobs was recorded on the pending
+            // when the play was registered, so it is read back rather than threaded through the closure.
+            var element = pending.AnimatingElement!;
+            var toClasses = pending.ToClasses!;
             if (!_pendingEnters.ContainsKey(element))
             {
                 return;
             }
 
-            StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
+            StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
             // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so
             // descendant shadows fade in lockstep with it.
@@ -269,7 +313,8 @@ namespace Velvet
             // top-level value, and completing on the top-level timing alone would clear the inline
             // transition-duration (snapping the still-mid-tween slower property to its resting value) before
             // it actually finishes.
-            var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
+            var durationMs = (long)SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList)
+                + AnimationGraceMs;
             var timeout = host.schedule.Execute(() =>
             {
                 if (_pendingEnters.Remove(element, out var completed))
@@ -307,15 +352,24 @@ namespace Velvet
                 return;
             }
 
+            var play = new VariantPlay
+            {
+                Element = element,
+                FromClasses = config.ExitFromClasses,
+                ToClasses = config.ExitToClasses,
+                RestingClasses = restoreFromOnCancel ? config.ExitFromClasses : null,
+                OnComplete = onComplete,
+                DelaySec = config.DelaySec,
+                AdditionalDelaySec = additionalDelaySec,
+                IsExit = true,
+            };
+
             if (config.Type == TransitionType.Spring)
             {
                 // Deferred to attach when off-panel: a presence exit can start while its subtree is transiently
                 // detached by a keyed reorder (see the tween exit's own ScheduleOnHost below) and this exit must
                 // still eventually complete so the reconciler's ghost-removal re-render fires.
-                StartSpringVariant(element, config.ExitFromClasses, config.ExitToClasses, config.DelaySec,
-                    config.Stiffness, config.Damping, config.Mass, onComplete, additionalDelaySec,
-                    restingClasses: restoreFromOnCancel ? config.ExitFromClasses : null,
-                    isExit: true);
+                StartSpringVariant(in play, config.Stiffness, config.Damping, config.Mass);
                 return;
             }
 
@@ -323,11 +377,8 @@ namespace Velvet
             {
                 // One curve drives both directions (no ExitBezier* fields — mirrors the spring reusing its single
                 // stiffness/damping/mass for the exit). Deferred-to-attach when off-panel, same as the spring exit.
-                StartBezierVariant(element, config.ExitFromClasses, config.ExitToClasses, config.DelaySec,
-                    config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2, config.DurationSec,
-                    onComplete, additionalDelaySec,
-                    restingClasses: restoreFromOnCancel ? config.ExitFromClasses : null,
-                    isExit: true);
+                StartBezierVariant(in play, config.BezierX1, config.BezierY1, config.BezierX2, config.BezierY2,
+                    config.DurationSec);
                 return;
             }
 
@@ -396,8 +447,7 @@ namespace Velvet
                     return;
                 }
                 var host = panel.visualTree;
-                var startAction = new Action(() =>
-                    RunExitStartAction(element, fromClasses, toClasses, pending, durationList, delayList, host, onComplete));
+                var startAction = new Action(() => RunExitStartAction(pending, host, onComplete));
 
                 // Delay the swap by the stagger offset (each removed child fades on its turn), else run next frame.
                 if (staggerDelayMs > 0)
@@ -432,17 +482,16 @@ namespace Velvet
         // attached — swaps the from/to classes (firing the CSS transition), starts the shadow co-fade tick, then
         // schedules the completion timeout. No variantMode parameter: unlike an enter, an exit never keeps its
         // to-classes on completion (the caller removes the element).
-        private void RunExitStartAction(VisualElement element, string[] fromClasses, string[] toClasses,
-            PendingAnimation pending, List<TimeValue> durationList, List<TimeValue>? delayList,
-            VisualElement host, Action? onComplete)
+        private void RunExitStartAction(PendingAnimation pending, VisualElement host, Action? onComplete)
         {
+            var element = pending.AnimatingElement!;
             if (!_pendingExits.ContainsKey(element))
             {
                 return;
             }
 
-            StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
-            StyleAnimationClassUtils.AddClasses(element, toClasses);
+            StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
+            StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!);
             // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
             // stable host so descendant shadows fade out in lockstep (and keep ticking through any
             // reconcile-reorder detach of the exiting ghost, which is why the host is the panel root).
@@ -453,7 +502,8 @@ namespace Velvet
             // exit's PropertyOverrides can give one property a longer duration than the top-level value,
             // and completing on the top-level timing alone would drop the ghost — removing its element —
             // while that slower property is still mid-tween.
-            var durationMs = (long)SlowestPropertyTimeoutMs(durationList, delayList) + AnimationGraceMs;
+            var durationMs = (long)SlowestPropertyTimeoutMs(pending.DurationList, pending.DelayList)
+                + AnimationGraceMs;
             var timeout = host.schedule.Execute(() =>
             {
                 if (_pendingExits.Remove(element, out var completed))
@@ -499,20 +549,20 @@ namespace Velvet
         // (opacity / translate / scale / rotate, plus the color- and length-valued properties) into a from/to
         // pair each, and a per-frame physics tick (StartSpringTick) drives them via inline styles until they
         // settle — replacing the tween's fixed-duration completion timeout with a dynamic settle check.
-        // restingClasses: the persistent resting set a cancel must restore — a variant exit's from-classes
-        // (restoreFromOnCancel) or a variant enter's to-classes; null for preset plays, whose classes are
-        // all transient. See PendingAnimation.RestingClasses.
-        // isExit: selects both the exit-shaped self-cancel (mirrors calling the PUBLIC CancelExit rather than
-        // CancelEnter below) and which bookkeeping map (_pendingExits / _pendingEnters) this play registers
-        // into — a separate map parameter would only ever repeat that same choice, so isExit alone decides it.
         // Both directions defer the tick start until attach when off-panel: a standalone Motion's enter plays
         // during element creation (FiberNodeFactory), and a presence enter plays before the entering element is
         // placed into the tree (GeneralPathReconciler) — so BOTH, like a presence exit, can start while still
         // detached (see PlayExit's own ScheduleOnHost/AttachToPanelEvent for the same rationale on the exit side).
-        private void StartSpringVariant(VisualElement element, string[] fromClasses, string[] toClasses,
-            float delaySec, float stiffness, float damping, float mass, Action? onComplete, float additionalDelaySec,
-            string[]? restingClasses, bool isExit)
+        private void StartSpringVariant(in VariantPlay play, float stiffness, float damping, float mass)
         {
+            // Copied out because a local function cannot capture an `in` parameter.
+            var element = play.Element;
+            var fromClasses = play.FromClasses;
+            var toClasses = play.ToClasses;
+            var onComplete = play.OnComplete;
+            var delaySec = play.DelaySec;
+            var additionalDelaySec = play.AdditionalDelaySec;
+            var isExit = play.IsExit;
             var map = isExit ? _pendingExits : _pendingEnters;
 
             // Read BEFORE the class swap below lands: the element's own current inline translate is whatever
@@ -551,7 +601,7 @@ namespace Velvet
             {
                 FromClasses = fromClasses,
                 ToClasses = toClasses,
-                RestingClasses = restingClasses,
+                RestingClasses = play.RestingClasses,
                 AnimatingElement = element,
                 Spring = state,
             };
@@ -623,12 +673,18 @@ namespace Velvet
         // (StartBezierTick) drives the resolved channels via inline styles. The one difference from the spring is
         // its completion is a fixed duration (BezierTweenDriver.Step reports done once elapsed reaches it) rather
         // than a dynamic settle. x1/y1/x2/y2 are the CSS cubic-bezier control points; durationSec is the fixed
-        // tween length. See StartSpringVariant for the shared restingClasses / isExit / off-panel-defer contract.
-        private void StartBezierVariant(VisualElement element, string[] fromClasses, string[] toClasses,
-            float delaySec, float x1, float y1, float x2, float y2, float durationSec,
-            Action? onComplete, float additionalDelaySec, string[]? restingClasses, bool isExit)
+        // tween length; VariantPlay owns the rest, and StartSpringVariant the shared off-panel-defer contract.
+        private void StartBezierVariant(in VariantPlay play, float x1, float y1, float x2, float y2,
+            float durationSec)
         {
-            var map = isExit ? _pendingExits : _pendingEnters;
+            // Copied out because a local function cannot capture an `in` parameter.
+            var element = play.Element;
+            var fromClasses = play.FromClasses;
+            var toClasses = play.ToClasses;
+            var onComplete = play.OnComplete;
+            var delaySec = play.DelaySec;
+            var additionalDelaySec = play.AdditionalDelaySec;
+            var map = play.IsExit ? _pendingExits : _pendingEnters;
 
             // Read BEFORE the class swap lands (same rationale as StartSpringVariant): a translate axis the swap
             // names on neither side rests at the element's own current inline translate rather than snapping to 0.
@@ -642,7 +698,7 @@ namespace Velvet
                 ? BezierTweenDriver.Create(plan, x1, y1, x2, y2, durationSec)
                 : null;
 
-            CancelPending(map, element, animateReversal: isExit);
+            CancelPending(map, element, animateReversal: play.IsExit);
 
             StyleAnimationClassUtils.RemoveClasses(element, fromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
@@ -659,11 +715,12 @@ namespace Velvet
             {
                 FromClasses = fromClasses,
                 ToClasses = toClasses,
-                RestingClasses = restingClasses,
+                RestingClasses = play.RestingClasses,
                 AnimatingElement = element,
                 Bezier = state,
             };
-            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
+            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(
+                element, pending, play.IsExit ? 1f : 0f);
             state.OnSettled = onComplete;
             map[element] = pending;
 

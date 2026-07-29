@@ -141,10 +141,17 @@ namespace Velvet
             // non-skewed element with the same stops display identically regardless of the consuming
             // project's color space (the Linear RT stores the shader's raw output; ReadPixels copies the
             // bytes unchanged; the texture flag only governs how UITK samples them).
-            var tex = SilhouetteBakeReadback.Bake(m, quadW, quadH,
-                RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear,
-                TextureFormat.RGBA32, linear: false, name: null,
-                TextureWrapMode.Clamp, FilterMode.Bilinear, HideFlags.HideAndDontSave);
+            var tex = SilhouetteBakeReadback.Bake(m, quadW, quadH, new SilhouetteBakeSettings
+            {
+                RtFormat = RenderTextureFormat.ARGB32,
+                RtReadWrite = RenderTextureReadWrite.Linear,
+                TextureFormat = TextureFormat.RGBA32,
+                Linear = false,
+                Name = null,
+                WrapMode = TextureWrapMode.Clamp,
+                FilterMode = FilterMode.Bilinear,
+                HideFlags = HideFlags.HideAndDontSave,
+            });
             s_baked.Add(tex);
             return tex;
         }

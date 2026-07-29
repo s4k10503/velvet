@@ -102,8 +102,15 @@ namespace Velvet
             GetAxis(spec.AngleDeg, out var sx, out var sy, out var ex, out var ey);
             var dx = ex - sx;
             var dy = ey - sy;
-            var denom = Mathf.Max((dx * dx) + (dy * dy), 1e-6f);
-            var maxRadial = Mathf.Max(FarthestCornerDistance(spec.CenterX, spec.CenterY), 1e-5f);
+            var axis = new GradientAxis
+            {
+                StartX = sx,
+                StartY = sy,
+                Dx = dx,
+                Dy = dy,
+                Denom = Mathf.Max((dx * dx) + (dy * dy), 1e-6f),
+                MaxRadial = Mathf.Max(FarthestCornerDistance(spec.CenterX, spec.CenterY), 1e-5f),
+            };
 
             var pixels = new Color[Resolution * Resolution];
             for (var row = 0; row < Resolution; row++)
@@ -113,7 +120,7 @@ namespace Velvet
                 for (var col = 0; col < Resolution; col++)
                 {
                     var u = col / (float)(Resolution - 1);
-                    var t = ComputeT(spec, u, v, sx, sy, dx, dy, denom, maxRadial);
+                    var t = ComputeT(spec, u, v, in axis);
                     pixels[row * Resolution + col] = ColorAt(spec, Mathf.Clamp01(t));
                 }
             }
@@ -123,11 +130,23 @@ namespace Velvet
             return tex;
         }
 
+        // The spec-wide constants the per-pixel loop reuses. Both divisors — Denom (the axis direction's
+        // squared length) and MaxRadial — are floored away from zero at construction, so ComputeT divides
+        // unguarded.
+        private readonly struct GradientAxis
+        {
+            public float StartX { get; init; }
+            public float StartY { get; init; }
+            public float Dx { get; init; }
+            public float Dy { get; init; }
+            public float Denom { get; init; }
+            public float MaxRadial { get; init; }
+        }
+
         // The gradient parameter t (0..1) at UV (u, v) for the spec's type: Linear projects onto the axis,
         // Radial is the distance from the centre over the farthest-corner distance, Conic is the clockwise
         // angle from the centre (0° = up, matching CSS conic) minus the start angle, over 360°.
-        private static float ComputeT(GradientSpec spec, float u, float v,
-            float sx, float sy, float dx, float dy, float denom, float maxRadial)
+        private static float ComputeT(GradientSpec spec, float u, float v, in GradientAxis axis)
         {
             switch (spec.Type)
             {
@@ -135,7 +154,7 @@ namespace Velvet
                 {
                     var ax = u - spec.CenterX;
                     var ay = v - spec.CenterY;
-                    return Mathf.Sqrt((ax * ax) + (ay * ay)) / maxRadial;
+                    return Mathf.Sqrt((ax * ax) + (ay * ay)) / axis.MaxRadial;
                 }
                 case GradientType.Conic:
                 {
@@ -146,7 +165,7 @@ namespace Velvet
                     return ((((ang - spec.AngleDeg) % 360f) + 360f) % 360f) / 360f;
                 }
                 default:
-                    return ((u - sx) * dx + (v - sy) * dy) / denom;
+                    return ((u - axis.StartX) * axis.Dx + (v - axis.StartY) * axis.Dy) / axis.Denom;
             }
         }
 

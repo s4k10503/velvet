@@ -170,7 +170,8 @@ namespace Velvet
             // Stroke centered on a half-width-inset outline ≈ CSS's inside border, matching the skew
             // silhouette's border stroke inset. A border stroke never bleeds past the box, so (unlike skew /
             // shadow) no bounds-spacer is needed.
-            SilhouetteFace.BuildShearedRoundedRectPolyline(binding.Polyline, ve, borderWidth * 0.5f, w, h, 0f, 0f);
+            SilhouetteFace.BuildShearedRoundedRectPolyline(binding.Polyline,
+                ShearedRoundedRect.ForElement(ve, borderWidth * 0.5f, w, h, 0f, 0f));
             DashedBorderPainter.StrokeDashed(mgc.painter2D, binding.Polyline, closed: true, borderWidth, color, binding.Spec.Style);
         }
     }
