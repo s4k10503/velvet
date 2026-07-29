@@ -75,9 +75,9 @@ Generators~/
 │   ├── MemoizeMethodGenerator.cs             ([MemoizeMethod] → V.Memoized wrapper expansion)
 │   ├── AutoDeps/                             (VEL100 exhaustive-deps analyzer + its hook descriptor table)
 │   ├── RulesOfHooks/                         (VEL101 rules-of-hooks analyzer)
-│   ├── CodeShape/                            (VEL500 nesting-depth analyzer)
+│   ├── CodeShape/                            (VEL500 nesting-depth + VEL501 branch-count analyzers)
 │   ├── Diagnostics/MemoizeDiagnostics.cs     (diagnostic descriptors — see Documentation~/memoization.md)
-│   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The nesting-depth limit")
+│   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The code-shape limits")
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
 │   └── Shared/                               (SourceBuilder, VelvetWellKnownNames, …)
 ├── src/Velvet.SourceGenerators.CodeFixes/    (ships to ../Runtime/Plugins/Analyzers/)
@@ -121,11 +121,15 @@ Failures are reported as `USS001`-`USS011` and refuse to write the table. They a
 
 Four partials declare no rules and are expected to: `StyleUtilities.uss` is nothing but `@import`, and `_gap.uss`, `_presets.uss` and `_states.uss` describe utility families Velvet realises in C# rather than in USS (each says so in its own header). Their classes are therefore absent from the table, which from the table's side looks identical to a class that sets nothing — `BundledStyleSheetCensusTests` pins the list so the distinction stays visible.
 
-## The nesting-depth limit
+## The code-shape limits
 
-`VEL500` is an error on any member body nesting control flow more than **4** levels deep. Every diagnostic
-this repository defines is listed in [AnalyzerReleases.Unshipped.md](src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md);
-what follows is only the definition of "depth", which no table can carry.
+Two mechanical limits ship as analyzers under the `Velvet.Shape` category. Every diagnostic this repository
+defines is listed in [AnalyzerReleases.Unshipped.md](src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md);
+what follows is only the two definitions, which no table can carry, and the gate they share.
+
+### The nesting-depth limit
+
+`VEL500` is an error on any member body nesting control flow more than **4** levels deep.
 
 Depth is the height of the nesting tree, not a count of indentation or of braces. A construct that opens a
 level contributes one to everything beneath it, and a block is transparent — so `if (x) return;` and
@@ -148,12 +152,38 @@ A nested function is measured where it sits rather than resetting, so a block ca
 being wrapped in a lambda in place. Extraction to a sibling member is the remedy the rule pushes toward, and
 that does reset — each member is measured from its own body.
 
-### Why the rule is opt-in per assembly
+### The branch-count limit
 
-The analyzer ships in the package and the `RoslynAnalyzer` label propagates it to every assembly that
+`VEL501` is an error on any member making more than **20** branching decisions. A branch is counted wherever
+it appears in the body, including inside a lambda or local function the member declares — which does not
+reset, for the reason depth does not.
+
+Counted: `if`, and separately each `else if` of a chain; `for`, `foreach`, `while`, `do`; `&&`, `||`, `??`,
+`??=`, `?:`; each `case` label; each arm of a `switch` expression; each `catch`; each `when` filter, beside
+the `catch` or `case` it guards; and `and` / `or` between patterns.
+
+Not counted: the closing `else`, `default:`, and the `_` arm of a `switch` expression — each runs when no
+decision picked anything, and charging for them would price an exhaustive `switch` above one that silently
+falls through; `try`, `finally`, `switch`, `lock` and `using`, which open no decision of their own; `not`,
+which inverts one test rather than adding a second; and `?.` and a bare `is`, which produce a value that
+some other construct — already counted where it appears — turns into a decision.
+
+Where this disagrees with the depth definition it is deliberate. Depth is a property of the deepest path, so
+it has to treat an `else if` chain and the expression-level branch forms as transparent: each is the
+flattening device a depth limit pushes code toward, and charging for it would make the nested rewrite the
+cheaper option. Count is a property of the whole body, and those same forms are what a flattened dense
+parser is made of. A rule that let them through would be satisfied by turning nesting into width, and would
+measure nothing.
+
+Extraction to a sibling member is again the remedy: each member is counted from its own body.
+
+### Why the rules are opt-in per assembly
+
+The analyzers ship in the package and the `RoslynAnalyzer` label propagates them to every assembly that
 references Velvet, which in this project includes the default `Assembly-CSharp-Editor` and in a consumer's
 project includes their game code. An error must have every site it fires on fixed by whoever ships it, and
-this package cannot fix a consumer's game code. So VEL500 fires only in an assembly that declares
+this package cannot fix a consumer's game code. So the `Velvet.Shape` diagnostics fire only in an assembly
+that declares
 
 ```csharp
 [assembly: System.Reflection.AssemblyMetadata("Velvet.CodeShape", "enforce")]
@@ -168,7 +198,7 @@ the two populations in either direction: `Unity.Velvet.CodeGen` belongs to the p
 `Velvet.` prefix, and nothing stops a consumer from naming an assembly whatever pattern the check looked
 for.
 
-A consumer who wants the limit on their own assembly opts in with the same line.
+A consumer who wants the limits on their own assembly opts in with the same line.
 
 ## Using `[MemoizeMethod]`
 

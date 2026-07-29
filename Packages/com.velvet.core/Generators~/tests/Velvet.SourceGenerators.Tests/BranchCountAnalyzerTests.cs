@@ -444,6 +444,96 @@ public static class Shape
             Assert.Empty(diagnostics);
         }
 
+        [Fact]
+        public void Given_TheMarkerCarryingAnotherValue_When_ItExceedsTheLimit_Then_NothingIsReported()
+        {
+            // The gate is the key/value PAIR. A comparison that only checked the attribute is present, or
+            // only that the key matches, would opt every consumer in the moment they used
+            // AssemblyMetadata for anything of their own under this key.
+            // Arrange
+            var source = Marker(CodeShapeMembers.MarkerKey, "audit") + Body(Ifs(21));
+
+            // Act
+            var diagnostics = Vel501Raw(source);
+
+            // Assert
+            Assert.Empty(diagnostics);
+        }
+
+        [Fact]
+        public void Given_TheEnforceValueUnderAnotherKey_When_ItExceedsTheLimit_Then_NothingIsReported()
+        {
+            // Arrange
+            var source = Marker("Some.Other.Key", CodeShapeMembers.MarkerValue) + Body(Ifs(21));
+
+            // Act
+            var diagnostics = Vel501Raw(source);
+
+            // Assert
+            Assert.Empty(diagnostics);
+        }
+
+        [Fact]
+        public void Given_ASecondUnrelatedMetadataAttribute_When_TheMarkerIsAlsoPresent_Then_TheLimitStillApplies()
+        {
+            // Arrange
+            var source = Marker("Some.Other.Key", "whatever")
+                + Marker(CodeShapeMembers.MarkerKey, CodeShapeMembers.MarkerValue)
+                + Body(Ifs(21));
+
+            // Act
+            var diagnostics = Vel501Raw(source);
+
+            // Assert
+            Assert.Equal(Message(21), Assert.Single(diagnostics).GetMessage());
+        }
+
+        [Fact]
+        public void Given_AnotherAttributeCarryingTheMarkerStrings_When_ItExceedsTheLimit_Then_NothingIsReported()
+        {
+            // The gate reads the attribute TYPE, not just its arguments. Matching on the two strings alone
+            // would opt an assembly in off any attribute that happens to take a name/value pair.
+            // Arrange
+            var source = $"[assembly: Lookalike(\"{CodeShapeMembers.MarkerKey}\", \"{CodeShapeMembers.MarkerValue}\")]\n"
+                + Body(Ifs(21))
+                + @"
+[System.AttributeUsage(System.AttributeTargets.Assembly)]
+public sealed class LookalikeAttribute : System.Attribute
+{
+    public LookalikeAttribute(string key, string value) { Key = key; Value = value; }
+    public string Key { get; }
+    public string Value { get; }
+}";
+
+            // Act
+            var diagnostics = Vel501Raw(source);
+
+            // Assert
+            Assert.Empty(diagnostics);
+        }
+
+        [Fact]
+        public void Given_AMalformedMarkerWithOneArgument_When_Analyzed_Then_TheAnalyzerNeitherFiresNorThrows()
+        {
+            // An analyzer runs against code mid-edit, so a marker the user has not finished typing reaches
+            // the gate with the wrong argument count. Indexing it unguarded throws, and Roslyn reports that
+            // as AD0001 rather than as this diagnostic — which is why the assertion covers both IDs.
+            // Arrange
+            var source = $"[assembly: System.Reflection.AssemblyMetadata(\"{CodeShapeMembers.MarkerKey}\")]\n"
+                + Body(Ifs(21));
+
+            // Act
+            var reported = GeneratorTestHelper.RunAnalyzer(source, new BranchCountAnalyzer())
+                .Where(diagnostic => diagnostic.Id is "VEL501" or "AD0001")
+                .ToList();
+
+            // Assert
+            Assert.Empty(reported);
+        }
+
+        private static string Marker(string key, string value) =>
+            $"[assembly: System.Reflection.AssemblyMetadata(\"{key}\", \"{value}\")]\n";
+
         private static string Message(int branches) =>
             $"Member 'Run' makes {branches} branching decisions; the limit is {BranchCountAnalyzer.MaxBranches}";
 

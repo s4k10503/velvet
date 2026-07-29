@@ -10,10 +10,10 @@ using Xunit;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// VEL500 is an error that only fires in an assembly carrying the opt-in marker, so a package assembly
-    /// that lacks it is exempt from the limit with nothing to say so. Without this guard a new asmdef starts
-    /// life outside the rule and the omission is invisible — the suite stays green precisely because the
-    /// analyzer never ran there.
+    /// The code-shape rules are errors that only fire in an assembly carrying the opt-in marker, so a
+    /// package assembly that lacks it is exempt from every one of them with nothing to say so. Without this
+    /// guard a new asmdef starts life outside the rules and the omission is invisible — the suite stays
+    /// green precisely because the analyzers never ran there.
     /// </summary>
     /// <remarks>
     /// Whether a source declares the marker is decided by calling the analyzer's own gate against a real
