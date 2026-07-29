@@ -30,7 +30,7 @@ namespace Velvet.Tests
         {
             // The Label pool is a process-wide static; start every test from empty so a pool-count
             // assertion is deterministic regardless of what earlier tests in this fixture rented/returned.
-            VNodePool.ClearLabelPoolForTesting();
+            VNodePoolTestAccess.ClearLabelPoolForTest();
         }
 
         [Test]
@@ -122,7 +122,7 @@ namespace Velvet.Tests
             // Act — remove (returns the label to the pool with the stale width still on it), then
             // recreate a text-balance label at the same position, renting the SAME pooled instance back.
             scope.Reconciler.Reconcile(scope.Root, tree1, System.Array.Empty<VNode>());
-            Assume.That(VNodePool.LabelPoolCountForTesting, Is.EqualTo(1),
+            Assume.That(VNodePoolTestAccess.LabelPoolCountForTest, Is.EqualTo(1),
                 "Precondition: the label was returned to the pool");
             var tree3 = new VNode[] { V.Label(className: "text-balance", text: "world") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree3);

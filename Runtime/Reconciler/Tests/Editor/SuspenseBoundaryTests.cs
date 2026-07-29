@@ -490,7 +490,7 @@ namespace Velvet.Tests
         {
             // Arrange — the primary created a childless poolable Label before the sibling async child suspended;
             // the non-Label fallback (a Button) does not rent it back, so it stays in the pool and is observable.
-            VNodePool.ClearLabelPoolForTesting();
+            VNodePoolTestAccess.ClearLabelPoolForTest();
             var source = new UniTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
 
@@ -498,7 +498,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(OrphanLeafSuspenseHostRender, key: "host"));
 
             // Assert
-            Assert.That(VNodePool.LabelPoolCountForTesting, Is.GreaterThanOrEqualTo(1),
+            Assert.That(VNodePoolTestAccess.LabelPoolCountForTest, Is.GreaterThanOrEqualTo(1),
                 "A poolable leaf created by a suspended primary is reclaimed into the pool on rollback");
         }
 
@@ -506,7 +506,7 @@ namespace Velvet.Tests
         public void Given_SuspendedPrimaryWithPoolableLeaf_When_Resolved_Then_PrimarySiblingLeafIsRecommitted()
         {
             // Arrange
-            VNodePool.ClearLabelPoolForTesting();
+            VNodePoolTestAccess.ClearLabelPoolForTest();
             var source = new UniTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             using var mounted = V.Mount(_root, V.Component(OrphanLeafSuspenseHostRender, key: "host"));
@@ -525,7 +525,7 @@ namespace Velvet.Tests
         public void Given_SuspendedPrimaryWithPoolableLeaf_When_Resolved_Then_AsyncChildContentIsRendered()
         {
             // Arrange
-            VNodePool.ClearLabelPoolForTesting();
+            VNodePoolTestAccess.ClearLabelPoolForTest();
             var source = new UniTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             using var mounted = V.Mount(_root, V.Component(OrphanLeafSuspenseHostRender, key: "host"));
@@ -546,7 +546,7 @@ namespace Velvet.Tests
             // Arrange — the primary created a Button declared with children; CreateElement inline-expands those
             // children into the Button, so the orphan may host fibers reused on resolve. Pooling such a container
             // would resurface its stale child subtree on the next rent, so only childless leaves are reclaimed.
-            VNodePool.ClearButtonPoolForTesting();
+            VNodePoolTestAccess.ClearButtonPoolForTest();
             var source = new UniTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
 
@@ -554,7 +554,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(ChildBearingButtonSuspenseHostRender, key: "host"));
 
             // Assert
-            Assert.That(VNodePool.ButtonPoolCountForTesting, Is.EqualTo(0),
+            Assert.That(VNodePoolTestAccess.ButtonPoolCountForTest, Is.EqualTo(0),
                 "A child-bearing Button orphan is left for GC, not returned to the pool");
         }
 

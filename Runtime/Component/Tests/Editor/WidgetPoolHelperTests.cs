@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -18,7 +19,7 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class ButtonPoolHelperTests : PoolHelperTestsBase<Button>
     {
-        protected override void ClearPool() => VNodePool.ClearButtonPoolForTesting();
+        protected override void ClearPool() => VNodePoolTestAccess.ClearButtonPoolForTest();
         protected override Button Rent() => VNodePool.RentButton();
         protected override void Return(Button element) => VNodePool.ReturnButton(element);
         protected override void Reset(Button element) => FiberButtonPoolHelper.ResetButtonForReuse(element);
@@ -81,7 +82,7 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class LabelPoolHelperTests : PoolHelperTestsBase<Label>
     {
-        protected override void ClearPool() => VNodePool.ClearLabelPoolForTesting();
+        protected override void ClearPool() => VNodePoolTestAccess.ClearLabelPoolForTest();
         protected override Label Rent() => VNodePool.RentLabel("test");
         protected override void Return(Label element) => VNodePool.ReturnLabel(element);
         protected override void Reset(Label element) => FiberLabelPoolHelper.ResetLabelForReuse(element);
@@ -163,7 +164,7 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class SliderPoolHelperTests : PoolHelperTestsBase<Slider>
     {
-        protected override void ClearPool() => VNodePool.ClearSliderPoolForTesting();
+        protected override void ClearPool() => VNodePoolTestAccess.ClearSliderPoolForTest();
         protected override Slider Rent() => VNodePool.RentSlider();
         protected override void Return(Slider element) => VNodePool.ReturnSlider(element);
         protected override void Reset(Slider element) => FiberSliderPoolHelper.ResetSliderForReuse(element);
@@ -254,7 +255,7 @@ namespace Velvet.Tests
     /// </remarks>
     internal sealed class TextFieldPoolHelperTests : PoolHelperTestsBase<TextField>
     {
-        protected override void ClearPool() => VNodePool.ClearTextFieldPoolForTesting();
+        protected override void ClearPool() => VNodePoolTestAccess.ClearTextFieldPoolForTest();
         protected override TextField Rent() => VNodePool.RentTextField();
         protected override void Return(TextField element) => VNodePool.ReturnTextField(element);
         protected override void Reset(TextField element) => FiberTextFieldPoolHelper.ResetTextFieldForReuse(element);
@@ -339,7 +340,7 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class TogglePoolHelperTests : PoolHelperTestsBase<Toggle>
     {
-        protected override void ClearPool() => VNodePool.ClearTogglePoolForTesting();
+        protected override void ClearPool() => VNodePoolTestAccess.ClearTogglePoolForTest();
         protected override Toggle Rent() => VNodePool.RentToggle();
         protected override void Return(Toggle element) => VNodePool.ReturnToggle(element);
         protected override void Reset(Toggle element) => FiberTogglePoolHelper.ResetToggleForReuse(element);
