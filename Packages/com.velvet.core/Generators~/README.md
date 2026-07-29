@@ -162,11 +162,12 @@ Counted: `if`, and separately each `else if` of a chain; `for`, `foreach`, `whil
 `??=`, `?:`; each `case` label; each arm of a `switch` expression; each `catch`; each `when` filter, beside
 the `catch` or `case` it guards; and `and` / `or` between patterns.
 
-Not counted: the closing `else`, `default:`, and the `_` arm of a `switch` expression — each runs when no
-decision picked anything, and charging for them would price an exhaustive `switch` above one that silently
-falls through; `try`, `finally`, `switch`, `lock` and `using`, which open no decision of their own; `not`,
-which inverts one test rather than adding a second; and `?.` and a bare `is`, which produce a value that
-some other construct — already counted where it appears — turns into a decision.
+Not counted: the closing `else`, `default:`, and the `_` or `var` arm of a `switch` expression — each runs
+when no decision picked anything, and charging for them would price an exhaustive `switch` above one that
+silently falls through; `try`, `finally`, `switch`, `lock` and `using`, which open no decision of their own;
+`not`, which inverts one test rather than adding a second; `?.` and a bare `is`, which produce a value that
+some other construct — already counted where it appears — turns into a decision; and a query expression,
+whose clauses are calls, matching what the same query spelled in method syntax costs.
 
 Where this disagrees with the depth definition it is deliberate. Depth is a property of the deepest path, so
 it has to treat an `else if` chain and the expression-level branch forms as transparent: each is the

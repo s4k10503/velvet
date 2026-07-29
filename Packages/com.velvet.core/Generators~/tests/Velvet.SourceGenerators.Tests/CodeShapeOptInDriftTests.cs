@@ -166,7 +166,7 @@ namespace Velvet.SourceGenerators.Tests
                 references: GeneratorTestHelper.ReferenceAssemblies(),
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-            return NestingDepthAnalyzer.OptsIntoCodeShapeRules(compilation.Assembly);
+            return CodeShapeMembers.OptsIntoCodeShapeRules(compilation.Assembly);
         }
     }
 }
