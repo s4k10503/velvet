@@ -113,7 +113,7 @@ namespace Velvet.Tests
             using var store = new ToggleStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(Footer, key: "footer"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var scheduler = mounted.GetSchedulerForTest();
             store.Set(false);
             scheduler.DrainImmediateForTest();
             Assume.That(ChildCountOf(_root, "item-a"), Is.EqualTo(-1), "Precondition: the footer buttons are gone while hidden");
@@ -133,7 +133,7 @@ namespace Velvet.Tests
             using var store = new ToggleStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(Footer, key: "footer"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var scheduler = mounted.GetSchedulerForTest();
             store.Set(false);
             scheduler.DrainImmediateForTest();
 
@@ -202,7 +202,7 @@ namespace Velvet.Tests
             using var store = new PhaseStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(Screen, key: "screen"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var scheduler = mounted.GetSchedulerForTest();
             var probe = _root.Q<ProbeButton>();
             Assume.That(probe, Is.Not.Null, "Precondition: the subclass instance is mounted");
             store.Set(1);
@@ -255,16 +255,16 @@ namespace Velvet.Tests
             using var store = new ToggleStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(Avatar, key: "avatar"));
-            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            var scheduler = mounted.GetSchedulerForTest();
             Assume.That(_root.Q<Button>("avatar"), Is.Not.Null, "Precondition: the wrapped button is mounted");
-            var before = VNodePool.ButtonPoolCountForTesting;
+            var before = VNodePoolTestAccess.ButtonPoolCountForTest;
 
             // Act — remove the wrapped slot through the ordinary unmount path.
             store.Set(false);
             scheduler.DrainImmediateForTest();
 
             // Assert — the inner button reached the pool (not the wrapper, not GC).
-            Assert.AreEqual(before + 1, VNodePool.ButtonPoolCountForTesting);
+            Assert.AreEqual(before + 1, VNodePoolTestAccess.ButtonPoolCountForTest);
         }
     }
 }

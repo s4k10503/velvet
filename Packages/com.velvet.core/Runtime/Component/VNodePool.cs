@@ -348,46 +348,6 @@ namespace Velvet
             s_sliderPool.Clear();
             s_textFieldPool.Clear();
         }
-
-        // Drains the Label pool. Intended for EditMode tests that must start from an empty pool
-        // to make boundary assertions deterministic across test methods.
-        internal static void ClearLabelPoolForTesting()
-        {
-            s_labelPool.Clear();
-        }
-
-        // Current Label pool size. Intended for EditMode tests that assert a returned element was
-        // reclaimed into the pool rather than dropped.
-        internal static int LabelPoolCountForTesting => s_labelPool.Count;
-
-        // Drains the Button pool. Intended for EditMode tests that must start from an empty pool
-        // to make boundary assertions deterministic across test methods.
-        internal static void ClearButtonPoolForTesting()
-        {
-            s_buttonPool.Clear();
-        }
-
-        // Current Button pool size. Intended for EditMode tests that assert a child-bearing Button
-        // orphan is NOT reclaimed into the pool (only childless poolable leaves are).
-        internal static int ButtonPoolCountForTesting => s_buttonPool.Count;
-
-        // Drains the Toggle pool. EditMode tests use this to start from an empty pool.
-        internal static void ClearTogglePoolForTesting()
-        {
-            s_togglePool.Clear();
-        }
-
-        // Drains the Slider pool. EditMode tests use this to start from an empty pool.
-        internal static void ClearSliderPoolForTesting()
-        {
-            s_sliderPool.Clear();
-        }
-
-        // Drains the TextField pool. EditMode tests use this to start from an empty pool.
-        internal static void ClearTextFieldPoolForTesting()
-        {
-            s_textFieldPool.Clear();
-        }
 #endif
     }
 }
