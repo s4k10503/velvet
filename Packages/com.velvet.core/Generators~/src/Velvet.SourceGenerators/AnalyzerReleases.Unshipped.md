@@ -30,4 +30,4 @@ VEL009 | Velvet.Memoize | Warning | [MemoizeMethod] partial method declaration m
 VEL100 | Velvet.Hooks | Warning | Hook lambda captures a local that is not in the deps array (exhaustive-deps)
 VEL101 | Velvet.Hooks | Warning | Hook call inside conditional control flow (Rules of Hooks)
 VEL500 | Velvet.Shape | Error | Member body nests control flow more than 4 levels deep
-VEL501 | Velvet.Shape | Warning | Member body makes more than 20 branching decisions
+VEL501 | Velvet.Shape | Error | Member body makes more than 20 branching decisions
