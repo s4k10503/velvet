@@ -28,6 +28,11 @@ namespace Velvet.SourceGenerators.Tests
         // Unity compiles the editor-platform assemblies with UNITY_EDITOR defined and player builds without
         // it. Requiring the marker under both is what stops a `#if`-guarded opt-in from enforcing the rule
         // in one configuration and silently skipping it in the other.
+        //
+        // Adding a third configuration means adding a third test. A conditional spelling is visible to
+        // exactly one configuration, so one case per configuration is the only coverage that holds: a single
+        // case reads as covering the feature while covering one configuration's worth of it, and the
+        // untested configuration can then be deleted with nothing going red.
         private static readonly string[][] PreprocessorConfigurations =
         {
             Array.Empty<string>(),
@@ -95,10 +100,28 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
-        public void Given_AMarkerBehindAPreprocessorBranch_When_Checked_Then_ItDoesNotCount()
+        public void Given_AMarkerAbsentFromTheEditorBuild_When_Checked_Then_ItDoesNotCount()
         {
             // Arrange
             var source = "#if !UNITY_EDITOR\n"
+                + "[assembly: System.Reflection.AssemblyMetadata(\"Velvet.CodeShape\", \"enforce\")]\n"
+                + "#endif\n";
+
+            // Act
+            var declares = DeclaresMarkerInSources(new[] { source });
+
+            // Assert
+            Assert.False(declares);
+        }
+
+        [Fact]
+        public void Given_AMarkerAbsentFromThePlayerBuild_When_Checked_Then_ItDoesNotCount()
+        {
+            // The mirror of the case above. The two look mergeable and are not: this one fails only if the
+            // no-symbols configuration is consulted and the one above only if UNITY_EDITOR is, so collapsing
+            // them into a single case reopens the gap that motivated both.
+            // Arrange
+            var source = "#if UNITY_EDITOR\n"
                 + "[assembly: System.Reflection.AssemblyMetadata(\"Velvet.CodeShape\", \"enforce\")]\n"
                 + "#endif\n";
 
