@@ -21,6 +21,11 @@ namespace Velvet
         // Payload arrays aligned to Breakpoints (length 5) plus the dark payloads.
         private string[][] _responsive;
         private string[] _dark;
+        // Each payload's position in the className, aligned to the arrays above. Carried so a payload can be
+        // ranked against one another owner applied at the same layer — a dark:hover: leaf is gated from here
+        // but lands on the hover layer, where a plain hover: payload also sits.
+        private int[][] _responsiveDeclarations;
+        private int[] _darkDeclarations;
 
         private readonly bool[] _bpOn = new bool[Breakpoints.Length];
         private bool _darkOn;
@@ -28,19 +33,25 @@ namespace Velvet
 
         private readonly ReconcilerContext _ctx;
 
-        public StyleConditionalVariantManipulator(ReconcilerContext ctx, string[][] responsive, string[] dark)
+        public StyleConditionalVariantManipulator(ReconcilerContext ctx, string[][] responsive, string[] dark,
+            int[][] responsiveDeclarations, int[] darkDeclarations)
         {
             _ctx = ctx;
             _responsive = responsive ?? new string[Breakpoints.Length][];
             _dark = dark ?? Array.Empty<string>();
+            _responsiveDeclarations = responsiveDeclarations ?? new int[Breakpoints.Length][];
+            _darkDeclarations = darkDeclarations ?? Array.Empty<int>();
             _widthSource = new ResponsiveWidthSource(EvaluateResponsive);
         }
 
-        public void UpdatePayloads(string[][] responsive, string[] dark)
+        public void UpdatePayloads(string[][] responsive, string[] dark,
+            int[][] responsiveDeclarations, int[] darkDeclarations)
         {
             ResetApplied();
             _responsive = responsive ?? new string[Breakpoints.Length][];
             _dark = dark ?? Array.Empty<string>();
+            _responsiveDeclarations = responsiveDeclarations ?? new int[Breakpoints.Length][];
+            _darkDeclarations = darkDeclarations ?? Array.Empty<int>();
             Evaluate();
         }
 
@@ -144,7 +155,23 @@ namespace Velvet
         }
 
         private void ApplyPayloads(string[] payloads, bool on)
-            => StyleVariantPayload.Apply(target, payloads, on, PriorityFor(payloads), _ctx, this);
+            => StyleVariantPayload.Apply(target, payloads, on, PriorityFor(payloads), _ctx, this,
+                DeclarationsFor(payloads));
+
+        // The className positions belonging to the payload array passed, paired the same way PriorityFor
+        // pairs the layer.
+        private int[] DeclarationsFor(string[] payloads)
+        {
+            if (ReferenceEquals(payloads, _dark)) return _darkDeclarations;
+            for (var i = 0; i < _responsive.Length; i++)
+            {
+                if (ReferenceEquals(payloads, _responsive[i]))
+                {
+                    return i < _responsiveDeclarations.Length ? _responsiveDeclarations[i] : Array.Empty<int>();
+                }
+            }
+            return Array.Empty<int>();
+        }
 
         // Arbitrary-value layering priority: dark, or a responsive breakpoint (a larger min-width wins). Keyed
         // by reference to the payload array passed, so a higher breakpoint's arbitrary value layers over a lower

@@ -10,14 +10,36 @@ namespace Velvet
     // list, or an arbitrary value (w-[200px]) applied as an inline style.
     internal static class StyleVariantPayload
     {
+        // The rank a payload carries when no position in THIS element's className applies to it: a caller
+        // that supplies none, and the child-combinator manipulator, whose payloads are positioned in the
+        // PARENT's class list and so cannot be compared with the child's own.
+        //
+        // Deliberately the WEAKEST value rather than the strongest, so an unrankable payload loses a tie
+        // instead of winning it. A [&>*]:hover: payload is promoted out of the child-variant layer onto the
+        // hover layer (see ReconcilerContext.GateStackedVariant), where the child's own hover: payload sits;
+        // ranking it strongest would let a container's blanket rule beat a rule the child declares for
+        // itself, which is the opposite of what the child-variant layer exists to encode. Two unrankable
+        // payloads tie and fall back to arrival, which within one swept array is that array's own order.
+        public const int NoDeclaration = int.MinValue;
+
         // Applies (when on is true) or clears each payload on target.
         // A payload containing [ that parses as an arbitrary value is applied as an inline style at
         // priority; otherwise it is projected onto the class list at that same priority. Either way the
         // payload layers over the base and the lower-priority variants rather than tying with them, and
         // turning it off falls back to whatever is still active.
+        //
+        // declarations gives each payload, by position, where its rule sits in the element's className, which
+        // settles a tie between two gate payloads that layer at ONE priority the way source order settles a
+        // tie between two equal-specificity CSS rules (see ReconcilerContext.TrackVariantGateClass). It rides
+        // in from the caller rather than being read back out of the class array, because the array cannot say
+        // whether a rule is LIT: a `lg:shadow-lg` below the breakpoint, a `peer-checked:` with no peer, a
+        // `[&>*]:shadow-lg` that lands on the children, and a `first:hover:shadow-lg` the structural config
+        // refuses to register all spell a payload that never applies here, and a scan would rank the element
+        // by them anyway. A caller that supplies none leaves its payloads ranked behind every declared one in
+        // their band, tied among themselves and so ordered by arrival.
         public static void Apply(VisualElement target, string?[] payloads, bool on,
             int priority = StyleLayerPriority.Base,
-            ReconcilerContext? ctx = null, object? owner = null)
+            ReconcilerContext? ctx = null, object? owner = null, int[]? declarations = null)
         {
             if (target == null || payloads == null)
             {
@@ -36,12 +58,16 @@ namespace Velvet
             // spellings need nothing here — the manipulator's own layer probe sees both of their edges.
             var reSyncOnly = false;
 
-            foreach (var payload in payloads)
+            for (var index = 0; index < payloads.Length; index++)
             {
+                var payload = payloads[index];
                 if (string.IsNullOrEmpty(payload))
                 {
                     continue;
                 }
+                var declaration = declarations != null && index < declarations.Length
+                    ? declarations[index]
+                    : NoDeclaration;
 
                 // Stacked variant (e.g. the `hover:bg-red` remainder of `dark:hover:bg-red`): the outer
                 // manipulator's gate has flipped; defer to a nested manipulator that ANDs the inner variant's
@@ -49,7 +75,7 @@ namespace Velvet
                 // available (the parameterless callers and the leaf-path unit tests).
                 if (ctx != null && owner != null && StyleVariantClass.IsVariant(payload))
                 {
-                    ctx.GateStackedVariant(target, owner, payload, on, priority);
+                    ctx.GateStackedVariant(target, owner, payload, on, priority, declaration);
                     continue;
                 }
 
@@ -83,13 +109,13 @@ namespace Velvet
                 else if (on)
                 {
                     StyleClassProjection.Add(target, core, effectivePriority);
-                    gateChanged |= TrackVariantGate(ctx, target, core, true);
+                    gateChanged |= TrackVariantGate(ctx, target, core, effectivePriority, declaration, true);
                     reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
                 }
                 else
                 {
                     StyleClassProjection.Remove(target, core, effectivePriority);
-                    gateChanged |= TrackVariantGate(ctx, target, core, false);
+                    gateChanged |= TrackVariantGate(ctx, target, core, effectivePriority, declaration, false);
                     reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
                 }
 
@@ -151,8 +177,10 @@ namespace Velvet
         // Records a toggled payload that is one of the gate tokens, returning true when the tracked set
         // changed. Returns false without touching anything for the parameterless callers (no context to
         // record into) and for the overwhelmingly common non-gate payload.
-        private static bool TrackVariantGate(ReconcilerContext? ctx, VisualElement target, string core, bool on)
-            => ctx != null && IsVariantGateToken(core) && ctx.TrackVariantGateClass(target, core, on);
+        private static bool TrackVariantGate(ReconcilerContext? ctx, VisualElement target, string core,
+            int priority, int declaration, bool on)
+            => ctx != null && IsVariantGateToken(core)
+                && ctx.TrackVariantGateClass(target, core, priority, declaration, on);
 
         // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
         // the four layout manipulators (FiberNodePatcher.ApplyLayoutManipulators) and the five wrapper-less
