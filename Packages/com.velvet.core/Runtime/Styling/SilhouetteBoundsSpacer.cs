@@ -120,21 +120,12 @@ namespace Velvet
             return true;
         }
 
-        // The container's child count excluding the trailing bounds-spacer(s). The spacers are always kept
-        // last, so the real children occupy [0, this) — the range the child reconciler and structural
-        // variants must treat as the whole child list.
-        // Floored at the LEADING run of z-layer containers (FiberZLayerCoordinator's own back container is the
-        // one reconciler-invisible child ever placed leading, never trailing): IsSpacer also recognizes a layer
-        // container, so an unguarded trailing trim would eat it too whenever it is (even transiently, mid-diff)
-        // the parent's LAST child — e.g. the instant an interspersed ordinary sibling's own placeholder is
-        // removed and the back container is momentarily all that is left. Once eaten from the count, an
-        // ordinary insert clamped against that undercount lands BEFORE the back container instead of after it,
-        // permanently misplacing it (it stops being the parent's leading child, corrupting LeadingOffset for
-        // this parent from then on). Scanning the leading run first — not calling into the reconciler layer —
-        // keeps the Styling -> Reconciler dependency direction this file already has via IsLayerContainer, one
-        // level further. A front (trailing) container reached by this same leading scan only when it happens to
-        // be the parent's OWN sole child protects it identically; every other trailing case (the ordinary,
-        // overwhelming majority) is unaffected since the floor is 0 there.
+        // The container's child count with a TRAILING run of spacers trimmed and a LEADING run of z-layer
+        // containers counted — the physical bound the reconciler used before it addressed slots logically.
+        // Superseded by LogicalChildSlots.Count, which counts rendered children wherever they sit and so
+        // does NOT count that leading container; the two disagree by exactly that, which is why this is not
+        // a synonym. No production caller remains — it is kept only to avoid editing unrelated fixtures in
+        // the refactor that retired it, and reaching for it from reconciler code gives the wrong number.
         internal static int NonSpacerChildCount(VisualElement container)
         {
             var n = container.childCount;

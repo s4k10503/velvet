@@ -57,6 +57,12 @@ namespace Velvet
         internal static bool IsLayerContainer(VisualElement child)
             => child.ClassListContains(FrontMarkerClass) || child.ClassListContains(BackMarkerClass);
 
+        // The BACK container is the only reconciler-invisible child that must stay a parent's FIRST physical
+        // child (it paints behind the ordinary children). Every other kind — the front container, a filter
+        // bounds spacer — must stay last. LogicalChildSlots needs the two apart to place an append.
+        internal static bool IsBackLayerContainer(VisualElement child)
+            => child != null && child.ClassListContains(BackMarkerClass);
+
         // The z-* scope gate: an element is z-managed only when it carries an explicit z-* utility class AND
         // is ALSO out-of-flow — either the "absolute" utility class (StyleOutOfFlowChild's off-panel/class-
         // based half: z-* on an in-flow element is a documented no-op, decided here before the element has
@@ -77,15 +83,6 @@ namespace Velvet
             }
             return StyleZIndexClass.TryExtract(classNames, out resolvedZ);
         }
-
-        // How many of `parent`'s LEADING children are its own back-layer container (0 or 1). Folded into
-        // wherever a fresh (non-resumed) slotStart originates — ChildReconciler.Reconcile's single entry
-        // point — so every downstream ordinary-child index computation is already correct without touching
-        // any of them individually. A resumed time-sliced pass never re-enters through that same point (its
-        // saved slotStart already has this baked in from when it first ran), so this must never be applied
-        // twice for the same logical pass.
-        internal static int LeadingOffset(VisualElement parent)
-            => parent.childCount > 0 && parent[0].ClassListContains(BackMarkerClass) ? 1 : 0;
 
         // A zero-footprint stand-in left at a z-managed element's logical slot while its real element
         // lives in a layer container. Carries focusable/tabIndex so it can act as a same-panel Tab proxy
@@ -138,11 +135,10 @@ namespace Velvet
         // Drain-time resolution of a queued mount (ChildReconciler.DrainPendingPortalMounts's new case arm).
         // By now placeholder.parent is set (the caller already inserted it at the ordinary slot like any
         // other created element), so the stacking parent — and therefore its container — is finally known.
-        // `current` is the ChildReconciler instance whose own top-level Reconcile() finally is running this
         // drain (see RebaseParkedSlotsForContainerChange) — threaded through only so GetOrCreateContainer can
         // rebase a same-pass self-park; it plays no other part in resolving this mount.
         internal static void ResolveQueuedMount(
-            ReconcilerContext ctx, VisualElement placeholder, ZLayerMountNode node, ChildReconciler current)
+            ReconcilerContext ctx, VisualElement placeholder, ZLayerMountNode node)
         {
             var stackingParent = placeholder.parent;
             if (stackingParent == null)
@@ -151,7 +147,7 @@ namespace Velvet
                 // this drained — mirrors DrainPendingPortalMounts' own placeholder.parent == null skip.
                 return;
             }
-            var container = GetOrCreateContainer(ctx, stackingParent, node.ResolvedZ, current);
+            var container = GetOrCreateContainer(ctx, stackingParent, node.ResolvedZ);
             Place(ctx, placeholder, container, stackingParent, node.Real, node.ResolvedZ, node.Order, node.RescueFocus);
         }
 
@@ -284,10 +280,8 @@ namespace Velvet
         }
 
         // Runs at the same post-pass safe point as DrainPendingPortalMounts: any container whose membership
-        // changed this pass and is now empty is removed from its stacking parent and forgotten. `current` is
-        // threaded through for the same reason as ResolveQueuedMount's own parameter — see
-        // RebaseParkedSlotsForContainerChange.
-        internal static void DrainTeardowns(ReconcilerContext ctx, ChildReconciler current)
+        // changed this pass and is now empty is removed from its stacking parent and forgotten.
+        internal static void DrainTeardowns(ReconcilerContext ctx)
         {
             if (ctx.PendingZLayerTeardownChecks.Count == 0)
             {
@@ -300,16 +294,7 @@ namespace Velvet
                     continue;
                 }
                 var stackingParent = container.parent;
-                // The marker class survives Remove (a detach, not a destroy), so reading it after is just as
-                // valid — checked here only because only a BACK container's removal is a LEADING-child change
-                // (LeadingOffset's whole reason to exist); a front container is trailing, so removing it never
-                // shifts any ordinary/placeholder index.
-                var wasBack = container.ClassListContains(BackMarkerClass);
                 stackingParent.Remove(container);
-                if (wasBack)
-                {
-                    RebaseParkedSlotsForContainerChange(ctx, stackingParent, -1, current);
-                }
                 if (!ctx.ZLayerHosts.TryGetValue(stackingParent, out var record))
                 {
                     continue;
@@ -381,11 +366,9 @@ namespace Velvet
         // The container for `resolvedZ`'s sign under `stackingParent`, creating (and physically attaching)
         // it on first use. Only ever called from a safe (post-pass) context — creating one changes
         // `stackingParent`'s own child list, which a live diff over that same parent may still be indexing
-        // by absolute position. `current` is the ChildReconciler instance running this drain — threaded
-        // through only for the back-container branch's rebase (see RebaseParkedSlotsForContainerChange); the
-        // front branch never needs it (trailing, no LeadingOffset impact).
+        // by absolute position.
         private static VisualElement GetOrCreateContainer(
-            ReconcilerContext ctx, VisualElement stackingParent, int resolvedZ, ChildReconciler current)
+            ReconcilerContext ctx, VisualElement stackingParent, int resolvedZ)
         {
             if (!ctx.ZLayerHosts.TryGetValue(stackingParent, out var record))
             {
@@ -398,15 +381,10 @@ namespace Velvet
                 {
                     record.Back = CreateContainer(BackMarkerClass);
                     // The back layer must physically PRECEDE the parent's ordinary children to paint behind
-                    // them — the one structural asymmetry against the front layer (SilhouetteBoundsSpacer's
-                    // own trailing-only spacer convention), which is what LeadingOffset exists to reconcile
-                    // against every ordinary-child index computation.
+                    // them. LogicalChildSlots is what keeps that invisible to every slot computation, and it
+                    // is the reason an append into a parent holding only this container must still resolve
+                    // AFTER it rather than to index 0.
                     stackingParent.Insert(0, record.Back);
-                    // A time-sliced pass — this same drain's own instance, mid-unwind through its own park, or
-                    // any other fiber already parked from an earlier pass — may have captured a slotStart/
-                    // slotLimit over this exact stackingParent before this LEADING insert existed. Every such
-                    // pass is now off by one in the corresponding direction.
-                    RebaseParkedSlotsForContainerChange(ctx, stackingParent, +1, current);
                 }
                 return record.Back;
             }
@@ -422,51 +400,6 @@ namespace Velvet
             return record.Front;
         }
 
-        // Rebases every time-sliced pass parked over `stackingParent` by delta, once a back container's
-        // creation or removal has just shifted every LEADING index there by that same amount. Two
-        // populations can be parked against the SAME stackingParent at this moment, and they are NOT always
-        // disjoint by fiber:
-        //   `current` — the ChildReconciler instance whose OWN top-level Reconcile()/ContinueReconcile() call
-        //     is unwinding through THIS SAME drain (both always run DrainPendingPortalMounts, hence
-        //     DrainTeardowns, from their own top-level finally before returning). A self-caused park — this
-        //     slice's own placeholder insert queued the very mount (or, for the negative direction, its own
-        //     patch synchronously emptied the container) this drain now resolves — is invisible to any
-        //     cross-fiber registry ONLY on a fiber's very FIRST suspension: FiberCommitWork adds a fiber to
-        //     ParkedBaselineFibers once its Reconcile() call has fully returned, strictly AFTER that first
-        //     drain finishes. But an INTERMEDIATE resume tick (FiberWorkLoop.ContinueReconcile driving an
-        //     already-parked fiber) runs with that SAME fiber already sitting in ParkedBaselineFibers from its
-        //     earlier suspension — nothing removes it until HasPendingWork finally goes false — so if that
-        //     tick both creates/removes a container under its OWN MountPoint and immediately re-parks, `current`
-        //     and the loop below would otherwise match the identical fiber twice. RebasePendingSlotStartIfTargeting
-        //     checks Parent match itself, since (unlike FiberCommitWork.PropagateInlineSlotShift's inline-sibling
-        //     walk) nothing here already guarantees `current` is even parked over THIS stackingParent.
-        //   ReconcilerContext.ParkedBaselineFibers — every fiber left parked by an earlier pass, MINUS
-        //     whichever one owns `current` (excluded below) — the same ctx-wide registry
-        //     FiberTreeReturn.MarkOwnerRoots already sweeps wholesale for its own cross-fiber mark. A fiber's
-        //     own Reconcile call always targets fiber.MountPoint as `parent`
-        //     (FiberCommitWork.ReconcileIntoSlotRange), so MountPoint identity is exactly the "this fiber's
-        //     parked state targets stackingParent" test — no separate per-parent index needs maintaining
-        //     alongside it.
-        private static void RebaseParkedSlotsForContainerChange(
-            ReconcilerContext ctx, VisualElement stackingParent, int delta, ChildReconciler current)
-        {
-            current.RebasePendingSlotStartIfTargeting(stackingParent, delta);
-            foreach (var fiber in ctx.ParkedBaselineFibers)
-            {
-                // `current`'s own owning fiber, when it is itself one of the parked entries this loop would
-                // otherwise reach (see this method's own doc), was already rebased by the direct call above —
-                // matching it again here would apply delta to the very same PendingIndexedState/
-                // PendingKeyedState instance a second time.
-                if (ReferenceEquals(fiber.Reconciler?.ChildReconciler, current))
-                {
-                    continue;
-                }
-                if (ReferenceEquals(fiber.MountPoint, stackingParent))
-                {
-                    fiber.Reconciler?.RebasePendingSlotStart(delta);
-                }
-            }
-        }
 
         private static VisualElement CreateContainer(string markerClass)
         {

@@ -38,22 +38,11 @@ namespace Velvet
             return limit;
         }
 
-        // The fiber's shared MountPoint child count, blind to a z-layer container's own physical presence.
-        // FiberZLayerCoordinator creates or removes a container on the SAME parent a caller measures
-        // before/after its own Reconcile / ContinueReconcile call (the container drain runs from inside
-        // that same call's safe post-pass point), so a raw childCount read attributes the container's
-        // leading/trailing +-1 to this fiber's own committed-row delta and leaks a physical offset into
-        // MountSlotCount / a following sibling's MountSlotStart — both already logical quantities the entry
-        // gate (ChildReconciler.Reconcile) re-adds LeadingOffset to on every fresh entry, so that offset
-        // would then apply twice. NonSpacerChildCount only trims the TRAILING spacer run (a front
-        // container, a bounds-spacer) — a leading back container stays counted by its contract — so the
-        // leading side must be subtracted separately for a container appearing or disappearing during the
-        // measured interval to cancel out of the delta symmetrically in either direction.
+        // The mount point's rendered child count, in LOGICAL slots — the basis every stored slotStart
+        // shares, so an invisible child appearing or disappearing anywhere in the list cancels out of a
+        // before/after delta instead of being read as a rendered child arriving or leaving.
         internal static int LogicalMountPointChildCount(VisualElement? mountPoint)
-            => mountPoint != null
-                ? SilhouetteBoundsSpacer.NonSpacerChildCount(mountPoint)
-                    - FiberZLayerCoordinator.LeadingOffset(mountPoint)
-                : 0;
+            => mountPoint != null ? LogicalChildSlots.Count(mountPoint) : 0;
 
         // Propagates an inline-mount fiber's committed child-count change to the siblings that share its
         // MountPoint. Updates the fiber's own slot count, then shifts every following sibling's

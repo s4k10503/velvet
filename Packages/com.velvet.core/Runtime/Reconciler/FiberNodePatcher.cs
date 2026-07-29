@@ -974,12 +974,16 @@ namespace Velvet
 
             var oldChildren = oldChildrenRaw ?? Array.Empty<VNode>();
             var newChildren = newChildrenRaw ?? Array.Empty<VNode>();
-            var beforeTailCount = target.childCount;
+            // LOGICAL counts on both sides of the reconcile, matching the basis SlotStart and SlotLength are
+            // stored in. Measuring this physically let an invisible child arriving on the target — a portal
+            // child gaining a filter, or a negative z — inflate the recorded length by one, which then
+            // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
+            var beforeTailCount = LogicalChildSlots.Count(target);
             _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
-            // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total childCount
+            // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.
-            var newSlotLength = target.childCount - (beforeTailCount - prevState.SlotLength);
+            var newSlotLength = LogicalChildSlots.Count(target) - (beforeTailCount - prevState.SlotLength);
             var delta = newSlotLength - prevState.SlotLength;
 
             // The RESOLVED target is written back: a portal that mounted before its id registered
@@ -2612,9 +2616,8 @@ namespace Velvet
             // Exclude the trailing filter bounds-spacer(s) AND a leading back z-layer container (either may
             // be present) from the sibling count: neither is part of the logical child list a
             // first:/last:/nth match sees.
-            var leadingOffset = FiberZLayerCoordinator.LeadingOffset(logicalParent!);
-            EvaluateStructural(_ctx, element, logicalIndex - leadingOffset,
-                SilhouetteBoundsSpacer.NonSpacerChildCount(logicalParent!) - leadingOffset, rules);
+            EvaluateStructural(_ctx, element, LogicalChildSlots.ToLogical(logicalParent!, logicalIndex),
+                LogicalChildSlots.Count(logicalParent!), rules);
         }
 
         // Applies / clears each structural rule's payload for an element at the given sibling position.
@@ -2641,17 +2644,14 @@ namespace Velvet
                 return;
             }
 
-            // The trailing filter bounds-spacer(s) are internal render-bounds children, not logical siblings:
-            // exclude them from the count and skip evaluating them so first:/last:/nth match the real children.
-            // A leading back z-layer container (FiberZLayerCoordinator), when present, is symmetrically
-            // excluded: NonSpacerChildCount only trims the trailing side, so the scan start and the count are
-            // both corrected by LeadingOffset here — otherwise every ordinary child's structural position
-            // computes one slot too high and the sibling count is inflated by one.
-            var leadingOffset = FiberZLayerCoordinator.LeadingOffset(container);
-            var count = SilhouetteBoundsSpacer.NonSpacerChildCount(container) - leadingOffset;
+            // The reconciler-invisible children — a filter bounds spacer, a z-index layer container, a ring
+            // band — are internal, not logical siblings, so first:/last:/nth must neither count them nor
+            // land on one. Walking logical slots and converting each to a physical index does both, wherever
+            // in the child list they happen to sit.
+            var count = LogicalChildSlots.Count(container);
             for (var i = 0; i < count; i++)
             {
-                var slotOccupant = container.ElementAt(i + leadingOffset);
+                var slotOccupant = container.ElementAt(LogicalChildSlots.ToPhysical(container, i));
                 // A z-managed child's slot holds its PLACEHOLDER, not the element the rules were registered
                 // against (ApplyStructuralVariantConfig keys by the real element / its own wrapper) — resolve
                 // through the z-registry first, then the ordinary wrapper unwrap (the slot may ALSO hold a
