@@ -477,6 +477,18 @@ namespace Velvet
             _ctx.ComponentRegistry.Dispose();
             _ctx.FiberMemoCache.DisposeAndReturnCachedTrees();
             _ctx.WrapperToInnerMap.Clear();
+            // Hosts go last: destroying a layer or world-space host takes its runtime-created panel with
+            // it, and every pass above detaches from elements that may be mounted inside one.
+            ReleaseRefCallbacks();
+            ReleasePaintBindings();
+            ReleaseDriverBindings();
+            ReleaseDragAndDrop();
+            ReleaseManipulators();
+            ReleaseHostsAndScopes();
+        }
+
+        private void ReleaseRefCallbacks()
+        {
             // Detach every still-installed callback ref: an element the unmount reconcile skipped (a
             // parked time-sliced baseline diverged from the DOM, an aborted teardown) never passes
             // through the element cleaner, and the ref contract is that every attached ref detaches
@@ -495,6 +507,10 @@ namespace Velvet
                 }
             }
             _ctx.RefCallbacks.Clear();
+        }
+
+        private void ReleasePaintBindings()
+        {
             // Shadowed elements hold paint + re-bake callbacks: detach so a still-mounted element released at
             // root disposal carries no Velvet residue. Then dispose the shared bake Material once (the baked
             // shadow textures are cached process-wide and outlive the reconciler, like the gradient bakes).
@@ -551,6 +567,10 @@ namespace Velvet
                 GradientBackground.Clear(element);
             }
             _ctx.GradientBackgrounds.Clear();
+        }
+
+        private void ReleaseDriverBindings()
+        {
             // animate-* motions hold a recurring scheduled tick: pause each (and restore the styles it drove)
             // so a still-mounted animated element released at root disposal stops ticking and carries no residue.
             foreach (var (element, binding) in _ctx.AnimationBindings)
@@ -598,7 +618,11 @@ namespace Velvet
             _ctx.ChainedPlaceholders.Clear();
             _ctx.ChainedHostRoots.Clear();
             FiberFocusNavigator.DetachAll(_ctx);
-            // Drag-and-drop: an active session scrubs first (it holds pointer capture, inline styles and
+        }
+
+        private void ReleaseDragAndDrop()
+        {
+            // An active session scrubs first (it holds pointer capture, inline styles and
             // classes on elements that outlive this reconciler), then the registries release their
             // bindings (the draggable armer and the overlay's forced inline state are the two that own
             // registered/forced element state).
@@ -617,6 +641,10 @@ namespace Velvet
             _ctx.DragOverlayBindings.Clear();
             _ctx.DndScopeBindings.Clear();
             _ctx.DroppableBindings.Clear();
+        }
+
+        private void ReleaseManipulators()
+        {
             foreach (var (element, manipulator) in _ctx.GestureManipulators)
             {
                 element.RemoveManipulator(manipulator);
@@ -686,9 +714,13 @@ namespace Velvet
             }
 
             _ctx.ChildVariantManipulators.Clear();
+        }
+
+        private void ReleaseHostsAndScopes()
+        {
             _ctx.PortalState.Clear();
             _ctx.PendingPortalMounts.Clear();
-            // ZLayerHosts/ZLayerMembers are pure side-tables (dropped by ClearAllSideTables below); these two
+            // ZLayerHosts/ZLayerMembers are pure side-tables (dropped by ClearAllSideTables); these two
             // are not — a placeholder->real entry always accompanies a live container membership, and a
             // pending teardown check references a container that may still be attached — so both are dropped
             // explicitly here, mirroring PortalState/PendingPortalMounts above.

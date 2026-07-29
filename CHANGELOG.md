@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [`Generators~/README.md`](https://github.com/s4k10503/velvet/blob/main/Packages/com.velvet.core/Generators~/README.md)
   defines what counts as a level — linked absolutely because `Generators~` is stripped from the published
   package.
+- `VEL501`, a compile-time analyzer that reports a member body making more than twenty branching decisions,
+  at error severity. It shares VEL500's opt-in marker, so it likewise does not fire on your code unless the
+  assembly declares it, and the same README defines what counts as a branch.
 - `TransitionType.Spring` and `TransitionType.Bezier` variant transitions now animate the
   color-valued (`background-color`, `color`, `border-color`) and length-valued (sizing, padding,
   margin, inset, flex-basis, border width, `border-radius`) properties of a variant delta, not just

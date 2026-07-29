@@ -117,6 +117,14 @@ namespace Velvet
                 return false;
             }
 
+            return TryParseBracketValue(prefix, valueSpan, negate, out result);
+        }
+
+        private static bool TryParseBracketValue(
+            string prefix, ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+
             // duration-[<time>] (transition-duration) carries a TIME value, not a length, so it is parsed here
             // before the generic length path and applied out-of-band (a StyleList<TimeValue>, like the filter list).
             if (!negate && prefix == "duration-")
@@ -358,72 +366,106 @@ namespace Velvet
 
             if (negate)
             {
-                foreach (var kvp in s_marginPrefix)
+                var negated = TryParseNegatedPreset(body, out result);
+                if (negated.HasValue)
                 {
-                    if (!body.StartsWith(kvp.Key, StringComparison.Ordinal))
-                    {
-                        continue;
-                    }
-                    if (!s_spacingScale.TryGetValue(body.Substring(kvp.Key.Length), out var px))
-                    {
-                        return false;
-                    }
-                    result = new ArbitraryStyle(kvp.Value, -px, LengthUnit.Pixel);
-                    return true;
-                }
-
-                if (body.StartsWith("rotate-", StringComparison.Ordinal))
-                {
-                    if (!s_rotateScale.TryGetValue(body.Substring("rotate-".Length), out var deg))
-                    {
-                        return false;
-                    }
-                    result = new ArbitraryStyle(ArbitraryProperty.Rotate, -deg, LengthUnit.Pixel);
-                    return true;
+                    return negated.Value;
                 }
             }
 
-            // Per-axis scale presets (positive only; a flip is the arbitrary scale-x-[-1]). Routed to the same
-            // ScaleX/ScaleY merge as the bracket form so the axes compose onto one inline `scale`.
-            if (!negate
-                && (body.StartsWith("scale-x-", StringComparison.Ordinal) || body.StartsWith("scale-y-", StringComparison.Ordinal)))
+            var scale = TryParseAxisScalePreset(body, negate, out result);
+            if (scale.HasValue)
             {
-                var isScaleX = body.StartsWith("scale-x-", StringComparison.Ordinal);
-                if (!s_axisScale.TryGetValue(body.Substring("scale-x-".Length), out var factor))
+                return scale.Value;
+            }
+
+            return TryParseTranslatePreset(body, negate, out result);
+        }
+
+        // The margin and rotate presets, whose tables carry the magnitude and take their sign from the name
+        // (see s_rotateScale for why only the negated name routes here). Null when body names neither family.
+        private static bool? TryParseNegatedPreset(string body, out ArbitraryStyle result)
+        {
+            result = default;
+            foreach (var kvp in s_marginPrefix)
+            {
+                if (!body.StartsWith(kvp.Key, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+                if (!s_spacingScale.TryGetValue(body.Substring(kvp.Key.Length), out var px))
                 {
                     return false;
                 }
-                result = new ArbitraryStyle(
-                    isScaleX ? ArbitraryProperty.ScaleX : ArbitraryProperty.ScaleY, factor, LengthUnit.Pixel);
+                result = new ArbitraryStyle(kvp.Value, -px, LengthUnit.Pixel);
                 return true;
             }
 
+            if (body.StartsWith("rotate-", StringComparison.Ordinal))
+            {
+                if (!s_rotateScale.TryGetValue(body.Substring("rotate-".Length), out var deg))
+                {
+                    return false;
+                }
+                result = new ArbitraryStyle(ArbitraryProperty.Rotate, -deg, LengthUnit.Pixel);
+                return true;
+            }
+            return null;
+        }
+
+        // Per-axis scale presets (positive only; a flip is the arbitrary scale-x-[-1]). Routed to the same
+        // ScaleX/ScaleY merge as the bracket form so the axes compose onto one inline `scale`. Null when body
+        // names neither axis.
+        private static bool? TryParseAxisScalePreset(string body, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate)
+            {
+                return null;
+            }
+            var isScaleX = body.StartsWith("scale-x-", StringComparison.Ordinal);
+            if (!isScaleX && !body.StartsWith("scale-y-", StringComparison.Ordinal))
+            {
+                return null;
+            }
+            if (!s_axisScale.TryGetValue(body.Substring("scale-x-".Length), out var factor))
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(
+                isScaleX ? ArbitraryProperty.ScaleX : ArbitraryProperty.ScaleY, factor, LengthUnit.Pixel);
+            return true;
+        }
+
+        private static bool TryParseTranslatePreset(string body, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
             var isX = body.StartsWith("translate-x-", StringComparison.Ordinal);
             var isY = !isX && body.StartsWith("translate-y-", StringComparison.Ordinal);
-            if (isX || isY)
+            if (!isX && !isY)
             {
-                var suffix = body.Substring("translate-x-".Length); // the x and y prefixes share a length
-                var property = isX ? ArbitraryProperty.TranslateX : ArbitraryProperty.TranslateY;
-                if (s_translateFraction.TryGetValue(suffix, out var pct))
-                {
-                    result = new ArbitraryStyle(property, negate ? -pct : pct, LengthUnit.Percent);
-                    return true;
-                }
-                if (suffix == "full")
-                {
-                    result = new ArbitraryStyle(property, negate ? -100f : 100f, LengthUnit.Percent);
-                    return true;
-                }
-                // Both signs route here now: a positive .translate-x-N USS class would write the whole
-                // `translate` shorthand and clobber the other axis, so positives merge through TranslateX/Y too.
-                if (s_spacingScale.TryGetValue(suffix, out var px))
-                {
-                    result = new ArbitraryStyle(property, negate ? -px : px, LengthUnit.Pixel);
-                    return true;
-                }
                 return false;
             }
 
+            var suffix = body.Substring("translate-x-".Length); // the x and y prefixes share a length
+            var property = isX ? ArbitraryProperty.TranslateX : ArbitraryProperty.TranslateY;
+            if (s_translateFraction.TryGetValue(suffix, out var pct))
+            {
+                result = new ArbitraryStyle(property, negate ? -pct : pct, LengthUnit.Percent);
+                return true;
+            }
+            if (suffix == "full")
+            {
+                result = new ArbitraryStyle(property, negate ? -100f : 100f, LengthUnit.Percent);
+                return true;
+            }
+            // Both signs route here now: a positive .translate-x-N USS class would write the whole
+            // `translate` shorthand and clobber the other axis, so positives merge through TranslateX/Y too.
+            if (s_spacingScale.TryGetValue(suffix, out var px))
+            {
+                result = new ArbitraryStyle(property, negate ? -px : px, LengthUnit.Pixel);
+                return true;
+            }
             return false;
         }
 
@@ -1350,44 +1392,9 @@ namespace Velvet
         // lower-priority layer is re-applied; the layer-bypassing form pairs with the ApplyInline above.
         internal static void ClearInline(VisualElement element, ArbitraryProperty property)
         {
-            switch (property)
+            if (TryClearDedicatedSlot(element, property))
             {
-                case ArbitraryProperty.Rotate:
-                    element.style.rotate = StyleKeyword.Null;
-                    return;
-                case ArbitraryProperty.AspectRatio:
-                    element.style.aspectRatio = StyleKeyword.Null;
-                    return;
-                // translate and scale are each a single shorthand for both axes (and scale composes the uniform
-                // + per-axis layers), so clearing any one reverts the whole property. In the class-diff reconcile
-                // path the survivors are restored by FiberNodePatcher.ReapplyArbitraryValues; a direct Clear (or a
-                // variant-payload toggle) of one drops the others until the next full re-apply — combine them in a
-                // single combined translate/scale when that matters.
-                case ArbitraryProperty.TranslateX:
-                case ArbitraryProperty.TranslateY:
-                    element.style.translate = StyleKeyword.Null;
-                    return;
-                case ArbitraryProperty.Scale:
-                case ArbitraryProperty.ScaleX:
-                case ArbitraryProperty.ScaleY:
-                    element.style.scale = StyleKeyword.Null;
-                    return;
-                // Like the axes above, all filter-* utilities share the one inline `filter` list, so clearing any
-                // reverts the whole property; the surviving filters are restored by ReapplyArbitraryValues.
-                case ArbitraryProperty.FilterBlur:
-                case ArbitraryProperty.FilterContrast:
-                case ArbitraryProperty.FilterGrayscale:
-                case ArbitraryProperty.FilterHueRotate:
-                case ArbitraryProperty.FilterInvert:
-                case ArbitraryProperty.FilterSepia:
-                case ArbitraryProperty.FilterBrightness:
-                case ArbitraryProperty.FilterSaturate:
-                case ArbitraryProperty.FilterCustom:
-                    element.style.filter = StyleKeyword.Null;
-                    return;
-                case ArbitraryProperty.TransitionDuration:
-                    element.style.transitionDuration = StyleKeyword.Null;
-                    return;
+                return;
             }
 
             if (ColorSetters.TryGetValue(property, out var colorSetters))
@@ -1425,6 +1432,107 @@ namespace Velvet
             }
         }
 
+        // The properties written through a UITK style property of their own rather than through the setter
+        // tables.
+        private static bool TryClearDedicatedSlot(VisualElement element, ArbitraryProperty property)
+        {
+            switch (property)
+            {
+                case ArbitraryProperty.Rotate:
+                    element.style.rotate = StyleKeyword.Null;
+                    return true;
+                case ArbitraryProperty.AspectRatio:
+                    element.style.aspectRatio = StyleKeyword.Null;
+                    return true;
+                // translate and scale are each a single shorthand for both axes (and scale composes the uniform
+                // + per-axis layers), so clearing any one reverts the whole property. In the class-diff reconcile
+                // path the survivors are restored by FiberNodePatcher.ReapplyArbitraryValues; a direct Clear (or a
+                // variant-payload toggle) of one drops the others until the next full re-apply — combine them in a
+                // single combined translate/scale when that matters.
+                case ArbitraryProperty.TranslateX:
+                case ArbitraryProperty.TranslateY:
+                    element.style.translate = StyleKeyword.Null;
+                    return true;
+                case ArbitraryProperty.Scale:
+                case ArbitraryProperty.ScaleX:
+                case ArbitraryProperty.ScaleY:
+                    element.style.scale = StyleKeyword.Null;
+                    return true;
+                case ArbitraryProperty.TransitionDuration:
+                    element.style.transitionDuration = StyleKeyword.Null;
+                    return true;
+            }
+
+            // Like the axes above, all filter-* utilities share the one inline `filter` list, so clearing any
+            // reverts the whole property; the surviving filters are restored by ReapplyArbitraryValues.
+            if (property == ArbitraryProperty.FilterCustom || IsFilter(property))
+            {
+                element.style.filter = StyleKeyword.Null;
+                return true;
+            }
+            return false;
+        }
+
+        // prefix includes the trailing '-' (e.g. "h-", "min-h-", "mt-", "rounded-").
+        private static readonly Dictionary<string, ArbitraryProperty> s_prefixProperties = new()
+        {
+            ["w-"] = ArbitraryProperty.Width,
+            ["h-"] = ArbitraryProperty.Height,
+            ["min-w-"] = ArbitraryProperty.MinWidth,
+            ["min-h-"] = ArbitraryProperty.MinHeight,
+            ["max-w-"] = ArbitraryProperty.MaxWidth,
+            ["max-h-"] = ArbitraryProperty.MaxHeight,
+            ["size-"] = ArbitraryProperty.Size,
+            ["basis-"] = ArbitraryProperty.FlexBasis,
+
+            ["top-"] = ArbitraryProperty.Top,
+            ["right-"] = ArbitraryProperty.Right,
+            ["bottom-"] = ArbitraryProperty.Bottom,
+            ["left-"] = ArbitraryProperty.Left,
+            ["inset-"] = ArbitraryProperty.Inset,
+            ["inset-x-"] = ArbitraryProperty.InsetX,
+            ["inset-y-"] = ArbitraryProperty.InsetY,
+
+            ["pt-"] = ArbitraryProperty.PaddingTop,
+            ["pr-"] = ArbitraryProperty.PaddingRight,
+            ["pb-"] = ArbitraryProperty.PaddingBottom,
+            ["pl-"] = ArbitraryProperty.PaddingLeft,
+            ["p-"] = ArbitraryProperty.Padding,
+            ["px-"] = ArbitraryProperty.PaddingX,
+            ["py-"] = ArbitraryProperty.PaddingY,
+
+            ["mt-"] = ArbitraryProperty.MarginTop,
+            ["mr-"] = ArbitraryProperty.MarginRight,
+            ["mb-"] = ArbitraryProperty.MarginBottom,
+            ["ml-"] = ArbitraryProperty.MarginLeft,
+            ["m-"] = ArbitraryProperty.Margin,
+            ["mx-"] = ArbitraryProperty.MarginX,
+            ["my-"] = ArbitraryProperty.MarginY,
+
+            ["rounded-"] = ArbitraryProperty.BorderRadius,
+            ["rounded-t-"] = ArbitraryProperty.BorderTopRadius,
+            ["rounded-r-"] = ArbitraryProperty.BorderRightRadius,
+            ["rounded-b-"] = ArbitraryProperty.BorderBottomRadius,
+            ["rounded-l-"] = ArbitraryProperty.BorderLeftRadius,
+            ["rounded-tl-"] = ArbitraryProperty.BorderTopLeftRadius,
+            ["rounded-tr-"] = ArbitraryProperty.BorderTopRightRadius,
+            ["rounded-bl-"] = ArbitraryProperty.BorderBottomLeftRadius,
+            ["rounded-br-"] = ArbitraryProperty.BorderBottomRightRadius,
+
+            // A color value for `border-` is claimed earlier, in TryParseBracketValue; here it is the width form.
+            ["border-"] = ArbitraryProperty.BorderWidth,
+            ["border-t-"] = ArbitraryProperty.BorderTopWidth,
+            ["border-r-"] = ArbitraryProperty.BorderRightWidth,
+            ["border-b-"] = ArbitraryProperty.BorderBottomWidth,
+            ["border-l-"] = ArbitraryProperty.BorderLeftWidth,
+
+            ["text-"] = ArbitraryProperty.FontSize,
+            ["tracking-"] = ArbitraryProperty.LetterSpacing,
+
+            // The transform prefixes (scale- / rotate- / translate-x- / translate-y-) are absent on purpose:
+            // TryParseBracketValue intercepts them before this table so all four share the Apply/Clear switch.
+        };
+
         // Single source for the utility-prefix → target-property mapping, shared so a non-bracket preset
         // recognizer (MotionPropertyClassParser, which pairs a prefix with the numeric scale its USS family
         // uses) resolves the SAME prefix table instead of holding a second copy that could drift — mirroring
@@ -1433,179 +1541,8 @@ namespace Velvet
         // width), and only the caller knows which family it is claiming.
         internal static bool TryGetProperty(string prefix, out ArbitraryProperty property)
         {
-            // prefix includes the trailing '-' (e.g. "h-", "min-h-", "mt-", "rounded-").
-            // No need to match shorthand prefixes longest-first; switch matches exactly.
-            switch (prefix)
-            {
-                // Size
-                case "w-":
-                    property = ArbitraryProperty.Width;
-                    return true;
-                case "h-":
-                    property = ArbitraryProperty.Height;
-                    return true;
-                case "min-w-":
-                    property = ArbitraryProperty.MinWidth;
-                    return true;
-                case "min-h-":
-                    property = ArbitraryProperty.MinHeight;
-                    return true;
-                case "max-w-":
-                    property = ArbitraryProperty.MaxWidth;
-                    return true;
-                case "max-h-":
-                    property = ArbitraryProperty.MaxHeight;
-                    return true;
-                case "size-":
-                    property = ArbitraryProperty.Size;
-                    return true;
-                case "basis-":
-                    property = ArbitraryProperty.FlexBasis;
-                    return true;
-
-                // Position (per-edge)
-                case "top-":
-                    property = ArbitraryProperty.Top;
-                    return true;
-                case "right-":
-                    property = ArbitraryProperty.Right;
-                    return true;
-                case "bottom-":
-                    property = ArbitraryProperty.Bottom;
-                    return true;
-                case "left-":
-                    property = ArbitraryProperty.Left;
-                    return true;
-
-                // Position (shorthand)
-                case "inset-":
-                    property = ArbitraryProperty.Inset;
-                    return true;
-                case "inset-x-":
-                    property = ArbitraryProperty.InsetX;
-                    return true;
-                case "inset-y-":
-                    property = ArbitraryProperty.InsetY;
-                    return true;
-
-                // Padding (per-edge)
-                case "pt-":
-                    property = ArbitraryProperty.PaddingTop;
-                    return true;
-                case "pr-":
-                    property = ArbitraryProperty.PaddingRight;
-                    return true;
-                case "pb-":
-                    property = ArbitraryProperty.PaddingBottom;
-                    return true;
-                case "pl-":
-                    property = ArbitraryProperty.PaddingLeft;
-                    return true;
-
-                // Padding (shorthand)
-                case "p-":
-                    property = ArbitraryProperty.Padding;
-                    return true;
-                case "px-":
-                    property = ArbitraryProperty.PaddingX;
-                    return true;
-                case "py-":
-                    property = ArbitraryProperty.PaddingY;
-                    return true;
-
-                // Margin (per-edge)
-                case "mt-":
-                    property = ArbitraryProperty.MarginTop;
-                    return true;
-                case "mr-":
-                    property = ArbitraryProperty.MarginRight;
-                    return true;
-                case "mb-":
-                    property = ArbitraryProperty.MarginBottom;
-                    return true;
-                case "ml-":
-                    property = ArbitraryProperty.MarginLeft;
-                    return true;
-
-                // Margin (shorthand)
-                case "m-":
-                    property = ArbitraryProperty.Margin;
-                    return true;
-                case "mx-":
-                    property = ArbitraryProperty.MarginX;
-                    return true;
-                case "my-":
-                    property = ArbitraryProperty.MarginY;
-                    return true;
-
-                // Border Radius (all corners)
-                case "rounded-":
-                    property = ArbitraryProperty.BorderRadius;
-                    return true;
-
-                // Border Radius (per side)
-                case "rounded-t-":
-                    property = ArbitraryProperty.BorderTopRadius;
-                    return true;
-                case "rounded-r-":
-                    property = ArbitraryProperty.BorderRightRadius;
-                    return true;
-                case "rounded-b-":
-                    property = ArbitraryProperty.BorderBottomRadius;
-                    return true;
-                case "rounded-l-":
-                    property = ArbitraryProperty.BorderLeftRadius;
-                    return true;
-
-                // Border Radius (per corner)
-                case "rounded-tl-":
-                    property = ArbitraryProperty.BorderTopLeftRadius;
-                    return true;
-                case "rounded-tr-":
-                    property = ArbitraryProperty.BorderTopRightRadius;
-                    return true;
-                case "rounded-bl-":
-                    property = ArbitraryProperty.BorderBottomLeftRadius;
-                    return true;
-                case "rounded-br-":
-                    property = ArbitraryProperty.BorderBottomRightRadius;
-                    return true;
-
-                // Border Width (all sides + per side). A color value for `border-` is handled
-                // earlier in TryParse; here `border-` is the width form.
-                case "border-":
-                    property = ArbitraryProperty.BorderWidth;
-                    return true;
-                case "border-t-":
-                    property = ArbitraryProperty.BorderTopWidth;
-                    return true;
-                case "border-r-":
-                    property = ArbitraryProperty.BorderRightWidth;
-                    return true;
-                case "border-b-":
-                    property = ArbitraryProperty.BorderBottomWidth;
-                    return true;
-                case "border-l-":
-                    property = ArbitraryProperty.BorderLeftWidth;
-                    return true;
-
-                // Font
-                case "text-":
-                    property = ArbitraryProperty.FontSize;
-                    return true;
-
-                // Letter spacing (the tracking-* utilities)
-                case "tracking-":
-                    property = ArbitraryProperty.LetterSpacing;
-                    return true;
-
-                // Note: the transform prefixes (scale- / rotate- / translate-x- / translate-y-) are
-                // intercepted earlier in TryParse, not here, so all four share the Apply/Clear switch.
-
-                default:
-                    property = default;
-                    return false;
-            }
+            property = default;
+            return prefix != null && s_prefixProperties.TryGetValue(prefix, out property);
         }
 
         // Strips the enclosing brackets off a bracketed JIT arbitrary-value token (`[value]`), optionally

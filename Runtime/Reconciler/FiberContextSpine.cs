@@ -204,186 +204,254 @@ namespace Velvet
         {
             for (var nodeIndex = 0; nodeIndex < nodes.Length; nodeIndex++)
             {
-                var node = nodes[nodeIndex];
-                switch (node)
+                if (PushEnclosingProvidersForNode(nodes[nodeIndex], nodeIndex, ancestor, spineChild, counters,
+                        fragmentKeyScope, stack, pushed, registry, memoCache, isInlineSpineChild))
                 {
-                    case null:
-                        continue;
-
-                    case FragmentNode fragment:
-                        if (fragment.Children != null)
-                        {
-                            var childScope = FiberKeying.FragmentChildScope(
-                                fragmentKeyScope, fragment.Key, nodeIndex);
-                            if (PushEnclosingProviders(fragment.Children, ancestor, spineChild, counters,
-                                    childScope, stack, pushed, registry, memoCache, isInlineSpineChild))
-                            {
-                                return true;
-                            }
-                        }
-                        break;
-
-                    case ContextProviderNode provider:
-                        provider.PushContext(stack);
-                        pushed.Add(provider);
-                        if (provider.Children != null)
-                        {
-                            var providerScope = FiberKeying.ProviderChildScope(
-                                fragmentKeyScope, provider.Key, nodeIndex);
-                            if (PushEnclosingProviders(provider.Children, ancestor, spineChild, counters,
-                                    providerScope, stack, pushed, registry, memoCache, isInlineSpineChild))
-                            {
-                                return true;
-                            }
-                        }
-                        // Not on the path to spineChild: undo this Provider's push.
-                        provider.PopContext(stack);
-                        pushed.RemoveAt(pushed.Count - 1);
-                        break;
-
-                    case ComponentNode component when isInlineSpineChild:
-                    {
-                        // Inline-mounted ComponentNodes register under (ancestor, slotKey, identity) with the
-                        // SAME position-key scheme used by ExpandInlineRecursive. A match means we have
-                        // descended exactly to the spine child — its enclosing Providers are pushed, so stop.
-                        var identity = component.ResolvedIdentity;
-                        var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(counters, identity, registry.InlinePositionKeyBoxes);
-                        var resolved = registry.TryGetFiberForInlineKey(ancestor, slotKey, identity);
-                        if (ReferenceEquals(resolved, spineChild))
-                        {
-                            return true;
-                        }
-                        // A sibling component: its own subtree's Providers do not enclose spineChild
-                        // (spineChild is a direct child fiber of `ancestor`), so do not descend into it.
-                        break;
-                    }
-
-                    case OutletNode outlet when !isInlineSpineChild:
-                    {
-                        // Wrapper-mounted spine child: an OutletNode hosts a wrapper-mounted route Component
-                        // whose MountPoint is the Outlet's container VE. Before pushing the Outlet's
-                        // wrapper-local context, verify that spineChild is actually hosted by an Outlet
-                        // (not by a sibling AnimatePresence/Portal/VirtualList) by consulting
-                        // ReconcilerContext.OutletContainers — a structural identity register populated
-                        // at FiberNodeFactory mount time, immune to USS class manipulation.
-                        // Without this check, a layout like V.Div(V.Outlet(), V.AnimatePresence(...)) would
-                        // walker-match the first Outlet and push a wrong Depth+1 context for any
-                        // non-Outlet wrapper-mounted sibling's isolated re-render.
-                        var spineHost = spineChild.MountPoint;
-                        if (spineHost == null || !ancestor.Reconciler!.Context.OutletContainers.Contains(spineHost))
-                        {
-                            // spineChild is not Outlet-hosted; the Outlet here is a sibling — skip it and
-                            // keep searching for the actual wrapper host (or fall through to the default
-                            // arm and unwind cleanly).
-                            break;
-                        }
-                        PushOutletWrapperLocalContext(stack, pushed, outlet);
-                        return true;
-                    }
-
-                    case MemoNode memo:
-                    {
-                        var memoScope = FiberKeying.MemoScope(fragmentKeyScope, nodeIndex);
-                        var cacheKey = FiberKeying.MemoCacheKey(memo.Key, memoScope);
-                        if (memoCache.TryPeek(cacheKey, out var inner) && inner != null)
-                        {
-                            var innerCounters = new Dictionary<object, int>();
-                            if (PushEnclosingProviders(new[] { inner }, ancestor, spineChild, innerCounters,
-                                    memoScope, stack, pushed, registry, memoCache, isInlineSpineChild))
-                            {
-                                return true;
-                            }
-                        }
-                        break;
-                    }
-
-                    case SuspenseNode suspense:
-                    {
-                        // Follow whichever subtree (children vs fallback) was committed last render so the
-                        // reconstruction matches the live DOM/fiber layout.
-                        var suspenseKey = FiberKeying.SuspenseKey(fragmentKeyScope, suspense.Key, nodeIndex);
-                        var wasFallback = ancestor.Reconciler != null
-                            && ancestor.Reconciler.Context.SuspenseFallbackShown.TryGetValue(
-                                (ancestor, suspenseKey), out var shown) && shown;
-                        var sub = wasFallback
-                            ? (suspense.Fallback != null ? new[] { suspense.Fallback } : System.Array.Empty<VNode>())
-                            : (suspense.Children ?? System.Array.Empty<VNode>());
-                        if (sub.Length > 0)
-                        {
-                            var subScope = FiberKeying.SuspenseSubtreeScope(suspenseKey, wasFallback);
-                            var subCounters = new Dictionary<object, int>();
-                            if (PushEnclosingProviders(sub, ancestor, spineChild, subCounters,
-                                    subScope, stack, pushed, registry, memoCache, isInlineSpineChild))
-                            {
-                                return true;
-                            }
-                        }
-                        break;
-                    }
-
-                    case MotionNode motion:
-                    {
-                        // A MotionNode establishes MotionContext for its subtree, exactly as a Provider
-                        // establishes its context. Re-push the effective label (own Animate, else the inherited
-                        // top) so a descendant Motion re-rendering in isolation reads the ancestor's active label
-                        // instead of dropping to the default. Mirrors the ContextProviderNode arm (push, descend
-                        // its fresh child scope, pop if the spine child is not beneath it).
-                        var motionLabel = motion.Animate ?? stack.Get(MotionContext.ActiveLabel);
-                        var motionProvider = new ContextProviderNode<string>
-                        {
-                            Context = MotionContext.ActiveLabel,
-                            Value = motionLabel,
-                            Children = System.Array.Empty<VNode>(),
-                        };
-                        motionProvider.PushContext(stack);
-                        pushed.Add(motionProvider);
-                        if (motion.Children is { Length: > 0 })
-                        {
-                            var motionCounters = new Dictionary<object, int>();
-                            if (PushEnclosingProviders(motion.Children, ancestor, spineChild, motionCounters,
-                                    fragmentKeyScope: null, stack, pushed, registry, memoCache, isInlineSpineChild))
-                            {
-                                return true;
-                            }
-                        }
-                        motionProvider.PopContext(stack);
-                        pushed.RemoveAt(pushed.Count - 1);
-                        break;
-                    }
-
-                    case BaseElementNode element:
-                        // An element opens a fresh reconcile scope for its children (the host reconciles them
-                        // via ReconcileChildren with its own position counters); FiberStack.Current stays
-                        // `ancestor`, so a Component among them is still a direct child fiber of `ancestor`.
-                        if (element.Children is { Length: > 0 })
-                        {
-                            var elementCounters = new Dictionary<object, int>();
-                            if (PushEnclosingProviders(element.Children, ancestor, spineChild, elementCounters,
-                                    fragmentKeyScope: null, stack, pushed, registry, memoCache, isInlineSpineChild))
-                            {
-                                return true;
-                            }
-                        }
-                        break;
-
-                    case AnimatePresenceNode presence:
-                        if (PushPresenceChildren(presence, nodeIndex, ancestor, spineChild, fragmentKeyScope,
-                                stack, pushed, registry, memoCache, isInlineSpineChild))
-                        {
-                            return true;
-                        }
-                        break;
-
-                    default:
-                        // Reaching a wrapper-emitting leaf (Portal / VirtualList) here means it sits in this
-                        // ancestor's committed tree but does NOT host the spine child being searched for. A
-                        // detached mount that DID host it (a Portal's drained children, a VirtualList's items)
-                        // is handled before this walk — see the DetachedMountContext branch in Push, which
-                        // rebuilds the enclosing context from the captured snapshot instead of descending the
-                        // host's tree. So skip it: its own subtree cannot enclose a spine child not inside it.
-                        break;
+                    return true;
                 }
             }
+            return false;
+        }
+
+        // MotionNode derives from BaseElementNode, so its arm must stay ahead of the BaseElementNode one or
+        // the MotionContext push below is silently skipped and a descendant Motion re-rendering in isolation
+        // reads the default label.
+        private static bool PushEnclosingProvidersForNode(
+            VNode? node,
+            int nodeIndex,
+            ComponentFiber ancestor,
+            ComponentFiber spineChild,
+            Dictionary<object, int> counters,
+            string? fragmentKeyScope,
+            ComponentContextStack stack,
+            List<ContextProviderNode> pushed,
+            ComponentRegistry registry,
+            FiberMemoCache memoCache,
+            bool isInlineSpineChild)
+        {
+            switch (node)
+            {
+                case null:
+                    return false;
+
+                case FragmentNode fragment:
+                {
+                    if (fragment.Children == null) return false;
+                    var childScope = FiberKeying.FragmentChildScope(
+                        fragmentKeyScope, fragment.Key, nodeIndex);
+                    return PushEnclosingProviders(fragment.Children, ancestor, spineChild, counters,
+                        childScope, stack, pushed, registry, memoCache, isInlineSpineChild);
+                }
+
+                case ContextProviderNode provider:
+                    return PushProviderSubtree(provider, nodeIndex, ancestor, spineChild, counters,
+                        fragmentKeyScope, stack, pushed, registry, memoCache, isInlineSpineChild);
+
+                case ComponentNode component when isInlineSpineChild:
+                    return MatchesInlineSpineChild(component, ancestor, spineChild, counters, registry);
+
+                case OutletNode outlet when !isInlineSpineChild:
+                    return PushOutletHost(outlet, ancestor, spineChild, stack, pushed);
+
+                case MemoNode memo:
+                    return PushMemoInner(memo, nodeIndex, ancestor, spineChild, fragmentKeyScope,
+                        stack, pushed, registry, memoCache, isInlineSpineChild);
+
+                case SuspenseNode suspense:
+                    return PushSuspenseSubtree(suspense, nodeIndex, ancestor, spineChild, fragmentKeyScope,
+                        stack, pushed, registry, memoCache, isInlineSpineChild);
+
+                case MotionNode motion:
+                    return PushMotionSubtree(motion, ancestor, spineChild, stack, pushed, registry,
+                        memoCache, isInlineSpineChild);
+
+                case BaseElementNode element:
+                {
+                    // An element opens a fresh reconcile scope for its children (the host reconciles them
+                    // via ReconcileChildren with its own position counters); FiberStack.Current stays
+                    // `ancestor`, so a Component among them is still a direct child fiber of `ancestor`.
+                    if (element.Children is not { Length: > 0 }) return false;
+                    var elementCounters = new Dictionary<object, int>();
+                    return PushEnclosingProviders(element.Children, ancestor, spineChild, elementCounters,
+                        fragmentKeyScope: null, stack, pushed, registry, memoCache, isInlineSpineChild);
+                }
+
+                case AnimatePresenceNode presence:
+                    return PushPresenceChildren(presence, nodeIndex, ancestor, spineChild, fragmentKeyScope,
+                        stack, pushed, registry, memoCache, isInlineSpineChild);
+
+                default:
+                    // Reaching a wrapper-emitting leaf (Portal / VirtualList) here means it sits in this
+                    // ancestor's committed tree but does NOT host the spine child being searched for. A
+                    // detached mount that DID host it (a Portal's drained children, a VirtualList's items)
+                    // is handled before this walk — see the DetachedMountContext branch in Push, which
+                    // rebuilds the enclosing context from the captured snapshot instead of descending the
+                    // host's tree. So skip it: its own subtree cannot enclose a spine child not inside it.
+                    return false;
+            }
+        }
+
+        private static bool PushProviderSubtree(
+            ContextProviderNode provider,
+            int nodeIndex,
+            ComponentFiber ancestor,
+            ComponentFiber spineChild,
+            Dictionary<object, int> counters,
+            string? fragmentKeyScope,
+            ComponentContextStack stack,
+            List<ContextProviderNode> pushed,
+            ComponentRegistry registry,
+            FiberMemoCache memoCache,
+            bool isInlineSpineChild)
+        {
+            provider.PushContext(stack);
+            pushed.Add(provider);
+            if (provider.Children != null)
+            {
+                var providerScope = FiberKeying.ProviderChildScope(
+                    fragmentKeyScope, provider.Key, nodeIndex);
+                if (PushEnclosingProviders(provider.Children, ancestor, spineChild, counters,
+                        providerScope, stack, pushed, registry, memoCache, isInlineSpineChild))
+                {
+                    return true;
+                }
+            }
+            // Not on the path to spineChild: undo this Provider's push.
+            provider.PopContext(stack);
+            pushed.RemoveAt(pushed.Count - 1);
+            return false;
+        }
+
+        // Inline-mounted ComponentNodes register under (ancestor, slotKey, identity) with the SAME
+        // position-key scheme used by ExpandInlineRecursive. A match means we have descended exactly to
+        // the spine child — its enclosing Providers are pushed, so stop. A sibling component is never
+        // descended into: its own subtree's Providers do not enclose spineChild (a direct child fiber of
+        // `ancestor`). The counter bump happens for every unkeyed ComponentNode either way, so the keying
+        // stays in lockstep with the expansion walk.
+        private static bool MatchesInlineSpineChild(
+            ComponentNode component,
+            ComponentFiber ancestor,
+            ComponentFiber spineChild,
+            Dictionary<object, int> counters,
+            ComponentRegistry registry)
+        {
+            var identity = component.ResolvedIdentity;
+            var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(counters, identity, registry.InlinePositionKeyBoxes);
+            var resolved = registry.TryGetFiberForInlineKey(ancestor, slotKey, identity);
+            return ReferenceEquals(resolved, spineChild);
+        }
+
+        // Wrapper-mounted spine child: an OutletNode hosts a wrapper-mounted route Component whose
+        // MountPoint is the Outlet's container VE. Before pushing the Outlet's wrapper-local context,
+        // verify that spineChild is actually hosted by an Outlet (not by a sibling
+        // AnimatePresence/Portal/VirtualList) by consulting ReconcilerContext.OutletContainers — a
+        // structural identity register populated at FiberNodeFactory mount time, immune to USS class
+        // manipulation. Without this check, a layout like V.Div(V.Outlet(), V.AnimatePresence(...)) would
+        // walker-match the first Outlet and push a wrong Depth+1 context for any non-Outlet
+        // wrapper-mounted sibling's isolated re-render.
+        private static bool PushOutletHost(
+            OutletNode outlet,
+            ComponentFiber ancestor,
+            ComponentFiber spineChild,
+            ComponentContextStack stack,
+            List<ContextProviderNode> pushed)
+        {
+            var spineHost = spineChild.MountPoint;
+            if (spineHost == null || !ancestor.Reconciler!.Context.OutletContainers.Contains(spineHost))
+            {
+                // spineChild is not Outlet-hosted; the Outlet here is a sibling — keep searching for the
+                // actual wrapper host.
+                return false;
+            }
+            PushOutletWrapperLocalContext(stack, pushed, outlet);
+            return true;
+        }
+
+        private static bool PushMemoInner(
+            MemoNode memo,
+            int nodeIndex,
+            ComponentFiber ancestor,
+            ComponentFiber spineChild,
+            string? fragmentKeyScope,
+            ComponentContextStack stack,
+            List<ContextProviderNode> pushed,
+            ComponentRegistry registry,
+            FiberMemoCache memoCache,
+            bool isInlineSpineChild)
+        {
+            var memoScope = FiberKeying.MemoScope(fragmentKeyScope, nodeIndex);
+            var cacheKey = FiberKeying.MemoCacheKey(memo.Key, memoScope);
+            if (!memoCache.TryPeek(cacheKey, out var inner) || inner == null) return false;
+
+            var innerCounters = new Dictionary<object, int>();
+            return PushEnclosingProviders(new[] { inner }, ancestor, spineChild, innerCounters,
+                memoScope, stack, pushed, registry, memoCache, isInlineSpineChild);
+        }
+
+        // Follow whichever subtree (children vs fallback) was committed last render so the
+        // reconstruction matches the live DOM/fiber layout.
+        private static bool PushSuspenseSubtree(
+            SuspenseNode suspense,
+            int nodeIndex,
+            ComponentFiber ancestor,
+            ComponentFiber spineChild,
+            string? fragmentKeyScope,
+            ComponentContextStack stack,
+            List<ContextProviderNode> pushed,
+            ComponentRegistry registry,
+            FiberMemoCache memoCache,
+            bool isInlineSpineChild)
+        {
+            var suspenseKey = FiberKeying.SuspenseKey(fragmentKeyScope, suspense.Key, nodeIndex);
+            var wasFallback = ancestor.Reconciler != null
+                && ancestor.Reconciler.Context.SuspenseFallbackShown.TryGetValue(
+                    (ancestor, suspenseKey), out var shown) && shown;
+            var sub = wasFallback
+                ? (suspense.Fallback != null ? new[] { suspense.Fallback } : System.Array.Empty<VNode>())
+                : (suspense.Children ?? System.Array.Empty<VNode>());
+            if (sub.Length == 0) return false;
+
+            var subScope = FiberKeying.SuspenseSubtreeScope(suspenseKey, wasFallback);
+            var subCounters = new Dictionary<object, int>();
+            return PushEnclosingProviders(sub, ancestor, spineChild, subCounters,
+                subScope, stack, pushed, registry, memoCache, isInlineSpineChild);
+        }
+
+        // A MotionNode establishes MotionContext for its subtree, exactly as a Provider establishes its
+        // context. Re-push the effective label (own Animate, else the inherited top) so a descendant Motion
+        // re-rendering in isolation reads the ancestor's active label instead of dropping to the default.
+        // Mirrors PushProviderSubtree (push, descend its fresh child scope, pop if the spine child is not
+        // beneath it).
+        private static bool PushMotionSubtree(
+            MotionNode motion,
+            ComponentFiber ancestor,
+            ComponentFiber spineChild,
+            ComponentContextStack stack,
+            List<ContextProviderNode> pushed,
+            ComponentRegistry registry,
+            FiberMemoCache memoCache,
+            bool isInlineSpineChild)
+        {
+            var motionLabel = motion.Animate ?? stack.Get(MotionContext.ActiveLabel);
+            var motionProvider = new ContextProviderNode<string>
+            {
+                Context = MotionContext.ActiveLabel,
+                Value = motionLabel,
+                Children = System.Array.Empty<VNode>(),
+            };
+            motionProvider.PushContext(stack);
+            pushed.Add(motionProvider);
+            if (motion.Children is { Length: > 0 })
+            {
+                var motionCounters = new Dictionary<object, int>();
+                if (PushEnclosingProviders(motion.Children, ancestor, spineChild, motionCounters,
+                        fragmentKeyScope: null, stack, pushed, registry, memoCache, isInlineSpineChild))
+                {
+                    return true;
+                }
+            }
+            motionProvider.PopContext(stack);
+            pushed.RemoveAt(pushed.Count - 1);
             return false;
         }
 

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -795,6 +797,38 @@ namespace Velvet.Tests
             // Assert — w-4 is --space-4 (16px), so the later class is the one the channel starts from. A plan
             // with no width channel reads as null and fails the same comparison a wrong magnitude would.
             Assert.That(plan.Lengths?[0].From, Is.EqualTo(16f));
+        }
+
+        [Test]
+        public void Given_TheArbitraryPropertyEnum_When_Enumerated_Then_ItsValuesRunContiguouslyFromZero()
+        {
+            // The slot-footprint and drivable tables are arrays indexed by (int)ArbitraryProperty and sized
+            // from the member count, so a member given an explicit value would either index past the end at
+            // static init or silently read another member's row.
+            // Arrange
+            var values = Enum.GetValues(typeof(ArbitraryProperty)).Cast<ArbitraryProperty>().ToList();
+
+            // Act
+            var actual = values.Select(value => (int)value).ToList();
+
+            // Assert
+            Assert.That(actual, Is.EqualTo(Enumerable.Range(0, values.Count).ToList()));
+        }
+
+        [Test]
+        public void Given_TheSlotFamilyEnum_When_Read_Then_ItsNoFamilyMemberIsTheDefault()
+        {
+            // The slot-footprint table leaves every property that owns its slot alone unwritten, so those
+            // rows are default(SlotFamily) — which reports "no family" only while None is the zero value.
+            // Arrange
+            var slotFamily = typeof(MotionPropertyClassParser)
+                .GetNestedType("SlotFamily", BindingFlags.NonPublic)!;
+
+            // Act
+            var none = (int)Enum.Parse(slotFamily, "None");
+
+            // Assert
+            Assert.That(none, Is.Zero);
         }
     }
 }

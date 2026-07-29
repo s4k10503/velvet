@@ -217,20 +217,7 @@ namespace Velvet
             {
                 plan.Opacity = (fromOpacity ?? 1f, toOpacity ?? 1f);
             }
-            if (fromX.HasValue || toX.HasValue || fromY.HasValue || toY.HasValue)
-            {
-                // Translate x/y are independent springs but always compose onto ONE inline `translate`
-                // (UI Toolkit has no separate translateX/translateY style), so once either axis is in scope the
-                // other gets a channel too. An axis actually named by either side still falls back to identity
-                // on its own un-naming side (the "declare only what changes" rule above); an axis named by
-                // NEITHER side — forced into the plan only because its sibling needed one — pins at the
-                // element's own resting value instead, so a base translate-y-* class the swap never touches
-                // does not get stomped to 0 for the swap's duration.
-                var xNamed = fromX.HasValue || toX.HasValue;
-                plan.TranslateX = xNamed ? (fromX ?? 0f, toX ?? 0f) : (restingTranslateX, restingTranslateX);
-                var yNamed = fromY.HasValue || toY.HasValue;
-                plan.TranslateY = yNamed ? (fromY ?? 0f, toY ?? 0f) : (restingTranslateY, restingTranslateY);
-            }
+            PairTranslate(fromX, toX, fromY, toY, restingTranslateX, restingTranslateY, ref plan);
             if (fromScale.HasValue || toScale.HasValue)
             {
                 plan.Scale = (fromScale ?? 1f, toScale ?? 1f);
@@ -240,6 +227,25 @@ namespace Velvet
                 plan.Rotate = (fromRotate ?? 0f, toRotate ?? 0f);
             }
             return plan;
+        }
+
+        // Translate x/y are independent springs but always compose onto ONE inline `translate` (UI Toolkit has
+        // no separate translateX/translateY style), so once either axis is in scope the other gets a channel
+        // too. An axis actually named by either side still falls back to identity on its own un-naming side
+        // (the "declare only what changes" rule on Resolve); an axis named by NEITHER side — forced into the
+        // plan only because its sibling needed one — pins at the element's own resting value instead, so a base
+        // translate-y-* class the swap never touches does not get stomped to 0 for the swap's duration.
+        private static void PairTranslate(float? fromX, float? toX, float? fromY, float? toY,
+            float restingTranslateX, float restingTranslateY, ref SpringPlan plan)
+        {
+            var xNamed = fromX.HasValue || toX.HasValue;
+            var yNamed = fromY.HasValue || toY.HasValue;
+            if (!xNamed && !yNamed)
+            {
+                return;
+            }
+            plan.TranslateX = xNamed ? (fromX ?? 0f, toX ?? 0f) : (restingTranslateX, restingTranslateX);
+            plan.TranslateY = yNamed ? (fromY ?? 0f, toY ?? 0f) : (restingTranslateY, restingTranslateY);
         }
 
         /// <summary>

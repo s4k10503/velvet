@@ -63,7 +63,7 @@ namespace Velvet
             {
                 case ElementNode oldElem when newNode is ElementNode newElem:
                     // z-* candidacy is a runtime property of the CLASS LIST, not the VNode type (unlike
-                    // Portal/WorldSpace, which dispatch on a distinct type below) — CanPatch already says
+                    // Portal/WorldSpace, which dispatch on a distinct type) — CanPatch already says
                     // "patch in place" for any two ElementNodes of the same ElementType/wrapper-presence
                     // regardless of z-classes, so the four transitions (still z / z-to-none / none-to-z /
                     // z-changed) must be intercepted HERE, before the ordinary element patch, or `element`
@@ -112,6 +112,19 @@ namespace Velvet
                     }
                     break;
                 }
+                default:
+                    PatchIndirectNode(element, oldNode, newNode);
+                    break;
+            }
+        }
+
+        // The node kinds whose VisualElement is a placeholder (Portal / WorldSpace: the children live in
+        // another panel) or a layout-passthrough anchor (Provider / Component / Outlet), rather than the
+        // node's own rendered surface.
+        private void PatchIndirectNode(VisualElement element, VNode? oldNode, VNode? newNode)
+        {
+            switch (oldNode)
+            {
                 case PortalNode oldPortal when newNode is PortalNode newPortal:
                     PatchPortal(element, oldPortal, newPortal);
                     break;
@@ -1354,10 +1367,11 @@ namespace Velvet
         }
 
         // Applies the diff of element props between renders.
-        // Maintenance note: this method diffs each property of FiberElementProps
+        // Maintenance note: this method (with DiffBindingProps) diffs each property of FiberElementProps
         // individually, so any new property added to FiberElementProps must also receive a matching
-        // branch here. Missing the addition causes the new property's diff to be silently ignored
-        // (the prop applies on the initial mount but never updates on a re-render) without a compile error.
+        // branch in one of the two. Missing the addition causes the new property's diff to be silently
+        // ignored (the prop applies on the initial mount but never updates on a re-render) without a
+        // compile error.
         // Exception: the Data / Aria attribute props are NOT diffed here — they drive the data-/aria- variant
         // side-table (no direct VisualElement property to set), so PatchBaseElement re-syncs them via
         // ApplyAttributes right after this call (which rebuilds the store unconditionally, so a change is
@@ -1430,6 +1444,13 @@ namespace Velvet
                 FiberPropApplier.ApplyChoices(element, newProps.Choices);
             }
 
+            DiffBindingProps(element, oldProps, newProps);
+        }
+
+        // The props that wire a binding onto the element rather than writing a VisualElement property; the
+        // create-path counterpart is FiberNodeFactory.ApplyOptionalCreateBindings.
+        private void DiffBindingProps(VisualElement element, FiberElementProps oldProps, FiberElementProps newProps)
+        {
             // Record (value) equality: a re-render carrying the same camera + scale in a fresh record is
             // not a change, so a camera swap / removal is the only thing that lands here — a class-driven
             // RESIZE arrives through the binding's geometry callback instead, never through this diff.

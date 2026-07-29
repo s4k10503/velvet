@@ -97,27 +97,13 @@ namespace Velvet
             switch (oldNode)
             {
                 case ElementNode oldElem when newNode is ElementNode newElem:
-                {
-                    if (oldElem.ElementType != newElem.ElementType)
-                    {
-                        return false;
-                    }
-                    return (oldElem.WrapElement != null) == (newElem.WrapElement != null);
-                }
-                case TextNode when newNode is TextNode:
-                case MemoNode when newNode is MemoNode:
-                case AnimatePresenceNode when newNode is AnimatePresenceNode:
-                case SuspenseNode when newNode is SuspenseNode:
-                case VirtualListNode when newNode is VirtualListNode:
-                    return true;
+                    return oldElem.ElementType == newElem.ElementType
+                        && (oldElem.WrapElement != null) == (newElem.WrapElement != null);
                 case PortalNode oldPortal when newNode is PortalNode newPortal:
                     // (TargetId, Layer) is a one-of pair: a registry portal and a layer portal must
                     // never patch into each other, and two layer portals patch only on the same
                     // layer — a mismatch remounts, releasing the old slot range on the old target.
                     return oldPortal.TargetId == newPortal.TargetId && oldPortal.Layer == newPortal.Layer;
-                case WorldSpaceNode when newNode is WorldSpaceNode:
-                    // Transform, size and children all patch in place on the live host.
-                    return true;
                 case MotionNode oldMotion when newNode is MotionNode newMotion:
                     return oldMotion.ElementType == newMotion.ElementType;
                 case ContextProviderNode oldProvider when newNode is ContextProviderNode newProvider:
@@ -128,11 +114,26 @@ namespace Velvet
                     // different component at the same position must remount rather than have A's element patched as B.
                     return oldComp.GetType() == newComp.GetType()
                         && Equals(oldComp.ResolvedIdentity, newComp.ResolvedIdentity);
-                case OutletNode when newNode is OutletNode:
-                    return true;
                 default:
-                    return false;
+                    return PatchesOnKindAlone(oldNode, newNode);
             }
         }
+
+        // The kinds above carry a discriminator the pair can disagree on; these carry none, so matching kind
+        // is the whole test. Every VNode kind is sealed and none derives from another, so splitting the
+        // dispatch in two cannot reorder a match. Reaching this from an old node whose kind is listed above
+        // means the new node's kind differs, which is the same remount the switch would have decided.
+        private static bool PatchesOnKindAlone(VNode oldNode, VNode newNode) => oldNode switch
+        {
+            TextNode => newNode is TextNode,
+            MemoNode => newNode is MemoNode,
+            AnimatePresenceNode => newNode is AnimatePresenceNode,
+            SuspenseNode => newNode is SuspenseNode,
+            VirtualListNode => newNode is VirtualListNode,
+            // Transform, size and children all patch in place on the live host.
+            WorldSpaceNode => newNode is WorldSpaceNode,
+            OutletNode => newNode is OutletNode,
+            _ => false,
+        };
     }
 }
