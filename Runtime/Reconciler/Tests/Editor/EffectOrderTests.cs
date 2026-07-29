@@ -601,10 +601,12 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
 
             // Assert — A's layout effect runs AFTER B has rendered (all mutations precede any layout effect).
-            // Per-fiber commit would run A-layout before B-render.
-            Assume.That(s_log, Does.Contain("A-layout").And.Contain("B-render"),
-                "Precondition: both the layout effect and the sibling render ran in this drain");
-            Assert.That(s_log.IndexOf("A-layout"), Is.GreaterThan(s_log.IndexOf("B-render")),
+            // Per-fiber commit would run A-layout before B-render. Both entries are asserted present in the
+            // same comparison: a missing B-render reads as index -1, which the ordering term alone accepts.
+            Assert.That(
+                (s_log.Contains("A-layout") && s_log.Contains("B-render"),
+                    s_log.IndexOf("A-layout") > s_log.IndexOf("B-render")),
+                Is.EqualTo((true, true)),
                 "All renders in a batch must complete before any layout effect runs (React commit-phase order)");
         }
     }

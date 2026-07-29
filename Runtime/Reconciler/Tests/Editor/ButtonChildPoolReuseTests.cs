@@ -116,14 +116,16 @@ namespace Velvet.Tests
             var scheduler = mounted.GetSchedulerForTest();
             store.Set(false);
             scheduler.DrainImmediateForTest();
-            Assume.That(ChildCountOf(_root, "item-a"), Is.EqualTo(-1), "Precondition: the footer buttons are gone while hidden");
+            var childCountWhileHidden = ChildCountOf(_root, "item-a");
 
             // Act — the footer is shown again, recreating each button by renting it back from the pool.
             store.Set(true);
             scheduler.DrainImmediateForTest();
 
-            // Assert — the recreated button holds exactly its one declared child (not the leftover plus the new one).
-            Assert.AreEqual(1, ChildCountOf(_root, "item-a"));
+            // Assert — the recreated button holds exactly its one declared child (not the leftover plus the
+            // new one). The hidden count is asserted with it because a footer that never went away still
+            // holds its single original child, which the recreated count alone cannot tell apart.
+            Assert.That((childCountWhileHidden, ChildCountOf(_root, "item-a")), Is.EqualTo((-1, 1)));
         }
 
         [Test]

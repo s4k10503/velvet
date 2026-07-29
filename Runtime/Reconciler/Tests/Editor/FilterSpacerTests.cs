@@ -209,10 +209,12 @@ namespace Velvet.Tests
         {
             Mount();
             SetClass(SkewNoFilter);
-            Assume.That(SpacerCount(), Is.EqualTo(0), "Precondition: no spacer without a filter");
+            var countWithoutFilter = SpacerCount();
             SetClass(SkewFilter);
 
-            Assert.That(SpacerCount(), Is.EqualTo(1));
+            // The unfiltered count is asserted with the filtered one: the spacer mounted with the container,
+            // so a patch that added nothing would still show one here.
+            Assert.That((countWithoutFilter, SpacerCount()), Is.EqualTo((0, 1)));
         }
 
         [Test]
@@ -291,10 +293,11 @@ namespace Velvet.Tests
         {
             MountShadowCard();
             SetClass(ShadowNoFilter);
-            Assume.That(ShadowSpacerCount(), Is.EqualTo(0), "Precondition: no spacer without a filter");
+            var countWithoutFilter = ShadowSpacerCount();
             SetClass(ShadowFilter);
 
-            Assert.That(ShadowSpacerCount(), Is.EqualTo(1));
+            // Same pairing as the skew-layer sibling above.
+            Assert.That((countWithoutFilter, ShadowSpacerCount()), Is.EqualTo((0, 1)));
         }
     }
 }

@@ -193,16 +193,17 @@ namespace Velvet.Tests
             // reconciler's steady-state SyncChildTranslate re-run as the ONLY thing that can seat the new row.
             ForcePanelUpdate(col.panel);
             var added = _window.rootVisualElement.Q<VisualElement>("c");
-            Assume.That(added != null && !float.IsNaN(added.layout.height)
-                && added.style.translate.keyword == StyleKeyword.Null, Is.True,
-                "Precondition: the added row is laid out but NOT yet seated, so only SyncChildTranslate can seat it");
+            var laidOutButUnseated = added != null && !float.IsNaN(added.layout.height)
+                && added.style.translate.keyword == StyleKeyword.Null;
 
             // Act — a steady-state patch (skew tokens unchanged) after layout.
             s_setItems.Invoke(new[] { "a", "b", "c" });
             Drain();
 
-            // Assert
-            Assert.That(added.style.translate.keyword, Is.Not.EqualTo(StyleKeyword.Null));
+            // Assert — the pre-act unseated state is asserted alongside the seat, because a row seated before
+            // the patch would satisfy the seat on its own and attribute nothing to SyncChildTranslate.
+            Assert.That((laidOutButUnseated, added?.style.translate.keyword != StyleKeyword.Null),
+                Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -271,14 +272,16 @@ namespace Velvet.Tests
             SeatViaGeometry(col);
             s_setChildClass.Invoke("absolute translate-x-1 h-[24px]");
             Drain();
-            Assume.That(child.resolvedStyle.position == Position.Absolute
-                && Mathf.Approximately(child.style.translate.value.x.value, 4f), Is.True,
-                "Precondition: the out-of-flow child carries its OWN 4px translate before the caster is unskewed");
+            var ownTranslateBeforeUnskew = child.resolvedStyle.position == Position.Absolute
+                && Mathf.Approximately(child.style.translate.value.x.value, 4f);
             s_setCasterClass.Invoke("w-[120px] h-[200px]");
             Drain();
 
-            // Assert — unskew released the out-of-flow child untouched instead of restoring the stale Null capture.
-            Assert.That(child.style.translate.value.x.value, Is.EqualTo(4f).Within(0.01f));
+            // Assert — unskew released the out-of-flow child untouched instead of restoring the stale Null
+            // capture. The pre-unskew state joins the assertion because a child that never reached out-of-flow
+            // carrying its own 4px would read 4px afterwards for reasons the release path had no part in.
+            Assert.That((ownTranslateBeforeUnskew, child.style.translate.value.x.value),
+                Is.EqualTo((true, 4f)).Within(0.01f));
         }
 
         [Test]
@@ -324,15 +327,17 @@ namespace Velvet.Tests
             s_setChildClass.Invoke("absolute h-[24px]");
             Drain();
             ForcePanelUpdate(col.panel);
-            Assume.That(child.resolvedStyle.position == Position.Absolute
-                && child.style.translate.keyword != StyleKeyword.Null, Is.True,
-                "Precondition: the child is out-of-flow but the un-reseated manipulator still holds its shear write");
+            var outOfFlowStillCarryingShear = child.resolvedStyle.position == Position.Absolute
+                && child.style.translate.keyword != StyleKeyword.Null;
             s_setCasterClass.Invoke("w-[120px] h-[200px]");
             Drain();
 
             // Assert — teardown restored the still-shear-carrying out-of-flow child to its captured pre-shear
-            // translate (Null here), so the stale shear does not leak on a seatless element the manipulator let go.
-            Assert.That(child.style.translate.keyword, Is.EqualTo(StyleKeyword.Null));
+            // translate (Null here), so the stale shear does not leak on a seatless element the manipulator let
+            // go. A child that reached teardown carrying no shear would read Null without teardown doing
+            // anything, so the pre-teardown state is asserted with it.
+            Assert.That((outOfFlowStillCarryingShear, child.style.translate.keyword),
+                Is.EqualTo((true, StyleKeyword.Null)));
         }
 
         [Test]
@@ -354,13 +359,13 @@ namespace Velvet.Tests
             s_setChildClass.Invoke("absolute translate-x-1 h-[24px]");
             Drain();
             SeatViaGeometry(col);
-            Assume.That(child.resolvedStyle.position, Is.EqualTo(Position.Absolute),
-                "Precondition: the child transitioned out of flow, so the relinquish path ran for it");
 
             // Assert — the relinquish cleared the shear only if the child still carried it; here the child had
             // replaced it with its own 4px, so that authored translate survives instead of being clobbered back
-            // to the stale Null capture.
-            Assert.That(child.style.translate.value.x.value, Is.EqualTo(4f).Within(0.01f));
+            // to the stale Null capture. The out-of-flow transition is asserted with it: a child still in flow
+            // never reaches the relinquish path at all, and would carry its own 4px regardless.
+            Assert.That((child.resolvedStyle.position, child.style.translate.value.x.value),
+                Is.EqualTo((Position.Absolute, 4f)).Within(0.01f));
         }
 
         [Test]

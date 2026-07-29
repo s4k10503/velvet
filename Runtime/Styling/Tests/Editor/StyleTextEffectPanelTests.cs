@@ -381,7 +381,7 @@ namespace Velvet.Tests
                 "Precondition: the first label carries the inline pre-wrap write");
             s_setPoolReuseState.Invoke("hidden");
             scheduler.DrainImmediateForTest();
-            Assume.That(_window.rootVisualElement.Q<Label>("leaf"), Is.Null, "Precondition: the label is pooled while hidden");
+            var pooledWhileHidden = _window.rootVisualElement.Q<Label>("leaf") == null;
 
             // Act — an unrelated plain label rents the pooled instance back.
             s_setPoolReuseState.Invoke("plain");
@@ -389,9 +389,12 @@ namespace Velvet.Tests
 
             // Assert — the recycled instance carries no leftover inline pre-wrap AND no leftover collapsed
             // text from the previous consumer's side-table entry (a ghosted TextEffects/TextRawText row would
-            // still show "c d" here, not the fixture's raw, uncollapsed "c   d").
+            // still show "c d" here, not the fixture's raw, uncollapsed "c   d"). The pool round-trip is
+            // asserted alongside them: a label patched in place instead of pooled clears both anyway, so the
+            // remaining terms alone would hold on a reconciler that never pooled it.
             var recycled = _window.rootVisualElement.Q<Label>("leaf");
-            Assert.That((recycled.style.whiteSpace.keyword, recycled.text), Is.EqualTo((StyleKeyword.Null, "c   d")));
+            Assert.That((pooledWhileHidden, recycled.style.whiteSpace.keyword, recycled.text),
+                Is.EqualTo((true, StyleKeyword.Null, "c   d")));
         }
 
         [Test]
@@ -478,7 +481,7 @@ namespace Velvet.Tests
                 "Precondition: the first label carries the line-height tag");
             s_setLeadingPoolReuseState.Invoke("hidden");
             scheduler.DrainImmediateForTest();
-            Assume.That(_window.rootVisualElement.Q<Label>("leaf"), Is.Null, "Precondition: the label is pooled while hidden");
+            var pooledWhileHidden = _window.rootVisualElement.Q<Label>("leaf") == null;
 
             // Act — an unrelated plain label rents the pooled instance back.
             s_setLeadingPoolReuseState.Invoke("plain");
@@ -486,8 +489,10 @@ namespace Velvet.Tests
 
             // Assert — the recycled instance carries no leftover line-height tag from the previous
             // consumer's side-table entry (a ghosted TextEffects/TextRawText row would still show a
-            // wrapped tag here, not the fixture's raw "there").
-            Assert.That(_window.rootVisualElement.Q<Label>("leaf").text, Is.EqualTo("there"));
+            // wrapped tag here, not the fixture's raw "there"). The pool round-trip is asserted alongside
+            // it for the same reason as the PreLine sibling above.
+            Assert.That((pooledWhileHidden, _window.rootVisualElement.Q<Label>("leaf").text),
+                Is.EqualTo((true, "there")));
         }
 
         [Test]
@@ -569,18 +574,19 @@ namespace Velvet.Tests
                 "Precondition: the first label carries an overline binding");
             s_setOverlinePoolReuseState.Invoke("hidden");
             scheduler.DrainImmediateForTest();
-            Assume.That(_window.rootVisualElement.Q<Label>("leaf"), Is.Null, "Precondition: the label is pooled while hidden");
+            var pooledWhileHidden = _window.rootVisualElement.Q<Label>("leaf") == null;
 
             // Act — an unrelated plain label rents the pooled instance back.
             s_setOverlinePoolReuseState.Invoke("plain");
             scheduler.DrainImmediateForTest();
 
-            // Assert — genuinely the SAME recycled instance (not a coincidentally-unbound new one), carrying
-            // no leftover binding from the previous consumer.
+            // Assert — the label really left the tree and the SAME instance came back (not a coincidentally
+            // unbound new one), carrying no leftover binding from the previous consumer.
             var recycled = _window.rootVisualElement.Q<Label>("leaf");
             Assert.That(
-                (ReferenceEquals(recycled, firstLabel), ctx.TextOverlineBindings.ContainsKey(recycled)),
-                Is.EqualTo((true, false)));
+                (pooledWhileHidden, ReferenceEquals(recycled, firstLabel),
+                    ctx.TextOverlineBindings.ContainsKey(recycled)),
+                Is.EqualTo((true, true, false)));
         }
 
         private void Mount(VNode tree)

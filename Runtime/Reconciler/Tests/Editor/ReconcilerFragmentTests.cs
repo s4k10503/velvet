@@ -393,14 +393,19 @@ namespace Velvet.Tests
             {
                 store.Set(1);
                 scheduler.DrainImmediateForTest();
-                Assume.That(HostChildNames(_root), Is.EqualTo(new[] { "live" }), "Precondition: collapsed to the live sibling");
+                // Joined rather than compared as arrays: NUnit's tuple comparison matches a nested array by
+                // reference, so a tuple of string[] passes only when both sides are the same instance.
+                var collapsedOrder = string.Join(",", HostChildNames(_root));
 
                 // Act — the fragment re-expands, renting its labels back from the pool.
                 store.Set(0);
                 scheduler.DrainImmediateForTest();
 
-                // Assert — the children are restored in order ahead of the live sibling, with no leftover duplicates.
-                Assert.AreEqual(new[] { "fa", "fb", "live" }, HostChildNames(_root));
+                // Assert — the children are restored in order ahead of the live sibling, with no leftover
+                // duplicates. The collapsed shape is asserted with the restored one: a fragment that never
+                // collapsed already reads the restored order, and pins neither the collapse nor the re-expand.
+                Assert.That((collapsedOrder, string.Join(",", HostChildNames(_root))),
+                    Is.EqualTo(("live", "fa,fb,live")));
             }
         }
 
