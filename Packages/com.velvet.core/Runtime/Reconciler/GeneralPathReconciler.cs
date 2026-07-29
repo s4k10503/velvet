@@ -269,25 +269,7 @@ namespace Velvet
             HashSet<ComponentFiber>? fibersBefore = null,
             HashSet<ComponentFiber>? newFibers = null)
         {
-            // A created container orphan (e.g. V.Div) reconciled its declared children during
-            // CreateElement, so a Component child of that container is registered in
-            // ComponentRegistry with its MountPoint pointing into the (about-to-be-dropped) orphan
-            // subtree — including fibers that were registered by an INNER ReconcileChildren call
-            // and therefore are NOT in this scope's `newFibers` set. Dispose every inline fiber
-            // whose MountPoint sits inside the orphan range so its effect cleanup runs and the
-            // deferred layout-effect drain short-circuits via IsDisposed.
-            HashSet<VisualElement>? orphanContainers = null;
-            for (var i = preCount; i < commit.NewElements.Count; i++)
-            {
-                var (element, isExisting) = commit.NewElements[i];
-                if (isExisting || element == null) continue;
-                if (element is Label or Toggle or Slider or TextField)
-                {
-                    // Poolable leaves cannot host inline-mounted descendant fibers; skip.
-                    continue;
-                }
-                (orphanContainers ??= new HashSet<VisualElement>()).Add(element);
-            }
+            var orphanContainers = CollectOrphanContainers(commit, preCount);
             if (orphanContainers != null)
             {
                 if (newFibers != null)
@@ -323,6 +305,29 @@ namespace Velvet
             commit.NewElements.RemoveRange(preCount, commit.NewElements.Count - preCount);
             commit.CommittedKeys.RemoveRange(preCount, commit.CommittedKeys.Count - preCount);
             commit.NewIndex = preCount;
+        }
+
+        // A created container orphan (e.g. V.Div) reconciled its declared children during CreateElement, so
+        // a Component child of that container is registered in ComponentRegistry with its MountPoint
+        // pointing into the (about-to-be-dropped) orphan subtree — including fibers that were registered by
+        // an INNER ReconcileChildren call and therefore are NOT in the rolling-back scope's `newFibers` set.
+        // The caller disposes every inline fiber whose MountPoint sits inside the returned range so its
+        // effect cleanup runs and the deferred layout-effect drain short-circuits via IsDisposed.
+        private static HashSet<VisualElement>? CollectOrphanContainers(GeneralCommitState commit, int preCount)
+        {
+            HashSet<VisualElement>? orphanContainers = null;
+            for (var i = preCount; i < commit.NewElements.Count; i++)
+            {
+                var (element, isExisting) = commit.NewElements[i];
+                if (isExisting || element == null) continue;
+                if (element is Label or Toggle or Slider or TextField)
+                {
+                    // Poolable leaves cannot host inline-mounted descendant fibers; skip.
+                    continue;
+                }
+                (orphanContainers ??= new HashSet<VisualElement>()).Add(element);
+            }
+            return orphanContainers;
         }
 
         private static bool IsInsideOrphan(
@@ -582,9 +587,6 @@ namespace Velvet
         {
             var result = walk.Result;
             var isNewSide = walk.IsNewSide;
-            var parent = walk.Parent;
-            var slotStart = walk.SlotStart;
-            var newFibers = walk.NewFibers;
             var commit = walk.Commit;
 
             for (var nodeIndex = 0; nodeIndex < nodes.Length; nodeIndex++)
@@ -619,100 +621,11 @@ namespace Velvet
                         break;
                     }
                     case ContextProviderNode provider:
-                        // New side: push value first so the notification snapshot includes it.
-                        provider.PushContext(_ctx.ComponentContextStack);
-                        try
-                        {
-                            var pairKey = FiberKeying.ProviderPosition(
-                                _ctx.FiberStack.Current, position, provider.Key, nodeIndex);
-                            // Neither a structural position nor a walk-order counterpart means this Provider
-                            // is mounting here: its consumers mount with it and read the live cursor, so
-                            // there is nothing to notify.
-                            var oldProvider = walk.OldProvidersForPairing?.Match(
-                                pairKey, walk.NewProviderOrdinal);
-                            walk.NewProviderOrdinal++;
-                            if (oldProvider != null && provider.HasValueChanged(oldProvider))
-                            {
-                                NotifyContextValueChange(provider);
-                            }
-                            if (provider.Children != null)
-                            {
-                                var childPosition = FiberKeying.ProviderChild(
-                                    position, provider.Key, nodeIndex);
-                                ExpandInlineRecursive(walk, provider.Children, positionCounters, childPosition);
-                            }
-                        }
-                        finally
-                        {
-                            provider.PopContext(_ctx.ComponentContextStack);
-                        }
+                        ExpandNewSideProvider(walk, provider, positionCounters, position, nodeIndex);
                         break;
                     case ComponentNode component:
-                    {
-                        // Error-boundary behavior: once a sibling earlier in this
-                        // expansion has aborted via TryCatch.SetAborted, subsequent inline
-                        // ComponentNode mounts must not run their Body — otherwise their fiber
-                        // becomes registered with the new key but state never bound to the user
-                        // tree, blocking proper re-mount on the next normal render.
-                        if (_ctx.IsAborted) break;
-                        var identity = component.ResolvedIdentity;
-                        var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(positionCounters, identity, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
-                        if (isNewSide)
-                        {
-                            // Direct, live-context descent: the component renders
-                            // in-scope of its ancestor Providers, still pushed on the live
-                            // ComponentContextStack during this walk. UseContext reads that live cursor,
-                            // so no per-fiber snapshot is captured here. An isolated re-render later
-                            // reconstructs the enclosing Providers via FiberContextSpine.
-                            var parentFiber = _ctx.FiberStack.Current;
-                            // The fiber's output occupies parent.children from this slot; the
-                            // emitted-leaf count so far maps 1:1 to parent's slot range. The general
-                            // (commit) path commits leaves into NewElements; the structural (collect)
-                            // path accumulates them in result.
-                            var emittedCount = commit != null ? commit.NewElements.Count : result!.Count;
-                            var currentSlotStart = slotStart + emittedCount;
-                            // Two same-identity siblings sharing one explicit key resolve to the
-                            // SAME registry fiber; expanding it once per sibling would emit one
-                            // component's DOM twice while its slot bookkeeping tracks only the last
-                            // position (with hook state shared across both copies). Mirror the
-                            // leaf-level duplicate guard: warn and skip the repeat before
-                            // GetOrCreate can clobber the first occurrence's slot.
-                            var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity);
-                            if (priorFiber != null && newFibers.Contains(priorFiber))
-                            {
-                                FiberLogger.LogWarning("GeneralPathReconciler",
-                                    $"Duplicate component key detected among siblings: '{slotKey}'. " +
-                                    "The repeated sibling is skipped; give each sibling a unique key.");
-                                break;
-                            }
-                            var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
-                                component, parentFiber, slotKey, parent, currentSlotStart);
-                            newFibers.Add(fiber);
-                            var preCount = emittedCount;
-                            ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
-                            fiber.MountSlotCount = (commit != null ? commit.NewElements.Count : result!.Count) - preCount;
-                        }
-                        else
-                        {
-                            // Old-side (structural) walk: look up the previously rendered fiber by the
-                            // same tree-position key the new side registered under — (parent fiber,
-                            // position key, identity). FiberStack.Push mirrors the new side so nested
-                            // old-side components resolve against the same parent fiber they were
-                            // registered with; without the symmetric push the lookup parent would
-                            // diverge and the diff would treat reused fibers as orphans.
-                            var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity);
-                            if (fiber != null)
-                            {
-                                ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
-                                // Post-order add: a directly-nested component must precede its
-                                // parent in oldFibers so the orphan sweep's forward walk tears the
-                                // subtree down bottom-up — a descendant's effect cleanups complete
-                                // before an ancestor's, matching the commit-phase deletion order.
-                                walk.OldFibers.Add(fiber);
-                            }
-                        }
+                        ExpandComponentInline(walk, component, positionCounters, position, nodeIndex);
                         break;
-                    }
                     case OutletNode:
                         // Wrapper-emitting node: CreateElement(Outlet) / PatchNode(Outlet) resolve the
                         // matched route during this walk's commit (live context), reading
@@ -761,6 +674,115 @@ namespace Velvet
                         _keying.RegisterScopedKey(node, position.Scope, nodeIndex);
                         Emit(node, result, commit);
                         break;
+                }
+            }
+        }
+
+        // New side: push value first so the notification snapshot includes it.
+        private void ExpandNewSideProvider(
+            InlineWalk walk,
+            ContextProviderNode provider,
+            Dictionary<object, int> positionCounters,
+            WalkPosition position,
+            int nodeIndex)
+        {
+            provider.PushContext(_ctx.ComponentContextStack);
+            try
+            {
+                var pairKey = FiberKeying.ProviderPosition(
+                    _ctx.FiberStack.Current, position, provider.Key, nodeIndex);
+                // Neither a structural position nor a walk-order counterpart means this Provider
+                // is mounting here: its consumers mount with it and read the live cursor, so
+                // there is nothing to notify.
+                var oldProvider = walk.OldProvidersForPairing?.Match(
+                    pairKey, walk.NewProviderOrdinal);
+                walk.NewProviderOrdinal++;
+                if (oldProvider != null && provider.HasValueChanged(oldProvider))
+                {
+                    NotifyContextValueChange(provider);
+                }
+                if (provider.Children != null)
+                {
+                    var childPosition = FiberKeying.ProviderChild(
+                        position, provider.Key, nodeIndex);
+                    ExpandInlineRecursive(walk, provider.Children, positionCounters, childPosition);
+                }
+            }
+            finally
+            {
+                provider.PopContext(_ctx.ComponentContextStack);
+            }
+        }
+
+        private void ExpandComponentInline(
+            InlineWalk walk,
+            ComponentNode component,
+            Dictionary<object, int> positionCounters,
+            WalkPosition position,
+            int nodeIndex)
+        {
+            // Error-boundary behavior: once a sibling earlier in this
+            // expansion has aborted via TryCatch.SetAborted, subsequent inline
+            // ComponentNode mounts must not run their Body — otherwise their fiber
+            // becomes registered with the new key but state never bound to the user
+            // tree, blocking proper re-mount on the next normal render.
+            if (_ctx.IsAborted) return;
+            var identity = component.ResolvedIdentity;
+            var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(positionCounters, identity, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
+            var commit = walk.Commit;
+            var result = walk.Result;
+            if (walk.IsNewSide)
+            {
+                // Direct, live-context descent: the component renders
+                // in-scope of its ancestor Providers, still pushed on the live
+                // ComponentContextStack during this walk. UseContext reads that live cursor,
+                // so no per-fiber snapshot is captured here. An isolated re-render later
+                // reconstructs the enclosing Providers via FiberContextSpine.
+                var parentFiber = _ctx.FiberStack.Current;
+                // The fiber's output occupies parent.children from this slot; the
+                // emitted-leaf count so far maps 1:1 to parent's slot range. The general
+                // (commit) path commits leaves into NewElements; the structural (collect)
+                // path accumulates them in result.
+                var emittedCount = commit != null ? commit.NewElements.Count : result!.Count;
+                var currentSlotStart = walk.SlotStart + emittedCount;
+                // Two same-identity siblings sharing one explicit key resolve to the
+                // SAME registry fiber; expanding it once per sibling would emit one
+                // component's DOM twice while its slot bookkeeping tracks only the last
+                // position (with hook state shared across both copies). Mirror the
+                // leaf-level duplicate guard: warn and skip the repeat before
+                // GetOrCreate can clobber the first occurrence's slot.
+                var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity);
+                if (priorFiber != null && walk.NewFibers.Contains(priorFiber))
+                {
+                    FiberLogger.LogWarning("GeneralPathReconciler",
+                        $"Duplicate component key detected among siblings: '{slotKey}'. " +
+                        "The repeated sibling is skipped; give each sibling a unique key.");
+                    return;
+                }
+                var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
+                    component, parentFiber, slotKey, walk.Parent, currentSlotStart);
+                walk.NewFibers.Add(fiber);
+                var preCount = emittedCount;
+                ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+                fiber.MountSlotCount = (commit != null ? commit.NewElements.Count : result!.Count) - preCount;
+            }
+            else
+            {
+                // Old-side (structural) walk: look up the previously rendered fiber by the
+                // same tree-position key the new side registered under — (parent fiber,
+                // position key, identity). FiberStack.Push mirrors the new side so nested
+                // old-side components resolve against the same parent fiber they were
+                // registered with; without the symmetric push the lookup parent would
+                // diverge and the diff would treat reused fibers as orphans.
+                var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity);
+                if (fiber != null)
+                {
+                    ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+                    // Post-order add: a directly-nested component must precede its
+                    // parent in oldFibers so the orphan sweep's forward walk tears the
+                    // subtree down bottom-up — a descendant's effect cleanups complete
+                    // before an ancestor's, matching the commit-phase deletion order.
+                    walk.OldFibers.Add(fiber);
                 }
             }
         }
@@ -1057,6 +1079,87 @@ namespace Velvet
             public List<Action>? Deferred;
         }
 
+        // Old side: reproduce the committed leaf composition (including exiting ghosts) so the diff's old
+        // leaves match the live DOM. No state mutation, no animation.
+        private void ReproduceCommittedPresence(
+            InlineWalk walk,
+            (ComponentFiber? boundary, VisualElement? parent, string presenceKey) stateKey,
+            WalkPosition presencePosition)
+        {
+            if (!_ctx.PresenceStates.TryGetValue(stateKey, out var oldState)) return;
+
+            foreach (var (key, node) in oldState.Committed)
+            {
+                EmitPresenceChildAsAnchor(walk, node,
+                    FiberNodeFactory.FindFirstMotionDescendant(node), key, presencePosition, out _);
+            }
+        }
+
+        // mode="wait": while any previously-committed child is still exiting, hold back
+        // brand-new keys so the exit fully completes before the new child mounts / enters. The exit's
+        // completion already re-renders the boundary; on that render no ghost remains, so the withheld
+        // child emits and enters. Returning ghosts (a key re-added mid-exit) and persisting children are
+        // never withheld — only keys absent from the committed set.
+        private static bool ShouldBlockPresenceEnters(
+            AnimatePresenceNode presence,
+            List<(string key, VNode node)> prevCommitted,
+            HashSet<string> newKeySet,
+            ReconcilerContext.PresenceBoundaryState state)
+        {
+            if (presence.Mode != AnimatePresenceMode.Wait) return false;
+
+            foreach (var (key, node) in prevCommitted)
+            {
+                if (newKeySet.Contains(key)) continue;
+                if (state.ExitComplete.Contains(key)) continue;
+                var ghostMotion = FiberNodeFactory.FindFirstMotionDescendant(node);
+                if (ghostMotion?.Transition?.HasExitAnimation == true) return true;
+            }
+            return false;
+        }
+
+        // Committed emission order: the current children in new order, with each previously
+        // committed key now absent spliced back at the index it held among its previous
+        // siblings. An exiting child must hold its slot among unchanged neighbors for the
+        // whole exit (only a popLayout-style mode pulls it out of flow); appending ghosts
+        // after every current child instead yanked a non-last exiting item behind its later
+        // siblings — and physically reordered the DOM — the instant its exit began.
+        // Finished / instant-removed ghosts are dropped by the per-entry walk over the result.
+        private static void BuildPresenceEmissionPlan(
+            List<(string key, VNode node)> newKeyed,
+            List<(string key, VNode node)> prevCommitted,
+            HashSet<string> newKeySet,
+            List<(string key, VNode node)> plan)
+        {
+            foreach (var entry in newKeyed) plan.Add(entry);
+            var previousIndex = 0;
+            foreach (var (key, node) in prevCommitted)
+            {
+                if (!newKeySet.Contains(key))
+                {
+                    plan.Insert(previousIndex < plan.Count ? previousIndex : plan.Count, (key, node));
+                }
+                previousIndex++;
+            }
+        }
+
+        // staggerDirection sweeps last-to-first over the children that actually animate-exit this render (a
+        // no-op for the default forward direction, but needed to reverse), so the total has to be known
+        // before the first exit is dispatched.
+        private static int CountAnimatedExits(
+            List<(string key, VNode node)> prevCommitted,
+            HashSet<string> newKeySet,
+            ReconcilerContext.PresenceBoundaryState state)
+        {
+            var exitCount = 0;
+            foreach (var (key, node) in prevCommitted)
+            {
+                if (newKeySet.Contains(key) || state.ExitComplete.Contains(key)) continue;
+                if (FiberNodeFactory.FindFirstMotionDescendant(node)?.Transition?.HasExitAnimation == true) exitCount++;
+            }
+            return exitCount;
+        }
+
         private void ExpandAnimatePresenceInline(
             InlineWalk walk,
             AnimatePresenceNode presence,
@@ -1075,16 +1178,7 @@ namespace Velvet
 
             if (!walk.IsNewSide)
             {
-                // Old side: reproduce the committed leaf composition (including exiting ghosts) so the
-                // diff's old leaves match the live DOM. No state mutation, no animation.
-                if (_ctx.PresenceStates.TryGetValue(stateKey, out var oldState))
-                {
-                    foreach (var (key, node) in oldState.Committed)
-                    {
-                        EmitPresenceChildAsAnchor(walk, node,
-                            FiberNodeFactory.FindFirstMotionDescendant(node), key, presencePosition, out _);
-                    }
-                }
+                ReproduceCommittedPresence(walk, stateKey, presencePosition);
                 return;
             }
 
@@ -1105,53 +1199,9 @@ namespace Velvet
                 foreach (var entry in state.Committed) prevCommitted.Add(entry);
                 foreach (var (key, _) in newKeyed) newKeySet.Add(key);
 
-                // mode="wait": while any previously-committed child is still exiting, hold back
-                // brand-new keys so the exit fully completes before the new child mounts / enters. The exit's
-                // completion already re-renders the boundary; on that render no ghost remains, so the withheld
-                // child emits and enters. Returning ghosts (a key re-added mid-exit) and persisting children are
-                // never withheld — only keys absent from the committed set.
-                var blockEnters = false;
-                if (presence.Mode == AnimatePresenceMode.Wait)
-                {
-                    foreach (var (key, node) in prevCommitted)
-                    {
-                        if (newKeySet.Contains(key)) continue;
-                        if (state.ExitComplete.Contains(key)) continue;
-                        var ghostMotion = FiberNodeFactory.FindFirstMotionDescendant(node);
-                        if (ghostMotion?.Transition?.HasExitAnimation == true)
-                        {
-                            blockEnters = true;
-                            break;
-                        }
-                    }
-                }
-
-                // Committed emission order: the current children in new order, with each previously
-                // committed key now absent spliced back at the index it held among its previous
-                // siblings. An exiting child must hold its slot among unchanged neighbors for the
-                // whole exit (only a popLayout-style mode pulls it out of flow); appending ghosts
-                // after every current child instead yanked a non-last exiting item behind its later
-                // siblings — and physically reordered the DOM — the instant its exit began.
-                // Finished / instant-removed ghosts are dropped during the walk below.
-                foreach (var entry in newKeyed) plan.Add(entry);
-                var previousIndex = 0;
-                foreach (var (key, node) in prevCommitted)
-                {
-                    if (!newKeySet.Contains(key))
-                    {
-                        plan.Insert(previousIndex < plan.Count ? previousIndex : plan.Count, (key, node));
-                    }
-                    previousIndex++;
-                }
-
-                // Count the children that will actually animate-exit this render, so staggerDirection can sweep
-                // last-to-first over them (a no-op for the default forward direction, but needed to reverse).
-                var exitCount = 0;
-                foreach (var (key, node) in prevCommitted)
-                {
-                    if (newKeySet.Contains(key) || state.ExitComplete.Contains(key)) continue;
-                    if (FiberNodeFactory.FindFirstMotionDescendant(node)?.Transition?.HasExitAnimation == true) exitCount++;
-                }
+                var blockEnters = ShouldBlockPresenceEnters(presence, prevCommitted, newKeySet, state);
+                BuildPresenceEmissionPlan(newKeyed, prevCommitted, newKeySet, plan);
+                var exitCount = CountAnimatedExits(prevCommitted, newKeySet, state);
 
                 // An exit's completion callback normally runs long after this method has returned (a tween's
                 // scheduled timeout, a spring's settled tick). A spring exit whose variant pair touches no
@@ -1310,103 +1360,122 @@ namespace Velvet
 
             if (commit != null && ghostAnchor != null && state.Exiting.Add(key))
             {
-                _ctx.StyleAnimationScheduler.CancelEnter(ghostAnchor);
-                // A wrapped Motion's variant enter ran on its own element, not the anchor —
-                // cancel there too (idempotent when both are the same element).
-                if (ghostMotionElement != null && !ReferenceEquals(ghostMotionElement, ghostAnchor))
-                {
-                    _ctx.StyleAnimationScheduler.CancelEnter(ghostMotionElement);
-                }
-                if (presence.Mode == AnimatePresenceMode.PopLayout)
-                {
-                    PinExitingChildOutOfFlow(ghostAnchor);
-                }
-                var capturedKey = key;
-                var capturedState = state;
-                var capturedBoundary = boundaryFiber;
-                var capturedOnExitComplete = presence.OnExitComplete;
-                // `exit`: when the resolved Motion declares an exit variant label, animate from the
-                // resting variants[animate] to variants[exit]; otherwise use the transition's
-                // ExitFrom/ExitTo. The variant swap targets the Motion's OWN element (where the
-                // resting variant classes live), which for a wrapped Motion is not the anchor —
-                // without a resolved element the variant path is unavailable and the classic,
-                // anchor-targeted transition plays instead.
-                var variantExit = ghostMotionElement != null ? TryResolveVariantExit(ghostMotionNode) : null;
-                var exitTransition = variantExit ?? ghostTransition;
-                var exitTarget = variantExit != null ? ghostMotionElement! : ghostAnchor;
-                // For a variant exit the From classes ARE the resting variants[animate]; if this exit is
-                // cancelled (the key is re-added before it finishes) the element must return to that resting
-                // variant rather than be left without it (interrupt handling).
-                void RunExitComplete()
-                {
-                    if (_ctx.IsDisposed) return;
-                    // Reconcile-driven removal: flag the finished exit and re-render the boundary;
-                    // the next render stops emitting this child and the diff removes its leaves.
-                    capturedState.Exiting.Remove(capturedKey);
-                    capturedState.ExitComplete.Add(capturedKey);
-                    // onExitComplete fires once the exiting set drains (the last
-                    // in-flight exit finished). Cancelled exits (key re-entered) remove from Exiting
-                    // elsewhere and do not reach here, so they never trigger it. Contained: a
-                    // throwing callback must not skip the ghost-drop re-render scheduled below,
-                    // mirroring HookEffectExecutor's effect-exception containment.
-                    if (capturedState.Exiting.Count == 0)
-                    {
-                        try
-                        {
-                            capturedOnExitComplete?.Invoke();
-                        }
-                        catch (Exception ex)
-                        {
-                            ComponentBoundarySearch.PropagateException(capturedBoundary, ex);
-                        }
-                    }
-                    if (capturedBoundary != null && capturedBoundary.IsDisposed)
-                    {
-                        // The callback above threw and an ancestor boundary's fallback already
-                        // replaced capturedBoundary's whole subtree while handling it — there is no
-                        // ghost left to drop a re-render for, and ScheduleRerender has no disposed
-                        // guard of its own (unlike the public RequestRenderFromHook/
-                        // RequestTransitionRerender), so scheduling here would just pin a disposed
-                        // fiber dirty in the batch scheduler forever.
-                    }
-                    else if (capturedBoundary != null)
-                    {
-                        // The boundary's own hook inputs are unchanged (the exit finished out of band,
-                        // not via a state update), so an auto-memoized boundary would return its cached
-                        // VNode and the reconciler would bail — the AnimatePresence would never re-expand
-                        // and the finished ghost would linger forever. Invalidate the memo so the
-                        // re-render re-walks the children and the ghost-drop runs, mirroring the Suspense
-                        // reveal path (InvalidateMemoCache + FiberWorkLoop.RequestRenderFromHook).
-                        capturedBoundary.InvalidateMemoCache();
-                        FiberWorkLoop.ScheduleRerender(capturedBoundary, FiberUpdatePriority.Normal);
-                    }
-                    else
-                    {
-                        // No owning component fiber to re-render (a top-level AnimatePresence reconciled
-                        // straight onto a VisualElement). The exit animation finished but the reconcile
-                        // that drops the ghost can't be scheduled, so the element would silently linger.
-                        // Mount AnimatePresence inside a component (V.Mount establishes a root fiber) so
-                        // exit completion can remove the child. Warn rather than leak in silence.
-                        // Intentional: the supported path is V.Mount; reconciling straight onto a bare
-                        // element leaves no owner to drive the ghost-removal re-render.
-                        FiberLogger.LogWarning("AnimatePresence",
-                            "Exit completed but the presence has no owning component fiber to re-render, "
-                            + "so the exited child cannot be removed. Mount AnimatePresence inside a "
-                            + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
-                    }
-                }
-                _ctx.StyleAnimationScheduler.PlayExit(exitTarget, exitTransition, () =>
-                {
-                    // See the ExitCompletionGate comment in ExpandAnimatePresenceInline: a synchronous
-                    // completion (fired from inside this very PlayExit call) is queued instead of run inline.
-                    if (exitPass.Settled) RunExitComplete();
-                    else (exitPass.Deferred ??= new List<Action>()).Add(RunExitComplete);
-                }, restoreFromOnCancel: variantExit != null,
-                    additionalDelaySec: presence.StaggerDelaySec(exitIndex, exitCount));
+                StartPresenceExit(ghostAnchor, ghostMotionElement, ghostMotionNode, ghostTransition,
+                    presence, state, key, boundaryFiber, exitPass, exitIndex, exitCount);
                 exitIndex++;
             }
 
             nextCommitted.Add((key, node));
+        }
+
+        // Starts one ghost's exit animation: the enter cancellations and the PopLayout pin that must precede
+        // it, then the reconcile-driven completion that flags the finished exit and re-renders the boundary.
+        private void StartPresenceExit(
+            VisualElement ghostAnchor,
+            VisualElement? ghostMotionElement,
+            MotionNode? ghostMotionNode,
+            StyleTransitionConfig? ghostTransition,
+            AnimatePresenceNode presence,
+            ReconcilerContext.PresenceBoundaryState state,
+            string key,
+            ComponentFiber? boundaryFiber,
+            ExitCompletionGate exitPass,
+            int exitIndex,
+            int exitCount)
+        {
+            _ctx.StyleAnimationScheduler.CancelEnter(ghostAnchor);
+            // A wrapped Motion's variant enter ran on its own element, not the anchor —
+            // cancel there too (idempotent when both are the same element).
+            if (ghostMotionElement != null && !ReferenceEquals(ghostMotionElement, ghostAnchor))
+            {
+                _ctx.StyleAnimationScheduler.CancelEnter(ghostMotionElement);
+            }
+            if (presence.Mode == AnimatePresenceMode.PopLayout)
+            {
+                PinExitingChildOutOfFlow(ghostAnchor);
+            }
+            var capturedKey = key;
+            var capturedState = state;
+            var capturedBoundary = boundaryFiber;
+            var capturedOnExitComplete = presence.OnExitComplete;
+            // `exit`: when the resolved Motion declares an exit variant label, animate from the
+            // resting variants[animate] to variants[exit]; otherwise use the transition's
+            // ExitFrom/ExitTo. The variant swap targets the Motion's OWN element (where the
+            // resting variant classes live), which for a wrapped Motion is not the anchor —
+            // without a resolved element the variant path is unavailable and the classic,
+            // anchor-targeted transition plays instead.
+            var variantExit = ghostMotionElement != null ? TryResolveVariantExit(ghostMotionNode) : null;
+            var exitTransition = variantExit ?? ghostTransition;
+            var exitTarget = variantExit != null ? ghostMotionElement! : ghostAnchor;
+            // For a variant exit the From classes ARE the resting variants[animate]; if this exit is
+            // cancelled (the key is re-added before it finishes) the element must return to that resting
+            // variant rather than be left without it (interrupt handling).
+            void RunExitComplete()
+            {
+                if (_ctx.IsDisposed) return;
+                // Reconcile-driven removal: flag the finished exit and re-render the boundary;
+                // the next render stops emitting this child and the diff removes its leaves.
+                capturedState.Exiting.Remove(capturedKey);
+                capturedState.ExitComplete.Add(capturedKey);
+                // onExitComplete fires once the exiting set drains (the last
+                // in-flight exit finished). Cancelled exits (key re-entered) remove from Exiting
+                // elsewhere and do not reach here, so they never trigger it. Contained: a
+                // throwing callback must not skip the ghost-drop re-render scheduled below,
+                // mirroring HookEffectExecutor's effect-exception containment.
+                if (capturedState.Exiting.Count == 0)
+                {
+                    try
+                    {
+                        capturedOnExitComplete?.Invoke();
+                    }
+                    catch (Exception ex)
+                    {
+                        ComponentBoundarySearch.PropagateException(capturedBoundary, ex);
+                    }
+                }
+                if (capturedBoundary != null && capturedBoundary.IsDisposed)
+                {
+                    // The callback above threw and an ancestor boundary's fallback already
+                    // replaced capturedBoundary's whole subtree while handling it — there is no
+                    // ghost left to drop a re-render for, and ScheduleRerender has no disposed
+                    // guard of its own (unlike the public RequestRenderFromHook/
+                    // RequestTransitionRerender), so scheduling here would just pin a disposed
+                    // fiber dirty in the batch scheduler forever.
+                }
+                else if (capturedBoundary != null)
+                {
+                    // The boundary's own hook inputs are unchanged (the exit finished out of band,
+                    // not via a state update), so an auto-memoized boundary would return its cached
+                    // VNode and the reconciler would bail — the AnimatePresence would never re-expand
+                    // and the finished ghost would linger forever. Invalidate the memo so the
+                    // re-render re-walks the children and the ghost-drop runs, mirroring the Suspense
+                    // reveal path (InvalidateMemoCache + FiberWorkLoop.RequestRenderFromHook).
+                    capturedBoundary.InvalidateMemoCache();
+                    FiberWorkLoop.ScheduleRerender(capturedBoundary, FiberUpdatePriority.Normal);
+                }
+                else
+                {
+                    // No owning component fiber to re-render (a top-level AnimatePresence reconciled
+                    // straight onto a VisualElement). The exit animation finished but the reconcile
+                    // that drops the ghost can't be scheduled, so the element would silently linger.
+                    // Mount AnimatePresence inside a component (V.Mount establishes a root fiber) so
+                    // exit completion can remove the child. Warn rather than leak in silence.
+                    // Intentional: the supported path is V.Mount; reconciling straight onto a bare
+                    // element leaves no owner to drive the ghost-removal re-render.
+                    FiberLogger.LogWarning("AnimatePresence",
+                        "Exit completed but the presence has no owning component fiber to re-render, "
+                        + "so the exited child cannot be removed. Mount AnimatePresence inside a "
+                        + "component (e.g. via V.Mount) rather than reconciling it onto a bare element.");
+                }
+            }
+            _ctx.StyleAnimationScheduler.PlayExit(exitTarget, exitTransition, () =>
+            {
+                // See the ExitCompletionGate comment in ExpandAnimatePresenceInline: a synchronous
+                // completion (fired from inside this very PlayExit call) is queued instead of run inline.
+                if (exitPass.Settled) RunExitComplete();
+                else (exitPass.Deferred ??= new List<Action>()).Add(RunExitComplete);
+            }, restoreFromOnCancel: variantExit != null,
+                additionalDelaySec: presence.StaggerDelaySec(exitIndex, exitCount));
         }
 
         // Live branch of the per-plan-entry walk: the key is present in the new children (a genuine re-entry
@@ -1459,18 +1528,7 @@ namespace Velvet
                 var wasExitComplete = state.ExitComplete.Remove(key);
                 if (wasExiting || wasExitComplete)
                 {
-                    // The re-entry replaces the ghost's node in the committed set. The OLD node was
-                    // kept alive only by presence bookkeeping (a ghost is never part of the boundary's
-                    // own render output), so this replacement is its last reference — retire it. The
-                    // entry leaves state.Committed first, or the sweep's mark (which reads that list)
-                    // would spare its own target; prevCommitted is a copy, so the loop is unaffected.
-                    var ghostNode = FindPresenceCommittedNode(prevCommitted, key);
-                    if (ghostNode != null && !ReferenceEquals(ghostNode, node))
-                    {
-                        RemovePresenceCommittedEntry(state.Committed, key);
-                        FiberTreeReturn.ReturnRetiredTree(
-                            FiberTreeReturn.NormalizeToArray(ghostNode), boundaryFiber);
-                    }
+                    RetireReplacedGhostNode(state, prevCommitted, key, node, boundaryFiber);
                 }
                 // The key is present again. If a completed exit's ghost was still awaiting its drop and the
                 // re-entry mounted a FRESH element (the detached ghost can't be reproduced, so the new
@@ -1490,75 +1548,131 @@ namespace Velvet
                 }
                 if (wasExiting)
                 {
-                    _ctx.StyleAnimationScheduler.CancelExit(anchor);
-                    // A wrapped Motion's variant exit ran on its own element, not the anchor — the
-                    // cancel (whose reversal restores the resting variant) must land there too.
-                    if (motionElement != null && !ReferenceEquals(motionElement, anchor))
-                    {
-                        _ctx.StyleAnimationScheduler.CancelExit(motionElement);
-                    }
-                    if (presence.Mode == AnimatePresenceMode.PopLayout)
-                    {
-                        // The anchor's OWN class list, not motion's: PinExitingChildOutOfFlow pinned
-                        // `anchor` (this keyed child's own top-level element), which for a Div wrapping
-                        // a Motion (the z-managed shape) is a DIFFERENT element — with a different
-                        // class list — than the nested Motion FindFirstMotionDescendant resolved.
-                        RestorePopLayoutChildToFlow(anchor, (node as BaseElementNode)?.ClassNames);
-                    }
+                    CancelInterruptedPresenceExit(anchor, motionElement, presence, node);
                 }
                 else if (wasExitComplete)
                 {
-                    // A COMPLETED exit's re-entry (the drop render was preempted) reproduces a
-                    // still-attached element that nothing downstream un-parks: there is no pending
-                    // animation left to cancel, so the interruption restores the wasExiting branch
-                    // handles never run. Reverse the exit-time mutations here so the enter branches
-                    // start from the same state a fresh mount would.
-                    if (presence.Mode == AnimatePresenceMode.PopLayout && !freshReplacement)
-                    {
-                        // The out-of-flow pin outlives its exit (only the drop would have removed the
-                        // element). Skipped for a fresh replacement: the pin lives on the discarded
-                        // ghost, and nulling a never-pinned element's geometry slots would erase
-                        // resolver-applied inline values a transparent-wrapper child cannot re-resolve.
-                        RestorePopLayoutChildToFlow(anchor, (node as BaseElementNode)?.ClassNames);
-                    }
-                    if (motionElement != null)
-                    {
-                        // The completed swap left the element AT variants[exit] with the resting
-                        // variants[animate] stripped; the no-initial enter branch below plays nothing
-                        // and the class diff cannot help (MotionAppliedClasses still records the
-                        // resting set as applied). Resolved from the RE-ADDED node's variants — the
-                        // ghost node is already retired, so the exact applied arrays are gone; a
-                        // re-add that also changed the variants map may leave the old exit class
-                        // behind, or skip this restoration entirely when the exit label no longer
-                        // resolves — the same staleness any heuristic over the new declaration has.
-                        var completedExit = TryResolveVariantExit(motion);
-                        if (completedExit != null)
-                        {
-                            StyleAnimationClassUtils.RemoveClasses(motionElement, completedExit.ExitToClasses);
-                            StyleAnimationClassUtils.AddClasses(motionElement, completedExit.ExitFromClasses);
-                        }
-                    }
+                    RestoreAfterCompletedPresenceExit(anchor, motionElement, motion, presence, node,
+                        freshReplacement);
                 }
 
                 var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
-                if (isEnter && motion?.Transition != null)
+                if (isEnter)
                 {
-                    // The Initial flag only suppresses the enter animation on the AnimatePresence's
-                    // very first mount; later additions always animate.
-                    if (!firstRender || presence.Initial)
-                    {
-                        DispatchPresenceEnter(motion, anchor, motionElement, wasExiting,
-                            presence.StaggerDelaySec(visualIndex, newKeyed.Count));
-                    }
-                    else
-                    {
-                        motion.OnEnterComplete?.Invoke();
-                    }
+                    PlayPresenceEnter(motion, anchor, motionElement, wasExiting, firstRender, presence,
+                        visualIndex, newKeyed.Count);
                 }
             }
 
             nextCommitted.Add((key, node));
             visualIndex++;
+        }
+
+        // The re-entry replaces the ghost's node in the committed set. The OLD node was kept alive only by
+        // presence bookkeeping (a ghost is never part of the boundary's own render output), so this
+        // replacement is its last reference — retire it. The entry leaves state.Committed first, or the
+        // sweep's mark (which reads that list) would spare its own target; prevCommitted is a copy, so the
+        // caller's loop over it is unaffected.
+        private static void RetireReplacedGhostNode(
+            ReconcilerContext.PresenceBoundaryState state,
+            List<(string key, VNode node)> prevCommitted,
+            string key,
+            VNode node,
+            ComponentFiber? boundaryFiber)
+        {
+            var ghostNode = FindPresenceCommittedNode(prevCommitted, key);
+            if (ghostNode == null || ReferenceEquals(ghostNode, node)) return;
+
+            RemovePresenceCommittedEntry(state.Committed, key);
+            FiberTreeReturn.ReturnRetiredTree(
+                FiberTreeReturn.NormalizeToArray(ghostNode), boundaryFiber);
+        }
+
+        private void CancelInterruptedPresenceExit(
+            VisualElement anchor,
+            VisualElement? motionElement,
+            AnimatePresenceNode presence,
+            VNode node)
+        {
+            _ctx.StyleAnimationScheduler.CancelExit(anchor);
+            // A wrapped Motion's variant exit ran on its own element, not the anchor — the
+            // cancel (whose reversal restores the resting variant) must land there too.
+            if (motionElement != null && !ReferenceEquals(motionElement, anchor))
+            {
+                _ctx.StyleAnimationScheduler.CancelExit(motionElement);
+            }
+            if (presence.Mode == AnimatePresenceMode.PopLayout)
+            {
+                // The anchor's OWN class list, not motion's: PinExitingChildOutOfFlow pinned
+                // `anchor` (this keyed child's own top-level element), which for a Div wrapping
+                // a Motion (the z-managed shape) is a DIFFERENT element — with a different
+                // class list — than the nested Motion FindFirstMotionDescendant resolved.
+                RestorePopLayoutChildToFlow(anchor, (node as BaseElementNode)?.ClassNames);
+            }
+        }
+
+        // A COMPLETED exit's re-entry (the drop render was preempted) reproduces a still-attached element
+        // that nothing downstream un-parks: there is no pending animation left to cancel, so the
+        // interruption restores that CancelInterruptedPresenceExit handles never run. Reverse the exit-time
+        // mutations here so the enter branches start from the same state a fresh mount would.
+        private static void RestoreAfterCompletedPresenceExit(
+            VisualElement anchor,
+            VisualElement? motionElement,
+            MotionNode? motion,
+            AnimatePresenceNode presence,
+            VNode node,
+            bool freshReplacement)
+        {
+            if (presence.Mode == AnimatePresenceMode.PopLayout && !freshReplacement)
+            {
+                // The out-of-flow pin outlives its exit (only the drop would have removed the
+                // element). Skipped for a fresh replacement: the pin lives on the discarded
+                // ghost, and nulling a never-pinned element's geometry slots would erase
+                // resolver-applied inline values a transparent-wrapper child cannot re-resolve.
+                RestorePopLayoutChildToFlow(anchor, (node as BaseElementNode)?.ClassNames);
+            }
+            if (motionElement == null) return;
+
+            // The completed swap left the element AT variants[exit] with the resting
+            // variants[animate] stripped; the no-initial enter branch plays nothing
+            // and the class diff cannot help (MotionAppliedClasses still records the
+            // resting set as applied). Resolved from the RE-ADDED node's variants — the
+            // ghost node is already retired, so the exact applied arrays are gone; a
+            // re-add that also changed the variants map may leave the old exit class
+            // behind, or skip this restoration entirely when the exit label no longer
+            // resolves — the same staleness any heuristic over the new declaration has.
+            var completedExit = TryResolveVariantExit(motion);
+            if (completedExit != null)
+            {
+                StyleAnimationClassUtils.RemoveClasses(motionElement, completedExit.ExitToClasses);
+                StyleAnimationClassUtils.AddClasses(motionElement, completedExit.ExitFromClasses);
+            }
+        }
+
+        private void PlayPresenceEnter(
+            MotionNode? motion,
+            VisualElement? anchor,
+            VisualElement? motionElement,
+            bool wasExiting,
+            bool firstRender,
+            AnimatePresenceNode presence,
+            int visualIndex,
+            int childCount)
+        {
+            if (motion?.Transition != null)
+            {
+                // The Initial flag only suppresses the enter animation on the AnimatePresence's
+                // very first mount; later additions always animate.
+                if (!firstRender || presence.Initial)
+                {
+                    DispatchPresenceEnter(motion, anchor, motionElement, wasExiting,
+                        presence.StaggerDelaySec(visualIndex, childCount));
+                }
+                else
+                {
+                    motion.OnEnterComplete?.Invoke();
+                }
+            }
         }
 
         // A variant Motion (carrying variants + animate) manages its resting state through variant classes:

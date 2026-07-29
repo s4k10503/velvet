@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
+using Mono.Collections.Generic;
 using Unity.CompilationPipeline.Common.Diagnostics;
 
 namespace Velvet.CodeGen
@@ -250,101 +251,22 @@ namespace Velvet.CodeGen
             var body = method.Body;
             var instructions = body.Instructions;
 
-            var returns = new List<Instruction>();
-            foreach (var instr in instructions)
-            {
-                if (instr.OpCode == OpCodes.Ret)
-                {
-                    returns.Add(instr);
-                }
-            }
+            var returns = CollectReturns(instructions);
             if (returns.Count == 0)
             {
                 return false;
             }
 
-            // Allow-list gate. Bail the whole method when any call reaches a non-SAFE hook — a known memo-unsafe
-            // hook, an unknown / future hook absent from both allow-lists, or a call whose hook safety cannot be
-            // confirmed because Resolve() fails. Caching the body when an unguarded hook is in play would
-            // short-circuit a re-render the hook drives through a path the deps array does not track.
-            foreach (var instr in instructions)
+            if (ReachesAnyNonSafeHook(instructions, nonSafeHookCache))
             {
-                if (instr.OpCode != OpCodes.Call && instr.OpCode != OpCodes.Callvirt) continue;
-                if (instr.Operand is MethodReference callee && ReachesNonSafeHook(callee, nonSafeHookCache))
-                {
-                    return false;
-                }
+                return false;
             }
 
             var hookPipedLocals = new List<VariableDefinition>();
             var hookCalls = new List<Instruction>();
-            Instruction? lastHookBoundary = null;
-            foreach (var instr in instructions)
+            if (!TryScanHookSection(body, transitiveHookCache, hookPipedLocals, hookCalls,
+                    out var lastHookBoundary))
             {
-                if (!IsHookCall(instr, transitiveHookCache, out var hookTarget, out var isDirect)) continue;
-
-                // Record every hook call site so the post-loop pass can verify none is conditionally skipped.
-                hookCalls.Add(instr);
-
-                // A direct SAFE void hook (UseEffect and friends) runs for its side effect only and pushes no
-                // value, so there is no dep to capture. Advance the boundary past it so the cache gate lands after
-                // the whole hook section, and continue without recording a dep. Only a direct hook is treated this
-                // way: a void-returning custom hook would hide whatever value hook it composes internally, which
-                // the deps array could not capture, so it falls through to the bail below.
-                if (isDirect && IsDirectVoidSafeHookCall(hookTarget!))
-                {
-                    lastHookBoundary = instr;
-                    continue;
-                }
-
-                var next = instr.Next;
-                if (next == null)
-                {
-                    return false;
-                }
-
-                if (TryMatchDiscardedHookResult(next))
-                {
-                    return false;
-                }
-
-                var directCapture = TryMatchDirectCapture(next, body, out var directLocal, out var directBoundary);
-                if (directCapture == HookCaptureMatch.Bail)
-                {
-                    return false;
-                }
-                if (directCapture == HookCaptureMatch.Matched)
-                {
-                    hookPipedLocals.Add(directLocal!);
-                    lastHookBoundary = directBoundary;
-                    continue;
-                }
-
-                var item1Capture = TryMatchItem1Deconstruction(next, body, out var item1Local, out var item1Boundary);
-                if (item1Capture == HookCaptureMatch.Bail)
-                {
-                    return false;
-                }
-                if (item1Capture == HookCaptureMatch.Matched)
-                {
-                    hookPipedLocals.Add(item1Local!);
-                    lastHookBoundary = item1Boundary;
-                    continue;
-                }
-
-                var twoElementCapture = TryMatchTwoElementDeconstruction(next, body, out var twoElementLocal, out var twoElementBoundary);
-                if (twoElementCapture == HookCaptureMatch.Bail)
-                {
-                    return false;
-                }
-                if (twoElementCapture == HookCaptureMatch.Matched)
-                {
-                    hookPipedLocals.Add(twoElementLocal!);
-                    lastHookBoundary = twoElementBoundary;
-                    continue;
-                }
-
-                // Hook return consumed by an unsupported pattern. Bail: the deps array would be incomplete.
                 return false;
             }
 
@@ -396,6 +318,116 @@ namespace Velvet.CodeGen
 
             analysis = new HookAnalysis(hookPipedLocals, lastHookBoundary, returns);
             return true;
+        }
+
+        private static List<Instruction> CollectReturns(Collection<Instruction> instructions)
+        {
+            var returns = new List<Instruction>();
+            foreach (var instr in instructions)
+            {
+                if (instr.OpCode == OpCodes.Ret)
+                {
+                    returns.Add(instr);
+                }
+            }
+
+            return returns;
+        }
+
+        // Allow-list gate. The whole method bails when any call reaches a non-SAFE hook — a known memo-unsafe
+        // hook, an unknown / future hook absent from both allow-lists, or a call whose hook safety cannot be
+        // confirmed because Resolve() fails. Caching the body when an unguarded hook is in play would
+        // short-circuit a re-render the hook drives through a path the deps array does not track.
+        private static bool ReachesAnyNonSafeHook(Collection<Instruction> instructions,
+            Dictionary<string, bool> nonSafeHookCache)
+        {
+            foreach (var instr in instructions)
+            {
+                if (instr.OpCode != OpCodes.Call && instr.OpCode != OpCodes.Callvirt) continue;
+                if (instr.Operand is MethodReference callee && ReachesNonSafeHook(callee, nonSafeHookCache))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // Walks the hook section once, recording every call site and the local each hook result is piped
+        // into. False means the shape is unweavable and the whole method bails; a true result with a null
+        // boundary means the body reached no hook at all.
+        private static bool TryScanHookSection(MethodBody body, Dictionary<string, bool> transitiveHookCache,
+            List<VariableDefinition> hookPipedLocals, List<Instruction> hookCalls,
+            out Instruction? lastHookBoundary)
+        {
+            lastHookBoundary = null;
+            foreach (var instr in body.Instructions)
+            {
+                if (!IsHookCall(instr, transitiveHookCache, out var hookTarget, out var isDirect)) continue;
+
+                // Record every hook call site so the post-loop pass can verify none is conditionally skipped.
+                hookCalls.Add(instr);
+
+                // A direct SAFE void hook (UseEffect and friends) runs for its side effect only and pushes no
+                // value, so there is no dep to capture. Advance the boundary past it so the cache gate lands after
+                // the whole hook section, and continue without recording a dep. Only a direct hook is treated this
+                // way: a void-returning custom hook would hide whatever value hook it composes internally, which
+                // the deps array could not capture, so it falls through to the bail below.
+                if (isDirect && IsDirectVoidSafeHookCall(hookTarget!))
+                {
+                    lastHookBoundary = instr;
+                    continue;
+                }
+
+                var next = instr.Next;
+                if (next == null)
+                {
+                    return false;
+                }
+
+                if (TryMatchDiscardedHookResult(next))
+                {
+                    return false;
+                }
+
+                var capture = TryCaptureHookResult(next, body, out var local, out var boundary);
+                if (capture == HookCaptureMatch.Bail)
+                {
+                    return false;
+                }
+                if (capture == HookCaptureMatch.Matched)
+                {
+                    hookPipedLocals.Add(local!);
+                    lastHookBoundary = boundary;
+                    continue;
+                }
+
+                // Hook return consumed by an unsupported pattern. Bail: the deps array would be incomplete.
+                return false;
+            }
+
+            return true;
+        }
+
+        // The shapes are tried in this order because each is a strictly narrower read of the same
+        // instruction, and the first one that recognizes the shape owns the verdict — including a Bail,
+        // which means the shape matched but is unsound and a later matcher must not get to claim it.
+        private static HookCaptureMatch TryCaptureHookResult(Instruction next, MethodBody body,
+            out VariableDefinition? local, out Instruction? boundary)
+        {
+            var direct = TryMatchDirectCapture(next, body, out local, out boundary);
+            if (direct != HookCaptureMatch.NotMatched)
+            {
+                return direct;
+            }
+
+            var item1 = TryMatchItem1Deconstruction(next, body, out local, out boundary);
+            if (item1 != HookCaptureMatch.NotMatched)
+            {
+                return item1;
+            }
+
+            return TryMatchTwoElementDeconstruction(next, body, out local, out boundary);
         }
 
         // Outcome of matching the instruction immediately following a hook call against one hook-return
