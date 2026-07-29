@@ -18,55 +18,86 @@ namespace Velvet
 
             if (prefix == "scale-")
             {
-                if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var scaleValue)) return false;
-                result = new ArbitraryStyle(ArbitraryProperty.Scale, negate ? -scaleValue : scaleValue, LengthUnit.Pixel);
-                return true;
+                return TryParseScale(valueSpan, negate, out result);
             }
 
             // scale-x-/scale-y- are unitless factors routed (like translate-x-/-y-) through the merge path so
             // the two axes compose onto the single inline `scale` instead of last-write-wins.
             if (prefix == "scale-x-" || prefix == "scale-y-")
             {
-                if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var axisScale)) return false;
-                result = new ArbitraryStyle(
-                    prefix == "scale-x-" ? ArbitraryProperty.ScaleX : ArbitraryProperty.ScaleY,
-                    negate ? -axisScale : axisScale, LengthUnit.Pixel);
-                return true;
+                return TryParseAxisScale(prefix == "scale-x-" ? ArbitraryProperty.ScaleX : ArbitraryProperty.ScaleY,
+                    valueSpan, negate, out result);
             }
 
             if (prefix == "rotate-")
             {
-                if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var degrees)) return false;
-                result = new ArbitraryStyle(ArbitraryProperty.Rotate, negate ? -degrees : degrees, LengthUnit.Pixel);
-                return true;
+                return TryParseRotate(valueSpan, negate, out result);
             }
 
-            // opacity-[..] is a unitless StyleFloat (0..1). Out-of-range or negated values are rejected
-            // (UITK does not clamp style.opacity), so opacity-[2] / -opacity-[.5] is not a recognized utility.
             if (prefix == "opacity-")
             {
-                if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var opacityValue)
-                    || opacityValue < 0f || opacityValue > 1f)
-                {
-                    return false;
-                }
-                result = new ArbitraryStyle(ArbitraryProperty.Opacity, opacityValue, LengthUnit.Pixel);
-                return true;
+                return TryParseOpacity(valueSpan, negate, out result);
             }
 
             // translate-x-/translate-y- are lengths (px/%) routed here (not through TryGetProperty) so all
             // four transform properties share one parse-and-apply path (the Apply/Clear transform switch).
             if (prefix == "translate-x-" || prefix == "translate-y-")
             {
-                if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var tValue, out var tUnit)) return false;
-                if (negate) tValue = -tValue;
-                result = new ArbitraryStyle(
+                return TryParseTranslate(
                     prefix == "translate-x-" ? ArbitraryProperty.TranslateX : ArbitraryProperty.TranslateY,
-                    tValue, tUnit);
-                return true;
+                    valueSpan, negate, out result);
             }
 
             return null;
+        }
+
+        private static bool TryParseScale(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var scaleValue)) return false;
+            result = new ArbitraryStyle(ArbitraryProperty.Scale, negate ? -scaleValue : scaleValue, LengthUnit.Pixel);
+            return true;
+        }
+
+        private static bool TryParseAxisScale(ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate,
+            out ArbitraryStyle result)
+        {
+            result = default;
+            if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var axisScale)) return false;
+            result = new ArbitraryStyle(property, negate ? -axisScale : axisScale, LengthUnit.Pixel);
+            return true;
+        }
+
+        private static bool TryParseRotate(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var degrees)) return false;
+            result = new ArbitraryStyle(ArbitraryProperty.Rotate, negate ? -degrees : degrees, LengthUnit.Pixel);
+            return true;
+        }
+
+        // opacity-[..] is a unitless StyleFloat (0..1). Out-of-range or negated values are rejected
+        // (UITK does not clamp style.opacity), so opacity-[2] / -opacity-[.5] is not a recognized utility.
+        private static bool TryParseOpacity(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var opacityValue)
+                || opacityValue < 0f || opacityValue > 1f)
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(ArbitraryProperty.Opacity, opacityValue, LengthUnit.Pixel);
+            return true;
+        }
+
+        private static bool TryParseTranslate(ArbitraryProperty property, ReadOnlySpan<char> valueSpan, bool negate,
+            out ArbitraryStyle result)
+        {
+            result = default;
+            if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var tValue, out var tUnit)) return false;
+            if (negate) tValue = -tValue;
+            result = new ArbitraryStyle(property, tValue, tUnit);
+            return true;
         }
     }
 }

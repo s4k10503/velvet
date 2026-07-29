@@ -109,6 +109,18 @@ namespace Velvet
             return false;
         }
 
+        private struct RingSlots
+        {
+            public bool HasIntent;   // any width/color/bare ring-or-outline class establishes a ring
+            public bool WidthSet;
+            public float Width;
+            public bool IsOutline;   // tracks which family established intent, for the default width
+            public bool ColorSet;
+            public Color Color;
+            public float Offset;
+            public bool Inset;
+        }
+
         // Resolves the composite ring/outline spec from classNames. Returns false when no ring is wanted —
         // no ring/outline class, or the resolved width is 0 (ring-0 / outline-none).
         public static bool TryExtract(string[] classNames, out RingSpec spec)
@@ -119,108 +131,108 @@ namespace Velvet
                 return false;
             }
 
-            var hasIntent = false;        // any width/color/bare ring-or-outline class establishes a ring
-            var widthSet = false;
-            var width = 0f;
-            var isOutline = false;        // tracks which family established intent, for the default width
-            var colorSet = false;
-            var color = default(Color);
-            var offset = 0f;
-            var inset = false;
-
+            var slots = default(RingSlots);
             foreach (var cls in classNames)
             {
-                if (string.IsNullOrEmpty(cls))
-                {
-                    continue;
-                }
-
-                // Inset modifier (ring only).
-                if (cls == "ring-inset")
-                {
-                    inset = true;
-                    continue;
-                }
-
-                // Offset: ring-offset-{N} / outline-offset-{N}. (A color suffix here is the offset-color fill,
-                // which Velvet does not model yet; an unrecognized offset suffix is ignored.)
-                if (TryMatchPrefix(cls, "ring-offset-", out var ringOffSuffix)
-                    || TryMatchPrefix(cls, "outline-offset-", out ringOffSuffix))
-                {
-                    if (TryParseWidthValue(ringOffSuffix, out var off))
-                    {
-                        offset = off;
-                    }
-                    continue;
-                }
-
-                // ring / ring-{N|[..]|color}.
-                if (cls == "ring")
-                {
-                    hasIntent = true;
-                    isOutline = false;
-                    continue;
-                }
-                if (cls == "outline")
-                {
-                    hasIntent = true;
-                    isOutline = true;
-                    continue;
-                }
-
-                var isRingFamily = TryMatchPrefix(cls, "ring-", out var ringSuffix);
-                var isOutlineFamily = !isRingFamily && TryMatchPrefix(cls, "outline-", out ringSuffix);
-                if (!isRingFamily && !isOutlineFamily)
-                {
-                    continue;
-                }
-
-                // outline-none cancels (width 0).
-                if (ringSuffix == "none")
-                {
-                    hasIntent = true;
-                    isOutline = isOutlineFamily;
-                    widthSet = true;
-                    width = 0f;
-                    continue;
-                }
-
-                if (TryParseWidthValue(ringSuffix, out var w))
-                {
-                    hasIntent = true;
-                    isOutline = isOutlineFamily;
-                    widthSet = true;
-                    width = w;
-                    continue;
-                }
-
-                // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]).
-                if (TryParseColorValue(ringSuffix, out var c))
-                {
-                    hasIntent = true;
-                    isOutline = isOutlineFamily;
-                    colorSet = true;
-                    color = c;
-                    continue;
-                }
-                // An unrecognized ring-*/outline-* suffix is ignored (not a known utility).
+                Accumulate(cls, ref slots);
             }
 
-            if (!hasIntent)
+            if (!slots.HasIntent)
             {
                 return false;
             }
 
-            var effectiveWidth = widthSet ? width : (isOutline ? DefaultOutlineWidth : DefaultRingWidth);
+            var effectiveWidth = slots.WidthSet
+                ? slots.Width
+                : (slots.IsOutline ? DefaultOutlineWidth : DefaultRingWidth);
             if (effectiveWidth <= 0f)
             {
                 return false; // ring-0 / outline-none: no ring
             }
 
             // A color-less ring uses the 0.5-alpha default; a color-less outline keeps the opaque band color.
-            var effectiveColor = colorSet ? color : (isOutline ? DefaultBandColor() : DefaultRingColor());
-            spec = new RingSpec(effectiveWidth, effectiveColor, Mathf.Max(0f, offset), inset);
+            var effectiveColor = slots.ColorSet
+                ? slots.Color
+                : (slots.IsOutline ? DefaultBandColor() : DefaultRingColor());
+            spec = new RingSpec(effectiveWidth, effectiveColor, Mathf.Max(0f, slots.Offset), slots.Inset);
             return true;
+        }
+
+        private static void Accumulate(string cls, ref RingSlots slots)
+        {
+            if (string.IsNullOrEmpty(cls))
+            {
+                return;
+            }
+
+            // Inset modifier (ring only).
+            if (cls == "ring-inset")
+            {
+                slots.Inset = true;
+                return;
+            }
+
+            // Offset: ring-offset-{N} / outline-offset-{N}. (A color suffix here is the offset-color fill,
+            // which Velvet does not model yet; an unrecognized offset suffix is ignored.)
+            if (TryMatchPrefix(cls, "ring-offset-", out var ringOffSuffix)
+                || TryMatchPrefix(cls, "outline-offset-", out ringOffSuffix))
+            {
+                if (TryParseWidthValue(ringOffSuffix, out var off))
+                {
+                    slots.Offset = off;
+                }
+                return;
+            }
+
+            // ring / ring-{N|[..]|color}.
+            if (cls == "ring")
+            {
+                slots.HasIntent = true;
+                slots.IsOutline = false;
+                return;
+            }
+            if (cls == "outline")
+            {
+                slots.HasIntent = true;
+                slots.IsOutline = true;
+                return;
+            }
+
+            var isRingFamily = TryMatchPrefix(cls, "ring-", out var ringSuffix);
+            var isOutlineFamily = !isRingFamily && TryMatchPrefix(cls, "outline-", out ringSuffix);
+            if (!isRingFamily && !isOutlineFamily)
+            {
+                return;
+            }
+
+            // outline-none cancels (width 0).
+            if (ringSuffix == "none")
+            {
+                slots.HasIntent = true;
+                slots.IsOutline = isOutlineFamily;
+                slots.WidthSet = true;
+                slots.Width = 0f;
+                return;
+            }
+
+            if (TryParseWidthValue(ringSuffix, out var w))
+            {
+                slots.HasIntent = true;
+                slots.IsOutline = isOutlineFamily;
+                slots.WidthSet = true;
+                slots.Width = w;
+                return;
+            }
+
+            // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]).
+            if (TryParseColorValue(ringSuffix, out var c))
+            {
+                slots.HasIntent = true;
+                slots.IsOutline = isOutlineFamily;
+                slots.ColorSet = true;
+                slots.Color = c;
+            }
+            // An unrecognized ring-*/outline-* suffix is ignored (not a known utility).
         }
 
         private static bool TryMatchPrefix(string cls, string prefix, out string? suffix)

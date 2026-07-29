@@ -890,24 +890,31 @@ namespace Velvet
             if (TryRebuildDesyncedSlotRange(parent, oldNodes, newNodes, slotStart, slotLimit)) return;
             if (parent == null) return;
 
+            if (!RunLinearPrefixPass(parent, oldNodes, newNodes, slotStart, out var linearEnd)) return;
+            if (TrySuffixTrimFastPath(parent, oldNodes, newNodes, slotStart, linearEnd)) return;
+            ReconcileKeyedRemainder(parent, oldNodes, newNodes, slotStart, linearEnd);
+        }
+
+        // False when this pass finished the whole reconcile on its own — aborted mid-patch, every entry
+        // matched, or what remained was a pure tail insert or tail remove.
+        // Invariants:
+        //   Advance only while keys match (break on oldKey != newKey).
+        //   Each iteration permits only the following operations:
+        //     1. In-place patch (CanPatch=true).
+        //     2. Remove + insert at the same index (CanPatch=false).
+        //   Both keep parent.childCount unchanged and do not move elements at indices below i.
+        //   Therefore, after this pass completes, the DOM state
+        //     parent.ElementAt(slotStart + j) == newNodes[j]
+        //   holds for the range 0..linearEnd-1.
+        //   Indices outside [slotStart, slotStart + max(old.Length, new.Length)) are untouched,
+        //   so the invariant
+        //     oldNodes[i].index == slotStart + i
+        //   continues to hold in ReconcileKeyedRemainder (for i ≥ linearEnd).
+        private bool RunLinearPrefixPass(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
+            int slotStart, out int linearEnd)
+        {
             var commonLength = Math.Min(oldNodes.Length, newNodes.Length);
-
-            #region Pass 1: Linear scan
-            // Invariants:
-            //   Advance only while keys match (break on oldKey != newKey).
-            //   Each iteration permits only the following operations:
-            //     1. In-place patch (CanPatch=true).
-            //     2. Remove + insert at the same index (CanPatch=false).
-            //   Both keep parent.childCount unchanged and do not move elements at indices below i.
-            //   Therefore, after Pass 1 completes, the DOM state
-            //     parent.ElementAt(slotStart + j) == newNodes[j]
-            //   holds for the range 0..linearEnd-1.
-            //   Indices outside [slotStart, slotStart + max(old.Length, new.Length)) are untouched,
-            //   so the invariant
-            //     oldNodes[i].index == slotStart + i
-            //   continues to hold in Pass 2 (for i ≥ linearEnd).
-
-            var linearEnd = 0;
+            linearEnd = 0;
             for (var i = 0; i < commonLength; i++)
             {
                 // Reference-identical VNodes are diff-free (immutable per render; auto-memoization hands
@@ -922,7 +929,7 @@ namespace Velvet
                     if (PatchOrReplaceAtSlot(parent, slotStart, i, oldNodes[i], newNodes[i],
                             slotExists: true, clampInsertIndex: false, checkAbortAfterCreate: true))
                     {
-                        return;
+                        return false;
                     }
                 }
                 // Update only when an operation succeeded; left unchanged on break.
@@ -930,14 +937,14 @@ namespace Velvet
             }
 
             // All entries matched linearly.
-            if (linearEnd == oldNodes.Length && linearEnd == newNodes.Length) return;
+            if (linearEnd == oldNodes.Length && linearEnd == newNodes.Length) return false;
 
             // Tail-add only.
             if (linearEnd == oldNodes.Length)
             {
                 for (var i = linearEnd; i < newNodes.Length; i++)
                     parent.Insert(slotStart + i, _factory.CreateElement(newNodes[i]));
-                return;
+                return false;
             }
 
             // Tail-remove only.
@@ -945,25 +952,52 @@ namespace Velvet
             {
                 for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
                     _cleaner.RemoveElement(parent, slotStart + i);
-                return;
+                return false;
             }
 
-            #endregion
+            return true;
+        }
 
-            #region Suffix trim prepass
+        // True when the whole remaining diff was committed here.
+        // Symmetric counterpart to the linear head scan: match key-equal, patch-compatible pairs from the
+        // TAIL inward (count only — no mutation yet). The win this targets is pure-prepend (and a leading
+        // change with an unchanged tail): the whole map build + LIS reorder is skipped when the
+        // middle that remains after trimming both ends collapses to a single contiguous insert OR remove.
+        // A reorder (both middles non-empty) genuinely needs the LIS, so it falls through to the remainder
+        // pass with NO mutation having happened here. Guards baked into the conditions:
+        //   - unkeyed parity: ReconcileKey is Positional(index) for an unkeyed node, so an unkeyed tail
+        //     matches only when its old and new indices coincide (length unchanged) — never across the
+        //     index shift a prepend introduces, where pure-LIS would remount by position.
+        //   - patch-in-place only: a CanPatch=false tail would need remove+insert (shifting absolute DOM
+        //     indices and stranding an AnimatePresence exit timer), so it stops the trim and defers to LIS.
+        //   - the desync rebuild in the caller still runs first (this prepass never sees a short live range).
+        private bool TrySuffixTrimFastPath(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
+            int slotStart, int linearEnd)
+        {
+            var suffix = CountTrimmableSuffix(oldNodes, newNodes, linearEnd);
+            var oldMidEnd = oldNodes.Length - suffix; // exclusive end of the old middle window
+            var newMidEnd = newNodes.Length - suffix; // exclusive end of the new middle window
+            // Take the fast path only when the middle collapses to a single insert OR remove AND every key is
+            // distinct on both sides. The element ORDER the prepass commits is the new key order by
+            // construction, so a duplicate key never reorders — but Pass 2 de-duplicates a repeated key (one
+            // element for N occurrences) whereas inserting/patching positionally would not, so a duplicate must
+            // defer to the remainder pass to preserve that established behavior. Unkeyed nodes carry
+            // Positional(index) keys,
+            // which are inherently distinct, so an unkeyed list is never rejected by this check.
+            if (suffix == 0 || (oldMidEnd != linearEnd && newMidEnd != linearEnd)
+                || !AllReconcileKeysUnique(oldNodes) || !AllReconcileKeysUnique(newNodes))
+            {
+                return false;
+            }
 
-            // Symmetric counterpart to the Pass-1 head scan: match key-equal, patch-compatible pairs from the
-            // TAIL inward (count only — no mutation yet). The win this targets is pure-prepend (and a leading
-            // change with an unchanged tail): the whole Pass-2 map build + LIS reorder is skipped when the
-            // middle that remains after trimming both ends collapses to a single contiguous insert OR remove.
-            // A reorder (both middles non-empty) genuinely needs the LIS, so it falls through to Pass 2 below
-            // with NO mutation having happened here. Guards baked into the conditions:
-            //   - unkeyed parity: ReconcileKey is Positional(index) for an unkeyed node, so an unkeyed tail
-            //     matches only when its old and new indices coincide (length unchanged) — never across the
-            //     index shift a prepend introduces, where pure-LIS would remount by position.
-            //   - patch-in-place only: a CanPatch=false tail would need remove+insert (shifting absolute DOM
-            //     indices and stranding an AnimatePresence exit timer), so it stops the trim and defers to LIS.
-            //   - the desync rebuild above still runs first (this prepass never sees a short live range).
+            CommitSuffixTrim(parent, oldNodes, newNodes, slotStart, linearEnd, suffix);
+            return true;
+        }
+
+        // How many key-equal, patch-compatible pairs the tails share, counted inward and without mutating
+        // anything — the caller decides whether the shape that remains is worth the fast path.
+        private int CountTrimmableSuffix(VNode?[] oldNodes, VNode?[] newNodes, int linearEnd)
+        {
             var suffix = 0;
             while (oldNodes.Length - suffix > linearEnd && newNodes.Length - suffix > linearEnd)
             {
@@ -979,56 +1013,53 @@ namespace Velvet
                 suffix++;
             }
 
-            var oldMidEnd = oldNodes.Length - suffix; // exclusive end of the old middle window
-            var newMidEnd = newNodes.Length - suffix; // exclusive end of the new middle window
-            // Take the fast path only when the middle collapses to a single insert OR remove AND every key is
-            // distinct on both sides. The element ORDER the prepass commits is the new key order by
-            // construction, so a duplicate key never reorders — but Pass 2 de-duplicates a repeated key (one
-            // element for N occurrences) whereas inserting/patching positionally would not, so a duplicate must
-            // defer to Pass 2 to preserve that established behavior. Unkeyed nodes carry Positional(index) keys,
-            // which are inherently distinct, so an unkeyed list is never rejected by this check.
-            if (suffix > 0 && (oldMidEnd == linearEnd || newMidEnd == linearEnd)
-                && AllReconcileKeysUnique(oldNodes) && AllReconcileKeysUnique(newNodes))
-            {
-                // Patch the matched suffix in place at its OLD DOM positions (Pass 1 left the tail untouched,
-                // so oldNodes[oldMidEnd + k] is still at slotStart + oldMidEnd + k). The middle insert/remove
-                // below then shifts these elements to their final positions via UI Toolkit's auto-shift.
-                for (var k = 0; k < suffix; k++)
-                {
-                    var oi = oldMidEnd + k;
-                    var ni = newMidEnd + k;
-                    if (ReferenceEquals(oldNodes[oi], newNodes[ni])) continue;
-                    var actualElement = _patcher.ResolveWrapped(parent.ElementAt(slotStart + oi));
-                    _patcher.PatchNode(actualElement, oldNodes[oi], newNodes[ni]);
-                    if (_ctx.IsAborted) return;
-                }
+            return suffix;
+        }
 
-                if (oldMidEnd == linearEnd)
-                {
-                    // Old middle empty → pure insert of new[linearEnd, newMidEnd) ahead of the suffix.
-                    for (var i = linearEnd; i < newMidEnd; i++)
-                    {
-                        parent.Insert(slotStart + i, _factory.CreateElement(newNodes[i]));
-                        if (_ctx.IsAborted) return;
-                    }
-                }
-                else
-                {
-                    // New middle empty → pure remove of old[linearEnd, oldMidEnd). Reverse so each removal
-                    // leaves the not-yet-removed indices intact.
-                    for (var i = oldMidEnd - 1; i >= linearEnd; i--)
-                    {
-                        _cleaner.RemoveElement(parent, slotStart + i);
-                        if (_ctx.IsAborted) return;
-                    }
-                }
-                return;
+        // Stops on abort mid-way like every other commit here: the caller has already reported the diff as
+        // handled, and the aborted pass leaves the DOM for the next reconcile to converge.
+        private void CommitSuffixTrim(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
+            int slotStart, int linearEnd, int suffix)
+        {
+            var oldMidEnd = oldNodes.Length - suffix;
+            var newMidEnd = newNodes.Length - suffix;
+            // Patch the matched suffix in place at its OLD DOM positions (Pass 1 left the tail untouched,
+            // so oldNodes[oldMidEnd + k] is still at slotStart + oldMidEnd + k). The middle insert/remove
+            // below then shifts these elements to their final positions via UI Toolkit's auto-shift.
+            for (var k = 0; k < suffix; k++)
+            {
+                var oi = oldMidEnd + k;
+                var ni = newMidEnd + k;
+                if (ReferenceEquals(oldNodes[oi], newNodes[ni])) continue;
+                var actualElement = _patcher.ResolveWrapped(parent.ElementAt(slotStart + oi));
+                _patcher.PatchNode(actualElement, oldNodes[oi], newNodes[ni]);
+                if (_ctx.IsAborted) return;
             }
 
-            #endregion
+            if (oldMidEnd == linearEnd)
+            {
+                // Old middle empty → pure insert of new[linearEnd, newMidEnd) ahead of the suffix.
+                for (var i = linearEnd; i < newMidEnd; i++)
+                {
+                    parent.Insert(slotStart + i, _factory.CreateElement(newNodes[i]));
+                    if (_ctx.IsAborted) return;
+                }
+            }
+            else
+            {
+                // New middle empty → pure remove of old[linearEnd, oldMidEnd). Reverse so each removal
+                // leaves the not-yet-removed indices intact.
+                for (var i = oldMidEnd - 1; i >= linearEnd; i--)
+                {
+                    _cleaner.RemoveElement(parent, slotStart + i);
+                    if (_ctx.IsAborted) return;
+                }
+            }
+        }
 
-            #region Pass 2: Map-based lookup
-
+        private void ReconcileKeyedRemainder(VisualElement parent, VNode?[] oldNodes, VNode?[] newNodes,
+            int slotStart, int linearEnd)
+        {
             var pool = _ctx.BufferPool;
             var oldKeyMap = pool.RentOldKeyMap();
             var usedKeys = pool.RentKeySet();
@@ -1083,8 +1114,6 @@ namespace Velvet
                 pool.Return(newElements);
                 pool.ReturnOrphanedIndexSet(orphanedOldIndices);
             }
-
-            #endregion
         }
 
         // True when every node's ReconcileKey is distinct across the list. The suffix-trim fast path inserts /

@@ -575,6 +575,49 @@ namespace Velvet
             return null;
         }
 
+        private static void ForwardChainedPlaceholder(
+            FocusInEvent evt, VisualElement target, PanelHostRecord hostRecord, ReconcilerContext ctx)
+        {
+            if (TrySnapBackToContainScope(target, evt.relatedTarget as VisualElement, ctx))
+            {
+                return;
+            }
+            var hostRoot = hostRecord.Document != null ? hostRecord.Document.rootVisualElement : null;
+            if (hostRoot == null)
+            {
+                return;
+            }
+            var backward = evt.direction == VisualElementFocusChangeDirection.left;
+            var hostRing = new VisualElementFocusRing(hostRoot.panel?.visualTree ?? hostRoot);
+            var entry = hostRing.GetNextFocusable(null,
+                backward ? VisualElementFocusChangeDirection.left : VisualElementFocusChangeDirection.right) as VisualElement;
+            if (entry != null)
+            {
+                ResolveScopeEntryTarget(entry, ctx).Focus();
+            }
+        }
+
+        private static void ForwardZLayerPlaceholder(
+            FocusInEvent evt, VisualElement target, VisualElement real, ReconcilerContext ctx)
+        {
+            if (TrySnapBackToContainScope(target, evt.relatedTarget as VisualElement, ctx))
+            {
+                return;
+            }
+            if (real.canGrabFocus)
+            {
+                ResolveScopeEntryTarget(real, ctx).Focus();
+                return;
+            }
+            var backward = evt.direction == VisualElementFocusChangeDirection.left;
+            var entry = new VisualElementFocusRing(real).GetNextFocusable(null,
+                backward ? VisualElementFocusChangeDirection.left : VisualElementFocusChangeDirection.right) as VisualElement;
+            if (entry != null)
+            {
+                ResolveScopeEntryTarget(entry, ctx).Focus();
+            }
+        }
+
         private static void OnFocusIn(FocusInEvent evt, ReconcilerContext ctx)
         {
             if (evt.target is not VisualElement target)
@@ -591,22 +634,7 @@ namespace Velvet
             // content.
             if (ctx.ChainedPlaceholders.TryGetValue(target, out var hostRecord))
             {
-                if (TrySnapBackToContainScope(target, evt.relatedTarget as VisualElement, ctx))
-                {
-                    return;
-                }
-                var hostRoot = hostRecord.Document != null ? hostRecord.Document.rootVisualElement : null;
-                if (hostRoot != null)
-                {
-                    var backward = evt.direction == VisualElementFocusChangeDirection.left;
-                    var hostRing = new VisualElementFocusRing(hostRoot.panel?.visualTree ?? hostRoot);
-                    var entry = hostRing.GetNextFocusable(null,
-                        backward ? VisualElementFocusChangeDirection.left : VisualElementFocusChangeDirection.right) as VisualElement;
-                    if (entry != null)
-                    {
-                        ResolveScopeEntryTarget(entry, ctx).Focus();
-                    }
-                }
+                ForwardChainedPlaceholder(evt, target, hostRecord, ctx);
                 return;
             }
 
@@ -616,22 +644,7 @@ namespace Velvet
             // same reason the chained branch above checks it first.
             if (ctx.ZLayerPlaceholders.TryGetValue(target, out var real))
             {
-                if (TrySnapBackToContainScope(target, evt.relatedTarget as VisualElement, ctx))
-                {
-                    return;
-                }
-                if (real.canGrabFocus)
-                {
-                    ResolveScopeEntryTarget(real, ctx).Focus();
-                    return;
-                }
-                var backward = evt.direction == VisualElementFocusChangeDirection.left;
-                var entry = new VisualElementFocusRing(real).GetNextFocusable(null,
-                    backward ? VisualElementFocusChangeDirection.left : VisualElementFocusChangeDirection.right) as VisualElement;
-                if (entry != null)
-                {
-                    ResolveScopeEntryTarget(entry, ctx).Focus();
-                }
+                ForwardZLayerPlaceholder(evt, target, real, ctx);
                 return;
             }
 

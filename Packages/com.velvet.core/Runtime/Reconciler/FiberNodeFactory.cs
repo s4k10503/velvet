@@ -57,311 +57,9 @@ namespace Velvet
             switch (node)
             {
                 case ElementNode elementNode:
-                {
-                    var element = _ctx.FiberElementFactory.Create(elementNode);
-                    // Stamps the ComponentFiber whose Body is mid-render right now (the element's
-                    // logical owner) onto the reserved userData slot — reset to null on pool reuse
-                    // (FiberElementPoolReset.ResetCommonState) and otherwise never written by Velvet.
-                    // This is the only reverse index from a native VisualElement back to the logical
-                    // fiber tree; cross-panel synthetic event dispatch (V.Portal(layer:)/V.WorldSpace)
-                    // walks it to climb ComponentFiber.Parent from wherever a pointer/focus event
-                    // physically landed. Null at the true tree root (nothing on FiberStack yet).
-                    element.userData = _ctx.FiberStack.Current;
-                    // Capture an element's own Text prop (Label / Button) before the text-effect pass below
-                    // transforms it, so a re-apply works from the raw value.
-                    if (element is TextElement && elementNode.Props != null && elementNode.Props.Text != null)
-                    {
-                        StyleTextEffectResolver.CaptureRaw(_ctx, element, elementNode.Props.Text);
-                    }
-                    if (elementNode.Children != null)
-                    {
-                        var childContainer = FiberNodePatcher.GetChildContainer(element);
-                        // ReconcileChildren (= GeneralPathReconciler.ExpandInlineRecursive) inline-expands
-                        // ComponentNode / ContextProviderNode / FragmentNode so children appear as
-                        // direct siblings under <paramref name="childContainer"/>. These node kinds
-                        // produce no DOM element of their own. The same path is used
-                        // on patch (PatchCommon) so initial-mount and patch DOM layouts stay
-                        // symmetric — both omit the per-Component wrapper VE.
-                        _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), elementNode.Children);
-                    }
-                    elementNode.OnCreated?.Invoke(element);
-                    InvokeRefCallback(elementNode.RefCallback, element);
-                    _patcher.Appliers.ApplyGestureManipulator(element, elementNode.WhileHoverClass, elementNode.WhileTapClass, elementNode.WhileFocusClass);
-                    _patcher.ApplyVariantManipulators(element, elementNode.ClassNames);
-                    // After ApplyVariantManipulators (which registers the data-/aria- variant rules): seed the
-                    // attribute store from the props and evaluate, so a data-[..]/aria-[..] variant lights from
-                    // the element's carried attribute values at mount.
-                    _patcher.ApplyAttributes(element, elementNode.Props);
-                    StyleFontResolver.ApplyIfPresent(element, elementNode.ClassNames);
-                    // After ReconcileChildren so the gap / divide manipulators see the final child list.
-                    // [&>*]: runs before gap / divide / grid so those win a shared child edge (see
-                    // ApplyPostChildrenClassPasses for the same ordering on the patch path).
-                    _patcher.ApplyChildVariantManipulator(element, elementNode.ClassNames);
-                    _patcher.ApplyLayoutManipulators(element, elementNode.ClassNames);
-                    // Same post-children timing: structural variants (first:/last:/odd:/…) need the placed children.
-                    _patcher.ApplyStructuralVariants(element);
-                    // has-[.class]: (element as subject) likewise needs the placed children to scan.
-                    _patcher.ApplyHasClassVariants(element);
-                    // has-[:checked]: / has-[:focus]: re-scan: an already-checked descendant mounted under this
-                    // element fires no ChangeEvent, so re-derive the manipulator from the placed children.
-                    _patcher.ApplyHasVariantManipulators(element);
-                    // text-transform / -decoration cascade: after children are placed so it can reach descendant
-                    // text leaves, and after the element's own text is set so it transforms the final value.
-                    StyleTextEffectResolver.Apply(_ctx, element, elementNode.ClassNames);
-
-                    // The paint layers read a class source that also carries what the passes above have already
-                    // written onto the live class list, so a payload ALREADY LIT at this point paints from the
-                    // first frame instead of waiting for an unrelated re-render to bring the token in
-                    // literally. That means the families resolved from this element's own placed subtree a few
-                    // lines up — has-[.class]:shadow-lg over a matching child, structural, data-/aria-,
-                    // supports- — and not dark: or md:, which are still off while the element is detached and
-                    // arrive later through attach.
-                    var paintClasses = _patcher.ResolveVariantClassesOnCreate(
-                        element, elementNode.ClassNames, paintTail: true);
-                    // Skew is wrapper-less (the sheared silhouette is the element's own painted
-                    // content), so it attaches before — and composes with — any wrap layer below,
-                    // including a user wrapElement.
-                    _patcher.Appliers.ApplySkewOnCreate(element, paintClasses);
-                    // Gradient is also wrapper-less (baked texture set as the element's own
-                    // background-image, clipped to its border-radius), so it attaches on the element too.
-                    _patcher.Appliers.ApplyGradientOnCreate(element, paintClasses);
-                    // animate-* motion (gradient pan / hue cycle) drives the element's own inline style; runs
-                    // after the gradient so a pan mode sees the baked gradient already applied.
-                    _patcher.Appliers.ApplyAnimateOnCreate(element, paintClasses);
-                    // transition-filter: register the tween binding so a later filter change animates.
-                    // The mount's own filter is already applied instantly above (the binding is not enabled
-                    // yet), matching CSS's no-transition-on-initial-value.
-                    _patcher.Appliers.ApplyFilterTransitionOnCreate(element, paintClasses);
-                    // Drop shadow is wrapper-less too (the baked shadow texture is painted behind the
-                    // element's own content, bleeding outside the box) — a non-structural paint like CSS
-                    // box-shadow, so it composes with any wrap layer below and a user wrapElement. The paint
-                    // self-suppresses while an active clip-path-* is present (clip-path clips the box-shadow).
-                    _patcher.Appliers.ApplyShadowOnCreate(element, paintClasses);
-                    // border-dashed / border-dotted: another wrapper-less paint (the dashed outline is the
-                    // element's own generateVisualContent; only the border color is suppressed). Attaches after
-                    // skew / shadow so it can defer to whichever owns the face. ElementNode only — a Motion never
-                    // renders this silhouette (mirroring skew's own silent Motion exclusion).
-                    _patcher.Appliers.ApplyBorderStyleOnCreate(element, paintClasses);
-                    ApplyOptionalCreateBindings(element, elementNode.Props, elementNode.ClassNames);
-
-                    VisualElement outer;
-                    if (elementNode.WrapElement != null)
-                    {
-                        var wrapper = elementNode.WrapElement(element);
-                        if (wrapper != null && wrapper != element)
-                        {
-                            _ctx.WrapperToInnerMap[wrapper] = element;
-                            outer = wrapper;
-                        }
-                        else
-                        {
-                            outer = element;
-                        }
-                    }
-                    else
-                    {
-                        // No explicit wrapElement: a clip-path-* class auto-wraps the element in a stencil-
-                        // masking container, else a ring-* class wraps it in a native-border overlay
-                        // container. Clip takes precedence: the two are mutually exclusive (one structural
-                        // wrapper per element). The shadow is NOT here — it is a wrapper-less paint attached
-                        // above (a clipped element renders no shadow because the shadow paint self-suppresses
-                        // on an active clip).
-                        var clipWrapped = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
-                        outer = !ReferenceEquals(clipWrapped, element)
-                            ? clipWrapped
-                            : _patcher.Appliers.ApplyRingOnCreate(element, elementNode.ClassNames);
-                    }
-
-                    // z-* scope gate: only an ALSO-absolute element with an explicit z-* class routes into a
-                    // layer container; everything else (the overwhelming majority) returns `outer` unchanged
-                    // at the cost of one cheap prefix scan. Gated on the OUTERMOST element — a clip-path-*/
-                    // ring/wrapElement wrapper is what physically occupies the slot, so it (not the inner
-                    // `element`) is what must relocate.
-                    if (FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, elementNode.Props, out var resolvedZ))
-                    {
-                        return FiberZLayerCoordinator.EnqueueMount(_ctx, outer, resolvedZ);
-                    }
-                    return outer;
-                }
+                    return CreateForElementNode(elementNode);
                 case MotionNode motionNode:
-                {
-                    // Resolve the applied classes against the effective label (own Animate, else the nearest
-                    // ancestor Motion's label read from MotionContext) — the variant-inheritance model.
-                    var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
-                    var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out var variantClasses);
-                    var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
-                    // The presence expansion dispatches this anchor Motion's variant enter/exit against the
-                    // Motion's OWN element (the resting variant classes live here, not on a wrapper) — record
-                    // it for the expansion that is emitting this keyed child right now.
-                    if (ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
-                    {
-                        _ctx.PresenceAnchorMotionElement = element;
-                    }
-                    // See the ElementNode case's comment on this same assignment (reserved userData
-                    // slot for cross-panel synthetic event dispatch's VE-to-logical-fiber reverse index).
-                    element.userData = _ctx.FiberStack.Current;
-                    // Only record applied-class bookkeeping when a variant actually merged; the variant-less
-                    // majority needs no entry (patch falls back to oldNode.ClassNames for the diff baseline).
-                    if (variantClasses.Length > 0)
-                    {
-                        _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedClasses, variantClasses);
-                    }
-                    // Record the label propagated to children now (regardless of whether this Motion currently
-                    // has any) so the FIRST patch on this element has an accurate baseline: PatchMotion diffs
-                    // against this stored value to detect an ACTUAL label change before it (re-)triggers
-                    // staggerChildren/delayChildren orchestration — without seeding it here, that first patch
-                    // would see no previous entry and could misfire even when the label held steady across
-                    // mount and the first re-render. Orchestration itself only ever starts from a PATCH-time
-                    // label change (see FiberNodePatcher.PatchMotion), never on mount. A null childLabel needs no
-                    // removal here: a brand-new element was never in this map, and a pooled one already had its
-                    // entry cleared by ReconcilerContext.ClearElementSideTables when it was returned (see
-                    // MotionChildLabel's own doc).
-                    var childLabel = MotionVariantResolver.LabelForChildren(motionNode, motionAmbient);
-                    if (childLabel != null)
-                    {
-                        _ctx.MotionChildLabel[element] = childLabel;
-                    }
-                    if (motionNode.Children != null)
-                    {
-                        var childContainer = FiberNodePatcher.GetChildContainer(element);
-                        // Provide this Motion's active label to its descendants while their subtree reconciles
-                        // (same ComponentContextStack the Router/Outlet ambient values ride on). Skip the
-                        // stack round-trip entirely when there is no label to propagate (the common case).
-                        if (childLabel != null)
-                        {
-                            _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
-                            try
-                            {
-                                _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), motionNode.Children);
-                            }
-                            finally
-                            {
-                                _ctx.ComponentContextStack.Pop(MotionContext.ActiveLabel);
-                            }
-                        }
-                        else
-                        {
-                            _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), motionNode.Children);
-                        }
-                    }
-                    InvokeRefCallback(motionNode.RefCallback, element);
-                    _patcher.Appliers.ApplyGestureManipulator(element, motionNode.WhileHoverClass, motionNode.WhileTapClass, motionNode.WhileFocusClass);
-                    _patcher.ApplyVariantManipulators(element, appliedClasses);
-                    _patcher.ApplyAttributes(element, motionNode.Props);
-                    ApplyOptionalCreateBindings(element, motionNode.Props, appliedClasses);
-                    StyleFontResolver.ApplyIfPresent(element, appliedClasses);
-                    _patcher.ApplyChildVariantManipulator(element, appliedClasses);
-                    _patcher.ApplyLayoutManipulators(element, appliedClasses);
-                    _patcher.ApplyStructuralVariants(element);
-                    _patcher.ApplyHasClassVariants(element);
-                    _patcher.ApplyHasVariantManipulators(element);
-                    // Same composed source as the element path, recorded as a NON-paint-tail element so a
-                    // later variant re-sync never attaches to a Motion the three silhouette paints its own
-                    // patch would refuse.
-                    var motionPaintClasses = _patcher.ResolveVariantClassesOnCreate(
-                        element, appliedClasses, paintTail: false);
-                    _patcher.Appliers.ApplyGradientOnCreate(element, motionPaintClasses);
-                    _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);
-                    // transition-filter on a Motion host: a Motion can carry filter utilities + that class
-                    // just like a plain element, so register the tween binding here too.
-                    _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
-                    // Motion does NOT paint a drop shadow: the three silhouette paints stand down on a Motion
-                    // on BOTH halves — here, and on the patch path through ApplyResolvedClassPasses' paintTail
-                    // gate — so attaching one here would leave a binding the Motion's own patch never syncs
-                    // against a class change and never detaches. The shadow belongs on a Div the Motion wraps
-                    // (the Div carries the shadow, the Motion carries the transition). Warn and skip the paint.
-                    // Warn only for an ACTIVE shadow (shadow-none deliberately cancelling the cascade is not
-                    // "ignored" — nothing would render anywhere).
-                    if (StyleShadowClass.HasShadowClass(appliedClasses)
-                        && StyleShadowClass.TryExtract(appliedClasses, out _))
-                    {
-                        FiberLogger.LogWarning("Motion",
-                            "A shadow-* utility on a Motion is ignored: a Motion carries the transition, not "
-                            + "the paint layers. Wrap the Motion around a shadowed Div instead.");
-                    }
-                    // clip-path-* is a structural wrapper, which would become the AnimatePresence anchor while
-                    // the enter/exit transition stays on the inner Motion: ignored on a Motion, never wrapped.
-                    // Same active-only gate: clip-path-none / an unparseable value activates nothing.
-                    if (StyleClipPathClass.WantsClipPath(appliedClasses))
-                    {
-                        FiberLogger.LogWarning("Motion",
-                            "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit "
-                            + "(same constraint as shadow-*). Wrap the Motion around a clipped Div instead.");
-                    }
-                    // z-* is ignored on a Motion: this create path never consults FiberZLayerCoordinator at all
-                    // (only the ElementNode case above does), so a Motion never relocates into a layer container
-                    // — TryClassify's out-of-flow half runs off the declared class list / Anchored prop alone
-                    // (no live element needed), so it can be evaluated here for diagnostics purposes even though
-                    // this path never acts on it. Warn like the shadow-*/clip-path-* gates above.
-                    if (FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out _))
-                    {
-                        FiberLogger.LogWarning("Motion",
-                            "A z-* utility on a Motion is ignored: z-* does not apply to Motion elements. "
-                            + "Wrap the Motion around a z-managed Div instead.");
-                    }
-                    // Exit tweens are scheduled only by the AnimatePresence expansion — something has to defer
-                    // the unmount for a removal to animate against, and AnimatePresence is what does that — so
-                    // exit outside one is genuinely inert. Warn like the shadow-*/clip-path-* gates above. Initial
-                    // is NOT warned here (see the standalone enter below): unlike exit, a mount-time enter needs
-                    // no deferred unmount to play against, so it works on any Motion (initial/animate apply
-                    // anywhere; only exit is AnimatePresence-only).
-                    if (_ctx.PresenceExpansionDepth == 0 && motionNode.Exit != null)
-                    {
-                        FiberLogger.LogWarning("Motion",
-                            "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "
-                            + "AnimatePresence expansion. Wrap the Motion in V.AnimatePresence (or drop exit).");
-                    }
-                    // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
-                    // mount animation, the same variant enter the presence expansion drives
-                    // (GeneralPathReconciler.ExpandAnimatePresenceInline) — just with no stagger (there is no
-                    // AnimatePresence boundary to stagger against). The element above was created carrying the
-                    // resting variants[animate] classes (appliedClasses), with MotionAppliedClasses already
-                    // recorded against that resting state, so PlayVariantEnter's synchronous strip-to-`initial` is
-                    // purely a transient visual state: a later patch (PatchMotion) always diffs against the
-                    // resting baseline and never replays this entrance.
-                    // Gated on IDENTITY, not PresenceExpansionDepth: the presence expansion drives an enter for
-                    // only its ONE resolved anchor Motion (PresenceAnchorMotion, set by GeneralPathReconciler
-                    // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly) — every
-                    // OTHER Motion created while that expansion is on the stack (nested deeper, sitting under a
-                    // non-anchor wrapper — e.g. a plain Div — or simply a sibling keyed child) is not presence-
-                    // managed at all and must keep this mount enter, or wrapping unrelated content in
-                    // AnimatePresence would silently disable it.
-                    if (!ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion) && motionNode.Initial != null)
-                    {
-                        if (motionNode.Transition != null && GeneralPathReconciler.TryResolveVariantInitial(
-                                motionNode, out var standaloneFromClasses, out var standaloneToClasses))
-                        {
-                            var t = motionNode.Transition;
-                            _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
-                                t, motionNode.OnEnterComplete);
-                        }
-                        else
-                        {
-                            // Initial declared but unresolvable: no own Animate (an inherited-label
-                            // configuration is not yet driven by the standalone enter), or the label is missing
-                            // from Variants / maps to an empty class. Warn instead of silently mounting inert,
-                            // matching the Exit gate's own inert-configuration diagnostic above.
-                            FiberLogger.LogWarning("Motion",
-                                "initial is set but has no resolvable enter: this Motion needs its own animate + "
-                                + "variants (with initial mapping to a non-empty class) for a standalone mount "
-                                + "enter. An inherited animate label does not yet drive one.");
-                        }
-                    }
-                    // Shared-element layout animation (layoutId) on a freshly-created element —
-                    // the same-key-type-flip case PatchMotion's own registration cannot reach (a type
-                    // flip tears down the OLD element and creates a genuinely NEW one for the SAME id,
-                    // never routing through PatchMotion at all). MotionLayoutIdDriver.OnPatched already
-                    // handles "new physical element, existing registry entry" by falling back to the
-                    // registry's own stored rect instead of this element's own (nonexistent) layout
-                    // history — see its own comment.
-                    if (motionNode.LayoutId != null)
-                    {
-                        var lt = motionNode.Transition;
-                        MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId,
-                            lt?.Stiffness ?? 100f, lt?.Damping ?? 10f, lt?.Mass ?? 1f, _ctx);
-                    }
-                    return element;
-                }
+                    return CreateForMotionNode(motionNode);
                 case AnimatePresenceNode:
                     // AnimatePresence is DOM-less: it never becomes a single element.
                     // GeneralPathReconciler.ExpandAnimatePresenceInline expands its keyed children directly into
@@ -369,171 +67,21 @@ namespace Velvet
                     throw new System.InvalidOperationException(
                         "[FiberNodeFactory] AnimatePresenceNode is DOM-less and must be inline-expanded, not created as an element.");
                 case PortalNode portalNode:
-                {
-                    // TargetId and Layer are a one-of pair; a hand-built node violating that has no
-                    // meaningful routing, so it warns and mounts an inert placeholder rather than
-                    // silently picking a side.
-                    var hasTargetId = !string.IsNullOrEmpty(portalNode.TargetId);
-                    var hasLayer = portalNode.Layer != null;
-                    if (hasTargetId == hasLayer)
-                    {
-                        FiberLogger.LogWarning("Portal",
-                            "A PortalNode must set exactly one of TargetId or Layer (they are a one-of pair). Children will not be rendered.");
-                        return CreateHiddenPlaceholder();
-                    }
-
-                    // A layer portal resolves its target at DRAIN time — the framework layer host is
-                    // created lazily there, once the placeholder is attached and the declaring panel
-                    // is therefore known. Only a registry portal resolves here, keeping its
-                    // not-registered warning a mount-time signal.
-                    VisualElement? target = null;
-                    if (!hasLayer)
-                    {
-                        target = FiberPortalRegistry.Get(portalNode.TargetId!);
-                        if (target == null)
-                        {
-                            FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
-                            var placeholder = CreateHiddenPlaceholder();
-                            _ctx.PortalState[placeholder] = new PortalSlotInfo(null, 0, 0);
-                            return placeholder;
-                        }
-                    }
-
-                    // Defer the target-side mount to the post-reconcile drain so this Portal's
-                    // slot range does not overlap with an outer Portal's slot when both target
-                    // the same DOM node. Synchronous mount would let inner Portal write into the
-                    // outer's slot range before outer's slotLength is finalized, leaving every
-                    // nested slot index stale after the outer's placeholder insertion. The drain
-                    // mounts each queued Portal at a fresh slotStart = target.childCount once
-                    // outer reconcile has finished, so Portal subtrees stack as
-                    // independent ranges (slots [outer..outerEnd) then [outerEnd..innerEnd) ...).
-                    // PortalState is recorded only at drain time — between enqueue and drain the
-                    // placeholder has no entry and PatchPortal/CleanupPortal handle the missing
-                    // case explicitly (LogError + skip / early return).
-                    return EnqueueDeferredHostMount(portalNode, target);
-                }
+                    return CreateForPortalNode(portalNode);
                 case WorldSpaceNode worldSpaceNode:
                     // The same deferred-mount flow as PortalNode, with a per-instance world-space
                     // host created at drain time (see DrainPendingPortalMounts).
                     return EnqueueDeferredHostMount(worldSpaceNode, null);
                 case VirtualListNode virtualListNode:
-                {
-                    var scrollView = new ScrollView(ScrollViewMode.Vertical);
-                    var bridge = _ctx.ReconcilerBridge;
-                    // Capture the host fiber rendering this list and the live cursor (correct mid-reconcile, in
-                    // this commit walk) so the controller can mount items under the host's shared context — its
-                    // items render later, outside any reconcile pass, where the cursor is empty.
-                    var controller = new FiberVirtualListController(
-                        scrollView, virtualListNode, bridge, _ctx.FiberStack.Current, _ctx.ComponentContextStack);
-                    _ctx.VirtualListControllers[scrollView] = controller;
-
-                    // Apply class-driven styling the same way the ElementNode path does, so a virtualized
-                    // list container honours variants and the font layer. Gap is intentionally omitted: a
-                    // ScrollView's direct children are the height spacer + absolutely-positioned visible
-                    // container, not the list items, so gap-* would have nothing meaningful to space.
-                    _patcher.ApplyVariantManipulators(scrollView, virtualListNode.ClassNames);
-                    StyleFontResolver.ApplyIfPresent(scrollView, virtualListNode.ClassNames);
-                    return scrollView;
-                }
+                    return CreateForVirtualListNode(virtualListNode);
                 case TextNode textNode:
-                {
-                    var label = _ctx.FiberElementFactory.CreateText(textNode);
-                    // Capture the raw text (and apply any already-resolved ancestor effect) so a text-transform /
-                    // -decoration carried by an ANCESTOR cascades onto this leaf — a TextNode has no class of its
-                    // own. At mount the ancestor's own effect is parsed in its later post-children pass, which
-                    // re-applies; OnTextSet here makes an isolated later leaf re-render self-sufficient.
-                    StyleTextEffectResolver.OnTextSet(_ctx, label, textNode.Text);
-                    return label;
-                }
+                    return CreateForTextNode(textNode);
                 case ComponentNode componentNode:
-                {
-                    // Wrapper-mount path: reached only when CreateElement is invoked directly on a
-                    // ComponentNode the reconcile walk did not inline-expand — a MemoNode whose
-                    // resolved inner is a ComponentNode, or a ComponentNode that is a direct child of
-                    // an AnimatePresence keyed entry. ComponentNodes reached during a
-                    // ChildReconciler.Reconcile pass (top-level or nested under an element) are
-                    // inline-mounted (no wrapper VE) by GeneralPathReconciler.ExpandInlineRecursive, so this
-                    // case is unreachable for them.
-                    // A Component does not emit a DOM element; its rendered tree attaches
-                    // directly to the parent. Velvet needs an anchor element for fiber tracking,
-                    // so the wrapper is made layout-transparent so its single child can size
-                    // against the real parent.
-                    var wrapper = CreateLayoutPassthroughContainer();
-                    _patcher.HandleComponentMount(wrapper, componentNode);
-                    return wrapper;
-                }
+                    return CreateForComponentNode(componentNode);
                 case ContextProviderNode providerNode:
-                {
-                    // A context Provider emits no DOM element of its own; descendants attach directly to
-                    // the parent fiber's host. Velvet maps each VNode to exactly one VisualElement so a
-                    // layout-passthrough wrapper anchors the Provider subtree without imposing layout.
-                    // The wrapper is what AnimatePresence's keyed map (and any BaseElementNode children
-                    // list reached through MemoNode's resolved inner) tracks for this Provider entry —
-                    // the wrapper element is a deliberate choice, as documented on ContextProviderNode.
-                    //
-                    // GeneralPathReconciler.ExpandInlineRecursive expands Provider inline (no wrapper) during
-                    // a Reconcile pass, so this case is unreachable for slot-based reconciliation; it is
-                    // reached only when CreateElement is invoked directly on a Provider VNode — e.g. a
-                    // MemoNode resolved inner.
-                    var container = CreateLayoutPassthroughContainer();
-                    container.AddToClassList(ContextProviderClassName);
-
-                    providerNode.PushContext(_ctx.ComponentContextStack);
-                    try
-                    {
-                        if (providerNode.Children != null)
-                        {
-                            _host.ReconcileChildren(container, Array.Empty<VNode>(), providerNode.Children);
-                        }
-                    }
-                    finally
-                    {
-                        providerNode.PopContext(_ctx.ComponentContextStack);
-                    }
-                    return container;
-                }
+                    return CreateForContextProviderNode(providerNode);
                 case OutletNode outletNode:
-                {
-                    // The container is layout-transparent so the matched route's element resolves
-                    // its size against the Outlet's parent box, and doubles as the fiber anchor
-                    // for the matched route's Component (one wrapper, not two).
-                    var container = CreateLayoutPassthroughContainer();
-                    container.AddToClassList(OutletContainerClass);
-                    // Identity-side registration for FiberContextSpine: separate from the USS class
-                    // (which is for styling and is user-mutable). Populated unconditionally so the
-                    // spine walker can identify Outlet hosts before Router setup completes.
-                    _ctx.OutletContainers.Add(container);
-
-                    if (!_patcher.ResolveOutletMatch(out var routeElement, out var routeDepth, out var match))
-                    {
-                        return container;
-                    }
-
-                    var scopeFactory = Router.Current?.ScopeFactory;
-                    if (scopeFactory != null)
-                    {
-                        outletNode.Scope = scopeFactory.CreateScope(match.Route, null);
-                        _ctx.OutletScopes[container] = outletNode.Scope;
-                    }
-
-                    // Mount the matched route Component with Depth+1 pushed live so its UseContext
-                    // reads the incremented router depth: an Outlet provides the
-                    // next RouteContext value to its descendants. The Outlet's context value (if any) is
-                    // pushed too so the child route can read it via Hooks.UseOutletContext.
-                    _ctx.ComponentContextStack.Push(RouterContext.Depth, routeDepth);
-                    _ctx.ComponentContextStack.Push(RouterContext.OutletContext, outletNode.OutletContextValue);
-                    try
-                    {
-                        _patcher.HandleComponentMount(container, routeElement);
-                    }
-                    finally
-                    {
-                        _ctx.ComponentContextStack.Pop(RouterContext.OutletContext);
-                        _ctx.ComponentContextStack.Pop(RouterContext.Depth);
-                    }
-
-                    return container;
-                }
+                    return CreateForOutletNode(outletNode);
                 default:
                     // Unknown VNode type: FragmentNode (which should have been expanded by the parent),
                     // null, or a missing branch for a newly added VNode type. Log a warning for debuggability.
@@ -541,6 +89,491 @@ namespace Velvet
                         $"Unsupported VNode type: {node?.GetType().Name ?? "null"}. Returning empty VisualElement.");
                     return new VisualElement();
             }
+        }
+
+        private VisualElement CreateForElementNode(ElementNode elementNode)
+        {
+            var element = _ctx.FiberElementFactory.Create(elementNode);
+            // Stamps the ComponentFiber whose Body is mid-render right now (the element's
+            // logical owner) onto the reserved userData slot — reset to null on pool reuse
+            // (FiberElementPoolReset.ResetCommonState) and otherwise never written by Velvet.
+            // This is the only reverse index from a native VisualElement back to the logical
+            // fiber tree; cross-panel synthetic event dispatch (V.Portal(layer:)/V.WorldSpace)
+            // walks it to climb ComponentFiber.Parent from wherever a pointer/focus event
+            // physically landed. Null at the true tree root (nothing on FiberStack yet).
+            element.userData = _ctx.FiberStack.Current;
+            // Capture an element's own Text prop (Label / Button) before the text-effect pass below
+            // transforms it, so a re-apply works from the raw value.
+            if (element is TextElement && elementNode.Props != null && elementNode.Props.Text != null)
+            {
+                StyleTextEffectResolver.CaptureRaw(_ctx, element, elementNode.Props.Text);
+            }
+            if (elementNode.Children != null)
+            {
+                var childContainer = FiberNodePatcher.GetChildContainer(element);
+                // ReconcileChildren (= GeneralPathReconciler.ExpandInlineRecursive) inline-expands
+                // ComponentNode / ContextProviderNode / FragmentNode so children appear as
+                // direct siblings under <paramref name="childContainer"/>. These node kinds
+                // produce no DOM element of their own. The same path is used
+                // on patch (PatchCommon) so initial-mount and patch DOM layouts stay
+                // symmetric — both omit the per-Component wrapper VE.
+                _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), elementNode.Children);
+            }
+            elementNode.OnCreated?.Invoke(element);
+            InvokeRefCallback(elementNode.RefCallback, element);
+            _patcher.Appliers.ApplyGestureManipulator(element, elementNode.WhileHoverClass, elementNode.WhileTapClass, elementNode.WhileFocusClass);
+            _patcher.ApplyVariantManipulators(element, elementNode.ClassNames);
+            // After ApplyVariantManipulators (which registers the data-/aria- variant rules): seed the
+            // attribute store from the props and evaluate, so a data-[..]/aria-[..] variant lights from
+            // the element's carried attribute values at mount.
+            _patcher.ApplyAttributes(element, elementNode.Props);
+            StyleFontResolver.ApplyIfPresent(element, elementNode.ClassNames);
+            // After ReconcileChildren so the gap / divide manipulators see the final child list.
+            // [&>*]: runs before gap / divide / grid so those win a shared child edge (see
+            // ApplyPostChildrenClassPasses for the same ordering on the patch path).
+            _patcher.ApplyChildVariantManipulator(element, elementNode.ClassNames);
+            _patcher.ApplyLayoutManipulators(element, elementNode.ClassNames);
+            // Same post-children timing: structural variants (first:/last:/odd:/…) need the placed children.
+            _patcher.ApplyStructuralVariants(element);
+            // has-[.class]: (element as subject) likewise needs the placed children to scan.
+            _patcher.ApplyHasClassVariants(element);
+            // has-[:checked]: / has-[:focus]: re-scan: an already-checked descendant mounted under this
+            // element fires no ChangeEvent, so re-derive the manipulator from the placed children.
+            _patcher.ApplyHasVariantManipulators(element);
+            // text-transform / -decoration cascade: after children are placed so it can reach descendant
+            // text leaves, and after the element's own text is set so it transforms the final value.
+            StyleTextEffectResolver.Apply(_ctx, element, elementNode.ClassNames);
+
+            // The paint layers read a class source that also carries what the passes above have already
+            // written onto the live class list, so a payload ALREADY LIT at this point paints from the
+            // first frame instead of waiting for an unrelated re-render to bring the token in
+            // literally. That means the families resolved from this element's own placed subtree a few
+            // lines up — has-[.class]:shadow-lg over a matching child, structural, data-/aria-,
+            // supports- — and not dark: or md:, which are still off while the element is detached and
+            // arrive later through attach.
+            var paintClasses = _patcher.ResolveVariantClassesOnCreate(
+                element, elementNode.ClassNames, paintTail: true);
+            // Skew is wrapper-less (the sheared silhouette is the element's own painted
+            // content), so it attaches before — and composes with — any wrap layer below,
+            // including a user wrapElement.
+            _patcher.Appliers.ApplySkewOnCreate(element, paintClasses);
+            // Gradient is also wrapper-less (baked texture set as the element's own
+            // background-image, clipped to its border-radius), so it attaches on the element too.
+            _patcher.Appliers.ApplyGradientOnCreate(element, paintClasses);
+            // animate-* motion (gradient pan / hue cycle) drives the element's own inline style; runs
+            // after the gradient so a pan mode sees the baked gradient already applied.
+            _patcher.Appliers.ApplyAnimateOnCreate(element, paintClasses);
+            // transition-filter: register the tween binding so a later filter change animates.
+            // The mount's own filter is already applied instantly above (the binding is not enabled
+            // yet), matching CSS's no-transition-on-initial-value.
+            _patcher.Appliers.ApplyFilterTransitionOnCreate(element, paintClasses);
+            // Drop shadow is wrapper-less too (the baked shadow texture is painted behind the
+            // element's own content, bleeding outside the box) — a non-structural paint like CSS
+            // box-shadow, so it composes with any wrap layer below and a user wrapElement. The paint
+            // self-suppresses while an active clip-path-* is present (clip-path clips the box-shadow).
+            _patcher.Appliers.ApplyShadowOnCreate(element, paintClasses);
+            // border-dashed / border-dotted: another wrapper-less paint (the dashed outline is the
+            // element's own generateVisualContent; only the border color is suppressed). Attaches after
+            // skew / shadow so it can defer to whichever owns the face. ElementNode only — a Motion never
+            // renders this silhouette (mirroring skew's own silent Motion exclusion).
+            _patcher.Appliers.ApplyBorderStyleOnCreate(element, paintClasses);
+            ApplyOptionalCreateBindings(element, elementNode.Props, elementNode.ClassNames);
+
+            VisualElement outer;
+            if (elementNode.WrapElement != null)
+            {
+                var wrapper = elementNode.WrapElement(element);
+                if (wrapper != null && wrapper != element)
+                {
+                    _ctx.WrapperToInnerMap[wrapper] = element;
+                    outer = wrapper;
+                }
+                else
+                {
+                    outer = element;
+                }
+            }
+            else
+            {
+                // No explicit wrapElement: a clip-path-* class auto-wraps the element in a stencil-
+                // masking container, else a ring-* class wraps it in a native-border overlay
+                // container. Clip takes precedence: the two are mutually exclusive (one structural
+                // wrapper per element). The shadow is NOT here — it is a wrapper-less paint attached
+                // above (a clipped element renders no shadow because the shadow paint self-suppresses
+                // on an active clip).
+                var clipWrapped = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
+                outer = !ReferenceEquals(clipWrapped, element)
+                    ? clipWrapped
+                    : _patcher.Appliers.ApplyRingOnCreate(element, elementNode.ClassNames);
+            }
+
+            // z-* scope gate: only an ALSO-absolute element with an explicit z-* class routes into a
+            // layer container; everything else (the overwhelming majority) returns `outer` unchanged
+            // at the cost of one cheap prefix scan. Gated on the OUTERMOST element — a clip-path-*/
+            // ring/wrapElement wrapper is what physically occupies the slot, so it (not the inner
+            // `element`) is what must relocate.
+            if (FiberZLayerCoordinator.TryClassify(elementNode.ClassNames, elementNode.Props, out var resolvedZ))
+            {
+                return FiberZLayerCoordinator.EnqueueMount(_ctx, outer, resolvedZ);
+            }
+            return outer;
+        }
+
+        private VisualElement CreateForMotionNode(MotionNode motionNode)
+        {
+            // Resolve the applied classes against the effective label (own Animate, else the nearest
+            // ancestor Motion's label read from MotionContext) — the variant-inheritance model.
+            var motionAmbient = _ctx.ComponentContextStack.Get(MotionContext.ActiveLabel);
+            var appliedClasses = MotionVariantResolver.ResolveApplied(motionNode, motionAmbient, out var variantClasses);
+            var element = _ctx.FiberElementFactory.CreateMotion(motionNode, appliedClasses);
+            // The presence expansion dispatches this anchor Motion's variant enter/exit against the
+            // Motion's OWN element (the resting variant classes live here, not on a wrapper) — record
+            // it for the expansion that is emitting this keyed child right now.
+            if (ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion))
+            {
+                _ctx.PresenceAnchorMotionElement = element;
+            }
+            // See CreateForElementNode's comment on this same assignment (reserved userData
+            // slot for cross-panel synthetic event dispatch's VE-to-logical-fiber reverse index).
+            element.userData = _ctx.FiberStack.Current;
+            // Only record applied-class bookkeeping when a variant actually merged; the variant-less
+            // majority needs no entry (patch falls back to oldNode.ClassNames for the diff baseline).
+            if (variantClasses.Length > 0)
+            {
+                _ctx.MotionAppliedClasses[element] = new MotionAppliedClassSet(appliedClasses, variantClasses);
+            }
+            // Record the label propagated to children now (regardless of whether this Motion currently
+            // has any) so the FIRST patch on this element has an accurate baseline: PatchMotion diffs
+            // against this stored value to detect an ACTUAL label change before it (re-)triggers
+            // staggerChildren/delayChildren orchestration — without seeding it here, that first patch
+            // would see no previous entry and could misfire even when the label held steady across
+            // mount and the first re-render. Orchestration itself only ever starts from a PATCH-time
+            // label change (see FiberNodePatcher.PatchMotion), never on mount. A null childLabel needs no
+            // removal here: a brand-new element was never in this map, and a pooled one already had its
+            // entry cleared by ReconcilerContext.ClearElementSideTables when it was returned (see
+            // MotionChildLabel's own doc).
+            var childLabel = MotionVariantResolver.LabelForChildren(motionNode, motionAmbient);
+            if (childLabel != null)
+            {
+                _ctx.MotionChildLabel[element] = childLabel;
+            }
+            if (motionNode.Children != null)
+            {
+                var childContainer = FiberNodePatcher.GetChildContainer(element);
+                // Provide this Motion's active label to its descendants while their subtree reconciles
+                // (same ComponentContextStack the Router/Outlet ambient values ride on). Skip the
+                // stack round-trip entirely when there is no label to propagate (the common case).
+                if (childLabel != null)
+                {
+                    _ctx.ComponentContextStack.Push(MotionContext.ActiveLabel, childLabel);
+                    try
+                    {
+                        _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), motionNode.Children);
+                    }
+                    finally
+                    {
+                        _ctx.ComponentContextStack.Pop(MotionContext.ActiveLabel);
+                    }
+                }
+                else
+                {
+                    _host.ReconcileChildren(childContainer, Array.Empty<VNode>(), motionNode.Children);
+                }
+            }
+            InvokeRefCallback(motionNode.RefCallback, element);
+            _patcher.Appliers.ApplyGestureManipulator(element, motionNode.WhileHoverClass, motionNode.WhileTapClass, motionNode.WhileFocusClass);
+            _patcher.ApplyVariantManipulators(element, appliedClasses);
+            _patcher.ApplyAttributes(element, motionNode.Props);
+            ApplyOptionalCreateBindings(element, motionNode.Props, appliedClasses);
+            StyleFontResolver.ApplyIfPresent(element, appliedClasses);
+            _patcher.ApplyChildVariantManipulator(element, appliedClasses);
+            _patcher.ApplyLayoutManipulators(element, appliedClasses);
+            _patcher.ApplyStructuralVariants(element);
+            _patcher.ApplyHasClassVariants(element);
+            _patcher.ApplyHasVariantManipulators(element);
+            // Same composed source as the element path, recorded as a NON-paint-tail element so a
+            // later variant re-sync never attaches to a Motion the three silhouette paints its own
+            // patch would refuse.
+            var motionPaintClasses = _patcher.ResolveVariantClassesOnCreate(
+                element, appliedClasses, paintTail: false);
+            _patcher.Appliers.ApplyGradientOnCreate(element, motionPaintClasses);
+            _patcher.Appliers.ApplyAnimateOnCreate(element, motionPaintClasses);
+            // transition-filter on a Motion host: a Motion can carry filter utilities + that class
+            // just like a plain element, so register the tween binding here too.
+            _patcher.Appliers.ApplyFilterTransitionOnCreate(element, motionPaintClasses);
+            WarnIgnoredMotionUtilities(motionNode, appliedClasses);
+            // Standalone `initial` enter: outside AnimatePresence this Motion still plays its own
+            // mount animation, the same variant enter the presence expansion drives
+            // (GeneralPathReconciler.ExpandAnimatePresenceInline) — just with no stagger (there is no
+            // AnimatePresence boundary to stagger against). The element above was created carrying the
+            // resting variants[animate] classes (appliedClasses), with MotionAppliedClasses already
+            // recorded against that resting state, so PlayVariantEnter's synchronous strip-to-`initial` is
+            // purely a transient visual state: a later patch (PatchMotion) always diffs against the
+            // resting baseline and never replays this entrance.
+            // Gated on IDENTITY, not PresenceExpansionDepth: the presence expansion drives an enter for
+            // only its ONE resolved anchor Motion (PresenceAnchorMotion, set by GeneralPathReconciler
+            // around the exact EmitPresenceChild call whose enter/exit it dispatches explicitly) — every
+            // OTHER Motion created while that expansion is on the stack (nested deeper, sitting under a
+            // non-anchor wrapper — e.g. a plain Div — or simply a sibling keyed child) is not presence-
+            // managed at all and must keep this mount enter, or wrapping unrelated content in
+            // AnimatePresence would silently disable it.
+            if (!ReferenceEquals(motionNode, _ctx.PresenceAnchorMotion) && motionNode.Initial != null)
+            {
+                if (motionNode.Transition != null && GeneralPathReconciler.TryResolveVariantInitial(
+                        motionNode, out var standaloneFromClasses, out var standaloneToClasses))
+                {
+                    var t = motionNode.Transition;
+                    _ctx.StyleAnimationScheduler.PlayVariantEnter(element, standaloneFromClasses, standaloneToClasses,
+                        t, motionNode.OnEnterComplete);
+                }
+                else
+                {
+                    // Initial declared but unresolvable: no own Animate (an inherited-label
+                    // configuration is not yet driven by the standalone enter), or the label is missing
+                    // from Variants / maps to an empty class. Warn instead of silently mounting inert,
+                    // matching the Exit gate's own inert-configuration diagnostic in
+                    // WarnIgnoredMotionUtilities.
+                    FiberLogger.LogWarning("Motion",
+                        "initial is set but has no resolvable enter: this Motion needs its own animate + "
+                        + "variants (with initial mapping to a non-empty class) for a standalone mount "
+                        + "enter. An inherited animate label does not yet drive one.");
+                }
+            }
+            // Shared-element layout animation (layoutId) on a freshly-created element —
+            // the same-key-type-flip case PatchMotion's own registration cannot reach (a type
+            // flip tears down the OLD element and creates a genuinely NEW one for the SAME id,
+            // never routing through PatchMotion at all). MotionLayoutIdDriver.OnPatched already
+            // handles "new physical element, existing registry entry" by falling back to the
+            // registry's own stored rect instead of this element's own (nonexistent) layout
+            // history — see its own comment.
+            if (motionNode.LayoutId != null)
+            {
+                var lt = motionNode.Transition;
+                MotionLayoutIdDriver.OnPatched(element, motionNode.LayoutId,
+                    lt?.Stiffness ?? 100f, lt?.Damping ?? 10f, lt?.Mass ?? 1f, _ctx);
+            }
+            return element;
+        }
+
+        // The utilities a Motion host silently cannot honour. Each is diagnosed rather than applied,
+        // because the class reaches this element through the ordinary utility pipeline and a silent drop
+        // reads as a broken utility.
+        private void WarnIgnoredMotionUtilities(MotionNode motionNode, string[] appliedClasses)
+        {
+            // Motion does NOT paint a drop shadow: the three silhouette paints stand down on a Motion
+            // on BOTH halves — here, and on the patch path through ApplyResolvedClassPasses' paintTail
+            // gate — so attaching one here would leave a binding the Motion's own patch never syncs
+            // against a class change and never detaches. The shadow belongs on a Div the Motion wraps
+            // (the Div carries the shadow, the Motion carries the transition). Warn and skip the paint.
+            // Warn only for an ACTIVE shadow (shadow-none deliberately cancelling the cascade is not
+            // "ignored" — nothing would render anywhere).
+            if (StyleShadowClass.HasShadowClass(appliedClasses)
+                && StyleShadowClass.TryExtract(appliedClasses, out _))
+            {
+                FiberLogger.LogWarning("Motion",
+                    "A shadow-* utility on a Motion is ignored: a Motion carries the transition, not "
+                    + "the paint layers. Wrap the Motion around a shadowed Div instead.");
+            }
+            // clip-path-* is a structural wrapper, which would become the AnimatePresence anchor while
+            // the enter/exit transition stays on the inner Motion: ignored on a Motion, never wrapped.
+            // Same active-only gate: clip-path-none / an unparseable value activates nothing.
+            if (StyleClipPathClass.WantsClipPath(appliedClasses))
+            {
+                FiberLogger.LogWarning("Motion",
+                    "A clip-path-* utility on a Motion is ignored: it would break AnimatePresence enter/exit "
+                    + "(same constraint as shadow-*). Wrap the Motion around a clipped Div instead.");
+            }
+            // z-* is ignored on a Motion: the Motion create path never consults FiberZLayerCoordinator at
+            // all (only CreateForElementNode does), so a Motion never relocates into a layer container
+            // — TryClassify's out-of-flow half runs off the declared class list / Anchored prop alone
+            // (no live element needed), so it can be evaluated here for diagnostics purposes even though
+            // that path never acts on it.
+            if (FiberZLayerCoordinator.TryClassify(appliedClasses, motionNode.Props, out _))
+            {
+                FiberLogger.LogWarning("Motion",
+                    "A z-* utility on a Motion is ignored: z-* does not apply to Motion elements. "
+                    + "Wrap the Motion around a z-managed Div instead.");
+            }
+            // Exit tweens are scheduled only by the AnimatePresence expansion — something has to defer
+            // the unmount for a removal to animate against, and AnimatePresence is what does that — so
+            // exit outside one is genuinely inert. Initial is NOT warned here (see the standalone enter
+            // in CreateForMotionNode): unlike exit, a mount-time enter needs no deferred unmount to play
+            // against, so it works on any Motion (initial/animate apply anywhere; only exit is
+            // AnimatePresence-only).
+            if (_ctx.PresenceExpansionDepth == 0 && motionNode.Exit != null)
+            {
+                FiberLogger.LogWarning("Motion",
+                    "exit on a Motion outside AnimatePresence is inert: exit tweens are driven by the "
+                    + "AnimatePresence expansion. Wrap the Motion in V.AnimatePresence (or drop exit).");
+            }
+        }
+
+        private VisualElement CreateForPortalNode(PortalNode portalNode)
+        {
+            // TargetId and Layer are a one-of pair; a hand-built node violating that has no
+            // meaningful routing, so it warns and mounts an inert placeholder rather than
+            // silently picking a side.
+            var hasTargetId = !string.IsNullOrEmpty(portalNode.TargetId);
+            var hasLayer = portalNode.Layer != null;
+            if (hasTargetId == hasLayer)
+            {
+                FiberLogger.LogWarning("Portal",
+                    "A PortalNode must set exactly one of TargetId or Layer (they are a one-of pair). Children will not be rendered.");
+                return CreateHiddenPlaceholder();
+            }
+
+            // A layer portal resolves its target at DRAIN time — the framework layer host is
+            // created lazily there, once the placeholder is attached and the declaring panel
+            // is therefore known. Only a registry portal resolves here, keeping its
+            // not-registered warning a mount-time signal.
+            VisualElement? target = null;
+            if (!hasLayer)
+            {
+                target = FiberPortalRegistry.Get(portalNode.TargetId!);
+                if (target == null)
+                {
+                    FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
+                    var placeholder = CreateHiddenPlaceholder();
+                    _ctx.PortalState[placeholder] = new PortalSlotInfo(null, 0, 0);
+                    return placeholder;
+                }
+            }
+
+            // Defer the target-side mount to the post-reconcile drain so this Portal's
+            // slot range does not overlap with an outer Portal's slot when both target
+            // the same DOM node. Synchronous mount would let inner Portal write into the
+            // outer's slot range before outer's slotLength is finalized, leaving every
+            // nested slot index stale after the outer's placeholder insertion. The drain
+            // mounts each queued Portal at a fresh slotStart = target.childCount once
+            // outer reconcile has finished, so Portal subtrees stack as
+            // independent ranges (slots [outer..outerEnd) then [outerEnd..innerEnd) ...).
+            // PortalState is recorded only at drain time — between enqueue and drain the
+            // placeholder has no entry and PatchPortal/CleanupPortal handle the missing
+            // case explicitly (LogError + skip / early return).
+            return EnqueueDeferredHostMount(portalNode, target);
+        }
+
+        private VisualElement CreateForVirtualListNode(VirtualListNode virtualListNode)
+        {
+            var scrollView = new ScrollView(ScrollViewMode.Vertical);
+            var bridge = _ctx.ReconcilerBridge;
+            // Capture the host fiber rendering this list and the live cursor (correct mid-reconcile, in
+            // this commit walk) so the controller can mount items under the host's shared context — its
+            // items render later, outside any reconcile pass, where the cursor is empty.
+            var controller = new FiberVirtualListController(
+                scrollView, virtualListNode, bridge, _ctx.FiberStack.Current, _ctx.ComponentContextStack);
+            _ctx.VirtualListControllers[scrollView] = controller;
+
+            // Apply class-driven styling the same way the ElementNode path does, so a virtualized
+            // list container honours variants and the font layer. Gap is intentionally omitted: a
+            // ScrollView's direct children are the height spacer + absolutely-positioned visible
+            // container, not the list items, so gap-* would have nothing meaningful to space.
+            _patcher.ApplyVariantManipulators(scrollView, virtualListNode.ClassNames);
+            StyleFontResolver.ApplyIfPresent(scrollView, virtualListNode.ClassNames);
+            return scrollView;
+        }
+
+        private VisualElement CreateForTextNode(TextNode textNode)
+        {
+            var label = _ctx.FiberElementFactory.CreateText(textNode);
+            // Capture the raw text (and apply any already-resolved ancestor effect) so a text-transform /
+            // -decoration carried by an ANCESTOR cascades onto this leaf — a TextNode has no class of its
+            // own. At mount the ancestor's own effect is parsed in its later post-children pass, which
+            // re-applies; OnTextSet here makes an isolated later leaf re-render self-sufficient.
+            StyleTextEffectResolver.OnTextSet(_ctx, label, textNode.Text);
+            return label;
+        }
+
+        private VisualElement CreateForComponentNode(ComponentNode componentNode)
+        {
+            // Wrapper-mount path: reached only when CreateElement is invoked directly on a
+            // ComponentNode the reconcile walk did not inline-expand — a MemoNode whose
+            // resolved inner is a ComponentNode, or a ComponentNode that is a direct child of
+            // an AnimatePresence keyed entry. ComponentNodes reached during a
+            // ChildReconciler.Reconcile pass (top-level or nested under an element) are
+            // inline-mounted (no wrapper VE) by GeneralPathReconciler.ExpandInlineRecursive, so this
+            // case is unreachable for them.
+            // A Component does not emit a DOM element; its rendered tree attaches
+            // directly to the parent. Velvet needs an anchor element for fiber tracking,
+            // so the wrapper is made layout-transparent so its single child can size
+            // against the real parent.
+            var wrapper = CreateLayoutPassthroughContainer();
+            _patcher.HandleComponentMount(wrapper, componentNode);
+            return wrapper;
+        }
+
+        private VisualElement CreateForContextProviderNode(ContextProviderNode providerNode)
+        {
+            // A context Provider emits no DOM element of its own; descendants attach directly to
+            // the parent fiber's host. Velvet maps each VNode to exactly one VisualElement so a
+            // layout-passthrough wrapper anchors the Provider subtree without imposing layout.
+            // The wrapper is what AnimatePresence's keyed map (and any BaseElementNode children
+            // list reached through MemoNode's resolved inner) tracks for this Provider entry —
+            // the wrapper element is a deliberate choice, as documented on ContextProviderNode.
+            //
+            // GeneralPathReconciler.ExpandInlineRecursive expands Provider inline (no wrapper) during
+            // a Reconcile pass, so this case is unreachable for slot-based reconciliation; it is
+            // reached only when CreateElement is invoked directly on a Provider VNode — e.g. a
+            // MemoNode resolved inner.
+            var container = CreateLayoutPassthroughContainer();
+            container.AddToClassList(ContextProviderClassName);
+
+            providerNode.PushContext(_ctx.ComponentContextStack);
+            try
+            {
+                if (providerNode.Children != null)
+                {
+                    _host.ReconcileChildren(container, Array.Empty<VNode>(), providerNode.Children);
+                }
+            }
+            finally
+            {
+                providerNode.PopContext(_ctx.ComponentContextStack);
+            }
+            return container;
+        }
+
+        private VisualElement CreateForOutletNode(OutletNode outletNode)
+        {
+            // The container is layout-transparent so the matched route's element resolves
+            // its size against the Outlet's parent box, and doubles as the fiber anchor
+            // for the matched route's Component (one wrapper, not two).
+            var container = CreateLayoutPassthroughContainer();
+            container.AddToClassList(OutletContainerClass);
+            // Identity-side registration for FiberContextSpine: separate from the USS class
+            // (which is for styling and is user-mutable). Populated unconditionally so the
+            // spine walker can identify Outlet hosts before Router setup completes.
+            _ctx.OutletContainers.Add(container);
+
+            if (!_patcher.ResolveOutletMatch(out var routeElement, out var routeDepth, out var match))
+            {
+                return container;
+            }
+
+            var scopeFactory = Router.Current?.ScopeFactory;
+            if (scopeFactory != null)
+            {
+                outletNode.Scope = scopeFactory.CreateScope(match.Route, null);
+                _ctx.OutletScopes[container] = outletNode.Scope;
+            }
+
+            // Mount the matched route Component with Depth+1 pushed live so its UseContext
+            // reads the incremented router depth: an Outlet provides the
+            // next RouteContext value to its descendants. The Outlet's context value (if any) is
+            // pushed too so the child route can read it via Hooks.UseOutletContext.
+            _ctx.ComponentContextStack.Push(RouterContext.Depth, routeDepth);
+            _ctx.ComponentContextStack.Push(RouterContext.OutletContext, outletNode.OutletContextValue);
+            try
+            {
+                _patcher.HandleComponentMount(container, routeElement);
+            }
+            finally
+            {
+                _ctx.ComponentContextStack.Pop(RouterContext.OutletContext);
+                _ctx.ComponentContextStack.Pop(RouterContext.Depth);
+            }
+
+            return container;
         }
 
         // The optional bindings shared by ElementNode and MotionNode's create paths — a Motion can host

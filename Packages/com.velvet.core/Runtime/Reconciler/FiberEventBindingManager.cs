@@ -74,6 +74,15 @@ namespace Velvet
                 typedBindings.Add(binding);
             }
 
+            RegisterFieldBinding(actions, element, binding);
+        }
+
+        // The bindings that ride an element-specific hook (Button.clicked, INotifyValueChanged<T>) rather
+        // than the event dispatcher, so each is gated on the element implementing that hook. A binding
+        // whose element does not falls through to RegisterEventBinding, which matches none of its cases
+        // either, and registers nothing.
+        private void RegisterFieldBinding(List<Action> actions, VisualElement element, FiberEventBinding binding)
+        {
             switch (binding)
             {
                 case ClickedBinding clicked when element is Button button:
@@ -96,6 +105,16 @@ namespace Velvet
                 case ChangeEventBinding<int> intChange when element is INotifyValueChanged<int> intField:
                     BindDiscreteValueChanged(actions, intField, intChange.Handler);
                     break;
+                default:
+                    RegisterEventBinding(actions, element, binding);
+                    break;
+            }
+        }
+
+        private void RegisterEventBinding(List<Action> actions, VisualElement element, FiberEventBinding binding)
+        {
+            switch (binding)
+            {
                 // Discrete user-input events (a distinct, atomic interaction): a hook update they trigger takes the
                 // Urgent lane and the immediate batch flushes synchronously when the handler returns.
                 case PointerDownBinding b: BindDiscreteCallback(actions, element, b.Handler); break;
@@ -216,63 +235,69 @@ namespace Velvet
             var invoked = false;
             foreach (var binding in bindings)
             {
-                switch (binding)
+                if (InvokeSyntheticDiscrete(binding, evt) || InvokeSyntheticContinuous(binding, evt))
                 {
-                    case PointerDownBinding b when evt is PointerDownEvent pe:
-                        RunDiscrete(() => b.Handler?.Invoke(pe));
-                        invoked = true;
-                        break;
-                    case PointerUpBinding b when evt is PointerUpEvent pe:
-                        RunDiscrete(() => b.Handler?.Invoke(pe));
-                        invoked = true;
-                        break;
-                    case KeyDownBinding b when evt is KeyDownEvent ke:
-                        RunDiscrete(() => b.Handler?.Invoke(ke));
-                        invoked = true;
-                        break;
-                    case KeyUpBinding b when evt is KeyUpEvent ke:
-                        RunDiscrete(() => b.Handler?.Invoke(ke));
-                        invoked = true;
-                        break;
-                    case FocusInBinding b when evt is FocusInEvent fe:
-                        RunDiscrete(() => b.Handler?.Invoke(fe));
-                        invoked = true;
-                        break;
-                    case FocusOutBinding b when evt is FocusOutEvent fe:
-                        RunDiscrete(() => b.Handler?.Invoke(fe));
-                        invoked = true;
-                        break;
-                    case FocusBinding b when evt is FocusEvent fe:
-                        RunDiscrete(() => b.Handler?.Invoke(fe));
-                        invoked = true;
-                        break;
-                    case BlurBinding b when evt is BlurEvent fe:
-                        RunDiscrete(() => b.Handler?.Invoke(fe));
-                        invoked = true;
-                        break;
-                    case PointerMoveBinding b when evt is PointerMoveEvent pe:
-                        b.Handler?.Invoke(pe);
-                        invoked = true;
-                        break;
-                    case PointerEnterBinding b when evt is PointerEnterEvent pe:
-                        b.Handler?.Invoke(pe);
-                        invoked = true;
-                        break;
-                    case PointerLeaveBinding b when evt is PointerLeaveEvent pe:
-                        b.Handler?.Invoke(pe);
-                        invoked = true;
-                        break;
-                    case WheelBinding b when evt is WheelEvent we:
-                        b.Handler?.Invoke(we);
-                        invoked = true;
-                        break;
-                    case GeometryChangedBinding b when evt is GeometryChangedEvent ge:
-                        b.Handler?.Invoke(ge);
-                        invoked = true;
-                        break;
+                    invoked = true;
                 }
             }
             return invoked;
+        }
+
+        private bool InvokeSyntheticDiscrete(FiberEventBinding binding, EventBase evt)
+        {
+            switch (binding)
+            {
+                case PointerDownBinding b when evt is PointerDownEvent pe:
+                    RunDiscrete(() => b.Handler?.Invoke(pe));
+                    return true;
+                case PointerUpBinding b when evt is PointerUpEvent pe:
+                    RunDiscrete(() => b.Handler?.Invoke(pe));
+                    return true;
+                case KeyDownBinding b when evt is KeyDownEvent ke:
+                    RunDiscrete(() => b.Handler?.Invoke(ke));
+                    return true;
+                case KeyUpBinding b when evt is KeyUpEvent ke:
+                    RunDiscrete(() => b.Handler?.Invoke(ke));
+                    return true;
+                case FocusInBinding b when evt is FocusInEvent fe:
+                    RunDiscrete(() => b.Handler?.Invoke(fe));
+                    return true;
+                case FocusOutBinding b when evt is FocusOutEvent fe:
+                    RunDiscrete(() => b.Handler?.Invoke(fe));
+                    return true;
+                case FocusBinding b when evt is FocusEvent fe:
+                    RunDiscrete(() => b.Handler?.Invoke(fe));
+                    return true;
+                case BlurBinding b when evt is BlurEvent fe:
+                    RunDiscrete(() => b.Handler?.Invoke(fe));
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool InvokeSyntheticContinuous(FiberEventBinding binding, EventBase evt)
+        {
+            switch (binding)
+            {
+                case PointerMoveBinding b when evt is PointerMoveEvent pe:
+                    b.Handler?.Invoke(pe);
+                    return true;
+                case PointerEnterBinding b when evt is PointerEnterEvent pe:
+                    b.Handler?.Invoke(pe);
+                    return true;
+                case PointerLeaveBinding b when evt is PointerLeaveEvent pe:
+                    b.Handler?.Invoke(pe);
+                    return true;
+                case WheelBinding b when evt is WheelEvent we:
+                    b.Handler?.Invoke(we);
+                    return true;
+                case GeometryChangedBinding b when evt is GeometryChangedEvent ge:
+                    b.Handler?.Invoke(ge);
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static void BindCallback<T>(List<Action> actions, VisualElement element, EventCallback<T>? handler)

@@ -58,6 +58,19 @@ namespace Velvet
             ["0"] = 0f, ["50"] = 0.5f, ["100"] = 1f, ["150"] = 1.5f, ["200"] = 2f,
         };
 
+        // The bracket prefixes whose value is a bare amount. Only a negative one is rejected: CSS leaves
+        // brightness() and saturate() unclamped above 1, and the first-party shaders standing in for them
+        // multiply/lerp unclamped to match (s_brightnessPreset).
+        private static readonly Dictionary<string, ArbitraryProperty> s_amountFilterPrefixes = new()
+        {
+            ["grayscale-"] = ArbitraryProperty.FilterGrayscale,
+            ["invert-"] = ArbitraryProperty.FilterInvert,
+            ["sepia-"] = ArbitraryProperty.FilterSepia,
+            ["contrast-"] = ArbitraryProperty.FilterContrast,
+            ["brightness-"] = ArbitraryProperty.FilterBrightness,
+            ["saturate-"] = ArbitraryProperty.FilterSaturate,
+        };
+
         // Filter-function bracket prefixes, routed here so all filter-* utilities share the one compose-and-
         // apply path (ApplyCombinedFilter writes a single list). true (result set) on success; false to
         // reject a matched-but-invalid value; null when not a filter prefix. Most filters reject the negated
@@ -66,48 +79,30 @@ namespace Velvet
         {
             result = default;
 
-            if (!negate && prefix == "blur-")
-            {
-                if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var blurPx, out var blurUnit) || blurUnit != LengthUnit.Pixel) return false;
-                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, blurPx, LengthUnit.Pixel);
-                return true;
-            }
-            if (!negate && (prefix == "grayscale-" || prefix == "invert-" || prefix == "sepia-" || prefix == "contrast-"))
-            {
-                if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var amount) || amount < 0f) return false;
-                var fp = prefix == "grayscale-" ? ArbitraryProperty.FilterGrayscale
-                    : prefix == "invert-" ? ArbitraryProperty.FilterInvert
-                    : prefix == "sepia-" ? ArbitraryProperty.FilterSepia
-                    : ArbitraryProperty.FilterContrast;
-                result = new ArbitraryStyle(fp, amount, LengthUnit.Pixel);
-                return true;
-            }
+            // Must precede the negate bail below: hue-rotate is the one filter that accepts a negated value.
             if (prefix == "hue-rotate-")
             {
                 if (!StyleArbitraryValueResolver.TryParseAngleDegrees(valueSpan, out var deg)) return false;
                 result = new ArbitraryStyle(ArbitraryProperty.FilterHueRotate, negate ? -deg : deg, LengthUnit.Pixel);
                 return true;
             }
-            // brightness-[N] is an unbounded (N >= 0) multiplier rendered through a first-party custom-filter
-            // shader, so over-brightening (N > 1) is accepted. Only negative amounts are rejected — CSS
-            // disallows them.
-            if (!negate && prefix == "brightness-")
+            if (negate)
             {
-                if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var b) || b < 0f) return false;
-                result = new ArbitraryStyle(ArbitraryProperty.FilterBrightness, b, LengthUnit.Pixel);
+                return null;
+            }
+            if (prefix == "blur-")
+            {
+                if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var blurPx, out var blurUnit) || blurUnit != LengthUnit.Pixel) return false;
+                result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, blurPx, LengthUnit.Pixel);
                 return true;
             }
-            // saturate-[N] is an unbounded (N >= 0) saturation fraction rendered through a first-party
-            // custom-filter shader, so over-saturation (N > 1) is accepted. Only negative amounts are rejected
-            // — CSS disallows them.
-            if (!negate && prefix == "saturate-")
+            if (prefix == null || !s_amountFilterPrefixes.TryGetValue(prefix, out var property))
             {
-                if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var s) || s < 0f) return false;
-                result = new ArbitraryStyle(ArbitraryProperty.FilterSaturate, s, LengthUnit.Pixel);
-                return true;
+                return null;
             }
-
-            return null;
+            if (!StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var amount) || amount < 0f) return false;
+            result = new ArbitraryStyle(property, amount, LengthUnit.Pixel);
+            return true;
         }
 
         // Warn-once bookkeeping for a filter-[name:...] token whose name was never registered with
@@ -357,6 +352,12 @@ namespace Velvet
                 return false; // no other filter has a negative preset
             }
 
+            return TryParseKeywordPreset(body, out result) || TryParseFamilyPreset(body, out result);
+        }
+
+        private static bool TryParseKeywordPreset(string body, out ArbitraryStyle result)
+        {
+            result = default;
             switch (body)
             {
                 case "blur": result = new ArbitraryStyle(ArbitraryProperty.FilterBlur, 8f, LengthUnit.Pixel); return true;
@@ -367,7 +368,12 @@ namespace Velvet
                 case "invert-0": result = new ArbitraryStyle(ArbitraryProperty.FilterInvert, 0f, LengthUnit.Pixel); return true;
                 case "sepia-0": result = new ArbitraryStyle(ArbitraryProperty.FilterSepia, 0f, LengthUnit.Pixel); return true;
             }
+            return false;
+        }
 
+        private static bool TryParseFamilyPreset(string body, out ArbitraryStyle result)
+        {
+            result = default;
             if (body.StartsWith("blur-", StringComparison.Ordinal))
             {
                 if (!s_blurPreset.TryGetValue(body.Substring("blur-".Length), out var px))

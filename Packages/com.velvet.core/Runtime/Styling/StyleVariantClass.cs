@@ -1,4 +1,6 @@
 #nullable enable
+using System.Collections.Generic;
+
 namespace Velvet
 {
     /// <summary>
@@ -69,6 +71,31 @@ namespace Velvet
         public static bool TryParse(string? token, out StyleVariantKind kind, out string? payload)
             => TryParse(token, out kind, out _, out payload);
 
+        // The variant keywords. A relational name is split off before the lookup, so no key carries a '/'.
+        private static readonly Dictionary<string, StyleVariantKind> s_kinds = new()
+        {
+            ["hover"] = StyleVariantKind.Hover,
+            ["focus"] = StyleVariantKind.Focus,
+            ["focus-visible"] = StyleVariantKind.FocusVisible,
+            ["active"] = StyleVariantKind.Active,
+            ["checked"] = StyleVariantKind.Checked,
+            ["sm"] = StyleVariantKind.Sm,
+            ["md"] = StyleVariantKind.Md,
+            ["lg"] = StyleVariantKind.Lg,
+            ["xl"] = StyleVariantKind.Xl,
+            ["2xl"] = StyleVariantKind.Xxl,
+            ["dark"] = StyleVariantKind.Dark,
+            ["group-hover"] = StyleVariantKind.GroupHover,
+            ["group-focus"] = StyleVariantKind.GroupFocus,
+            ["group-focus-within"] = StyleVariantKind.GroupFocusWithin,
+            ["group-active"] = StyleVariantKind.GroupActive,
+            ["peer-hover"] = StyleVariantKind.PeerHover,
+            ["peer-focus"] = StyleVariantKind.PeerFocus,
+            ["peer-focus-within"] = StyleVariantKind.PeerFocusWithin,
+            ["peer-active"] = StyleVariantKind.PeerActive,
+            ["peer-checked"] = StyleVariantKind.PeerChecked,
+        };
+
         /// <summary>
         /// Splits <paramref name="token"/> into its variant kind, optional relational NAME, and payload.
         /// <paramref name="name"/> is the part after a <c>/</c> in the variant prefix, used only by the named
@@ -123,29 +150,10 @@ namespace Velvet
                 }
             }
 
-            switch (prefix)
+            if (!s_kinds.TryGetValue(prefix, out kind))
             {
-                case "hover": kind = StyleVariantKind.Hover; break;
-                case "focus": kind = StyleVariantKind.Focus; break;
-                case "focus-visible": kind = StyleVariantKind.FocusVisible; break;
-                case "active": kind = StyleVariantKind.Active; break;
-                case "checked": kind = StyleVariantKind.Checked; break;
-                case "sm": kind = StyleVariantKind.Sm; break;
-                case "md": kind = StyleVariantKind.Md; break;
-                case "lg": kind = StyleVariantKind.Lg; break;
-                case "xl": kind = StyleVariantKind.Xl; break;
-                case "2xl": kind = StyleVariantKind.Xxl; break;
-                case "dark": kind = StyleVariantKind.Dark; break;
-                case "group-hover": kind = StyleVariantKind.GroupHover; break;
-                case "group-focus": kind = StyleVariantKind.GroupFocus; break;
-                case "group-focus-within": kind = StyleVariantKind.GroupFocusWithin; break;
-                case "group-active": kind = StyleVariantKind.GroupActive; break;
-                case "peer-hover": kind = StyleVariantKind.PeerHover; break;
-                case "peer-focus": kind = StyleVariantKind.PeerFocus; break;
-                case "peer-focus-within": kind = StyleVariantKind.PeerFocusWithin; break;
-                case "peer-active": kind = StyleVariantKind.PeerActive; break;
-                case "peer-checked": kind = StyleVariantKind.PeerChecked; break;
-                default: name = null; return false;
+                name = null;
+                return false;
             }
 
             // A name is only meaningful for the relational kinds; reject it on any other variant.
