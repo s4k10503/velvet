@@ -449,16 +449,18 @@ namespace Velvet.Tests
             var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
             store.Increment();
             scheduler.DrainImmediateForTest();
-            Assume.That((s_setupCount, s_cleanupCount), Is.EqualTo((1, 1)),
-                "Precondition: the first tenancy ran one setup and one cleanup");
+            var setupsAfterFirstTenancy = s_setupCount;
+            var cleanupsAfterFirstTenancy = s_cleanupCount;
 
             // Act — show the tenant again: the recreated button (likely the pooled instance) mounts
             // under the same callback identity and the same context.
             store.Increment();
             scheduler.DrainImmediateForTest();
 
-            // Assert — the new tenancy's setup ran.
-            Assert.That(s_setupCount, Is.EqualTo(2),
+            // Assert — the new tenancy's setup ran. The first tenancy's counts are asserted with it: a
+            // second setup that ran during the first tenancy instead reaches the same total.
+            Assert.That((setupsAfterFirstTenancy, cleanupsAfterFirstTenancy, s_setupCount),
+                Is.EqualTo((1, 1, 2)),
                 "A re-rented element under the same ref identity must run its setup again");
         }
     }

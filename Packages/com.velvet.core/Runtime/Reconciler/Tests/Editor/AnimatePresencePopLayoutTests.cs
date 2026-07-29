@@ -210,8 +210,7 @@ namespace Velvet.Tests
             store.Set("ac");
             scheduler.DrainImmediateForTest();
             var pinnedBeforeCancel = _window.rootVisualElement.Q<VisualElement>("item-b");
-            Assume.That(pinnedBeforeCancel.style.position.value, Is.EqualTo(Position.Absolute),
-                "Precondition: the exiting real element is pinned out of flow");
+            var positionWhilePinned = pinnedBeforeCancel.style.position.value;
 
             // Act — re-add the key before the exit finishes, cancelling it.
             store.Set("abc");
@@ -222,10 +221,12 @@ namespace Velvet.Tests
             // class: RestorePopLayoutChildToFlow reapplies the ANCHOR's own declared classes (item-b's
             // "absolute z-10", neither an arbitrary-value token), not the differently-classed Motion nested
             // inside it — a stray reapply from the wrong element's class list would otherwise leave a
-            // concrete (non-Null) width behind.
+            // concrete (non-Null) width behind. The pin itself is asserted first: an element that was never
+            // pinned reads Null on both counts without the cancel clearing anything.
             var restored = _window.rootVisualElement.Q<VisualElement>("item-b");
-            Assert.That((restored.style.position.keyword, restored.style.width.keyword),
-                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Null)));
+            Assert.That(
+                (positionWhilePinned, restored.style.position.keyword, restored.style.width.keyword),
+                Is.EqualTo((Position.Absolute, StyleKeyword.Null, StyleKeyword.Null)));
         }
 
         [Test]
@@ -289,16 +290,18 @@ namespace Velvet.Tests
             store.Set("ac");
             scheduler.DrainImmediateForTest();
             var pinnedBeforeCancel = _window.rootVisualElement.Q<VisualElement>("item-b");
-            Assume.That(pinnedBeforeCancel.style.position.value, Is.EqualTo(Position.Absolute),
-                "Precondition: the exiting ghost is pinned out of flow");
+            var positionWhilePinned = pinnedBeforeCancel.style.position.value;
 
             // Act — re-add the key before the exit finishes, cancelling it.
             store.Set("abc");
             scheduler.DrainImmediateForTest();
 
-            // Assert — the cancel clears the inline position back to Null, rejoining normal flow.
-            Assert.That(_window.rootVisualElement.Q<VisualElement>("item-b").style.position.keyword,
-                Is.EqualTo(StyleKeyword.Null));
+            // Assert — the cancel clears the inline position back to Null, rejoining normal flow. A ghost that
+            // was never pinned reads Null already, so the pin is asserted with the clear.
+            Assert.That(
+                (positionWhilePinned,
+                    _window.rootVisualElement.Q<VisualElement>("item-b").style.position.keyword),
+                Is.EqualTo((Position.Absolute, StyleKeyword.Null)));
         }
 
         [Test]

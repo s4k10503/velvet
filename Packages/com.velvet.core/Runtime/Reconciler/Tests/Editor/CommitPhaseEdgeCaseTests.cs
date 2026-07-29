@@ -340,7 +340,7 @@ namespace Velvet.Tests
             // Establish a pin: an immediate drain renders the reader, which pins the now-current snapshot (v1).
             store.Set("v1");
             scheduler.DrainImmediateForTest();
-            Assume.That(s_lastRendered, Is.EqualTo("v1"), "Precondition: the immediate wave pinned and rendered v1");
+            var renderedByImmediateWave = s_lastRendered;
 
             // The reader is inside a transition (the async-transition await window): a store mutation now routes
             // its re-render to the delayed (Transition) tier, so the next drain is a SOLO delayed drain with no
@@ -350,8 +350,10 @@ namespace Velvet.Tests
             scheduler.DrainDelayedForTest();
 
             // Assert — the solo delayed drain must open a fresh wave: the reader reads the current snapshot (v2),
-            // NOT the stale pin (v1) left over from the prior immediate drain's wave.
-            Assert.That(s_lastRendered, Is.EqualTo("v2"),
+            // NOT the stale pin (v1) left over from the prior immediate drain's wave. What the immediate wave
+            // rendered is asserted with it: without a v1 pin in place there is no stale pin to reuse, and the
+            // delayed drain reads v2 for reasons this test does not pin.
+            Assert.That((renderedByImmediateWave, s_lastRendered), Is.EqualTo(("v1", "v2")),
                 "A solo delayed drain must not reuse a stale store snapshot pin from a previous wave");
         }
     }

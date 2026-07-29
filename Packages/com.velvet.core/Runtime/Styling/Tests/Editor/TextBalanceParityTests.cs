@@ -122,16 +122,17 @@ namespace Velvet.Tests
             // Act — remove (returns the label to the pool with the stale width still on it), then
             // recreate a text-balance label at the same position, renting the SAME pooled instance back.
             scope.Reconciler.Reconcile(scope.Root, tree1, System.Array.Empty<VNode>());
-            Assume.That(VNodePoolTestAccess.LabelPoolCountForTest, Is.EqualTo(1),
-                "Precondition: the label was returned to the pool");
+            var pooledCount = VNodePoolTestAccess.LabelPoolCountForTest;
             var tree3 = new VNode[] { V.Label(className: "text-balance", text: "world") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree3);
             var recreated = scope.Root.Q<Label>();
-            Assume.That(ReferenceEquals(original, recreated), Is.True,
-                "Precondition: the same pooled Label instance was rented back");
 
-            // Assert
-            Assert.That(recreated.style.width.keyword, Is.EqualTo(StyleKeyword.Null));
+            // Assert — the pool round-trip is asserted alongside the width because a fresh Label carries no
+            // width either: with the round-trip merely assumed, a reconciler that stopped pooling the label
+            // would satisfy the width on its own.
+            Assert.That(
+                (pooledCount, ReferenceEquals(original, recreated), recreated.style.width.keyword),
+                Is.EqualTo((1, true, StyleKeyword.Null)));
         }
 
         [Test]
