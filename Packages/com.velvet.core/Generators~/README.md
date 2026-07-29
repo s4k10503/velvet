@@ -28,20 +28,46 @@ dotnet test Velvet.SourceGenerators.sln
 ```
 
 - `SourceBuilderTests` — unit tests for the indent / block helpers in `Shared/SourceBuilder.cs`
-- `MemoOverloadGeneratorTests` — snapshot comparison that verifies the generated `V.Memoized<T1..T8>` output
+- `MemoOverloadGeneratorTests` — snapshot comparison that verifies the generated `V.Memoized<T1..T8>` output, plus the file header the generator wraps around it, which no snapshot covers because the extraction window starts at a method's doc comment
 - `MemoizeMethodGeneratorTests` — verifies `[MemoizeMethod]`-driven `V.Memoized(...)` wrapper expansion and its diagnostics (see [Documentation~/memoization.md](../Documentation~/memoization.md) for what they mean and the complete list)
 - `HookSurfaceDriftTests` — pins the analyzer's hook-name and type-name strings to the runtime surface by parsing `../Runtime/` with Roslyn (syntax only, no Unity assemblies). Nothing else notices a hook rename or a newly added deps-comparing hook on this side of the compile boundary, so the guard turns both into a red test instead of silently narrowed exhaustive-deps coverage
 - `StubSurfaceDriftTests` — pins the Velvet stub in `GeneratorTestHelper` (the surface every analyzer and generator test compiles its sample user code against) to the runtime signatures, using the same syntax-only parse. It fails on a divergent parameter type, return type, generic constraint, modifier or optionality, and on a runtime overload the stub names but does not model; without it the suite can verify a diagnostic for a call shape no user can write
 - `StyleUtilityTableTests` — one case per USS shape the bundled stylesheets contain, plus the problem each shape they do not produces. Compiles and calls the emitted table rather than pattern-matching its source, which is what puts the bit packing under assertion and is also the only place the emitted C# is proved to compile
 - `BundledStyleSheetCensusTests` — re-derives the table from `../Runtime/Styles/*.uss` and compares it against the committed `../Runtime/Styling/StyleUtilityProperties.g.cs`, and pins the selector-shape and property census the derivation is designed around. This is what makes committing the table safe: a stylesheet edit not accompanied by a regenerated table, or one that introduces an unsurveyed shape, fails here rather than downstream where a class missing from the table is indistinguishable from a class that conflicts with nothing
 
+## Mutation testing
+
+```bash
+export DOTNET_ROOT=/opt/homebrew/opt/dotnet/libexec   # Apple-silicon Homebrew; /usr/local/opt/dotnet/libexec on Intel
+dotnet tool update --global dotnet-stryker --version 4.16.0
+dotnet-stryker    # reads stryker-config.json
+```
+
+The tool is pinned for the same reason the SDK and the Roslyn host are: how many mutants it creates, and which, is its version's answer, and the counts below are 4.16.0's. It ships a `net8.0` asset with major roll-forward, so it runs on whatever runtime is installed and does not constrain `global.json`. Without `DOTNET_ROOT` a Homebrew install fails to launch it — the apphost probes only `/usr/local/share/dotnet`.
+
+Stryker mutates the three source projects one behaviour change at a time, rebuilds, and reruns **only the tests its coverage pass attributes to that mutant** — not the suite. The report lands in `StrykerOutput/<timestamp>/reports/`. It answers what line coverage does not: whether the tests that run a line would notice that line being wrong.
+
+The score is `(killed + timeout) / (killed + timeout + survived + no-coverage)`, counting a mutant no test reaches as not rejected. Of the 2586 mutants created here, 377 fall to Stryker's own "block already covered" filter and 314 do not compile; neither is scored, so the denominator is 1895. That split is deterministic. How the 1895 divide between killed and survived is not — two runs over an unchanged tree moved 29 of them — so no percentage is quoted here: one would be stale by the next commit and nothing checks it.
+
+`Velvet.SourceGenerators.CodeFixes` is worth pulling out of any aggregate, because an aggregate hides it: 2 mutants killed, 4 survived, 17 reached by no test at all, and 32 of its 61 failing to compile under mutation. That is not a bad score, it is the absence of one — and it ships as a committed DLL under `../Runtime/Plugins/Analyzers/`.
+
+Read survivors rather than the score, and read each one's `coveredBy` in the JSON report first — it is the set of tests Stryker actually ran against that mutant. A small set usually just means a narrow code path, which is what one-scenario-per-test fixtures are supposed to produce; it is the fixture that tells you whether the attribution is wrong, never the count.
+
+- `coveredBy` empty means the whole suite ran, so a survivor there is a real hole. Every mutant in `MemoizeDiagnostics.cs` is in that state — the descriptors are static, so Stryker cannot attribute them to a test and runs all of them — and the survivors among them are messages and titles no test reads, only identifiers.
+- Anything a fixture computes once per process rather than once per test gets attributed to whichever test loaded the class first, and Stryker then runs that single test per mutant, which makes most of the file look unkillable. `MemoOverloadGeneratorTests` regenerates per test for exactly this reason.
+
+**No CI job runs this, and none should gate on it.** A full run is around half an hour against 13 seconds for `dotnet test`, and a threshold would sit on the run-to-run movement described above, so it would be slow and flaky both. A scheduled run reporting the score was rejected for the reason the coverage report already demonstrates: a number nobody has to act on is a number nobody reads.
+
+Nothing equivalent exists for the Unity assemblies. Stryker mutates source and rebuilds through an MSBuild project graph, and Unity compiles asmdefs inside the editor with this package's ILPP in the pipeline — so every mutant would cost an editor recompile plus a full suite run, with no way to amortise it.
+
 ## Directory layout
 
 ```
 Generators~/
 ├── README.md                                 (this file)
-├── .gitignore                                (bin/, obj/)
+├── .gitignore                                (bin/, obj/, StrykerOutput/)
 ├── Velvet.SourceGenerators.sln
+├── stryker-config.json                       (mutation-testing run — report only, never a gate)
 ├── build.sh / build.ps1                      (derive the style table, build the assemblies, stage them)
 ├── src/Velvet.SourceGenerators/              (abridged — generators, analyzers, shared helpers)
 │   ├── Velvet.SourceGenerators.csproj
