@@ -88,36 +88,10 @@ namespace Velvet
                 }
                 var effectivePriority = important ? StyleLayerPriority.ImportantOf(priority) : priority;
 
-                if (StyleArbitraryValueResolver.IsInlineResolved(core)
-                    && StyleArbitraryValueResolver.TryParse(core, out var style))
-                {
-                    if (on)
-                    {
-                        StyleArbitraryValueResolver.Apply(target, in style, effectivePriority);
-                    }
-                    else
-                    {
-                        StyleArbitraryValueResolver.Clear(target, in style, effectivePriority);
-                    }
-                }
-                else if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, effectivePriority))
-                {
-                    // The off-toggle of a filter-[name:args] payload whose name was unregistered while
-                    // the layer was active — the shared clear resolves the name syntactically and
-                    // removes the mirrored class (see TryClearUnregisteredFilterToken).
-                }
-                else if (on)
-                {
-                    StyleClassProjection.Add(target, core, effectivePriority);
-                    gateChanged |= TrackVariantGate(ctx, target, core, effectivePriority, declaration, true);
-                    reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
-                }
-                else
-                {
-                    StyleClassProjection.Remove(target, core, effectivePriority);
-                    gateChanged |= TrackVariantGate(ctx, target, core, effectivePriority, declaration, false);
-                    reSyncOnly |= StyleTextBalanceClass.IsWidthDeclaringToken(core);
-                }
+                var (payloadGated, payloadReSync) =
+                    ToggleResolvedPayload(target, core, on, effectivePriority, ctx, declaration);
+                gateChanged |= payloadGated;
+                reSyncOnly |= payloadReSync;
 
                 // A clip-path payload (hover:clip-path-[…], dark:/first:clip-path-[…], …) was just toggled as a class,
                 // but UITK has no clip-path property — the class alone does nothing. Re-resolve the element's
@@ -137,6 +111,48 @@ namespace Velvet
                 // come (a breakpoint crossing re-renders nothing).
                 ctx?.VariantGatedReSync?.Invoke(target);
             }
+        }
+
+        // Applies or clears one payload whose important modifier is already stripped and whose priority is
+        // already resolved, reporting back the two things the caller must re-sync once the whole array is
+        // through: whether a gate token moved, and whether a USS-spelled width payload did.
+        private static (bool GateChanged, bool ReSyncOnly) ToggleResolvedPayload(
+            VisualElement target, string core, bool on, int effectivePriority,
+            ReconcilerContext? ctx, int declaration)
+        {
+            if (StyleArbitraryValueResolver.IsInlineResolved(core)
+                && StyleArbitraryValueResolver.TryParse(core, out var style))
+            {
+                if (on)
+                {
+                    StyleArbitraryValueResolver.Apply(target, in style, effectivePriority);
+                }
+                else
+                {
+                    StyleArbitraryValueResolver.Clear(target, in style, effectivePriority);
+                }
+                return (false, false);
+            }
+
+            // The off-toggle of a filter-[name:args] payload whose name was unregistered while the layer was
+            // active — the shared clear resolves the name syntactically and removes the mirrored class (see
+            // TryClearUnregisteredFilterToken).
+            if (!on && StyleArbitraryValueResolver.TryClearUnregisteredFilterToken(target, core, effectivePriority))
+            {
+                return (false, false);
+            }
+
+            if (on)
+            {
+                StyleClassProjection.Add(target, core, effectivePriority);
+            }
+            else
+            {
+                StyleClassProjection.Remove(target, core, effectivePriority);
+            }
+
+            return (TrackVariantGate(ctx, target, core, effectivePriority, declaration, on),
+                StyleTextBalanceClass.IsWidthDeclaringToken(core));
         }
 
         // True when any token in classNames is a VARIANT whose payload is a gate token — the question "could
