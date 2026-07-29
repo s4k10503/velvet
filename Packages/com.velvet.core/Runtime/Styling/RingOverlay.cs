@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -14,8 +15,6 @@ namespace Velvet
         public RingSpec Spec;
         public EventCallback<GeometryChangedEvent>? OnGeometry;
         public EventCallback<AttachToPanelEvent>? OnAttach;
-        // Latches the "no element can host the overlay" warning so a per-frame geometry event cannot spam it.
-        public bool HostWarningIssued;
 
         public RingBinding(VisualElement overlay) => Overlay = overlay;
     }
@@ -57,6 +56,16 @@ namespace Velvet
         // SilhouetteBoundsSpacer.IsSpacer — the single predicate every "real child" count and index site
         // already goes through, so the child reconciler, the structural variants, [&>*]: and the gap / grid /
         // divide manipulators all skip it without any of them learning about rings.
+        // Lets the animation scheduler find a ring binding on the element it is animating. The band is a
+        // SIBLING of that element, so UI Toolkit's opacity compositing — which reaches every overlay
+        // belonging to a descendant — does not reach this one, and only an explicit co-fade can fade it with
+        // its element. Auto-drops entries when an element is GC'd; Detach removes eagerly so a pooled element
+        // cannot ghost a prior consumer's band. Mirrors DropShadowSilhouette's per-element side-channel.
+        private static readonly ConditionalWeakTable<VisualElement, RingBinding> s_byElement = new();
+
+        public static RingBinding? TryGet(VisualElement element)
+            => s_byElement.TryGetValue(element, out var binding) ? binding : null;
+
         internal const string MarkerClass = "velvet-ring-overlay";
         internal const string OverlayName = "velvet-ring-overlay";
 
@@ -81,6 +90,7 @@ namespace Velvet
             binding.OnAttach = _ => Place(element, binding);
             element.RegisterCallback(binding.OnAttach);
 
+            s_byElement.AddOrUpdate(element, binding);
             Place(element, binding);
             return binding;
         }
@@ -138,6 +148,7 @@ namespace Velvet
             // The overlay lives in the element's PARENT, so it does not leave with the element's own subtree
             // the way the old wrapper-hosted one did — a detach that skipped this would strand a live band.
             binding.Overlay.RemoveFromHierarchy();
+            s_byElement.Remove(element);
         }
 
         // Native border on all four sides is the whole band; its geometry (position / size / radii) is set by
@@ -162,21 +173,23 @@ namespace Velvet
             var host = element.parent;
             if (host == null)
             {
-                // Before the factory inserts a freshly created element there is legitimately no host yet, and
-                // the attach callback re-enters. A PANELLED element with no parent is the mount root itself,
-                // which has no sibling slot the band could occupy — say so rather than rendering nothing
-                // silently, which is the failure mode this whole layer exists to avoid.
-                if (element.panel != null && !binding.HostWarningIssued)
-                {
-                    binding.HostWarningIssued = true;
-                    FiberLogger.LogWarning("Ring",
-                        "A ring-* / outline-* class on a panel's root element draws nothing: the band is "
-                        + "hosted as a sibling of the ringed element, and a root has no sibling slot. "
-                        + "Move the ring onto a child of the root.");
-                }
+                // Legitimately parentless between the factory building the element and the caller inserting
+                // it; the placement drain and the attach callback both re-enter after that.
                 return;
             }
 
+            // TRAILING, not adjacent to the element. Adjacency would give correct paint order (see the
+            // limitation below) but the reconciler's invisible-child machinery cannot survive it:
+            // SilhouetteBoundsSpacer.NonSpacerChildCount trims only a TRAILING run, so an interleaved band
+            // is counted as a rendered child and the child reconciler's slot indexing desyncs — measured, a
+            // keyed removal among three ringed siblings left the survivors mis-paired with their bands.
+            //
+            // KNOWN LIMITATION, the cost of that: a band paints above ALL later siblings rather than only
+            // above its own element, so overlapping `-space-x-*` avatars each carrying `ring-2 ring-white`
+            // show every band over every face instead of each avatar occluding the previous one's band. And
+            // with several bands the trailing run is in attach order, so two `focus:ring-2` siblings paint in
+            // whichever order they were focused. Fixing either needs the reconciler to map logical slots to
+            // physical indices rather than assume the invisible children are all trailing.
             if (!ReferenceEquals(binding.Overlay.parent, host))
             {
                 binding.Overlay.RemoveFromHierarchy();
@@ -224,35 +237,39 @@ namespace Velvet
             overlay.style.height = height + (grow * 2f);
 
             var outerGrow = spec.Inset ? 0f : spec.Offset + spec.Width;
-            overlay.style.borderTopLeftRadius = ResolveRadius(element, binding, RingCorner.TopLeft) + outerGrow;
-            overlay.style.borderTopRightRadius = ResolveRadius(element, binding, RingCorner.TopRight) + outerGrow;
-            overlay.style.borderBottomRightRadius = ResolveRadius(element, binding, RingCorner.BottomRight) + outerGrow;
-            overlay.style.borderBottomLeftRadius = ResolveRadius(element, binding, RingCorner.BottomLeft) + outerGrow;
+            ResolveRadii(element, binding, out var tl, out var tr, out var br, out var bl);
+            overlay.style.borderTopLeftRadius = tl + outerGrow;
+            overlay.style.borderTopRightRadius = tr + outerGrow;
+            overlay.style.borderBottomRightRadius = br + outerGrow;
+            overlay.style.borderBottomLeftRadius = bl + outerGrow;
         }
 
-        private enum RingCorner { TopLeft, TopRight, BottomRight, BottomLeft }
-
-        // One corner's radius, preferring the laid-out resolved value (which handles %, arbitrary and inline
-        // radii) and falling back to the rounded-* class scale. The `> 0f` test is deliberate: a USS rounded-*
-        // class does not always reflect into resolvedStyle off-screen, reading 0 there, so a resolved 0 must
-        // fall back to the class scale rather than be trusted as "not rounded" — else a rounded card would
-        // wear a square ring. A genuinely unrounded element resolves 0 here and also misses the class scale,
-        // landing at 0 correctly.
-        private static float ResolveRadius(VisualElement element, RingBinding binding, RingCorner corner)
+        // The four corner radii the band rounds to. Laid out, the resolved values are authoritative per
+        // corner — including a resolved 0, which is what a card rounded on one corner only has on its other
+        // three. The class-scale fallback is taken ONLY when no corner resolved anything, which is the
+        // pre-layout / off-screen case where a USS rounded-* does not reflect into resolvedStyle at all; a
+        // per-corner resolved 0 must not reach it, because the fallback answers for the whole element (it
+        // takes the top-left as representative, see StyleShadowClass.TryResolveCornerRadius) and would round
+        // all four corners of a `rounded-tl-lg` band. That fallback stays whole-element, so a per-corner
+        // class is approximated until the first geometry event replaces it with the resolved values.
+        private static void ResolveRadii(VisualElement element, RingBinding binding,
+            out float tl, out float tr, out float br, out float bl)
         {
             var rs = element.resolvedStyle;
-            var resolved = corner switch
+            tl = Sane(rs.borderTopLeftRadius);
+            tr = Sane(rs.borderTopRightRadius);
+            br = Sane(rs.borderBottomRightRadius);
+            bl = Sane(rs.borderBottomLeftRadius);
+            if (element.panel != null && (tl > 0f || tr > 0f || br > 0f || bl > 0f))
             {
-                RingCorner.TopLeft => rs.borderTopLeftRadius,
-                RingCorner.TopRight => rs.borderTopRightRadius,
-                RingCorner.BottomRight => rs.borderBottomRightRadius,
-                _ => rs.borderBottomLeftRadius,
-            };
-            if (element.panel != null && !float.IsNaN(resolved) && resolved > 0f)
-            {
-                return resolved;
+                return;
             }
-            return StyleRingClass.TryResolveCornerRadius(binding.ClassNames, out var classRadius) ? classRadius : 0f;
+            if (StyleRingClass.TryResolveCornerRadius(binding.ClassNames, out var classRadius))
+            {
+                tl = tr = br = bl = classRadius;
+            }
         }
+
+        private static float Sane(float v) => float.IsNaN(v) ? 0f : v;
     }
 }

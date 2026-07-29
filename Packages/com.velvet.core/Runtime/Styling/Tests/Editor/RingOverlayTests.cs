@@ -14,6 +14,11 @@ namespace Velvet.Tests
     /// </summary>
     internal sealed class RingOverlayTests : PanelTestBase
     {
+        // The per-corner radius case needs a real USS rounded-tl-lg to reflect into resolvedStyle; without
+        // the sheet every corner resolves 0 and the whole-element class-scale fallback answers instead,
+        // which is exactly the path that case exists to avoid taking.
+        protected override void LoadStyleSheets() => _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+
         private static VisualElement RingOverlayIn(VisualElement host)
         {
             for (var i = 0; i < host.childCount; i++)
@@ -75,6 +80,25 @@ namespace Velvet.Tests
             Assert.That((hostedWhileFocused, RingOverlayIn(btn.parent) != null), Is.EqualTo((true, false)));
         }
 
+        [Test]
+        public void Given_ABaseRingAndAFocusRingZero_When_Focused_Then_TheBandIsCancelled()
+        {
+            // The composed class source puts the base array before the variant tokens, so a variant payload
+            // is later in the cascade than the base it overrides — which is what lets a variant CANCEL rather
+            // than only add. ring-0 resolves width 0, i.e. no band.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Button(name: "btn", className: "w-[80px] h-[30px] ring-2 focus:ring-0", text: "ok"));
+            var btn = _window.rootVisualElement.Q<VisualElement>("btn");
+            ForcePanelUpdate(btn.panel);
+            var hostedAtRest = RingOverlayIn(btn.parent) != null;
+
+            // Act
+            using (var e = FocusEvent.GetPooled()) { btn.SimulateEvent(e); }
+
+            // Assert — present at rest, gone while focused.
+            Assert.That((hostedAtRest, RingOverlayIn(btn.parent) != null), Is.EqualTo((true, false)));
+        }
+
         // Geometry
 
         [Test]
@@ -92,15 +116,16 @@ namespace Velvet.Tests
         [Test]
         public void Given_PerCornerRadii_When_LaidOut_Then_EachCornerFollowsItsOwnRadius()
         {
-            // Arrange & Act — the wrapper-era sync read only the top-left radius and applied it to all four,
-            // so a card rounded on one corner wore a uniformly rounded band. Each corner is resolved
-            // independently now.
-            var card = MountRinged("w-[100px] h-[40px] rounded-tl-[12px] ring-4");
+            // Arrange & Act — a USS-scale per-corner class, deliberately: the class-scale FALLBACK answers
+            // for the whole element (top-left representative), so an arbitrary rounded-tl-[12px] never reaches
+            // it and would pass even with the fallback rounding all four corners. rounded-tl-lg does reach it.
+            var card = MountRinged("w-[100px] h-[40px] rounded-tl-lg ring-4");
             var overlay = RingOverlayIn(card.parent);
 
             // Assert — top-left carries the radius plus the ring width; top-right carries the ring width only.
+            // rounded-lg is 8px.
             Assert.That((overlay?.resolvedStyle.borderTopLeftRadius, overlay?.resolvedStyle.borderTopRightRadius),
-                Is.EqualTo(((float?)16f, (float?)4f)));
+                Is.EqualTo(((float?)12f, (float?)4f)));
         }
     }
 }

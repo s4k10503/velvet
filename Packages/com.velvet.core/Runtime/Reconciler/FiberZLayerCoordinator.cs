@@ -289,7 +289,12 @@ namespace Velvet
             }
             foreach (var container in ctx.PendingZLayerTeardownChecks)
             {
-                if (container.childCount > 0 || container.parent == null)
+                // NonSpacerChildCount, not the raw count: a z-managed element hosts its ring band and its
+                // filter bounds-spacer inside this container, and either can outlive the element by a beat
+                // (a band is re-homed on the element's next attach). The check is not retried — the pending
+                // set is cleared unconditionally below — so a container held back by one of those internal
+                // children would be retained empty for good.
+                if (SilhouetteBoundsSpacer.NonSpacerChildCount(container) > 0 || container.parent == null)
                 {
                     continue;
                 }

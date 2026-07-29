@@ -91,6 +91,16 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineDefaultWidthSurvives()
+        {
+            // A COLOR names no width, so it must not decide which family's default width applies. It used to:
+            // the colour token re-flagged the spec as the ring family, silently widening a bare `outline`
+            // from the outline default to the 3px ring default. Only reachable now that a colour can arrive
+            // from a variant, which is why it is pinned rather than left as a latent parser quirk.
+            Assert.That(Extract("outline", "ring-red-500").Width, Is.EqualTo(1f));
+        }
+
+        [Test]
         public void Given_RingInsetWithRing_When_Extracted_Then_InsetIsSet()
         {
             Assert.That(Extract("ring-2", "ring-inset").Inset, Is.True);

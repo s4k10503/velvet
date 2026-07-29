@@ -228,11 +228,13 @@ namespace Velvet
                 return;
             }
 
-            // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]).
+            // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]). Deliberately does NOT
+            // move IsOutline: that flag only selects which family's DEFAULT width applies, and a color names
+            // no width. Letting it move meant `outline ring-red-500` recoloured the band and silently
+            // widened it from the outline default to the ring default at the same time.
             if (TryParseColorValue(ringSuffix, out var c))
             {
                 slots.HasIntent = true;
-                slots.IsOutline = isOutlineFamily;
                 slots.ColorSet = true;
                 slots.Color = c;
             }

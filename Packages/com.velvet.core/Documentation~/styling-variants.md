@@ -221,13 +221,18 @@ of it inside the same parent. The ringed element's own layout is untouched, but 
 visible in three places:
 
 - The band paints **above the ringed element's later siblings**, where CSS paints an outline in the
-  element's own position in the stacking order. Overlapping siblings that follow a ringed element
-  are drawn under its band.
+  element's own position in the stacking order. Every sibling after a ringed element is drawn under
+  its band, not only an overlapping one. Overlapping `-space-x-*` avatars each carrying
+  `ring-2 ring-white` therefore show every band over every face, instead of each avatar occluding the
+  previous one's band. With several bands on one parent the order among them is the order they were
+  attached, so two `focus:ring-2` siblings paint in whichever order they were focused.
 - `ring-inset` paints **over** an opaque full-bleed child rather than under it. This matches the
   order CSS gives an inset box-shadow, not an inset outline.
 - A ring on a `V.Motion` is ignored, with a warning. The band is outside the Motion's own opacity, so
-  it could not fade with an enter or exit. Put the ring on a `Div` the Motion wraps. For the same
-  reason a ring on an element inside a `V.AnimatePresence` does not fade with that element's exit.
+  it could not fade with an enter or exit. Put the ring on a `Div` the Motion wraps.
+
+A ring on an ordinary element inside a `V.AnimatePresence` **does** fade with that element's enter and
+exit: the band is driven from the same per-frame opacity sample that fades a drop shadow.
 
 An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
 `overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.

@@ -52,7 +52,7 @@ namespace Velvet
             ReturnOccupantToPool(element, poolable);
         }
 
-        // Resolves the poolable occupant of a slot: a ring-*/clip-path-* leaf sits inside a
+        // Resolves the poolable occupant of a slot: a clip-path-* leaf sits inside a
         // structural wrapper, and the wrapper — not the widget — is the slot's element. Must run
         // BEFORE CleanupElement, which consumes the wrapper map entry.
         private VisualElement PoolableOccupantOf(VisualElement element)

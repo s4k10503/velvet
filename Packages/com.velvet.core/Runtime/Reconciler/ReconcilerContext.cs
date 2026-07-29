@@ -638,7 +638,8 @@ namespace Velvet
         public Dictionary<VisualElement, RingBinding> RingBindings { get; } = new();
 
         // Elements whose ring overlay still needs a host, drained at the top-level reconcile boundary
-        // (Reconciler.Reconcile) — the first point at which an element created during the pass is in its
+        // (Reconciler.FinishTopLevelPass, shared with ContinueReconcile so a time-sliced pass places its
+        // bands at the slice that finishes it) — the first point at which an element created during it is in its
         // final parent. A create-time attach cannot place the overlay itself: the factory returns the element
         // for the caller to insert, so element.parent is still null while the binding is being built.
         public List<VisualElement> PendingRingPlacements { get; } = new();

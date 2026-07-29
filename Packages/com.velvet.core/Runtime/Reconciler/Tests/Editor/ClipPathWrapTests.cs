@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -556,6 +557,61 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoRingedSiblings_When_Reconciled_Then_NeitherBandIsCountedAsARenderedChild()
+        {
+            // Every band must sit in the TRAILING run: NonSpacerChildCount trims only a trailing run, so a
+            // band landing between two rendered children is counted as one of them and desyncs the child
+            // reconciler's slot indexing.
+            using var scope = new ReconcilerScope();
+
+            Mount(scope, new VNode[]
+            {
+                V.Div(className: "ring-2", name: "a", key: "a"),
+                V.Div(className: "ring-2", name: "b", key: "b"),
+            });
+
+            Assert.That(SilhouetteBoundsSpacer.NonSpacerChildCount(scope.Root), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ThreeRingedSiblings_When_TheMiddleOneIsRemoved_Then_TheSurvivorsKeepTheirSlotsAndBands()
+        {
+            // A keyed removal is where a miscounted invisible child surfaces: the reconciler addresses slots
+            // [0, NonSpacerChildCount), so a band counted as a rendered child mis-pairs the survivors —
+            // measured, an adjacent-placement build left slot 1 holding "c" instead of a band. Pins the
+            // surviving children AND the band count together, since either can be right while the other is not.
+            using var scope = new ReconcilerScope();
+            var before = new VNode[]
+            {
+                V.Div(className: "ring-2", name: "a", key: "a"),
+                V.Div(className: "ring-2", name: "b", key: "b"),
+                V.Div(className: "ring-2", name: "c", key: "c"),
+            };
+            Mount(scope, before);
+
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[]
+            {
+                V.Div(className: "ring-2", name: "a", key: "a"),
+                V.Div(className: "ring-2", name: "c", key: "c"),
+            });
+
+            var rendered = new List<string>();
+            var bands = 0;
+            for (var i = 0; i < scope.Root.childCount; i++)
+            {
+                if (scope.Root[i].ClassListContains(RingOverlay.MarkerClass))
+                {
+                    bands++;
+                }
+                else
+                {
+                    rendered.Add(scope.Root[i].name);
+                }
+            }
+            Assert.That((string.Join(",", rendered), bands), Is.EqualTo(("a,c", 2)));
+        }
+
+        [Test]
         public void Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsLayerContainer()
         {
             // A z-* absolute element is relocated out of its ordinary slot into a layer container, leaving a
@@ -599,4 +655,3 @@ namespace Velvet.Tests
         }
     }
 }
-
