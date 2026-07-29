@@ -75,35 +75,53 @@ namespace Velvet.SourceGenerators.Tests
             PackageMembers = new(Measure);
 
         /// <summary>
-        /// Every body the analyzers would see. `Generators~` is excluded because it is a separate solution
-        /// that never references Velvet and so never loads these analyzers, and generated files because the
-        /// analyzers opt out of generated code.
+        /// Unity compiles the editor-platform assemblies with <c>UNITY_EDITOR</c> defined and the rest
+        /// without, so a body inside an <c>#if UNITY_EDITOR</c> is real code in one assembly and disabled
+        /// text in another. Parsing with no symbols would hide it — several hundred members of this package
+        /// — from a guard whose whole job is to see everything that compiles.
+        /// </summary>
+        private static readonly CSharpParseOptions[] Configurations =
+        {
+            CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest),
+            CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest)
+                .WithPreprocessorSymbols("UNITY_EDITOR"),
+        };
+
+        /// <summary>
+        /// Every body the analyzers would see, in either configuration. `Generators~` is excluded because it
+        /// is a separate solution that never references Velvet and so never loads these analyzers, and
+        /// generated files because the analyzers opt out of generated code.
         /// </summary>
         private static IReadOnlyList<(string File, string Display, int Depth, int Branches)> Measure()
         {
             var packageRoot = Path.GetFullPath(Path.Combine(SolutionPaths.GeneratorsRoot(), ".."));
-            var rows = new List<(string, string, int, int)>();
+            var rows = new Dictionary<(string File, int Start), (string, string, int, int)>();
             foreach (var file in Directory.EnumerateFiles(packageRoot, "*.cs", SearchOption.AllDirectories))
             {
                 if (file.Contains($"{Path.DirectorySeparatorChar}Generators~{Path.DirectorySeparatorChar}",
                         StringComparison.Ordinal)) continue;
                 if (file.EndsWith(".g.cs", StringComparison.Ordinal)) continue;
 
-                var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(file),
-                    CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest));
+                var text = File.ReadAllText(file);
                 var relative = file.Substring(packageRoot.Length + 1);
-                foreach (var node in tree.GetRoot().DescendantNodes())
+                foreach (var options in Configurations)
                 {
-                    if (!CodeShapeMembers.MemberKinds.Contains(node.Kind())) continue;
-                    foreach (var (body, _, display) in CodeShapeMembers.BodiesOf(node))
+                    var tree = CSharpSyntaxTree.ParseText(text, options);
+                    foreach (var node in tree.GetRoot().DescendantNodes())
                     {
-                        rows.Add((relative, display, NestingDepthAnalyzer.Measure(body),
-                            BranchCountAnalyzer.Measure(body)));
+                        if (!CodeShapeMembers.MemberKinds.Contains(node.Kind())) continue;
+                        foreach (var (body, _, display) in CodeShapeMembers.BodiesOf(node))
+                        {
+                            // Keyed on where the body starts: a body outside any #if is parsed by both
+                            // configurations and would otherwise be measured, and reported, twice.
+                            rows[(relative, body.SpanStart)] = (relative, display,
+                                NestingDepthAnalyzer.Measure(body), BranchCountAnalyzer.Measure(body));
+                        }
                     }
                 }
             }
 
-            return rows;
+            return rows.Values.ToList();
         }
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -2475,6 +2476,48 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_EveryPerEdgeAndPerCornerPrefix_When_Resolved_Then_ItNamesTheEdgeItsSpellingDoes()
+        {
+            // Arrange — the per-edge and per-corner prefixes are the half of the prefix table whose entries
+            // are indistinguishable to a reader: `pb-` and `pr-` differ by one letter and map to properties
+            // that differ by one word, so a transposed pair parses, applies, and writes the wrong edge in
+            // silence. Deriving the expected name from the spelling catches that without restating the table:
+            // an entry added along the same convention needs no edit here, and only a swap fails.
+            var edges = new[] { ("t", "Top"), ("r", "Right"), ("b", "Bottom"), ("l", "Left") };
+            var corners = new[] { ("tl", "TopLeft"), ("tr", "TopRight"), ("bl", "BottomLeft"), ("br", "BottomRight") };
+            var expected = new List<(string Prefix, string Property)>();
+            foreach (var (letter, word) in edges)
+            {
+                expected.Add(($"p{letter}-", $"Padding{word}"));
+                expected.Add(($"m{letter}-", $"Margin{word}"));
+                expected.Add(($"border-{letter}-", $"Border{word}Width"));
+                expected.Add(($"rounded-{letter}-", $"Border{word}Radius"));
+                expected.Add(($"{word.ToLowerInvariant()}-", word));
+            }
+            foreach (var (letters, words) in corners)
+            {
+                expected.Add(($"rounded-{letters}-", $"Border{words}Radius"));
+            }
+
+            // Act
+            var wrong = new List<string>();
+            foreach (var (prefix, property) in expected)
+            {
+                var resolved = StyleArbitraryValueResolver.TryGetProperty(prefix, out var actual)
+                    ? actual.ToString()
+                    : "<unmapped>";
+                if (resolved != property)
+                {
+                    wrong.Add($"{prefix} -> {resolved}, expected {property}");
+                }
+            }
+
+            // Assert — the population rides along so a convention change that emptied the derivation cannot
+            // leave this green having compared nothing.
+            Assert.That((expected.Count, string.Join("; ", wrong)), Is.EqualTo((24, string.Empty)));
         }
 
         #endregion
