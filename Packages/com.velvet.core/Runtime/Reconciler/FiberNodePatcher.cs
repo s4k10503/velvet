@@ -1745,24 +1745,28 @@ namespace Velvet
             private readonly string[] _active;
             private readonly string[] _checked;
 
+            private readonly VariantDeclarations _declarations;
+
             internal VariantOp(string[] hover, string[] focus, string[] focusVisible, string[] active,
-                string[] @checked)
+                string[] @checked, VariantDeclarations declarations)
             {
                 _hover = hover;
                 _focus = focus;
                 _focusVisible = focusVisible;
                 _active = active;
                 _checked = @checked;
+                _declarations = declarations;
             }
 
             public Dictionary<VisualElement, StyleVariantManipulator> Table(ReconcilerContext ctx)
                 => ctx.VariantManipulators;
 
             public StyleVariantManipulator Create(ReconcilerContext ctx)
-                => new StyleVariantManipulator(ctx, _hover, _focus, _focusVisible, _active, _checked);
+                => new StyleVariantManipulator(ctx, _hover, _focus, _focusVisible, _active, _checked,
+                    _declarations);
 
             public void Update(StyleVariantManipulator manipulator)
-                => manipulator.UpdatePayloads(_hover, _focus, _focusVisible, _active, _checked);
+                => manipulator.UpdatePayloads(_hover, _focus, _focusVisible, _active, _checked, _declarations);
         }
 
         private readonly struct ConditionalVariantOp : IManipulatorOp<StyleConditionalVariantManipulator>
@@ -1770,20 +1774,27 @@ namespace Velvet
             private readonly string[][] _responsive;
             private readonly string[] _dark;
 
-            internal ConditionalVariantOp(string[][] responsive, string[] dark)
+            private readonly int[][] _responsiveDeclarations;
+            private readonly int[] _darkDeclarations;
+
+            internal ConditionalVariantOp(string[][] responsive, string[] dark,
+                int[][] responsiveDeclarations, int[] darkDeclarations)
             {
                 _responsive = responsive;
                 _dark = dark;
+                _responsiveDeclarations = responsiveDeclarations;
+                _darkDeclarations = darkDeclarations;
             }
 
             public Dictionary<VisualElement, StyleConditionalVariantManipulator> Table(ReconcilerContext ctx)
                 => ctx.ConditionalVariantManipulators;
 
             public StyleConditionalVariantManipulator Create(ReconcilerContext ctx)
-                => new StyleConditionalVariantManipulator(ctx, _responsive, _dark);
+                => new StyleConditionalVariantManipulator(ctx, _responsive, _dark,
+                    _responsiveDeclarations, _darkDeclarations);
 
             public void Update(StyleConditionalVariantManipulator manipulator)
-                => manipulator.UpdatePayloads(_responsive, _dark);
+                => manipulator.UpdatePayloads(_responsive, _dark, _responsiveDeclarations, _darkDeclarations);
         }
 
         private readonly struct RelationalVariantOp : IManipulatorOp<StyleRelationalVariantManipulator>
@@ -1809,21 +1820,27 @@ namespace Velvet
         {
             private readonly string[] _checked;
             private readonly string[] _focus;
+            private readonly int[] _checkedDeclarations;
+            private readonly int[] _focusDeclarations;
 
-            internal HasVariantOp(string[] @checked, string[] focus)
+            internal HasVariantOp(string[] @checked, string[] focus,
+                int[] checkedDeclarations, int[] focusDeclarations)
             {
                 _checked = @checked;
                 _focus = focus;
+                _checkedDeclarations = checkedDeclarations;
+                _focusDeclarations = focusDeclarations;
             }
 
             public Dictionary<VisualElement, StyleHasVariantManipulator> Table(ReconcilerContext ctx)
                 => ctx.HasVariantManipulators;
 
             public StyleHasVariantManipulator Create(ReconcilerContext ctx)
-                => new StyleHasVariantManipulator(ctx, _checked, _focus);
+                => new StyleHasVariantManipulator(ctx, _checked, _focus,
+                    _checkedDeclarations, _focusDeclarations);
 
             public void Update(StyleHasVariantManipulator manipulator)
-                => manipulator.UpdatePayloads(_checked, _focus);
+                => manipulator.UpdatePayloads(_checked, _focus, _checkedDeclarations, _focusDeclarations);
         }
 
         private readonly struct ChildVariantOp : IManipulatorOp<StyleChildVariantManipulator>
@@ -1916,34 +1933,39 @@ namespace Velvet
         // from the state-variant tokens (hover:/focus:/active:) found in classNames.
         internal void ApplyVariantManipulator(VisualElement element, string[] classNames)
         {
-            var hover = ExtractVariant(classNames, StyleVariantKind.Hover);
-            var focus = ExtractVariant(classNames, StyleVariantKind.Focus);
-            var focusVisible = ExtractVariant(classNames, StyleVariantKind.FocusVisible);
-            var active = ExtractVariant(classNames, StyleVariantKind.Active);
-            var @checked = ExtractVariant(classNames, StyleVariantKind.Checked);
+            var hover = ExtractVariant(classNames, StyleVariantKind.Hover, out var hoverDecl);
+            var focus = ExtractVariant(classNames, StyleVariantKind.Focus, out var focusDecl);
+            var focusVisible = ExtractVariant(classNames, StyleVariantKind.FocusVisible, out var focusVisibleDecl);
+            var active = ExtractVariant(classNames, StyleVariantKind.Active, out var activeDecl);
+            var @checked = ExtractVariant(classNames, StyleVariantKind.Checked, out var checkedDecl);
             var hasAny = hover.Length > 0 || focus.Length > 0 || focusVisible.Length > 0
                 || active.Length > 0 || @checked.Length > 0;
 
             Configure<VariantOp, StyleVariantManipulator>(element, hasAny,
-                new VariantOp(hover, focus, focusVisible, active, @checked));
+                new VariantOp(hover, focus, focusVisible, active, @checked,
+                    new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl)));
         }
 
-        private static string[] ExtractVariant(string[] classNames, StyleVariantKind kind)
+        private static string[] ExtractVariant(string[] classNames, StyleVariantKind kind, out int[] declarations)
         {
+            declarations = Array.Empty<int>();
             if (classNames == null || classNames.Length == 0)
             {
                 return Array.Empty<string>();
             }
 
             List<string>? payloads = null;
-            foreach (var cls in classNames)
+            List<int>? positions = null;
+            for (var i = 0; i < classNames.Length; i++)
             {
-                if (StyleVariantClass.TryParse(cls, out var k, out var payload) && k == kind)
+                if (StyleVariantClass.TryParse(classNames[i], out var k, out var payload) && k == kind)
                 {
                     (payloads ??= new List<string>()).Add(payload ?? string.Empty);
+                    (positions ??= new List<int>()).Add(i);
                 }
             }
 
+            declarations = positions?.ToArray() ?? Array.Empty<int>();
             return payloads?.ToArray() ?? Array.Empty<string>();
         }
 
@@ -1951,15 +1973,19 @@ namespace Velvet
         // (sm:/md:/lg:/xl:/2xl:) and dark: tokens in classNames.
         internal void ApplyConditionalVariantManipulator(VisualElement element, string[] classNames)
         {
-            var responsive = new[]
+            var responsiveKinds = new[]
             {
-                ExtractVariant(classNames, StyleVariantKind.Sm),
-                ExtractVariant(classNames, StyleVariantKind.Md),
-                ExtractVariant(classNames, StyleVariantKind.Lg),
-                ExtractVariant(classNames, StyleVariantKind.Xl),
-                ExtractVariant(classNames, StyleVariantKind.Xxl),
+                StyleVariantKind.Sm, StyleVariantKind.Md, StyleVariantKind.Lg,
+                StyleVariantKind.Xl, StyleVariantKind.Xxl,
             };
-            var dark = ExtractVariant(classNames, StyleVariantKind.Dark);
+            var responsive = new string[responsiveKinds.Length][];
+            var responsiveDeclarations = new int[responsiveKinds.Length][];
+            for (var i = 0; i < responsiveKinds.Length; i++)
+            {
+                responsive[i] = ExtractVariant(classNames, responsiveKinds[i], out var breakpointDecl);
+                responsiveDeclarations[i] = breakpointDecl;
+            }
+            var dark = ExtractVariant(classNames, StyleVariantKind.Dark, out var darkDecl);
 
             var hasAny = dark.Length > 0;
             for (var i = 0; i < responsive.Length && !hasAny; i++)
@@ -1968,7 +1994,7 @@ namespace Velvet
             }
 
             Configure<ConditionalVariantOp, StyleConditionalVariantManipulator>(element, hasAny,
-                new ConditionalVariantOp(responsive, dark));
+                new ConditionalVariantOp(responsive, dark, responsiveDeclarations, darkDecl));
         }
 
         // Configures the element's StyleRelationalVariantManipulator from the group-*/peer- tokens (incl. the
@@ -1993,24 +2019,29 @@ namespace Velvet
                 return null;
             }
 
-            // (isPeer, name) -> per-state payload lists, indexed by (int)RelationalState.
+            // (isPeer, name) -> per-state payload lists, indexed by (int)RelationalState, and the className
+            // position of each of those payloads in the parallel list beside it.
             Dictionary<(bool IsPeer, string Name), List<string>[]>? map = null;
-            foreach (var cls in classNames)
+            Dictionary<(bool IsPeer, string Name), List<int>[]>? positions = null;
+            for (var i = 0; i < classNames.Length; i++)
             {
-                if (!StyleVariantClass.TryParse(cls, out var kind, out var name, out var payload)
+                if (!StyleVariantClass.TryParse(classNames[i], out var kind, out var name, out var payload)
                     || !StyleVariantClass.IsRelational(kind))
                 {
                     continue;
                 }
                 var key = (StyleVariantClass.RelationalIsPeer(kind), name ?? string.Empty);
                 map ??= new Dictionary<(bool, string), List<string>[]>();
+                positions ??= new Dictionary<(bool, string), List<int>[]>();
                 if (!map.TryGetValue(key, out var states))
                 {
                     states = new List<string>[5];
                     map[key] = states;
+                    positions[key] = new List<int>[5];
                 }
                 var slot = (int)StyleVariantClass.RelationalStateOf(kind);
                 (states[slot] ??= new List<string>()).Add(payload ?? string.Empty);
+                (positions![key][slot] ??= new List<int>()).Add(i);
             }
 
             if (map == null)
@@ -2022,16 +2053,26 @@ namespace Velvet
             foreach (var kv in map)
             {
                 var s = kv.Value;
+                var d = positions![kv.Key];
                 configs.Add(new RelationalBindingConfig(
                     kv.Key.IsPeer, kv.Key.Name,
                     ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Hover]),
                     ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Focus]),
                     ToPayloadArray(s[(int)StyleVariantClass.RelationalState.FocusWithin]),
                     ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Active]),
-                    ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked])));
+                    ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked]),
+                    new VariantDeclarations(
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Hover]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Focus]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.FocusWithin]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Active]),
+                        ToPositionArray(d[(int)StyleVariantClass.RelationalState.Checked]))));
             }
             return configs;
         }
+
+        private static int[] ToPositionArray(List<int>? positions)
+            => positions?.ToArray() ?? Array.Empty<int>();
 
         private static string[] ToPayloadArray(List<string> payloads)
             => payloads?.ToArray() ?? Array.Empty<string>();
@@ -2058,27 +2099,30 @@ namespace Velvet
         // manipulator).
         internal void ApplyHasVariantManipulator(VisualElement element, string[] classNames)
         {
-            var @checked = ExtractHas(classNames, StyleHasKind.Checked);
-            var focus = ExtractHas(classNames, StyleHasKind.Focus);
+            var @checked = ExtractHas(classNames, StyleHasKind.Checked, out var checkedDeclarations);
+            var focus = ExtractHas(classNames, StyleHasKind.Focus, out var focusDeclarations);
             var hasAny = @checked.Length > 0 || focus.Length > 0;
 
             Configure<HasVariantOp, StyleHasVariantManipulator>(element, hasAny,
-                new HasVariantOp(@checked, focus));
+                new HasVariantOp(@checked, focus, checkedDeclarations, focusDeclarations));
         }
 
         // Collects the payloads of every has-[:checked]: / has-[:focus]: token of the given kind. A payload
         // that is itself a structural / has variant is skipped (it would have no gating owner on this path),
         // mirroring the structural-config skip.
-        private static string[] ExtractHas(string[] classNames, StyleHasKind kind)
+        private static string[] ExtractHas(string[] classNames, StyleHasKind kind, out int[] declarations)
         {
+            declarations = Array.Empty<int>();
             if (classNames == null || classNames.Length == 0)
             {
                 return Array.Empty<string>();
             }
 
             List<string>? payloads = null;
-            foreach (var cls in classNames)
+            List<int>? positions = null;
+            for (var i = 0; i < classNames.Length; i++)
             {
+                var cls = classNames[i];
                 if (StyleHasVariantClass.TryParse(cls, out var k, out _, out var payload)
                     && k == kind
                     && !StyleStructuralVariantClass.IsStructural(payload)
@@ -2087,9 +2131,11 @@ namespace Velvet
                     && !StyleSupportsVariantClass.IsSupports(payload))
                 {
                     (payloads ??= new List<string>()).Add(payload ?? string.Empty);
+                    (positions ??= new List<int>()).Add(i);
                 }
             }
 
+            declarations = positions?.ToArray() ?? Array.Empty<int>();
             return payloads?.ToArray() ?? Array.Empty<string>();
         }
 
@@ -2104,16 +2150,18 @@ namespace Velvet
             {
                 foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Has, _ctx);
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Has, _ctx,
+                        declarations: rule.Declarations);
                 }
                 _ctx.HasClassVariants.Remove(element);
             }
 
-            List<(string? ClassName, string?[] Payloads)>? rules = null;
+            List<(string? ClassName, string?[] Payloads, int[] Declarations)>? rules = null;
             if (classNames != null)
             {
-                foreach (var cls in classNames)
+                for (var i = 0; i < classNames.Length; i++)
                 {
+                    var cls = classNames[i];
                     if (StyleHasVariantClass.TryParse(cls, out var kind, out var className, out var payload)
                         && kind == StyleHasKind.Class
                         // A has-[.foo]: payload has no gating owner on this side-table path, so a nested
@@ -2125,8 +2173,8 @@ namespace Velvet
                         && !StyleAttributeVariantClass.IsAttribute(payload)
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
-                        (rules ??= new List<(string? ClassName, string?[] Payloads)>())
-                            .Add((className, new[] { payload }));
+                        (rules ??= new List<(string? ClassName, string?[] Payloads, int[] Declarations)>())
+                            .Add((className, new[] { payload }, new[] { i }));
                     }
                 }
             }
@@ -2153,7 +2201,7 @@ namespace Velvet
         // is root-inclusive, so querying the element itself would self-match — :has() is descendant-only, and
         // a self-match would also latch when the payload class equals the queried class).
         private static void EvaluateHasClass(ReconcilerContext ctx, VisualElement element,
-            List<(string? ClassName, string?[] Payloads)> rules)
+            List<(string? ClassName, string?[] Payloads, int[] Declarations)> rules)
         {
             foreach (var rule in rules)
             {
@@ -2166,7 +2214,8 @@ namespace Velvet
                         break;
                     }
                 }
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx);
+                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Has, ctx,
+                    declarations: rule.Declarations);
             }
         }
 
@@ -2320,16 +2369,19 @@ namespace Velvet
             {
                 foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Attribute, _ctx);
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Attribute, _ctx,
+                        declarations: rule.Declarations);
                 }
                 _ctx.AttributeVariants.Remove(element);
             }
 
-            List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads)>? rules = null;
+            List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads,
+                int[] Declarations)>? rules = null;
             if (classNames != null)
             {
-                foreach (var cls in classNames)
+                for (var i = 0; i < classNames.Length; i++)
                 {
+                    var cls = classNames[i];
                     if (StyleAttributeVariantClass.TryParse(cls, out var ns, out var key, out var value, out var payload)
                         // An attribute payload has no gating owner on this side-table path (the side-table is
                         // re-evaluated as a whole, not by a per-payload manipulator), so a nested state /
@@ -2342,8 +2394,8 @@ namespace Velvet
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
                         if (payload == null) continue;
-                        (rules ??= new List<(StyleAttributeNamespace, string, string?, string[])>())
-                            .Add((ns, key ?? string.Empty, value, new[] { payload }));
+                        (rules ??= new List<(StyleAttributeNamespace, string, string?, string[], int[])>())
+                            .Add((ns, key ?? string.Empty, value, new[] { payload }, new[] { i }));
                     }
                 }
             }
@@ -2416,7 +2468,8 @@ namespace Velvet
         // and idempotent (StyleVariantPayload.Apply is a no-op when the layer is already in the target state).
         private static void EvaluateAttributes(
             ReconcilerContext ctx, VisualElement element, Dictionary<string, string>? store,
-            List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads)> rules)
+            List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads,
+                int[] Declarations)> rules)
         {
             foreach (var rule in rules)
             {
@@ -2427,7 +2480,8 @@ namespace Velvet
                     present = store.TryGetValue(StorePrefix(rule.Ns) + rule.Key, out actual);
                 }
                 var on = StyleAttributeVariantClass.Matches(rule.ExpectedValue, present, actual);
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Attribute, ctx);
+                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Attribute, ctx,
+                    declarations: rule.Declarations);
             }
         }
 
@@ -2443,18 +2497,20 @@ namespace Velvet
         {
             if (_ctx.SupportsVariants.TryGetValue(element, out var oldRules))
             {
-                foreach (var payloads in oldRules)
+                foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, payloads, false, StyleLayerPriority.Supports, _ctx);
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Supports, _ctx,
+                        declarations: rule.Declarations);
                 }
                 _ctx.SupportsVariants.Remove(element);
             }
 
-            List<string[]>? rules = null;
+            List<(string[] Payloads, int[] Declarations)>? rules = null;
             if (classNames != null)
             {
-                foreach (var cls in classNames)
+                for (var i = 0; i < classNames.Length; i++)
                 {
+                    var cls = classNames[i];
                     if (StyleSupportsVariantClass.TryParse(cls, out _, out _, out var payload)
                         // A supports- payload has no gating owner on this side-table path (the layer is
                         // applied unconditionally, not driven by a per-payload manipulator), so a nested
@@ -2466,7 +2522,8 @@ namespace Velvet
                         && !StyleAttributeVariantClass.IsAttribute(payload)
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
-                        (rules ??= new List<string[]>()).Add(new string[] { payload ?? string.Empty });
+                        (rules ??= new List<(string[], int[])>())
+                            .Add((new string[] { payload ?? string.Empty }, new[] { i }));
                     }
                 }
             }
@@ -2478,9 +2535,10 @@ namespace Velvet
             _ctx.SupportsVariants[element] = rules;
 
             // Always-applied: the property is, by construction, one the author is using on a fixed engine.
-            foreach (var payloads in rules)
+            foreach (var rule in rules)
             {
-                StyleVariantPayload.Apply(element, payloads, true, StyleLayerPriority.Supports, _ctx);
+                StyleVariantPayload.Apply(element, rule.Payloads, true, StyleLayerPriority.Supports, _ctx,
+                    declarations: rule.Declarations);
             }
         }
 
@@ -2495,16 +2553,18 @@ namespace Velvet
             {
                 foreach (var rule in oldRules)
                 {
-                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Structural, _ctx);
+                    StyleVariantPayload.Apply(element, rule.Payloads, false, StyleLayerPriority.Structural, _ctx,
+                        declarations: rule.Declarations);
                 }
                 _ctx.StructuralVariants.Remove(element);
             }
 
-            List<(StyleStructuralKind Kind, int N, string[] Payloads)>? rules = null;
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations)>? rules = null;
             if (classNames != null)
             {
-                foreach (var cls in classNames)
+                for (var i = 0; i < classNames.Length; i++)
                 {
+                    var cls = classNames[i];
                     if (StyleStructuralVariantClass.TryParse(cls, out var kind, out var n, out var payload)
                         // Structural variants do not compose with a nested variant (first:hover:…), a has-
                         // variant (first:has-[:checked]:…), an attribute variant (first:data-[x]:…), or a
@@ -2516,8 +2576,9 @@ namespace Velvet
                         && !StyleAttributeVariantClass.IsAttribute(payload)
                         && !StyleSupportsVariantClass.IsSupports(payload))
                     {
-                        (rules ??= new List<(StyleStructuralKind Kind, int N, string[] Payloads)>())
-                            .Add((kind, n, new string[] { payload ?? string.Empty }));
+                        (rules ??= new List<(StyleStructuralKind Kind, int N, string[] Payloads,
+                                int[] Declarations)>())
+                            .Add((kind, n, new string[] { payload ?? string.Empty }, new[] { i }));
                     }
                 }
             }
@@ -2552,12 +2613,13 @@ namespace Velvet
         // Applies / clears each structural rule's payload for an element at the given sibling position.
         private static void EvaluateStructural(
             ReconcilerContext ctx, VisualElement element, int index, int count,
-            List<(StyleStructuralKind Kind, int N, string[] Payloads)> rules)
+            List<(StyleStructuralKind Kind, int N, string[] Payloads, int[] Declarations)> rules)
         {
             foreach (var rule in rules)
             {
                 var on = StyleStructuralVariantClass.Matches(rule.Kind, rule.N, index, count);
-                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Structural, ctx);
+                StyleVariantPayload.Apply(element, rule.Payloads, on, StyleLayerPriority.Structural, ctx,
+                    declarations: rule.Declarations);
             }
         }
 
@@ -2720,7 +2782,7 @@ namespace Velvet
         }
 
         // The class source every gate-driven pass reads: the reconciled array, followed by each gate token a
-        // variant currently has applied that the reconciled array does not already name.
+        // variant currently has applied, weakest payload first.
         //
         // A variant payload is realized by writing its bare utility onto the live class list, and the bare
         // form is the only one the gates recognize — `md:shadow-lg` is not a shadow token, `shadow-lg` is —
@@ -2735,9 +2797,9 @@ namespace Velvet
         // Appending the payloads LAST is what ranks them above the base utilities: each of these families
         // resolves last-token-wins, and a payload outranks the base it overrides. Composing them that way
         // makes it structural rather than a property of the live list's own append order, which the class
-        // diff can invert by re-adding a base token after a payload that is already lit.
-        // It ranks payloads against BASES only. Two payloads of one family rank against each other by arrival
-        // instead of by priority — see ReconcilerContext.TrackVariantGateClass for that known limitation.
+        // diff can invert by re-adding a base token after a payload that is already lit. Two payloads of one
+        // family rank against each other by the priority each was applied at, which VariantGateState keeps
+        // the token order in.
         //
         // changed reports whether the result differs from what this element was last resolved to, which is
         // what the skew and border-style stashes need: a release-and-re-stash on a pass that changed nothing
@@ -2791,65 +2853,64 @@ namespace Velvet
                     ? classNames
                     : ComposeVariantClasses(classNames, state.Tokens, state.Resolved);
 
-        // Builds classNames plus every variant-applied gate token it does not already name, handing back
-        // reuse unchanged when the result would match it token for token, and classNames itself when the
-        // tokens add nothing.
+        // Builds classNames plus every variant-applied gate token, handing back reuse unchanged when the
+        // result would match it token for token, and classNames itself when no payload is lit.
         //
         // The tracked tokens rather than the element's live class list: they are the same set for every
-        // family these passes read, they are already ordered by when each payload arrived, and reading them
-        // costs no enumerator — where walking the live list costs one per element per patch, plus a
-        // membership test per class on it. The narrowing that buys is real and deliberate: a bare utility
+        // family these passes read, they are already ranked by the priority each payload was applied at, and
+        // reading them costs no enumerator — where walking the live list costs one per element per patch,
+        // plus a membership test per class on it. The narrowing that buys is real and deliberate: a bare utility
         // written by a subsystem that raises no signal (whileHoverClass / whileTapClass / whileFocusClass,
         // the animation scheduler, the drag layer) is on the live list but never in this source, so it drives
         // no gate. Only a signalling writer can, and a writer with no signal could not keep a pass correct
         // across the toggle back off anyway.
         //
-        // Two passes so the steady state allocates NOTHING: the first counts the additions and checks them
-        // against reuse as it goes, and only a genuine change reaches the second, which materializes the
-        // array. This runs on every patch of every element a variant has a gate token applied to.
+        // A token the reconciled array ALREADY names is appended again rather than left where it sits.
+        // Declaring one literally and behind a variant is legal (gap-4 md:gap-4), and the duplicate is inert
+        // to every last-token-wins reader here — but leaving the literal occurrence to stand for the payload
+        // ranks it below every appended token, so `shadow-lg dark:shadow-sm hover:shadow-lg` would paint the
+        // dark preset even though the hover layer outranks it.
+        //
+        // The reuse compare runs before anything is built, so the steady state allocates NOTHING. This runs
+        // on every patch of every element a variant has a gate token applied to.
         private static string[] ComposeVariantClasses(string[] classNames, List<string> tokens, string[]? reuse)
         {
-            var extra = 0;
-            var reusable = reuse != null && reuse.Length >= classNames.Length;
-            foreach (var token in tokens)
-            {
-                // Declaring a token literally AND behind a variant is legal (gap-4 md:gap-4), and every
-                // family read from this source resolves last-token-wins, so appending a duplicate of one the
-                // reconciled array already names would change nothing but the allocation.
-                if (Array.IndexOf(classNames, token) >= 0)
-                {
-                    continue;
-                }
-                var slot = classNames.Length + extra;
-                reusable = reusable && slot < reuse!.Length && reuse[slot] == token;
-                extra++;
-            }
-
-            if (extra == 0)
+            if (tokens.Count == 0)
             {
                 return classNames;
             }
-            if (reusable && reuse!.Length == classNames.Length + extra && HeadEquals(reuse, classNames))
+            var total = classNames.Length + tokens.Count;
+            if (reuse != null && reuse.Length == total && TailEquals(reuse, classNames.Length, tokens)
+                && HeadEquals(reuse, classNames))
             {
                 return reuse;
             }
 
-            var composed = new string[classNames.Length + extra];
+            var composed = new string[total];
             Array.Copy(classNames, composed, classNames.Length);
-            var next = classNames.Length;
-            foreach (var token in tokens)
+            for (var i = 0; i < tokens.Count; i++)
             {
-                if (Array.IndexOf(classNames, token) < 0)
-                {
-                    composed[next++] = token;
-                }
+                composed[classNames.Length + i] = tokens[i];
             }
             return composed;
         }
 
+        // Whether array carries exactly tokens from start on.
+        private static bool TailEquals(string[] array, int start, List<string> tokens)
+        {
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (array[start + i] != tokens[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         // Whether array opens with exactly head's tokens. The reconciled array can be a fresh instance
         // carrying the same tokens on every render, so the cached composition is still reusable then — but
-        // only once its head is confirmed, since that is the half the token walk above never inspects.
+        // only once its head is confirmed.
         private static bool HeadEquals(string[] array, string[] head)
         {
             for (var i = 0; i < head.Length; i++)

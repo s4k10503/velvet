@@ -113,17 +113,188 @@ namespace Velvet
     // NEXT toggle will need and no reconcile need ever run again to re-record it.
     internal sealed class VariantGateState
     {
-        // The gate tokens a variant currently has applied, in the order they arrived. Empty means the element
-        // declares one but has none lit, which is what puts it back on the cheap reconciled-array path.
-        // A list, not a set: these are appended to the reconciled array to form the class source the passes
-        // read, every family there resolves last-token-wins, and a set would leave two payloads of the same
-        // family ranked by hash order. Membership is checked linearly, which is what a handful of tokens
-        // wants anyway.
-        public readonly List<string> Tokens = new();
+        // One slot per (token, priority) pair a variant currently has applied — the same slot model
+        // StyleClassProjection keeps for the live class list, so the two agree on when a token is still
+        // wanted. The projection decides which CLASSES may sit on the element; it cannot decide which of two
+        // same-family tokens a class-driven pass reads, because that is settled by the order of the composed
+        // array. This list carries that ranking.
+        // Declaration is where the applying rule sits in the className, kept per slot so a tie inside one
+        // priority resolves by source order. Two rules of one family asserting the same token share the slot
+        // and it holds the LAST of them, which is the one source order would let win.
+        private readonly List<(string Token, int Priority, int Declaration)> _entries = new();
+
+        private readonly List<(string Token, int Priority, int Declaration)> _ranked = new();
+        private List<string> _tokens = new();
+        private List<string> _pending = new();
+
+        // Each applied gate token once, weakest first. Empty means the element declares one but has none lit,
+        // which is what puts it back on the cheap reconciled-array path.
+        // These are appended to the reconciled array to form the class source the passes read, and every
+        // family there resolves last-token-wins — so ascending is what makes the strongest payload win.
+        public List<string> Tokens => _tokens;
+
+        // Records / drops one applied payload, reporting whether Tokens changed as a sequence — which is
+        // what decides whether the caller re-derives the gated passes. A token another live layer still
+        // asserts at a DIFFERENT priority survives the drop and reports no change; two layers at one
+        // priority share a slot, exactly as they do in the projection, so the second one to leave is what
+        // drops it there and here alike.
+        public bool Track(string cls, int priority, int declaration, bool on)
+        {
+            var index = IndexOf(cls, priority);
+            if (on)
+            {
+                if (index >= 0)
+                {
+                    // A second rule of the same family claiming a token the slot already holds: source order
+                    // gives the tie to the later of the two, so the slot takes the later position and the
+                    // idempotent re-apply of the earlier one leaves it alone.
+                    if (declaration <= _entries[index].Declaration)
+                    {
+                        return false;
+                    }
+                    _entries[index] = (cls, priority, declaration);
+                }
+                else
+                {
+                    _entries.Add((cls, priority, declaration));
+                }
+            }
+            else
+            {
+                // declaration is not consulted here: the slot is keyed by (token, priority), so an off-toggle
+                // drops whichever rule holds it regardless of where that rule sits. Callers pass it anyway,
+                // to keep their clear and evaluate loops the same call.
+                if (index < 0)
+                {
+                    return false;
+                }
+                _entries.RemoveAt(index);
+            }
+            return Reorder();
+        }
+
+        // Ranks each distinct token by its HIGHEST asserted priority, so a token two layers assert sits where
+        // the stronger one puts it, and breaks a tie within a band by that layer's declaration position.
+        // A stable insertion sort, so a token neither key separates keeps arrival order.
+        //
+        // What was verified, enumerated over StyleLayerPriority rather than summarised: Structural, Supports
+        // and Attribute have one side-table supplier each; the responsive band and Dark have the conditional
+        // manipulator; the group/peer bands have the relational one; the element-state bands have the state
+        // manipulator; Has has BOTH the has-[.class]: side table and the event-driven manipulator; and
+        // ChildVariant has the child-combinator manipulator alone. All of those declare a position except
+        // the last. The important band is those priorities plus a constant, so it partitions identically.
+        //
+        // A band's supplier list is NOT the whole question, because a payload can be promoted OUT of the
+        // band its owner applies at: a state-variant payload gated by any of these owners layers at
+        // max(outer, inner) (see GateStackedVariant), which lands a [&>*]:hover: payload on the hover band
+        // beside the child's own. What makes that safe is not the enumeration but NoDeclaration being the
+        // weakest rank, so a payload with no position comparable to this element's className loses every tie
+        // it enters rather than winning it.
+        // Quadratic on a handful of tokens, and only on a toggle; the per-patch composition just reads it.
+        private bool Reorder()
+        {
+            BuildRanked();
+            for (var i = 1; i < _ranked.Count; i++)
+            {
+                var item = _ranked[i];
+                var at = i;
+                while (at > 0 && Outranks(_ranked[at - 1], item))
+                {
+                    _ranked[at] = _ranked[at - 1];
+                    at--;
+                }
+                _ranked[at] = item;
+            }
+
+            _pending.Clear();
+            foreach (var ranked in _ranked)
+            {
+                _pending.Add(ranked.Token);
+            }
+            if (SameSequence(_pending, _tokens))
+            {
+                return false;
+            }
+            (_tokens, _pending) = (_pending, _tokens);
+            return true;
+        }
+
+        private static bool Outranks((string Token, int Priority, int Declaration) a,
+            (string Token, int Priority, int Declaration) b)
+            => a.Priority > b.Priority || (a.Priority == b.Priority && a.Declaration > b.Declaration);
+
+        // Each distinct token at the strongest priority any layer asserts it at, carrying that same layer's
+        // declaration — the tie-break has to come from the rule that WINS the token, not from a weaker one
+        // that also names it.
+        private void BuildRanked()
+        {
+            _ranked.Clear();
+            foreach (var entry in _entries)
+            {
+                if (RankOf(entry.Token) < 0)
+                {
+                    _ranked.Add(StrongestOf(entry.Token));
+                }
+            }
+        }
+
+        private (string Token, int Priority, int Declaration) StrongestOf(string cls)
+        {
+            var strongest = (Token: cls, Priority: int.MinValue, Declaration: StyleVariantPayload.NoDeclaration);
+            foreach (var entry in _entries)
+            {
+                if (entry.Token == cls && entry.Priority > strongest.Priority)
+                {
+                    strongest = entry;
+                }
+            }
+            return strongest;
+        }
+
+        private int RankOf(string cls)
+        {
+            for (var i = 0; i < _ranked.Count; i++)
+            {
+                if (_ranked[i].Token == cls)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private int IndexOf(string cls, int priority)
+        {
+            for (var i = 0; i < _entries.Count; i++)
+            {
+                if (_entries[i].Priority == priority && _entries[i].Token == cls)
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        private static bool SameSequence(List<string> a, List<string> b)
+        {
+            if (a.Count != b.Count)
+            {
+                return false;
+            }
+            for (var i = 0; i < a.Count; i++)
+            {
+                if (a[i] != b[i])
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         // The class array this element's last reconcile pass was given — the only source carrying the tokens
         // no class list can hold (variant tokens, and the bracket / static-scale values that resolve to
         // inline style), which is why the resolved array is built ON it rather than from the live list alone.
+        //
         public string[]? Reconciled;
 
         // The array the passes were last given. Returned again, by reference, whenever the freshly composed
@@ -166,7 +337,8 @@ namespace Velvet
         // evaluated against its position among siblings. Each such child registers its parsed rules here at
         // config time; the container's post-children pass (ApplyStructuralVariants) re-derives every rule's
         // match from the live sibling order. Cleared on element cleanup / reconciler dispose.
-        public Dictionary<VisualElement, List<(StyleStructuralKind Kind, int N, string[] Payloads)>> StructuralVariants { get; } = new();
+        public Dictionary<VisualElement, List<(StyleStructuralKind Kind, int N, string[] Payloads,
+            int[] Declarations)>> StructuralVariants { get; } = new();
 
         // has-[:checked]: / has-[:focus]: — an element styled by an event-driven descendant condition. The
         // manipulator lives on the element and listens to bubbling descendant events (ChangeEvent<bool> for
@@ -180,7 +352,8 @@ namespace Velvet
         // (ApplyHasClassVariants, the same hook ApplyStructuralVariants uses but with the element as subject)
         // re-derives every rule from a fresh descendant query, so a child added / removed re-derives it.
         // Cleared on element cleanup / reconciler dispose.
-        public Dictionary<VisualElement, List<(string? ClassName, string?[] Payloads)>> HasClassVariants { get; } = new();
+        public Dictionary<VisualElement, List<(string? ClassName, string?[] Payloads, int[] Declarations)>>
+            HasClassVariants { get; } = new();
 
         // data-[key=value]: / data-[key]: / aria-[...]: — an element styled by its OWN carried attribute
         // values (UI Toolkit has no HTML attributes, so the element supplies them via the Data / Aria props).
@@ -194,7 +367,8 @@ namespace Velvet
         //     event), so the props path drives the re-evaluation, mirroring the has-[.class]: side-table.
         // Both cleared on element cleanup / reconciler dispose.
         public Dictionary<VisualElement, Dictionary<string, string>> DataAttributes { get; } = new();
-        public Dictionary<VisualElement, List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue, string[] Payloads)>> AttributeVariants { get; } = new();
+        public Dictionary<VisualElement, List<(StyleAttributeNamespace Ns, string Key, string? ExpectedValue,
+            string[] Payloads, int[] Declarations)>> AttributeVariants { get; } = new();
 
         // supports-[prop:value]: — an element styled by a CSS feature query. UI Toolkit targets one fixed
         // engine, so a feature query is STATIC: a well-formed token is always-applied (see
@@ -202,7 +376,7 @@ namespace Velvet
         // exists only to remember the applied payloads: it is written once at config time (payload applied
         // immediately, always-on) and read solely so a later class-list change can clear the prior payload
         // before re-deriving. Cleared on element cleanup / reconciler dispose.
-        public Dictionary<VisualElement, List<string[]>> SupportsVariants { get; } = new();
+        public Dictionary<VisualElement, List<(string[] Payloads, int[] Declarations)>> SupportsVariants { get; } = new();
 
         // text-transform / text-decoration / whitespace-pre-line / leading-* (uppercase / underline / … / the
         // pre-line collapse / line-height). UI Toolkit has no property for any of them, so they are realised
@@ -276,7 +450,8 @@ namespace Velvet
         // arbitrary leaf layers at max(outer, inner) priority so it sits above either variant alone. A named
         // inner relational (group-hover/sidebar:) threads its name through so the nested manipulator resolves
         // the named source, not the unnamed group/peer.
-        internal void GateStackedVariant(VisualElement target, object owner, string variantPayload, bool outerOn, int outerPriority)
+        internal void GateStackedVariant(VisualElement target, object owner, string variantPayload,
+            bool outerOn, int outerPriority, int declaration)
         {
             if (!StyleVariantClass.TryParse(variantPayload, out var innerKind, out var innerName, out var leafPayload))
             {
@@ -292,7 +467,8 @@ namespace Velvet
                 {
                     var innerPriority = StyleLayerPriority.ForVariant(innerKind);
                     var priority = outerPriority > innerPriority ? outerPriority : innerPriority;
-                    m = new StyleStackedVariantManipulator(this, innerKind, innerName, new string?[] { leafPayload }, priority);
+                    m = new StyleStackedVariantManipulator(this, innerKind, innerName,
+                        new string?[] { leafPayload }, priority, declaration);
                     StackedVariantManipulators[key] = m;
                     target.AddManipulator(m);
                 }
@@ -348,24 +524,15 @@ namespace Velvet
         // change), so nothing else would re-run those passes. Null until the patcher wires it.
         public System.Action<VisualElement> VariantGatedReSync { get; set; } = null!;
 
-        // Records / drops one variant-applied gate token for target, returning true when the tracked
-        // set actually changed — so the caller signals a re-derive exactly once per real change. Set
-        // semantics rather than a counter: a manipulator may re-assert an already-applied payload, and an
-        // off-toggle for a payload that was never on is a no-op, either of which would drift a count.
-        // KNOWN LIMITATION, two faces of one cause: the tokens carry no priority, while StyleClassProjection —
-        // which owns the class list — ranks by it. None of these utilities has a USS property set, so the
-        // projection cannot rank them and this table is the only thing ordering them.
-        // - Two variants supplying the SAME token with no literal base (dark:gap-4 beside md:gap-4) diverge
-        //   when the first turns off: the projection keeps the class, because the other layer still wants it,
-        //   while the token leaves here and the gate the class drives turns off with it. A literal base is
-        //   unaffected — the composed source is built ON the reconciled array, which carries it.
-        // - Two payloads of one FAMILY (md:shadow-sm beside dark:shadow-lg) resolve by arrival rather than by
-        //   priority, because every family reads last-token-wins off the composed array. Lighting dark first
-        //   and then crossing md leaves shadow-sm winning, though the precedence table ranks dark: above md:;
-        //   the opposite order gives shadow-lg. Same end state, two renderings, decided by signal history.
-        // Both need the same fix: key the tokens by the priority the payload was applied at, the way the
-        // projection does, and order the composition by it instead of by arrival.
-        internal bool TrackVariantGateClass(VisualElement target, string cls, bool on)
+        // Records / drops one variant-applied gate token for target at the priority its payload was applied
+        // at — the same one StyleClassProjection layers the class itself at, so the token set and the class
+        // list rank and expire together — plus, for the rules that carry one, the className position that
+        // settles a tie inside that priority. Returns true when the composed order actually changed, so the
+        // caller signals a re-derive exactly once per real change: a manipulator may re-assert an
+        // already-applied payload, and an off-toggle for a payload that was never on is a no-op, either of
+        // which would drift a count.
+        internal bool TrackVariantGateClass(VisualElement target, string cls, int priority, int declaration,
+            bool on)
         {
             if (on)
             {
@@ -374,19 +541,15 @@ namespace Velvet
                     state = new VariantGateState();
                     VariantGateClasses[target] = state;
                 }
-                if (state.Tokens.Contains(cls))
-                {
-                    return false;
-                }
-                state.Tokens.Add(cls);
-                return true;
+                return state.Track(cls, priority, declaration, on: true);
             }
 
             // The entry stays behind once its last token leaves: an empty token set is already what puts the
             // element back on the cheap reconciled-array path, and the recorded array is what the NEXT toggle
             // composes from — dropping it would leave a payload that turns on again with nothing to build on,
             // since no reconcile need ever run in between to re-record it.
-            return VariantGateClasses.TryGetValue(target, out var current) && current.Tokens.Remove(cls);
+            return VariantGateClasses.TryGetValue(target, out var current)
+                && current.Track(cls, priority, declaration, on: false);
         }
 
         // Per-divided-child dashed / dotted divider paint (divide-dashed / divide-dotted), keyed by the CHILD

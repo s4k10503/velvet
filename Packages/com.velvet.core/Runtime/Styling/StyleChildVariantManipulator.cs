@@ -179,6 +179,17 @@ namespace Velvet
         // Applies (on) or clears (off) the payload set on one child. owner == this is threaded through so a
         // state-variant payload defers to a per-child stacked manipulator gated by this walk, exactly as the
         // has- manipulator threads itself through for its own composed payloads.
+        //
+        // Deliberately passes NO className positions, unlike every other supplier: these payloads are written
+        // on the PARENT, so a position would index a different class list from the one every payload the
+        // CHILD declares is indexed in, and the two would be compared as if they were the same.
+        //
+        // What makes that safe is the rank they fall back to being the WEAKEST (see
+        // StyleVariantPayload.NoDeclaration), not the layer they are applied at: a state-variant payload
+        // here is promoted onto the inner variant's own layer, where the child's own payloads sit, so
+        // ranking these strongest would let the container's blanket rule beat the child's own. Among
+        // themselves they tie and fall back to arrival, which for one swept array is the parent's className
+        // order — their source order.
         private void ApplyPayloads(VisualElement child, bool on)
             => StyleVariantPayload.Apply(child, _payloads, on, StyleLayerPriority.ChildVariant, _ctx, this);
 

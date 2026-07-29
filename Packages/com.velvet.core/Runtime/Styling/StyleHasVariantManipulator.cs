@@ -25,16 +25,23 @@ namespace Velvet
     {
         private string[] _checked;
         private string[] _focus;
+        // Each payload's position in the className, so a tie against the has-[.class]: side table — the other
+        // supplier at this layer — resolves by source order rather than by which signal fired first.
+        private int[] _checkedDeclarations;
+        private int[] _focusDeclarations;
         private bool _isChecked;
         private bool _isFocused;
 
         private readonly ReconcilerContext _ctx;
 
-        public StyleHasVariantManipulator(ReconcilerContext ctx, string[] @checked, string[] focus)
+        public StyleHasVariantManipulator(ReconcilerContext ctx, string[] @checked, string[] focus,
+            int[] checkedDeclarations, int[] focusDeclarations)
         {
             _ctx = ctx;
             _checked = @checked ?? Array.Empty<string>();
             _focus = focus ?? Array.Empty<string>();
+            _checkedDeclarations = checkedDeclarations ?? Array.Empty<int>();
+            _focusDeclarations = focusDeclarations ?? Array.Empty<int>();
         }
 
         // Re-derives the checked / focus signals from a fresh subtree probe, syncing each payload to the
@@ -62,7 +69,8 @@ namespace Velvet
         // leaves a stale latched bit. The checked signal is re-derived from a fresh subtree probe; the focus
         // signal is event-driven and a re-render fires no focus event, so the live focus-within state still
         // holds and is merely re-applied under the new payload (cleared only when its set empties).
-        public void UpdatePayloads(string[] @checked, string[] focus)
+        public void UpdatePayloads(string[] @checked, string[] focus,
+            int[] checkedDeclarations, int[] focusDeclarations)
         {
             if (target != null)
             {
@@ -72,6 +80,8 @@ namespace Velvet
 
             _checked = @checked ?? Array.Empty<string>();
             _focus = focus ?? Array.Empty<string>();
+            _checkedDeclarations = checkedDeclarations ?? Array.Empty<int>();
+            _focusDeclarations = focusDeclarations ?? Array.Empty<int>();
 
             _isChecked = false;
             if (_focus.Length == 0)
@@ -229,6 +239,7 @@ namespace Velvet
         // applied as an inline style; otherwise it is toggled as a USS class. owner is passed so a payload
         // that is itself a (stacked) variant defers to a nested manipulator, matching the other manipulators.
         private void ApplyPayloads(string[] payloads, bool on)
-            => StyleVariantPayload.Apply(target, payloads, on, StyleLayerPriority.Has, _ctx, this);
+            => StyleVariantPayload.Apply(target, payloads, on, StyleLayerPriority.Has, _ctx, this,
+                ReferenceEquals(payloads, _checked) ? _checkedDeclarations : _focusDeclarations);
     }
 }

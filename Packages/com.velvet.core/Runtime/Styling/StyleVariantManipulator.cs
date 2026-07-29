@@ -24,6 +24,33 @@ namespace Velvet
     // CSS :hover ancestor chain. On PointerOut the hover is cleared only
     // once the pointer has actually left this element's bounds; while it merely crosses between descendants the
     // payload is kept, avoiding a per-crossing remove/re-add that restarts any transition.
+    // The className position of every state payload, grouped so the five arrays travel together rather than
+    // as five more parameters on each of the two entry points that carry them.
+    internal readonly struct VariantDeclarations
+    {
+        public static readonly VariantDeclarations None = new(
+            Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>(), Array.Empty<int>());
+
+        public VariantDeclarations(int[] hover, int[] focus, int[] focusVisible, int[] active, int[] @checked)
+        {
+            Hover = hover ?? Array.Empty<int>();
+            Focus = focus ?? Array.Empty<int>();
+            FocusVisible = focusVisible ?? Array.Empty<int>();
+            Active = active ?? Array.Empty<int>();
+            Checked = @checked ?? Array.Empty<int>();
+        }
+
+        public int[] Hover { get; }
+
+        public int[] Focus { get; }
+
+        public int[] FocusVisible { get; }
+
+        public int[] Active { get; }
+
+        public int[] Checked { get; }
+    }
+
     internal sealed class StyleVariantManipulator : Manipulator, IVariantSettleTarget
     {
         private string[] _hover;
@@ -31,6 +58,14 @@ namespace Velvet
         private string[] _focusVisible;
         private string[] _active;
         private string[] _checked;
+        // Each payload's position in the className, kept per state alongside the payloads themselves so a
+        // payload can be ranked against one a DIFFERENT owner applied at the same layer — a stacked
+        // dark:hover: shares this manipulator's hover layer. Identified by reference, like PriorityFor.
+        private int[] _hoverDeclarations;
+        private int[] _focusDeclarations;
+        private int[] _focusVisibleDeclarations;
+        private int[] _activeDeclarations;
+        private int[] _checkedDeclarations;
         private bool _isHovered;
         private bool _isFocused;
         private bool _isFocusVisible;
@@ -43,7 +78,8 @@ namespace Velvet
 
         private readonly ReconcilerContext _ctx;
 
-        public StyleVariantManipulator(ReconcilerContext ctx, string[] hover, string[] focus, string[] focusVisible, string[] active, string[] @checked)
+        public StyleVariantManipulator(ReconcilerContext ctx, string[] hover, string[] focus,
+            string[] focusVisible, string[] active, string[] @checked, VariantDeclarations declarations)
         {
             _ctx = ctx;
             _hover = hover ?? Array.Empty<string>();
@@ -51,6 +87,11 @@ namespace Velvet
             _focusVisible = focusVisible ?? Array.Empty<string>();
             _active = active ?? Array.Empty<string>();
             _checked = @checked ?? Array.Empty<string>();
+            _hoverDeclarations = declarations.Hover;
+            _focusDeclarations = declarations.Focus;
+            _focusVisibleDeclarations = declarations.FocusVisible;
+            _activeDeclarations = declarations.Active;
+            _checkedDeclarations = declarations.Checked;
         }
 
         // Applies (on) or clears (off) the payloads for every state currently flagged active, under the
@@ -66,7 +107,8 @@ namespace Velvet
         }
 
         // Swaps the payload sets, re-applying any currently-active state under the new sets.
-        public void UpdatePayloads(string[] hover, string[] focus, string[] focusVisible, string[] active, string[] @checked)
+        public void UpdatePayloads(string[] hover, string[] focus, string[] focusVisible, string[] active,
+            string[] @checked, VariantDeclarations declarations)
         {
             if (target != null) ReapplyActiveStates(false);
 
@@ -75,6 +117,11 @@ namespace Velvet
             _focusVisible = focusVisible ?? Array.Empty<string>();
             _active = active ?? Array.Empty<string>();
             _checked = @checked ?? Array.Empty<string>();
+            _hoverDeclarations = declarations.Hover;
+            _focusDeclarations = declarations.Focus;
+            _focusVisibleDeclarations = declarations.FocusVisible;
+            _activeDeclarations = declarations.Active;
+            _checkedDeclarations = declarations.Checked;
 
             if (target != null) ReapplyActiveStates(true);
         }
@@ -133,7 +180,17 @@ namespace Velvet
         // Applies (or clears) each payload. A payload containing [ that parses as an arbitrary
         // value is applied as an inline style; otherwise it is toggled as a USS class.
         private void ApplyPayloads(string[] payloads, bool on)
-            => StyleVariantPayload.Apply(target, payloads, on, PriorityFor(payloads), _ctx, this);
+            => StyleVariantPayload.Apply(target, payloads, on, PriorityFor(payloads), _ctx, this,
+                DeclarationsFor(payloads));
+
+        // The className positions belonging to the state whose payload array this is, paired the same way
+        // PriorityFor pairs the layer.
+        private int[] DeclarationsFor(string[] payloads) =>
+            ReferenceEquals(payloads, _checked) ? _checkedDeclarations
+            : ReferenceEquals(payloads, _active) ? _activeDeclarations
+            : ReferenceEquals(payloads, _focusVisible) ? _focusVisibleDeclarations
+            : ReferenceEquals(payloads, _focus) ? _focusDeclarations
+            : _hoverDeclarations;
 
         // Arbitrary-value layering priority for the state whose payload array this is (identified by reference),
         // so e.g. an active arbitrary value layers over a hover one, and clearing active falls back to hover.

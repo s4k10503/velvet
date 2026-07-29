@@ -17,10 +17,14 @@ namespace Velvet
         public readonly string[] FocusWithin;
         public readonly string[] Active;
         public readonly string[] Checked;
+        // Each payload's position in the className, aligned to the arrays above — see VariantDeclarations for
+        // why a payload has to carry one.
+        public readonly VariantDeclarations Declarations;
 
         public RelationalBindingConfig(
             bool isPeer, string name,
-            string[] hover, string[] focus, string[] focusWithin, string[] active, string[] checkedPayloads)
+            string[] hover, string[] focus, string[] focusWithin, string[] active, string[] checkedPayloads,
+            VariantDeclarations declarations)
         {
             IsPeer = isPeer;
             Name = name ?? string.Empty;
@@ -29,6 +33,7 @@ namespace Velvet
             FocusWithin = focusWithin ?? Array.Empty<string>();
             Active = active ?? Array.Empty<string>();
             Checked = checkedPayloads ?? Array.Empty<string>();
+            Declarations = declarations;
         }
     }
 
@@ -154,8 +159,8 @@ namespace Velvet
         // the owner, and the per-state priority is shared across names — so two named bindings of the same
         // state + same inner leaf must use DISTINCT owners or one's exit would tear down the gate the other
         // still needs. Per-binding owners keep their nested manipulators independent.
-        private void ApplyPayloads(object owner, string[] payloads, bool on, int priority)
-            => StyleVariantPayload.Apply(target, payloads, on, priority, _ctx, owner);
+        private void ApplyPayloads(object owner, string[] payloads, int[] declarations, bool on, int priority)
+            => StyleVariantPayload.Apply(target, payloads, on, priority, _ctx, owner, declarations);
 
         internal static VisualElement? FindAncestorWithClass(VisualElement element, string cls)
         {
@@ -210,6 +215,7 @@ namespace Velvet
             private readonly string[] _focusWithin;
             private readonly string[] _active;
             private readonly string[] _checked;
+            private readonly VariantDeclarations _declarations;
 
             private RelationalVariantSignals _signals = null!;
             private bool _aHover, _aFocus, _aFocusWithin, _aActive, _aChecked;
@@ -224,6 +230,7 @@ namespace Velvet
                 _focusWithin = config.FocusWithin;
                 _active = config.Active;
                 _checked = config.Checked;
+                _declarations = config.Declarations;
             }
 
             // The class that marks this binding's source (see SourceClassFor).
@@ -296,7 +303,17 @@ namespace Velvet
             }
 
             // Pass THIS binding as the stacked-gate owner so distinct named bindings never share a gate key.
-            private void Apply(string[] payloads, bool on, int priority) => _owner.ApplyPayloads(this, payloads, on, priority);
+            private void Apply(string[] payloads, bool on, int priority)
+                => _owner.ApplyPayloads(this, payloads, DeclarationsFor(payloads), on, priority);
+
+            // The className positions belonging to the payload array passed, paired by reference the same way
+            // the caller pairs the layer.
+            private int[] DeclarationsFor(string[] payloads) =>
+                ReferenceEquals(payloads, _checked) ? _declarations.Checked
+                : ReferenceEquals(payloads, _active) ? _declarations.Active
+                : ReferenceEquals(payloads, _focusWithin) ? _declarations.FocusVisible
+                : ReferenceEquals(payloads, _focus) ? _declarations.Focus
+                : _declarations.Hover;
 
             // Each sub-state gets its OWN priority so two active on the same property layer independently and
             // clearing one falls back to the other. Group and peer have distinct priority sets; the priority is
