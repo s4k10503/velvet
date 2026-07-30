@@ -16,28 +16,37 @@ namespace Velvet
 
         public ChildElementPlacement(ReconcilerBufferPool pool) => _pool = pool;
 
+        // The four coordinates one placement pass works in. SlotStart anchors the slot-local conversion;
+        // ScanStart is the first DOM index to map, which is SlotStart + linearEnd for the keyed paths and
+        // SlotStart for the general path, whose walk performs no linear prefix. OldLen and LogicalNewLen only
+        // bound the scan: no more elements can be retained than existed, so the OldLen term alone already
+        // covers every retained element, and LogicalNewLen is a conservative upper bound each path spells its
+        // own way (newNodes.Length for the keyed paths, newElements.Count for the general one).
+        internal readonly struct PlacementRange
+        {
+            internal int SlotStart { get; init; }
+            internal int ScanStart { get; init; }
+            internal int OldLen { get; init; }
+            internal int LogicalNewLen { get; init; }
+        }
+
         // Synchronous-path wrapper: rents the anchor set, computes the LIS anchors, re-places the
         // non-anchor elements, then returns the set. Shared by the synchronous keyed and general
         // commit paths. The time-sliced path cannot use this — it must keep lisIndices alive in
         // KeyedReconcileState.LisIndices across a yield boundary between ComputeLis and Pass2Reorder —
-        // so it rents the set itself and calls ComputeLisAnchors directly. slotStart is the slot range
-        // origin used for slot-local coordinate conversion; regionStart is both the LIS scan start and
-        // the reorder region start. They differ for the sync keyed path (regionStart = slotStart +
-        // linearEnd) and coincide for the general path (regionStart = slotStart, linearEnd == 0).
+        // so it rents the set itself and calls ComputeLisAnchors directly. The reorder region begins where
+        // the LIS scan does, so PlacementRange.ScanStart serves both.
         internal void ComputeAnchorsAndReorder(
             VisualElement? parent,
             List<(VisualElement? element, bool isExisting)> newElements,
-            int slotStart,
-            int regionStart,
-            int oldLen,
-            int logicalNewLen)
+            in PlacementRange range)
         {
             var pool = _pool;
             var lisIndices = pool.RentIntSet();
             try
             {
-                ComputeLisAnchors(parent, newElements, slotStart, regionStart, oldLen, logicalNewLen, lisIndices);
-                ReorderToNewElementOrder(parent, newElements, lisIndices, regionStart);
+                ComputeLisAnchors(parent, newElements, in range, lisIndices);
+                ReorderToNewElementOrder(parent, newElements, lisIndices, range.ScanStart);
             }
             finally
             {
@@ -47,7 +56,7 @@ namespace Velvet
 
         // Shared patience-sort LIS over the post-removal DOM positions of the committed new elements,
         // used by all three keyed-diff commit paths (synchronous keyed, time-sliced keyed, general
-        // live-context). Builds a slot-local DOM-position map over [scanStart, rangeEndExclusive),
+        // live-context). Builds a slot-local DOM-position map over the scanned range,
         // maps each isExisting new element to its current slot-local index (or -1 for a created /
         // replaced orphan), then computes the LIS of that index sequence in O(N log N). LIS members
         // are the anchors that stay put during ReorderToNewElementOrder, yielding the minimum number
@@ -59,24 +68,15 @@ namespace Velvet
         // buffer is rented and returned within the call — domPosMap / domIndices / lisResult here,
         // lisAncestors / pileTop in AccumulateLisAnchors — so the call allocates nothing in steady state.
         //
-        // slotStart anchors the slot-local coordinate conversion; scanStart is the first DOM index to
-        // map (slotStart + linearEnd for the keyed paths, slotStart for the general path). The scan
-        // upper bound — Min(childCount, slotStart + Max(oldLen, logicalNewLen)) — is derived here so the
-        // childCount clamp lives in one place. The oldLen term alone already bounds the range that
-        // matters: no more elements can be retained than existed, so every isExisting element sits below
-        // slotStart + oldLen; created elements are orphans (parent == null) and are never looked up.
-        // logicalNewLen is therefore a conservative upper bound whose exact value is not correctness-
-        // critical; each path passes its own (newNodes.Length for the keyed paths, newElements.Count for
-        // the general path, where linearEnd == 0) to preserve the original per-path clamp exactly.
+        // The scan's upper bound is derived here rather than by each caller, so the childCount clamp lives
+        // in one place (PlacementRange documents what the coordinates mean).
         internal void ComputeLisAnchors(
             VisualElement? parent,
             List<(VisualElement? element, bool isExisting)> newElements,
-            int slotStart,
-            int scanStart,
-            int oldLen,
-            int logicalNewLen,
+            in PlacementRange range,
             HashSet<int> lisIndices)
         {
+            var slotStart = range.SlotStart;
             var pool = _pool;
             var domPosMap = pool.RentElementIndexMap();
             var domIndices = pool.RentIntList();
@@ -86,10 +86,11 @@ namespace Velvet
             {
                 // The retained range never exceeds max(oldLen, logicalNewLen) entries; clamp by
                 // childCount as a safety net while staying within this fiber's slot range.
-                var rangeEndExclusive = Math.Min(parent!.childCount, slotStart + Math.Max(oldLen, logicalNewLen));
+                var rangeEndExclusive = Math.Min(parent!.childCount,
+                    slotStart + Math.Max(range.OldLen, range.LogicalNewLen));
                 // Slot-local DOM positions in O(N). parent.IndexOf per element would be
                 // O(childCount) x newElements.Count = O(N^2).
-                for (var idx = scanStart; idx < rangeEndExclusive; idx++)
+                for (var idx = range.ScanStart; idx < rangeEndExclusive; idx++)
                 {
                     domPosMap[parent!.ElementAt(idx)] = idx - slotStart;
                 }

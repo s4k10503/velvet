@@ -246,8 +246,7 @@ namespace Velvet
             // when the class list is unchanged (SyncClassDrivenStyling re-registers the rules when the class
             // list DID change, and this runs after, so the rules exist either way).
             ApplyAttributes(element, newNode.Props);
-            PatchCommon(element, oldNode.Name, newNode.Name, newNode.Events,
-                oldNode.Children, newNode.Children, newNode.RefCallback);
+            PatchCommon(element, oldNode, newNode);
             if (oldNode.WhileHoverClass != newNode.WhileHoverClass || oldNode.WhileTapClass != newNode.WhileTapClass
                 || oldNode.WhileFocusClass != newNode.WhileFocusClass)
             {
@@ -458,13 +457,9 @@ namespace Velvet
 
         // Shared logic for PatchElement / PatchMotion: rebind events, update name, recurse into
         // children Reconcile, and replace the callback ref's cleanup → setup pair.
-        private void PatchCommon(
-            VisualElement element,
-            string? oldName, string? newName,
-            FiberEventBinding[] newEvents,
-            VNode?[] oldChildren, VNode?[] newChildren,
-            Func<VisualElement, Action>? refCallback)
+        private void PatchCommon(VisualElement element, BaseElementNode oldNode, BaseElementNode newNode)
         {
+            var newEvents = newNode.Events;
             if (!_ctx.EventManager.HasSameBindings(element, newEvents))
             {
                 _ctx.EventManager.UnbindAll(element);
@@ -481,7 +476,7 @@ namespace Velvet
             // attribute that disappears from the VNode must disappear from the element (parity with className /
             // text / etc.). On in-place reuse (esp. positional, no key) a stale name would otherwise make a later
             // Q("old") mis-hit the reused element. Compare against the live element.name so the set is idempotent.
-            var resolvedName = newName ?? string.Empty;
+            var resolvedName = newNode.Name ?? string.Empty;
             if (element.name != resolvedName)
             {
                 element.name = resolvedName;
@@ -494,10 +489,10 @@ namespace Velvet
             // as direct VE children — never wrapped in the layout-passthrough container that would
             // collapse N keyed Components to the same absolute slot.
             _host.ReconcileChildren(childContainer,
-                oldChildren ?? Array.Empty<VNode>(),
-                newChildren ?? Array.Empty<VNode>());
+                oldNode.Children ?? Array.Empty<VNode>(),
+                newNode.Children ?? Array.Empty<VNode>());
 
-            _ctx.InvokeRefCallback(element, refCallback);
+            _ctx.InvokeRefCallback(element, newNode.RefCallback);
         }
 
         private void PatchMotion(VisualElement element, MotionNode oldNode, MotionNode newNode)
@@ -1760,22 +1755,12 @@ namespace Velvet
 
         private readonly struct VariantOp : IManipulatorOp<StyleVariantManipulator>
         {
-            private readonly string[] _hover;
-            private readonly string[] _focus;
-            private readonly string[] _focusVisible;
-            private readonly string[] _active;
-            private readonly string[] _checked;
-
+            private readonly VariantPayloads _payloads;
             private readonly VariantDeclarations _declarations;
 
-            internal VariantOp(string[] hover, string[] focus, string[] focusVisible, string[] active,
-                string[] @checked, VariantDeclarations declarations)
+            internal VariantOp(VariantPayloads payloads, VariantDeclarations declarations)
             {
-                _hover = hover;
-                _focus = focus;
-                _focusVisible = focusVisible;
-                _active = active;
-                _checked = @checked;
+                _payloads = payloads;
                 _declarations = declarations;
             }
 
@@ -1783,11 +1768,10 @@ namespace Velvet
                 => ctx.VariantManipulators;
 
             public StyleVariantManipulator Create(ReconcilerContext ctx)
-                => new StyleVariantManipulator(ctx, _hover, _focus, _focusVisible, _active, _checked,
-                    _declarations);
+                => new StyleVariantManipulator(ctx, _payloads, _declarations);
 
             public void Update(StyleVariantManipulator manipulator)
-                => manipulator.UpdatePayloads(_hover, _focus, _focusVisible, _active, _checked, _declarations);
+                => manipulator.UpdatePayloads(_payloads, _declarations);
         }
 
         private readonly struct ConditionalVariantOp : IManipulatorOp<StyleConditionalVariantManipulator>
@@ -1963,7 +1947,8 @@ namespace Velvet
                 || active.Length > 0 || @checked.Length > 0;
 
             Configure<VariantOp, StyleVariantManipulator>(element, hasAny,
-                new VariantOp(hover, focus, focusVisible, active, @checked,
+                new VariantOp(
+                    new VariantPayloads(hover, focus, focusVisible, active, @checked),
                     new VariantDeclarations(hoverDecl, focusDecl, focusVisibleDecl, activeDecl, checkedDecl)));
         }
 
@@ -2077,11 +2062,12 @@ namespace Velvet
                 var d = positions![kv.Key];
                 configs.Add(new RelationalBindingConfig(
                     kv.Key.IsPeer, kv.Key.Name,
-                    ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Hover]),
-                    ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Focus]),
-                    ToPayloadArray(s[(int)StyleVariantClass.RelationalState.FocusWithin]),
-                    ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Active]),
-                    ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked]),
+                    new VariantPayloads(
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Hover]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Focus]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.FocusWithin]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Active]),
+                        ToPayloadArray(s[(int)StyleVariantClass.RelationalState.Checked])),
                     new VariantDeclarations(
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Hover]),
                         ToPositionArray(d[(int)StyleVariantClass.RelationalState.Focus]),

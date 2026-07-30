@@ -201,32 +201,37 @@ namespace Velvet
         internal static SpringPlan Resolve(string[]? fromClasses, string[]? toClasses,
             float restingTranslateX = 0f, float restingTranslateY = 0f)
         {
-            float? fromOpacity = null, toOpacity = null;
-            float? fromX = null, toX = null;
-            float? fromY = null, toY = null;
-            float? fromScale = null, toScale = null;
-            float? fromRotate = null, toRotate = null;
-            Dictionary<ArbitraryProperty, ArbitraryStyle>? fromProperties = null, toProperties = null;
-
-            Scan(fromClasses, ref fromOpacity, ref fromX, ref fromY, ref fromScale, ref fromRotate, ref fromProperties);
-            Scan(toClasses, ref toOpacity, ref toX, ref toY, ref toScale, ref toRotate, ref toProperties);
+            var from = Scan(fromClasses);
+            var to = Scan(toClasses);
 
             var plan = new SpringPlan();
-            PairProperties(fromProperties, toProperties, ref plan);
-            if (fromOpacity.HasValue || toOpacity.HasValue)
+            PairProperties(from.Properties, to.Properties, ref plan);
+            if (from.Opacity.HasValue || to.Opacity.HasValue)
             {
-                plan.Opacity = (fromOpacity ?? 1f, toOpacity ?? 1f);
+                plan.Opacity = (from.Opacity ?? 1f, to.Opacity ?? 1f);
             }
-            PairTranslate(fromX, toX, fromY, toY, restingTranslateX, restingTranslateY, ref plan);
-            if (fromScale.HasValue || toScale.HasValue)
+            PairTranslate(in from, in to, restingTranslateX, restingTranslateY, ref plan);
+            if (from.Scale.HasValue || to.Scale.HasValue)
             {
-                plan.Scale = (fromScale ?? 1f, toScale ?? 1f);
+                plan.Scale = (from.Scale ?? 1f, to.Scale ?? 1f);
             }
-            if (fromRotate.HasValue || toRotate.HasValue)
+            if (from.Rotate.HasValue || to.Rotate.HasValue)
             {
-                plan.Rotate = (fromRotate ?? 0f, toRotate ?? 0f);
+                plan.Rotate = (from.Rotate ?? 0f, to.Rotate ?? 0f);
             }
             return plan;
+        }
+
+        // Resolve runs on every variant play, so this stays a struct passed by in: neither per-call scan may
+        // reach the heap.
+        private readonly struct SideScan
+        {
+            public float? Opacity { get; init; }
+            public float? TranslateX { get; init; }
+            public float? TranslateY { get; init; }
+            public float? Scale { get; init; }
+            public float? Rotate { get; init; }
+            public Dictionary<ArbitraryProperty, ArbitraryStyle>? Properties { get; init; }
         }
 
         // Translate x/y are independent springs but always compose onto ONE inline `translate` (UI Toolkit has
@@ -235,17 +240,21 @@ namespace Velvet
         // (the "declare only what changes" rule on Resolve); an axis named by NEITHER side — forced into the
         // plan only because its sibling needed one — pins at the element's own resting value instead, so a base
         // translate-y-* class the swap never touches does not get stomped to 0 for the swap's duration.
-        private static void PairTranslate(float? fromX, float? toX, float? fromY, float? toY,
+        private static void PairTranslate(in SideScan from, in SideScan to,
             float restingTranslateX, float restingTranslateY, ref SpringPlan plan)
         {
-            var xNamed = fromX.HasValue || toX.HasValue;
-            var yNamed = fromY.HasValue || toY.HasValue;
+            var xNamed = from.TranslateX.HasValue || to.TranslateX.HasValue;
+            var yNamed = from.TranslateY.HasValue || to.TranslateY.HasValue;
             if (!xNamed && !yNamed)
             {
                 return;
             }
-            plan.TranslateX = xNamed ? (fromX ?? 0f, toX ?? 0f) : (restingTranslateX, restingTranslateX);
-            plan.TranslateY = yNamed ? (fromY ?? 0f, toY ?? 0f) : (restingTranslateY, restingTranslateY);
+            plan.TranslateX = xNamed
+                ? (from.TranslateX ?? 0f, to.TranslateX ?? 0f)
+                : (restingTranslateX, restingTranslateX);
+            plan.TranslateY = yNamed
+                ? (from.TranslateY ?? 0f, to.TranslateY ?? 0f)
+                : (restingTranslateY, restingTranslateY);
         }
 
         /// <summary>
@@ -364,34 +373,43 @@ namespace Velvet
             return false;
         }
 
-        private static void Scan(string[]? classes, ref float? opacity, ref float? translateX, ref float? translateY,
-            ref float? scale, ref float? rotate, ref Dictionary<ArbitraryProperty, ArbitraryStyle>? properties)
+        private static SideScan Scan(string[]? classes)
         {
-            if (classes == null)
+            float? opacity = null, translateX = null, translateY = null, scale = null, rotate = null;
+            Dictionary<ArbitraryProperty, ArbitraryStyle>? properties = null;
+            if (classes != null)
             {
-                return;
-            }
-            foreach (var cls in classes)
-            {
-                if (!TryParseAxisValue(cls, out var axis, out var value))
+                foreach (var cls in classes)
                 {
-                    // Later classes win, mirroring the CSS cascade: two utilities on the same property in one
-                    // variant resolve to the last one, exactly as the class list itself would.
-                    if (MotionPropertyClassParser.TryParse(cls, out var style))
+                    if (!TryParseAxisValue(cls, out var axis, out var value))
                     {
-                        (properties ??= new Dictionary<ArbitraryProperty, ArbitraryStyle>())[style.Property] = style;
+                        // Later classes win, mirroring the CSS cascade: two utilities on the same property in
+                        // one variant resolve to the last one, exactly as the class list itself would.
+                        if (MotionPropertyClassParser.TryParse(cls, out var style))
+                        {
+                            (properties ??= new Dictionary<ArbitraryProperty, ArbitraryStyle>())[style.Property] = style;
+                        }
+                        continue;
                     }
-                    continue;
-                }
-                switch (axis)
-                {
-                    case SpringAxis.Opacity: opacity = value; break;
-                    case SpringAxis.TranslateX: translateX = value; break;
-                    case SpringAxis.TranslateY: translateY = value; break;
-                    case SpringAxis.Scale: scale = value; break;
-                    case SpringAxis.Rotate: rotate = value; break;
+                    switch (axis)
+                    {
+                        case SpringAxis.Opacity: opacity = value; break;
+                        case SpringAxis.TranslateX: translateX = value; break;
+                        case SpringAxis.TranslateY: translateY = value; break;
+                        case SpringAxis.Scale: scale = value; break;
+                        case SpringAxis.Rotate: rotate = value; break;
+                    }
                 }
             }
+            return new SideScan
+            {
+                Opacity = opacity,
+                TranslateX = translateX,
+                TranslateY = translateY,
+                Scale = scale,
+                Rotate = rotate,
+                Properties = properties,
+            };
         }
     }
 }

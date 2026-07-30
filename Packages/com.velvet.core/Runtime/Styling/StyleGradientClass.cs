@@ -31,35 +31,18 @@ namespace Velvet
     // redundant work when an unchanged class list re-resolves to the same gradient.
     internal readonly struct GradientSpec : IEquatable<GradientSpec>
     {
-        public readonly GradientType Type;
-        public readonly float AngleDeg;
-        public readonly float CenterX;
-        public readonly float CenterY;
-        public readonly GradientInterp Interp;
-        public readonly Color From;
-        public readonly Color To;
-        public readonly Color Via;
-        public readonly bool HasVia;
-        public readonly float FromPos;
-        public readonly float ViaPos;
-        public readonly float ToPos;
-
-        public GradientSpec(GradientType type, float angleDeg, float centerX, float centerY, GradientInterp interp,
-            Color from, Color to, bool hasVia, Color via, float fromPos, float viaPos, float toPos)
-        {
-            Type = type;
-            AngleDeg = angleDeg;
-            CenterX = centerX;
-            CenterY = centerY;
-            Interp = interp;
-            From = from;
-            To = to;
-            HasVia = hasVia;
-            Via = via;
-            FromPos = fromPos;
-            ViaPos = viaPos;
-            ToPos = toPos;
-        }
+        public GradientType Type { get; init; }
+        public float AngleDeg { get; init; }
+        public float CenterX { get; init; }
+        public float CenterY { get; init; }
+        public GradientInterp Interp { get; init; }
+        public Color From { get; init; }
+        public Color To { get; init; }
+        public Color Via { get; init; }
+        public bool HasVia { get; init; }
+        public float FromPos { get; init; }
+        public float ViaPos { get; init; }
+        public float ToPos { get; init; }
 
         // 8-bit RGBA key. Equality AND hashing both go through this so the Equals/GetHashCode contract holds
         // (Color's == is epsilon-approximate while Color.GetHashCode is exact-bit — mixing them would let
@@ -274,8 +257,21 @@ namespace Velvet
                 to = new Color(from.r, from.g, from.b, 0f);
             }
 
-            spec = new GradientSpec(type, angle, centerX, centerY, interp, from, to, hasVia, via,
-                fromPos, viaPos, toPos);
+            spec = new GradientSpec
+            {
+                Type = type,
+                AngleDeg = angle,
+                CenterX = centerX,
+                CenterY = centerY,
+                Interp = interp,
+                From = from,
+                To = to,
+                HasVia = hasVia,
+                Via = via,
+                FromPos = fromPos,
+                ViaPos = viaPos,
+                ToPos = toPos,
+            };
             return true;
         }
 

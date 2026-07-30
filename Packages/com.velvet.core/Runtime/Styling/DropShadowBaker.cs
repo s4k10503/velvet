@@ -100,7 +100,15 @@ namespace Velvet
                 return tex;
             }
 
-            tex = BakeSilhouetteTexture(mat, corner, blur, spread, targetWidth, targetHeight, skewXDeg);
+            tex = BakeSilhouetteTexture(mat, new SilhouetteBakeShape
+            {
+                Corner = corner,
+                Blur = blur,
+                Spread = spread,
+                TargetWidth = targetWidth,
+                TargetHeight = targetHeight,
+                SkewXDeg = skewXDeg,
+            });
             StoreSilhouette(key, tex);
             return tex;
         }
@@ -152,15 +160,26 @@ namespace Velvet
         // same key would share whichever raw-float texture baked first, giving a subpixel-off shadow.
         internal static float QuantizePx(float v) => Mathf.Clamp(Mathf.RoundToInt(v), 0, 0xFFFF);
 
+        private readonly struct SilhouetteBakeShape
+        {
+            public float Corner { get; init; }
+            public float Blur { get; init; }
+            public float Spread { get; init; }
+            public float TargetWidth { get; init; }
+            public float TargetHeight { get; init; }
+            public float SkewXDeg { get; init; }
+        }
+
         // Bakes the silhouette at the exact quad pixel size (target + padding per side), so the stretched
         // quad is texel-accurate. The shader unshears the sample coordinate, so the SDF evaluates the upright
         // rounded box while the rendered alpha follows the slant. White RGB; alpha is the soft falloff.
-        private static Texture2D BakeSilhouetteTexture(Material mat, float corner, float blur, float spread,
-            float targetWidth, float targetHeight, float skewXDeg)
+        private static Texture2D BakeSilhouetteTexture(Material mat, in SilhouetteBakeShape shape)
         {
-            corner = QuantizePx(corner);
-            blur = QuantizePx(blur);
-            spread = QuantizePx(spread);
+            var corner = QuantizePx(shape.Corner);
+            var blur = QuantizePx(shape.Blur);
+            var spread = QuantizePx(shape.Spread);
+            var targetWidth = shape.TargetWidth;
+            var targetHeight = shape.TargetHeight;
             var pad = blur + ExtraPadding;
             var qw = Mathf.Clamp(Mathf.CeilToInt(targetWidth + (2f * pad)), 8, 2048);
             var qh = Mathf.Clamp(Mathf.CeilToInt(targetHeight + (2f * pad)), 8, 2048);
@@ -170,12 +189,19 @@ namespace Velvet
             mat.SetFloat(CornerRadiusId, corner);
             mat.SetFloat(SpreadId, spread);
             mat.SetVector(ElementSizeId, new Vector4(targetWidth, targetHeight, 0f, 0f));
-            mat.SetFloat(SkewXId, Mathf.Tan(skewXDeg * Mathf.Deg2Rad));
+            mat.SetFloat(SkewXId, Mathf.Tan(shape.SkewXDeg * Mathf.Deg2Rad));
 
-            var tex = SilhouetteBakeReadback.Bake(mat, qw, qh,
-                RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default,
-                TextureFormat.RGBA32, linear: false, name: "VelvetDropShadowSilhouette",
-                TextureWrapMode.Clamp, FilterMode.Bilinear, HideFlags.None);
+            var tex = SilhouetteBakeReadback.Bake(mat, qw, qh, new SilhouetteBakeSettings
+            {
+                RtFormat = RenderTextureFormat.ARGB32,
+                RtReadWrite = RenderTextureReadWrite.Default,
+                TextureFormat = TextureFormat.RGBA32,
+                Linear = false,
+                Name = "VelvetDropShadowSilhouette",
+                WrapMode = TextureWrapMode.Clamp,
+                FilterMode = FilterMode.Bilinear,
+                HideFlags = HideFlags.None,
+            });
             mat.SetFloat(SkewXId, 0f); // defensive: never leave a stale shear on the shared Material
             return tex;
         }

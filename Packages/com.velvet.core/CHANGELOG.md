@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `VEL501`, a compile-time analyzer that reports a member body making more than twenty branching decisions,
   at error severity. It shares VEL500's opt-in marker, so it likewise does not fire on your code unless the
   assembly declares it, and the same README defines what counts as a branch.
+- `VEL502`, a compile-time analyzer that reports a declaration demanding more than six arguments from every
+  caller, at error severity. It shares VEL500's opt-in marker, so it likewise does not fire on your code
+  unless the assembly declares it. A parameter carrying a default value, and a trailing `params` array, are
+  not counted — which is what leaves the `V.*` factories, whose long optional named lists stand in for JSX
+  props, untouched. The same README defines what counts. One consequence for an assembly that opts in:
+  `[MemoizeMethod]` supports 1-8 parameters, so its top two arities are unreachable there.
 - `TransitionType.Spring` and `TransitionType.Bezier` variant transitions now animate the
   color-valued (`background-color`, `color`, `border-color`) and length-valued (sizing, padding,
   margin, inset, flex-basis, border width, `border-radius`) properties of a variant delta, not just

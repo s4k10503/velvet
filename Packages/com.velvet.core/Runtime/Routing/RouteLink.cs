@@ -33,16 +33,18 @@ namespace Velvet
 
     internal static class RouteNavLink
     {
-        public sealed record Props(
-            string To,
-            string? Text,
-            string? ClassName,
-            string? ActiveClass,
-            string? Name,
-            VNode?[]? Children,
-            bool End,
-            bool Replace,
-            bool CaseSensitive);
+        public sealed record Props
+        {
+            public required string To { get; init; }
+            public string? Text { get; init; }
+            public string? ClassName { get; init; }
+            public string? ActiveClass { get; init; }
+            public string? Name { get; init; }
+            public VNode?[]? Children { get; init; }
+            public bool End { get; init; }
+            public bool Replace { get; init; }
+            public bool CaseSensitive { get; init; }
+        }
 
         [Component]
         public static VNode Render(Props p)

@@ -17,6 +17,40 @@ namespace Velvet
         void BezierCurveTo(Vector2 c1, Vector2 c2, Vector2 end);
     }
 
+    // Inset shrinks the corner radii as well as the edges. The radii travel as VALUES rather than as an
+    // element reference, so the outline builders need no laid-out element and stay exercisable without a live
+    // panel; ForElement is the convenience for a caller that has one.
+    internal readonly struct ShearedRoundedRect
+    {
+        public float Width { get; init; }
+        public float Height { get; init; }
+        public float TanX { get; init; }
+        public float TanY { get; init; }
+        public float Inset { get; init; }
+        public float RadiusTopLeft { get; init; }
+        public float RadiusTopRight { get; init; }
+        public float RadiusBottomRight { get; init; }
+        public float RadiusBottomLeft { get; init; }
+
+        public static ShearedRoundedRect ForElement(VisualElement ve, float inset,
+            float w, float h, float tanX, float tanY)
+        {
+            var rs = ve.resolvedStyle;
+            return new ShearedRoundedRect
+            {
+                Width = w,
+                Height = h,
+                TanX = tanX,
+                TanY = tanY,
+                Inset = inset,
+                RadiusTopLeft = rs.borderTopLeftRadius,
+                RadiusTopRight = rs.borderTopRightRadius,
+                RadiusBottomRight = rs.borderBottomRightRadius,
+                RadiusBottomLeft = rs.borderBottomLeftRadius,
+            };
+        }
+    }
+
     // Shared face-painting kernel for the wrapper-less silhouette layers (skew + drop shadow). Both layers
     // suppress an element's native rectangular background / border (UI Toolkit draws those at a fixed point in
     // its pipeline, BEFORE generateVisualContent, so a painter that needs to sit behind OR ahead of the fill —
@@ -51,60 +85,51 @@ namespace Velvet
         internal static Vector2 Shear(Vector2 p, float w, float h, float tanX, float tanY)
             => new(p.x + ((p.y - (h * 0.5f)) * tanX), p.y + ((p.x - (w * 0.5f)) * tanY));
 
-        // Builds the element's rounded-rect path (inset on all sides) onto a Painter2D, shearing every point.
-        // A thin wrapper over EmitShearedRoundedRectPath: BeginPath, emit the outline through a passthrough
-        // sink, ClosePath, so skew / shadow fill + stroke rendering is unaffected by going through the shared
-        // sink abstraction. tanX = tanY = 0 yields an upright rounded rect.
-        internal static void BuildShearedRoundedRect(Painter2D p, VisualElement ve, float inset,
-            float w, float h, float tanX, float tanY)
+        // Builds the rounded-rect path (inset on all sides) onto a Painter2D, shearing every point. A thin
+        // wrapper over EmitShearedRoundedRectPath: BeginPath, emit the outline through a passthrough sink,
+        // ClosePath, so skew / shadow fill + stroke rendering is unaffected by going through the shared sink
+        // abstraction. tanX = tanY = 0 yields an upright rounded rect.
+        internal static void BuildShearedRoundedRect(Painter2D p, in ShearedRoundedRect box)
         {
-            var rs = ve.resolvedStyle;
             p.BeginPath();
-            EmitShearedRoundedRectPath(new Painter2DSink(p), inset, w, h, tanX, tanY,
-                rs.borderTopLeftRadius, rs.borderTopRightRadius, rs.borderBottomRightRadius, rs.borderBottomLeftRadius);
+            EmitShearedRoundedRectPath(new Painter2DSink(p), in box);
             p.ClosePath();
         }
 
-        // Flattens the element's rounded-rect outline into a closed polyline (each corner bezier sampled into
+        // Flattens the rounded-rect outline into a closed polyline (each corner bezier sampled into
         // bezierSamples straight chords), for a caller that must walk the outline by arc length (the dashed
         // border). Reuses the caller's list to avoid a per-frame allocation.
-        internal static void BuildShearedRoundedRectPolyline(List<Vector2> points, VisualElement ve, float inset,
-            float w, float h, float tanX, float tanY, int bezierSamples = 8)
-        {
-            var rs = ve.resolvedStyle;
-            BuildShearedRoundedRectPolyline(points, inset, w, h, tanX, tanY,
-                rs.borderTopLeftRadius, rs.borderTopRightRadius, rs.borderBottomRightRadius, rs.borderBottomLeftRadius,
-                bezierSamples);
-        }
-
-        // Explicit-radii overload — the outline built from radii the caller already knows, independent of a
-        // laid-out element (so it is exercisable without a live panel).
-        internal static void BuildShearedRoundedRectPolyline(List<Vector2> points, float inset,
-            float w, float h, float tanX, float tanY,
-            float radTL, float radTR, float radBR, float radBL, int bezierSamples = 8)
+        internal static void BuildShearedRoundedRectPolyline(List<Vector2> points, in ShearedRoundedRect box,
+            int bezierSamples = 8)
         {
             points.Clear();
-            EmitShearedRoundedRectPath(new PolylineSink(points, bezierSamples), inset, w, h, tanX, tanY,
-                radTL, radTR, radBR, radBL);
+            EmitShearedRoundedRectPath(new PolylineSink(points, bezierSamples), in box);
         }
 
-        // Emits the element's rounded-rect outline (inset on all sides) into a sink, shearing every point — a
-        // shear is affine, so transforming the bezier control points transforms the curve exactly. tanX =
-        // tanY = 0 yields an upright rounded rect. The generic constraint keeps a struct sink (Painter2DSink)
+        // Emits the rounded-rect outline (inset on all sides) into a sink, shearing every point — a shear is
+        // affine, so transforming the bezier control points transforms the curve exactly. tanX = tanY = 0
+        // yields an upright rounded rect. The generic constraint keeps a struct sink (Painter2DSink)
         // boxing-free on the per-frame fill/stroke path.
-        internal static void EmitShearedRoundedRectPath<TSink>(TSink sink, float inset,
-            float w, float h, float tanX, float tanY,
-            float radTL, float radTR, float radBR, float radBL) where TSink : IRoundedRectPathSink
+        internal static void EmitShearedRoundedRectPath<TSink>(TSink sink, in ShearedRoundedRect box)
+            where TSink : IRoundedRectPathSink
         {
+            // Copied out of the by-reference box because the shear helper below is a local function, which
+            // cannot capture an `in` parameter.
+            var w = box.Width;
+            var h = box.Height;
+            var tanX = box.TanX;
+            var tanY = box.TanY;
+
+            var inset = box.Inset;
             var x0 = inset;
             var y0 = inset;
             var x1 = w - inset;
             var y1 = h - inset;
             var maxR = Mathf.Min(x1 - x0, y1 - y0) * 0.5f;
-            var tl = Mathf.Clamp(radTL - inset, 0f, maxR);
-            var tr = Mathf.Clamp(radTR - inset, 0f, maxR);
-            var br = Mathf.Clamp(radBR - inset, 0f, maxR);
-            var bl = Mathf.Clamp(radBL - inset, 0f, maxR);
+            var tl = Mathf.Clamp(box.RadiusTopLeft - inset, 0f, maxR);
+            var tr = Mathf.Clamp(box.RadiusTopRight - inset, 0f, maxR);
+            var br = Mathf.Clamp(box.RadiusBottomRight - inset, 0f, maxR);
+            var bl = Mathf.Clamp(box.RadiusBottomLeft - inset, 0f, maxR);
 
             Vector2 S(float x, float y) => Shear(new Vector2(x, y), w, h, tanX, tanY);
 

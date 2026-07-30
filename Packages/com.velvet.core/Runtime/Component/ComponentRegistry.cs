@@ -48,6 +48,19 @@ namespace Velvet
             _ctx = ctx;
         }
 
+        // Where one GetOrCreate call anchors its fiber and where that fiber's output lands. Anchor and
+        // PositionKey are the identity half — what the registry looks the fiber up by — and MountPoint and
+        // SlotStart the placement half; IsInline selects which spelling of both is in force, so the five are
+        // never meaningful apart. Taken by `in`: this runs once per Component per reconcile.
+        private readonly struct FiberMountSite
+        {
+            internal object? Anchor { get; init; }
+            internal object? PositionKey { get; init; }
+            internal VisualElement? MountPoint { get; init; }
+            internal int SlotStart { get; init; }
+            internal bool IsInline { get; init; }
+        }
+
         // Wrapper-mounted GetOrCreate. The fiber owns the entire wrapper's
         // children; slotKey is null and the wrapper is registered in
         // _wrapperIndex for pending-fiber lookup. slotStart is unused on this path.
@@ -55,7 +68,15 @@ namespace Velvet
             ComponentNode node,
             VisualElement wrapper)
         {
-            return GetOrCreateCore(node, wrapper, positionKey: null, mountPoint: wrapper, slotStart: 0, isInline: false);
+            var site = new FiberMountSite
+            {
+                Anchor = wrapper,
+                PositionKey = null,
+                MountPoint = wrapper,
+                SlotStart = 0,
+                IsInline = false,
+            };
+            return GetOrCreateCore(node, in site);
         }
 
         // Fiber identity is anchored on its parent parentFiber
@@ -75,39 +96,39 @@ namespace Velvet
             int slotStart)
         {
             if (positionKey == null) throw new ArgumentNullException(nameof(positionKey));
-            return GetOrCreateCore(node, parentFiber, positionKey, mountPoint, slotStart, isInline: true);
+            var site = new FiberMountSite
+            {
+                Anchor = parentFiber,
+                PositionKey = positionKey,
+                MountPoint = mountPoint,
+                SlotStart = slotStart,
+                IsInline = true,
+            };
+            return GetOrCreateCore(node, in site);
         }
 
-        private ComponentFiber GetOrCreateCore(
-            ComponentNode node,
-            object? anchor,
-            object? positionKey,
-            VisualElement? mountPoint,
-            int slotStart,
-            bool isInline)
+        private ComponentFiber GetOrCreateCore(ComponentNode node, in FiberMountSite site)
         {
             if (node == null) throw new ArgumentNullException(nameof(node));
             if (node.Body == null) throw new ArgumentException("ComponentNode.Body must not be null.", nameof(node));
             var identity = node.ResolvedIdentity;
 
-            var existingFiber = isInline
-                ? LookupInline((ComponentFiber)anchor!, positionKey, identity)
-                : LookupWrapper((VisualElement)anchor!, identity);
+            var existingFiber = site.IsInline
+                ? LookupInline((ComponentFiber)site.Anchor!, site.PositionKey, identity)
+                : LookupWrapper((VisualElement)site.Anchor!, identity);
 
             if (existingFiber != null)
             {
-                return ReconcileExistingFiber(existingFiber, node, isInline, mountPoint, slotStart);
+                return ReconcileExistingFiber(existingFiber, node, in site);
             }
 
-            return CreateAndMountFiber(node, anchor, positionKey, identity, mountPoint, slotStart, isInline);
+            return CreateAndMountFiber(node, identity, in site);
         }
 
         private ComponentFiber ReconcileExistingFiber(
             ComponentFiber existingFiber,
             ComponentNode node,
-            bool isInline,
-            VisualElement? mountPoint,
-            int slotStart)
+            in FiberMountSite site)
         {
             // Context is read live from the cursor (ComponentContextStack) during
             // Render, so no per-fiber snapshot is pinned or merged here. The enclosing Providers
@@ -145,7 +166,7 @@ namespace Velvet
             }
             if (propsChanged) existingFiber.Props = node.Props;
 
-            if (isInline)
+            if (site.IsInline)
             {
                 // The parent reconcile may have shifted this fiber's slot range; update before any
                 // re-render. Synchronously re-render when props changed or the fiber is dirty
@@ -154,7 +175,7 @@ namespace Velvet
                 // FiberStack consistent across the root and descendant Reconcilers, so a synchronous
                 // render here does not collide with a subsequent FlushState pass: clearing IsDirty
                 // makes the later traversal short-circuit while the rendered output is already committed.
-                existingFiber.MountSlotStart = slotStart;
+                existingFiber.MountSlotStart = site.SlotStart;
                 if (propsChanged || existingFiber.IsDirty || refChanged)
                 {
                     FiberRenderer.RenderInlineForExpansion(existingFiber);
@@ -174,15 +195,11 @@ namespace Velvet
             return existingFiber;
         }
 
-        private ComponentFiber CreateAndMountFiber(
-            ComponentNode node,
-            object? anchor,
-            object? positionKey,
-            object identity,
-            VisualElement? mountPoint,
-            int slotStart,
-            bool isInline)
+        private ComponentFiber CreateAndMountFiber(ComponentNode node, object identity, in FiberMountSite site)
         {
+            var anchor = site.Anchor;
+            var positionKey = site.PositionKey;
+            var isInline = site.IsInline;
             var fiber = FiberRenderer.CreateChild(node.Body, node.IsErrorBoundary);
             _ctx.FiberStack.Current?.AppendChild(fiber);
             fiber.ExternalRef = node.ExternalRef;
@@ -192,11 +209,11 @@ namespace Velvet
             {
                 if (isInline)
                 {
-                    FiberRenderer.MountInline(fiber, mountPoint, slotStart, _ctx);
+                    FiberRenderer.MountInline(fiber, site.MountPoint, site.SlotStart, _ctx);
                 }
                 else
                 {
-                    FiberRenderer.Mount(fiber, mountPoint, _ctx);
+                    FiberRenderer.Mount(fiber, site.MountPoint, _ctx);
                 }
             }
             catch (FiberSuspendSignal)

@@ -17,8 +17,8 @@ namespace Velvet.SourceGenerators.Tests
     /// and `Velvet.asmdef` compiles in every consumer's project, so a member that crosses a limit becomes
     /// their build error, not ours.
     /// <para>
-    /// Both rules live in one fixture because they share a member surface and a backlog: splitting them
-    /// would mean two scans that can disagree about what a member is.
+    /// The three rules live in one fixture because they share a declaration surface and a backlog: splitting
+    /// them would mean separate scans that can disagree about what a member is.
     /// </para>
     /// </summary>
     public sealed class CodeShapeBacklogDriftTests
@@ -27,7 +27,7 @@ namespace Velvet.SourceGenerators.Tests
         public void Given_ThePackageSources_When_Measured_Then_NoMemberExceedsTheNestingDepthLimit()
         {
             // Arrange
-            var members = PackageMembers.Value;
+            var members = Scan.Value.Bodies;
 
             // Act
             var over = members
@@ -44,7 +44,7 @@ namespace Velvet.SourceGenerators.Tests
         public void Given_ThePackageSources_When_Measured_Then_NoMemberExceedsTheBranchCountLimit()
         {
             // Arrange
-            var members = PackageMembers.Value;
+            var members = Scan.Value.Bodies;
 
             // Act
             var over = members
@@ -58,11 +58,28 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
+        public void Given_ThePackageSources_When_Measured_Then_NoMemberExceedsTheParameterCountLimit()
+        {
+            // Arrange
+            var declarations = Scan.Value.Parameters;
+
+            // Act
+            var over = declarations
+                .Where(d => d.Required > ParameterCountAnalyzer.MaxParameters)
+                .Select(d => $"{d.File} {d.Display} demands {d.Required}")
+                .OrderBy(line => line, StringComparer.Ordinal)
+                .ToList();
+
+            // Assert
+            Assert.Equal(Array.Empty<string>(), over);
+        }
+
+        [Fact]
         public void Given_ThePackageSources_When_Enumerated_Then_TheScanFoundBodiesToMeasure()
         {
             // A path change that emptied the scan would make both guards above pass having measured nothing.
             // Arrange
-            var members = PackageMembers.Value;
+            var members = Scan.Value.Bodies;
 
             // Act
             var count = members.Count;
@@ -71,8 +88,24 @@ namespace Velvet.SourceGenerators.Tests
             Assert.True(count >= 5000, $"Expected at least 5000 measurable member bodies, found {count}.");
         }
 
-        private static readonly Lazy<IReadOnlyList<(string File, string Display, int Depth, int Branches)>>
-            PackageMembers = new(Measure);
+        [Fact]
+        public void Given_ThePackageSources_When_Enumerated_Then_TheScanFoundParameterListsToMeasure()
+        {
+            // The parameter surface is enumerated separately from the body surface — an abstract method has
+            // a list and no body — so emptying one leaves the other's canary green.
+            // Arrange
+            var declarations = Scan.Value.Parameters;
+
+            // Act
+            var count = declarations.Count;
+
+            // Assert
+            Assert.True(count >= 5000, $"Expected at least 5000 measurable parameter lists, found {count}.");
+        }
+
+        private static readonly Lazy<(
+            IReadOnlyList<(string File, string Display, int Depth, int Branches)> Bodies,
+            IReadOnlyList<(string File, string Display, int Required)> Parameters)> Scan = new(Measure);
 
         /// <summary>
         /// Unity compiles the editor-platform assemblies with <c>UNITY_EDITOR</c> defined and the rest
@@ -88,14 +121,19 @@ namespace Velvet.SourceGenerators.Tests
         };
 
         /// <summary>
-        /// Every body the analyzers would see, in either configuration. `Generators~` is excluded because it
-        /// is a separate solution that never references Velvet and so never loads these analyzers, and
-        /// generated files because the analyzers opt out of generated code.
+        /// Every body and every parameter list the analyzers would see, in either configuration.
+        /// `Generators~` is excluded because it is a separate solution that never references Velvet and so
+        /// never loads these analyzers, and generated files because the analyzers opt out of generated code.
         /// </summary>
-        private static IReadOnlyList<(string File, string Display, int Depth, int Branches)> Measure()
+        private static (
+            IReadOnlyList<(string File, string Display, int Depth, int Branches)> Bodies,
+            IReadOnlyList<(string File, string Display, int Required)> Parameters) Measure()
         {
             var packageRoot = Path.GetFullPath(Path.Combine(SolutionPaths.GeneratorsRoot(), ".."));
-            var rows = new Dictionary<(string File, int Start), (string, string, int, int)>();
+            // Keyed on where the measured construct starts: a body or a parameter list outside any #if is
+            // parsed by both configurations and would otherwise be measured, and reported, twice.
+            var bodies = new Dictionary<(string File, int Start), (string, string, int, int)>();
+            var parameters = new Dictionary<(string File, int Start), (string, string, int)>();
             foreach (var file in Directory.EnumerateFiles(packageRoot, "*.cs", SearchOption.AllDirectories))
             {
                 if (file.Contains($"{Path.DirectorySeparatorChar}Generators~{Path.DirectorySeparatorChar}",
@@ -109,19 +147,26 @@ namespace Velvet.SourceGenerators.Tests
                     var tree = CSharpSyntaxTree.ParseText(text, options);
                     foreach (var node in tree.GetRoot().DescendantNodes())
                     {
-                        if (!CodeShapeMembers.MemberKinds.Contains(node.Kind())) continue;
-                        foreach (var (body, _, display) in CodeShapeMembers.BodiesOf(node))
+                        if (CodeShapeMembers.MemberKinds.Contains(node.Kind()))
                         {
-                            // Keyed on where the body starts: a body outside any #if is parsed by both
-                            // configurations and would otherwise be measured, and reported, twice.
-                            rows[(relative, body.SpanStart)] = (relative, display,
-                                NestingDepthAnalyzer.Measure(body), BranchCountAnalyzer.Measure(body));
+                            foreach (var (body, _, display) in CodeShapeMembers.BodiesOf(node))
+                            {
+                                bodies[(relative, body.SpanStart)] = (relative, display,
+                                    NestingDepthAnalyzer.Measure(body), BranchCountAnalyzer.Measure(body));
+                            }
                         }
+
+                        if (!CodeShapeMembers.ParameterizedKinds.Contains(node.Kind())) continue;
+                        var declared = CodeShapeMembers.ParametersOf(node);
+                        if (declared == null) continue;
+
+                        parameters[(relative, declared.Value.Name.SpanStart)] = (relative,
+                            declared.Value.Display, ParameterCountAnalyzer.Measure(declared.Value.Parameters));
                     }
                 }
             }
 
-            return rows.Values.ToList();
+            return (bodies.Values.ToList(), parameters.Values.ToList());
         }
     }
 }

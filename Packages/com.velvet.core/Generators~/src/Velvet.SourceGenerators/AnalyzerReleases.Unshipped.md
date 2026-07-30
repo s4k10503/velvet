@@ -7,7 +7,7 @@
 ;   VEL200-VEL299  Velvet.Routing       (reserved)
 ;   VEL300-VEL399  Velvet.Reactive      (reserved)
 ;   VEL400-VEL499  Velvet.Style         (reserved)
-;   VEL500-VEL599  Velvet.Shape         Mechanical code-shape limits (nesting depth, branch count)
+;   VEL500-VEL599  Velvet.Shape         Mechanical code-shape limits (nesting depth, branch count, parameters)
 ; New IDs follow the convention so IDE category filtering (e.g.
 ; `dotnet_analyzer_diagnostic.category-Velvet.Memoize.severity = none`) doesn't accidentally
 ; silence diagnostics from unrelated subsystems. The bulk key is `dotnet_analyzer_diagnostic`;
@@ -31,3 +31,4 @@ VEL100 | Velvet.Hooks | Warning | Hook lambda captures a local that is not in th
 VEL101 | Velvet.Hooks | Warning | Hook call inside conditional control flow (Rules of Hooks)
 VEL500 | Velvet.Shape | Error | Member body nests control flow more than 4 levels deep
 VEL501 | Velvet.Shape | Error | Member body makes more than 20 branching decisions
+VEL502 | Velvet.Shape | Error | Member demands more than 6 arguments from every caller

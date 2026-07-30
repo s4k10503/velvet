@@ -3,6 +3,13 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
+    internal readonly struct OverlineRule
+    {
+        public Vector2 From { get; init; }
+        public Vector2 To { get; init; }
+        public float LineWidth { get; init; }
+    }
+
     // Pure geometry for the `overline` text-decoration's painted rule (see TextOverlineBinding for the
     // generateVisualContent attach/detach that consumes it). Painter-free so ComputeGeometry is
     // unit-testable headless — a Painter2D cannot be read back — mirroring DashedBorderPainter's own split
@@ -39,11 +46,9 @@ namespace Velvet
         // belongs in a function a headless unit test must be able to call directly. Returns false (nothing to
         // draw) for a degenerate content box; the caller skips painting in that case.
         public static bool TryComputeGeometry(Rect contentRect, float measuredWidth, float textBlockHeight,
-            float fontSize, TextAnchor align, out Vector2 from, out Vector2 to, out float lineWidth)
+            float fontSize, TextAnchor align, out OverlineRule rule)
         {
-            from = default;
-            to = default;
-            lineWidth = 0f;
+            rule = default;
             if (contentRect.width <= 0f || contentRect.height <= 0f
                 || float.IsNaN(contentRect.width) || float.IsNaN(contentRect.height))
             {
@@ -54,9 +59,12 @@ namespace Velvet
             var x0 = ResolveStartX(contentRect, width, align);
             var firstLineTop = ResolveFirstLineTop(contentRect, textBlockHeight, align);
             var y = firstLineTop + (fontSize * TopOffsetFraction);
-            lineWidth = ResolveThickness(fontSize);
-            from = new Vector2(x0, y);
-            to = new Vector2(x0 + width, y);
+            rule = new OverlineRule
+            {
+                From = new Vector2(x0, y),
+                To = new Vector2(x0 + width, y),
+                LineWidth = ResolveThickness(fontSize),
+            };
             return true;
         }
 
@@ -112,18 +120,18 @@ namespace Velvet
         // degenerate width, mirroring DashedBorderPainter.StrokeDashed's own guards. Butt caps (not round)
         // so the painted length matches the computed width exactly — a round cap would bleed half the line
         // width past each end.
-        public static void Stroke(Painter2D painter, Vector2 from, Vector2 to, float lineWidth, Color color)
+        public static void Stroke(Painter2D painter, in OverlineRule rule, Color color)
         {
-            if (color.a <= 0.004f || lineWidth <= 0.01f)
+            if (color.a <= 0.004f || rule.LineWidth <= 0.01f)
             {
                 return;
             }
             painter.strokeColor = color;
-            painter.lineWidth = lineWidth;
+            painter.lineWidth = rule.LineWidth;
             painter.lineCap = LineCap.Butt;
             painter.BeginPath();
-            painter.MoveTo(from);
-            painter.LineTo(to);
+            painter.MoveTo(rule.From);
+            painter.LineTo(rule.To);
             painter.Stroke();
         }
     }

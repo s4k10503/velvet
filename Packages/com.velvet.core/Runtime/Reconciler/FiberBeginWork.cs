@@ -42,12 +42,7 @@ namespace Velvet
             // the current attempt's deps on NextDeps), so a discarded attempt is rolled back by truncating
             // the slot / pending lists to these lengths. A new (mount) slot appended by a discarded attempt
             // is therefore removed and re-added by the settled attempt as a fresh mount.
-            var committedLayoutEffectCount = fiber.LayoutEffects?.Count ?? 0;
-            var committedInsertionEffectCount = fiber.InsertionEffects?.Count ?? 0;
-            var committedEffectCount = fiber.Effects?.Count ?? 0;
-            var committedPendingLayoutCount = fiber.PendingLayoutEffects?.Count ?? 0;
-            var committedPendingInsertionCount = fiber.PendingInsertionEffects?.Count ?? 0;
-            var committedPendingEffectCount = fiber.PendingEffects?.Count ?? 0;
+            var committed = FiberHookCommit.CaptureEffectFootprint(fiber);
 
             // Render-phase setState loop: a setter for this fiber's own state that fires while
             // Render() runs sets HasRenderPhaseUpdate (see RequestRenderFromHook) instead of
@@ -75,9 +70,7 @@ namespace Velvet
                 fiber.HasRenderPhaseUpdate = false;
                 // Discard the effect registrations of this throwaway attempt so the next attempt
                 // compares its deps against the committed render, not against this attempt.
-                FiberHookCommit.DiscardRenderPhaseAttemptEffects(fiber,
-                    committedLayoutEffectCount, committedInsertionEffectCount, committedEffectCount,
-                    committedPendingLayoutCount, committedPendingInsertionCount, committedPendingEffectCount);
+                FiberHookCommit.DiscardRenderPhaseAttemptEffects(fiber, in committed);
                 // The throwaway attempt's tree is never reconciled, so this is its only retirement
                 // point; without it every discarded attempt strands its rented bags in the pool's
                 // rented-out set. The owner mark spares whatever a memo hit shared with committed

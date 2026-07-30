@@ -29,5 +29,14 @@ namespace Velvet.SourceGenerators.Diagnostics
             DiagnosticSeverity.Error,
             isEnabledByDefault: true,
             "The body makes more branching decisions than the limit. Split it along the axis the branches already divide it by — one member per case group, or a table lookup in place of a chain of comparisons; flattening nesting into width does not help, since width is what this counts.");
+
+        public static readonly DiagnosticDescriptor Vel502ParameterCountExceeded = new(
+            "VEL502",
+            "Member parameter count exceeds the limit",
+            "Member '{0}' demands {1} arguments from every caller; the limit is {2}",
+            Category,
+            DiagnosticSeverity.Error,
+            isEnabledByDefault: true,
+            "The declaration demands more arguments than the limit from every call site. Group the ones that travel together into a type the caller builds once, or split the member along the axis its parameters already divide it by; a parameter carrying a default value is not counted, since a call can leave it out.");
     }
 }
