@@ -88,28 +88,9 @@ namespace Velvet.SourceGenerators.CodeShape
         {
             switch (node)
             {
-                case MethodDeclarationSyntax method:
-                    foreach (var entry in MethodBodies(method, method.Identifier, method.Identifier.ValueText))
-                        yield return entry;
-                    break;
-                case ConstructorDeclarationSyntax constructor:
-                    foreach (var entry in MethodBodies(constructor, constructor.Identifier,
-                                 constructor.Identifier.ValueText))
-                        yield return entry;
-                    break;
-                case DestructorDeclarationSyntax destructor:
-                    foreach (var entry in MethodBodies(destructor, destructor.Identifier,
-                                 "~" + destructor.Identifier.ValueText))
-                        yield return entry;
-                    break;
-                case OperatorDeclarationSyntax op:
-                    foreach (var entry in MethodBodies(op, op.OperatorToken,
-                                 "operator " + op.OperatorToken.ValueText))
-                        yield return entry;
-                    break;
-                case ConversionOperatorDeclarationSyntax conversion:
-                    foreach (var entry in MethodBodies(conversion, conversion.ImplicitOrExplicitKeyword,
-                                 "operator " + conversion.Type))
+                case BaseMethodDeclarationSyntax method:
+                    var (name, display) = ReportedName(method);
+                    foreach (var entry in MethodBodies(method, name, display))
                         yield return entry;
                     break;
                 case AccessorDeclarationSyntax accessor:
@@ -175,6 +156,23 @@ namespace Velvet.SourceGenerators.CodeShape
                     return null;
             }
         }
+
+        /// <summary>
+        /// Where a report on a method-like declaration points, and what it calls it — the only thing the five
+        /// forms differ in, since all of them carry their body the same way. The two operator forms have no
+        /// identifier at all, so they are located and named by the token that does tell them apart.
+        /// </summary>
+        private static (SyntaxToken Name, string Display) ReportedName(BaseMethodDeclarationSyntax method) =>
+            method switch
+            {
+                MethodDeclarationSyntax m => (m.Identifier, m.Identifier.ValueText),
+                ConstructorDeclarationSyntax c => (c.Identifier, c.Identifier.ValueText),
+                DestructorDeclarationSyntax d => (d.Identifier, "~" + d.Identifier.ValueText),
+                OperatorDeclarationSyntax o => (o.OperatorToken, "operator " + o.OperatorToken.ValueText),
+                ConversionOperatorDeclarationSyntax c =>
+                    (c.ImplicitOrExplicitKeyword, "operator " + c.Type),
+                _ => (method.GetFirstToken(), "?"),
+            };
 
         private static IEnumerable<(SyntaxNode Body, SyntaxToken Name, string Display)> MethodBodies(
             BaseMethodDeclarationSyntax method, SyntaxToken name, string display)
