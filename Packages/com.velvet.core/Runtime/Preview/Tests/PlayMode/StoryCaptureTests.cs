@@ -76,14 +76,7 @@ namespace Velvet.Tests
             Assume.That(stories, Is.Not.Empty, "Precondition: the project declares at least one [VelvetPreview] story");
             var outputDirectory = ResolveOutputDirectory();
             Directory.CreateDirectory(outputDirectory);
-            // Cleared, or a story that was renamed or deleted leaves its last capture sitting beside the
-            // current ones with nothing to mark it stale — and someone reading the directory to see what
-            // Velvet renders today believes it. Observed: a probe story added and removed again left four
-            // images for three stories, and the run reported three and passed.
-            foreach (var stale in Directory.EnumerateFiles(outputDirectory, "*.png", SearchOption.AllDirectories))
-            {
-                File.Delete(stale);
-            }
+            ClearPreviousCaptures(outputDirectory);
 
             // Act
             var bad = new List<string>();
@@ -117,6 +110,34 @@ namespace Velvet.Tests
         private sealed class CaptureResult
         {
             public string Problem;
+        }
+
+        // A story since renamed or deleted otherwise leaves its last capture beside the current ones with
+        // nothing marking it stale, and someone reading the directory to see what Velvet renders today
+        // believes it — observed as four images for three stories, with the run reporting three and passing.
+        //
+        // Only a directory this harness wrote is cleared, and the marker is how that is known. VELVET_STORY_
+        // CAPTURE_DIR points wherever its author likes, so a recursive delete of every *.png under it would
+        // destroy images that were never ours to remove.
+        private static void ClearPreviousCaptures(string outputDirectory)
+        {
+            var marker = Path.Combine(outputDirectory, ".velvet-story-captures");
+            if (File.Exists(marker))
+            {
+                foreach (var stale in Directory.EnumerateFiles(outputDirectory, "*.png", SearchOption.AllDirectories))
+                {
+                    File.Delete(stale);
+                }
+            }
+            else if (Directory.EnumerateFileSystemEntries(outputDirectory).GetEnumerator().MoveNext())
+            {
+                Debug.LogWarning(
+                    $"[StoryCapture] '{outputDirectory}' holds files this harness did not write, so captures "
+                    + "from a previous run are not cleared and a stale one may sit beside the current set.");
+                return;
+            }
+
+            File.WriteAllText(marker, "Captures under here are rewritten by StoryCaptureTests on every run.\n");
         }
 
         private static IEnumerator Capture(VelvetPreviewStory story, string outputDirectory, CaptureResult result)
