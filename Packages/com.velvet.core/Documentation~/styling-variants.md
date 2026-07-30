@@ -243,11 +243,28 @@ outside that box:
 
 | Utility | On an element that also carries `overflow-hidden` |
 |---|---|
-| `shadow-*` / `drop-shadow-*` | the whole shadow is gone — the halo lies entirely outside the box |
+| `shadow-*` / `drop-shadow-*` | the whole shadow is gone. The paint is not removed — it is cut at the padding box like every other — but the only part of it you see is the halo outside the box, the interior being hidden under the element's own fill by design |
 | `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders |
 | `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
 | `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
 | `overline` | unaffected — the rule sits inside the content box |
+
+**`shadow-*` and `skew-*` on a bordered element cost more than the bleed.** Either one takes ownership of
+the element's face: it suppresses the native background and border and repaints both in its own generated
+content. The padding-box clip then takes that repaint too, so a bordered card carrying `shadow-*` or
+`skew-*` plus `overflow-hidden` loses **its border and a border-wide ring of its own background**, and
+whatever is behind the card shows through that ring. The same card without the shadow keeps both, because
+a native border is not painted through generated content:
+
+```csharp
+// Border and a border-wide ring of white are missing; the parent shows through.
+V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-black rounded-lg");
+
+// Same card, border intact.
+V.Div(className: "overflow-hidden bg-white border-2 border-black rounded-lg");
+```
+
+The nesting below fixes this case too — the border belongs on whichever element is not clipped.
 
 Put the clip on a child instead of on the painted element:
 
@@ -265,8 +282,9 @@ V.Div(className: "shadow-lg rounded-2xl", children: new VNode[]
 The ring's sibling hosting is not simply extended to the rest because a paint drawn in the element's own
 content follows that element's transform (`hover:scale-105 shadow-lg` keeps its shadow aligned) and a
 sibling does not, and because a paint hosted outside the element stops receiving the element's opacity
-and has to be driven per frame the way the band is. A band was worth both costs: it lies entirely outside
-the box, so a clip takes all of it.
+and has to be driven per frame the way the band is. A band was worth both costs because an outset one is
+wholly outside the padding box and a clip takes all of it; `ring-inset` sits over the box and would have
+survived, but one hosting has to serve both.
 
 **Class channels that are not variants drive none of this.** `whileHoverClass`, `whileTapClass` and
 `whileFocusClass`, the transient enter / exit classes an `AnimatePresence` play applies for the
