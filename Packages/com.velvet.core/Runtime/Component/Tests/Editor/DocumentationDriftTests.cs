@@ -29,10 +29,11 @@ namespace Velvet.Tests
         // meta-syntactic placeholders standing in for something the reader supplies; API belonging to the
         // upstream libraries Velvet mirrors, which exists there and deliberately not here; names from
         // Unity or the BCL — types, enum values, event names, asset labels — that the docs mention but no
-        // source file in this repo uses as code; names an external toolchain owns, which the contributor
-        // README states how to invoke — DOTNET_ROOT is the variable the .NET apphost reads, StrykerOutput
-        // the directory the mutation runner writes; and the analyzer identifiers, which C# holds only as
-        // string literals and the corpus therefore strips.
+        // source file in this repo uses as code; names an external toolchain owns — DOTNET_ROOT is the
+        // variable the .NET apphost reads, StrykerOutput the directory the mutation runner writes, and
+        // MSB4006 the error MSBuild raises on a circular project reference, which the contributor README
+        // quotes because it is what rules out the shape of wiring a reader would reach for first; and the
+        // analyzer identifiers, which C# holds only as string literals and the corpus therefore strips.
         //
         // That last group is checked, just not here: DocumentationDiagnosticTableTests over in the
         // Generators~ suite reads the same README and compares its VEL and USS spellings against the real
@@ -47,7 +48,7 @@ namespace Velvet.Tests
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
-            "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput",
+            "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
             "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502", "Shape",
         };
 

@@ -112,7 +112,7 @@ namespace Velvet.SourceGenerators
 
         /// <summary>
         /// The requirements on how the method and its enclosing types are written: an accessibility modifier,
-        /// no body of its own, and <c>partial</c> the whole way out. False when any of them reported.
+        /// no body of its own, and <c>partial</c> the whole way out.
         /// </summary>
         private static bool ValidateDeclaration(
             MethodDeclarationSyntax decl,
@@ -159,8 +159,8 @@ namespace Velvet.SourceGenerators
         }
 
         /// <summary>
-        /// The requirements on the signature, each of which leaves the V.Memoized wrapper unwritable rather
-        /// than merely unusual. False when any of them reported.
+        /// Each of these leaves the V.Memoized wrapper unwritable rather than merely unusual — the seam
+        /// against the declaration half, which reports only what a modifier can fix.
         /// </summary>
         private static bool ValidateSignature(
             MethodDeclarationSyntax decl,
@@ -224,9 +224,8 @@ namespace Velvet.SourceGenerators
         }
 
         /// <summary>
-        /// Warns when the deps-less shape cannot be shown to be safe. Generation proceeds either way: the
-        /// arity-0 V.Memoized cache returns the same VNode forever, so an impure factory leaks stale state
-        /// without the compiler ever objecting.
+        /// Generation proceeds either way. The arity-0 V.Memoized cache returns the same VNode forever, so an
+        /// impure factory leaks stale state with nothing else in the compile objecting.
         /// </summary>
         private static void ReportUnprovablePurity(
             GeneratorAttributeSyntaxContext ctx,

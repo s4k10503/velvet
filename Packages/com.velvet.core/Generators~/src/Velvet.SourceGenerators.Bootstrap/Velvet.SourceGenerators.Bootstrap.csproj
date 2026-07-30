@@ -32,6 +32,10 @@
   <ItemGroup>
     <Compile Include="..\Velvet.SourceGenerators\**\*.cs"
              Exclude="..\Velvet.SourceGenerators\bin\**\*.cs;..\Velvet.SourceGenerators\obj\**\*.cs" />
+    <!-- The release-tracking files travel with the sources: RS2008 is raised per declared rule against the
+         compile that declares it, so omitting them here reports all fourteen a second time. -->
+    <AdditionalFiles Include="..\Velvet.SourceGenerators\AnalyzerReleases.Shipped.md" />
+    <AdditionalFiles Include="..\Velvet.SourceGenerators\AnalyzerReleases.Unshipped.md" />
   </ItemGroup>
 
 </Project>

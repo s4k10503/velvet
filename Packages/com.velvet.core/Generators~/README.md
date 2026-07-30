@@ -46,7 +46,7 @@ dotnet-stryker    # reads stryker-config.json
 
 The tool is pinned for the same reason the SDK and the Roslyn host are: how many mutants it creates, and which, is its version's answer, and the counts below are 4.16.0's. It ships a `net8.0` asset with major roll-forward, so it runs on whatever runtime is installed and does not constrain `global.json`. Without `DOTNET_ROOT` a Homebrew install fails to launch it — the apphost probes only `/usr/local/share/dotnet`.
 
-Stryker mutates the three source projects one behaviour change at a time, rebuilds, and reruns **only the tests its coverage pass attributes to that mutant** — not the suite. The report lands in `StrykerOutput/<timestamp>/reports/`. It answers what line coverage does not: whether the tests that run a line would notice that line being wrong.
+Stryker mutates the source projects one behaviour change at a time, rebuilds, and reruns **only the tests its coverage pass attributes to that mutant** — not the suite. The report lands in `StrykerOutput/<timestamp>/reports/`. It answers what line coverage does not: whether the tests that run a line would notice that line being wrong.
 
 The score is `(killed + timeout) / (killed + timeout + survived + no-coverage)`, counting a mutant no test reaches as not rejected. Of the 2586 mutants created here, 377 fall to Stryker's own "block already covered" filter and 314 do not compile; neither is scored, so the denominator is 1895. That split is deterministic. How the 1895 divide between killed and survived is not — two runs over an unchanged tree moved 29 of them — so no percentage is quoted here: one would be stale by the next commit and nothing checks it.
 
@@ -81,9 +81,11 @@ Generators~/
 │   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The code-shape limits")
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
 │   └── Shared/                               (SourceBuilder, VelvetWellKnownNames, …)
+├── src/Velvet.SourceGenerators.Bootstrap/    (second compile of the sibling's sources — see "How this solution opts in")
+│   └── Velvet.SourceGenerators.Bootstrap.csproj
 ├── src/Velvet.SourceGenerators.CodeFixes/    (ships to ../Runtime/Plugins/Analyzers/)
 ├── src/Velvet.StyleTable/                    (console tool — writes ../Runtime/Styling/StyleUtilityProperties.g.cs)
-│   ├── Velvet.StyleTable.csproj              (force-added — the root .gitignore ignores *.csproj)
+│   ├── Velvet.StyleTable.csproj              (CLI entry point below)
 │   ├── Program.cs                            (CLI: --styles <dir> --output <file>)
 │   ├── UssStyleSheetParser.cs                (rules and declarations, straight off the text)
 │   ├── UssCascadeOrder.cs                    (the @import order the importer flattens the sheets to)
@@ -228,6 +230,36 @@ the two populations in either direction: `Unity.Velvet.CodeGen` belongs to the p
 for.
 
 A consumer who wants the limits on their own assembly opts in with the same line.
+
+### How this solution opts in
+
+This solution is where the three analyzers are written, and for a long time it was the one place they never
+ran: it references nothing from the package, so the `RoslynAnalyzer` label never reaches it. A project here
+opts in with **two** MSBuild items, and needs both — the marker alone leaves the analyzers unloaded, and the
+reference alone leaves the gate closed:
+
+```xml
+<AssemblyMetadata Include="Velvet.CodeShape" Value="enforce" />
+<ProjectReference Include="..\Velvet.SourceGenerators.Bootstrap\Velvet.SourceGenerators.Bootstrap.csproj"
+                  OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+```
+
+`GeneratorProjectOptInDriftTests` fails when a project under `Generators~` carries neither, for the reason
+its Unity counterpart exists: a project that escapes looks exactly like one that complies. It reads both out
+of the project file, because only the marker leaves a trace in the built assembly.
+
+The analyzers arrive from a **second compile** of the same sources rather than from the project that declares
+them, because a project cannot reference itself as an analyzer — MSBuild rejects the cycle with `MSB4006`
+during restore, before any compile starts. The alternative, pointing at the already-committed
+`../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`, was rejected: nothing verifies that artifact was
+rebuilt from the current sources, so an edit to a rule would go on being enforced by the previous rule until
+someone remembered to redeploy — the failure mode this wiring exists to remove.
+
+The bootstrap therefore compiles the sibling's `**/*.cs` through a glob and is not itself opted in; its
+content is measured by the sibling's own compile. A glob that stopped matching would produce an analyzer
+assembly holding no analyzers, and every project in the solution would then build clean with nothing enforced
+and nothing failing, which is why one case compares the two assemblies' declared type names rather than
+trusting the build to notice.
 
 ## Using `[MemoizeMethod]`
 
