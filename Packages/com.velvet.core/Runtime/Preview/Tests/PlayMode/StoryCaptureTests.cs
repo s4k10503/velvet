@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -46,11 +45,11 @@ namespace Velvet.Tests
         // supplies — --color-surface is rgba(255,255,255,0.12), --color-border rgba(255,255,255,0.36) —
         // while --color-text is an opaque near-white, and no background token is declared. A story built
         // from those (the example set is) captured without a backdrop composites near-white onto nothing
-        // and reads as blank, having passed every check that asks only whether pixels differ. The
-        // requirement here is just that the backdrop be opaque and dark enough for that layer to separate;
-        // the value matches what the preview window puts behind the same stories, so a capture and the live
-        // view stay comparable. Utilities drawn from _palette.uss's Tailwind scale are opaque and would not
-        // have needed this.
+        // and reads as blank, having passed every check that asks only whether pixels differ. The whole
+        // requirement is that it be opaque and dark enough for that layer to separate — deliberately not
+        // pinned to the preview window's own backdrop, which is private to the editor assembly, so writing
+        // its value here would be an unpinned mirror that drifts the first time the window is restyled.
+        // Utilities drawn from _palette.uss's Tailwind scale are opaque and would not have needed this.
         private static readonly Color BackdropBehindTheStory = new(0.09f, 0.10f, 0.13f, 1f);
 
         private TargetFrameRateScope _frameRateScope;
@@ -77,34 +76,39 @@ namespace Velvet.Tests
             Assume.That(stories, Is.Not.Empty, "Precondition: the project declares at least one [VelvetPreview] story");
             var outputDirectory = ResolveOutputDirectory();
             Directory.CreateDirectory(outputDirectory);
+            // Cleared, or a story that was renamed or deleted leaves its last capture sitting beside the
+            // current ones with nothing to mark it stale — and someone reading the directory to see what
+            // Velvet renders today believes it. Observed: a probe story added and removed again left four
+            // images for three stories, and the run reported three and passed.
+            foreach (var stale in Directory.EnumerateFiles(outputDirectory, "*.png", SearchOption.AllDirectories))
+            {
+                File.Delete(stale);
+            }
 
             // Act
             var bad = new List<string>();
             var captured = 0;
-            foreach (var assemblyGroup in GroupByAssembly(stories))
+            foreach (var story in stories)
             {
-                // The story's [VelvetPreviewSetup] environment registers fonts, seeds stores and wires
-                // resolvers; a story captured without it is not the story the preview window shows.
-                using (VelvetPreviewRegistry.RunSetupFor(assemblyGroup.Key))
-                {
-                    foreach (var story in assemblyGroup.Value)
-                    {
-                        var result = new CaptureResult();
-                        yield return Capture(story, outputDirectory, result);
-                        captured++;
-                        if (result.Problem != null) bad.Add($"{story.Id}: {result.Problem}");
-                    }
-                }
+                // The [VelvetPreviewSetup] environment is not run here: VelvetPreviewHost.Mount runs it for
+                // the story's own assembly and tears it down on Dispose. Running it around the loop as well
+                // would stand in for that call if it ever stopped happening, which is the behaviour a capture
+                // is supposed to be reporting on.
+                var result = new CaptureResult();
+                yield return Capture(story, outputDirectory, result);
+                captured++;
+                if (result.Problem != null) bad.Add($"{story.Id}: {result.Problem}");
             }
 
             Debug.Log($"[StoryCapture] wrote {captured} PNG(s) to {outputDirectory}");
 
             // Assert
             // Three ways a capture lies, folded into one comparison because each of them writes a file and
-            // reports success: the story never mounted, it rendered onto a panel that is not the size it was
-            // authored at (so every `h-full` resolved against something else), and the frame came out
-            // uniform. The count rides in on the same tuple, since a story dropped before capture would
-            // otherwise leave the list empty and pass.
+            // reports success: the story never mounted, it mounted with the bundled stylesheet inert, and
+            // the frame came out uniform. The count rides in on the same tuple, since a story dropped before
+            // capture would otherwise leave the list empty and pass. The uniform check is the weakest of the
+            // three by a wide margin — one differing pixel satisfies it — which is why the stylesheet probe
+            // exists beside it rather than being folded into it.
             Assert.That(
                 (captured, string.Join(" | ", bad)),
                 Is.EqualTo((stories.Count, string.Empty)));
@@ -120,18 +124,20 @@ namespace Velvet.Tests
             var width = story.Width > 0 ? story.Width : FallbackWidth;
             var height = story.Height > 0 ? story.Height : FallbackHeight;
 
-            using var host = new RenderTexturePanelHost(SanitizeFileName(story.Id), width, height);
+            using var host = new RenderTexturePanelHost(story.Id, width, height);
             host.Root.style.unityFontDefinition =
                 new StyleFontDefinition(FontDefinition.FromFont(s_builtinFont));
             host.Root.style.backgroundColor = BackdropBehindTheStory;
             // The panel root stretches to the texture's width on its own but its height hugs its content —
             // measured at 95 of 200, 144 of 320 and 1230 of 1400 before this was set. A story authored with
             // `h-full` then resolves against whatever its own content happened to be tall, which is
-            // circular, and everything below that line captures as untouched texture. The preview window
-            // sizes its canvas to the story's declared footprint; this is the same statement.
+            // circular, and everything below that line captures as untouched texture. Set rather than
+            // asserted afterwards: an assertion comparing the root's resolved layout against the same two
+            // locals written here cannot fail, and reads as a guard while being one.
             host.Root.style.width = width;
             host.Root.style.height = height;
             host.Root.LoadBundledStyleUtilitiesForTest();
+            var probe = AttachStyleSheetProbe(host.Root);
 
             using var previewHost = new VelvetPreviewHost(host.Root);
             previewHost.Mount(story);
@@ -140,19 +146,36 @@ namespace Velvet.Tests
             // package's own playback specs take for their first draw.
             yield return WaitRealtime(0.5);
 
-            var layout = host.Root.layout;
-            Debug.Log($"[StoryCapture] {story.Id}: texture {width}x{height}, root layout {layout}");
+            Debug.Log($"[StoryCapture] {story.Id}: texture {width}x{height}, root layout {host.Root.layout}");
 
             var pixels = RenderTexturePixelReader.ReadPixels(
                 host.TargetTexture, new RectInt(0, 0, width, height));
-            WritePng(pixels, width, height, Path.Combine(outputDirectory, SanitizeFileName(story.Id) + ".png"));
+            var path = CapturePath(outputDirectory, story);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            WritePng(pixels, width, height, path);
 
             result.Problem =
                 previewHost.MountError != null ? $"did not mount ({previewHost.MountError.GetType().Name})"
-                : !Mathf.Approximately(layout.width, width) || !Mathf.Approximately(layout.height, height)
-                    ? $"rendered at {layout.width}x{layout.height}, authored at {width}x{height}"
+                : probe.resolvedStyle.backgroundColor == default ? "mounted with the bundled stylesheet inert"
                 : IsUniform(pixels) ? "rendered a uniform frame"
                 : null;
+        }
+
+        // Whether the bundled sheet's plain classes actually resolve, asked of a class rather than of the
+        // styleSheets list, because a sheet that is attached and a sheet whose rules reach the element are
+        // different questions and only the second one matters. This is the trap the harness itself fell into:
+        // arbitrary-value utilities resolve to inline style and keep working with no sheet at all, so a
+        // capture built from them looks correct while every plain class silently does nothing — and the
+        // uniform-frame check below does not notice, since the backdrop and the font alone leave a frame that
+        // differs from itself.
+        //
+        // Absolute and zero-sized so it neither takes part in the story's layout nor paints into the frame.
+        private static VisualElement AttachStyleSheetProbe(VisualElement root)
+        {
+            var probe = new VisualElement { style = { position = Position.Absolute, width = 0, height = 0 } };
+            probe.AddToClassList("bg-slate-700");
+            root.Add(probe);
+            return probe;
         }
 
         // Compared against the frame's own first pixel rather than against a known clear colour: the clear
@@ -188,25 +211,6 @@ namespace Velvet.Tests
             }
         }
 
-        private static Dictionary<Assembly, List<VelvetPreviewStory>> GroupByAssembly(
-            List<VelvetPreviewStory> stories)
-        {
-            var grouped = new Dictionary<Assembly, List<VelvetPreviewStory>>();
-            foreach (var story in stories)
-            {
-                if (story.Assembly == null) continue;
-                if (!grouped.TryGetValue(story.Assembly, out var list))
-                {
-                    list = new List<VelvetPreviewStory>();
-                    grouped[story.Assembly] = list;
-                }
-
-                list.Add(story);
-            }
-
-            return grouped;
-        }
-
         private static string ResolveOutputDirectory()
         {
             var configured = System.Environment.GetEnvironmentVariable(OutputDirectoryVariable);
@@ -216,14 +220,27 @@ namespace Velvet.Tests
             return Path.Combine(Directory.GetParent(Application.dataPath)!.FullName, DefaultOutputDirectory);
         }
 
-        private static string SanitizeFileName(string id)
+        // The story's group becomes a directory and its name the file, mirroring how the preview window
+        // lists them, so the output stays readable to whoever opens it. Each segment is escaped on its own
+        // rather than the id as a whole: an id is Group + "/" + Name and the registry rejects only duplicate
+        // ids, so flattening it with a character that either half may also contain collapses two stories
+        // onto one path — "Examples/Tall List" and "Examples/Tall_List" both became Examples_Tall_List.png,
+        // one overwriting the other while the count still agreed. Escaping '%' first keeps it reversible.
+        private static string CapturePath(string outputDirectory, VelvetPreviewStory story) =>
+            Path.Combine(outputDirectory, EscapeSegment(story.Group), EscapeSegment(story.Name) + ".png");
+
+        private static string EscapeSegment(string segment)
         {
-            foreach (var invalid in Path.GetInvalidFileNameChars())
+            var invalid = new HashSet<char>(Path.GetInvalidFileNameChars()) { '%' };
+            var escaped = new System.Text.StringBuilder(segment.Length);
+            foreach (var c in segment)
             {
-                id = id.Replace(invalid, '_');
+                if (invalid.Contains(c)) escaped.Append('%').Append(((int)c).ToString("X2"));
+                else escaped.Append(c);
             }
 
-            return id.Replace(' ', '_');
+            return escaped.ToString();
         }
+
     }
 }

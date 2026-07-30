@@ -26,9 +26,16 @@ be inspected rather than only measured:
 ```
 
 The images land in `Logs/story-captures/` (git-ignored), one per story, or in the directory named by
-`VELVET_STORY_CAPTURE_DIR`. The run fails if any story renders a uniform frame, because an unstyled
-or empty capture is otherwise indistinguishable from a successful one. Interactively the same
-stories are live in **Window ▸ Velvet ▸ Preview**.
+`VELVET_STORY_CAPTURE_DIR`; the directory is cleared each run, so a renamed or deleted story leaves
+nothing stale behind. The run fails if a story does not mount, if it mounts with the bundled
+stylesheet inert, or if it renders a uniform frame.
+
+**Look at the images.** Those three checks are the floor, not the ceiling: the uniform-frame one in
+particular is satisfied by a single differing pixel, so a story can render almost nothing and still
+pass. Both defects found in this harness so far — a missing backdrop that made every semantic-token
+story capture near-blank, and a panel whose height was its content's rather than the story's — were
+green under every check and visible immediately in the PNG. Interactively the same stories are live
+in **Window ▸ Velvet ▸ Preview**.
 
 ### Source generators
 
