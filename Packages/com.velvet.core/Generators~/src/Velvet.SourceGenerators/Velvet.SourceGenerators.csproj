@@ -31,6 +31,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The code-shape rules this project implements, applied to it. `Velvet.SourceGenerators.Bootstrap`
+         owns why the analyzers arrive from a second compile rather than from this one. -->
+    <AssemblyMetadata Include="Velvet.CodeShape" Value="enforce" />
+    <ProjectReference Include="..\Velvet.SourceGenerators.Bootstrap\Velvet.SourceGenerators.Bootstrap.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AdditionalFiles Include="AnalyzerReleases.Shipped.md" />
     <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>

@@ -133,6 +133,24 @@ namespace Velvet.SourceGenerators.PurityAnalysis
             base.VisitParameterReference(operation);
         }
 
+        private static readonly ImmutableHashSet<SpecialType> ImmutableSpecialTypes = ImmutableHashSet.Create(
+            SpecialType.System_Boolean,
+            SpecialType.System_Byte,
+            SpecialType.System_SByte,
+            SpecialType.System_Int16,
+            SpecialType.System_UInt16,
+            SpecialType.System_Int32,
+            SpecialType.System_UInt32,
+            SpecialType.System_Int64,
+            SpecialType.System_UInt64,
+            SpecialType.System_IntPtr,
+            SpecialType.System_UIntPtr,
+            SpecialType.System_Single,
+            SpecialType.System_Double,
+            SpecialType.System_Decimal,
+            SpecialType.System_Char,
+            SpecialType.System_String);
+
         /// <summary>
         /// True for captures that are safe to read but cannot mutate the captured slot from inside the closure.
         /// Primitive value types, <see cref="string"/>, decimal, enums, <c>readonly</c> structs, and
@@ -151,25 +169,9 @@ namespace Velvet.SourceGenerators.PurityAnalysis
                 return false;
             }
 
-            switch (type.SpecialType)
+            if (ImmutableSpecialTypes.Contains(type.SpecialType))
             {
-                case SpecialType.System_Boolean:
-                case SpecialType.System_Byte:
-                case SpecialType.System_SByte:
-                case SpecialType.System_Int16:
-                case SpecialType.System_UInt16:
-                case SpecialType.System_Int32:
-                case SpecialType.System_UInt32:
-                case SpecialType.System_Int64:
-                case SpecialType.System_UInt64:
-                case SpecialType.System_IntPtr:
-                case SpecialType.System_UIntPtr:
-                case SpecialType.System_Single:
-                case SpecialType.System_Double:
-                case SpecialType.System_Decimal:
-                case SpecialType.System_Char:
-                case SpecialType.System_String:
-                    return true;
+                return true;
             }
 
             if (type.TypeKind == TypeKind.Enum)

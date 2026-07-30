@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A second compile of the analyzer sources, under a second assembly name, so that every project in this
+       solution - including the one that declares the analyzers - can load them and be held to the code-shape
+       rules they implement. A project cannot reference itself as an analyzer: MSBuild rejects the cycle with
+       MSB4006 in `_GenerateRestoreProjectPathWalk` before any compile starts.
+
+       Referencing the committed DLL under `Runtime/Plugins/Generators` instead was rejected: nothing verifies
+       that it was rebuilt from the current sources, so an edit to a rule would be enforced by the previous
+       rule until someone remembered to redeploy - the same "remember to do it" failure the wiring exists to
+       remove. -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Velvet.SourceGenerators</RootNamespace>
+    <AssemblyName>Velvet.SourceGenerators.Bootstrap</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Pinned to match the sibling: the two compile the same sources, so a version that drops an API the
+         sources use fails this build rather than drifting silently. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.3.0" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Velvet.SourceGenerators\**\*.cs"
+             Exclude="..\Velvet.SourceGenerators\bin\**\*.cs;..\Velvet.SourceGenerators\obj\**\*.cs" />
+  </ItemGroup>
+
+</Project>
