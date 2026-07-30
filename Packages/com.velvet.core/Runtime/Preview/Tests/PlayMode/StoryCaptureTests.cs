@@ -79,7 +79,7 @@ namespace Velvet.Tests
             Directory.CreateDirectory(outputDirectory);
 
             // Act
-            var empty = new List<string>();
+            var bad = new List<string>();
             var captured = 0;
             foreach (var assemblyGroup in GroupByAssembly(stories))
             {
@@ -92,7 +92,7 @@ namespace Velvet.Tests
                         var result = new CaptureResult();
                         yield return Capture(story, outputDirectory, result);
                         captured++;
-                        if (result.IsEmptyFrame) empty.Add(story.Id);
+                        if (result.Problem != null) bad.Add($"{story.Id}: {result.Problem}");
                     }
                 }
             }
@@ -100,17 +100,19 @@ namespace Velvet.Tests
             Debug.Log($"[StoryCapture] wrote {captured} PNG(s) to {outputDirectory}");
 
             // Assert
-            // A uniform frame is the failure this exists to catch, and it is indistinguishable from success
-            // by any measure that only asks whether a file was written. The count rides in on the same
-            // comparison because a story dropped before capture would otherwise leave an empty list.
+            // Three ways a capture lies, folded into one comparison because each of them writes a file and
+            // reports success: the story never mounted, it rendered onto a panel that is not the size it was
+            // authored at (so every `h-full` resolved against something else), and the frame came out
+            // uniform. The count rides in on the same tuple, since a story dropped before capture would
+            // otherwise leave the list empty and pass.
             Assert.That(
-                (captured, string.Join(", ", empty)),
+                (captured, string.Join(" | ", bad)),
                 Is.EqualTo((stories.Count, string.Empty)));
         }
 
         private sealed class CaptureResult
         {
-            public bool IsEmptyFrame;
+            public string Problem;
         }
 
         private static IEnumerator Capture(VelvetPreviewStory story, string outputDirectory, CaptureResult result)
@@ -122,20 +124,35 @@ namespace Velvet.Tests
             host.Root.style.unityFontDefinition =
                 new StyleFontDefinition(FontDefinition.FromFont(s_builtinFont));
             host.Root.style.backgroundColor = BackdropBehindTheStory;
+            // The panel root stretches to the texture's width on its own but its height hugs its content —
+            // measured at 95 of 200, 144 of 320 and 1230 of 1400 before this was set. A story authored with
+            // `h-full` then resolves against whatever its own content happened to be tall, which is
+            // circular, and everything below that line captures as untouched texture. The preview window
+            // sizes its canvas to the story's declared footprint; this is the same statement.
+            host.Root.style.width = width;
+            host.Root.style.height = height;
             host.Root.LoadBundledStyleUtilitiesForTest();
 
             using var previewHost = new VelvetPreviewHost(host.Root);
             previewHost.Mount(story);
-            Assert.That(previewHost.MountError, Is.Null, $"Story '{story.Id}' failed to mount");
 
             // Long enough to absorb a first-run text-shaping and glyph-atlas warm-up, the same posture the
             // package's own playback specs take for their first draw.
             yield return WaitRealtime(0.5);
 
+            var layout = host.Root.layout;
+            Debug.Log($"[StoryCapture] {story.Id}: texture {width}x{height}, root layout {layout}");
+
             var pixels = RenderTexturePixelReader.ReadPixels(
                 host.TargetTexture, new RectInt(0, 0, width, height));
-            result.IsEmptyFrame = IsUniform(pixels);
             WritePng(pixels, width, height, Path.Combine(outputDirectory, SanitizeFileName(story.Id) + ".png"));
+
+            result.Problem =
+                previewHost.MountError != null ? $"did not mount ({previewHost.MountError.GetType().Name})"
+                : !Mathf.Approximately(layout.width, width) || !Mathf.Approximately(layout.height, height)
+                    ? $"rendered at {layout.width}x{layout.height}, authored at {width}x{height}"
+                : IsUniform(pixels) ? "rendered a uniform frame"
+                : null;
         }
 
         // Compared against the frame's own first pixel rather than against a known clear colour: the clear
