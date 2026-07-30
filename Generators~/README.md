@@ -76,7 +76,7 @@ Generators~/
 │   ├── MemoizeMethodGenerator.cs             ([MemoizeMethod] → V.Memoized wrapper expansion)
 │   ├── AutoDeps/                             (VEL100 exhaustive-deps analyzer + its hook descriptor table)
 │   ├── RulesOfHooks/                         (VEL101 rules-of-hooks analyzer)
-│   ├── CodeShape/                            (VEL500 nesting-depth + VEL501 branch-count analyzers)
+│   ├── CodeShape/                            (VEL500 depth + VEL501 branch-count + VEL502 parameter-count)
 │   ├── Diagnostics/MemoizeDiagnostics.cs     (diagnostic descriptors — see Documentation~/memoization.md)
 │   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The code-shape limits")
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
@@ -124,9 +124,9 @@ Four partials declare no rules and are expected to: `StyleUtilities.uss` is noth
 
 ## The code-shape limits
 
-Two mechanical limits ship as analyzers under the `Velvet.Shape` category. Every diagnostic this repository
+Three mechanical limits ship as analyzers under the `Velvet.Shape` category. Every diagnostic this repository
 defines is listed in [AnalyzerReleases.Unshipped.md](src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md);
-what follows is only the two definitions, which no table can carry, and the gate they share.
+what follows is only the three definitions, which no table can carry, and the gate they share.
 
 ### The nesting-depth limit
 
@@ -178,6 +178,33 @@ parser is made of. A rule that let them through would be satisfied by turning ne
 measure nothing.
 
 Extraction to a sibling member is again the remedy: each member is counted from its own body.
+
+### The parameter-count limit
+
+`VEL502` is an error on any declaration demanding more than **6** arguments from every caller.
+
+Counted: a parameter with no default value, including the `this` of an extension method — the receiver is
+written at every call site in a fixed position, exactly as a first argument is.
+
+Not counted: a parameter carrying a default value, and a trailing `params` array. Each can be left out of the
+call entirely, so neither adds to what a caller has to line up or a reader has to decode. This is what exempts
+the `V.*` factory surface without naming it: `V.Motion` declares 21 parameters, all optional and named, and
+stands in for JSX props — while a helper sitting in the same file that demands eight positional arguments is
+still reported. Naming the factories directly was the alternative — by file, by declaring type, or by return
+type — and each of those exempts a helper that happens to sit among them, which is the population the rule
+most needs to reach.
+
+Declarations measured: methods, constructors, indexers, delegates, local functions, and primary constructors
+on a class, struct or record. A local function does not reset, for the reason the sibling rules do not. The
+operator forms are absent because the language caps them at two parameters.
+
+The remedy is to group the parameters that travel together into a type the caller builds once — a `readonly
+struct` with `init` properties, passed by `in`, costs no allocation — or to split the member along the axis
+its parameters already divide it by.
+
+One shipped surface is narrowed by this limit: `[MemoizeMethod]` supports 1-8 parameters (VEL002), so its top
+two arities are unreachable inside an assembly that opts in. `V.Memoized<T1..T8>` is generated code and is
+unaffected.
 
 ### Why the rules are opt-in per assembly
 

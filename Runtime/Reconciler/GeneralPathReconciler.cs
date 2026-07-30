@@ -78,6 +78,18 @@ namespace Velvet
             }
         }
 
+        // The three tables whose contents are meaningful only within one Reconcile call: they are rented
+        // together at its start and returned together at its end, and the orphan diff (old \ new) is valid
+        // only over a matched pair. Scoping them as one value is what keeps a sibling fiber's re-render —
+        // which reconciles under a different parent and slot range — from falsely orphaning fibers it never
+        // walked. Taken by `in`, since a reconcile pass must not allocate to hand them over.
+        internal readonly struct InlinePairing
+        {
+            internal List<ComponentFiber> OldFibers { get; init; }
+            internal HashSet<ComponentFiber> NewFibers { get; init; }
+            internal ProviderPairTable OldProviders { get; init; }
+        }
+
         // Fully disposes orphan fibers (old-side, absent on the new side) and unregisters
         // them. Effect cleanups already ran via RunOrphanEffectCleanups.
         internal void SweepOrphans(
@@ -102,10 +114,11 @@ namespace Velvet
             VNode?[] oldNodes,
             VNode?[] newChildren,
             int slotStart,
-            List<ComponentFiber> oldFibers,
-            HashSet<ComponentFiber> newFibers,
-            ProviderPairTable oldProviders)
+            in InlinePairing pairing)
         {
+            var oldFibers = pairing.OldFibers;
+            var newFibers = pairing.NewFibers;
+            var oldProviders = pairing.OldProviders;
             var pool = _ctx.BufferPool;
             var commit = new GeneralCommitState
             {
@@ -367,8 +380,14 @@ namespace Velvet
 
             // LIS reorder over the post-removal DOM positions. linearEnd == 0 here (the live-context
             // walk performs no linear prefix pass), so the region begins at slotStart.
-            _placement.ComputeAnchorsAndReorder(parent, newElements, slotStart, slotStart,
-                oldNodes.Length, newElements.Count);
+            var range = new ChildElementPlacement.PlacementRange
+            {
+                SlotStart = slotStart,
+                ScanStart = slotStart,
+                OldLen = oldNodes.Length,
+                LogicalNewLen = newElements.Count,
+            };
+            _placement.ComputeAnchorsAndReorder(parent, newElements, in range);
         }
 
         #endregion
@@ -1068,15 +1087,40 @@ namespace Velvet
         // emitting that child so the diff removes its leaves (no out-of-band DOM mutation that would shift
         // sibling slots).
 
-        // Shared across one pass's ghost entries so a PlayExit completion — which can fire either
-        // synchronously (see the Settled comment in ExpandAnimatePresenceInline) or long after this pass's
-        // own stack frames are gone — always observes the same mutable cell. Must be a reference type: C#
-        // forbids a lambda from capturing a ref parameter, so this cannot be threaded through
-        // ExpandPresenceGhostEntry as `ref bool` / `ref List<Action>`.
-        private sealed class ExitCompletionGate
+        // Everything one expansion pass writes as it walks its entries, in one place so a PlayExit
+        // completion — which can fire either synchronously (see the Settled comment in
+        // ExpandAnimatePresenceInline) or long after this pass's own stack frames are gone — always observes
+        // the same mutable cell. Must be a reference type: C# forbids a lambda from capturing a ref
+        // parameter, so none of this can be threaded through the entry walkers as `ref`.
+        private sealed class PresencePassTally
         {
             public bool Settled;
             public List<Action>? Deferred;
+            // Stagger ordinals: exits count only the ghosts that actually animate, enters count every child
+            // emitted, so the two advance independently.
+            public int ExitIndex;
+            public int VisualIndex;
+            public int AnimatedExitCount;
+            public bool RemovedInstantThisRender;
+        }
+
+        // One AnimatePresence boundary's expansion, as every per-entry step of it sees it: where the walk
+        // emits, which boundary state it reconciles against, the three key sets the plan was built from, the
+        // two flags decided once for the whole pass, and the tally the entries write to. Taken by `in` — a
+        // pass runs per reconcile of a presence boundary, so bundling it must not allocate.
+        private readonly struct PresenceExpansion
+        {
+            internal InlineWalk Walk { get; init; }
+            internal WalkPosition Position { get; init; }
+            internal ReconcilerContext.PresenceBoundaryState State { get; init; }
+            internal ComponentFiber? BoundaryFiber { get; init; }
+            internal AnimatePresenceNode Presence { get; init; }
+            internal List<(string key, VNode node)> PrevCommitted { get; init; }
+            internal List<(string key, VNode node)> NextCommitted { get; init; }
+            internal List<(string key, VNode node)> NewKeyed { get; init; }
+            internal bool BlockEnters { get; init; }
+            internal bool FirstRender { get; init; }
+            internal PresencePassTally Tally { get; init; }
         }
 
         // Old side: reproduce the committed leaf composition (including exiting ghosts) so the diff's old
@@ -1216,26 +1260,33 @@ namespace Velvet
                 // forever. exitPass.Settled tracks whether this pass's own bookkeeping (below) has already
                 // run; a completion that fires before then is queued and drained once it has, so its
                 // ExitComplete.Add survives into the render it schedules — a genuinely async completion
-                // always finds exitPass.Settled already true (this method returned long before it fires)
+                // always finds tally.Settled already true (this method returned long before it fires)
                 // and runs immediately, unchanged.
-                var exitPass = new ExitCompletionGate();
+                var tally = new PresencePassTally { AnimatedExitCount = exitCount };
+                var pass = new PresenceExpansion
+                {
+                    Walk = walk,
+                    Position = presencePosition,
+                    State = state,
+                    BoundaryFiber = boundaryFiber,
+                    Presence = presence,
+                    PrevCommitted = prevCommitted,
+                    NextCommitted = nextCommitted,
+                    NewKeyed = newKeyed,
+                    BlockEnters = blockEnters,
+                    FirstRender = firstRender,
+                    Tally = tally,
+                };
 
-                var visualIndex = 0;
-                var exitIndex = 0;
-                var removedInstantThisRender = false;
                 foreach (var (key, node) in plan)
                 {
                     if (!newKeySet.Contains(key))
                     {
-                        ExpandPresenceGhostEntry(walk, key, node, presencePosition,
-                            state, boundaryFiber, presence, nextCommitted, ref exitIndex, exitCount,
-                            ref removedInstantThisRender, exitPass);
+                        ExpandPresenceGhostEntry(in pass, key, node);
                         continue;
                     }
 
-                    ExpandPresenceEnterEntry(walk, key, node, presencePosition,
-                        state, boundaryFiber, presence, prevCommitted, nextCommitted, newKeyed,
-                        blockEnters, firstRender, ref visualIndex);
+                    ExpandPresenceEnterEntry(in pass, key, node);
                 }
 
                 // onExitComplete fires once the exiting children are gone. When every removed child
@@ -1244,7 +1295,7 @@ namespace Velvet
                 // Contained the same way as RunExitComplete's animated-exit path above: a throwing callback
                 // must not skip the state.Committed/exitPass.Settled bookkeeping that follows, or the next
                 // render reproduces a stale old side.
-                if (commit != null && removedInstantThisRender && state.Exiting.Count == 0)
+                if (commit != null && tally.RemovedInstantThisRender && state.Exiting.Count == 0)
                 {
                     try
                     {
@@ -1268,12 +1319,12 @@ namespace Velvet
                 state.ExitComplete.Clear();
 
                 // This pass's own bookkeeping has settled — a synchronous exit completion queued above can now
-                // run safely (see exitPass.Settled's declaration comment): its ExitComplete.Add survives past
-                // this point instead of being wiped by the Clear() just above.
-                exitPass.Settled = true;
-                if (exitPass.Deferred != null)
+                // run safely (see PresencePassTally.Settled's declaration comment): its ExitComplete.Add
+                // survives past this point instead of being wiped by the Clear() just above.
+                tally.Settled = true;
+                if (tally.Deferred != null)
                 {
-                    foreach (var completion in exitPass.Deferred) completion();
+                    foreach (var completion in tally.Deferred) completion();
                 }
             }
             finally
@@ -1290,20 +1341,11 @@ namespace Velvet
         // children, spliced into the plan at its old position (see ExpandAnimatePresenceInline). A finished
         // exit is dropped (not emitted → the diff removes its leaves); a child without an exit animation is
         // removed immediately; otherwise the child stays mounted in its old slot and its exit is started once.
-        private void ExpandPresenceGhostEntry(
-            InlineWalk walk,
-            string key,
-            VNode node,
-            WalkPosition presencePosition,
-            ReconcilerContext.PresenceBoundaryState state,
-            ComponentFiber? boundaryFiber,
-            AnimatePresenceNode presence,
-            List<(string key, VNode node)> nextCommitted,
-            ref int exitIndex,
-            int exitCount,
-            ref bool removedInstantThisRender,
-            ExitCompletionGate exitPass)
+        private void ExpandPresenceGhostEntry(in PresenceExpansion pass, string key, VNode node)
         {
+            var walk = pass.Walk;
+            var state = pass.State;
+            var boundaryFiber = pass.BoundaryFiber;
             var commit = walk.Commit;
             if (state.ExitComplete.Contains(key))
             {
@@ -1334,7 +1376,7 @@ namespace Velvet
             {
                 // No exit animation → immediate removal (skip emitting; the diff reaps the leaves).
                 state.Exiting.Remove(key);
-                removedInstantThisRender = true;
+                pass.Tally.RemovedInstantThisRender = true;
                 // Same as the finished-exit drop above: leave the committed set, then retire.
                 RemovePresenceCommittedEntry(state.Committed, key);
                 // Same memoized-element retirement as the finished-exit drop above.
@@ -1343,7 +1385,7 @@ namespace Velvet
                 return;
             }
 
-            var ghostAnchor = EmitPresenceChildAsAnchor(walk, node, ghostMotionNode, key, presencePosition,
+            var ghostAnchor = EmitPresenceChildAsAnchor(walk, node, ghostMotionNode, key, pass.Position,
                 out var ghostMotionElement);
             // A ghost reproduces the SAME committed node on both diff sides, so the patch that
             // would re-record the Motion's element bails on reference equality — fall back to
@@ -1360,29 +1402,25 @@ namespace Velvet
 
             if (commit != null && ghostAnchor != null && state.Exiting.Add(key))
             {
-                StartPresenceExit(ghostAnchor, ghostMotionElement, ghostMotionNode, ghostTransition,
-                    presence, state, key, boundaryFiber, exitPass, exitIndex, exitCount);
-                exitIndex++;
+                StartPresenceExit(in pass, key, ghostAnchor, ghostMotionElement, ghostMotionNode);
+                pass.Tally.ExitIndex++;
             }
 
-            nextCommitted.Add((key, node));
+            pass.NextCommitted.Add((key, node));
         }
 
         // Starts one ghost's exit animation: the enter cancellations and the PopLayout pin that must precede
         // it, then the reconcile-driven completion that flags the finished exit and re-renders the boundary.
         private void StartPresenceExit(
+            in PresenceExpansion pass,
+            string key,
             VisualElement ghostAnchor,
             VisualElement? ghostMotionElement,
-            MotionNode? ghostMotionNode,
-            StyleTransitionConfig? ghostTransition,
-            AnimatePresenceNode presence,
-            ReconcilerContext.PresenceBoundaryState state,
-            string key,
-            ComponentFiber? boundaryFiber,
-            ExitCompletionGate exitPass,
-            int exitIndex,
-            int exitCount)
+            MotionNode? ghostMotionNode)
         {
+            var presence = pass.Presence;
+            var tally = pass.Tally;
+            var exitIndex = tally.ExitIndex;
             _ctx.StyleAnimationScheduler.CancelEnter(ghostAnchor);
             // A wrapped Motion's variant enter ran on its own element, not the anchor —
             // cancel there too (idempotent when both are the same element).
@@ -1395,8 +1433,8 @@ namespace Velvet
                 PinExitingChildOutOfFlow(ghostAnchor);
             }
             var capturedKey = key;
-            var capturedState = state;
-            var capturedBoundary = boundaryFiber;
+            var capturedState = pass.State;
+            var capturedBoundary = pass.BoundaryFiber;
             var capturedOnExitComplete = presence.OnExitComplete;
             // `exit`: when the resolved Motion declares an exit variant label, animate from the
             // resting variants[animate] to variants[exit]; otherwise use the transition's
@@ -1405,7 +1443,7 @@ namespace Velvet
             // without a resolved element the variant path is unavailable and the classic,
             // anchor-targeted transition plays instead.
             var variantExit = ghostMotionElement != null ? TryResolveVariantExit(ghostMotionNode) : null;
-            var exitTransition = variantExit ?? ghostTransition;
+            var exitTransition = variantExit ?? ghostMotionNode?.Transition;
             var exitTarget = variantExit != null ? ghostMotionElement! : ghostAnchor;
             // For a variant exit the From classes ARE the resting variants[animate]; if this exit is
             // cancelled (the key is re-added before it finishes) the element must return to that resting
@@ -1470,37 +1508,28 @@ namespace Velvet
             }
             _ctx.StyleAnimationScheduler.PlayExit(exitTarget, exitTransition, () =>
             {
-                // See the ExitCompletionGate comment in ExpandAnimatePresenceInline: a synchronous
-                // completion (fired from inside this very PlayExit call) is queued instead of run inline.
-                if (exitPass.Settled) RunExitComplete();
-                else (exitPass.Deferred ??= new List<Action>()).Add(RunExitComplete);
+                // See the Settled comment in ExpandAnimatePresenceInline: a synchronous completion (fired
+                // from inside this very PlayExit call) is queued instead of run inline.
+                if (tally.Settled) RunExitComplete();
+                else (tally.Deferred ??= new List<Action>()).Add(RunExitComplete);
             }, restoreFromOnCancel: variantExit != null,
-                additionalDelaySec: presence.StaggerDelaySec(exitIndex, exitCount));
+                additionalDelaySec: presence.StaggerDelaySec(exitIndex, tally.AnimatedExitCount));
         }
 
         // Live branch of the per-plan-entry walk: the key is present in the new children (a genuine re-entry
         // whose exit was cancelled or already completed, or a first-time add). Emits the child, reconciles
         // exit/enter bookkeeping against its previous ghost state (if any), and dispatches its enter animation.
-        private void ExpandPresenceEnterEntry(
-            InlineWalk walk,
-            string key,
-            VNode node,
-            WalkPosition presencePosition,
-            ReconcilerContext.PresenceBoundaryState state,
-            ComponentFiber? boundaryFiber,
-            AnimatePresenceNode presence,
-            List<(string key, VNode node)> prevCommitted,
-            List<(string key, VNode node)> nextCommitted,
-            List<(string key, VNode node)> newKeyed,
-            bool blockEnters,
-            bool firstRender,
-            ref int visualIndex)
+        private void ExpandPresenceEnterEntry(in PresenceExpansion pass, string key, VNode node)
         {
+            var walk = pass.Walk;
+            var state = pass.State;
+            var presence = pass.Presence;
+            var prevCommitted = pass.PrevCommitted;
             var commit = walk.Commit;
             // Withhold a brand-new child under mode="wait" while exits are in flight (see above). The
             // linear prevCommitted scan is bounded: this only runs when blockEnters is set, and wait-mode
             // targets single-child swaps, so prevCommitted holds ~1 entry.
-            if (blockEnters && !PresenceContainsKey(prevCommitted, key))
+            if (pass.BlockEnters && !PresenceContainsKey(prevCommitted, key))
             {
                 return;
             }
@@ -1511,7 +1540,7 @@ namespace Velvet
             // gate, so CreateElement can tell this SAME node (which the dispatch below is about to
             // explicitly animate) apart from every OTHER Motion the emission below might create.
             var motion = FiberNodeFactory.FindFirstMotionDescendant(node);
-            var anchor = EmitPresenceChildAsAnchor(walk, node, motion, key, presencePosition,
+            var anchor = EmitPresenceChildAsAnchor(walk, node, motion, key, pass.Position,
                 out var motionElement);
             // Same memo discipline as the ghost path: record when this emission resolved the
             // element (create or genuine patch), fall back to the memo when a no-op re-render's
@@ -1528,7 +1557,7 @@ namespace Velvet
                 var wasExitComplete = state.ExitComplete.Remove(key);
                 if (wasExiting || wasExitComplete)
                 {
-                    RetireReplacedGhostNode(state, prevCommitted, key, node, boundaryFiber);
+                    RetireReplacedGhostNode(state, prevCommitted, key, node, pass.BoundaryFiber);
                 }
                 // The key is present again. If a completed exit's ghost was still awaiting its drop and the
                 // re-entry mounted a FRESH element (the detached ghost can't be reproduced, so the new
@@ -1559,13 +1588,12 @@ namespace Velvet
                 var isEnter = wasExiting || wasExitComplete || !PresenceContainsKey(prevCommitted, key);
                 if (isEnter)
                 {
-                    PlayPresenceEnter(motion, anchor, motionElement, wasExiting, firstRender, presence,
-                        visualIndex, newKeyed.Count);
+                    PlayPresenceEnter(in pass, motion, anchor, motionElement, wasExiting);
                 }
             }
 
-            nextCommitted.Add((key, node));
-            visualIndex++;
+            pass.NextCommitted.Add((key, node));
+            pass.Tally.VisualIndex++;
         }
 
         // The re-entry replaces the ghost's node in the committed set. The OLD node was kept alive only by
@@ -1650,23 +1678,21 @@ namespace Velvet
         }
 
         private void PlayPresenceEnter(
+            in PresenceExpansion pass,
             MotionNode? motion,
             VisualElement? anchor,
             VisualElement? motionElement,
-            bool wasExiting,
-            bool firstRender,
-            AnimatePresenceNode presence,
-            int visualIndex,
-            int childCount)
+            bool wasExiting)
         {
             if (motion?.Transition != null)
             {
+                var presence = pass.Presence;
                 // The Initial flag only suppresses the enter animation on the AnimatePresence's
                 // very first mount; later additions always animate.
-                if (!firstRender || presence.Initial)
+                if (!pass.FirstRender || presence.Initial)
                 {
                     DispatchPresenceEnter(motion, anchor, motionElement, wasExiting,
-                        presence.StaggerDelaySec(visualIndex, childCount));
+                        presence.StaggerDelaySec(pass.Tally.VisualIndex, pass.NewKeyed.Count));
                 }
                 else
                 {

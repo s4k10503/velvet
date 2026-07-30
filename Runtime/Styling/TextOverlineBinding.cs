@@ -69,11 +69,11 @@ namespace Velvet
                 0f, VisualElement.MeasureMode.Undefined).y;
             if (!TextOverlinePainter.TryComputeGeometry(
                     element.contentRect, measuredWidth, textBlockHeight, element.resolvedStyle.fontSize,
-                    element.resolvedStyle.unityTextAlign, out var from, out var to, out var lineWidth))
+                    element.resolvedStyle.unityTextAlign, out var rule))
             {
                 return;
             }
-            TextOverlinePainter.Stroke(mgc.painter2D, from, to, lineWidth, element.resolvedStyle.color);
+            TextOverlinePainter.Stroke(mgc.painter2D, rule, element.resolvedStyle.color);
         }
     }
 }

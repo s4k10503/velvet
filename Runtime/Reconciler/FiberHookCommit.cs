@@ -13,22 +13,38 @@ namespace Velvet
         // Effect slots only grow during a render (RegisterEffect appends; LastDeps is never mutated), so
         // truncating the slot and pending lists to their committed lengths is sufficient to undo the attempt;
         // the settled attempt then re-registers from the committed baseline.
-        internal static void DiscardRenderPhaseAttemptEffects(
-            ComponentFiber fiber,
-            int committedLayoutEffectCount,
-            int committedInsertionEffectCount,
-            int committedEffectCount,
-            int committedPendingLayoutCount,
-            int committedPendingInsertionCount,
-            int committedPendingEffectCount)
+        internal static void DiscardRenderPhaseAttemptEffects(ComponentFiber fiber, in EffectFootprint committed)
         {
-            TruncateTo(fiber.LayoutEffects, committedLayoutEffectCount);
-            TruncateTo(fiber.InsertionEffects, committedInsertionEffectCount);
-            TruncateTo(fiber.Effects, committedEffectCount);
-            TruncateTo(fiber.PendingLayoutEffects, committedPendingLayoutCount);
-            TruncateTo(fiber.PendingInsertionEffects, committedPendingInsertionCount);
-            TruncateTo(fiber.PendingEffects, committedPendingEffectCount);
+            TruncateTo(fiber.LayoutEffects, committed.LayoutEffects);
+            TruncateTo(fiber.InsertionEffects, committed.InsertionEffects);
+            TruncateTo(fiber.Effects, committed.Effects);
+            TruncateTo(fiber.PendingLayoutEffects, committed.PendingLayoutEffects);
+            TruncateTo(fiber.PendingInsertionEffects, committed.PendingInsertionEffects);
+            TruncateTo(fiber.PendingEffects, committed.PendingEffects);
         }
+
+        // The lengths of a fiber's six effect lists at one instant. Captured and restored as a unit because a
+        // rollback that truncated some lists and not others would leave a discarded attempt's registrations
+        // interleaved with the committed ones, which no later pass can tell apart.
+        internal readonly struct EffectFootprint
+        {
+            internal int LayoutEffects { get; init; }
+            internal int InsertionEffects { get; init; }
+            internal int Effects { get; init; }
+            internal int PendingLayoutEffects { get; init; }
+            internal int PendingInsertionEffects { get; init; }
+            internal int PendingEffects { get; init; }
+        }
+
+        internal static EffectFootprint CaptureEffectFootprint(ComponentFiber fiber) => new()
+        {
+            LayoutEffects = fiber.LayoutEffects?.Count ?? 0,
+            InsertionEffects = fiber.InsertionEffects?.Count ?? 0,
+            Effects = fiber.Effects?.Count ?? 0,
+            PendingLayoutEffects = fiber.PendingLayoutEffects?.Count ?? 0,
+            PendingInsertionEffects = fiber.PendingInsertionEffects?.Count ?? 0,
+            PendingEffects = fiber.PendingEffects?.Count ?? 0,
+        };
 
         internal static void TruncateTo(List<HookEffectSlot>? list, int count)
         {

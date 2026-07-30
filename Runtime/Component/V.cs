@@ -2349,7 +2349,18 @@ namespace Velvet
             if (to == null) throw new ArgumentNullException(nameof(to));
             return Component(
                 RouteNavLink.Render,
-                new RouteNavLink.Props(to, text, className, activeClass, name, children, end, replace, caseSensitive),
+                new RouteNavLink.Props
+                {
+                    To = to,
+                    Text = text,
+                    ClassName = className,
+                    ActiveClass = activeClass,
+                    Name = name,
+                    Children = children,
+                    End = end,
+                    Replace = replace,
+                    CaseSensitive = caseSensitive,
+                },
                 key);
         }
 

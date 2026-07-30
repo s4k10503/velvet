@@ -102,11 +102,20 @@ namespace Velvet.Tests
             // Painter2D path would draw: a rounded rect samples each corner into chords, so it flattens to
             // strictly more points than a square (whose corners emit none).
             var square = new List<Vector2>();
-            SilhouetteFace.BuildShearedRoundedRectPolyline(square, 0f, 100f, 100f, 0f, 0f, 0f, 0f, 0f, 0f);
+            SilhouetteFace.BuildShearedRoundedRectPolyline(square,
+                new ShearedRoundedRect { Width = 100f, Height = 100f });
             var rounded = new List<Vector2>();
 
             // Act
-            SilhouetteFace.BuildShearedRoundedRectPolyline(rounded, 0f, 100f, 100f, 0f, 0f, 20f, 20f, 20f, 20f);
+            SilhouetteFace.BuildShearedRoundedRectPolyline(rounded, new ShearedRoundedRect
+            {
+                Width = 100f,
+                Height = 100f,
+                RadiusTopLeft = 20f,
+                RadiusTopRight = 20f,
+                RadiusBottomRight = 20f,
+                RadiusBottomLeft = 20f,
+            });
 
             // Assert
             Assume.That(square, Is.Not.Empty, "Precondition: the square flattens to a polyline");

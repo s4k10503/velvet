@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine.UIElements;
 
@@ -6,33 +5,23 @@ namespace Velvet
 {
     // Per-(relation, name) payload set extracted from an element's class list, handed to the relational
     // manipulator. name is "" for the unnamed group/peer; a non-empty name is the named form
-    // (group-hover/sidebar: → IsPeer false, Name "sidebar"). Checked is only meaningful for peer (group has
-    // no checked state); it stays empty for a group binding.
+    // (group-hover/sidebar: → IsPeer false, Name "sidebar"). Payloads.Checked is only meaningful for peer
+    // (group has no checked state); it stays empty for a group binding.
     internal readonly struct RelationalBindingConfig
     {
         public readonly bool IsPeer;
         public readonly string Name;
-        public readonly string[] Hover;
-        public readonly string[] Focus;
-        public readonly string[] FocusWithin;
-        public readonly string[] Active;
-        public readonly string[] Checked;
-        // Each payload's position in the className, aligned to the arrays above — see VariantDeclarations for
-        // why a payload has to carry one.
+        public readonly VariantPayloads Payloads;
+        // Each payload's position in the className, aligned slot-for-slot with Payloads — see
+        // VariantDeclarations for why a payload has to carry one.
         public readonly VariantDeclarations Declarations;
 
-        public RelationalBindingConfig(
-            bool isPeer, string name,
-            string[] hover, string[] focus, string[] focusWithin, string[] active, string[] checkedPayloads,
+        public RelationalBindingConfig(bool isPeer, string name, VariantPayloads payloads,
             VariantDeclarations declarations)
         {
             IsPeer = isPeer;
             Name = name ?? string.Empty;
-            Hover = hover ?? Array.Empty<string>();
-            Focus = focus ?? Array.Empty<string>();
-            FocusWithin = focusWithin ?? Array.Empty<string>();
-            Active = active ?? Array.Empty<string>();
-            Checked = checkedPayloads ?? Array.Empty<string>();
+            Payloads = payloads;
             Declarations = declarations;
         }
     }
@@ -225,11 +214,11 @@ namespace Velvet
                 _owner = owner;
                 _isPeer = config.IsPeer;
                 _name = config.Name ?? string.Empty;
-                _hover = config.Hover;
-                _focus = config.Focus;
-                _focusWithin = config.FocusWithin;
-                _active = config.Active;
-                _checked = config.Checked;
+                _hover = config.Payloads.Hover;
+                _focus = config.Payloads.Focus;
+                _focusWithin = config.Payloads.FocusVisible;
+                _active = config.Payloads.Active;
+                _checked = config.Payloads.Checked;
                 _declarations = config.Declarations;
             }
 

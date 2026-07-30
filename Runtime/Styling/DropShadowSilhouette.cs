@@ -137,6 +137,16 @@ namespace Velvet
         }
     }
 
+    // The four values the reconciler resolves together for one patch; each means what the like-named
+    // DropShadowBinding field means.
+    internal readonly struct DropShadowSyncRequest
+    {
+        public ShadowSpec Spec { get; init; }
+        public string[] ClassNames { get; init; }
+        public float SkewXDeg { get; init; }
+        public bool CasterSkewed { get; init; }
+    }
+
     /// <summary>
     /// Paints a shadowed element's drop shadow — a baked, SDF-antialiased silhouette drawn as a single quad
     /// BEHIND the element's content in its own generateVisualContent. This is the <c>shadow-*</c> /
@@ -308,14 +318,15 @@ namespace Velvet
         // over cleanly (both writing the sentinel would otherwise leave it stuck after one detaches); if it
         // LOST its skew, this paint re-stashes the face it must now own. The skew layer is reconciled before
         // the shadow, so its binding is already in its post-patch state when this runs.
-        public static void Sync(VisualElement element, DropShadowBinding binding, ShadowSpec spec,
-            string[] classNames, float skewXDeg, bool casterSkewed, bool canReleaseFace)
+        public static void Sync(VisualElement element, DropShadowBinding binding,
+            in DropShadowSyncRequest request, bool canReleaseFace)
         {
-            binding.Spec = spec;
-            binding.ClassNames = classNames;
-            binding.SkewXDeg = skewXDeg;
+            binding.Spec = request.Spec;
+            binding.ClassNames = request.ClassNames;
+            binding.SkewXDeg = request.SkewXDeg;
             ResolveCornerRadius(element, binding);
 
+            var casterSkewed = request.CasterSkewed;
             if (binding.CasterSkewed != casterSkewed)
             {
                 binding.CasterSkewed = casterSkewed;
@@ -491,7 +502,7 @@ namespace Velvet
             var fill = binding.Face.HasStash ? binding.Face.BgColor : ve.resolvedStyle.backgroundColor;
             if (fill.a > 0.004f)
             {
-                SilhouetteFace.BuildShearedRoundedRect(p, ve, 0f, w, h, 0f, 0f);
+                SilhouetteFace.BuildShearedRoundedRect(p, ShearedRoundedRect.ForElement(ve, 0f, w, h, 0f, 0f));
                 p.fillColor = fill;
                 p.Fill();
             }
@@ -501,7 +512,8 @@ namespace Velvet
             if (borderWidth > 0.01f && borderColor.a > 0.004f)
             {
                 // Stroke centered on a half-width-inset path ≈ CSS's inside border, matching the skew layer.
-                SilhouetteFace.BuildShearedRoundedRect(p, ve, borderWidth * 0.5f, w, h, 0f, 0f);
+                SilhouetteFace.BuildShearedRoundedRect(p,
+                    ShearedRoundedRect.ForElement(ve, borderWidth * 0.5f, w, h, 0f, 0f));
                 p.strokeColor = borderColor;
                 p.lineWidth = borderWidth;
                 p.lineJoin = LineJoin.Miter;

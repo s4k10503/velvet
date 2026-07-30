@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -6,9 +7,9 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Velvet.SourceGenerators.CodeShape
 {
     /// <summary>
-    /// What the code-shape analyzers agree on before either measures anything: which declarations are
-    /// members, which of their parts carry code, what to call each part in a report, and whether the
-    /// assembly opted in.
+    /// What the code-shape analyzers agree on before any of them measures anything: which declarations are
+    /// members, which of their parts carry code or parameters, what to call each part in a report, and
+    /// whether the assembly opted in.
     /// </summary>
     /// <remarks>
     /// <see cref="OptsIntoCodeShapeRules"/> is the whole of the consumer-safety boundary: these diagnostics
@@ -42,6 +43,26 @@ namespace Velvet.SourceGenerators.CodeShape
             SyntaxKind.InitAccessorDeclaration,
             SyntaxKind.AddAccessorDeclaration,
             SyntaxKind.RemoveAccessorDeclaration,
+        };
+
+        /// <summary>
+        /// Declarations carrying a parameter list that can exceed a limit. Disjoint from
+        /// <see cref="MemberKinds"/> in both directions: a field or accessor takes no parameters, while a
+        /// delegate, a local function and a primary constructor declare one without owning a body to measure.
+        /// The operator forms are absent because the language caps them at two parameters, so no limit worth
+        /// setting could ever reach them.
+        /// </summary>
+        internal static readonly SyntaxKind[] ParameterizedKinds =
+        {
+            SyntaxKind.MethodDeclaration,
+            SyntaxKind.ConstructorDeclaration,
+            SyntaxKind.IndexerDeclaration,
+            SyntaxKind.DelegateDeclaration,
+            SyntaxKind.LocalFunctionStatement,
+            SyntaxKind.ClassDeclaration,
+            SyntaxKind.StructDeclaration,
+            SyntaxKind.RecordDeclaration,
+            SyntaxKind.RecordStructDeclaration,
         };
 
         internal static bool OptsIntoCodeShapeRules(IAssemblySymbol assembly)
@@ -115,6 +136,43 @@ namespace Velvet.SourceGenerators.CodeShape
                                 declarator.Identifier.ValueText);
                     }
                     break;
+            }
+        }
+
+        /// <summary>
+        /// The declaration's parameters, with the token to report them on, or <c>null</c> where the
+        /// declaration kind can carry a list but this one does not — a class without a primary constructor.
+        /// </summary>
+        internal static (SeparatedSyntaxList<ParameterSyntax> Parameters, SyntaxToken Name, string Display)?
+            ParametersOf(SyntaxNode node)
+        {
+            switch (node)
+            {
+                case MethodDeclarationSyntax method:
+                    return (method.ParameterList.Parameters, method.Identifier, method.Identifier.ValueText);
+                case ConstructorDeclarationSyntax constructor:
+                    return (constructor.ParameterList.Parameters, constructor.Identifier,
+                        constructor.Identifier.ValueText);
+                case IndexerDeclarationSyntax indexer:
+                    return (indexer.ParameterList.Parameters, indexer.ThisKeyword, "this[]");
+                case DelegateDeclarationSyntax @delegate:
+                    return (@delegate.ParameterList.Parameters, @delegate.Identifier,
+                        @delegate.Identifier.ValueText);
+                case LocalFunctionStatementSyntax local:
+                    return (local.ParameterList.Parameters, local.Identifier, local.Identifier.ValueText);
+                case TypeDeclarationSyntax type:
+                    // Reached through the child node rather than a property: the pinned Roslyn reference
+                    // predates primary constructors on a class or struct and exposes `ParameterList` on the
+                    // record node alone, while the host compiler this analyzer loads into parses all three
+                    // into the same shape. Raising the reference is not an option — 4.8 breaks the
+                    // generators with CS9057.
+                    var primary = type.ChildNodes().OfType<ParameterListSyntax>().FirstOrDefault();
+                    return primary == null
+                        ? null
+                        : ((SeparatedSyntaxList<ParameterSyntax>, SyntaxToken, string)?)
+                        (primary.Parameters, type.Identifier, type.Identifier.ValueText);
+                default:
+                    return null;
             }
         }
 

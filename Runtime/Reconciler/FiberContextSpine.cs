@@ -40,6 +40,21 @@ namespace Velvet
             _rawPushedKeys = rawPushedKeys;
         }
 
+        // What every step of one spine edge's walk threads unchanged: the edge being searched, the cursor and
+        // the undo log it writes to, and the two registries the keying reads. A struct passed by `in` so the
+        // recursion carries only what varies from step to step without putting an object on the heap — this
+        // runs on every isolated re-render, which is every setState.
+        private readonly struct SpineWalk
+        {
+            internal ComponentFiber Ancestor { get; init; }
+            internal ComponentFiber SpineChild { get; init; }
+            internal ComponentContextStack Stack { get; init; }
+            internal List<ContextProviderNode> Pushed { get; init; }
+            internal ComponentRegistry Registry { get; init; }
+            internal FiberMemoCache MemoCache { get; init; }
+            internal bool IsInlineSpineChild { get; init; }
+        }
+
         // Pushes the Provider values that enclose target onto the live cursor and
         // returns a handle whose Unwind pops them in reverse. A no-op (empty handle) when
         // the fiber has no reconciler / no parent (a root re-render needs no reconstruction — it pushes
@@ -106,9 +121,19 @@ namespace Velvet
                     }
                     if (detached.DescendantNodes is { Length: > 0 } && detached.Anchor != null)
                     {
+                        var detachedWalk = new SpineWalk
+                        {
+                            Ancestor = detached.Anchor,
+                            SpineChild = child,
+                            Stack = stack,
+                            Pushed = pushed,
+                            Registry = registry,
+                            MemoCache = memoCache,
+                            IsInlineSpineChild = true,
+                        };
                         var detachedCounters = new Dictionary<object, int>();
-                        PushEnclosingProviders(detached.DescendantNodes, detached.Anchor, child, detachedCounters,
-                            fragmentKeyScope: null, stack, pushed, registry, memoCache, isInlineSpineChild: true);
+                        PushEnclosingProviders(detached.DescendantNodes, detachedCounters,
+                            fragmentKeyScope: null, in detachedWalk);
                     }
                     continue;
                 }
@@ -119,9 +144,18 @@ namespace Velvet
                 var isInline = registry.TryGetInlineKey(child, out _, out _);
                 if (!isInline && child.MountPoint == null) continue;
 
+                var walk = new SpineWalk
+                {
+                    Ancestor = ancestor,
+                    SpineChild = child,
+                    Stack = stack,
+                    Pushed = pushed,
+                    Registry = registry,
+                    MemoCache = memoCache,
+                    IsInlineSpineChild = isInline,
+                };
                 var counters = new Dictionary<object, int>();
-                PushEnclosingProviders(tree, ancestor, child, counters, fragmentKeyScope: null,
-                    stack, pushed, registry, memoCache, isInline);
+                PushEnclosingProviders(tree, counters, fragmentKeyScope: null, in walk);
             }
 
             return new FiberContextSpine(stack, pushed, rawPushedKeys);
@@ -192,20 +226,14 @@ namespace Velvet
         // remains on the cursor.
         private static bool PushEnclosingProviders(
             VNode?[] nodes,
-            ComponentFiber ancestor,
-            ComponentFiber spineChild,
             Dictionary<object, int> counters,
             string? fragmentKeyScope,
-            ComponentContextStack stack,
-            List<ContextProviderNode> pushed,
-            ComponentRegistry registry,
-            FiberMemoCache memoCache,
-            bool isInlineSpineChild)
+            in SpineWalk walk)
         {
             for (var nodeIndex = 0; nodeIndex < nodes.Length; nodeIndex++)
             {
-                if (PushEnclosingProvidersForNode(nodes[nodeIndex], nodeIndex, ancestor, spineChild, counters,
-                        fragmentKeyScope, stack, pushed, registry, memoCache, isInlineSpineChild))
+                if (PushEnclosingProvidersForNode(nodes[nodeIndex], nodeIndex, counters, fragmentKeyScope,
+                        in walk))
                 {
                     return true;
                 }
@@ -219,15 +247,9 @@ namespace Velvet
         private static bool PushEnclosingProvidersForNode(
             VNode? node,
             int nodeIndex,
-            ComponentFiber ancestor,
-            ComponentFiber spineChild,
             Dictionary<object, int> counters,
             string? fragmentKeyScope,
-            ComponentContextStack stack,
-            List<ContextProviderNode> pushed,
-            ComponentRegistry registry,
-            FiberMemoCache memoCache,
-            bool isInlineSpineChild)
+            in SpineWalk walk)
         {
             switch (node)
             {
@@ -239,31 +261,26 @@ namespace Velvet
                     if (fragment.Children == null) return false;
                     var childScope = FiberKeying.FragmentChildScope(
                         fragmentKeyScope, fragment.Key, nodeIndex);
-                    return PushEnclosingProviders(fragment.Children, ancestor, spineChild, counters,
-                        childScope, stack, pushed, registry, memoCache, isInlineSpineChild);
+                    return PushEnclosingProviders(fragment.Children, counters, childScope, in walk);
                 }
 
                 case ContextProviderNode provider:
-                    return PushProviderSubtree(provider, nodeIndex, ancestor, spineChild, counters,
-                        fragmentKeyScope, stack, pushed, registry, memoCache, isInlineSpineChild);
+                    return PushProviderSubtree(provider, nodeIndex, counters, fragmentKeyScope, in walk);
 
-                case ComponentNode component when isInlineSpineChild:
-                    return MatchesInlineSpineChild(component, ancestor, spineChild, counters, registry);
+                case ComponentNode component when walk.IsInlineSpineChild:
+                    return MatchesInlineSpineChild(component, counters, in walk);
 
-                case OutletNode outlet when !isInlineSpineChild:
-                    return PushOutletHost(outlet, ancestor, spineChild, stack, pushed);
+                case OutletNode outlet when !walk.IsInlineSpineChild:
+                    return PushOutletHost(outlet, in walk);
 
                 case MemoNode memo:
-                    return PushMemoInner(memo, nodeIndex, ancestor, spineChild, fragmentKeyScope,
-                        stack, pushed, registry, memoCache, isInlineSpineChild);
+                    return PushMemoInner(memo, nodeIndex, fragmentKeyScope, in walk);
 
                 case SuspenseNode suspense:
-                    return PushSuspenseSubtree(suspense, nodeIndex, ancestor, spineChild, fragmentKeyScope,
-                        stack, pushed, registry, memoCache, isInlineSpineChild);
+                    return PushSuspenseSubtree(suspense, nodeIndex, fragmentKeyScope, in walk);
 
                 case MotionNode motion:
-                    return PushMotionSubtree(motion, ancestor, spineChild, stack, pushed, registry,
-                        memoCache, isInlineSpineChild);
+                    return PushMotionSubtree(motion, in walk);
 
                 case BaseElementNode element:
                 {
@@ -272,13 +289,12 @@ namespace Velvet
                     // `ancestor`, so a Component among them is still a direct child fiber of `ancestor`.
                     if (element.Children is not { Length: > 0 }) return false;
                     var elementCounters = new Dictionary<object, int>();
-                    return PushEnclosingProviders(element.Children, ancestor, spineChild, elementCounters,
-                        fragmentKeyScope: null, stack, pushed, registry, memoCache, isInlineSpineChild);
+                    return PushEnclosingProviders(element.Children, elementCounters,
+                        fragmentKeyScope: null, in walk);
                 }
 
                 case AnimatePresenceNode presence:
-                    return PushPresenceChildren(presence, nodeIndex, ancestor, spineChild, fragmentKeyScope,
-                        stack, pushed, registry, memoCache, isInlineSpineChild);
+                    return PushPresenceChildren(presence, nodeIndex, fragmentKeyScope, in walk);
 
                 default:
                     // Reaching a wrapper-emitting leaf (Portal / VirtualList) here means it sits in this
@@ -294,31 +310,24 @@ namespace Velvet
         private static bool PushProviderSubtree(
             ContextProviderNode provider,
             int nodeIndex,
-            ComponentFiber ancestor,
-            ComponentFiber spineChild,
             Dictionary<object, int> counters,
             string? fragmentKeyScope,
-            ComponentContextStack stack,
-            List<ContextProviderNode> pushed,
-            ComponentRegistry registry,
-            FiberMemoCache memoCache,
-            bool isInlineSpineChild)
+            in SpineWalk walk)
         {
-            provider.PushContext(stack);
-            pushed.Add(provider);
+            provider.PushContext(walk.Stack);
+            walk.Pushed.Add(provider);
             if (provider.Children != null)
             {
                 var providerScope = FiberKeying.ProviderChildScope(
                     fragmentKeyScope, provider.Key, nodeIndex);
-                if (PushEnclosingProviders(provider.Children, ancestor, spineChild, counters,
-                        providerScope, stack, pushed, registry, memoCache, isInlineSpineChild))
+                if (PushEnclosingProviders(provider.Children, counters, providerScope, in walk))
                 {
                     return true;
                 }
             }
             // Not on the path to spineChild: undo this Provider's push.
-            provider.PopContext(stack);
-            pushed.RemoveAt(pushed.Count - 1);
+            provider.PopContext(walk.Stack);
+            walk.Pushed.RemoveAt(walk.Pushed.Count - 1);
             return false;
         }
 
@@ -330,15 +339,14 @@ namespace Velvet
         // stays in lockstep with the expansion walk.
         private static bool MatchesInlineSpineChild(
             ComponentNode component,
-            ComponentFiber ancestor,
-            ComponentFiber spineChild,
             Dictionary<object, int> counters,
-            ComponentRegistry registry)
+            in SpineWalk walk)
         {
+            var registry = walk.Registry;
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(counters, identity, registry.InlinePositionKeyBoxes);
-            var resolved = registry.TryGetFiberForInlineKey(ancestor, slotKey, identity);
-            return ReferenceEquals(resolved, spineChild);
+            var resolved = registry.TryGetFiberForInlineKey(walk.Ancestor, slotKey, identity);
+            return ReferenceEquals(resolved, walk.SpineChild);
         }
 
         // Wrapper-mounted spine child: an OutletNode hosts a wrapper-mounted route Component whose
@@ -349,43 +357,31 @@ namespace Velvet
         // manipulation. Without this check, a layout like V.Div(V.Outlet(), V.AnimatePresence(...)) would
         // walker-match the first Outlet and push a wrong Depth+1 context for any non-Outlet
         // wrapper-mounted sibling's isolated re-render.
-        private static bool PushOutletHost(
-            OutletNode outlet,
-            ComponentFiber ancestor,
-            ComponentFiber spineChild,
-            ComponentContextStack stack,
-            List<ContextProviderNode> pushed)
+        private static bool PushOutletHost(OutletNode outlet, in SpineWalk walk)
         {
-            var spineHost = spineChild.MountPoint;
-            if (spineHost == null || !ancestor.Reconciler!.Context.OutletContainers.Contains(spineHost))
+            var spineHost = walk.SpineChild.MountPoint;
+            if (spineHost == null || !walk.Ancestor.Reconciler!.Context.OutletContainers.Contains(spineHost))
             {
                 // spineChild is not Outlet-hosted; the Outlet here is a sibling — keep searching for the
                 // actual wrapper host.
                 return false;
             }
-            PushOutletWrapperLocalContext(stack, pushed, outlet);
+            PushOutletWrapperLocalContext(walk.Stack, walk.Pushed, outlet);
             return true;
         }
 
         private static bool PushMemoInner(
             MemoNode memo,
             int nodeIndex,
-            ComponentFiber ancestor,
-            ComponentFiber spineChild,
             string? fragmentKeyScope,
-            ComponentContextStack stack,
-            List<ContextProviderNode> pushed,
-            ComponentRegistry registry,
-            FiberMemoCache memoCache,
-            bool isInlineSpineChild)
+            in SpineWalk walk)
         {
             var memoScope = FiberKeying.MemoScope(fragmentKeyScope, nodeIndex);
             var cacheKey = FiberKeying.MemoCacheKey(memo.Key, memoScope);
-            if (!memoCache.TryPeek(cacheKey, out var inner) || inner == null) return false;
+            if (!walk.MemoCache.TryPeek(cacheKey, out var inner) || inner == null) return false;
 
             var innerCounters = new Dictionary<object, int>();
-            return PushEnclosingProviders(new[] { inner }, ancestor, spineChild, innerCounters,
-                memoScope, stack, pushed, registry, memoCache, isInlineSpineChild);
+            return PushEnclosingProviders(new[] { inner }, innerCounters, memoScope, in walk);
         }
 
         // Follow whichever subtree (children vs fallback) was committed last render so the
@@ -393,15 +389,10 @@ namespace Velvet
         private static bool PushSuspenseSubtree(
             SuspenseNode suspense,
             int nodeIndex,
-            ComponentFiber ancestor,
-            ComponentFiber spineChild,
             string? fragmentKeyScope,
-            ComponentContextStack stack,
-            List<ContextProviderNode> pushed,
-            ComponentRegistry registry,
-            FiberMemoCache memoCache,
-            bool isInlineSpineChild)
+            in SpineWalk walk)
         {
+            var ancestor = walk.Ancestor;
             var suspenseKey = FiberKeying.SuspenseKey(fragmentKeyScope, suspense.Key, nodeIndex);
             var wasFallback = ancestor.Reconciler != null
                 && ancestor.Reconciler.Context.SuspenseFallbackShown.TryGetValue(
@@ -413,8 +404,7 @@ namespace Velvet
 
             var subScope = FiberKeying.SuspenseSubtreeScope(suspenseKey, wasFallback);
             var subCounters = new Dictionary<object, int>();
-            return PushEnclosingProviders(sub, ancestor, spineChild, subCounters,
-                subScope, stack, pushed, registry, memoCache, isInlineSpineChild);
+            return PushEnclosingProviders(sub, subCounters, subScope, in walk);
         }
 
         // A MotionNode establishes MotionContext for its subtree, exactly as a Provider establishes its
@@ -422,16 +412,9 @@ namespace Velvet
         // re-rendering in isolation reads the ancestor's active label instead of dropping to the default.
         // Mirrors PushProviderSubtree (push, descend its fresh child scope, pop if the spine child is not
         // beneath it).
-        private static bool PushMotionSubtree(
-            MotionNode motion,
-            ComponentFiber ancestor,
-            ComponentFiber spineChild,
-            ComponentContextStack stack,
-            List<ContextProviderNode> pushed,
-            ComponentRegistry registry,
-            FiberMemoCache memoCache,
-            bool isInlineSpineChild)
+        private static bool PushMotionSubtree(MotionNode motion, in SpineWalk walk)
         {
+            var stack = walk.Stack;
             var motionLabel = motion.Animate ?? stack.Get(MotionContext.ActiveLabel);
             var motionProvider = new ContextProviderNode<string>
             {
@@ -440,18 +423,17 @@ namespace Velvet
                 Children = System.Array.Empty<VNode>(),
             };
             motionProvider.PushContext(stack);
-            pushed.Add(motionProvider);
+            walk.Pushed.Add(motionProvider);
             if (motion.Children is { Length: > 0 })
             {
                 var motionCounters = new Dictionary<object, int>();
-                if (PushEnclosingProviders(motion.Children, ancestor, spineChild, motionCounters,
-                        fragmentKeyScope: null, stack, pushed, registry, memoCache, isInlineSpineChild))
+                if (PushEnclosingProviders(motion.Children, motionCounters, fragmentKeyScope: null, in walk))
                 {
                     return true;
                 }
             }
             motionProvider.PopContext(stack);
-            pushed.RemoveAt(pushed.Count - 1);
+            walk.Pushed.RemoveAt(walk.Pushed.Count - 1);
             return false;
         }
 
@@ -468,14 +450,8 @@ namespace Velvet
         private static bool PushPresenceChildren(
             AnimatePresenceNode presence,
             int nodeIndex,
-            ComponentFiber ancestor,
-            ComponentFiber spineChild,
             string? fragmentKeyScope,
-            ComponentContextStack stack,
-            List<ContextProviderNode> pushed,
-            ComponentRegistry registry,
-            FiberMemoCache memoCache,
-            bool isInlineSpineChild)
+            in SpineWalk walk)
         {
             if (presence.Children == null) return false;
 
@@ -487,8 +463,7 @@ namespace Velvet
                 var childKey = child.Key ?? FiberNodeFactory.AutoKeyPrefix + autoIndex++;
                 var childScope = FiberKeying.PresenceChildScope(presenceScope, childKey);
                 var childCounters = new Dictionary<object, int>();
-                if (PushEnclosingProviders(new[] { child }, ancestor, spineChild, childCounters,
-                        childScope, stack, pushed, registry, memoCache, isInlineSpineChild))
+                if (PushEnclosingProviders(new[] { child }, childCounters, childScope, in walk))
                 {
                     return true;
                 }

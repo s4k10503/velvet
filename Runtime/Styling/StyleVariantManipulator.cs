@@ -3,27 +3,6 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Toggles utility payloads in response to hover / focus / active state, implementing the general
-    // hover: / focus: / active: variants for any utility (a USS class such as
-    // bg-blue-500 or an arbitrary value such as w-[200px]).
-    // Mirrors StyleGestureClassManipulator's lifecycle: the reconciler attaches one per
-    // element that has variant tokens, keeps it in ReconcilerContext.VariantManipulators, and
-    // removes it on cleanup / dispose. Single-pointer assumption, like the gesture manipulator.
-    // Focus uses FocusEvent / BlurEvent (the element itself), matching the
-    // USS :focus pseudo-class — non-focusable elements simply never trigger it.
-    // focus-visible: additionally distinguishes <em>keyboard/programmatic</em> focus from
-    // <em>pointer</em> focus, mirroring the CSS :focus-visible heuristic. Since a click on a
-    // focusable element dispatches PointerDownEvent immediately before the
-    // FocusEvent, a focus preceded by a pointer-down on this element is treated as a
-    // pointer focus (no focus-visible); any other focus (Tab navigation, Focus()) lights
-    // it up. A subsequent pointer-down while focused also clears it, matching browsers dropping the
-    // focus ring on mouse interaction.
-    // Hover uses the <em>bubbling</em> PointerOverEvent / PointerOutEvent pair, not
-    // the non-bubbling PointerEnter/PointerLeave: when a child element (a label/icon) covers the
-    // interior, only a bubbling event reaches this element while the pointer is over that child — matching the
-    // CSS :hover ancestor chain. On PointerOut the hover is cleared only
-    // once the pointer has actually left this element's bounds; while it merely crosses between descendants the
-    // payload is kept, avoiding a per-crossing remove/re-add that restarts any transition.
     // The className position of every state payload, grouped so the five arrays travel together rather than
     // as five more parameters on each of the two entry points that carry them.
     internal readonly struct VariantDeclarations
@@ -51,6 +30,53 @@ namespace Velvet
         public int[] Checked { get; }
     }
 
+    // A relational binding has no focus-visible state of its own, so its focus-WITHIN payloads ride the
+    // FocusVisible slot here and in VariantDeclarations — which is what lets both variant families share one
+    // payload/declaration pair (see StyleRelationalVariantManipulator).
+    internal readonly struct VariantPayloads
+    {
+        public VariantPayloads(string[] hover, string[] focus, string[] focusVisible, string[] active,
+            string[] @checked)
+        {
+            Hover = hover ?? Array.Empty<string>();
+            Focus = focus ?? Array.Empty<string>();
+            FocusVisible = focusVisible ?? Array.Empty<string>();
+            Active = active ?? Array.Empty<string>();
+            Checked = @checked ?? Array.Empty<string>();
+        }
+
+        public string[] Hover { get; }
+
+        public string[] Focus { get; }
+
+        public string[] FocusVisible { get; }
+
+        public string[] Active { get; }
+
+        public string[] Checked { get; }
+    }
+
+    // Toggles utility payloads in response to hover / focus / active state, implementing the general
+    // hover: / focus: / active: variants for any utility (a USS class such as
+    // bg-blue-500 or an arbitrary value such as w-[200px]).
+    // Mirrors StyleGestureClassManipulator's lifecycle: the reconciler attaches one per
+    // element that has variant tokens, keeps it in ReconcilerContext.VariantManipulators, and
+    // removes it on cleanup / dispose. Single-pointer assumption, like the gesture manipulator.
+    // Focus uses FocusEvent / BlurEvent (the element itself), matching the
+    // USS :focus pseudo-class — non-focusable elements simply never trigger it.
+    // focus-visible: additionally distinguishes <em>keyboard/programmatic</em> focus from
+    // <em>pointer</em> focus, mirroring the CSS :focus-visible heuristic. Since a click on a
+    // focusable element dispatches PointerDownEvent immediately before the
+    // FocusEvent, a focus preceded by a pointer-down on this element is treated as a
+    // pointer focus (no focus-visible); any other focus (Tab navigation, Focus()) lights
+    // it up. A subsequent pointer-down while focused also clears it, matching browsers dropping the
+    // focus ring on mouse interaction.
+    // Hover uses the <em>bubbling</em> PointerOverEvent / PointerOutEvent pair, not
+    // the non-bubbling PointerEnter/PointerLeave: when a child element (a label/icon) covers the
+    // interior, only a bubbling event reaches this element while the pointer is over that child — matching the
+    // CSS :hover ancestor chain. On PointerOut the hover is cleared only
+    // once the pointer has actually left this element's bounds; while it merely crosses between descendants the
+    // payload is kept, avoiding a per-crossing remove/re-add that restarts any transition.
     internal sealed class StyleVariantManipulator : Manipulator, IVariantSettleTarget
     {
         private string[] _hover;
@@ -78,15 +104,15 @@ namespace Velvet
 
         private readonly ReconcilerContext _ctx;
 
-        public StyleVariantManipulator(ReconcilerContext ctx, string[] hover, string[] focus,
-            string[] focusVisible, string[] active, string[] @checked, VariantDeclarations declarations)
+        public StyleVariantManipulator(ReconcilerContext ctx, VariantPayloads payloads,
+            VariantDeclarations declarations)
         {
             _ctx = ctx;
-            _hover = hover ?? Array.Empty<string>();
-            _focus = focus ?? Array.Empty<string>();
-            _focusVisible = focusVisible ?? Array.Empty<string>();
-            _active = active ?? Array.Empty<string>();
-            _checked = @checked ?? Array.Empty<string>();
+            _hover = payloads.Hover;
+            _focus = payloads.Focus;
+            _focusVisible = payloads.FocusVisible;
+            _active = payloads.Active;
+            _checked = payloads.Checked;
             _hoverDeclarations = declarations.Hover;
             _focusDeclarations = declarations.Focus;
             _focusVisibleDeclarations = declarations.FocusVisible;
@@ -107,16 +133,15 @@ namespace Velvet
         }
 
         // Swaps the payload sets, re-applying any currently-active state under the new sets.
-        public void UpdatePayloads(string[] hover, string[] focus, string[] focusVisible, string[] active,
-            string[] @checked, VariantDeclarations declarations)
+        public void UpdatePayloads(VariantPayloads payloads, VariantDeclarations declarations)
         {
             if (target != null) ReapplyActiveStates(false);
 
-            _hover = hover ?? Array.Empty<string>();
-            _focus = focus ?? Array.Empty<string>();
-            _focusVisible = focusVisible ?? Array.Empty<string>();
-            _active = active ?? Array.Empty<string>();
-            _checked = @checked ?? Array.Empty<string>();
+            _hover = payloads.Hover;
+            _focus = payloads.Focus;
+            _focusVisible = payloads.FocusVisible;
+            _active = payloads.Active;
+            _checked = payloads.Checked;
             _hoverDeclarations = declarations.Hover;
             _focusDeclarations = declarations.Focus;
             _focusVisibleDeclarations = declarations.FocusVisible;

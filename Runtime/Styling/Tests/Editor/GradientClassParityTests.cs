@@ -110,10 +110,19 @@ namespace Velvet.Tests
             // Arrange — two specs whose stop colors differ by less than Color's == epsilon but quantize to
             // the same 8-bit value (the cache's texture precision). They must compare Equal AND hash equal,
             // or the Dictionary<GradientSpec,…> cache would bucket equal keys apart and double-bake.
-            var a = new GradientSpec(GradientType.Linear, 90f, 0.5f, 0.5f, GradientInterp.Srgb,
-                new Color(1f, 0f, 0f), new Color(0f, 0f, 1f), false, default, 0f, 0.5f, 1f);
-            var b = new GradientSpec(GradientType.Linear, 90f, 0.5f, 0.5f, GradientInterp.Srgb,
-                new Color(0.999f, 0.0008f, 0f), new Color(0f, 0.0008f, 1f), false, default, 0f, 0.5f, 1f);
+            var a = new GradientSpec
+            {
+                Type = GradientType.Linear, AngleDeg = 90f, CenterX = 0.5f, CenterY = 0.5f,
+                Interp = GradientInterp.Srgb, From = new Color(1f, 0f, 0f), To = new Color(0f, 0f, 1f),
+                HasVia = false, Via = default, FromPos = 0f, ViaPos = 0.5f, ToPos = 1f,
+            };
+            var b = new GradientSpec
+            {
+                Type = GradientType.Linear, AngleDeg = 90f, CenterX = 0.5f, CenterY = 0.5f,
+                Interp = GradientInterp.Srgb, From = new Color(0.999f, 0.0008f, 0f),
+                To = new Color(0f, 0.0008f, 1f),
+                HasVia = false, Via = default, FromPos = 0f, ViaPos = 0.5f, ToPos = 1f,
+            };
             Assume.That(a.Equals(b), Is.True, "Precondition: colors quantize equal so the specs are equal");
 
             // Act + Assert — Equals/GetHashCode contract holds (equal objects have equal hash codes).

@@ -114,38 +114,38 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_Arity8_When_ReconciledAgainWithSameArgs_Then_ImplIsNotReinvoked()
+        public void Given_Arity6_When_ReconciledAgainWithSameArgs_Then_ImplIsNotReinvoked()
         {
             // Arrange
             var demo = new MemoizeMethodAttributeDemoComponent();
-            var tree1 = new VNode[] { demo.BuildArity8(1, 2, 3, 4, 5, 6, 7, 8) };
+            var tree1 = new VNode[] { demo.BuildArity6(1, 2, 3, 4, 5, 6) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
-            Assume.That(demo.Arity8ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");
+            Assume.That(demo.Arity6ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");
 
             // Act
-            var tree2 = new VNode[] { demo.BuildArity8(1, 2, 3, 4, 5, 6, 7, 8) };
+            var tree2 = new VNode[] { demo.BuildArity6(1, 2, 3, 4, 5, 6) };
             Reconciler.Reconcile(Root, tree1, tree2);
 
             // Assert
-            Assert.That(demo.Arity8ImplCallCount, Is.EqualTo(1),
-                "All eight args dependency-equal is a cache hit");
+            Assert.That(demo.Arity6ImplCallCount, Is.EqualTo(1),
+                "All six args dependency-equal is a cache hit");
         }
 
         [Test]
-        public void Given_Arity8_When_ReconciledAgainWithLastArgChanged_Then_ImplIsReinvoked()
+        public void Given_Arity6_When_ReconciledAgainWithLastArgChanged_Then_ImplIsReinvoked()
         {
-            // Arrange — only the eighth argument differs
+            // Arrange — only the sixth argument differs
             var demo = new MemoizeMethodAttributeDemoComponent();
-            var tree1 = new VNode[] { demo.BuildArity8(1, 2, 3, 4, 5, 6, 7, 8) };
+            var tree1 = new VNode[] { demo.BuildArity6(1, 2, 3, 4, 5, 6) };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
-            Assume.That(demo.Arity8ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");
+            Assume.That(demo.Arity6ImplCallCount, Is.EqualTo(1), "Precondition: the first reconcile built once");
 
             // Act
-            var tree2 = new VNode[] { demo.BuildArity8(1, 2, 3, 4, 5, 6, 7, 9) };
+            var tree2 = new VNode[] { demo.BuildArity6(1, 2, 3, 4, 5, 7) };
             Reconciler.Reconcile(Root, tree1, tree2);
 
             // Assert
-            Assert.That(demo.Arity8ImplCallCount, Is.EqualTo(2),
+            Assert.That(demo.Arity6ImplCallCount, Is.EqualTo(2),
                 "A change in the last dependency position is a cache miss");
         }
     }

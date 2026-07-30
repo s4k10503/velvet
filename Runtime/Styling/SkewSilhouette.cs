@@ -279,7 +279,7 @@ namespace Velvet
                 var fill = binding.HasStash ? binding.BgColor : ve.resolvedStyle.backgroundColor;
                 if (fill.a > 0.004f)
                 {
-                    SilhouetteFace.BuildShearedRoundedRect(p, ve, 0f, w, h, tanX, tanY);
+                    SilhouetteFace.BuildShearedRoundedRect(p, ShearedRoundedRect.ForElement(ve, 0f, w, h, tanX, tanY));
                     p.fillColor = fill;
                     p.Fill();
                 }
@@ -291,7 +291,8 @@ namespace Velvet
             {
                 // Stroke centered on a half-width-inset path ≈ CSS's inside border. Drawn after the fill
                 // so the outline sits on top and follows the shear, keeping the slanted edge crisp.
-                SilhouetteFace.BuildShearedRoundedRect(p, ve, borderWidth * 0.5f, w, h, tanX, tanY);
+                SilhouetteFace.BuildShearedRoundedRect(p,
+                    ShearedRoundedRect.ForElement(ve, borderWidth * 0.5f, w, h, tanX, tanY));
                 p.strokeColor = borderColor;
                 p.lineWidth = borderWidth;
                 p.lineJoin = LineJoin.Miter;

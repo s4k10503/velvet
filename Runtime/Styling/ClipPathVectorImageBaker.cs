@@ -54,17 +54,11 @@ namespace Velvet
                     break;
                 case ClipPathKind.Circle:
                 case ClipPathKind.Ellipse:
-                {
-                    ResolveRadialGeometry(spec, width, height, out var cx, out var cy, out var rx, out var ry);
-                    BuildEllipsePath(painter, cx, cy, rx, ry);
+                    BuildEllipsePath(painter, ResolveRadialGeometry(spec, width, height));
                     break;
-                }
                 case ClipPathKind.Inset:
-                {
-                    ResolveInsetBox(spec, width, height, out var left, out var top, out var right, out var bottom);
-                    BuildInsetPath(painter, spec, left, top, right, bottom);
+                    BuildInsetPath(painter, spec, ResolveInsetBox(spec, width, height));
                     break;
-                }
                 default:
                     return null;
             }
@@ -129,22 +123,23 @@ namespace Velvet
                 case ClipPathKind.Circle:
                 case ClipPathKind.Ellipse:
                 {
-                    ResolveRadialGeometry(spec, width, height, out var cx, out var cy, out var rx, out var ry);
-                    if (rx <= 0f || ry <= 0f)
+                    var radial = ResolveRadialGeometry(spec, width, height);
+                    if (radial.RadiusX <= 0f || radial.RadiusY <= 0f)
                     {
                         return false;
                     }
-                    bounds = new Rect(cx - rx, cy - ry, rx * 2f, ry * 2f);
+                    bounds = new Rect(radial.CenterX - radial.RadiusX, radial.CenterY - radial.RadiusY,
+                        radial.RadiusX * 2f, radial.RadiusY * 2f);
                     return true;
                 }
                 case ClipPathKind.Inset:
                 {
-                    ResolveInsetBox(spec, width, height, out var left, out var top, out var right, out var bottom);
-                    if (right - left <= 0f || bottom - top <= 0f)
+                    var box = ResolveInsetBox(spec, width, height);
+                    if (box.Right - box.Left <= 0f || box.Bottom - box.Top <= 0f)
                     {
                         return false;
                     }
-                    bounds = new Rect(left, top, right - left, bottom - top);
+                    bounds = new Rect(box.Left, box.Top, box.Right - box.Left, box.Bottom - box.Top);
                     return true;
                 }
                 default:
@@ -152,58 +147,74 @@ namespace Velvet
             }
         }
 
-        // A circle is an ellipse with rx == ry; its single radius lives in the spec's X slot.
-        private static void ResolveRadialGeometry(ClipPathSpec spec, float width, float height,
-            out float cx, out float cy, out float rx, out float ry)
+        private readonly struct RadialGeometry
         {
-            cx = spec.CenterX.Resolve(width);
-            cy = spec.CenterY.Resolve(height);
+            public float CenterX { get; init; }
+            public float CenterY { get; init; }
+            public float RadiusX { get; init; }
+            public float RadiusY { get; init; }
+        }
+
+        // The four EDGES of the inset box in element-local px, not the CSS offsets they were resolved from:
+        // Right / Bottom are measured from the same origin as Left / Top.
+        private readonly struct InsetBox
+        {
+            public float Left { get; init; }
+            public float Top { get; init; }
+            public float Right { get; init; }
+            public float Bottom { get; init; }
+        }
+
+        // A circle is an ellipse with rx == ry; its single radius lives in the spec's X slot.
+        private static RadialGeometry ResolveRadialGeometry(ClipPathSpec spec, float width, float height)
+        {
+            var cx = spec.CenterX.Resolve(width);
+            var cy = spec.CenterY.Resolve(height);
 
             if (spec.Kind == ClipPathKind.Circle)
             {
                 // CSS: circle() % radius resolves against sqrt(w² + h²) / sqrt(2); the side keywords
                 // measure from the center to the nearest / farthest edge.
-                var centerX = cx;
-                var centerY = cy;
-                rx = spec.RadiusXExtent switch
+                var r = spec.RadiusXExtent switch
                 {
                     ClipPathExtent.ClosestSide => Mathf.Min(
-                        Mathf.Min(centerX, width - centerX), Mathf.Min(centerY, height - centerY)),
+                        Mathf.Min(cx, width - cx), Mathf.Min(cy, height - cy)),
                     ClipPathExtent.FarthestSide => Mathf.Max(
-                        Mathf.Max(centerX, width - centerX), Mathf.Max(centerY, height - centerY)),
+                        Mathf.Max(cx, width - cx), Mathf.Max(cy, height - cy)),
                     _ => spec.RadiusX.IsPercent
                         ? spec.RadiusX.Resolve(Mathf.Sqrt((width * width) + (height * height)) / 1.4142135f)
                         : spec.RadiusX.Resolve(0f),
                 };
-                ry = rx;
-                return;
+                return new RadialGeometry { CenterX = cx, CenterY = cy, RadiusX = r, RadiusY = r };
             }
 
             // CSS: ellipse() radii resolve per axis (% of width for rx, % of height for ry).
-            var ecx = cx;
-            var ecy = cy;
-            rx = spec.RadiusXExtent switch
+            return new RadialGeometry
             {
-                ClipPathExtent.ClosestSide => Mathf.Min(ecx, width - ecx),
-                ClipPathExtent.FarthestSide => Mathf.Max(ecx, width - ecx),
-                _ => spec.RadiusX.Resolve(width),
-            };
-            ry = spec.RadiusYExtent switch
-            {
-                ClipPathExtent.ClosestSide => Mathf.Min(ecy, height - ecy),
-                ClipPathExtent.FarthestSide => Mathf.Max(ecy, height - ecy),
-                _ => spec.RadiusY.Resolve(height),
+                CenterX = cx,
+                CenterY = cy,
+                RadiusX = spec.RadiusXExtent switch
+                {
+                    ClipPathExtent.ClosestSide => Mathf.Min(cx, width - cx),
+                    ClipPathExtent.FarthestSide => Mathf.Max(cx, width - cx),
+                    _ => spec.RadiusX.Resolve(width),
+                },
+                RadiusY = spec.RadiusYExtent switch
+                {
+                    ClipPathExtent.ClosestSide => Mathf.Min(cy, height - cy),
+                    ClipPathExtent.FarthestSide => Mathf.Max(cy, height - cy),
+                    _ => spec.RadiusY.Resolve(height),
+                },
             };
         }
 
-        private static void ResolveInsetBox(ClipPathSpec spec, float width, float height,
-            out float left, out float top, out float right, out float bottom)
+        private static InsetBox ResolveInsetBox(ClipPathSpec spec, float width, float height) => new()
         {
-            left = spec.InsetLeft.Resolve(width);
-            top = spec.InsetTop.Resolve(height);
-            right = width - spec.InsetRight.Resolve(width);
-            bottom = height - spec.InsetBottom.Resolve(height);
-        }
+            Left = spec.InsetLeft.Resolve(width),
+            Top = spec.InsetTop.Resolve(height),
+            Right = width - spec.InsetRight.Resolve(width),
+            Bottom = height - spec.InsetBottom.Resolve(height),
+        };
 
         private static void BuildPolygonPath(Painter2D painter, ClipPathSpec spec, float width, float height)
         {
@@ -229,8 +240,12 @@ namespace Velvet
 
         // circle() and ellipse() share the bezier path: a circle is an ellipse with rx == ry. Drawn
         // as 4 cubic beziers rather than Painter2D.Arc so the ellipse case needs no scaling trick.
-        private static void BuildEllipsePath(Painter2D painter, float cx, float cy, float rx, float ry)
+        private static void BuildEllipsePath(Painter2D painter, in RadialGeometry geometry)
         {
+            var cx = geometry.CenterX;
+            var cy = geometry.CenterY;
+            var rx = geometry.RadiusX;
+            var ry = geometry.RadiusY;
             var kx = Kappa * rx;
             var ky = Kappa * ry;
             painter.MoveTo(new Vector2(cx + rx, cy));
@@ -240,9 +255,12 @@ namespace Velvet
             painter.BezierCurveTo(new Vector2(cx + kx, cy - ry), new Vector2(cx + rx, cy - ky), new Vector2(cx + rx, cy));
         }
 
-        private static void BuildInsetPath(Painter2D painter, ClipPathSpec spec,
-            float left, float top, float right, float bottom)
+        private static void BuildInsetPath(Painter2D painter, ClipPathSpec spec, in InsetBox box)
         {
+            var left = box.Left;
+            var top = box.Top;
+            var right = box.Right;
+            var bottom = box.Bottom;
             var boxW = right - left;
             var boxH = bottom - top;
 
