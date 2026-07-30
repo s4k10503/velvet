@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -9,26 +10,25 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the shape/outline utility-className → reconciler wrapper contract, covering both the
-    /// <c>clip-path-*</c> stencil-mask wrapper and the <c>ring-*</c> / <c>outline-*</c> overlay wrapper
-    /// together, since the two structural wrappers are mutually exclusive and their precedence is part of
-    /// the contract.
+    /// Specifies the shape/outline utility-className → reconciler structure contract, covering the
+    /// <c>clip-path-*</c> stencil-mask wrapper and the <c>ring-*</c> / <c>outline-*</c> band together,
+    /// since a clip suppresses a ring and that precedence is part of the contract.
     /// <list type="bullet">
     /// <item><c>clip-path-*</c>: UI Toolkit (6000.3) has no USS <c>clip-path</c>; its supported
     /// arbitrary-shape mask is an overflow-hidden element with a vector background, so a
     /// <c>clip-path-[…]</c> class makes Velvet wrap the element in a masking wrapper
-    /// (<see cref="FiberWrapperElementAppliers.ClipPathWrapperClass"/>) that carries the baked shape.</item>
+    /// (<see cref="FiberWrapperElementAppliers.ClipPathWrapperClass"/>) that carries the baked shape. It is
+    /// the only remaining structural wrapper.</item>
     /// <item><c>ring-*</c> / <c>outline-*</c>: UI Toolkit (6000.3) has no CSS box-shadow / outline either,
-    /// so a ring class makes Velvet wrap the element in a layout wrapper
-    /// (<see cref="FiberWrapperElementAppliers.RingWrapperClass"/>) holding a native-border OVERLAY
-    /// sibling that paints the outset (or inset) band — no GPU shader, unlike the soft drop shadow. Width /
-    /// color come from the utility scale; the corner radius follows the element's rounded-*.</item>
-    /// <item>Both reuse the same <c>WrapperToInnerMap</c> seam. Clip-path OUTRANKS ring for the structural
-    /// wrapper slot (the two are mutually exclusive); the drop shadow is a wrapper-less PAINT, so it
-    /// composes with either wrapper instead of competing for it — CSS clip-path clips the box-shadow too,
-    /// so an active clip suppresses the shadow paint, while a ring does not.</item>
-    /// <item>Removing the wrapping class (or unmounting) destroys any baked resource (the VectorImage for
-    /// clip) and removes the wrapper with no residue.</item>
+    /// so Velvet paints the band on a native-border overlay hosted as a reconciler-invisible SIBLING of the
+    /// ringed element (<see cref="RingOverlay"/>) — no GPU shader, unlike the soft drop shadow, and nothing
+    /// added to the element's own slot. Width / color come from the utility scale; the corner radius follows
+    /// the element's rounded-*.</item>
+    /// <item>An active clip suppresses both the ring and the drop-shadow paint (CSS clip-path clips an
+    /// outline and a box-shadow alike). Neither of those two is a wrapper, so they compose freely with each
+    /// other and with a user <c>wrapElement</c>.</item>
+    /// <item>Removing the class (or unmounting) destroys any baked resource (the VectorImage for clip),
+    /// removes the wrapper, and takes the ring overlay out of the parent, with no residue.</item>
     /// </list>
     /// GWT, one assert per case.
     /// </summary>
@@ -38,7 +38,20 @@ namespace Velvet.Tests
         private const string Triangle = "clip-path-[polygon(50%_0%,100%_100%,0%_100%)]";
 
         private static VisualElement Wrapper(VisualElement root) => root[0];
-        private static VisualElement Overlay(VisualElement root) => root[0][1]; // wrapper children: [inner, overlay]
+
+        // The ring band is a sibling of the ringed element, not a child of a wrapper, so it is found by its
+        // marker rather than at a fixed index.
+        private static VisualElement RingOverlayIn(VisualElement host)
+        {
+            for (var i = 0; i < host.childCount; i++)
+            {
+                if (host[i].ClassListContains(RingOverlay.MarkerClass))
+                {
+                    return host[i];
+                }
+            }
+            return null;
+        }
 
         private static void Mount(ReconcilerScope scope, VNode[] tree)
             => scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
@@ -375,16 +388,40 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(0));
         }
 
-        // Ring / outline wrapper
+        // Ring / outline overlay
 
         [Test]
-        public void Given_Ring2_When_Reconciled_Then_ElementIsWrappedInARingWrapper()
+        public void Given_Ring2_When_Reconciled_Then_TheElementItselfStillOccupiesItsSlot()
+        {
+            // The property the sibling-overlay model exists for: a ring adds nothing to the element's own
+            // slot, so every layout relationship it has with its parent is the one it declared.
+            using var scope = new ReconcilerScope();
+
+            Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
+
+            Assert.That(scope.Root[0].name, Is.EqualTo("card"));
+        }
+
+        [Test]
+        public void Given_Ring2_When_Reconciled_Then_TheOverlayIsHostedBesideTheElement()
         {
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.True);
+            Assert.That(RingOverlayIn(scope.Root), Is.Not.Null);
+        }
+
+        [Test]
+        public void Given_ARingedElement_When_Reconciled_Then_TheOverlayIsNotCountedAsARenderedChild()
+        {
+            // The overlay rides SilhouetteBoundsSpacer's reconciler-invisible-child predicate, which is what
+            // keeps the child reconciler's slot indexing, the structural variants and [&>*]: from seeing it.
+            using var scope = new ReconcilerScope();
+
+            Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
+
+            Assert.That(SilhouetteBoundsSpacer.NonSpacerChildCount(scope.Root), Is.EqualTo(1));
         }
 
         [Test]
@@ -394,7 +431,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That(Overlay(scope.Root).style.borderTopWidth.value, Is.EqualTo(2f));
+            Assert.That(RingOverlayIn(scope.Root).style.borderTopWidth.value, Is.EqualTo(2f));
         }
 
         [Test]
@@ -407,7 +444,7 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "ring", name: "card") });
 
-            Assert.That(Overlay(scope.Root).style.borderTopColor.value, Is.EqualTo(blue));
+            Assert.That(RingOverlayIn(scope.Root).style.borderTopColor.value, Is.EqualTo(blue));
         }
 
         [Test]
@@ -418,129 +455,200 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2 ring-red-500", name: "card") });
 
-            Assert.That(Overlay(scope.Root).style.borderRightColor.value, Is.EqualTo(red));
+            Assert.That(RingOverlayIn(scope.Root).style.borderRightColor.value, Is.EqualTo(red));
         }
 
         [Test]
-        public void Given_Outline2_When_Reconciled_Then_ElementIsWrapped()
+        public void Given_Outline2_When_Reconciled_Then_TheOverlayIsHosted()
         {
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[] { V.Div(className: "outline-2", name: "card") });
 
-            Assert.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.True);
+            Assert.That(RingOverlayIn(scope.Root), Is.Not.Null);
         }
 
         [Test]
-        public void Given_ARingedElement_When_RingClassRemovedByPatch_Then_Unwrapped()
+        public void Given_ARingedElement_When_RingClassRemovedByPatch_Then_TheOverlayLeavesTheParent()
         {
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: "ring-2", name: "card") };
             Mount(scope, before);
-            Assume.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.True,
-                "Precondition: wrapped while ring-2 is present");
+            var hostedWhileRinged = RingOverlayIn(scope.Root) != null;
 
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Div(className: "", name: "card") });
 
-            // The inner card is restored at the wrapper's slot — no ring wrapper left.
-            Assert.That(scope.Root[0].ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.False);
+            // Hosted, then gone — one comparison, because asserting only "gone" would pass equally against
+            // a ring that was never hosted at all.
+            Assert.That((hostedWhileRinged, RingOverlayIn(scope.Root) != null), Is.EqualTo((true, false)));
         }
 
         [Test]
-        public void Given_ShadowAndRingTogether_When_Reconciled_Then_TheRingStillTakesTheWrapper()
+        public void Given_ShadowAndRingTogether_When_Reconciled_Then_BothLayersAttach()
         {
-            // The shadow is a wrapper-less paint, so it does not compete with the ring for the wrapper: a
-            // shadow+ring element wears the ring wrapper AND carries a shadow paint on the inner.
+            // Neither layer is a wrapper any more, so they compose with no precedence between them at all.
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[] { V.Div(className: "shadow-lg ring-2", name: "card") });
 
-            Assert.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.True);
+            Assert.That((RingOverlayIn(scope.Root) != null, DropShadowSilhouette.TryGet(scope.Root[0]) != null),
+                Is.EqualTo((true, true)));
         }
 
         [Test]
-        public void Given_ShadowAndRingTogether_When_Reconciled_Then_TheInnerCarriesTheShadowPaint()
+        public void Given_RingOnMotion_When_Reconciled_Then_NoRingBindingIsCreated()
         {
+            // A Motion stands down: the band is hosted beside the element, outside the Motion's own opacity,
+            // so it could not fade with an enter / exit. Warned about rather than silently dropped, like the
+            // shadow-* / clip-path-* / z-* gates on a Motion.
             using var scope = new ReconcilerScope();
-
-            Mount(scope, new VNode[] { V.Div(className: "shadow-lg ring-2", name: "card") });
-
-            // Compose, not exclude: the ring-wrapped inner element carries the shadow paint binding.
-            Assert.That(DropShadowSilhouette.TryGet(scope.Root[0][0]), Is.Not.Null);
-        }
-
-        [Test]
-        public void Given_RingOnMotion_When_Reconciled_Then_NoRingWrapperIsCreated()
-        {
-            // A Motion never receives a structural wrapper (it would become the AnimatePresence enter/exit
-            // anchor while the transition stays on the inner Motion, breaking it).
-            using var scope = new ReconcilerScope();
+            LogAssert.Expect(LogType.Warning, new Regex(@"ring-\*.*on a Motion is ignored"));
 
             Mount(scope, new VNode[] { V.Motion("ring-2", key: "m") });
 
-            Assert.That(scope.Root[0].ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.False);
+            Assert.That(scope.Reconciler.Context.RingBindings.Count, Is.EqualTo(0));
         }
 
         [Test]
-        public void Given_APlainElement_When_RingClassAddedByPatch_Then_WrappedInPlace()
+        public void Given_APlainElement_When_RingClassAddedByPatch_Then_TheOverlayIsHosted()
         {
-            // The patch wrap-in-place path: a plain element gains ring-2 on a re-render and is wrapped.
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: "", name: "card") };
             Mount(scope, before);
-            Assume.That(scope.Root[0].ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.False,
-                "Precondition: not wrapped while ring-less");
+            var hostedWhileRingless = RingOverlayIn(scope.Root) != null;
 
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.True);
+            Assert.That((hostedWhileRingless, RingOverlayIn(scope.Root) != null), Is.EqualTo((false, true)));
         }
 
         [Test]
-        public void Given_ARingedElement_When_ShadowClassAddedByPatch_Then_TheRingWrapperIsKept()
+        public void Given_ARingedElement_When_ShadowClassAddedByPatch_Then_TheRingOverlayIsKept()
         {
-            // ring + shadow now COMPOSE (shadow is a paint, not a competing wrapper): adding a shadow to a
-            // ringed element keeps the ring wrapper in place and attaches a shadow paint to the inner.
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: "ring-2", name: "card") };
             Mount(scope, before);
-            Assume.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.True,
-                "Precondition: ring-wrapped");
+            var hostedBeforeShadow = RingOverlayIn(scope.Root) != null;
 
-            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Div(className: "ring-2 shadow-lg", name: "card") });
+            scope.Reconciler.Reconcile(scope.Root, before,
+                new VNode[] { V.Div(className: "ring-2 shadow-lg", name: "card") });
 
-            Assert.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.True);
+            // Hosted before AND after: "hosted after" alone would also hold if the ring had only just been
+            // created by this patch, which is not what the case is about.
+            Assert.That((hostedBeforeShadow, RingOverlayIn(scope.Root) != null), Is.EqualTo((true, true)));
         }
 
         [Test]
-        public void Given_ARingedElement_When_ShadowClassAddedByPatch_Then_TheShadowPaintIsCreatedOnTheInner()
+        public void Given_ARingedElement_When_ClipClassAddedByPatch_Then_TheRingIsSuppressed()
         {
-            // The discriminating half: the shadow paint actually attaches to the ring-wrapped inner element.
+            // clip-path clips an outline in CSS, so the clip suppresses the ring — now a plain suppression
+            // gate rather than a contest for the one structural wrapper slot.
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: "ring-2", name: "card") };
             Mount(scope, before);
-
-            scope.Reconciler.Reconcile(scope.Root, before, new VNode[] { V.Div(className: "ring-2 shadow-lg", name: "card") });
-
-            Assert.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(1));
-        }
-
-        [Test]
-        public void Given_ARingedElement_When_ClipClassAddedByPatch_Then_TheClipWrapperReplacesTheRing()
-        {
-            // ring → clip transition: clip outranks ring, so the clip wrapper must claim the element.
-            using var scope = new ReconcilerScope();
-            var before = new VNode[] { V.Div(className: "ring-2", name: "card") };
-            Mount(scope, before);
-            Assume.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.RingWrapperClass), Is.True,
-                "Precondition: ring-wrapped");
+            var boundBeforeClip = scope.Reconciler.Context.RingBindings.Count;
 
             scope.Reconciler.Reconcile(scope.Root, before, new VNode[]
             {
-                V.Div(className: "ring-2 clip-path-[polygon(50%_0%,100%_100%,0%_100%)]", name: "card"),
+                V.Div(className: "ring-2 " + Triangle, name: "card"),
             });
 
-            Assert.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass), Is.True);
+            Assert.That((boundBeforeClip, scope.Reconciler.Context.RingBindings.Count), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_TwoRingedSiblings_When_Reconciled_Then_EachBandSitsDirectlyAfterItsOwnElement()
+        {
+            // Adjacent child order is what gives a band its own element's paint position rather than a
+            // position above every later sibling. It is a NECESSARY condition for that, not a sufficient
+            // one — whether UI Toolkit paints an absolutely-positioned sibling in child order against an
+            // in-flow one is a separate, unmeasured question — so this pins the structure only.
+            using var scope = new ReconcilerScope();
+
+            Mount(scope, new VNode[]
+            {
+                V.Div(className: "ring-2", name: "a", key: "a"),
+                V.Div(className: "ring-2", name: "b", key: "b"),
+            });
+
+            var order = new List<string>();
+            for (var i = 0; i < scope.Root.childCount; i++)
+            {
+                order.Add(scope.Root[i].ClassListContains(RingOverlay.MarkerClass)
+                    ? "band"
+                    : scope.Root[i].name);
+            }
+            Assert.That(order, Is.EqualTo(new[] { "a", "band", "b", "band" }));
+        }
+
+        [Test]
+        public void Given_TwoRingedSiblings_When_Reconciled_Then_NeitherBandIsCountedAsARenderedChild()
+        {
+            // LogicalChildSlots.Count, not the superseded physical NonSpacerChildCount: the bands sit
+            // ADJACENT to their elements rather than in a trailing run — which is what gives each band its
+            // own element's paint position — and a count that only trims a trailing run reports 3 here.
+            using var scope = new ReconcilerScope();
+
+            Mount(scope, new VNode[]
+            {
+                V.Div(className: "ring-2", name: "a", key: "a"),
+                V.Div(className: "ring-2", name: "b", key: "b"),
+            });
+
+            Assert.That(LogicalChildSlots.Count(scope.Root), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void Given_ThreeRingedSiblings_When_TheMiddleOneIsRemoved_Then_TheSurvivorsKeepTheirSlotsAndBands()
+        {
+            // A keyed removal is where a miscounted invisible child surfaces: the reconciler addresses slots
+            // [0, NonSpacerChildCount), so a band counted as a rendered child mis-pairs the survivors —
+            // measured, an adjacent-placement build left slot 1 holding "c" instead of a band. Pins the
+            // surviving children AND the band count together, since either can be right while the other is not.
+            using var scope = new ReconcilerScope();
+            var before = new VNode[]
+            {
+                V.Div(className: "ring-2", name: "a", key: "a"),
+                V.Div(className: "ring-2", name: "b", key: "b"),
+                V.Div(className: "ring-2", name: "c", key: "c"),
+            };
+            Mount(scope, before);
+
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[]
+            {
+                V.Div(className: "ring-2", name: "a", key: "a"),
+                V.Div(className: "ring-2", name: "c", key: "c"),
+            });
+
+            var rendered = new List<string>();
+            var bands = 0;
+            for (var i = 0; i < scope.Root.childCount; i++)
+            {
+                if (scope.Root[i].ClassListContains(RingOverlay.MarkerClass))
+                {
+                    bands++;
+                }
+                else
+                {
+                    rendered.Add(scope.Root[i].name);
+                }
+            }
+            Assert.That((string.Join(",", rendered), bands), Is.EqualTo(("a,c", 2)));
+        }
+
+        [Test]
+        public void Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsLayerContainer()
+        {
+            // A z-* absolute element is relocated out of its ordinary slot into a layer container, leaving a
+            // placeholder behind. The band is hosted on the element's parent, so it has to follow — placement
+            // is drained at the reconcile boundary, AFTER the relocation, and re-derives the host from the
+            // element rather than caching the parent it had at create time.
+            using var scope = new ReconcilerScope();
+
+            Mount(scope, new VNode[] { V.Div(className: "absolute z-10 ring-2", name: "card") });
+
+            var card = scope.Root.Q<VisualElement>("card");
+            Assert.That(RingOverlayIn(card.parent), Is.Not.Null);
         }
 
         [Test]
@@ -549,11 +657,26 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree = new VNode[] { V.Div(className: "ring-2", name: "card") };
             Mount(scope, tree);
-            Assume.That(scope.Reconciler.Context.RingBindings.Count, Is.EqualTo(1), "Precondition: one ring binding");
+            var boundWhileMounted = scope.Reconciler.Context.RingBindings.Count;
 
             scope.Reconciler.Reconcile(scope.Root, tree, Array.Empty<VNode>());
 
-            Assert.That(scope.Reconciler.Context.RingBindings.Count, Is.EqualTo(0));
+            Assert.That((boundWhileMounted, scope.Reconciler.Context.RingBindings.Count), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_ARingedElement_When_Unmounted_Then_TheOverlayLeavesTheParent()
+        {
+            // The overlay lives in the PARENT, not in the unmounted element's own subtree, so it does not
+            // leave with it — a teardown that only dropped the binding would strand a live band.
+            using var scope = new ReconcilerScope();
+            var tree = new VNode[] { V.Div(className: "ring-2", name: "card") };
+            Mount(scope, tree);
+            var hostedWhileMounted = RingOverlayIn(scope.Root) != null;
+
+            scope.Reconciler.Reconcile(scope.Root, tree, Array.Empty<VNode>());
+
+            Assert.That((hostedWhileMounted, RingOverlayIn(scope.Root) != null), Is.EqualTo((true, false)));
         }
     }
 }

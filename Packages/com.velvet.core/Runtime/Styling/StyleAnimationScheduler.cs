@@ -217,7 +217,7 @@ namespace Velvet
             // driver at the from-value (0 = invisible) NOW (synchronously, before the next-frame swap) so there
             // is no first-frame flash, then the tick (started at the swap) ramps each shadow to follow the
             // caster's opacity. Released on completion / cancel.
-            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, 0f);
+            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, 0f, pending);
             _pendingEnters[element] = pending;
 
             // Schedules the deferred swap (and its own completion timeout) on the PANEL-ROOT host, not the
@@ -417,7 +417,7 @@ namespace Velvet
             // Co-fade drop-shadows OUT with the element instead of hiding them: register this exit as a shadow
             // driver at the from-value (1 = opaque, the element's current state); the tick (started at the swap)
             // then ramps each shadow down to follow the caster's fading opacity. Released on completion / cancel.
-            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, 1f);
+            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, 1f, pending);
             _pendingExits[element] = pending;
 
             var staggerDelayMs = (long)(additionalDelaySec * 1000);
@@ -614,7 +614,7 @@ namespace Velvet
             // mirroring PlayEnterInternal — matching those hardcoded values (rather than reading the spring's
             // own opacity channel, which may not even exist for a translate/scale/rotate-only play) keeps a
             // spring's shadow behavior identical to a tween's for the same enter/exit direction.
-            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f);
+            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f, pending);
             state.OnSettled = onComplete;
             map[element] = pending;
 
@@ -720,7 +720,7 @@ namespace Velvet
                 Bezier = state,
             };
             pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(
-                element, pending, play.IsExit ? 1f : 0f);
+                element, pending, play.IsExit ? 1f : 0f, pending);
             state.OnSettled = onComplete;
             map[element] = pending;
 
@@ -1477,6 +1477,10 @@ namespace Velvet
             // Non-null for a bezier-driven entry (StartBezierVariant) — the bezier sibling of Spring. Mutually
             // exclusive with it per play (which one is set depends on config.Type); both null for a plain tween.
             public BezierTweenState? Bezier;
+
+            // The animating element's OWN ring band, when it has one. Only its own: a band belonging to a
+            // DESCENDANT is a child of a descendant, so UI Toolkit's opacity compositing already fades it.
+            public VisualElement? RingOverlay;
         }
 
         // Drop-shadow co-fade bookkeeping for every StyleAnimationScheduler play (tween / spring / bezier,
@@ -1498,8 +1502,16 @@ namespace Velvet
             // is the PRODUCT of its active drivers, so a nested animation whose own fade completes first does NOT
             // reveal a shadow an enclosing, still-running fade also covers.
             internal static List<(VisualElement element, DropShadowBinding binding)>? CollectShadowsForCoFade(
-                VisualElement element, object driver, float startFactor)
+                VisualElement element, object driver, float startFactor,
+                StyleAnimationScheduler.PendingAnimation? pendingRing = null)
             {
+                // The animating element's own band is outside its opacity (it is a sibling, not a
+                // descendant), so nothing else can fade it. Seeded at the same start factor as the shadows.
+                if (pendingRing != null && RingOverlay.TryGet(element) is { } ringBinding)
+                {
+                    pendingRing.RingOverlay = ringBinding.Overlay;
+                    ringBinding.Overlay.style.opacity = startFactor;
+                }
                 List<(VisualElement, DropShadowBinding)>? shadows = null;
                 CollectShadows(element, ref shadows);
                 if (shadows == null)
@@ -1583,7 +1595,7 @@ namespace Velvet
             // nothing. Paused by EndShadowCoFade on completion / cancel.
             internal static void StartShadowCoFadeTick(StyleAnimationScheduler.PendingAnimation pending)
             {
-                if (pending.Shadows == null)
+                if (pending.Shadows == null && pending.RingOverlay == null)
                 {
                     return;
                 }
@@ -1601,6 +1613,14 @@ namespace Velvet
                 {
                     var raw = animatingElement.resolvedStyle.opacity;
                     var factor = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
+                    if (pending.RingOverlay != null)
+                    {
+                        pending.RingOverlay.style.opacity = factor;
+                    }
+                    if (pending.Shadows == null)
+                    {
+                        return;
+                    }
                     foreach (var (el, binding) in pending.Shadows)
                     {
                         DropShadowSilhouette.SetCoFade(binding, el, pending, factor);
@@ -1614,6 +1634,13 @@ namespace Velvet
             internal static void EndShadowCoFade(StyleAnimationScheduler.PendingAnimation pending)
             {
                 pending.ShadowTick?.Pause();
+                if (pending.RingOverlay != null)
+                {
+                    // Null, not 1: the inline opacity is this play's alone, so releasing it returns the band
+                    // to whatever the cascade says rather than pinning it opaque.
+                    pending.RingOverlay.style.opacity = StyleKeyword.Null;
+                    pending.RingOverlay = null;
+                }
                 if (pending.Shadows == null)
                 {
                     return;

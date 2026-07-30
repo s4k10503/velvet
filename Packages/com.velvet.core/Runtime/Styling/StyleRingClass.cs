@@ -6,10 +6,11 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // A resolved ring / outline preset. UI Toolkit has no CSS box-shadow or outline, so Velvet draws the
-    // outset hard border these utilities describe as a native rounded-border OVERLAY around the element
+    // outset hard border these utilities describe as a native rounded-border OVERLAY tracking the element
     // (hardware-rendered, follows rounded-* corners, no custom material / draw-order hazard — unlike the
-    // soft, blurred DropShadow which needs an SDF shader). Corner radius is NOT part of the spec: the overlay
-    // follows the target's own rounded-* radius (plus the ring width + offset), like ShadowSpec.
+    // soft, blurred DropShadow which needs an SDF shader); RingOverlay owns where that overlay lives. Corner
+    // radius is NOT part of the spec: the overlay follows the target's own rounded-* radius (plus the ring
+    // width + offset), like ShadowSpec.
     //
     // ring and outline collapse onto ONE spec because they render identically — an outset band of Width at
     // Offset distance, in Color. Their only modelled differences are defaults (ring defaults to blue-500 at
@@ -85,6 +86,15 @@ namespace Velvet
             ["0"] = 0f, ["1"] = 1f, ["2"] = 2f, ["4"] = 4f, ["8"] = 8f,
         };
 
+        // True when cls belongs to either family this layer owns (recognized or not-yet-valid). Both the
+        // array gate below and the variant-payload gate answer through this one predicate, so which tokens
+        // count as "a ring utility" is defined in exactly one place — mirroring StyleShadowClass.IsShadowClass.
+        public static bool IsRingClass(string cls)
+            => !string.IsNullOrEmpty(cls)
+                && (cls == "ring" || cls == "outline"
+                    || cls.StartsWith("ring-", StringComparison.Ordinal)
+                    || cls.StartsWith("outline-", StringComparison.Ordinal));
+
         // Cheap early-out gate: true when ANY class is ring/outline or begins with ring-/outline-. Skips the
         // full parse on the ~99% of elements that carry no ring/outline class and no binding.
         public static bool HasRingClass(string[] classNames)
@@ -95,13 +105,7 @@ namespace Velvet
             }
             foreach (var cls in classNames)
             {
-                if (string.IsNullOrEmpty(cls))
-                {
-                    continue;
-                }
-                if (cls == "ring" || cls == "outline"
-                    || cls.StartsWith("ring-", StringComparison.Ordinal)
-                    || cls.StartsWith("outline-", StringComparison.Ordinal))
+                if (IsRingClass(cls))
                 {
                     return true;
                 }
@@ -224,11 +228,13 @@ namespace Velvet
                 return;
             }
 
-            // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]).
+            // Otherwise a color token (ring-red-500 / outline-white / ring-[#abc]). Deliberately does NOT
+            // move IsOutline: that flag only selects which family's DEFAULT width applies, and a color names
+            // no width. Letting it move meant `outline ring-red-500` recoloured the band and silently
+            // widened it from the outline default to the ring default at the same time.
             if (TryParseColorValue(ringSuffix, out var c))
             {
                 slots.HasIntent = true;
-                slots.IsOutline = isOutlineFamily;
                 slots.ColorSet = true;
                 slots.Color = c;
             }
@@ -281,25 +287,5 @@ namespace Velvet
         // arbitrary radii (resolved from resolvedStyle once laid out) and when no rounding class is present.
         public static bool TryResolveCornerRadius(string[]? classNames, out float radius)
             => StyleShadowClass.TryResolveCornerRadius(classNames, out radius);
-    }
-
-    // Reconciler-side bookkeeping for one ringed element, keyed in ReconcilerContext.RingBindings by the
-    // INNER (real) element. Mirrors ShadowBinding: holds the structural wrapper ([inner, ring overlay], also
-    // in WrapperToInnerMap), the absolutely-positioned native-border Overlay element that paints the ring,
-    // the geometry callback on the inner (so the band tracks the inner's size + resolved corner radius), the
-    // latest class list, and the resolved spec (so the geometry sync knows the width/offset/inset to lay out).
-    internal sealed class RingBinding
-    {
-        public readonly VisualElement Wrapper;
-        public readonly VisualElement Overlay;
-        public EventCallback<GeometryChangedEvent> OnGeometry = null!;
-        public string[] ClassNames = null!;
-        public RingSpec Spec;
-
-        public RingBinding(VisualElement wrapper, VisualElement overlay)
-        {
-            Wrapper = wrapper;
-            Overlay = overlay;
-        }
     }
 }
