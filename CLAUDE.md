@@ -85,9 +85,26 @@ Four ways a green test has lied here:
 - A fact the bundled stylesheets own — the longhands a utility writes, where it sits in the cascade — is derived from them rather than restated in C#: `Generators~/src/Velvet.StyleTable` reads `Runtime/Styles/*.uss` and emits `Runtime/Styling/StyleUtilityProperties.g.cs`. Where a mirror is genuinely unavoidable it is pinned by a test that fails when the stylesheet moves, because an unpinned one drifts silently — a guard that unioned property sets where the cascade takes only the last declaration suspended the transitions it existed to protect.
 - Documentation is single-source-of-truth: a given fact (the hooks table, the factory list, the diagnostic-ID table, a feature's behavior description) lives in exactly one owning document. Other documents link to it and add at most a one-line summary instead of restating it. Duplicated statements are how docs drift — when the fact changes, only one copy gets updated. This holds for comments too: name a sibling's mechanism ("same ownership rule as `StyleGapManipulator`"), never re-explain it.
 
-## Comment length
+## Comments
 
-A comment states why, never what — and states it once. Length is not capped, but every sentence must survive the **deletion test**: delete it; if a competent reader of the surrounding code plus the remaining sentences would still get it right, the sentence was carrying nothing. Delete it for real.
+### True first
+
+A comment states why. Before any question of economy, it has to be **true**, and the failure has one shape: a comment naming a *mechanism* the author never verified. The pattern is "X because Y", where X was observed and Y was assumed. Six shipped in a single session, none caught by any test:
+
+- "the uniform-frame check catches an unstyled capture" — it does not; a backdrop and a font leave the frame varied
+- "without the stylesheet this class is inert, so the control holds" — that class has no USS rule at all and is written from C#
+- "`worldBound` is needed because it carries the ancestors' transforms" — the two elements are siblings, so those cancel
+- "the halo lies wholly outside the box, so the clip removes the paint" — the interior survives untouched
+- "without the sheet a panel resolves none of the utility classes" — `gap-*`, `space-*` and `divide-*` resolve
+- "the tolerance propagates into a tuple comparison" — it does not, and this one sat in a skill
+
+A reader who trusts a wrong reason is worse off than one who finds no reason and goes to look. So **an unverified mechanism is not written down** — not hedged, not softened, not marked "probably". Write what was measured, or write nothing and let the code speak. If the reason is worth having, it is worth the measurement that earns it; a reason nobody could be bothered to check is a reason nobody should be asked to trust.
+
+The same holds for `Documentation~` prose, a PR description, and a commit message. `DocumentationDriftTests` pins names and paths, never claims.
+
+### Then short
+
+Length is not capped, but every sentence must survive the **deletion test**: delete it; if a competent reader of the surrounding code plus the remaining sentences would still get it right, the sentence was carrying nothing. Delete it for real.
 
 Four things reliably fail the test and should not be written:
 
