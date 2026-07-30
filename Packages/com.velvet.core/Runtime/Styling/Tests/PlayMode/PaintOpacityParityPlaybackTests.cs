@@ -118,6 +118,33 @@ namespace Velvet.Tests
 
         private const string ProbeClasses = "w-[200px] h-[60px] mt-[20px] ml-[20px]";
 
+        // Counts saturated green, which only the wrapper's overflow control child paints.
+        private int GreenPixels()
+        {
+            var pixels = RenderTexturePixelReader.ReadPixels(_host.TargetTexture, new RectInt(0, 0, Size, Size));
+            var n = 0;
+            foreach (var p in pixels)
+            {
+                if (p.g > 140 && p.r < 90 && p.b < 90) n++;
+            }
+            return n;
+        }
+
+        // Sticks out BELOW the 160px-tall wrapper, inside the 240px panel, so it renders when the wrapper does
+        // not clip and vanishes when it does. It never touches either mark's sample rect.
+        private static void AddOverflowControl(VisualElement wrapper)
+        {
+            wrapper.Add(new VisualElement
+            {
+                pickingMode = PickingMode.Ignore,
+                style =
+                {
+                    position = Position.Absolute, left = 20, top = 170, width = 40, height = 40,
+                    backgroundColor = new Color(0f, 1f, 0f, 1f),
+                },
+            });
+        }
+
         // wrapperOpacity / probeOpacity are set inline so neither depends on the stylesheet resolving an
         // opacity utility; clipWrapper is what makes the wrapper a clipped opacity group.
         private IEnumerator MountProbe(string name, float wrapperOpacity, bool clipWrapper, string probeExtra,
@@ -136,6 +163,7 @@ namespace Velvet.Tests
             wrap.style.opacity = wrapperOpacity;
             if (clipWrapper) wrap.style.overflow = Overflow.Hidden;
             probe.style.opacity = probeOpacity;
+            AddOverflowControl(wrap);
             PaintQuadAndFill(probe, tint);
             probe.MarkDirtyRepaint();
             yield return WaitRealtime(0.9);
@@ -163,8 +191,16 @@ namespace Velvet.Tests
         public IEnumerator Given_AClippedOpacityGroup_When_ItsDescendantPaintsBothWays_Then_TheQuadAndTheFillMatch()
         {
             // Arrange — an ancestor that both clips and fades is the shape a group-opacity render target would
-            // take, and the one context where a textured quad could have been composited on its own path.
+            // take, and the one context where a textured quad could have been composited on its own path. The
+            // same wrapper WITHOUT its clip establishes that the control child renders at all, so the clipped
+            // reading below distinguishes a clip that took from a control that was never visible.
+            // Both control readings are taken at FULL opacity, differing only in the clip: read at 0.5 the
+            // control would fall under the saturated-green threshold on its own, and an absent clip would
+            // count zero for the wrong reason.
+            yield return MountProbe("ClipGroupUnclipped", 1f, false, "", 1f, Color.white);
+            var controlUnclipped = GreenPixels();
             yield return MountProbe("ClipGroupOpaque", 1f, true, "", 1f, Color.white);
+            var controlClipped = GreenPixels();
             var opaqueQuad = Average(QuadSample);
 
             // Act
@@ -172,9 +208,15 @@ namespace Velvet.Tests
             var quad = Average(QuadSample);
             var fill = Average(FillSample);
 
-            // Assert
-            Assert.That((quad.r < opaqueQuad.r, fill.r == quad.r), Is.EqualTo((true, true)),
-                $"opaque={opaqueQuad.r} quad={quad.r} fill={fill.r}");
+            // Assert — the first two terms are what make this case about a CLIPPED group rather than a plain
+            // faded one: without them the wrapper's overflow could be dropped and every remaining term would
+            // still hold, leaving the context pinned in name only. Then the opacity reached the frame, and it
+            // reached both marks identically.
+            Assert.That(
+                (controlUnclipped > 0, controlClipped == 0, quad.r < opaqueQuad.r, fill.r == quad.r),
+                Is.EqualTo((true, true, true, true)),
+                $"control unclipped={controlUnclipped} clipped={controlClipped}; "
+                + $"opaque={opaqueQuad.r} quad={quad.r} fill={fill.r}");
         }
 
         [UnityTest]
