@@ -119,6 +119,10 @@ alone, so a child's own `border-b` under a `divide-x` row is preserved. Unlike g
 wrap-specific strategy: a wrapping container still gets a single per-child divider edge, not a
 symmetric one, so dividers between wrapped *lines* are not drawn.
 
+`divide-dashed` / `divide-dotted` have no UI Toolkit border-style, so Velvet paints those rules
+itself, which costs them on a child that also carries `overflow-hidden` — see the painted-utility
+table in [styling-variants.md](styling-variants.md).
+
 ### How re-spacing stays correct
 
 Everything below is written for `gap-*`, but the divider manipulator resolves its direction the same

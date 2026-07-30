@@ -230,10 +230,43 @@ two places:
   it could not fade with an enter or exit. Put the ring on a `Div` the Motion wraps.
 
 A ring on an ordinary element inside a `V.AnimatePresence` **does** fade with that element's enter and
-exit: the band is driven from the same per-frame opacity sample that fades a drop shadow.
+exit: the band is the one paint the scheduler samples the caster's opacity for each frame, because it
+is the only one hosted outside the element the renderer applies that opacity to.
 
 An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
 `overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.
+
+**Where the other wrapper-less paints deviate from CSS under `overflow-hidden`.** UI Toolkit applies an
+element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
+CSS clips neither a box-shadow nor a border that way, so a painted utility silently loses whatever falls
+outside that box:
+
+| Utility | On an element that also carries `overflow-hidden` |
+|---|---|
+| `shadow-*` / `drop-shadow-*` | the whole shadow is gone — the halo lies entirely outside the box |
+| `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders |
+| `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
+| `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
+| `overline` | unaffected — the rule sits inside the content box |
+
+Put the clip on a child instead of on the painted element:
+
+```csharp
+// The shadow on the outer element, the clip on an inner one.
+V.Div(className: "shadow-lg rounded-2xl", children: new VNode[]
+{
+    V.Div(className: "overflow-hidden rounded-2xl", children: new VNode[]
+    {
+        V.Label(text: "Clipped content"),
+    }),
+});
+```
+
+The ring's sibling hosting is not simply extended to the rest because a paint drawn in the element's own
+content follows that element's transform (`hover:scale-105 shadow-lg` keeps its shadow aligned) and a
+sibling does not, and because a paint hosted outside the element stops receiving the element's opacity
+and has to be driven per frame the way the band is. A band was worth both costs: it lies entirely outside
+the box, so a clip takes all of it.
 
 **Class channels that are not variants drive none of this.** `whileHoverClass`, `whileTapClass` and
 `whileFocusClass`, the transient enter / exit classes an `AnimatePresence` play applies for the

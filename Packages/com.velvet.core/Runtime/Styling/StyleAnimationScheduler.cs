@@ -213,11 +213,10 @@ namespace Velvet
                 DelayList = delayList,
                 AnimatingElement = element,
             };
-            // Co-fade drop-shadows with the element instead of hiding them: register this enter as a shadow
-            // driver at the from-value (0 = invisible) NOW (synchronously, before the next-frame swap) so there
-            // is no first-frame flash, then the tick (started at the swap) ramps each shadow to follow the
-            // caster's opacity. Released on completion / cancel.
-            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, 0f, pending);
+            // Seed the ring band at the from-value (0 = invisible) NOW (synchronously, before the next-frame
+            // swap) so there is no first-frame flash; the tick (started at the swap) then ramps it to follow
+            // the caster's opacity. Released on completion / cancel.
+            RingCoFadeCoordinator.BindRing(element, pending, 0f);
             _pendingEnters[element] = pending;
 
             // Schedules the deferred swap (and its own completion timeout) on the PANEL-ROOT host, not the
@@ -302,9 +301,9 @@ namespace Velvet
 
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, toClasses);
-            // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so
-            // descendant shadows fade in lockstep with it.
-            ShadowCoFadeCoordinator.StartShadowCoFadeTick(pending);
+            // The CSS opacity transition is now firing — start sampling the caster's opacity each frame so its
+            // ring band fades in lockstep with it.
+            RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
             // Step 3: after the duration, clear inline styles. Classic enter also removes the transient
             // to-classes; variantMode KEEPS them (they are the persistent resting variant). Sized from the
@@ -323,8 +322,8 @@ namespace Velvet
                     {
                         StyleAnimationClassUtils.RemoveClasses(element, toClasses);
                     }
-                    // Target is opaque now — stop the co-fade and restore the shadows to full strength.
-                    ShadowCoFadeCoordinator.EndShadowCoFade(completed);
+                    // Target is opaque now — stop the co-fade and release the band's inline opacity.
+                    RingCoFadeCoordinator.EndRingCoFade(completed);
                     ClearTransitionStyles(element);
                     _listPool.ReturnDurationList(completed.DurationList);
                     _listPool.ReturnDelayList(completed.DelayList);
@@ -414,10 +413,10 @@ namespace Velvet
                 DelayList = delayList,
                 AnimatingElement = element,
             };
-            // Co-fade drop-shadows OUT with the element instead of hiding them: register this exit as a shadow
-            // driver at the from-value (1 = opaque, the element's current state); the tick (started at the swap)
-            // then ramps each shadow down to follow the caster's fading opacity. Released on completion / cancel.
-            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, 1f, pending);
+            // Seed the ring band at the from-value (1 = opaque, the element's current state); the tick (started
+            // at the swap) then ramps it down to follow the caster's fading opacity. Released on completion /
+            // cancel.
+            RingCoFadeCoordinator.BindRing(element, pending, 1f);
             _pendingExits[element] = pending;
 
             var staggerDelayMs = (long)(additionalDelaySec * 1000);
@@ -493,9 +492,9 @@ namespace Velvet
             StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
             StyleAnimationClassUtils.AddClasses(element, pending.ToClasses!);
             // The CSS opacity fade-out is now firing — sample the caster's opacity each frame on the
-            // stable host so descendant shadows fade out in lockstep (and keep ticking through any
+            // stable host so its ring band fades out in lockstep (and keeps ticking through any
             // reconcile-reorder detach of the exiting ghost, which is why the host is the panel root).
-            ShadowCoFadeCoordinator.StartShadowCoFadeTick(pending);
+            RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
             // Step 3: invoke onComplete after the duration. Sized from the SLOWEST animating property
             // (SlowestPropertyTimeoutMs) rather than just the top-level DurationSec/DelaySec: a variant
@@ -508,7 +507,7 @@ namespace Velvet
             {
                 if (_pendingExits.Remove(element, out var completed))
                 {
-                    ShadowCoFadeCoordinator.EndShadowCoFade(completed);
+                    RingCoFadeCoordinator.EndRingCoFade(completed);
                     // Clear BEFORE returning the lists (mirrors the enter completion): the inline
                     // slots retain the list references, and a completed exit's element can outlive
                     // its drop (a re-entry preempting the drop render) — leaving them set would make
@@ -605,16 +604,16 @@ namespace Velvet
                 AnimatingElement = element,
                 Spring = state,
             };
-            // Co-fade drop-shadows with the spring exactly like the tween paths (PlayEnterInternal / PlayExit):
-            // register this play as a shadow driver at the from-value NOW (synchronously, before the spring
-            // ever ticks) so there is no first-frame flash, then the recurring tick — started alongside the
-            // spring's own tick in StartSpringTick — samples the caster's opacity each frame so descendant
-            // shadows track it exactly as they do a tween. isExit selects the same start value PlayExit uses (1
-            // = opaque, the resting state before fading out); a standalone enter always starts invisible (0),
-            // mirroring PlayEnterInternal — matching those hardcoded values (rather than reading the spring's
-            // own opacity channel, which may not even exist for a translate/scale/rotate-only play) keeps a
-            // spring's shadow behavior identical to a tween's for the same enter/exit direction.
-            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(element, pending, isExit ? 1f : 0f, pending);
+            // Seed the ring band with the spring exactly like the tween paths (PlayEnterInternal / PlayExit):
+            // at the from-value NOW (synchronously, before the spring ever ticks) so there is no first-frame
+            // flash, then the recurring tick — started alongside the spring's own tick in StartSpringTick —
+            // samples the caster's opacity each frame so the band tracks it exactly as it does a tween. isExit
+            // selects the same start value PlayExit uses (1 = opaque, the resting state before fading out); a
+            // standalone enter always starts invisible (0), mirroring PlayEnterInternal — matching those
+            // hardcoded values (rather than reading the spring's own opacity channel, which may not even exist
+            // for a translate/scale/rotate-only play) keeps a spring's band behavior identical to a tween's for
+            // the same enter/exit direction.
+            RingCoFadeCoordinator.BindRing(element, pending, isExit ? 1f : 0f);
             state.OnSettled = onComplete;
             map[element] = pending;
 
@@ -719,8 +718,7 @@ namespace Velvet
                 AnimatingElement = element,
                 Bezier = state,
             };
-            pending.Shadows = ShadowCoFadeCoordinator.CollectShadowsForCoFade(
-                element, pending, play.IsExit ? 1f : 0f, pending);
+            RingCoFadeCoordinator.BindRing(element, pending, play.IsExit ? 1f : 0f);
             state.OnSettled = onComplete;
             map[element] = pending;
 
@@ -792,9 +790,9 @@ namespace Velvet
             }
 
             // The spring's own physics tick is now live — start sampling the caster's opacity each frame
-            // (StartShadowCoFadeTick) so co-faded descendant shadows track it exactly like a tween's, from the
-            // same moment its CSS transition would have started firing.
-            ShadowCoFadeCoordinator.StartShadowCoFadeTick(pending);
+            // (StartRingCoFadeTick) so a co-faded ring band tracks it exactly like a tween's, from the same
+            // moment its CSS transition would have started firing.
+            RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
@@ -823,9 +821,9 @@ namespace Velvet
                 {
                     RemoveIfCurrent(_pendingEnters, element, pending);
                 }
-                // Target is at rest now — stop the co-fade and restore the shadows to full strength (a no-op
-                // when this subtree carries none, the common case).
-                ShadowCoFadeCoordinator.EndShadowCoFade(pending);
+                // Target is at rest now — stop the co-fade and release the band's inline opacity (a no-op when
+                // this element carries none, the common case).
+                RingCoFadeCoordinator.EndRingCoFade(pending);
                 MotionSpringDriver.ClearInlineOverrides(element, state);
                 ReapplyMotionOwnedInlineValues(element);
                 state.OnSettled?.Invoke();
@@ -849,7 +847,7 @@ namespace Velvet
                 return;
             }
 
-            ShadowCoFadeCoordinator.StartShadowCoFadeTick(pending);
+            RingCoFadeCoordinator.StartRingCoFadeTick(pending);
 
             state.Tick = host.schedule.Execute((TimerState ts) =>
             {
@@ -873,7 +871,7 @@ namespace Velvet
                 {
                     RemoveIfCurrent(_pendingEnters, element, pending);
                 }
-                ShadowCoFadeCoordinator.EndShadowCoFade(pending);
+                RingCoFadeCoordinator.EndRingCoFade(pending);
                 BezierTweenDriver.ClearInlineOverrides(element, state);
                 ReapplyMotionOwnedInlineValues(element);
                 state.OnSettled?.Invoke();
@@ -941,49 +939,6 @@ namespace Velvet
 
         // Whether the given element is currently exiting.
         public bool IsExiting(VisualElement element) => _pendingExits.ContainsKey(element);
-
-        // Enrolls a drop-shadow paint that came into existence AFTER an animation covering its caster
-        // started, into every such animation's co-fade. Each play snapshots the shadow bindings under its
-        // subtree when it begins, so a paint attached later — a hover:/md: payload toggling shadow-* mid-fade,
-        // or a re-render adding one — is in no snapshot, and would paint at full strength through a caster
-        // the fade has already made translucent. Enrolling at the caster's currently sampled opacity joins it
-        // to the fade where the rest of the subtree already is.
-        // A binding torn down again before the play ends stays in that play's list until it completes: the
-        // tick keeps writing a factor onto a paint nothing draws, which is inert, and the count is bounded by
-        // the toggles one animation's duration can hold.
-        internal void AdoptShadowForCoFade(VisualElement element, DropShadowBinding binding)
-        {
-            AdoptShadowInto(_pendingEnters, element, binding);
-            AdoptShadowInto(_pendingExits, element, binding);
-        }
-
-        private static void AdoptShadowInto(Dictionary<VisualElement, PendingAnimation> map,
-            VisualElement element, DropShadowBinding binding)
-        {
-            foreach (var pending in map.Values)
-            {
-                var animating = pending.AnimatingElement;
-                if (animating != null && CoversElement(animating, element))
-                {
-                    ShadowCoFadeCoordinator.AdoptShadow(pending, animating, element, binding);
-                }
-            }
-        }
-
-        // Whether animating is element itself or one of its ancestors — the same "under the animating
-        // subtree" relation CollectShadowsForCoFade's downward walk expresses, asked from the other end
-        // because only the one element is known here.
-        private static bool CoversElement(VisualElement animating, VisualElement element)
-        {
-            for (var current = element; current != null; current = current.hierarchy.parent)
-            {
-                if (ReferenceEquals(current, animating))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
 
         // Cancels every animation and removes the applied CSS classes and inline styles.
         public void CancelAll()
@@ -1210,9 +1165,8 @@ namespace Velvet
                     StyleAnimationClassUtils.AddClasses(element, pending.RestingClasses);
                 }
                 // Interrupted enter / exit: the target returns to its resting (opaque) state, so stop this
-                // tween's co-fade and drop its driver — the shadow snaps back to full (product collapses to 1)
-                // unless an enclosing fade still drives it.
-                ShadowCoFadeCoordinator.EndShadowCoFade(pending);
+                // tween's co-fade and release the band's inline opacity back to the cascade.
+                RingCoFadeCoordinator.EndRingCoFade(pending);
 
                 if (pending.Spring != null)
                 {
@@ -1388,7 +1342,7 @@ namespace Velvet
                 if (pending.PendingAttach != null) element.UnregisterCallback(pending.PendingAttach);
                 StyleAnimationClassUtils.RemoveClasses(element, pending.FromClasses);
                 StyleAnimationClassUtils.RemoveClasses(element, pending.ToClasses);
-                ShadowCoFadeCoordinator.EndShadowCoFade(pending);
+                RingCoFadeCoordinator.EndRingCoFade(pending);
                 if (pending.Spring != null)
                 {
                     // A hard stop, no reversal: pause the tick and drop the inline overrides it owns (the
@@ -1452,16 +1406,12 @@ namespace Velvet
             public string[]? RestingClasses;
             public List<TimeValue>? DurationList;
             public List<TimeValue>? DelayList;
-            // Drop-shadow paints this animation co-fades (registered as a driver at step 1), ended one-for-one
-            // on completion / cancel. Each entry is the caster element and its paint binding. Null when the
-            // animated subtree has no shadow.
-            public List<(VisualElement element, DropShadowBinding binding)>? Shadows;
             // The element whose transition-interpolated opacity the co-fade tick samples each frame (the
             // animating subtree root). Stored so the tick reads it without recapturing.
             public VisualElement? AnimatingElement;
-            // The recurring co-fade tick (panel-root scheduled). Paused on completion / cancel. Null when the
-            // animated subtree has no shadow.
-            public IVisualElementScheduledItem? ShadowTick;
+            // The recurring ring co-fade tick (panel-root scheduled). Paused on completion / cancel. Null when
+            // the animating element carries no band.
+            public IVisualElementScheduledItem? RingTick;
             // For an exit started while the element was off-panel: the AttachToPanelEvent callback that defers
             // scheduling until attach. The callback unregisters itself when it fires, but a cancel-before-attach
             // never fires it, so it must be unregistered on cancel — otherwise it (and the closure pinning this
@@ -1483,119 +1433,39 @@ namespace Velvet
             public VisualElement? RingOverlay;
         }
 
-        // Drop-shadow co-fade bookkeeping for every StyleAnimationScheduler play (tween / spring / bezier,
-        // enter / exit): a drop-shadow paint does not honor UI Toolkit opacity, so while an animation tweens its
-        // target's opacity this samples that opacity each frame and scales each descendant shadow's alpha by it,
-        // making the shadow fade WITH its caster instead of popping in/out. Depends only on the PendingAnimation
-        // instance each play already carries as its driver token, not on any of the scheduler's own map/pool state.
-        private static class ShadowCoFadeCoordinator
+        // Ring-band co-fade bookkeeping for every StyleAnimationScheduler play (tween / spring / bezier, enter /
+        // exit). A ring band is a SIBLING of its element (see RingOverlay), so UI Toolkit's opacity compositing
+        // never reaches it and only an explicit per-frame push fades it with its caster. No other wrapper-less
+        // paint needs this: every one of them is drawn in the caster's OWN generateVisualContent, which the
+        // renderer already scales by the caster's resolved opacity (see DropShadowSilhouette.DrawShadowQuad for
+        // the measurement). Depends only on the PendingAnimation instance each play already carries, not on any
+        // of the scheduler's own map/pool state.
+        private static class RingCoFadeCoordinator
         {
-            // Collects every drop-shadow paint under an element (the element itself and its descendants) and
-            // registers this animation as a co-fade driver on each at the given start factor (0 for an enter,
-            // 1 for an exit). The shadow is painted as a baked quad in the caster's own generateVisualContent and
-            // does NOT honor UI Toolkit opacity (neither inherited from an animating ancestor nor inline), so while
-            // a FadeSlideUp / Fade tweens the target's opacity the scheduler samples that opacity each frame
-            // (StartShadowCoFadeTick) and scales each shadow's alpha by it — the shadow fades WITH its element
-            // instead of being hidden then popping in. The returned list lets completion / cancel end the SAME
-            // co-fade without re-walking the subtree; null when there are none (the common case) so nothing is
-            // retained and no tick is scheduled. The driver token is the PendingAnimation, and a binding's opacity
-            // is the PRODUCT of its active drivers, so a nested animation whose own fade completes first does NOT
-            // reveal a shadow an enclosing, still-running fade also covers.
-            internal static List<(VisualElement element, DropShadowBinding binding)>? CollectShadowsForCoFade(
-                VisualElement element, object driver, float startFactor,
-                StyleAnimationScheduler.PendingAnimation? pendingRing = null)
+            // Binds the element's own band (if it has one) to this play and seeds it at the play's start factor
+            // (0 for an enter, 1 for an exit), synchronously, so there is no first-frame flash before the tick
+            // takes over.
+            internal static void BindRing(VisualElement element,
+                StyleAnimationScheduler.PendingAnimation pending, float startFactor)
             {
-                // The animating element's own band is outside its opacity (it is a sibling, not a
-                // descendant), so nothing else can fade it. Seeded at the same start factor as the shadows.
-                if (pendingRing != null && RingOverlay.TryGet(element) is { } ringBinding)
-                {
-                    pendingRing.RingOverlay = ringBinding.Overlay;
-                    ringBinding.Overlay.style.opacity = startFactor;
-                }
-                List<(VisualElement, DropShadowBinding)>? shadows = null;
-                CollectShadows(element, ref shadows);
-                if (shadows == null)
-                {
-                    return null;
-                }
-                foreach (var (el, binding) in shadows)
-                {
-                    DropShadowSilhouette.SetCoFade(binding, el, driver, startFactor);
-                }
-                return shadows;
-            }
-
-            // Depth-first walk gathering each element that carries a shadow paint binding. The shadow is the
-            // caster's own paint, not a separate child element, so the binding is looked up per element via
-            // DropShadowSilhouette's side-channel.
-            private static void CollectShadows(VisualElement element,
-                ref List<(VisualElement, DropShadowBinding)>? shadows)
-            {
-                var binding = DropShadowSilhouette.TryGet(element);
-                if (binding != null)
-                {
-                    (shadows ??= new List<(VisualElement, DropShadowBinding)>()).Add((element, binding));
-                }
-                var count = element.childCount;
-                for (var i = 0; i < count; i++)
-                {
-                    CollectShadows(element[i], ref shadows);
-                }
-            }
-
-            // Registers one late-arriving shadow as this animation's co-fade subject, at the caster's current
-            // opacity, and starts the tick if this play had no shadow to drive when it began.
-            internal static void AdoptShadow(StyleAnimationScheduler.PendingAnimation pending,
-                VisualElement animating, VisualElement element, DropShadowBinding binding)
-            {
-                // A play that began while its subtree was still detached (a Motion's mount enter, a presence
-                // enter dispatched before the entering element is placed) has already walked that subtree and
-                // seeded this binding at its from-value. Re-seeding it here would sample an opacity the panel
-                // has not resolved yet — AttachToPanelEvent is dispatched BEFORE the style invalidation the
-                // play's own class swap triggers, so an element carrying `opacity-0` still reports
-                // resolvedStyle.opacity 1 at that moment — and would replace a correct 0 with 1 until the next
-                // driver frame. Idempotence per play is also what keeps the subject list one-for-one with the
-                // EndCoFade that unwinds it.
-                if (pending.Shadows != null && AlreadyDriving(pending.Shadows, binding))
+                if (RingOverlay.TryGet(element) is not { } binding)
                 {
                     return;
                 }
-                var raw = animating.resolvedStyle.opacity;
-                DropShadowSilhouette.SetCoFade(binding, element, pending,
-                    float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw));
-                var started = pending.Shadows != null;
-                (pending.Shadows ??= new List<(VisualElement element, DropShadowBinding binding)>())
-                    .Add((element, binding));
-                if (!started)
-                {
-                    StartShadowCoFadeTick(pending);
-                }
-            }
-
-            private static bool AlreadyDriving(
-                List<(VisualElement element, DropShadowBinding binding)> shadows, DropShadowBinding binding)
-            {
-                for (var i = 0; i < shadows.Count; i++)
-                {
-                    if (ReferenceEquals(shadows[i].binding, binding))
-                    {
-                        return true;
-                    }
-                }
-                return false;
+                pending.RingOverlay = binding.Overlay;
+                binding.Overlay.style.opacity = startFactor;
             }
 
             // Starts the recurring co-fade tick: every frame, sample the animating element's current (transition-
-            // interpolated) opacity and push it to each collected descendant shadow, so they fade in lockstep with
-            // the element. Scheduled on the PANEL ROOT (not the animating element): a recurring item survives a
-            // keyed reorder's detach/re-attach of the animating element on its own (UI Toolkit pauses and
-            // reschedules it automatically), but the panel root is already the one stable host every other piece
-            // of this animation's bookkeeping runs against, so the tick shares it instead of tracking its own.
-            // No-op when the subtree carries no shadows (the common case), so a shadowless animation costs
-            // nothing. Paused by EndShadowCoFade on completion / cancel.
-            internal static void StartShadowCoFadeTick(StyleAnimationScheduler.PendingAnimation pending)
+            // interpolated) opacity and push it to the band. Scheduled on the PANEL ROOT (not the animating
+            // element): a recurring item survives a keyed reorder's detach/re-attach of the animating element on
+            // its own (UI Toolkit pauses and reschedules it automatically), but the panel root is already the one
+            // stable host every other piece of this animation's bookkeeping runs against, so the tick shares it
+            // instead of tracking its own. No-op when the element carries no band (the common case), so a
+            // ringless animation costs nothing. Paused by EndRingCoFade on completion / cancel.
+            internal static void StartRingCoFadeTick(StyleAnimationScheduler.PendingAnimation pending)
             {
-                if (pending.Shadows == null && pending.RingOverlay == null)
+                if (pending.RingOverlay == null)
                 {
                     return;
                 }
@@ -1609,46 +1479,31 @@ namespace Velvet
                 {
                     return;
                 }
-                pending.ShadowTick = host.schedule.Execute(() =>
+                pending.RingTick = host.schedule.Execute(() =>
                 {
-                    var raw = animatingElement.resolvedStyle.opacity;
-                    var factor = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
-                    if (pending.RingOverlay != null)
-                    {
-                        pending.RingOverlay.style.opacity = factor;
-                    }
-                    if (pending.Shadows == null)
+                    var overlay = pending.RingOverlay;
+                    if (overlay == null)
                     {
                         return;
                     }
-                    foreach (var (el, binding) in pending.Shadows)
-                    {
-                        DropShadowSilhouette.SetCoFade(binding, el, pending, factor);
-                    }
+                    var raw = animatingElement.resolvedStyle.opacity;
+                    overlay.style.opacity = float.IsNaN(raw) ? 1f : UnityEngine.Mathf.Clamp01(raw);
                 }).Every(StyleAnimateDriver.TickMs);
             }
 
-            // Stops the co-fade tick and drops this animation's driver from each shadow (null-safe; balanced
-            // one-for-one with CollectShadowsForCoFade). When a shadow's last driver is removed it returns to full
-            // strength; an enclosing, still-running fade keeps driving it.
-            internal static void EndShadowCoFade(StyleAnimationScheduler.PendingAnimation pending)
+            // Stops the co-fade tick and releases the band's inline opacity (null-safe; balanced one-for-one
+            // with BindRing).
+            internal static void EndRingCoFade(StyleAnimationScheduler.PendingAnimation pending)
             {
-                pending.ShadowTick?.Pause();
-                if (pending.RingOverlay != null)
-                {
-                    // Null, not 1: the inline opacity is this play's alone, so releasing it returns the band
-                    // to whatever the cascade says rather than pinning it opaque.
-                    pending.RingOverlay.style.opacity = StyleKeyword.Null;
-                    pending.RingOverlay = null;
-                }
-                if (pending.Shadows == null)
+                pending.RingTick?.Pause();
+                if (pending.RingOverlay == null)
                 {
                     return;
                 }
-                foreach (var (el, binding) in pending.Shadows)
-                {
-                    DropShadowSilhouette.EndCoFade(binding, el, pending);
-                }
+                // Null, not 1: the inline opacity is this play's alone, so releasing it returns the band
+                // to whatever the cascade says rather than pinning it opaque.
+                pending.RingOverlay.style.opacity = StyleKeyword.Null;
+                pending.RingOverlay = null;
             }
         }
 

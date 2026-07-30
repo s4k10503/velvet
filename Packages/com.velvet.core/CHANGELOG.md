@@ -163,14 +163,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A `shadow-*` / `drop-shadow-*` paint now tracks an enter or exit animation covering it in the two
-  mount-time cases that previously escaped. An element mounted with the utility already in its class
-  list, under a play that was already running, joined that play's fade nowhere and stayed at resting
-  strength for the rest of it; and a `V.Motion` playing its own mount enter re-sampled a shadow the
-  play had already picked up, at a moment when the caster's from-class has not resolved yet, so the
-  shadow snapped back to resting strength over an `opacity-0` card until the next animation frame —
-  for a staggered `AnimatePresence` list, for the whole stagger delay. A shadow that arrived through
-  a later class change was already handled.
+- A `shadow-*` / `drop-shadow-*` paint no longer fades to the square of its caster's opacity during an
+  enter or exit. The scheduler scaled the shadow by the caster's sampled opacity each frame on the
+  premise that a baked shadow quad ignores UI Toolkit opacity; pixel readback shows the renderer scales
+  that quad exactly as it scales the element's other content, so the correction applied the same opacity
+  a second time — a card halfway through a fade painted its shadow at a quarter strength rather than
+  half, and a staggered `AnimatePresence` list showed it on every row. The per-frame drive is gone; a
+  `ring-*` band, which is hosted beside its element rather than inside it, still needs and keeps one.
 - Two variants naming one of the utilities Velvet realises itself — `gap-*` / `space-*`, `grid` /
   `grid-cols-*`, `divide-*`, `text-balance`, `skew-*`, `shadow-*`, the gradients, `animate-*`,
   `border-dashed` / `border-dotted` — now rank against each other by the precedence table, and within
