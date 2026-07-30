@@ -74,10 +74,6 @@ namespace Velvet
         //     AnimatePresence overlap can leave the live range shorter than the baseline; the keyed
         //     prefix scan's slot always exists by construction (Pass 1 never changes childCount ahead
         //     of index i).
-        //   clampInsertIndex: the indexed diff inserts at an absolute position that must clamp to
-        //     parent.childCount on a desync-shortened range; the keyed scan's slotStart + i is always
-        //     in range on its own and must NOT be clamped (clamping would silently misplace an insert
-        //     once slotStart + i legitimately reaches parent.childCount, i.e. a tail slot).
         //   Removal deliberately stays BEFORE CreateElement (remove-then-create), not
         //     create-then-remove: an inline-mounted component fiber is keyed by
         //     (parentFiber, positionKey, identity) — NOT by which VisualElement currently hosts it
@@ -105,13 +101,16 @@ namespace Velvet
         // discarding anything: the boundary already resolved the failure, so any later slot's
         // patch/replace would be racing a reconcile the caller no longer owns end-to-end.
         private bool PatchOrReplaceAtSlot(
-            in ChildSlot slot, VNode? oldNode, VNode? newNode, bool slotExists, bool clampInsertIndex)
+            in ChildSlot slot, VNode? oldNode, VNode? newNode, bool slotExists)
         {
             var parent = slot.Parent;
-            var domIndex = slot.SlotStart + slot.Index;
+            // LOGICAL, converted per DOM touch. It is deliberately not pre-converted into a physical index:
+            // the removal below shifts every physical index after it, so a value captured before it would be
+            // stale by the insert.
+            var logicalIndex = slot.SlotStart + slot.Index;
             if (slotExists && ReconcileKeying.CanPatch(oldNode, newNode))
             {
-                var domElement = parent.ElementAt(domIndex);
+                var domElement = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, logicalIndex));
                 var actualElement = _patcher.ResolveWrapped(domElement);
                 _patcher.PatchNode(actualElement, oldNode, newNode);
                 return false;
@@ -119,13 +118,12 @@ namespace Velvet
 
             if (slotExists)
             {
-                _cleaner.RemoveElement(parent, domIndex);
+                _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, logicalIndex));
             }
             var newElement = _factory.CreateElement(newNode);
-            var insertIndex = clampInsertIndex
-                ? Math.Min(domIndex, SilhouetteBoundsSpacer.NonSpacerChildCount(parent))
-                : domIndex;
-            parent.Insert(insertIndex, newElement);
+            // ToPhysical clamps by construction — a slot past the last rendered child resolves to the
+            // position just after it — so the caller no longer chooses between two index formulas.
+            parent.Insert(LogicalChildSlots.ToPhysical(parent, logicalIndex), newElement);
             return _ctx.IsAborted;
         }
 
@@ -156,26 +154,15 @@ namespace Velvet
         {
             if (_ctx.IsAborted) return;
 
-            // A back z-layer container, when present, is parent's own leading child (physically preceding
-            // the ordinary children it must paint behind) — the one structural asymmetry against every other
-            // reconciler-invisible child (SilhouetteBoundsSpacer's own spacer, and the front z-layer
-            // container, are both trailing). Every caller's incoming slotStart/slotLimit is computed in
-            // purely logical terms (0 for a fresh range, or a sum of PRECEDING SIBLING FIBERS' own rendered
-            // counts for a shared-parent inline tenant) — entirely blind to this leading child — so folding
-            // the offset in ONCE here, at the single choke point every fresh (non-resumed) entry funnels
-            // through, corrects every downstream absolute-index computation without touching any of them
-            // individually (symmetrical to how NonSpacerChildCount centralizes the trailing side). A resumed
-            // time-sliced pass (ContinueIndexed/ContinueKeyed) never re-enters here — its saved slotStart
-            // already has this baked in from when it first ran — so this can never double-apply.
-            if (parent != null)
-            {
-                var leadingOffset = FiberZLayerCoordinator.LeadingOffset(parent);
-                if (leadingOffset != 0)
-                {
-                    slotStart += leadingOffset;
-                    if (slotLimit != int.MaxValue) slotLimit += leadingOffset;
-                }
-            }
+            // Slot indices are LOGICAL throughout: a slot counts rendered children only, and the
+            // reconciler-invisible ones (a z-index layer container, a filter bounds spacer, a ring band)
+            // are skipped by the one conversion applied where the DOM is actually touched — see
+            // LogicalChildSlots. This entry used to fold a back z-layer container's leading offset into
+            // slotStart instead, which worked only while every invisible child was pinned to one end of the
+            // list; a band that must sit beside its own element cannot be. Nothing is corrected here now,
+            // and the parked-slot rebasing that existed to keep those baked-in offsets true across a
+            // container appearing or disappearing is gone with it: a logical slot does not move when an
+            // invisible child does.
 
             // New entries discard any prior suspended state. ContinueXxx calls ReconcileXxxFrom
             // directly and bypasses this path, so discarding here does not break a Continue run.
@@ -300,7 +287,7 @@ namespace Velvet
                         // sign container creation can rebase a park THIS SAME instance's Reconcile() call just
                         // captured (see RebasePendingSlotStartIfTargeting) — invisible to any other lookup
                         // until this whole top-level call returns.
-                        FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount, this);
+                        FiberZLayerCoordinator.ResolveQueuedMount(_ctx, placeholder, zLayerMount);
                         continue;
                     default:
                         // Only PortalNode / WorldSpaceNode enqueue deferred mounts; anything else is
@@ -311,21 +298,13 @@ namespace Velvet
                         continue;
                 }
                 var resolvedTarget = target!;
-                // Exclude a trailing filter bounds-spacer (a skewed / shadowed + filtered target carries one):
-                // portal children must land BEFORE it so it stays last and the recorded slot start does not
-                // drift when the spacer self-heals to the end. NonSpacerChildCount is a PHYSICAL count (it still
-                // counts a leading back z-layer container, if the target already carries one from an earlier
-                // relocation directly under it) — Reconcile's own entry point (this method's caller for an
-                // ordinary child list, and every subsequent patch of this same slot range) always re-adds
-                // LeadingOffset to convert a LOGICAL slotStart into a physical one, so passing the already-
-                // physical value here would fold the offset a second time and misplace every child after the
-                // first (a keyed insert can even index past childCount and throw). Subtracting it back out here,
-                // once, is the single point every consumer of the stored PortalState.SlotStart agrees on: a
-                // LOGICAL basis, re-derived fresh at each use (LeadingOffset reads the target's live physical
-                // structure, never a cached copy) so it stays correct even if the target's own leading container
-                // appears or disappears between this mount and a later patch.
-                var physicalSlotStart = SilhouetteBoundsSpacer.NonSpacerChildCount(resolvedTarget);
-                var slotStart = physicalSlotStart - FiberZLayerCoordinator.LeadingOffset(resolvedTarget);
+                // Append after the target's existing rendered children: LogicalChildSlots.Count is the
+                // logical slot the next child takes, and the conversion at each DOM touch is what keeps a
+                // trailing filter bounds-spacer last and skips a leading z-layer container. Stored logical,
+                // which is the basis every consumer of PortalState.SlotStart now shares — it no longer has to
+                // be re-derived against the target's live physical structure, so a container appearing or
+                // disappearing between this mount and a later patch cannot move it.
+                var slotStart = LogicalChildSlots.Count(resolvedTarget);
                 // Restore the context that enclosed the Portal's tree position (captured at enqueue) so the
                 // children mount under their enclosing Providers / MotionContext rather than an empty cursor.
                 // The children's own reconcile pushes/pops on top of these and balances out, so popping the
@@ -402,17 +381,14 @@ namespace Velvet
                         f.DetachedMountContext = detachedContext;
                     }
                 }
-                // The growth this mount contributed, in PHYSICAL terms (both operands share that basis, so the
-                // leading offset — constant across this call, since a nested z-layer mount targeting this same
-                // resolvedTarget only ever ENQUEUES here rather than resolving inline — cancels out of the
-                // difference either way); slotStart itself is stored LOGICAL, per the comment above.
-                var slotLength = SilhouetteBoundsSpacer.NonSpacerChildCount(resolvedTarget) - physicalSlotStart;
+                // The growth this mount contributed, in logical slots — the same basis as slotStart.
+                var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, slotStart, slotLength);
             }
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
             // last member this pass tears down here, never synchronously mid-diff. `this` mirrors
             // ResolveQueuedMount's own reason above (a self-caused park from THIS instance's own pass).
-            FiberZLayerCoordinator.DrainTeardowns(_ctx, this);
+            FiberZLayerCoordinator.DrainTeardowns(_ctx);
         }
 
         private (VisualElement Target, VNode?[] Children) ResolveLayerPortalTarget(
@@ -531,34 +507,6 @@ namespace Velvet
         private static int ShiftSlotLimit(int slotLimit, int delta)
             => slotLimit == int.MaxValue ? slotLimit : slotLimit + delta;
 
-        // Rebases this instance's own parked state by delta, but only when its captured Parent is `parent` —
-        // called by FiberZLayerCoordinator when a back z-layer container is created or torn down (see
-        // FiberZLayerCoordinator.RebaseParkedSlotsForContainerChange). That mutation runs from
-        // DrainPendingPortalMounts, itself called from THIS instance's own top-level finally — Reconciler.
-        // Reconcile's on a fiber's first suspension, or Reconciler.ContinueReconcile's on a later resume tick
-        // that re-parks in the same tick it drains — so a park this SAME call just captured (its own
-        // placeholder insert queued the very mount this drain now resolves) is still sitting on this
-        // instance. On a first suspension that is also invisible to any cross-fiber sweep:
-        // ReconcilerContext.ParkedBaselineFibers only gains this fiber once Reconcile() itself has fully
-        // returned (FiberCommitWork.ReturnOldTreeAfterReconcile), strictly AFTER that drain finishes. On a
-        // later resume tick the fiber may ALREADY be registered there too (nothing removes it until
-        // HasPendingWork goes false) — RebaseParkedSlotsForContainerChange's own loop excludes this instance
-        // by identity so the two call sites never double-apply to the same captured state. Unlike
-        // RebasePendingSlotStart (which the caller already knows targets this instance's parked parent, from
-        // the inline-sibling walk), this call site has no such guarantee — a parked state here may belong to
-        // an unrelated parent entirely — so the Parent match is checked first.
-        internal void RebasePendingSlotStartIfTargeting(VisualElement parent, int delta)
-        {
-            if (delta == 0) return;
-            if (PendingIndexedState.HasValue && ReferenceEquals(PendingIndexedState.Value.Parent, parent))
-            {
-                RebasePendingSlotStart(delta);
-            }
-            else if (PendingKeyedState != null && ReferenceEquals(PendingKeyedState.Parent, parent))
-            {
-                RebasePendingSlotStart(delta);
-            }
-        }
 
         // Discards a suspended KeyedReconcile state and returns the held Pool buffers.
         // Invoked on a new Reconcile or during Dispose.
@@ -601,24 +549,27 @@ namespace Velvet
             VisualElement? parent, VNode?[]? oldNodes, VNode?[]? newNodes, int slotStart, int slotLimit)
         {
             if (parent == null || oldNodes == null || newNodes == null) return false;
-            // NonSpacerChildCount, not raw childCount: a trailing filter bounds-spacer on a skewed / shadowed +
+            // The LOGICAL count, not raw childCount: a filter bounds-spacer on a skewed / shadowed +
             // filtered parent is not a keyed row, so it must not pad `available` (masking a real desync) nor be
             // the first element the removal loop below tears out.
-            var rangeEnd = Math.Min(SilhouetteBoundsSpacer.NonSpacerChildCount(parent), slotLimit);
+            var rangeEnd = Math.Min(LogicalChildSlots.Count(parent), slotLimit);
             var available = rangeEnd - slotStart;
             if (available < 0) available = 0;
             if (oldNodes.Length <= available) return false;
 
+            // Logical slots, converted per step: the walk is downward so each removal only shifts slots
+            // after the one just removed, and an invisible child interleaved in the range is skipped rather
+            // than torn out with the rendered ones.
             for (var i = rangeEnd - 1; i >= slotStart; i--)
             {
-                _cleaner.RemoveElement(parent, i);
+                _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, i));
                 if (_ctx.IsAborted) return true;
             }
             for (var i = 0; i < newNodes.Length; i++)
             {
                 var element = _factory.CreateElement(newNodes[i]);
                 if (_ctx.IsAborted) return true;
-                parent.Insert(Math.Min(slotStart + i, SilhouetteBoundsSpacer.NonSpacerChildCount(parent)), element);
+                parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), element);
             }
             return true;
         }
@@ -767,10 +718,12 @@ namespace Velvet
                 // Bound by slotLimit (this fiber's range end), not just childCount: for a non-last inline
                 // tenant childCount includes the following sibling's rows, so an unbounded check would treat a
                 // sibling row as this fiber's and PATCH it. Out of range → create within this fiber's range.
-                var slotExists = slotStart + i < Math.Min(SilhouetteBoundsSpacer.NonSpacerChildCount(parent), slotLimit);
+                // One walk answers both "is the slot occupied" and "where is it", where a Count bound
+                // check would scan the whole child list per element on a phase that mutates nothing.
+                var slotExists = slotStart + i < slotLimit
+                    && LogicalChildSlots.TryGetPhysical(parent, slotStart + i, out _);
                 var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
-                if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
-                        slotExists, clampInsertIndex: true))
+                if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i], slotExists))
                 {
                     return true;
                 }
@@ -802,12 +755,12 @@ namespace Velvet
 
                 // DOM-desync recovery (see the Common phase): when the live container is shorter than the
                 // baseline claims, the tail slot to remove may not exist — skip it instead of over-indexing.
-                // NonSpacerChildCount so a trailing filter bounds-spacer is never the slot removal targets.
-                if (slotStart + i >= SilhouetteBoundsSpacer.NonSpacerChildCount(parent))
+                // One walk resolves both the existence test and the physical index it removes at.
+                if (!LogicalChildSlots.TryGetPhysical(parent, slotStart + i, out var removeAt))
                 {
                     continue;
                 }
-                _cleaner.RemoveElement(parent, slotStart + i);
+                _cleaner.RemoveElement(parent, removeAt);
 
                 if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {
@@ -849,7 +802,7 @@ namespace Velvet
                 // equivalent to Add (slotStart + i == parent.childCount at this point). Clamp to childCount so a
                 // DOM-desync resume directly into this phase (the live range shrank since the slice was parked)
                 // appends rather than over-indexing — symmetric with the Common-phase create-on-missing guard.
-                parent.Insert(Math.Min(slotStart + i, SilhouetteBoundsSpacer.NonSpacerChildCount(parent)), newElement);
+                parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), newElement);
 
                 if (budgeted && _stopwatch!.Elapsed.TotalMilliseconds > frameBudgetMs)
                 {
@@ -956,7 +909,7 @@ namespace Velvet
 
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
-                            slotExists: true, clampInsertIndex: false))
+                            slotExists: true))
                     {
                         return false;
                     }
@@ -972,7 +925,7 @@ namespace Velvet
             if (linearEnd == oldNodes.Length)
             {
                 for (var i = linearEnd; i < newNodes.Length; i++)
-                    parent.Insert(slotStart + i, _factory.CreateElement(newNodes[i]));
+                    parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), _factory.CreateElement(newNodes[i]));
                 return false;
             }
 
@@ -980,7 +933,7 @@ namespace Velvet
             if (linearEnd == newNodes.Length)
             {
                 for (var i = oldNodes.Length - 1; i >= linearEnd; i--)
-                    _cleaner.RemoveElement(parent, slotStart + i);
+                    _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
                 return false;
             }
 
@@ -1060,7 +1013,7 @@ namespace Velvet
                 var oi = oldMidEnd + k;
                 var ni = newMidEnd + k;
                 if (ReferenceEquals(oldNodes[oi], newNodes[ni])) continue;
-                var actualElement = _patcher.ResolveWrapped(parent.ElementAt(slotStart + oi));
+                var actualElement = _patcher.ResolveWrapped(parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + oi)));
                 _patcher.PatchNode(actualElement, oldNodes[oi], newNodes[ni]);
                 if (_ctx.IsAborted) return;
             }
@@ -1070,7 +1023,7 @@ namespace Velvet
                 // Old middle empty → pure insert of new[linearEnd, newMidEnd) ahead of the suffix.
                 for (var i = linearEnd; i < newMidEnd; i++)
                 {
-                    parent.Insert(slotStart + i, _factory.CreateElement(newNodes[i]));
+                    parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), _factory.CreateElement(newNodes[i]));
                     if (_ctx.IsAborted) return;
                 }
             }
@@ -1080,7 +1033,7 @@ namespace Velvet
                 // leaves the not-yet-removed indices intact.
                 for (var i = oldMidEnd - 1; i >= linearEnd; i--)
                 {
-                    _cleaner.RemoveElement(parent, slotStart + i);
+                    _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
                     if (_ctx.IsAborted) return;
                 }
             }
@@ -1131,7 +1084,7 @@ namespace Velvet
                 {
                     if (ShouldRemoveOldKeyedEntry(oldNodes[i], i, usedKeys, replacedKeys, orphanedOldIndices))
                     {
-                        _cleaner.RemoveElement(parent, slotStart + i);
+                        _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
                     }
                 }
 
@@ -1258,7 +1211,7 @@ namespace Velvet
 
                     var slot = new ChildSlot { Parent = parent, SlotStart = slotStart, Index = i };
                     if (PatchOrReplaceAtSlot(in slot, oldNodes[i], newNodes[i],
-                            slotExists: true, clampInsertIndex: false))
+                            slotExists: true))
                     {
                         state.Phase = KeyedReconcilePhase.Done;
                         return true;
@@ -1307,7 +1260,7 @@ namespace Velvet
 
                 var newElement = _factory.CreateElement(newNodes[i]);
                 if (AbortIfCanceled(state)) return true;
-                parent.Insert(slotStart + i, newElement);
+                parent.Insert(LogicalChildSlots.ToPhysical(parent, slotStart + i), newElement);
 
                 var next = i + 1;
                 if (next < newNodes.Length && TryYield(state, next, frameBudgetMs)) return false;
@@ -1325,7 +1278,7 @@ namespace Velvet
             {
                 if (AbortIfCanceled(state)) return true;
 
-                _cleaner.RemoveElement(parent, slotStart + i);
+                _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
 
                 var next = i - 1;
                 if (next >= state.LinearEnd && TryYield(state, next, frameBudgetMs)) return false;
@@ -1418,7 +1371,7 @@ namespace Velvet
 
                 if (ShouldRemoveOldKeyedEntry(oldNodes[i], i, usedKeys, replacedKeys, orphanedOldIndices))
                 {
-                    _cleaner.RemoveElement(parent, slotStart + i);
+                    _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
                 }
 
                 var next = i - 1;
@@ -1605,13 +1558,15 @@ namespace Velvet
         // stale element as the new type. Both the synchronous and time-sliced keyed paths gate on this.
         private static void AssertDomIndexInvariant(int slotStart, int oldIndex, VisualElement parent)
         {
-            // NonSpacerChildCount so a trailing filter bounds-spacer does not loosen the bound (masking a real
-            // Pass-1 ordering violation); keyed rows always precede the spacer, so the access itself is in range.
-            var rendered = SilhouetteBoundsSpacer.NonSpacerChildCount(parent);
+            // The logical count, not a physical one, so an invisible child cannot loosen the bound and mask a
+            // real Pass-1 ordering violation. Computed INSIDE the Debug.Assert arguments rather than into a
+            // local: Debug.Assert is [Conditional("UNITY_ASSERTIONS")], so the whole O(childCount) walk is
+            // compiled out of a player build along with the call. A local would have run in every build.
             UnityEngine.Debug.Assert(
-                slotStart + oldIndex < rendered,
-                $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} >= renderedChildCount={rendered}. " +
-                "Pass 1 may have modified parent's child order.");
+                slotStart + oldIndex < LogicalChildSlots.Count(parent),
+                $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} "
+                + $">= renderedChildCount={LogicalChildSlots.Count(parent)}. "
+                + "Pass 1 may have modified parent's child order.");
         }
 
         private static void FlattenAndFilterRecursive(VNode?[] nodes, System.Collections.Generic.List<VNode> result)
@@ -1675,7 +1630,7 @@ namespace Velvet
                     return false;
                 }
                 AssertDomIndexInvariant(slotStart, old.index, parent);
-                var existingDomElement = parent.ElementAt(slotStart + old.index);
+                var existingDomElement = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
 
                 if (ReconcileKeying.CanPatch(old.node, newNode))
                 {
@@ -1688,7 +1643,7 @@ namespace Velvet
                         if (_ctx.IsAborted) return true;
                         // Re-fetch after PatchNode: a WrapElement wrapper swap may change the DOM element
                         // reference at this index.
-                        existingDomElement = parent.ElementAt(slotStart + old.index);
+                        existingDomElement = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
                     }
                     newElements.Add((existingDomElement, true));
                 }

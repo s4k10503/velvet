@@ -202,7 +202,7 @@ namespace Velvet
             // IndexOutOfRange — the time-sliced keyed path asserts this invariant; the general path
             // can be re-entered mid-suspend so it guards defensively.
             var oldMatched = commit.OldKeyMap.TryGetValue(key, out var old)
-                && slotStart + old.index < SilhouetteBoundsSpacer.NonSpacerChildCount(parent);
+                && LogicalChildSlots.TryGetPhysical(parent, slotStart + old.index, out _);
             if (oldMatched && commit.UsedKeys.Contains(key))
             {
                 // A second new-side sibling resolved the same old entry its first occurrence already
@@ -216,14 +216,14 @@ namespace Velvet
             }
             if (oldMatched)
             {
-                var existingDom = parent.ElementAt(slotStart + old.index);
+                var existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
                 if (ReconcileKeying.CanPatch(old.node, node))
                 {
                     var actual = _patcher.ResolveWrapped(existingDom);
                     _patcher.PatchNode(actual, old.node, node);
                     if (_ctx.IsAborted) return;
                     // Re-fetch: a WrapElement wrapper swap may change the element reference at this index.
-                    existingDom = parent.ElementAt(slotStart + old.index);
+                    existingDom = parent.ElementAt(LogicalChildSlots.ToPhysical(parent, slotStart + old.index));
                     commit.NewElements.Add((existingDom, true));
                     // Mark the old key consumed only AFTER the patch succeeds. PatchNode can re-enter a
                     // child reconcile that throws FiberSuspendSignal (a suspending descendant) or set
@@ -374,7 +374,7 @@ namespace Velvet
                     || !commit.UsedKeys.Contains(key)
                     || commit.ReplacedKeys.Contains(key))
                 {
-                    _cleaner.RemoveElement(parent, slotStart + i);
+                    _cleaner.RemoveElement(parent, LogicalChildSlots.ToPhysical(parent, slotStart + i));
                 }
             }
 
