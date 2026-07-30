@@ -76,11 +76,20 @@ namespace Velvet.Tests
             Assume.That(stories, Is.Not.Empty, "Precondition: the project declares at least one [VelvetPreview] story");
             var outputDirectory = ResolveOutputDirectory();
             Directory.CreateDirectory(outputDirectory);
-            ClearPreviousCaptures(outputDirectory);
+            ClearCapturesThisHarnessWrote(outputDirectory);
 
             // Act
+            // Asked once, on a host of its own: whether the bundled sheet's plain classes resolve is a
+            // property of the sheet, not of a story, and a probe living on a story's own panel root joins
+            // that panel's logical child slots — where ChildReconciler expects the mounted tree alone, so
+            // only:/last:/even:/nth-last-child would resolve against a sibling the preview window does not
+            // have, and the capture would differ from the thing it exists to show.
+            var probeResult = new CaptureResult();
+            yield return CheckBundledStyleSheetResolves(probeResult);
+
             var bad = new List<string>();
-            var captured = 0;
+            if (probeResult.Problem != null) bad.Add($"(all stories): {probeResult.Problem}");
+            var written = new List<string>();
             foreach (var story in stories)
             {
                 // The [VelvetPreviewSetup] environment is not run here: VelvetPreviewHost.Mount runs it for
@@ -88,22 +97,28 @@ namespace Velvet.Tests
                 // would stand in for that call if it ever stopped happening, which is the behaviour a capture
                 // is supposed to be reporting on.
                 var result = new CaptureResult();
-                yield return Capture(story, outputDirectory, result);
-                captured++;
+                var path = CapturePath(outputDirectory, story);
+                if (written.Contains(path)) bad.Add($"{story.Id}: would overwrite the capture of another story");
+                yield return Capture(story, path, result);
+                if (File.Exists(path)) written.Add(path);
                 if (result.Problem != null) bad.Add($"{story.Id}: {result.Problem}");
             }
 
-            Debug.Log($"[StoryCapture] wrote {captured} PNG(s) to {outputDirectory}");
+            File.WriteAllLines(ManifestPath(outputDirectory), written);
+            Debug.Log($"[StoryCapture] wrote {written.Count} PNG(s) to {outputDirectory}");
 
             // Assert
-            // Three ways a capture lies, folded into one comparison because each of them writes a file and
-            // reports success: the story never mounted, it mounted with the bundled stylesheet inert, and
-            // the frame came out uniform. The count rides in on the same tuple, since a story dropped before
-            // capture would otherwise leave the list empty and pass. The uniform check is the weakest of the
-            // three by a wide margin — one differing pixel satisfies it — which is why the stylesheet probe
-            // exists beside it rather than being folded into it.
+            // Every way a capture lies that still writes a file and reports success, in one comparison: the
+            // story did not mount, the bundled stylesheet was inert, the frame came out uniform, or two
+            // stories resolved to one path so the second silently replaced the first. The count is of files
+            // that actually exist on disk afterwards — counting loop iterations against the list the loop
+            // walks cannot fail, which is the shape this fixture already shipped once.
+            //
+            // The uniform check is by far the weakest of them: one differing pixel satisfies it. That is why
+            // the stylesheet probe stands beside it rather than being folded into it, and why CONTRIBUTING
+            // tells the reader to open the images.
             Assert.That(
-                (captured, string.Join(" | ", bad)),
+                (written.Count, string.Join(" | ", bad)),
                 Is.EqualTo((stories.Count, string.Empty)));
         }
 
@@ -116,31 +131,45 @@ namespace Velvet.Tests
         // nothing marking it stale, and someone reading the directory to see what Velvet renders today
         // believes it — observed as four images for three stories, with the run reporting three and passing.
         //
-        // Only a directory this harness wrote is cleared, and the marker is how that is known. VELVET_STORY_
-        // CAPTURE_DIR points wherever its author likes, so a recursive delete of every *.png under it would
-        // destroy images that were never ours to remove.
-        private static void ClearPreviousCaptures(string outputDirectory)
+        // Driven from a manifest of what the previous run wrote, not from a marker vouching for a whole
+        // subtree: VELVET_STORY_CAPTURE_DIR points wherever its author likes, and a file this harness never
+        // wrote is never ours to delete. A directory with no manifest loses nothing and gains one, so the
+        // only run that can leave a stale capture behind is the first into a folder that was not ours.
+        private static void ClearCapturesThisHarnessWrote(string outputDirectory)
         {
-            var marker = Path.Combine(outputDirectory, ".velvet-story-captures");
-            if (File.Exists(marker))
+            var manifest = ManifestPath(outputDirectory);
+            if (!File.Exists(manifest)) return;
+            foreach (var previous in File.ReadAllLines(manifest))
             {
-                foreach (var stale in Directory.EnumerateFiles(outputDirectory, "*.png", SearchOption.AllDirectories))
-                {
-                    File.Delete(stale);
-                }
+                if (previous.Length > 0 && File.Exists(previous)) File.Delete(previous);
             }
-            else if (Directory.EnumerateFileSystemEntries(outputDirectory).GetEnumerator().MoveNext())
-            {
-                Debug.LogWarning(
-                    $"[StoryCapture] '{outputDirectory}' holds files this harness did not write, so captures "
-                    + "from a previous run are not cleared and a stale one may sit beside the current set.");
-                return;
-            }
-
-            File.WriteAllText(marker, "Captures under here are rewritten by StoryCaptureTests on every run.\n");
         }
 
-        private static IEnumerator Capture(VelvetPreviewStory story, string outputDirectory, CaptureResult result)
+        private static string ManifestPath(string outputDirectory) =>
+            Path.Combine(outputDirectory, ".velvet-story-captures");
+
+        // Asked of a class rather than of the styleSheets list: a sheet that is attached and a sheet whose
+        // rules reach an element are different questions, and only the second one matters. This is the trap
+        // the harness itself fell into — arbitrary-value utilities resolve to inline style and keep working
+        // with no sheet at all, so a capture built from them looks correct while every plain class silently
+        // does nothing, and the uniform-frame check does not notice because the backdrop and the font alone
+        // leave a frame that differs from itself.
+        private static IEnumerator CheckBundledStyleSheetResolves(CaptureResult result)
+        {
+            using var host = new RenderTexturePanelHost("StyleSheetProbe", 16, 16);
+            host.Root.LoadBundledStyleUtilitiesForTest();
+            var probe = new VisualElement();
+            probe.AddToClassList("bg-slate-700");
+            host.Root.Add(probe);
+
+            yield return WaitRealtime(0.2);
+
+            result.Problem = probe.resolvedStyle.backgroundColor == default
+                ? "the bundled stylesheet resolves none of its plain classes"
+                : null;
+        }
+
+        private static IEnumerator Capture(VelvetPreviewStory story, string path, CaptureResult result)
         {
             var width = story.Width > 0 ? story.Width : FallbackWidth;
             var height = story.Height > 0 ? story.Height : FallbackHeight;
@@ -158,7 +187,6 @@ namespace Velvet.Tests
             host.Root.style.width = width;
             host.Root.style.height = height;
             host.Root.LoadBundledStyleUtilitiesForTest();
-            var probe = AttachStyleSheetProbe(host.Root);
 
             using var previewHost = new VelvetPreviewHost(host.Root);
             previewHost.Mount(story);
@@ -171,32 +199,13 @@ namespace Velvet.Tests
 
             var pixels = RenderTexturePixelReader.ReadPixels(
                 host.TargetTexture, new RectInt(0, 0, width, height));
-            var path = CapturePath(outputDirectory, story);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             WritePng(pixels, width, height, path);
 
             result.Problem =
                 previewHost.MountError != null ? $"did not mount ({previewHost.MountError.GetType().Name})"
-                : probe.resolvedStyle.backgroundColor == default ? "mounted with the bundled stylesheet inert"
                 : IsUniform(pixels) ? "rendered a uniform frame"
                 : null;
-        }
-
-        // Whether the bundled sheet's plain classes actually resolve, asked of a class rather than of the
-        // styleSheets list, because a sheet that is attached and a sheet whose rules reach the element are
-        // different questions and only the second one matters. This is the trap the harness itself fell into:
-        // arbitrary-value utilities resolve to inline style and keep working with no sheet at all, so a
-        // capture built from them looks correct while every plain class silently does nothing — and the
-        // uniform-frame check below does not notice, since the backdrop and the font alone leave a frame that
-        // differs from itself.
-        //
-        // Absolute and zero-sized so it neither takes part in the story's layout nor paints into the frame.
-        private static VisualElement AttachStyleSheetProbe(VisualElement root)
-        {
-            var probe = new VisualElement { style = { position = Position.Absolute, width = 0, height = 0 } };
-            probe.AddToClassList("bg-slate-700");
-            root.Add(probe);
-            return probe;
         }
 
         // Compared against the frame's own first pixel rather than against a known clear colour: the clear
