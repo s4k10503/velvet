@@ -33,6 +33,32 @@ Concurrent Unity instances make unrelated tests fail. A failure measured while a
 
 **`inconclusive` is not counted as a failure by the runner.** A non-zero count means a test skipped rather than reported — usually an `Assume` gating the behaviour under test. Treat it as a failure and find the test.
 
+## Eight ways a test here has passed while checking nothing
+
+Every one was found by mutating the implementation and confirming a test died — none by reading the test, because each reads as reasonable. The common shape is that **the input's form never reaches the code under test**.
+
+- **Siblings do not nest.** Five `from` clauses, or five `using var` declarations, are siblings at depth 1. A test for "does this construct open a nesting level" must put it *inside* several levels.
+- **The depth is the same either way.** A `try` at depth 4 reports nothing whether or not `try` opens a level, so `Assert.Empty` passes on both.
+- **The attribute never bound.** A `namespace` written above `[assembly: …]` is invalid C#; the attribute does not bind, so a gate keyed on it returns false regardless of what the gate does.
+- **N configurations, one test.** A guard evaluating both `UNITY_EDITOR` and no-symbols needs a case per configuration: each conditional spelling is visible to exactly one, so one case leaves the other deletable with nothing going red.
+- **A static field collapses the covering set.** A fixture caching generated output in `static readonly` gets the whole class attributed to whichever test touched it first, so mutation testing runs one test per mutant and whole regions go unasserted.
+- **An `Assume` gates the behaviour under test.** The regression reports Inconclusive, which the runner does not count. Fold it into the assertion as one tuple comparison.
+- **An arbitrary value skips the path.** `rounded-tl-[12px]` is not in the scale, so a fallback under test never fires; `rounded-tl-lg` reaches it.
+- **The class under test was inert.** See the stylesheet trap below — the rest of the fixture works, so it looks built.
+
+Two traps in the folding itself, both of which pass a count check: **`Is.EqualTo(tuple)` matches a nested collection by reference** (join to strings instead; `.Within()` does propagate correctly), and **the logically sharpest gate is not always the discriminating one** — a `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, and a count term next to it is what goes red.
+
+## A pixel fixture on `RenderTexturePanelHost` mounts without the bundled stylesheet
+
+Every plain USS class silently does nothing there, while arbitrary-value utilities keep working, because Velvet resolves those to inline style. So a fixture written from `w-[60px] bg-[#0000ff] flex flex-row` looks correctly constructed and is not: the sizes and colours land, the `flex-row` does not, and the container stays UI Toolkit's default `column`.
+
+This has produced a wrong conclusion (a paint was reported as surviving `overflow-hidden` when the clip had never applied) and, separately, two reds that looked like evidence about paint order and were actually a fixture measuring non-overlapping elements. It costs more than either trap above.
+
+- **Attach the sheet** (`LoadBundledStyleUtilitiesForTest`) or use inline style deliberately — not a mix you have not checked.
+- **Assert the measured geometry before reading a pixel**, and derive every sample coordinate from the measured `layout`/`resolvedStyle` values rather than from expected ones. If the layout assertion fails, that is the finding.
+- **Put a control in the frame.** "The paint was clipped" and "the clip never applied" are indistinguishable without one — an overflowing child on the opposite side answers it in the same capture.
+- Log more than one axis. An x-only diagnostic read a 20px difference that was really a column layout with a 60px y-shift.
+
 ## Reading a result you intend to report
 
 - EditMode batchmode does not run layout. A test that reads `resolvedStyle` must force it through the panel's `ApplyStyles`/`UpdateForRepaint`, or it silently measures nothing. Assertions on measured values belong in PlayMode.
