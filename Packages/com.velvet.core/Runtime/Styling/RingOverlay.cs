@@ -178,22 +178,25 @@ namespace Velvet
                 return;
             }
 
-            // TRAILING, not adjacent to the element. Adjacency would give correct paint order (see the
-            // limitation below) but the reconciler's invisible-child machinery cannot survive it:
-            // SilhouetteBoundsSpacer.NonSpacerChildCount trims only a TRAILING run, so an interleaved band
-            // is counted as a rendered child and the child reconciler's slot indexing desyncs — measured, a
-            // keyed removal among three ringed siblings left the survivors mis-paired with their bands.
+            // Directly AFTER the element, re-derived on every sync. Paint order in UI Toolkit is child
+            // order, so this is what makes a band occlude its OWN element without also covering the
+            // siblings that follow it — `flex -space-x-4` avatars each carrying `ring-2 ring-white` rely on
+            // the next avatar's face hiding the previous one's band. A trailing run gave every band to every
+            // later sibling, and ordered the bands among themselves by attach order, so two `focus:ring-2`
+            // siblings painted in whichever order they were focused.
             //
-            // KNOWN LIMITATION, the cost of that: a band paints above ALL later siblings rather than only
-            // above its own element, so overlapping `-space-x-*` avatars each carrying `ring-2 ring-white`
-            // show every band over every face instead of each avatar occluding the previous one's band. And
-            // with several bands the trailing run is in attach order, so two `focus:ring-2` siblings paint in
-            // whichever order they were focused. Fixing either needs the reconciler to map logical slots to
-            // physical indices rather than assume the invisible children are all trailing.
-            if (!ReferenceEquals(binding.Overlay.parent, host))
+            // Adjacency is only viable because the reconciler addresses LOGICAL slots and converts at each
+            // DOM touch (LogicalChildSlots): an interleaved invisible child is skipped rather than counted.
+            // Against the older trailing-only machinery this desynced slot indexing outright.
+            //
+            // Re-placing on every sync, not just when the host changes: an insert or a keyed move among the
+            // siblings shifts the element without notifying this binding.
+            if (host.IndexOf(binding.Overlay) != host.IndexOf(element) + 1)
             {
+                // Re-read the element's index AFTER the removal — an overlay currently sitting before it
+                // shifts the element down one when it leaves.
                 binding.Overlay.RemoveFromHierarchy();
-                host.Add(binding.Overlay);
+                host.Insert(host.IndexOf(element) + 1, binding.Overlay);
             }
 
             SyncGeometry(element, binding, host);

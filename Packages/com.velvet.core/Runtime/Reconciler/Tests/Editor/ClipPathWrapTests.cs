@@ -559,9 +559,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoRingedSiblings_When_Reconciled_Then_NeitherBandIsCountedAsARenderedChild()
         {
-            // Every band must sit in the TRAILING run: NonSpacerChildCount trims only a trailing run, so a
-            // band landing between two rendered children is counted as one of them and desyncs the child
-            // reconciler's slot indexing.
+            // LogicalChildSlots.Count, not the superseded physical NonSpacerChildCount: the bands sit
+            // ADJACENT to their elements rather than in a trailing run — which is what gives each band its
+            // own element's paint position — and a count that only trims a trailing run reports 3 here.
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[]
@@ -570,7 +570,7 @@ namespace Velvet.Tests
                 V.Div(className: "ring-2", name: "b", key: "b"),
             });
 
-            Assert.That(SilhouetteBoundsSpacer.NonSpacerChildCount(scope.Root), Is.EqualTo(2));
+            Assert.That(LogicalChildSlots.Count(scope.Root), Is.EqualTo(2));
         }
 
         [Test]
