@@ -57,6 +57,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoRingWidths_When_Extracted_Then_TheLastOneWins()
+        {
+            // Within ONE slot the cascade is still last-wins; composite means the slots are independent of
+            // each other, not that an earlier value in the same slot survives.
+            Assert.That(Extract("ring-2", "ring-4").Width, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_AVariantColorOverAWidthAndColorBase_When_Extracted_Then_OnlyTheColorSlotMoves()
+        {
+            // A variant contributes its classes after the base ones, so it routinely names ONE slot while the
+            // base named others. Resolving the ring whole-spec — the shadow parser's rule — would let a
+            // variant that mentions only a colour reset the width to the family default.
+            VelvetPalette.TryResolveColorToken("blue-500", out var blue);
+            var spec = Extract("ring-2", "ring-red-500", "ring-blue-500");
+            Assert.That((spec.Width, spec.Color), Is.EqualTo((2f, blue)));
+        }
+
+        [Test]
         public void Given_ADefaultColorRing_When_Extracted_Then_TheColorIsHalfAlpha()
         {
             // Tailwind's default ring color is blue-500 at 0.5 alpha, not full opacity.
@@ -88,6 +107,16 @@ namespace Velvet.Tests
         {
             // ring-2 then ring-0 in the cascade: the later width-0 cancels the ring.
             Assert.That(StyleRingClass.TryExtract(new[] { "ring-2", "ring-0" }, out _), Is.False);
+        }
+
+        [Test]
+        public void Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineDefaultWidthSurvives()
+        {
+            // A COLOR names no width, so it must not decide which family's default width applies. It used to:
+            // the colour token re-flagged the spec as the ring family, silently widening a bare `outline`
+            // from the outline default to the 3px ring default. Only reachable now that a colour can arrive
+            // from a variant, which is why it is pinned rather than left as a latent parser quirk.
+            Assert.That(Extract("outline", "ring-red-500").Width, Is.EqualTo(1f));
         }
 
         [Test]
@@ -156,21 +185,36 @@ namespace Velvet.Tests
     }
 
     /// <summary>
-    /// Geometry coverage for the ring overlay: once the inner is LAID OUT (a real panel), the band must size,
-    /// position and round to the inner's resolved box. Outset (default): inflated by (offset + width) per side
-    /// with outer radius = innerRadius + offset + width. Inset (ring-inset): matches the inner box at the inner
-    /// radius. Off-panel the inner has no resolved size, so this needs a real <see cref="UnityEditor.EditorWindow"/>
-    /// panel + forced layout (the spec's width/color are asserted off-panel in ClipPathWrapTests). GWT, one assert each.
+    /// Geometry coverage for the ring overlay against the USS-scale radius and the element's own edge: once
+    /// the ringed element is LAID OUT (a real panel), the band must size, position and round to its resolved
+    /// box. Outset (default): inflated by (offset + width) per side with outer radius = radius + offset +
+    /// width. Inset (ring-inset): matches the box at its own radius. Off-panel there is no resolved size, so
+    /// this needs a real <see cref="UnityEditor.EditorWindow"/> panel + forced layout (the spec's width/color
+    /// are asserted off-panel in ClipPathWrapTests, and the arbitrary / per-corner radius forms in
+    /// RingOverlayTests). GWT, one assert each.
     /// </summary>
     [TestFixture]
     internal sealed class RingGeometryPanelTests : PanelTestBase
     {
-        // The ring overlay is the wrapper's second child ([inner, overlay]).
+        // The band is hosted as a reconciler-invisible SIBLING of the ringed element, so it is found by its
+        // marker rather than at a fixed index.
+        private static VisualElement RingOverlayIn(VisualElement host)
+        {
+            for (var i = 0; i < host.childCount; i++)
+            {
+                if (host[i].ClassListContains(RingOverlay.MarkerClass))
+                {
+                    return host[i];
+                }
+            }
+            return null;
+        }
+
         private VisualElement MountRinged(string className)
         {
             _mounted = V.Mount(_window.rootVisualElement, V.Div(className: className, name: "card"));
             ForcePanelUpdate(_window.rootVisualElement.panel);
-            return _window.rootVisualElement[0][1];
+            return RingOverlayIn(_window.rootVisualElement);
         }
 
         [Test]
@@ -179,20 +223,19 @@ namespace Velvet.Tests
             // 100x40 card, ring-2, no offset: the band is 2px outside each edge → overlay is 100+4 wide.
             var overlay = MountRinged("w-[100px] h-[40px] ring-2");
 
-            Assert.That(overlay.resolvedStyle.width, Is.EqualTo(104f));
+            Assert.That(overlay?.resolvedStyle.width, Is.EqualTo((float?)104f));
         }
 
         [Test]
         public void Given_Ring2_When_LaidOut_Then_OverlaySitsTwoPixelsOutsideTheInnerLeftEdge()
         {
-            // The band's left edge sits (offset + width) = 2px outside the inner's left within the wrapper.
-            // Asserted RELATIVE to the inner (the passthrough wrapper may stretch + center the inner, so the
-            // absolute left is the inner's centered x minus 2, not -2).
-            MountRinged("w-[100px] h-[40px] ring-2");
-            var inner = _window.rootVisualElement[0][0];
-            var overlay = _window.rootVisualElement[0][1];
+            // The band's left edge sits (offset + width) = 2px outside the element's own left. Asserted
+            // RELATIVE to the element rather than against an absolute coordinate, so the case stays about the
+            // band's offset from its target and not about where the parent happened to place that target.
+            var overlay = MountRinged("w-[100px] h-[40px] ring-2");
+            var element = _window.rootVisualElement.Q<VisualElement>("card");
 
-            Assert.That(inner.layout.x - overlay.resolvedStyle.left, Is.EqualTo(2f));
+            Assert.That(element.layout.x - overlay?.resolvedStyle.left, Is.EqualTo((float?)2f));
         }
 
         [Test]
@@ -201,7 +244,7 @@ namespace Velvet.Tests
             // rounded-lg = 8px inner radius; the outset band's outer corner = 8 + 0 + 2 = 10.
             var overlay = MountRinged("w-[100px] h-[40px] rounded-lg ring-2");
 
-            Assert.That(overlay.resolvedStyle.borderTopLeftRadius, Is.EqualTo(10f));
+            Assert.That(overlay?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)10f));
         }
 
         [Test]
@@ -210,7 +253,7 @@ namespace Velvet.Tests
             // ring-2 ring-offset-4: the band sits 4px out then a 2px stroke → overlay is 100 + 2*(4+2) = 112.
             var overlay = MountRinged("w-[100px] h-[40px] ring-2 ring-offset-4");
 
-            Assert.That(overlay.resolvedStyle.width, Is.EqualTo(112f));
+            Assert.That(overlay?.resolvedStyle.width, Is.EqualTo((float?)112f));
         }
 
         [Test]
@@ -219,7 +262,7 @@ namespace Velvet.Tests
             // ring-inset: the band is drawn inside, so the overlay matches the inner box exactly (no inflation).
             var overlay = MountRinged("w-[100px] h-[40px] ring-2 ring-inset");
 
-            Assert.That(overlay.resolvedStyle.width, Is.EqualTo(100f));
+            Assert.That(overlay?.resolvedStyle.width, Is.EqualTo((float?)100f));
         }
 
         [Test]
@@ -228,7 +271,7 @@ namespace Velvet.Tests
             // An inset band hugs the inner edge, so its corner radius is the inner radius (8px), NOT inflated.
             var overlay = MountRinged("w-[100px] h-[40px] rounded-lg ring-2 ring-inset");
 
-            Assert.That(overlay.resolvedStyle.borderTopLeftRadius, Is.EqualTo(8f));
+            Assert.That(overlay?.resolvedStyle.borderTopLeftRadius, Is.EqualTo((float?)8f));
         }
     }
 }

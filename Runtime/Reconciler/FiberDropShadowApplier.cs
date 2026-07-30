@@ -22,7 +22,7 @@ namespace Velvet
         // Create-time entry point: when classNames carries a shadow-* utility, attaches the drop-shadow
         // paint onto the element (no structural wrapper — the baked shadow texture is the element's own
         // generateVisualContent, drawn behind its content and bleeding outside the box). Composes like skew
-        // and gradient: a paint, not a wrapper, so it works alongside a clip / ring wrapper and a user
+        // and gradient: a paint, not a wrapper, so it works alongside a clip wrapper and a user
         // wrapElement. The element is NOT yet in the hierarchy here, which the paint itself does not need but
         // the co-fade enrolment does — hence EnrollForCoFade's deferral.
         internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)

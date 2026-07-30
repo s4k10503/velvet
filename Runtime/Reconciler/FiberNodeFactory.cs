@@ -177,6 +177,11 @@ namespace Velvet
             // skew / shadow so it can defer to whichever owns the face. ElementNode only — a Motion never
             // renders this silhouette (mirroring skew's own silent Motion exclusion).
             _patcher.Appliers.ApplyBorderStyleOnCreate(element, paintClasses);
+            // ring-* / outline-*: the band is a native-border overlay hosted as a reconciler-invisible
+            // SIBLING of this element (RingOverlay), so nothing is added to the element's own slot and it
+            // composes with every layer above and with a user wrapElement. The element has no parent yet at
+            // this point; the overlay places itself when the reconcile boundary drains.
+            _patcher.Appliers.ApplyRingOnCreate(element, paintClasses);
             ApplyOptionalCreateBindings(element, elementNode.Props, elementNode.ClassNames);
 
             VisualElement outer;
@@ -196,15 +201,10 @@ namespace Velvet
             else
             {
                 // No explicit wrapElement: a clip-path-* class auto-wraps the element in a stencil-
-                // masking container, else a ring-* class wraps it in a native-border overlay
-                // container. Clip takes precedence: the two are mutually exclusive (one structural
-                // wrapper per element). The shadow is NOT here — it is a wrapper-less paint attached
-                // above (a clipped element renders no shadow because the shadow paint self-suppresses
-                // on an active clip).
-                var clipWrapped = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
-                outer = !ReferenceEquals(clipWrapped, element)
-                    ? clipWrapped
-                    : _patcher.Appliers.ApplyRingOnCreate(element, elementNode.ClassNames);
+                // masking container. It is the only remaining structural wrapper — the shadow and ring
+                // layers are wrapper-less and attached above, and both self-suppress on an active clip
+                // (CSS clip-path clips a box-shadow and an outline alike).
+                outer = _patcher.Appliers.ApplyClipPathOnCreate(element, elementNode.ClassNames);
             }
 
             // z-* scope gate: only an ALSO-absolute element with an explicit z-* class routes into a
@@ -373,6 +373,17 @@ namespace Velvet
                 FiberLogger.LogWarning("Motion",
                     "A shadow-* utility on a Motion is ignored: a Motion carries the transition, not "
                     + "the paint layers. Wrap the Motion around a shadowed Div instead.");
+            }
+            // ring-* / outline-* is ignored for the same reason as shadow-*, by a different route: the band
+            // is hosted as a SIBLING of the ringed element, so it is outside the Motion's own opacity and
+            // would stay at full strength through an enter / exit fade. Same active-only gate.
+            if (StyleRingClass.HasRingClass(appliedClasses)
+                && StyleRingClass.TryExtract(appliedClasses, out _))
+            {
+                FiberLogger.LogWarning("Motion",
+                    "A ring-* / outline-* utility on a Motion is ignored: the band is drawn beside the "
+                    + "element, so it cannot fade with an enter/exit. "
+                    + "Wrap the Motion around a ringed Div instead.");
             }
             // clip-path-* is a structural wrapper, which would become the AnimatePresence anchor while
             // the enter/exit transition stays on the inner Motion: ignored on a Motion, never wrapped.

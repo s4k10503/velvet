@@ -199,7 +199,7 @@ namespace Velvet
                 && ctx.TrackVariantGateClass(target, core, priority, declaration, on);
 
         // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
-        // the four layout manipulators (FiberNodePatcher.ApplyLayoutManipulators) and the five wrapper-less
+        // the four layout manipulators (FiberNodePatcher.ApplyLayoutManipulators) and the six wrapper-less
         // paint layers (FiberNodePatcher.ApplyResolvedClassPasses). Each family answers for its own prefix
         // set so this gate cannot drift from the array scans those passes run.
         //
@@ -216,6 +216,7 @@ namespace Velvet
                 || StyleShadowClass.IsShadowClass(core)
                 || StyleGradientClass.IsGradientClass(core)
                 || StyleAnimateClass.IsAnimateClass(core)
-                || StyleBorderStyleClass.IsBorderStyleClass(core);
+                || StyleBorderStyleClass.IsBorderStyleClass(core)
+                || StyleRingClass.IsRingClass(core);
     }
 }

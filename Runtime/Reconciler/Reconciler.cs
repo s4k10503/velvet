@@ -233,6 +233,12 @@ namespace Velvet
                 // VNode pool now that the whole pass is done using them as patch baselines — deferred
                 // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.
                 FiberTreeReturn.DrainDeferredInlineOldTreeReturns(_ctx);
+                // A ring overlay is hosted beside the element it rings, so it can only be placed once that
+                // element is in its final parent. At create time it is not — the factory builds the element
+                // and the caller inserts it afterwards, and a z-* element is relocated again by the portal
+                // drain just above. Draining here, at the top-level boundary, is the first point where every
+                // element created in this pass has its final parent.
+                RingOverlay.DrainPendingPlacements(_ctx);
             }
         }
 
