@@ -557,6 +557,31 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoRingedSiblings_When_Reconciled_Then_EachBandSitsDirectlyAfterItsOwnElement()
+        {
+            // Adjacent child order is what gives a band its own element's paint position rather than a
+            // position above every later sibling. It is a NECESSARY condition for that, not a sufficient
+            // one — whether UI Toolkit paints an absolutely-positioned sibling in child order against an
+            // in-flow one is a separate, unmeasured question — so this pins the structure only.
+            using var scope = new ReconcilerScope();
+
+            Mount(scope, new VNode[]
+            {
+                V.Div(className: "ring-2", name: "a", key: "a"),
+                V.Div(className: "ring-2", name: "b", key: "b"),
+            });
+
+            var order = new List<string>();
+            for (var i = 0; i < scope.Root.childCount; i++)
+            {
+                order.Add(scope.Root[i].ClassListContains(RingOverlay.MarkerClass)
+                    ? "band"
+                    : scope.Root[i].name);
+            }
+            Assert.That(order, Is.EqualTo(new[] { "a", "band", "b", "band" }));
+        }
+
+        [Test]
         public void Given_TwoRingedSiblings_When_Reconciled_Then_NeitherBandIsCountedAsARenderedChild()
         {
             // LogicalChildSlots.Count, not the superseded physical NonSpacerChildCount: the bands sit
