@@ -387,16 +387,15 @@ namespace Velvet.Tests
             };
             var before = new VNode[] { V.Button(className: Triangle, wrapElement: wrap, key: "b") };
             Mount(scope, before);
-            var boundAtCreate = scope.Reconciler.Context.ClipPathBindings.Count;
 
             // Act: a re-render patches the same element.
             scope.Reconciler.Reconcile(scope.Root, before,
                 new VNode[] { V.Button(className: Triangle, wrapElement: wrap, key: "b") });
 
-            // Assert: patch must honor the opt-out and NOT stack a clip wrapper on the user wrapper. Both
-            // terms are zero and both are load-bearing: nothing else pins the CREATE-path opt-out, so a
-            // create that ignored it would leave the patch with a binding it never made.
-            Assert.That((boundAtCreate, scope.Reconciler.Context.ClipPathBindings.Count), Is.EqualTo((0, 0)));
+            // Assert: patch must honor the opt-out and NOT stack a clip wrapper on the user wrapper. This one
+            // count also covers the CREATE-path opt-out, which nothing else in the suite pins — a create that
+            // ignored it binds the element, and the patch then leaves that binding in place for this to find.
+            Assert.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(0));
         }
 
         // Ring / outline overlay
