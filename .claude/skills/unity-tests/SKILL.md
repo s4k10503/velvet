@@ -64,7 +64,7 @@ Report what a sweep found, zero included. One nobody hears about is indistinguis
 
 ## A pixel fixture on `RenderTexturePanelHost` mounts without the bundled stylesheet
 
-Every plain USS class silently does nothing there, while arbitrary-value utilities keep working, because Velvet resolves those to inline style. So a fixture written from `w-[60px] bg-[#0000ff] flex flex-row` looks correctly constructed and is not: the sizes and colours land, the `flex-row` does not, and the container stays UI Toolkit's default `column`.
+Every class the sheet declares silently does nothing there. Two families keep working and hide it: arbitrary values, which Velvet resolves to inline style, and the utilities it realises from C# rather than from USS at all — `gap-*`, `space-*`, `divide-*` and `ring-*` have no rule in any bundled sheet. So a fixture written from `w-[60px] bg-[#0000ff] flex flex-row` looks correctly constructed and is not: the sizes and colours land, the `flex-row` does not, and the container stays UI Toolkit's default `column`.
 
 This has produced a wrong conclusion (a paint was reported as surviving `overflow-hidden` when the clip had never applied) and, separately, two reds that looked like evidence about paint order and were actually a fixture measuring non-overlapping elements. It costs more than either trap above.
 

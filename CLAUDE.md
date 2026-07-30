@@ -93,7 +93,7 @@ A comment states why. Before any question of economy, it has to be **true**, and
 
 - "the uniform-frame check catches an unstyled capture" — it does not; a backdrop and a font leave the frame varied
 - "without the stylesheet this class is inert, so the control holds" — that class has no USS rule at all and is written from C#
-- "`worldBound` is needed because it carries the ancestors' transforms" — the two elements are siblings, so those cancel
+- "`worldBound` is needed because it carries the ancestors' transforms" — what it carries that `layout` does not is the element's **own** transform. A shared ancestor's *translation* does cancel in a sibling difference; its *scale* does not, and the correction first written here said "any transform above them cancels", which is the same over-reach one layer down
 - "the halo lies wholly outside the box, so the clip removes the paint" — the interior survives untouched
 - "without the sheet a panel resolves none of the utility classes" — `gap-*`, `space-*` and `divide-*` resolve
 - "the tolerance propagates into a tuple comparison" — it does not, and this one sat in a skill
