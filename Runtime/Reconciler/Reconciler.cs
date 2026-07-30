@@ -42,16 +42,6 @@ namespace Velvet
 
         internal ReconcilerContext Context => _ctx;
 
-        /// <summary>
-        /// This Reconciler's own <see cref="ChildReconciler"/> instance. Exposed so
-        /// <see cref="FiberZLayerCoordinator.RebaseParkedSlotsForContainerChange"/> can tell whether a fiber
-        /// found via <see cref="ReconcilerContext.ParkedBaselineFibers"/> is the SAME fiber already being
-        /// rebased directly (the caller's own <c>current</c> parameter), rather than a genuinely different,
-        /// unrelated parked fiber — the two are otherwise indistinguishable by fiber identity alone from
-        /// inside that method, which never sees a fiber, only a ChildReconciler.
-        /// </summary>
-        internal ChildReconciler ChildReconciler => _childReconciler;
-
         public Reconciler()
             : this(new ReconcilerContext(), ownsContext: true)
         {

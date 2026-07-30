@@ -84,15 +84,28 @@ namespace Velvet
             var lisResult = pool.RentIntList();
             try
             {
-                // The retained range never exceeds max(oldLen, logicalNewLen) entries; clamp by
-                // childCount as a safety net while staying within this fiber's slot range.
-                var rangeEndExclusive = Math.Min(parent!.childCount,
-                    slotStart + Math.Max(range.OldLen, range.LogicalNewLen));
-                // Slot-local DOM positions in O(N). parent.IndexOf per element would be
-                // O(childCount) x newElements.Count = O(N^2).
-                for (var idx = range.ScanStart; idx < rangeEndExclusive; idx++)
+                // range.ScanStart / slotStart / both lengths are LOGICAL, so the scan bounds are converted
+                // before they can index the DOM (LogicalChildSlots). Physically walking from a logical
+                // slotStart used to be correct only because the entry gate had already folded a leading
+                // z-container's offset in; with an invisible child anywhere in the range it both under-covers
+                // the retained rows — the last one then maps to -1, reads as a created orphan, and is
+                // detached and re-attached on every re-render — and skews every recorded position.
+                var physicalScanStart = LogicalChildSlots.ToPhysical(parent!, range.ScanStart);
+                var physicalRangeEnd = Math.Min(parent!.childCount,
+                    LogicalChildSlots.ToPhysical(parent!, slotStart + Math.Max(range.OldLen, range.LogicalNewLen)));
+                // Slot-local positions in O(N). parent.IndexOf per element would be
+                // O(childCount) x newElements.Count = O(N^2). An invisible child in the range is simply not
+                // recorded, so it can never be picked as an anchor.
+                var logicalPos = range.ScanStart - slotStart;
+                for (var idx = physicalScanStart; idx < physicalRangeEnd; idx++)
                 {
-                    domPosMap[parent!.ElementAt(idx)] = idx - slotStart;
+                    var child = parent!.ElementAt(idx);
+                    if (SilhouetteBoundsSpacer.IsSpacer(child))
+                    {
+                        continue;
+                    }
+                    domPosMap[child] = logicalPos;
+                    logicalPos++;
                 }
 
                 // Current position of each committed element, in new order.
@@ -218,8 +231,15 @@ namespace Velvet
             {
                 if (element != null && element.parent == parent) liveCount++;
             }
-            var afterIndex = slotStart + liveCount;
-            var afterRangeAnchor = afterIndex < parent.childCount ? parent.ElementAt(afterIndex) : null;
+            // The first element PAST this range, by logical slot: the anchor everything in the range is
+            // inserted before. Converted, because a leading z-container or an invisible child inside the
+            // range shifts the physical position of that slot — reading it physically picked the range's own
+            // last element as its anchor and inserted the tail before it, inverting the declared order.
+            var afterLogical = slotStart + liveCount;
+            var afterIndex = LogicalChildSlots.ToPhysical(parent, afterLogical);
+            var afterRangeAnchor = afterLogical < LogicalChildSlots.Count(parent)
+                ? parent.ElementAt(afterIndex)
+                : null;
 
             // Search hints for IndexOfNear: the last insertion lands the right neighbour for the next move, and
             // consecutive removals cluster, so seeding each search from the previous result keeps it O(1) on the
@@ -267,9 +287,10 @@ namespace Velvet
                 }
                 else
                 {
-                    // Insert before any trailing filter bounds-spacer (not parent.Add, which appends past it)
-                    // so a skewed / shadowed + filtered container keeps its spacer last through the reorder.
-                    var end = SilhouetteBoundsSpacer.NonSpacerChildCount(parent);
+                    // The physical position just after the last rendered child, so a trailing invisible
+                    // child (a filter bounds spacer) stays last through the reorder — parent.Add would
+                    // append past it.
+                    var end = LogicalChildSlots.ToPhysical(parent, LogicalChildSlots.Count(parent));
                     parent.Insert(end, element);
                     insertHint = end;
                 }

@@ -518,18 +518,20 @@ namespace Velvet
                 return;
             }
 
-            // PortalState.SlotStart is stored LOGICAL (ChildReconciler.DrainPendingPortalMounts /
-            // FiberNodePatcher.PatchPortalChildren both keep it in that basis so Reconcile's own leading-offset
-            // entry gate folds it exactly once) — this walk indexes target's children PHYSICALLY and never goes
-            // through that entry gate, so it converts once here instead, re-deriving the live offset rather than
-            // trusting a stale copy (see FiberZLayerCoordinator.LeadingOffset's own doc on why it must always be
-            // read fresh).
-            var physicalSlotStart = portalInfo.SlotStart + FiberZLayerCoordinator.LeadingOffset(target);
-            var slotEnd = physicalSlotStart + portalInfo.SlotLength;
+            // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
+            // already-converted start mixes the two bases, and tears out one element too many the moment an
+            // invisible child sits anywhere inside the portal's range.
+            var physicalSlotStart = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart);
+            var slotEnd = LogicalChildSlots.ToPhysical(target, portalInfo.SlotStart + portalInfo.SlotLength);
             if (slotEnd > target.childCount) slotEnd = target.childCount;
             for (var i = slotEnd - 1; i >= physicalSlotStart; i--)
             {
                 var child = target.ElementAt(i);
+                // An invisible child inside the range belongs to whichever paint owns it, not to the portal.
+                if (SilhouetteBoundsSpacer.IsSpacer(child))
+                {
+                    continue;
+                }
                 var poolable = PoolableOccupantOf(child);
                 CleanupElement(child);
                 target.RemoveAt(i);
