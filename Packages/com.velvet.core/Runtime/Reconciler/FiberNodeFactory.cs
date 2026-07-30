@@ -374,16 +374,23 @@ namespace Velvet
                     "A shadow-* utility on a Motion is ignored: a Motion carries the transition, not "
                     + "the paint layers. Wrap the Motion around a shadowed Div instead.");
             }
-            // ring-* / outline-* is ignored for the same reason as shadow-*, by a different route: the band
-            // is hosted as a SIBLING of the ringed element, so it is outside the Motion's own opacity and
-            // would stay at full strength through an enter / exit fade. Same active-only gate.
+            // ring-* / outline-* is ignored on a Motion because the band is a SIBLING placed from the
+            // element's LAYOUT box, and UI Toolkit composites a transform onto the transformed element's own
+            // subtree only — so a Motion animating translate / scale / rotate slides out from under its own
+            // band and leaves it behind for the whole play. Both halves of that are pinned by
+            // RingOverlayTests' transform pair. On a Div the Motion wraps, the band is IN the Motion's
+            // subtree and rides its transform, which is what the advice below buys.
+            // Rejected: warning only for a Motion whose transition declares a transform channel. layoutId, the
+            // gesture class channels and a later Transition swap each introduce one without recreating the
+            // element, and this gate runs once, at create.
+            // Same active-only gate as the shadow above.
             if (StyleRingClass.HasRingClass(appliedClasses)
                 && StyleRingClass.TryExtract(appliedClasses, out _))
             {
                 FiberLogger.LogWarning("Motion",
-                    "A ring-* / outline-* utility on a Motion is ignored: the band is drawn beside the "
-                    + "element, so it cannot fade with an enter/exit. "
-                    + "Wrap the Motion around a ringed Div instead.");
+                    "A ring-* / outline-* utility on a Motion is ignored: the band is placed from the "
+                    + "element's laid-out box, which a Motion's transform does not move, so a slide / scale / "
+                    + "layoutId play would leave it behind. Wrap the Motion around a ringed Div instead.");
             }
             // clip-path-* is a structural wrapper, which would become the AnimatePresence anchor while
             // the enter/exit transition stays on the inner Motion: ignored on a Motion, never wrapped.
