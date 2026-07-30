@@ -46,7 +46,11 @@ Every one was found by mutating the implementation and confirming a test died �
 - **An arbitrary value skips the path.** `rounded-tl-[12px]` is not in the scale, so a fallback under test never fires; `rounded-tl-lg` reaches it.
 - **The class under test was inert.** See the stylesheet trap below — the rest of the fixture works, so it looks built.
 
-Two traps in the folding itself, both of which pass a count check: **`Is.EqualTo(tuple)` matches a nested collection by reference** (join to strings instead; `.Within()` does propagate correctly), and **the logically sharpest gate is not always the discriminating one** — a `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, and a count term next to it is what goes red.
+Three traps in the folding itself, each of which passes a count check:
+
+- **`Is.EqualTo(tuple)` matches a nested collection by reference.** Join to strings instead.
+- **`.Within()` does not reach the members of a tuple.** Unity's NUnit ships no `ValueTupleComparer`, so `NUnitEqualityComparer.AreEqual` falls through to `FirstImplementsIEquatableOfSecond`, which never sees the tolerance — `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` **fails**, while printing the tolerance it did not apply. A fold that moves a scalar comparison into a tuple silently converts it to bit-exact equality wearing a tolerance suffix. Round each term before comparing, or compare formatted strings.
+- **The logically sharpest gate is not always the discriminating one.** A `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, and a count term next to it is what goes red.
 
 ## A pixel fixture on `RenderTexturePanelHost` mounts without the bundled stylesheet
 
