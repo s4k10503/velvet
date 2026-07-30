@@ -53,6 +53,21 @@ Three traps in the folding itself, each of which passes a count check:
 - **`.Within()` does not reach the members of a tuple.** Unity's NUnit ships no `ValueTupleComparer`, so `NUnitEqualityComparer.AreEqual` falls through to `FirstImplementsIEquatableOfSecond`, which never sees the tolerance — `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` **fails**. Its message still prints `+/- 9.99999975E-05f`, so a passing tuple assertion looks like proof the tolerance applied — two people read it that way before anyone ran the failing case. A fold that moves a scalar comparison into a tuple silently converts it to bit-exact equality wearing a tolerance suffix. Round each term before comparing, or compare formatted strings.
 - **The logically sharpest gate is not always the discriminating one.** A `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, and a count term next to it is what goes red.
 
+## Neuter at every layer, not at one
+
+A test whose discriminating term is a **side effect of a different layer than the one under test** survives a neuter of the layer it is aimed at. An expected log line, a suppression flag, a gate read one level up: kill the applier and the parser still says "wants clip", so the warning still fires and the assertion still passes with the feature dead.
+
+Every vacuous test found in three sweeps of one fixture pair was cut-dependent in this direction — green at the applier cut, red at the parser cut — and each sweep at a single cut undercounted. A count of vacuous tests is meaningless without the cut beside it, and the answer changed on every recount taken by reading: three, then four, then five for one half; five, then six for another.
+
+Build the harness instead. Applying each cut, running the fixtures, reverting in a `finally` and diffing the per-test JSON is about three minutes for four cuts, and it reproduces independently where a careful read does not. Two traps inside the harness itself, both of which inflate:
+
+- **Strip comments before deciding which fixture a cut applies to.** A ring test whose comment mentions `clip-path-*` matched as a clip test.
+- **Ask a cut only of a fixture that exercises that layer.** A parser unit test is not vacuous because the applier died; asking it anyway reported 18 phantom holes.
+
+## A test dying under some mutation does not mean it tests what it claims
+
+A mutation that reddens a test proves the test is sensitive to *that mutation*, not that it measures the fact in its name. An assertion whose value is independent of its stated fact is broken even when an unrelated perturbation happens to move it — measured here on a case that survived deleting the very transform it was named for, while a different mutation to the same code path did redden it. Check what the assertion is a function of, not only that something can break it.
+
 ## Sweep for the shape, not the instance
 
 Consecutive review rounds on one branch kept finding one more instance of a defect already fixed, each fix right, the class never moving — because each round fixed what it was handed. Two sweeps end that, and both cost minutes:
