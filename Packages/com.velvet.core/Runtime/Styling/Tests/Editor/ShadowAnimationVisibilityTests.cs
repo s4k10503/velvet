@@ -62,6 +62,12 @@ namespace Velvet.Tests
 
         private void Tick() => _sim.FrameUpdateMs(16);
 
+        // Strictly inside the range an enter or an exit travels, which excludes BOTH a spring still parked at
+        // its from-value and one already settled at its to-value. "Not yet at full" would accept the first of
+        // those, and an enter's from-value is 0 for the caster and the shadow alike — so a spring that never
+        // advanced satisfies it on both terms at once.
+        private static bool IsMidFlight(float value) => value > 0f && value < 1f;
+
         [Test]
         public void Given_ShadowedElement_When_EnterStarts_Then_DescendantShadowStartsTransparent()
         {
@@ -69,14 +75,15 @@ namespace Velvet.Tests
             var scheduler = new StyleAnimationScheduler();
             var target = new VisualElement();
             var binding = AttachShadowChild(target);
-            Assume.That(binding.ShadowOpacity, Is.EqualTo(1f).Within(1e-4f));
+            var atRest = binding.ShadowOpacity;
 
             // Act: an enter animation starts on the target.
             scheduler.PlayEnter(target, StyleTransition.FadeSlideUp);
 
             // Assert: the shadow starts at the enter from-value (invisible) so it fades IN with the element
-            // rather than being hidden then popping in once the enter completes.
-            Assert.That(binding.ShadowOpacity, Is.EqualTo(0f).Within(1e-4f));
+            // rather than being hidden then popping in once the enter completes. Paired with the resting
+            // value, because a paint that attached already faded would satisfy the from-value alone.
+            Assert.That((atRest, binding.ShadowOpacity), Is.EqualTo((1f, 0f)).Within(1e-4f));
         }
 
         [Test]
@@ -87,14 +94,15 @@ namespace Velvet.Tests
             var target = new VisualElement();
             var binding = AttachShadowChild(target);
             scheduler.PlayEnter(target, StyleTransition.FadeSlideUp);
-            Assume.That(binding.ShadowOpacity, Is.EqualTo(0f).Within(1e-4f));
+            var whileCoFading = binding.ShadowOpacity;
 
             // Act: the enter is cancelled (e.g. the element is interrupted / re-keyed before it settled).
             scheduler.CancelEnter(target);
 
             // Assert: the driver is dropped so a cancelled animation never leaves the shadow stuck faded — it
-            // returns to full strength, matching the element snapping back to its resting opaque state.
-            Assert.That(binding.ShadowOpacity, Is.EqualTo(1f).Within(1e-4f));
+            // returns to full strength, matching the element snapping back to its resting opaque state. A
+            // shadow no enter ever drove down is already at full, so the co-faded value has to be pinned too.
+            Assert.That((whileCoFading, binding.ShadowOpacity), Is.EqualTo((0f, 1f)).Within(1e-4f));
         }
 
         [Test]
@@ -108,14 +116,15 @@ namespace Velvet.Tests
             var inner = new object();
             DropShadowSilhouette.SetCoFade(binding, element, outer, 0.5f);
             DropShadowSilhouette.SetCoFade(binding, element, inner, 0.5f);
-            Assume.That(binding.ShadowOpacity, Is.EqualTo(0.25f).Within(1e-4f));
+            var whileBothDrive = binding.ShadowOpacity;
 
             // Act: the inner animation completes first and drops its contribution.
             DropShadowSilhouette.EndCoFade(binding, element, inner);
 
             // Assert: the shadow stays driven by the still-running outer fade (back to that fade's 0.5), not
-            // snapped to full — otherwise the opacity-blind shadow would show through the outer target.
-            Assert.That(binding.ShadowOpacity, Is.EqualTo(0.5f).Within(1e-4f));
+            // snapped to full — otherwise the shadow would show through the outer target. The product term is
+            // what separates that from a binding that only ever tracked the last driver set on it.
+            Assert.That((whileBothDrive, binding.ShadowOpacity), Is.EqualTo((0.25f, 0.5f)).Within(1e-4f));
         }
 
         [Test]
@@ -139,12 +148,14 @@ namespace Velvet.Tests
             Tick();
             Tick();
             Tick();
-            Assume.That(target.resolvedStyle.opacity, Is.LessThan(1f),
-                "Precondition: the caster is still mid-climb, not yet settled at full opacity");
 
             // Assert — an un-cofaded shadow would sit stuck at its resting full strength; the co-fade tick must
-            // have already pulled it down alongside the still-translucent caster.
-            Assert.That(binding.ShadowOpacity, Is.LessThan(1f));
+            // have already pulled it down alongside the still-translucent caster. The shadow trails the caster
+            // by one frame (the co-fade tick samples before the spring steps), so the two are bracketed
+            // independently by IsMidFlight rather than compared against each other.
+            Assert.That(
+                (IsMidFlight(target.resolvedStyle.opacity), IsMidFlight(binding.ShadowOpacity)),
+                Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -169,11 +180,12 @@ namespace Velvet.Tests
             Tick();
             Tick();
             Tick();
-            Assume.That(target.resolvedStyle.opacity, Is.GreaterThan(0f),
-                "Precondition: the caster is still mid-fade, not yet settled at zero opacity");
 
             // Assert — the shadow must be following the caster's fade down, not sitting untouched at full.
-            Assert.That(binding.ShadowOpacity, Is.LessThan(1f));
+            // Bracketed the same way as the enter case, and for the same reason.
+            Assert.That(
+                (IsMidFlight(target.resolvedStyle.opacity), IsMidFlight(binding.ShadowOpacity)),
+                Is.EqualTo((true, true)));
         }
     }
 }

@@ -15,12 +15,16 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class StyleRingClassTests
     {
+        // A class list that resolves to NO ring resolves here to a spec no case below can match, so a parser
+        // that stopped extracting fails every case instead of skipping it. An Assume here would instead gate
+        // the very component this fixture exists to pin — measured, a TryExtract hardwired to return false
+        // left all sixteen cases that come through here inconclusive and none of them failed, which the
+        // runner reports as a pass.
+        private static readonly RingSpec NoRing = new(
+            float.NaN, new Color(float.NaN, float.NaN, float.NaN, float.NaN), float.NaN, inset: false);
+
         private static RingSpec Extract(params string[] classNames)
-        {
-            Assume.That(StyleRingClass.TryExtract(classNames, out var spec), Is.True,
-                "Precondition: the class list resolves to a ring");
-            return spec;
-        }
+            => StyleRingClass.TryExtract(classNames, out var spec) ? spec : NoRing;
 
         [Test]
         public void Given_BareRing_When_Extracted_Then_UsesDefaultThreePixelWidth()
