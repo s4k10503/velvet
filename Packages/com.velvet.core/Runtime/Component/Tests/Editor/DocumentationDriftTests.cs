@@ -9,8 +9,9 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Machine-checks the shipped Documentation~ guides (plus both README.md files and CLAUDE.md) against the actual
-    /// runtime API surface, so a doc referencing a renamed/removed <c>V.*</c> factory or <c>Hooks.*</c> hook,
+    /// Machine-checks the shipped Documentation~ guides (plus both README.md files, CLAUDE.md and the
+    /// contributor README under Generators~) against the actual runtime API surface, so a doc referencing
+    /// a renamed/removed <c>V.*</c> factory or <c>Hooks.*</c> hook,
     /// a path or a type that no longer exists, or an index that has drifted from the files on disk, fails a
     /// test instead of shipping silently wrong. Each check pins a failure mode that has actually shipped: a
     /// guide referencing a never-implemented factory, a hook table drifting from the real hook surface, an
@@ -24,11 +25,21 @@ namespace Velvet.Tests
         // the same role "<X/>" plays in the JSX column of the same row — not a reference to a real V.* factory.
         private static readonly HashSet<string> VReferenceAllowlist = new() { "X" };
 
-        // Names that resolve nowhere in this repo's code for a reason. Three groups, each a different one:
+        // Names that resolve nowhere in this repo's code for a reason. Five groups, each a different one:
         // meta-syntactic placeholders standing in for something the reader supplies; API belonging to the
-        // upstream libraries Velvet mirrors, which exists there and deliberately not here; and names from
+        // upstream libraries Velvet mirrors, which exists there and deliberately not here; names from
         // Unity or the BCL — types, enum values, event names, asset labels — that the docs mention but no
-        // source file in this repo uses as code.
+        // source file in this repo uses as code; names an external toolchain owns, which the contributor
+        // README states how to invoke — DOTNET_ROOT is the variable the .NET apphost reads, StrykerOutput
+        // the directory the mutation runner writes; and the analyzer identifiers, which C# holds only as
+        // string literals and the corpus therefore strips.
+        //
+        // That last group is checked, just not here: DocumentationDiagnosticTableTests over in the
+        // Generators~ suite reads the same README and compares its VEL and USS spellings against the real
+        // descriptors and against the derivation's real code range. Two entries sit outside even that.
+        // "VEL" is the ID space written as a shape (VEL###) rather than an ID, which that guard's VEL\d{3}
+        // pattern is right not to match; and "Shape" is the analyzer category Velvet.Shape, which no guard
+        // on either side pins — renaming the category would leave the README describing the old one.
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "ResolveDirection", "Inter", "CS",
@@ -36,6 +47,8 @@ namespace Velvet.Tests
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
+            "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput",
+            "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502", "Shape",
         };
 
         private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef" };
@@ -64,9 +77,13 @@ namespace Velvet.Tests
         // shader name (Velvet/FilterBrightness) — carries neither, and so never reaches the filesystem check.
         // A leading dot must be followed by a segment and a slash, which admits .github/workflows/test.yml
         // while excluding a bare extension written as prose (`.uss`) and the "..." elision in a path sketch.
+        // A ./ or ../ run ahead of that is admitted because a document living inside the tree it describes
+        // names its siblings that way; three dots still fail, since the run allows at most two.
         private static readonly Regex PathReferencePattern = new(
-            @"^(\.[A-Za-z0-9_-]+/)?[A-Za-z0-9_~@][A-Za-z0-9_./~*-]*(\.(cs|uss|md|json|yml|py|sh|txt|asmdef|dll)|/)$",
+            @"^(\.{1,2}/)*(\.[A-Za-z0-9_-]+/)?[A-Za-z0-9_~@][A-Za-z0-9_./~*-]*(\.(cs|uss|md|json|yml|py|sh|txt|asmdef|dll)|/)$",
             RegexOptions.Compiled);
+
+        private static readonly Regex RelativePrefixPattern = new(@"^(\.{1,2}/)+", RegexOptions.Compiled);
 
         // Every PascalCase word INSIDE a span, not the span as a whole: the test-mechanism names are written
         // with call parens (SimulateClick()), the memoization knobs as attributes ([Component(Compiler = false)])
@@ -132,6 +149,8 @@ namespace Velvet.Tests
             yield return (Path.GetFullPath("README.md"), "README.md (repo root)");
             yield return (Path.GetFullPath("Packages/com.velvet.core/README.md"), "Packages/com.velvet.core/README.md");
             yield return (Path.GetFullPath("CLAUDE.md"), "CLAUDE.md");
+            yield return (Path.GetFullPath("Packages/com.velvet.core/Generators~/README.md"),
+                "Generators~/README.md");
         }
 
         [Test]
@@ -346,7 +365,13 @@ namespace Velvet.Tests
         // path is not resolved at all — treating it as a literal would report every such reference as missing.
         private static bool PathReferenceResolves(string reference)
         {
-            var trimmed = reference.TrimEnd('/');
+            // The ./ or ../ run is dropped rather than walked from the document's own directory: every other
+            // reference in these files is already matched as a suffix from anywhere in the tree, so walking
+            // would make one spelling of a path stricter than the other for no gain. What matters is that the
+            // span reaches this check at all — unmatched by the pattern above it falls through to the
+            // identifier check, which asks whether "Analyzers" is a word somewhere and never whether the file
+            // named is there.
+            var trimmed = RelativePrefixPattern.Replace(reference, string.Empty).TrimEnd('/');
             var separator = trimmed.LastIndexOf('/');
             var leaf = trimmed[(separator + 1)..];
             if (!leaf.Contains('*'))
