@@ -191,7 +191,32 @@ namespace Cysharp.Threading.Tasks
                 CompilationErrors: compilationDiagnostics);
         }
 
-        public static ImmutableArray<Diagnostic> RunAnalyzer(string userSource, DiagnosticAnalyzer analyzer)
+        public static ImmutableArray<Diagnostic> RunAnalyzer(string userSource, DiagnosticAnalyzer analyzer) =>
+            Analyze(AnalyzerCompilation(userSource), analyzer);
+
+        /// <summary>
+        /// The same run, refusing a source that does not compile. An analyzer asking the semantic model about
+        /// an unresolved call is answered <c>null</c> and reports nothing, so a fixture whose sample source
+        /// carries a typo passes every "nothing is reported" case while exercising none of the rule.
+        /// </summary>
+        public static ImmutableArray<Diagnostic> RunAnalyzerOnCompilingSource(
+            string userSource, DiagnosticAnalyzer analyzer)
+        {
+            var compilation = AnalyzerCompilation(userSource);
+            var errors = compilation.GetDiagnostics()
+                .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+                .ToImmutableArray();
+            if (errors.Length > 0)
+            {
+                throw new System.InvalidOperationException(
+                    "The analyzer sample source does not compile: "
+                    + string.Join("; ", errors.Select(diagnostic => diagnostic.ToString())));
+            }
+
+            return Analyze(compilation, analyzer);
+        }
+
+        private static CSharpCompilation AnalyzerCompilation(string userSource)
         {
             var parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest);
             var syntaxTrees = new[]
@@ -200,12 +225,15 @@ namespace Cysharp.Threading.Tasks
                 CSharpSyntaxTree.ParseText(VelvetStubSource, parseOptions),
             };
 
-            var compilation = CSharpCompilation.Create(
+            return CSharpCompilation.Create(
                 assemblyName: "AnalyzerTestAssembly",
                 syntaxTrees: syntaxTrees,
                 references: ReferenceAssemblies(),
                 options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        }
 
+        private static ImmutableArray<Diagnostic> Analyze(CSharpCompilation compilation, DiagnosticAnalyzer analyzer)
+        {
             var withAnalyzers = compilation.WithAnalyzers(ImmutableArray.Create(analyzer));
             return withAnalyzers.GetAnalyzerDiagnosticsAsync(CancellationToken.None).GetAwaiter().GetResult();
         }

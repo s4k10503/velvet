@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not counted — which is what leaves the `V.*` factories, whose long optional named lists stand in for JSX
   props, untouched. The same README defines what counts. One consequence for an assembly that opts in:
   `[MemoizeMethod]` supports 1-8 parameters, so its top two arities are unreachable there.
+- `VEL503`, a compile-time analyzer that reports an NUnit tolerance — `.Within(...)` — chained onto an
+  equality whose expected value is a `ValueTuple`. NUnit has no comparer for one, so the tolerance never
+  reaches the members and the assertion is bit-exact equality while its failure message still prints the
+  tolerance. It shares VEL500's opt-in marker, so it likewise does not fire on your code unless the assembly
+  declares it. Unlike its three siblings it is a warning, and the same README says why.
 - `TransitionType.Spring` and `TransitionType.Bezier` variant transitions now animate the
   color-valued (`background-color`, `color`, `border-color`) and length-valued (sizing, padding,
   margin, inset, flex-basis, border width, `border-radius`) properties of a variant delta, not just

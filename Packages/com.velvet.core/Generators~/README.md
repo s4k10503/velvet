@@ -33,7 +33,12 @@ dotnet test Velvet.SourceGenerators.sln
 - `HookSurfaceDriftTests` — pins the analyzer's hook-name and type-name strings to the runtime surface by parsing `../Runtime/` with Roslyn (syntax only, no Unity assemblies). Nothing else notices a hook rename or a newly added deps-comparing hook on this side of the compile boundary, so the guard turns both into a red test instead of silently narrowed exhaustive-deps coverage
 - `StubSurfaceDriftTests` — pins the Velvet stub in `GeneratorTestHelper` (the surface every analyzer and generator test compiles its sample user code against) to the runtime signatures, using the same syntax-only parse. It fails on a divergent parameter type, return type, generic constraint, modifier or optionality, and on a runtime overload the stub names but does not model; without it the suite can verify a diagnostic for a call shape no user can write
 - `StyleUtilityTableTests` — one case per USS shape the bundled stylesheets contain, plus the problem each shape they do not produces. Compiles and calls the emitted table rather than pattern-matching its source, which is what puts the bit packing under assertion and is also the only place the emitted C# is proved to compile
-- `CodeShapeBacklogDriftTests` — re-measures both code-shape limits over the package's own sources and fails on any violation. This is the only job that verifies the marked assemblies pass: `unity-tests` is skipped unless a `UNITY_LICENSE` secret is set, so on a fork or an outside contributor's PR nothing else compiles them. It parses each file both with and without `UNITY_EDITOR` defined, because a body inside an `#if UNITY_EDITOR` is real code in one assembly and disabled text in another, and a scan that saw only one of those would miss several hundred members
+- `CodeShapeBacklogDriftTests` — re-measures the three code-shape limits over the package's own sources and fails on any violation. This is the only job that verifies the marked assemblies pass: `unity-tests` is skipped unless a `UNITY_LICENSE` secret is set, so on a fork or an outside contributor's PR nothing else compiles them. It parses each file both with and without `UNITY_EDITOR` defined, because a body inside an `#if UNITY_EDITOR` is real code in one assembly and disabled text in another, and a scan that saw only one of those would miss several hundred members
+- `SolutionProjectMembershipDriftTests` — compares the `*.csproj` files on disk against what
+  `Velvet.SourceGenerators.sln` names and maps to a build configuration. A project the solution omits is never
+  compiled, so its analyzers never run and every guard asking whether its sources satisfy a rule answers about
+  sources no compiler read — the same silent exemption the opt-in guard closes, one level further out where it
+  cannot see it
 - `BundledStyleSheetCensusTests` — re-derives the table from `../Runtime/Styles/*.uss` and compares it against the committed `../Runtime/Styling/StyleUtilityProperties.g.cs`, and pins the selector-shape and property census the derivation is designed around. This is what makes committing the table safe: a stylesheet edit not accompanied by a regenerated table, or one that introduces an unsurveyed shape, fails here rather than downstream where a class missing from the table is indistinguishable from a class that conflicts with nothing
 
 ## Mutation testing
@@ -76,9 +81,10 @@ Generators~/
 │   ├── MemoizeMethodGenerator.cs             ([MemoizeMethod] → V.Memoized wrapper expansion)
 │   ├── AutoDeps/                             (VEL100 exhaustive-deps analyzer + its hook descriptor table)
 │   ├── RulesOfHooks/                         (VEL101 rules-of-hooks analyzer)
-│   ├── CodeShape/                            (VEL500 depth + VEL501 branch-count + VEL502 parameter-count)
+│   ├── CodeShape/                            (VEL500 depth + VEL501 branch-count + VEL502 parameter-count
+│   │                                          + VEL503 tolerance on a tuple comparison)
 │   ├── Diagnostics/MemoizeDiagnostics.cs     (diagnostic descriptors — see Documentation~/memoization.md)
-│   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The code-shape limits")
+│   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The code-shape rules")
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
 │   └── Shared/                               (SourceBuilder, VelvetWellKnownNames, …)
 ├── src/Velvet.SourceGenerators.CodeFixes/    (ships to ../Runtime/Plugins/Analyzers/)
@@ -122,11 +128,12 @@ Failures are reported as `USS001`-`USS011` and refuse to write the table. They a
 
 Four partials declare no rules and are expected to: `StyleUtilities.uss` is nothing but `@import`, and `_gap.uss`, `_presets.uss` and `_states.uss` describe utility families Velvet realises in C# rather than in USS (each says so in its own header). Their classes are therefore absent from the table, which from the table's side looks identical to a class that sets nothing — `BundledStyleSheetCensusTests` pins the list so the distinction stays visible.
 
-## The code-shape limits
+## The code-shape rules
 
-Three mechanical limits ship as analyzers under the `Velvet.Shape` category. Every diagnostic this repository
-defines is listed in [AnalyzerReleases.Unshipped.md](src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md);
-what follows is only the three definitions, which no table can carry, and the gate they share.
+Three mechanical limits and one mechanical defect ship as analyzers under the `Velvet.Shape` category. Every
+diagnostic this repository defines is listed in
+[AnalyzerReleases.Unshipped.md](src/Velvet.SourceGenerators/AnalyzerReleases.Unshipped.md); what follows is
+only the four definitions, which no table can carry, and the gate they share.
 
 ### The nesting-depth limit
 
@@ -205,6 +212,29 @@ its parameters already divide it by.
 One shipped surface is narrowed by this limit: `[MemoizeMethod]` supports 1-8 parameters (VEL002), so its top
 two arities are unreachable inside an assembly that opts in. `V.Memoized<T1..T8>` is generated code and is
 unaffected.
+
+### The tolerance that cannot apply
+
+`VEL503` is a warning on `Is.EqualTo(<tuple>)` carrying a `.Within(...)`.
+
+NUnit's comparer chain has no entry for `ValueTuple`, so the pair falls through to the expected value's own
+`IEquatable<T>`, which is not handed the `ref Tolerance` the numeric path receives. The assertion is bit-exact
+equality, and its failure message prints the tolerance it did not use, so nothing at run time separates it
+from one that applied. The remedy is to round each member before comparing, or to compare formatted strings.
+
+Reported: any expected value whose type is a tuple, held in a local as readily as written as a parenthesised
+literal — the type decides, not the syntax. The tolerance need not be the equality's immediate link, so a
+constraint carrying another modifier between the two is still reported.
+
+Not reported: a constraint built in one statement and given its tolerance in another, since only a single
+chained expression is followed; an `EqualTo`/`Within` pair declared outside NUnit, whose comparison this rule
+knows nothing about; and a tolerance dropped by any other expected type NUnit compares through
+`IEquatable<T>` rather than through its numeric path — a tuple is the shape this repository writes, not the
+only one that loses a tolerance.
+
+It is a warning where its three siblings are errors because the package's own test assemblies still carry
+sites it reports, and they opt into this category. An error would stop them compiling, and an assembly that
+does not compile runs none of the rules.
 
 ### Why the rules are opt-in per assembly
 

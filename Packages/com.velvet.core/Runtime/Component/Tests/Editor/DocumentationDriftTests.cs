@@ -48,7 +48,7 @@ namespace Velvet.Tests
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput",
-            "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502", "Shape",
+            "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502", "VEL503", "Shape",
         };
 
         private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef" };
