@@ -44,10 +44,12 @@ namespace Velvet.Tests
         }
 
         // How far along x a band paints from the element it rings. worldBound and not layout because layout
-        // is the pre-transform box: read from layout, both cases below measure the same -4 and neither says
-        // anything. An ancestor's transform is not the reason — band and element are siblings, so any
-        // transform above them cancels in the difference — it is the element's OWN transform, which
-        // worldBound carries and layout does not, that these cases exist to pull apart.
+        // is the pre-transform box, and the element's OWN transform is the thing this reading exists to
+        // catch: read from layout, a translated element and a still one both measure -4.
+        // Scope, and the reason the ancestor case below measures absolute positions rather than calling
+        // this: the band and its element are SIBLINGS, so an ancestor's TRANSLATION cancels out of the
+        // difference exactly and this helper cannot see one at all. An ancestor SCALE does not cancel — it
+        // multiplies the difference, so scale-150 over a ring-4 band reads -6 and not -4.
         private static float BandOffsetX(VisualElement element)
             => BandFor(element).worldBound.x - element.worldBound.x;
 
@@ -183,23 +185,36 @@ namespace Velvet.Tests
         [Test]
         public void Given_ARingedElement_When_AnAncestorCarriesTheTransform_Then_TheBandMovesWithIt()
         {
-            // Arrange — the transform is on the host this time, so the band is inside the subtree it
-            // composites over. This is why putting the ring on a Div a V.Motion wraps works.
+            // Arrange — two identically laid-out hosts, one translated, each holding one ringed card. Two
+            // hosts and not one, because band and card are siblings: their DIFFERENCE cancels an ancestor's
+            // translation exactly, so the only reading that can see one is an absolute position compared
+            // across a transformed and an untransformed copy of the same arrangement.
             _mounted = V.Mount(_window.rootVisualElement,
-                V.Div(name: "wrap", className: "w-[300px] h-[200px] translate-x-8", children: new VNode[]
+                V.Div(name: "wrap", className: "w-[300px] h-[200px]", children: new VNode[]
                 {
-                    V.Div(name: "card", className: "w-[100px] h-[40px] ring-4"),
+                    V.Div(name: "stillHost", className: "w-[300px] h-[60px]", children: new VNode[]
+                    {
+                        V.Div(name: "stillCard", className: "w-[100px] h-[40px] ring-4"),
+                    }),
+                    V.Div(name: "movedHost", className: "w-[300px] h-[60px] translate-x-8", children: new VNode[]
+                    {
+                        V.Div(name: "movedCard", className: "w-[100px] h-[40px] ring-4"),
+                    }),
                 }));
-            var card = _window.rootVisualElement.Q<VisualElement>("card");
+            var stillCard = _window.rootVisualElement.Q<VisualElement>("stillCard");
+            var movedCard = _window.rootVisualElement.Q<VisualElement>("movedCard");
 
             // Act
-            ForcePanelUpdate(card.panel);
+            ForcePanelUpdate(stillCard.panel);
 
-            // Assert — the ancestor's transform term is real (32), and the band still paints exactly ring-4
-            // outside its element in panel space, so the transform carried the two together. Both in one
-            // comparison: the offset alone reads the same on a host whose transform never resolved.
-            Assert.That((Mathf.Round(card.parent.resolvedStyle.translate.x), Mathf.Round(BandOffsetX(card))),
-                Is.EqualTo((32f, -4f)));
+            // Assert — the card's own 32px shift is the control: it is the ancestor transform actually
+            // resolving and moving the subtree, so a state in which the translate never took effect reports
+            // 0 here and fails rather than reading as evidence. The band shifts by the same 32px, which is
+            // the claim — it sits inside the host and is carried by the transform, unlike the element's own
+            // transform in the case above. This is what makes wrapping a V.Motion around a ringed Div work.
+            var cardShift = Mathf.Round(movedCard.worldBound.x - stillCard.worldBound.x);
+            var bandShift = Mathf.Round(BandFor(movedCard).worldBound.x - BandFor(stillCard).worldBound.x);
+            Assert.That((cardShift, bandShift), Is.EqualTo((32f, 32f)));
         }
     }
 }
