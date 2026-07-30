@@ -16,6 +16,20 @@ lets you build on it and maintain your own line freely — no need to wait on up
    from `Packages/com.velvet.core/`; edit it in place.
 3. Run the Unity test suites from **Window ▸ General ▸ Test Runner** (EditMode and PlayMode).
 
+### Looking at what Velvet renders
+
+Every `[VelvetPreview]` story can be rendered to a PNG, so a change to layout, styling or paint can
+be inspected rather than only measured:
+
+```bash
+/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults /tmp/capture.xml -logFile /tmp/capture.log
+```
+
+The images land in `Logs/story-captures/` (git-ignored), one per story, or in the directory named by
+`VELVET_STORY_CAPTURE_DIR`. The run fails if any story renders a uniform frame, because an unstyled
+or empty capture is otherwise indistinguishable from a successful one. Interactively the same
+stories are live in **Window ▸ Velvet ▸ Preview**.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
