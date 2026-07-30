@@ -54,7 +54,7 @@ Every plain USS class silently does nothing there, while arbitrary-value utiliti
 
 This has produced a wrong conclusion (a paint was reported as surviving `overflow-hidden` when the clip had never applied) and, separately, two reds that looked like evidence about paint order and were actually a fixture measuring non-overlapping elements. It costs more than either trap above.
 
-- **Attach the sheet** (`LoadBundledStyleUtilitiesForTest`) or use inline style deliberately — not a mix you have not checked.
+- **Attach the sheet** (`VelvetStyleUtilities.AttachTo`) or use inline style deliberately — not a mix you have not checked.
 - **Assert the measured geometry before reading a pixel**, and derive every sample coordinate from the measured `layout`/`resolvedStyle` values rather than from expected ones. If the layout assertion fails, that is the finding.
 - **Put a control in the frame.** "The paint was clipped" and "the clip never applied" are indistinguishable without one — an overflowing child on the opposite side answers it in the same capture.
 - Log more than one axis. An x-only diagnostic read a 20px difference that was really a column layout with a 60px y-shift.

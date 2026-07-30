@@ -28,7 +28,6 @@ namespace Velvet.Editor.Preview
     {
         private const string WindowTitle = "Velvet Preview";
         private const string MenuPath = "Window/Velvet/Preview";
-        private const string UtilitiesUssPath = "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
         private const string LastSelectionKey = "Velvet.Preview.LastStoryId";
         private const string DarkKey = "Velvet.Preview.Dark";
         private const string BackgroundKey = "Velvet.Preview.Background";
@@ -373,8 +372,7 @@ namespace Velvet.Editor.Preview
                     transformOrigin = new TransformOrigin(0f, 0f),
                 },
             };
-            var utilities = AssetDatabase.LoadAssetAtPath<StyleSheet>(UtilitiesUssPath);
-            if (utilities != null) _canvas.styleSheets.Add(utilities);
+            VelvetStyleUtilities.AttachTo(_canvas);
             _zoomBox.Add(_canvas);
         }
 

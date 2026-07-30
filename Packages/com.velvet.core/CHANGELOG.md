@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `VelvetStyleUtilities`, a runtime resolver for the bundled utility stylesheet:
+  `VelvetStyleUtilities.AttachTo(root)` puts it on a panel from the editor and from a player alike,
+  and `VelvetStyleUtilities.Sheet` returns the asset. Until now the sheet was reachable only through
+  `AssetDatabase`, which does not exist in a build, so a shipped game resolved every utility the sheet
+  declares to nothing, while arbitrary values and the many families Velvet resolves itself rather than
+  declaring — the `gap-*` / `divide-*` spacing, the painted and filter families, `animate-*` and more —
+  kept working: a missing sheet that reads as a partial styling bug. `Documentation~/setup.md` carries
+  the command that answers it per class. The sheet keeps its location under `Runtime/Styles/`; a
+  `Resources` asset that imports it is what makes it reachable, and that folder is now part of every
+  build of a project with the package installed. `Documentation~/setup.md` covers this and the
+  alternative of referencing the asset from a scene.
 - `VEL500`, a compile-time analyzer that reports a member body nesting control flow more than four levels
   deep, at error severity. It does not fire on your code: the rule is opt-in per assembly and only the
   package's own assemblies opt in, so upgrading cannot break a build that compiled before. An assembly that
