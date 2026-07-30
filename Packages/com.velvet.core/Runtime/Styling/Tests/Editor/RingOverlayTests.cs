@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -42,10 +43,11 @@ namespace Velvet.Tests
                 : null;
         }
 
-        // How far along x a band paints from the element it rings, in panel space. worldBound (not layout)
-        // because it is the only reading that carries the transforms of every ancestor between the two: an
-        // offset built from each element's own box would read the same whether or not the band shares its
-        // element's transformed frame, which is precisely what these two cases pull apart.
+        // How far along x a band paints from the element it rings. worldBound and not layout because layout
+        // is the pre-transform box: read from layout, both cases below measure the same -4 and neither says
+        // anything. An ancestor's transform is not the reason — band and element are siblings, so any
+        // transform above them cancels in the difference — it is the element's OWN transform, which
+        // worldBound carries and layout does not, that these cases exist to pull apart.
         private static float BandOffsetX(VisualElement element)
             => BandFor(element).worldBound.x - element.worldBound.x;
 
@@ -166,13 +168,16 @@ namespace Velvet.Tests
             // Act
             ForcePanelUpdate(still.panel);
 
-            // Assert — the untransformed card is the control: -4 is the band sitting exactly ring-4 outside
-            // its element, so a fixture where the bundled sheet never attached (translate-x-8 inert) reports
-            // -4 twice and fails here rather than reading as evidence. The transformed card measures the
-            // whole of its own 32px translate further out, because the band is placed from the laid-out box
-            // and is not in the subtree the transform composites over.
-            Assert.That((BandOffsetX(still), BandOffsetX(moved)),
-                Is.EqualTo((-4f, -36f)).Within(0.01f));
+            // Assert — the untransformed card is the control: -4 is a band sitting exactly ring-4 outside
+            // its element, so any state in which the translate did not take effect reports -4 twice and
+            // fails here rather than reading as evidence of a band that followed. The transformed card
+            // measures the whole of its own 32px translate further out, because the band is placed from the
+            // laid-out box and is not in the subtree the transform composites over.
+            //
+            // Rounded because .Within() does not reach the members of a ValueTuple under Unity's NUnit —
+            // the comparison is exact, and both quantities are whole pixels by construction.
+            Assert.That((Mathf.Round(BandOffsetX(still)), Mathf.Round(BandOffsetX(moved))),
+                Is.EqualTo((-4f, -36f)));
         }
 
         [Test]
@@ -193,8 +198,8 @@ namespace Velvet.Tests
             // Assert — the ancestor's transform term is real (32), and the band still paints exactly ring-4
             // outside its element in panel space, so the transform carried the two together. Both in one
             // comparison: the offset alone reads the same on a host whose transform never resolved.
-            Assert.That((card.parent.resolvedStyle.translate.x, BandOffsetX(card)),
-                Is.EqualTo((32f, -4f)).Within(0.01f));
+            Assert.That((Mathf.Round(card.parent.resolvedStyle.translate.x), Mathf.Round(BandOffsetX(card))),
+                Is.EqualTo((32f, -4f)));
         }
     }
 }
