@@ -28,11 +28,21 @@ for pr in $prs; do
 
   count=$(echo "$checks" | jq 'length' 2>/dev/null || echo 0)
   if [ "$count" = "0" ]; then
+    # Zero checks is legitimate when nothing the PR touches matches a workflow's path filter —
+    # a docs-only or .claude/-only change reports none and is ready to merge. It is a problem
+    # when the head never got a run it should have, and the tell is the merge state: a
+    # conflicting PR reports DIRTY (or UNKNOWN while GitHub is still computing) and never
+    # starts CI at all, which is the shape that went unwatched for seven hours.
+    state=$(gh pr view "$pr" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")
+    case "$state" in
+      CLEAN|UNSTABLE|BEHIND|BLOCKED|"")
+        continue
+        ;;
+    esac
     blocked="$blocked
-  PR #$pr — no checks reported. A workflow was never triggered for this head, or the run was
-    cancelled and nothing re-queued. This is not 'still running'. Check the head SHA against
-    'gh run list --branch <b> --json headSha', and check 'gh pr view $pr --json mergeable' —
-    a conflicting PR reports UNKNOWN or DIRTY and never starts CI at all."
+  PR #$pr — no checks reported and merge state is $state. A conflicting PR never starts CI, so
+    this is not 'still running'. Rebase it, or check the head SHA against
+    'gh run list --branch <b> --json headSha' if you expected a run."
     continue
   fi
 
