@@ -35,6 +35,15 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ClipPathWrapTests
     {
+        // KNOWN HOLES, each with the cut it was measured at, because the count changes with the cut and a
+        // count taken by reading has been wrong every time it was checked. A case asserting only that
+        // something is ABSENT also holds against a feature that does nothing, so it pins nothing by itself.
+        // Killing the clip APPLIER leaves five green: both ElementIsNotWrapped cases, ClipOnMotion,
+        // NoShadowPaintIsAttached and NotDoubleWrapped. Killing the clip PARSER leaves three of those, since
+        // ClipOnMotion's expected warning and the shadow's suppression gate both read the parser, not the
+        // applier. The ring half has four at the applier cut: both not-counted-as-a-rendered-child cases,
+        // TheElementItselfStillOccupiesItsSlot and RingOnMotion. Closing any of them takes a control that
+        // RESOLVES in the same assertion — a second term over the same absent thing buys nothing.
         private const string Triangle = "clip-path-[polygon(50%_0%,100%_100%,0%_100%)]";
 
         private static VisualElement Wrapper(VisualElement root) => root[0];

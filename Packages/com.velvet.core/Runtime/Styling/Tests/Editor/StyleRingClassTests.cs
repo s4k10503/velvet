@@ -22,8 +22,9 @@ namespace Velvet.Tests
         // runner reports as a pass.
         // KNOWN HOLE: the five cases that call TryExtract directly and assert Is.False never come through
         // here, and that same hardwired-false parser leaves them green, because its broken return value IS
-        // what they expect. No substitute value can reach a case that does not call this, so closing them
-        // needs each to carry a resolving control in its own assertion.
+        // what they expect. The gate case asserting HasRingClass is false is a sixth of that shape, one
+        // method over. No substitute value can reach a case that does not call this, so closing them needs
+        // each to carry a control that RESOLVES in its own assertion.
         private static readonly RingSpec NoRing = new(
             float.NaN, new Color(float.NaN, float.NaN, float.NaN, float.NaN), float.NaN, inset: false);
 
