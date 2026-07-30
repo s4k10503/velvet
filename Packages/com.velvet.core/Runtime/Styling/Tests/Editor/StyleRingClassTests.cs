@@ -57,6 +57,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TwoRingWidths_When_Extracted_Then_TheLastOneWins()
+        {
+            // Within ONE slot the cascade is still last-wins; composite means the slots are independent of
+            // each other, not that an earlier value in the same slot survives.
+            Assert.That(Extract("ring-2", "ring-4").Width, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void Given_AVariantColorOverAWidthAndColorBase_When_Extracted_Then_OnlyTheColorSlotMoves()
+        {
+            // A variant contributes its classes after the base ones, so it routinely names ONE slot while the
+            // base named others. Resolving the ring whole-spec — the shadow parser's rule — would let a
+            // variant that mentions only a colour reset the width to the family default.
+            VelvetPalette.TryResolveColorToken("blue-500", out var blue);
+            var spec = Extract("ring-2", "ring-red-500", "ring-blue-500");
+            Assert.That((spec.Width, spec.Color), Is.EqualTo((2f, blue)));
+        }
+
+        [Test]
         public void Given_ADefaultColorRing_When_Extracted_Then_TheColorIsHalfAlpha()
         {
             // Tailwind's default ring color is blue-500 at 0.5 alpha, not full opacity.

@@ -21,8 +21,8 @@ namespace Velvet
 
     /// <summary>
     /// Paints a <c>ring-*</c> / <c>outline-*</c> band as an absolutely-positioned native-border overlay that
-    /// is a SIBLING of the ringed element — a reconciler-invisible trailing child of the element's parent,
-    /// tracking the element's laid-out box.
+    /// is a SIBLING of the ringed element — a reconciler-invisible child of the element's parent placed
+    /// directly after it, tracking the element's laid-out box.
     /// </summary>
     /// <remarks>
     /// UI Toolkit has neither <c>box-shadow</c> nor <c>outline</c>, so the band has to be drawn by Velvet. The
@@ -45,17 +45,16 @@ namespace Velvet
     /// <para>
     /// A sibling overlay has neither problem: the element's own layout relationship with its parent is
     /// untouched, and the overlay is outside the element's overflow clip while still inside an ANCESTOR's —
-    /// which is what CSS does. Deviations it does carry: the overlay paints above the element's later
-    /// siblings rather than in the element's own paint position, and <c>ring-inset</c> paints over an opaque
-    /// full-bleed child rather than under it.
+    /// which is what CSS does. It gets the element's own paint position from child adjacency, because UI
+    /// Toolkit paints an absolutely-positioned sibling in child order against an in-flow one rather than
+    /// lifting positioned elements above the in-flow ones as CSS does; that engine fact is measured by
+    /// pixel readback in <c>RingSiblingPaintOrderPlaybackTests</c>, and the whole placement rests on it.
+    /// The deviation it does carry: <c>ring-inset</c> paints over an opaque full-bleed child rather than
+    /// under it.
     /// </para>
     /// </remarks>
     internal static class RingOverlay
     {
-        // Marks the overlay as a reconciler-invisible child of its host, recognized by
-        // SilhouetteBoundsSpacer.IsSpacer — the single predicate every "real child" count and index site
-        // already goes through, so the child reconciler, the structural variants, [&>*]: and the gap / grid /
-        // divide manipulators all skip it without any of them learning about rings.
         // Lets the animation scheduler find a ring binding on the element it is animating. The band is a
         // SIBLING of that element, so UI Toolkit's opacity compositing — which reaches every overlay
         // belonging to a descendant — does not reach this one, and only an explicit co-fade can fade it with
@@ -66,6 +65,10 @@ namespace Velvet
         public static RingBinding? TryGet(VisualElement element)
             => s_byElement.TryGetValue(element, out var binding) ? binding : null;
 
+        // Marks the overlay as a reconciler-invisible child of its host, recognized by
+        // SilhouetteBoundsSpacer.IsSpacer — the single predicate every "real child" count and index site
+        // already goes through, so the child reconciler, the structural variants, [&>*]: and the gap / grid /
+        // divide manipulators all skip it without any of them learning about rings.
         internal const string MarkerClass = "velvet-ring-overlay";
         internal const string OverlayName = "velvet-ring-overlay";
 

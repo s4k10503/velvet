@@ -68,11 +68,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   relationship with its parent that it declares — `w-full`, a parent's cross-axis stretch,
   `absolute` / `inset-0`, `self-*`, `mx-auto`, grid cell sizing and a parent's `[&>*]:` rules all
   behave on a ringed element exactly as they do without the ring, where the wrapper altered all of
-  them for the element's whole lifetime. Rendering does change: a band is painted above the ringed
-  element's later siblings. The deviations from CSS this hosting carries — that sibling paint order,
-  `ring-inset` painting over an opaque full-bleed child, and a ring on a `V.Motion` being ignored with
-  a warning — are documented in `Documentation~/styling-variants.md`. A ring on an ordinary element
-  inside a `V.AnimatePresence` fades with its element's enter and exit.
+  them for the element's whole lifetime. The band is placed directly after its own element rather than
+  after all of them, so it paints in that element's own position: overlapping `-space-x-*` avatars
+  carrying `ring-2 ring-white` occlude the previous one's band as they do on the web, and two
+  `focus:ring-2` siblings render the same whichever was focused first. The deviations from CSS this
+  hosting still carries — `ring-inset` painting over an opaque full-bleed child, and a ring on a
+  `V.Motion` being ignored with a warning — are documented in `Documentation~/styling-variants.md`. A
+  ring on an ordinary element inside a `V.AnimatePresence` fades with its element's enter and exit.
 - A variant payload spelled as a **USS class** (`dark:bg-neutral-900`, `md:flex-col`) now overrides a
   base utility writing the same properties regardless of the order the bundled stylesheets declare
   them in. Previously the payload was added to the live class list as a bare utility, where it tied

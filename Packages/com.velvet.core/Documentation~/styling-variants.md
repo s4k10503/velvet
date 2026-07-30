@@ -217,15 +217,13 @@ up, `className="bg-white shadow-sm md:shadow-lg"` deepens its shadow from `md` u
 
 **Where `ring-*` deviates from CSS.** UI Toolkit has neither `box-shadow` nor `outline`, so Velvet
 draws the band on its own element, positioned over the ringed element and hosted as a hidden sibling
-of it inside the same parent. The ringed element's own layout is untouched, but the hosting is
-visible in three places:
+placed directly after it inside the same parent. The ringed element's own layout is untouched, and the
+band takes that element's own paint position, so overlapping `-space-x-*` avatars each carrying
+`ring-2 ring-white` occlude the previous one's band as they do on the web, and the order among several
+bands on one parent is their elements' order rather than the order the bands happened to be attached —
+two `focus:ring-2` siblings render the same whichever was focused first. The hosting stays visible in
+two places:
 
-- The band paints **above the ringed element's later siblings**, where CSS paints an outline in the
-  element's own position in the stacking order. Every sibling after a ringed element is drawn under
-  its band, not only an overlapping one. Overlapping `-space-x-*` avatars each carrying
-  `ring-2 ring-white` therefore show every band over every face, instead of each avatar occluding the
-  previous one's band. With several bands on one parent the order among them is the order they were
-  attached, so two `focus:ring-2` siblings paint in whichever order they were focused.
 - `ring-inset` paints **over** an opaque full-bleed child rather than under it. This matches the
   order CSS gives an inset box-shadow, not an inset outline.
 - A ring on a `V.Motion` is ignored, with a warning. The band is outside the Motion's own opacity, so
