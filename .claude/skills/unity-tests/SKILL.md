@@ -50,7 +50,7 @@ Every one was found by mutating the implementation and confirming a test died �
 Three traps in the folding itself, each of which passes a count check:
 
 - **`Is.EqualTo(tuple)` matches a nested collection by reference.** Join to strings instead.
-- **`.Within()` does not reach the members of a tuple.** Unity's NUnit ships no `ValueTupleComparer`, so `NUnitEqualityComparer.AreEqual` falls through to `FirstImplementsIEquatableOfSecond`, which never sees the tolerance — `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` **fails**, while printing the tolerance it did not apply. A fold that moves a scalar comparison into a tuple silently converts it to bit-exact equality wearing a tolerance suffix. Round each term before comparing, or compare formatted strings.
+- **`.Within()` does not reach the members of a tuple.** Unity's NUnit ships no `ValueTupleComparer`, so `NUnitEqualityComparer.AreEqual` falls through to `FirstImplementsIEquatableOfSecond`, which never sees the tolerance — `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` **fails**. Its message still prints `+/- 9.99999975E-05f`, so a passing tuple assertion looks like proof the tolerance applied — two people read it that way before anyone ran the failing case. A fold that moves a scalar comparison into a tuple silently converts it to bit-exact equality wearing a tolerance suffix. Round each term before comparing, or compare formatted strings.
 - **The logically sharpest gate is not always the discriminating one.** A `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, and a count term next to it is what goes red.
 
 ## Sweep for the shape, not the instance
