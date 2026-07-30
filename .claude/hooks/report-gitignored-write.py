@@ -30,7 +30,11 @@ def main():
     if not path or not path.endswith(TRACKABLE_SUFFIXES):
         return 0
 
-    root = os.environ.get("CLAUDE_PROJECT_DIR") or payload.get("cwd") or "."
+    # The session's own cwd first. An agent working in a git worktree writes paths under
+    # .claude/worktrees/, and the MAIN checkout excludes that directory — so asking the main checkout
+    # about a worktree path matches that rule and reports every file the agent writes as untracked
+    # when its own repository tracks them normally. Same misdirection the SubagentStop hook carried.
+    root = payload.get("cwd") or os.environ.get("CLAUDE_PROJECT_DIR") or "."
     try:
         check = subprocess.run(
             ["git", "-C", root, "check-ignore", "-v", "--", path],
