@@ -42,6 +42,17 @@ namespace Velvet.Tests
         private static readonly Font s_builtinFont =
             Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
+        // _tokens.uss's semantic colors are translucent whites meant to composite over a backdrop the host
+        // supplies — --color-surface is rgba(255,255,255,0.12), --color-border rgba(255,255,255,0.36) —
+        // while --color-text is an opaque near-white, and no background token is declared. A story built
+        // from those (the example set is) captured without a backdrop composites near-white onto nothing
+        // and reads as blank, having passed every check that asks only whether pixels differ. The
+        // requirement here is just that the backdrop be opaque and dark enough for that layer to separate;
+        // the value matches what the preview window puts behind the same stories, so a capture and the live
+        // view stay comparable. Utilities drawn from _palette.uss's Tailwind scale are opaque and would not
+        // have needed this.
+        private static readonly Color BackdropBehindTheStory = new(0.09f, 0.10f, 0.13f, 1f);
+
         private TargetFrameRateScope _frameRateScope;
 
         [UnitySetUp]
@@ -110,6 +121,7 @@ namespace Velvet.Tests
             using var host = new RenderTexturePanelHost(SanitizeFileName(story.Id), width, height);
             host.Root.style.unityFontDefinition =
                 new StyleFontDefinition(FontDefinition.FromFont(s_builtinFont));
+            host.Root.style.backgroundColor = BackdropBehindTheStory;
             host.Root.LoadBundledStyleUtilitiesForTest();
 
             using var previewHost = new VelvetPreviewHost(host.Root);
