@@ -33,6 +33,17 @@ Concurrent Unity instances make unrelated tests fail. A failure measured while a
 
 **`inconclusive` is not counted as a failure by the runner.** A non-zero count means a test skipped rather than reported — usually an `Assume` gating the behaviour under test. Treat it as a failure and find the test.
 
+## A pixel fixture on `RenderTexturePanelHost` mounts without the bundled stylesheet
+
+Every plain USS class silently does nothing there, while arbitrary-value utilities keep working, because Velvet resolves those to inline style. So a fixture written from `w-[60px] bg-[#0000ff] flex flex-row` looks correctly constructed and is not: the sizes and colours land, the `flex-row` does not, and the container stays UI Toolkit's default `column`.
+
+This has produced a wrong conclusion (a paint was reported as surviving `overflow-hidden` when the clip had never applied) and, separately, two reds that looked like evidence about paint order and were actually a fixture measuring non-overlapping elements. It costs more than either trap above.
+
+- **Attach the sheet** (`LoadBundledStyleUtilitiesForTest`) or use inline style deliberately — not a mix you have not checked.
+- **Assert the measured geometry before reading a pixel**, and derive every sample coordinate from the measured `layout`/`resolvedStyle` values rather than from expected ones. If the layout assertion fails, that is the finding.
+- **Put a control in the frame.** "The paint was clipped" and "the clip never applied" are indistinguishable without one — an overflowing child on the opposite side answers it in the same capture.
+- Log more than one axis. An x-only diagnostic read a 20px difference that was really a column layout with a 60px y-shift.
+
 ## Reading a result you intend to report
 
 - EditMode batchmode does not run layout. A test that reads `resolvedStyle` must force it through the panel's `ApplyStyles`/`UpdateForRepaint`, or it silently measures nothing. Assertions on measured values belong in PlayMode.
