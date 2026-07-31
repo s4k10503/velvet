@@ -353,13 +353,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   utility backed by a plain USS rule still works on every channel — the split is that list versus
   everything else, not whole categories, since `gap-4` is spacing and `skew-x-6` is a transform yet
   neither works there. See `Documentation~/styling-variants.md`.
-- A drop shadow attached while an enter / exit animation covering its caster was already running
-  painted at full strength through the already-translucent caster. Each play snapshots the shadows
-  under its subtree when it begins, so one arriving mid-play — from a variant toggle, or from a
-  re-render that patches an element already on screen — was in no snapshot and nothing ever scaled its
-  alpha. Such a shadow now joins the running fade at the caster's current opacity. An element MOUNTED
-  mid-play is not covered: it is not yet parented when its shadow attaches, so the walk that decides
-  which animations cover it has nothing to walk.
 - Losing a `grid` class while keeping a `gap-*` one (`grid grid-cols-3 gap-4` → `flex gap-4`) left the
   children with no spacing at all: the arriving gap manipulator wrote its margins before the departing
   grid manipulator cleared the margins IT had written, and that clear took the new ones with it.
