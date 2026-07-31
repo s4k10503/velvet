@@ -222,12 +222,17 @@ band takes that element's own paint position, so overlapping `-space-x-*` avatar
 `ring-2 ring-white` occlude the previous one's band as they do on the web, and the order among several
 bands on one parent is their elements' order rather than the order the bands happened to be attached —
 two `focus:ring-2` siblings render the same whichever was focused first. The hosting stays visible in
-two places:
+three places:
 
 - `ring-inset` paints **over** an opaque full-bleed child rather than under it. This matches the
   order CSS gives an inset box-shadow, not an inset outline.
-- A ring on a `V.Motion` is ignored, with a warning. The band is outside the Motion's own opacity, so
-  it could not fade with an enter or exit. Put the ring on a `Div` the Motion wraps.
+- A transform on the ringed element itself — `translate-*`, `scale-*`, `rotate-*`, or an animation
+  driving those — moves the element and leaves the band on the laid-out box, because a transform
+  composites over the transformed element's own subtree and the band is not in it. A transform on an
+  **ancestor** carries element and band together. CSS moves an outline with its element.
+- A ring on a `V.Motion` is ignored, with a warning: it is the transform case above, and animating a
+  transform is what a `V.Motion` is for. Put the ring on a `Div` the Motion wraps — there the band is
+  inside the Motion's subtree, so it rides both the transform and the opacity.
 
 A ring on an ordinary element inside a `V.AnimatePresence` **does** fade with that element's enter and
 exit: the band is driven from the same per-frame opacity sample that fades a drop shadow.

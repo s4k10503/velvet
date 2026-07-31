@@ -128,7 +128,7 @@ namespace Velvet.Tests
             _host = new RenderTexturePanelHost(panelName, 400, 400);
             if (loadUtilities)
             {
-                _host.Root.LoadBundledStyleUtilitiesForTest();
+                VelvetStyleUtilities.AttachTo(_host.Root);
             }
             var tree = V.Div(className: $"w-[{WrapperWidthPx}px]", children: new VNode[]
             {
@@ -354,7 +354,7 @@ namespace Velvet.Tests
             // Arrange — mounts with text-balance alone, so a balanced width is established and held before
             // any ceiling exists at all.
             _host = new RenderTexturePanelHost("TextBalanceLateCeilingPanel", 400, 400);
-            _host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root, V.Component(LateCeilingHost, key: "root"));
             yield return WaitRealtime(0.5);
             var balanced = _host.Root.Q<Label>("balanced");
@@ -379,7 +379,7 @@ namespace Velvet.Tests
             // arbitrary value rather than another scale class because two USS classes resolve against each
             // other by stylesheet source order, which no variant can reorder.
             _host = new RenderTexturePanelHost("TextBalanceVariantCeilingPanel", 400, 400);
-            _host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_host.Root);
             var tree = V.Div(className: $"w-[{WrapperWidthPx}px]", children: new VNode[]
             {
                 V.Label(name: "balanced", text: LongWrapText,
@@ -406,7 +406,7 @@ namespace Velvet.Tests
             // fall back to the base rather than to "no ceiling at all", which is the widening direction of
             // the same currency contract the two tests above cover in the narrowing one.
             _host = new RenderTexturePanelHost("TextBalanceCeilingFallbackPanel", 400, 400);
-            _host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_host.Root);
             VelvetTheme.IsDark = true;
             var tree = V.Div(className: $"w-[{WrapperWidthPx}px]", children: new VNode[]
             {

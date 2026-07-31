@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `VelvetStyleUtilities`, a runtime resolver for the bundled utility stylesheet:
+  `VelvetStyleUtilities.AttachTo(root)` puts it on a panel from the editor and from a player alike,
+  and `VelvetStyleUtilities.Sheet` returns the asset. Until now the sheet was reachable only through
+  `AssetDatabase`, which does not exist in a build, so a shipped game resolved every utility the sheet
+  declares to nothing, while arbitrary values and the many families Velvet resolves itself rather than
+  declaring — the `gap-*` / `divide-*` spacing, the painted and filter families, `animate-*` and more —
+  kept working: a missing sheet that reads as a partial styling bug. `Documentation~/setup.md` carries
+  the command that answers it per class. The sheet keeps its location under `Runtime/Styles/`; a
+  `Resources` asset that imports it is what makes it reachable, and that folder is now part of every
+  build of a project with the package installed. `Documentation~/setup.md` covers this and the
+  alternative of referencing the asset from a scene.
 - `VEL500`, a compile-time analyzer that reports a member body nesting control flow more than four levels
   deep, at error severity. It does not fire on your code: the rule is opt-in per assembly and only the
   package's own assemblies opt in, so upgrading cannot break a build that compiled before. An assembly that
@@ -72,9 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after all of them, so it paints in that element's own position: overlapping `-space-x-*` avatars
   carrying `ring-2 ring-white` occlude the previous one's band as they do on the web, and two
   `focus:ring-2` siblings render the same whichever was focused first. The deviations from CSS this
-  hosting still carries — `ring-inset` painting over an opaque full-bleed child, and a ring on a
-  `V.Motion` being ignored with a warning — are documented in `Documentation~/styling-variants.md`. A
-  ring on an ordinary element inside a `V.AnimatePresence` fades with its element's enter and exit.
+  hosting still carries — `ring-inset` painting over an opaque full-bleed child, a transform on the
+  ringed element moving the element and not the band, and a ring on a `V.Motion` being ignored with a
+  warning — are documented in `Documentation~/styling-variants.md`. A ring on an ordinary element
+  inside a `V.AnimatePresence` fades with its element's enter and exit.
 - A variant payload spelled as a **USS class** (`dark:bg-neutral-900`, `md:flex-col`) now overrides a
   base utility writing the same properties regardless of the order the bundled stylesheets declare
   them in. Previously the payload was added to the live class list as a bare utility, where it tied

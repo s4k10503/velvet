@@ -27,6 +27,11 @@ dependency — an existing UniTask install (any method) is left untouched.
 The UniTask git URL tracks its latest release. `com.unity.addressables` and `com.unity.nuget.mono-cecil`
 are on the Unity registry and resolve automatically. See the repository root README for full details.
 
+Then attach the bundled utility stylesheet to the panel you mount onto — without it every class the
+sheet declares resolves to nothing, while arbitrary values and the many families Velvet resolves
+itself rather than declaring keep working.
+See [Documentation~/setup.md](./Documentation~/setup.md).
+
 ---
 
 ## Design philosophy
@@ -173,6 +178,7 @@ VNode CounterApp() =>
             });
     });
 
+VelvetStyleUtilities.AttachTo(rootElement);
 V.Mount(rootElement, CounterApp());
 ```
 

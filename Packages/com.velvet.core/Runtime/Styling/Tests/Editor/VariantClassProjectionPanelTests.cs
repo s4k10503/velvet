@@ -32,7 +32,7 @@ namespace Velvet.Tests
         private static readonly Color Red500 = new Color32(0xEF, 0x44, 0x44, 0xFF);
         private static readonly Color Blue500 = new Color32(0x3B, 0x82, 0xF6, 0xFF);
 
-        protected override void LoadStyleSheets() => _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+        protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
         public override void TearDown()
         {
