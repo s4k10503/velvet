@@ -1082,7 +1082,7 @@ namespace Velvet
         /// Builds a keyed VNode list from a collection by mapping each item to a VNode and
         /// attaching a stable per-item key.
         /// If <paramref name="renderer"/> returns null for an item, the slot is included in the array
-        /// but skipped by the Reconciler's <c>FlattenAndFilter</c>.
+        /// but renders nothing: the reconciler's inline expansion drops it.
         /// </summary>
         /// <typeparam name="T">Element type of the source collection.</typeparam>
         /// <param name="items">Source collection. When null or empty, returns an empty VNode array.</param>
