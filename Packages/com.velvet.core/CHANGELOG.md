@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Starter App**, the package's first importable sample, offered by Package Manager's Samples section.
+  It brings its own scene, `PanelSettings` and theme, so opening `StarterApp.unity` and pressing Play
+  renders with no further setup: a `UIDocument` host, the `VelvetStyleUtilities.AttachTo` call and
+  `V.Mount`, already assembled. Its screen is a two-route app over a `Store<T>`: a keyed `V.List`,
+  `Hooks.UseState` on a text field, a `Hooks.UseEffect` subscription with its cleanup, `hover:`
+  variants, and `V.Motion` inside `V.AnimatePresence` for the row enter and exit.
 - `VelvetStyleUtilities`, a runtime resolver for the bundled utility stylesheet:
   `VelvetStyleUtilities.AttachTo(root)` puts it on a panel from the editor and from a player alike,
   and `VelvetStyleUtilities.Sheet` returns the asset. Until now the sheet was reachable only through

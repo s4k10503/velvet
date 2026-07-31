@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Velvet.SourceGenerators.CodeShape;
@@ -69,6 +70,27 @@ namespace Velvet.SourceGenerators.Tests
 
             // Assert
             Assert.True(File.Exists(manifest), $"Expected the package manifest at '{manifest}'.");
+        }
+
+        [Fact]
+        public void Given_TheExcludedAsmdefs_When_Enumerated_Then_NoneIsAnAssemblyUnityCompiles()
+        {
+            // A manifest path that does not name a sample — a typo, an empty string, or "Runtime" — drops
+            // real assemblies from the marker guard, which then passes over them in silence. Unity does not
+            // compile anything below a `~`-suffixed folder, so requiring every dropped asmdef to sit under
+            // one rejects those paths without asking the manifest a second time.
+            // Arrange
+            var dropped = AllAsmdefs().Except(PackageAsmdefs(), StringComparer.Ordinal);
+
+            // Act
+            var compiled = dropped
+                .Where(path => !path.Split(Path.DirectorySeparatorChar)
+                    .Any(segment => segment.EndsWith("~", StringComparison.Ordinal)))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToArray();
+
+            // Assert
+            Assert.Equal(Array.Empty<string>(), compiled);
         }
 
         [Fact]
@@ -150,9 +172,48 @@ namespace Velvet.SourceGenerators.Tests
             Path.GetFullPath(Path.Combine(SolutionPaths.GeneratorsRoot(), ".."));
 
         private static List<string> PackageAsmdefs() =>
+            AllAsmdefs().Except(SampleAsmdefs(), StringComparer.Ordinal)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+
+        private static List<string> AllAsmdefs() =>
             Directory.EnumerateFiles(PackageRoot(), "*.asmdef", SearchOption.AllDirectories)
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToList();
+
+        /// <summary>
+        /// Asmdefs belonging to a sample the manifest declares. The marker raises every code-shape rule to
+        /// error severity in the assembly that carries it, and a sample is imported into the consumer's
+        /// project as source they own and edit — so marking one turns this repository's house limits into
+        /// compile errors in a project that never adopted them, from a rule whose origin they cannot see.
+        /// A folder under Samples~ that the manifest does not declare is not shipped as a sample and stays
+        /// in scope; deriving the exclusion from the manifest rather than from the directory name is what
+        /// makes that distinction, and is why the drop set is not restated here as a list of names.
+        /// </summary>
+        private static List<string> SampleAsmdefs()
+        {
+            var roots = DeclaredSamplePaths()
+                .Select(relative => Path.GetFullPath(Path.Combine(PackageRoot(), relative))
+                    + Path.DirectorySeparatorChar)
+                .ToList();
+
+            return AllAsmdefs()
+                .Where(path => roots.Any(root => path.StartsWith(root, StringComparison.Ordinal)))
+                .ToList();
+        }
+
+        private static List<string> DeclaredSamplePaths()
+        {
+            using var manifest = JsonDocument.Parse(File.ReadAllText(
+                Path.Combine(PackageRoot(), "package.json")));
+
+            return manifest.RootElement.TryGetProperty("samples", out var samples)
+                ? samples.EnumerateArray()
+                    .Where(sample => sample.TryGetProperty("path", out _))
+                    .Select(sample => sample.GetProperty("path").GetString()!)
+                    .ToList()
+                : new List<string>();
+        }
 
         /// <summary>
         /// An assembly's sources are the files below its own asmdef's directory minus those claimed by a
