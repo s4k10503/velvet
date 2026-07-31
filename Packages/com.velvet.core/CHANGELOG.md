@@ -186,11 +186,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Drop shadows, the gradient silhouette a `bg-gradient-*` gets on a `skew-*` element, and the
-  `brightness-*` / `saturate-*` filters now render in a built player. All four of the shaders behind
-  them are reached by name from C# alone, and a build strips a shader no scene reaches — so every
-  project shipped those three paints blank after seeing them work in Play Mode for the whole life of
-  the project, announced only by a warning in the player log. A build step now adds the four to
+- The four shaders behind drop shadows, the gradient silhouette a `bg-gradient-*` gets on a `skew-*`
+  element, and the `brightness-*` / `saturate-*` filters are now put in front of every player build.
+  They are reached by name from C# alone and none is in a scene, so a build had nothing keeping them:
+  `Shader.Find` returned null in a player and those three paints drew nothing, after working in Play
+  Mode for the whole life of a project and announced only by a warning in the player log. That they
+  resolve from inside a running player has not been observed here — see
+  `Documentation~/player-builds.md`. A build step now adds the four to
   Graphics Settings' Always Included Shaders before the build and removes them afterwards, so a
   consumer installs the package and does nothing else and their `ProjectSettings` reads as it did.
   The cost, stated plainly: those four shaders are compiled into every build of every project that

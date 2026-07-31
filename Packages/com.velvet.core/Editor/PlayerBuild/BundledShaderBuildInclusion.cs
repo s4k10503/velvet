@@ -37,8 +37,13 @@ namespace Velvet.Editor
 
         // Reverting before injecting is what stops a leftover from being adopted: injection is additive, so an
         // entry already present is treated as the consumer's own and never removed again.
+        //
+        // The writability check is here rather than inside Inject because Revert runs first and writes too. A
+        // read-only file with a leftover record would otherwise have the revert mutate and save before the
+        // refusal it should have stopped at.
         public void OnPreprocessBuild(BuildReport report)
         {
+            RequireWritableSettings();
             Revert();
             Inject();
         }
@@ -116,20 +121,33 @@ namespace Velvet.Editor
             var settings = new SerializedObject(
                 AssetDatabase.LoadAssetAtPath<GraphicsSettings>(GraphicsSettingsAsset));
             var included = settings.FindProperty(AlwaysIncludedShaders);
+            var unresolved = new List<string>();
             foreach (var name in File.ReadAllLines(RecordFile))
             {
                 var shader = Shader.Find(name);
                 var index = shader == null ? -1 : IndexOf(included, shader);
-                if (index >= 0)
+                if (index < 0)
                 {
-                    included.GetArrayElementAtIndex(index).objectReferenceValue = null;
-                    included.DeleteArrayElementAtIndex(index);
+                    unresolved.Add(name);
+                    continue;
                 }
+                included.GetArrayElementAtIndex(index).objectReferenceValue = null;
+                included.DeleteArrayElementAtIndex(index);
             }
             settings.ApplyModifiedProperties();
             // The build writes project settings to disk while it runs, so undoing the injection in the
             // loaded object alone would leave the entries in the file the consumer sees.
             AssetDatabase.SaveAssets();
+
+            // A name this pass could not resolve is still in the consumer's file, and deleting the record is
+            // the only thing that could make it unremovable: injection would then read the entry as theirs and
+            // adopt it. Keeping the record leaves the next pass able to finish, at the cost of one that runs
+            // again having nothing to do.
+            if (unresolved.Count > 0)
+            {
+                File.WriteAllLines(RecordFile, unresolved);
+                return;
+            }
             File.Delete(RecordFile);
             SessionState.EraseString(LiveSessionKey);
         }

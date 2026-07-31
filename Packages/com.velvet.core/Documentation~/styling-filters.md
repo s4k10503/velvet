@@ -34,8 +34,8 @@ The shaders apply CSS `brightness()`'s uniform multiply and `saturate()`'s lerp-
 directly, unclamped, so the **full CSS range** applies: over-brightening (`brightness-150`) and
 over-saturation (`saturate-150`) work, and both match the browser exactly (the arithmetic runs on
 the encoded pixel before the engine's Linear-colorspace conversion, so a Linear project does not
-over-darken). Only negative amounts are rejected, as CSS disallows them. Both shaders reach a player build
-through the step [player-builds.md](player-builds.md) describes, and need nothing from you.
+over-darken). Only negative amounts are rejected, as CSS disallows them. Both shaders are put in front of the
+build by the step [player-builds.md](player-builds.md) describes, which needs nothing from you.
 
 Stacked filters compose in the canonical CSS order (blur, brightness, contrast, grayscale,
 hue-rotate, invert, saturate, sepia) regardless of class order, matching how browsers apply a

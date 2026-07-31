@@ -32,8 +32,15 @@ namespace Velvet.Tests
         private static readonly Regex DeclaredNamePattern =
             new(@"^\s*Shader\s+""([^""]+)""", RegexOptions.Multiline | RegexOptions.Compiled);
 
+        // Revert leaves the record in place when a recorded name no longer resolves, which is the behaviour
+        // one case here arranges. Deleting it afterwards is what stops that case handing the next one a record
+        // it cannot act on.
         [TearDown]
-        public void TearDown() => BundledShaderBuildInclusion.Revert();
+        public void TearDown()
+        {
+            BundledShaderBuildInclusion.Revert();
+            File.Delete(RecordFilePath());
+        }
 
         private static SerializedProperty IncludedShaders(out SerializedObject settings)
         {
@@ -192,6 +199,33 @@ namespace Velvet.Tests
             // Assert
             Assert.That((before, Unreached()), Is.EqualTo((string.Join(", ", VelvetShaders.Names), string.Empty)));
         }
+
+        [Test]
+        public void Given_ARecordedNameThatNoLongerResolves_When_TheRevertRuns_Then_ItKeepsTheRecord()
+        {
+            // Arrange — a build died leaving a record, and by the time it is read one recorded name resolves
+            // to nothing: the package renamed or dropped that shader in the meantime. Deleting the record then
+            // is what makes the leftover entry permanent, because injection is additive and would read it as
+            // the consumer's own from that point on.
+            var injector = new BundledShaderBuildInclusion();
+            injector.OnPreprocessBuild(null);
+            File.AppendAllLines(RecordFilePath(), new[] { "Velvet/NoSuchShader" });
+
+            // Act
+            BundledShaderBuildInclusion.Revert();
+
+            // Assert — the record survives carrying exactly what could not be removed, so a later pass can
+            // finish. Both terms in one comparison: a revert that deleted the file and one that left it
+            // holding the whole original list are different failures.
+            Assert.That(
+                (File.Exists(RecordFilePath()), string.Join(", ", File.ReadAllLines(RecordFilePath()))),
+                Is.EqualTo((true, "Velvet/NoSuchShader")));
+        }
+
+        private static string RecordFilePath()
+            => (string)typeof(BundledShaderBuildInclusion)
+                .GetField("RecordFile", BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetRawConstantValue()!;
 
         private static string LiveSessionKey()
             => (string)typeof(BundledShaderBuildInclusion)
