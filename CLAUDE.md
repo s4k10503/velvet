@@ -112,12 +112,17 @@ Four things reliably fail the test and should not be written:
 - an argument that a non-problem is not a problem;
 - a sibling file's mechanism re-explained instead of named.
 
-Four things pass, and stay however long they need to be:
+Three things pass, and stay however long they need to be:
 
-- engine behavior that had to be measured, decompiled, or read out of Unity's source;
 - an ordering constraint between passes, writes, or events;
 - an invariant a future edit could silently break;
 - a rejected alternative and the one reason it was rejected.
+
+Each is a statement about a decision made here. That is what makes it safe to write: the author owns it, and nothing outside this repository can turn it false.
+
+**A fact about the engine is not one of them, and that is where every false comment came from.** Of the six that shipped in one session, four described UI Toolkit rather than a decision — which transform a reading carries, whether a tolerance reaches a tuple's members, what a check catches, what a build embeds. A measured engine fact is a claim about somebody else's code, held by nothing here, and it goes stale when they change it or when the measurement was subtly of something else. So it does not go in a comment on its own. It goes where the stylesheet mirrors go — into a **test that fails when it stops being true** — and the comment names that test instead of restating the fact. This is the same rule as `Generators~/src/Velvet.StyleTable`, one level out: an unpinned mirror drifts silently, and a sentence is a mirror.
+
+Where no test can hold it, say what was measured and on what — `decompiled from com.unity.ext.nunit 2.0.5`, `measured on 6000.3.11f1` — so a reader meets a dated observation rather than a standing truth. The datestamp is what stops the next author correcting it from memory, which is how one sentence here was rewritten wrongly four times.
 
 Two checks that need no judgement:
 
