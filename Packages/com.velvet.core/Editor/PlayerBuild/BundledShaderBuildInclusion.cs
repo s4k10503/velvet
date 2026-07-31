@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -61,22 +62,48 @@ namespace Velvet.Editor
 
         // Refusing before anything is written is the point: the injection is saved to disk, so a revert that
         // cannot write would leave the consumer holding the permanent diff this mechanism exists to avoid.
-        private static void RequireWritableSettings()
+        //
+        // Writability is established by attempting it rather than by reading FileInfo.IsReadOnly, which on
+        // Unix reports the permission triad matching the process's own uid and gid. It is wrong in both
+        // directions: root over a checkout it does not own reads read-only on a file it writes freely, and a
+        // non-owner reads writable on a 0600 file it cannot open — the second is the dangerous one, since the
+        // guard passes and the revert then saves a file it cannot write.
+        private static bool CanWriteSettings()
         {
             var file = new FileInfo(GraphicsSettingsAsset);
-            if (file.Exists && file.IsReadOnly)
+            if (!file.Exists)
+            {
+                return true;
+            }
+            try
+            {
+                using var probe = file.Open(FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return false;
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+        }
+
+        private static void RequireWritableSettings()
+        {
+            if (!CanWriteSettings())
             {
                 throw new BuildFailedException(
-                    $"{GraphicsSettingsAsset} is read-only, so Velvet cannot add its shaders to Always " +
-                    "Included Shaders for this build and could not take them out again afterwards. Make the " +
-                    "file writable — check it out of version control if that is what holds it — and build " +
-                    "again.");
+                    $"{GraphicsSettingsAsset} cannot be opened for writing, so Velvet cannot add its shaders " +
+                    "to Always Included Shaders for this build and could not take them out again afterwards. " +
+                    "Make the file writable — check it out of version control if that is what holds it — and " +
+                    "build again.");
             }
         }
 
         internal static void Inject()
         {
-            RequireWritableSettings();
             var settings = new SerializedObject(
                 AssetDatabase.LoadAssetAtPath<GraphicsSettings>(GraphicsSettingsAsset));
             var included = settings.FindProperty(AlwaysIncludedShaders);
@@ -98,8 +125,10 @@ namespace Velvet.Editor
                 included.GetArrayElementAtIndex(included.arraySize - 1).objectReferenceValue = shader;
                 added.Add(name);
             }
-            settings.ApplyModifiedProperties();
+            // Recorded before the apply, not after: a record naming something that never landed is removed on
+            // the next pass, while entries applied with no record are the permanent diff.
             File.WriteAllLines(RecordFile, added);
+            settings.ApplyModifiedProperties();
             SessionState.SetString(LiveSessionKey, "1");
 
             var unreached = Unreached();
@@ -115,6 +144,13 @@ namespace Velvet.Editor
         internal static void Revert()
         {
             if (!File.Exists(RecordFile))
+            {
+                return;
+            }
+            // OnPostprocessBuild and the editor-load repair both arrive here without the build's refusal
+            // ahead of them. Declining keeps the record, which is what lets a later pass finish; mutating
+            // and failing to save is what leaves the entries with nothing able to remove them.
+            if (!CanWriteSettings())
             {
                 return;
             }

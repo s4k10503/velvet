@@ -141,28 +141,41 @@ namespace Velvet.Tests
         [Test]
         public void Given_AReadOnlySettingsFile_When_ABuildWouldInject_Then_ItFailsInsteadOfWritingNothing()
         {
-            // Arrange
-            var file = new FileInfo(GraphicsSettingsAsset);
+            // Arrange — an exclusive handle rather than the read-only attribute. The refusal no longer reads
+            // that attribute, and on a checkout the process does not own the attribute answers for a permission
+            // triad that is not the one in force: setting it changes nothing the build can see.
             var injector = new BundledShaderBuildInclusion();
-            file.IsReadOnly = true;
+            bool writableBefore;
+            try
+            {
+                using var probe = File.Open(
+                    GraphicsSettingsAsset, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+                writableBefore = true;
+            }
+            catch (Exception)
+            {
+                writableBefore = false;
+            }
 
             // Act
             Exception refused = null;
-            try
+            using (File.Open(GraphicsSettingsAsset, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {
-                injector.OnPreprocessBuild(null);
-            }
-            catch (Exception exception)
-            {
-                refused = exception;
-            }
-            finally
-            {
-                file.IsReadOnly = false;
+                try
+                {
+                    injector.OnPreprocessBuild(null);
+                }
+                catch (Exception exception)
+                {
+                    refused = exception;
+                }
             }
 
-            // Assert
-            Assert.That(refused, Is.TypeOf<BuildFailedException>());
+            // Assert — the arranged precondition rides along: where the file was already unwritable the
+            // refusal proves nothing about the handle, and that is the state this case sat in unnoticed.
+            Assert.That(
+                (writableBefore, refused?.GetType()),
+                Is.EqualTo((true, typeof(BuildFailedException))));
         }
 
         [Test]
