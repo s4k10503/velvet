@@ -22,5 +22,12 @@
     "com.unity.addressables": "2.7.4",
     "com.unity.nuget.mono-cecil": "1.11.5",
     "com.unity.modules.uielements": "1.0.0"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "Starter App",
+      "description": "A scene to open and press Play on. Hosts a panel on a UIDocument, attaches the bundled utility stylesheet from code, and mounts a two-route app over a store: keyed list, local state, an effect, hover variants and an enter/exit transition.",
+      "path": "Samples~/StarterApp"
+    }
+  ]
 }

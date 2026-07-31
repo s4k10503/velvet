@@ -61,14 +61,67 @@ namespace Velvet.SourceGenerators
                 return null;
             }
 
-            var diagnostics = ImmutableArray.CreateBuilder<DiagnosticInfo>();
-            var isValid = true;
-
             var isPartial = decl.Modifiers.Any(m => m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PartialKeyword));
             if (!isPartial)
             {
                 return null;
             }
+
+            var diagnostics = ImmutableArray.CreateBuilder<DiagnosticInfo>();
+            var containingType = method.ContainingType;
+
+            var declarationValid = ValidateDeclaration(decl, method, containingType, diagnostics, cancellationToken);
+
+            // Between the two halves rather than after both, because the warning is suppressed on a declaration
+            // already rejected — it would be a second complaint about a body the user has not been told to write
+            // yet — while a rejected signature says nothing about whether the _Impl is pure.
+            if (declarationValid && method.Parameters.Length == 0)
+            {
+                ReportUnprovablePurity(ctx, decl, method, containingType, diagnostics, cancellationToken);
+            }
+
+            var signatureValid = ValidateSignature(decl, method, diagnostics);
+            var isValid = declarationValid && signatureValid;
+
+            MethodInfo? info = isValid
+                ? new MethodInfo(
+                    name: method.Name,
+                    accessibility: RenderAccessibility(method.DeclaredAccessibility),
+                    isStatic: method.IsStatic,
+                    returnTypeDisplay: method.ReturnType.ToDisplayString(FullyQualifiedFormat),
+                    parameters: method.Parameters
+                        .Select(p => new ParameterInfo(p.Name, p.Type.ToDisplayString(FullyQualifiedFormat)))
+                        .ToImmutableArray())
+                : (MethodInfo?)null;
+
+            if (containingType is null)
+            {
+                return new MemoizeCandidate(
+                    typeKey: new TypeKey(string.Empty, ImmutableArray<TypeKey.TypeSegment>.Empty),
+                    hintName: $"{method.Name}.Memoize.g.cs",
+                    method: null,
+                    diagnostics: diagnostics.ToImmutable());
+            }
+
+            return new MemoizeCandidate(
+                typeKey: BuildTypeKey(containingType),
+                hintName: BuildHintName(containingType),
+                method: info,
+                diagnostics: diagnostics.ToImmutable());
+        }
+
+        /// <summary>
+        /// The requirements on how the method and its enclosing types are written: an accessibility modifier,
+        /// no body of its own, and <c>partial</c> the whole way out.
+        /// </summary>
+        private static bool ValidateDeclaration(
+            MethodDeclarationSyntax decl,
+            IMethodSymbol method,
+            INamedTypeSymbol? containingType,
+            ImmutableArray<DiagnosticInfo>.Builder diagnostics,
+            CancellationToken cancellationToken)
+        {
+            var isValid = true;
 
             var hasAccessibility = decl.Modifiers.Any(m =>
                 m.IsKind(Microsoft.CodeAnalysis.CSharp.SyntaxKind.PublicKeyword) ||
@@ -93,7 +146,6 @@ namespace Velvet.SourceGenerators
                 isValid = false;
             }
 
-            var containingType = method.ContainingType;
             if (containingType is null || !IsAllContainingTypesPartial(containingType, cancellationToken))
             {
                 diagnostics.Add(new DiagnosticInfo(
@@ -103,30 +155,26 @@ namespace Velvet.SourceGenerators
                 isValid = false;
             }
 
-            var parameters = method.Parameters;
-            var arity = parameters.Length;
-            if (arity == 0 && isValid)
-            {
-                // Arity 0 is the deps-less memoization shape: generation always proceeds, but a warning is emitted
-                // when the corresponding _Impl method is not provably Pure. The deps-less V.Memoized cache returns the
-                // same VNode forever, so impure factories silently leak stale state.
-                // Skipped when isValid is already false (VEL006 / VEL007 / VEL009 etc.) to avoid spurious double
-                // warnings for shapes that are rejected for unrelated reasons.
-                if (!IsImplMethodPure(ctx.SemanticModel.Compilation, containingType, method.Name, cancellationToken))
-                {
-                    diagnostics.Add(new DiagnosticInfo(
-                        MemoizeDiagnostics.Vel001ArityZeroCannotProvePurity,
-                        decl.Identifier.GetLocation(),
-                        method.Name));
-                }
-            }
-            else if (arity > MaxArity)
+            return isValid;
+        }
+
+        /// <summary>
+        /// Each of these leaves the V.Memoized wrapper unwritable rather than merely unusual.
+        /// </summary>
+        private static bool ValidateSignature(
+            MethodDeclarationSyntax decl,
+            IMethodSymbol method,
+            ImmutableArray<DiagnosticInfo>.Builder diagnostics)
+        {
+            var isValid = true;
+
+            if (method.Parameters.Length > MaxArity)
             {
                 diagnostics.Add(new DiagnosticInfo(
                     MemoizeDiagnostics.Vel002ArityExceedsLimit,
                     decl.Identifier.GetLocation(),
                     method.Name,
-                    arity.ToString(CultureInfo.InvariantCulture)));
+                    method.Parameters.Length.ToString(CultureInfo.InvariantCulture)));
                 isValid = false;
             }
 
@@ -149,7 +197,8 @@ namespace Velvet.SourceGenerators
                 isValid = false;
             }
 
-            if (parameters.Any(p => p.RefKind is RefKind.Ref or RefKind.Out or RefKind.RefReadOnly or RefKind.In))
+            if (method.Parameters.Any(p =>
+                    p.RefKind is RefKind.Ref or RefKind.Out or RefKind.RefReadOnly or RefKind.In))
             {
                 diagnostics.Add(new DiagnosticInfo(
                     MemoizeDiagnostics.Vel005RefOutParameterNotSupported,
@@ -170,31 +219,30 @@ namespace Velvet.SourceGenerators
                 isValid = false;
             }
 
-            MethodInfo? info = isValid
-                ? new MethodInfo(
-                    name: method.Name,
-                    accessibility: RenderAccessibility(method.DeclaredAccessibility),
-                    isStatic: method.IsStatic,
-                    returnTypeDisplay: method.ReturnType.ToDisplayString(FullyQualifiedFormat),
-                    parameters: parameters
-                        .Select(p => new ParameterInfo(p.Name, p.Type.ToDisplayString(FullyQualifiedFormat)))
-                        .ToImmutableArray())
-                : (MethodInfo?)null;
+            return isValid;
+        }
 
-            if (containingType is null)
+        /// <summary>
+        /// Generation proceeds either way. The arity-0 V.Memoized cache returns the same VNode forever, so an
+        /// impure factory leaks stale state with nothing else in the compile objecting.
+        /// </summary>
+        private static void ReportUnprovablePurity(
+            GeneratorAttributeSyntaxContext ctx,
+            MethodDeclarationSyntax decl,
+            IMethodSymbol method,
+            INamedTypeSymbol? containingType,
+            ImmutableArray<DiagnosticInfo>.Builder diagnostics,
+            CancellationToken cancellationToken)
+        {
+            if (IsImplMethodPure(ctx.SemanticModel.Compilation, containingType, method.Name, cancellationToken))
             {
-                return new MemoizeCandidate(
-                    typeKey: new TypeKey(string.Empty, ImmutableArray<TypeKey.TypeSegment>.Empty),
-                    hintName: $"{method.Name}.Memoize.g.cs",
-                    method: null,
-                    diagnostics: diagnostics.ToImmutable());
+                return;
             }
 
-            return new MemoizeCandidate(
-                typeKey: BuildTypeKey(containingType),
-                hintName: BuildHintName(containingType),
-                method: info,
-                diagnostics: diagnostics.ToImmutable());
+            diagnostics.Add(new DiagnosticInfo(
+                MemoizeDiagnostics.Vel001ArityZeroCannotProvePurity,
+                decl.Identifier.GetLocation(),
+                method.Name));
         }
 
         private static void Emit(SourceProductionContext spc, ImmutableArray<MemoizeCandidate> candidates)
