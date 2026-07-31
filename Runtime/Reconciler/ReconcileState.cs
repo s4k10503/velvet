@@ -83,9 +83,10 @@ namespace Velvet
 
         // Parent VE the reconciled children are placed into.
         public VisualElement? Parent { get; init; }
-        // Child VNode array from the previous render (already FlattenAndFilter'd).
+        // Child VNode array from the previous render, as the caller supplied it: nulls and fragments are
+        // dropped and expanded during inline expansion, not before this is stored.
         public VNode?[] OldNodes { get; init; } = null!;
-        // Child VNode array requested by the current render (already FlattenAndFilter'd).
+        // Child VNode array requested by the current render, on the same terms as the previous one above.
         public VNode?[] NewNodes { get; init; } = null!;
         // Zero-based slot offset into Parent.children at which this keyed reconcile operates.
         // Default 0 (Reconcile owns the full children list). Non-zero for wrapper-less fibers that
