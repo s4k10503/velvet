@@ -1,0 +1,100 @@
+{
+  "cuts": [
+    {
+      "name": "clip-parser",
+      "mechanism": "clip",
+      "summary": "the clip-path class parser resolves nothing, from a class list or from a live element",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleClipPathClass.cs",
+          "anchor": "public static bool TryExtract(string[]? classNames, out ClipPathSpec? spec)",
+          "neuter": "spec = null; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleClipPathClass.cs",
+          "anchor": "public static bool TryExtractLive(VisualElement? element, out ClipPathSpec? spec)",
+          "neuter": "spec = null; return false;"
+        }
+      ]
+    },
+    {
+      "name": "clip-applier",
+      "mechanism": "clip",
+      "summary": "the reconciler applies no clip-path and wraps nothing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs",
+          "anchor": "internal VisualElement ApplyClipPathOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return element;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs",
+          "anchor": "internal bool ApplyClipPathOnPatch(VisualElement element, string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "ring-parser",
+      "mechanism": "ring",
+      "summary": "the ring class parser claims and resolves nothing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out RingSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+          "anchor": "public static bool HasRingClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "ring-applier",
+      "mechanism": "ring",
+      "summary": "the reconciler hosts no ring overlay",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberRingApplier.cs",
+          "anchor": "internal void ApplyRingOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberRingApplier.cs",
+          "anchor": "internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool clipActive)",
+          "neuter": "return;"
+        }
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "fixture": "Velvet.Tests.ClipPathWrapTests",
+      "cuts": [
+        "clip-applier",
+        "clip-parser",
+        "ring-applier",
+        "ring-parser"
+      ],
+      "caseScopes": [
+        {
+          "mechanism": "clip",
+          "pattern": "Clip"
+        },
+        {
+          "mechanism": "ring",
+          "pattern": "Ring|Outline"
+        }
+      ]
+    },
+    {
+      "fixture": "Velvet.Tests.StyleRingClassTests",
+      "cuts": [
+        "ring-parser"
+      ],
+      "caseScopes": []
+    }
+  ]
+}
