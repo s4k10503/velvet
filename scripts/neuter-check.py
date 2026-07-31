@@ -196,9 +196,9 @@ def outcomes(results):
 
 
 def report_pair(entry, name, cut, baseline, cut_results, elapsed, peak):
-    print(f"\n  cut '{name}' — {cut['summary']}")
+    print(f"\n  cut '{name}' — {cut['summary']}", flush=True)
     if cut_results is None:
-        print("    NO RESULTS — the run produced no readable XML; the cut may not compile")
+        print("    NO RESULTS — the run produced no readable XML; the cut may not compile", flush=True)
         return None
     scoped = [test for test in cut_results if in_scope(entry, cut, test.rsplit(".", 1)[-1])]
     holes = sorted(
@@ -207,11 +207,11 @@ def report_pair(entry, name, cut, baseline, cut_results, elapsed, peak):
     )
     missing = sorted(set(baseline) - set(cut_results))
     print(f"    {len(scoped)} of {len(cut_results)} cases in scope, {len(holes)} still passing, "
-          f"{elapsed:.0f}s, peak other runs {peak}")
+          f"{elapsed:.0f}s, peak other runs {peak}", flush=True)
     for test in holes:
-        print(f"      HOLE {test.rsplit('.', 1)[-1]}")
+        print(f"      HOLE {test.rsplit('.', 1)[-1]}", flush=True)
     for test in missing:
-        print(f"      NOT RUN {test.rsplit('.', 1)[-1]}")
+        print(f"      NOT RUN {test.rsplit('.', 1)[-1]}", flush=True)
     return holes
 
 
@@ -241,7 +241,7 @@ def main():
         return 1
     if args.validate:
         edits = sum(len(cut["edits"]) for cut in cuts["cuts"].values())
-        print(f"{edits} anchors across {len(cuts['cuts'])} cuts each match exactly once")
+        print(f"{edits} anchors across {len(cuts['cuts'])} cuts each match exactly once", flush=True)
         return 0
 
     dirty = dirty_cut_files(project, cuts)
@@ -263,7 +263,7 @@ def main():
     total_holes = 0
     for fixture in fixtures:
         short = fixture.rsplit(".", 1)[-1]
-        print(f"\n{fixture}")
+        print(f"\n{fixture}", flush=True)
         if not wait_for_quiet(args.busy_timeout):
             print("error: the machine did not go quiet", file=sys.stderr)
             return 1
@@ -284,7 +284,7 @@ def main():
             for test in red:
                 print(f"  {test}", file=sys.stderr)
             return 1
-        print(f"  baseline {len(baseline)} passed, {elapsed:.0f}s, peak other runs {peak}")
+        print(f"  baseline {len(baseline)} passed, {elapsed:.0f}s, peak other runs {peak}", flush=True)
 
         entry = cuts["fixtures"][fixture]
         for name in entry["cuts"]:
@@ -306,7 +306,7 @@ def main():
                 return 1
             total_holes += len(holes)
 
-    print(f"\n{total_holes} hole(s) across {len(fixtures)} fixture(s)")
+    print(f"\n{total_holes} hole(s) across {len(fixtures)} fixture(s)", flush=True)
     return 1 if total_holes else 0
 
 
