@@ -32,6 +32,10 @@ sheet declares resolves to nothing, while arbitrary values and the many families
 itself rather than declaring keep working.
 See [Documentation~/setup.md](./Documentation~/setup.md).
 
+**For a screen that already runs, import the Starter App sample** from the package's Samples section in
+Package Manager, open `StarterApp.unity` and press Play. It is a working `UIDocument` host with the
+stylesheet call, a router, a store and hooks already wired.
+
 ---
 
 ## Design philosophy

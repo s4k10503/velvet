@@ -90,6 +90,10 @@ than declaring keep working, which reads as a styling bug rather than a missing 
 [setup.md](Packages/com.velvet.core/Documentation~/setup.md) for the one-line call and the
 scene-reference alternative.
 
+To skip the wiring entirely, import the **Starter App** sample from the package's Samples section in
+Package Manager and press Play on the scene it brings: a `UIDocument` host with that call, a router, a
+store and hooks already assembled.
+
 ## Getting started
 
 A counter built from a functional component and the `UseState` hook:
@@ -270,7 +274,7 @@ package so it can be developed and tested in isolation.
 
 ```
 .
-├── Assets/                         # Unity project shell (URP render-pipeline setup)
+├── Assets/                         # Unity project shell (URP setup, the starter sample + its tests)
 ├── Packages/
 │   └── com.velvet.core/            # ← the Velvet package (source of truth)
 │       ├── Runtime/                # framework runtime (+ colocated tests)
@@ -278,6 +282,7 @@ package so it can be developed and tested in isolation.
 │       ├── CodeGen/                # IL post-processor (ILPP)
 │       ├── TestUtilities/          # shared test helpers (dev-only; not shipped — see below)
 │       ├── Generators~/            # Roslyn source-generator source (built to Runtime/Plugins)
+│       ├── Samples~/               # importable samples (mirrors of the copies under Assets/)
 │       └── Documentation~/         # framework documentation
 └── ProjectSettings/                # Unity project settings (Unity 6000.3.11f1)
 ```

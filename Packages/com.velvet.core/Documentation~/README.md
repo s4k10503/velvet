@@ -3,6 +3,14 @@
 Design and usage guides for **Velvet**, a React-style declarative UI framework for Unity UI Toolkit.
 For the package overview and installation instructions, see the repository root README.
 
+## Start here
+
+Import the **Starter App** sample from the package's Samples section in Package Manager, open
+`StarterApp.unity` and press Play. It is the shortest path to a running screen: a `UIDocument`, a
+`PanelSettings`, the stylesheet call and `V.Mount`, already assembled, over a two-route app with a
+store, hooks, hover variants and transitions. Its own `README.md` maps each file to the part it plays.
+The guides below go deeper on one subject each; [setup.md](setup.md) is the one to read next.
+
 ## Guides
 
 | File | Contents |
