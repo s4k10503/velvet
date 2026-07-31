@@ -53,3 +53,13 @@ namespace Velvet.SourceGenerators.Tests
         }
     }
 }
+
+// throwaway: proves a red required check cannot be merged past
+namespace Velvet.SourceGenerators.Tests
+{
+    public sealed class DeliberateFailureProbe
+    {
+        [Xunit.Fact]
+        public void Fails() => Xunit.Assert.True(false, "deliberate, for the merge-gate demonstration");
+    }
+}
