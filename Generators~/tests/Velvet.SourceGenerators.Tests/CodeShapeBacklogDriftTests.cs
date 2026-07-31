@@ -122,8 +122,8 @@ namespace Velvet.SourceGenerators.Tests
 
         /// <summary>
         /// Every body and every parameter list the analyzers would see, in either configuration.
-        /// `Generators~` is excluded because it is a separate solution that never references Velvet and so
-        /// never loads these analyzers, and generated files because the analyzers opt out of generated code.
+        /// `Generators~` is excluded because its own solution loads the analyzers and is held to the limits
+        /// at compile time, and generated files because the analyzers opt out of generated code.
         /// </summary>
         private static (
             IReadOnlyList<(string File, string Display, int Depth, int Branches)> Bodies,
@@ -144,29 +144,52 @@ namespace Velvet.SourceGenerators.Tests
                 var relative = file.Substring(packageRoot.Length + 1);
                 foreach (var options in Configurations)
                 {
-                    var tree = CSharpSyntaxTree.ParseText(text, options);
-                    foreach (var node in tree.GetRoot().DescendantNodes())
-                    {
-                        if (CodeShapeMembers.MemberKinds.Contains(node.Kind()))
-                        {
-                            foreach (var (body, _, display) in CodeShapeMembers.BodiesOf(node))
-                            {
-                                bodies[(relative, body.SpanStart)] = (relative, display,
-                                    NestingDepthAnalyzer.Measure(body), BranchCountAnalyzer.Measure(body));
-                            }
-                        }
-
-                        if (!CodeShapeMembers.ParameterizedKinds.Contains(node.Kind())) continue;
-                        var declared = CodeShapeMembers.ParametersOf(node);
-                        if (declared == null) continue;
-
-                        parameters[(relative, declared.Value.Name.SpanStart)] = (relative,
-                            declared.Value.Display, ParameterCountAnalyzer.Measure(declared.Value.Parameters));
-                    }
+                    MeasureTree(CSharpSyntaxTree.ParseText(text, options), relative, bodies, parameters);
                 }
             }
 
             return (bodies.Values.ToList(), parameters.Values.ToList());
+        }
+
+        private static void MeasureTree(
+            SyntaxTree tree,
+            string relative,
+            Dictionary<(string File, int Start), (string, string, int, int)> bodies,
+            Dictionary<(string File, int Start), (string, string, int)> parameters)
+        {
+            foreach (var node in tree.GetRoot().DescendantNodes())
+            {
+                RecordBodies(node, relative, bodies);
+                RecordParameters(node, relative, parameters);
+            }
+        }
+
+        private static void RecordBodies(
+            SyntaxNode node,
+            string relative,
+            Dictionary<(string File, int Start), (string, string, int, int)> bodies)
+        {
+            if (!CodeShapeMembers.MemberKinds.Contains(node.Kind())) return;
+
+            foreach (var (body, _, display) in CodeShapeMembers.BodiesOf(node))
+            {
+                bodies[(relative, body.SpanStart)] = (relative, display,
+                    NestingDepthAnalyzer.Measure(body), BranchCountAnalyzer.Measure(body));
+            }
+        }
+
+        private static void RecordParameters(
+            SyntaxNode node,
+            string relative,
+            Dictionary<(string File, int Start), (string, string, int)> parameters)
+        {
+            if (!CodeShapeMembers.ParameterizedKinds.Contains(node.Kind())) return;
+
+            var declared = CodeShapeMembers.ParametersOf(node);
+            if (declared == null) return;
+
+            parameters[(relative, declared.Value.Name.SpanStart)] = (relative,
+                declared.Value.Display, ParameterCountAnalyzer.Measure(declared.Value.Parameters));
         }
     }
 }
