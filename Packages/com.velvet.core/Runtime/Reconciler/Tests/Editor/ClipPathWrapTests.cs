@@ -204,16 +204,25 @@ namespace Velvet.Tests
         public void Given_ClipAndShadowClasses_When_Reconciled_Then_NoShadowPaintIsAttached()
         {
             // Arrange: CSS clip-path clips the box-shadow too, so the shadow paint self-suppresses on the clip.
+            // A shadowed sibling with no clip is mounted alongside, because the absent thing here belongs to
+            // the SHADOW layer while the wrapper term belongs to the clip layer: with the shadow create path
+            // wholly dead the count is zero for a reason that has nothing to do with the clip, and the case
+            // would still pass. The sibling makes the surviving binding the control.
             using var scope = new ReconcilerScope();
 
             // Act
-            Mount(scope, new VNode[] { V.Div(className: $"shadow-lg {Triangle}", name: "card") });
+            Mount(scope, new VNode[]
+            {
+                V.Div(className: $"shadow-lg {Triangle}", name: "card"),
+                V.Div(className: "shadow-lg", name: "plain"),
+            });
 
-            // Assert: wrapped AND unshadowed — the wrapper is the only term here that says the clip took.
+            // Assert: the clip took, and exactly one shadow binding exists — the sibling's. Zero says the
+            // shadow layer is dead; two says the clip did not suppress.
             Assert.That(
                 (IsClipWrapped(scope.Root.Q<VisualElement>("card")),
                     scope.Reconciler.Context.ShadowBindings.Count),
-                Is.EqualTo((true, 0)));
+                Is.EqualTo((true, 1)));
         }
 
         [Test]

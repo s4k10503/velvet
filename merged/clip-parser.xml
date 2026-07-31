@@ -1,0 +1,589 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="62" result="Failed(Child)" total="62" passed="41" failed="21" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.632182">
+  <test-suite type="TestSuite" id="1000" name="velvet" fullname="velvet" runstate="Runnable" testcasecount="3536" result="Failed" site="Child" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.632182" total="62" passed="41" failed="21" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <failure>
+      <message><![CDATA[One or more child tests had errors]]></message>
+    </failure>
+    <test-suite type="Assembly" id="3101" name="Velvet.Tests.Reconciler.Editor.dll" fullname="/private/tmp/claude-501/-Users-apple-dev-velvet/bee87e94-ccb3-4737-9014-4b5f945af88e/scratchpad/wt245/Library/ScriptAssemblies/Velvet.Tests.Reconciler.Editor.dll" runstate="Runnable" testcasecount="1020" result="Failed" site="Child" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.284777" total="39" passed="18" failed="21" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="27669" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <failure>
+        <message><![CDATA[One or more child tests had errors]]></message>
+      </failure>
+      <test-suite type="TestSuite" id="3102" name="Velvet" fullname="Velvet" runstate="Runnable" testcasecount="1020" result="Failed" site="Child" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.281578" total="39" passed="18" failed="21" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <failure>
+          <message><![CDATA[One or more child tests had errors]]></message>
+        </failure>
+        <test-suite type="TestSuite" id="3103" name="Tests" fullname="Velvet.Tests" runstate="Runnable" testcasecount="1020" result="Failed" site="Child" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.279435" total="39" passed="18" failed="21" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <failure>
+            <message><![CDATA[One or more child tests had errors]]></message>
+          </failure>
+          <test-suite type="TestFixture" id="2113" name="ClipPathWrapTests" fullname="Velvet.Tests.ClipPathWrapTests" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" testcasecount="39" result="Failed" site="Child" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.230090" total="39" passed="18" failed="21" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <failure>
+              <message><![CDATA[One or more child tests had errors]]></message>
+            </failure>
+            <test-case id="2117" name="Given_AClipClass_When_Reconciled_Then_ABindingIsTracked" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClipClass_When_Reconciled_Then_ABindingIsTracked" methodname="Given_AClipClass_When_Reconciled_Then_ABindingIsTracked" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1940755985" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.118956" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: 1
+  But was:  0
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AClipClass_When_Reconciled_Then_ABindingIsTracked () [0x00030] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:122
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2114" name="Given_AClipClass_When_Reconciled_Then_ElementIsWrappedInAClipWrapper" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClipClass_When_Reconciled_Then_ElementIsWrappedInAClipWrapper" methodname="Given_AClipClass_When_Reconciled_Then_ElementIsWrappedInAClipWrapper" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1759434754" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000881" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: True
+  But was:  False
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AClipClass_When_Reconciled_Then_ElementIsWrappedInAClipWrapper () [0x00030] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:83
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2116" name="Given_AClipClass_When_Reconciled_Then_TheInnerElementIsTheWrappersChild" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClipClass_When_Reconciled_Then_TheInnerElementIsTheWrappersChild" methodname="Given_AClipClass_When_Reconciled_Then_TheInnerElementIsTheWrappersChild" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1855375885" result="Failed" label="Error" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.001356" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[System.ArgumentOutOfRangeException : Index was out of range. Must be non-negative and less than the size of the collection.
+Parameter name: index]]></message>
+                <stack-trace><![CDATA[  at System.Collections.Generic.List`1[T].get_Item (System.Int32 index) [0x00009] in <c5eeda5e65d44b388e164c6c5cfe0702>:0 
+  at UnityEngine.UIElements.VisualElement+Hierarchy.get_Item (System.Int32 key) [0x00001] in /Users/bokken/build/output/unity/unity/Modules/UIElements/Core/VisualElementHierarchy.cs:838 
+  at UnityEngine.UIElements.VisualElement.get_Item (System.Int32 key) [0x0000f] in /Users/bokken/build/output/unity/unity/Modules/UIElements/Core/VisualElementHierarchy.cs:311 
+  at Velvet.Tests.ClipPathWrapTests.Given_AClipClass_When_Reconciled_Then_TheInnerElementIsTheWrappersChild () [0x00030] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:109 
+  at (wrapper managed-to-native) System.Reflection.RuntimeMethodInfo.InternalInvoke(System.Reflection.RuntimeMethodInfo,object,object[],System.Exception&)
+  at System.Reflection.RuntimeMethodInfo.Invoke (System.Object obj, System.Reflection.BindingFlags invokeAttr, System.Reflection.Binder binder, System.Object[] parameters, System.Globalization.CultureInfo culture) [0x0006a] in <c5eeda5e65d44b388e164c6c5cfe0702>:0 ]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2115" name="Given_AClipClass_When_Reconciled_Then_WrapperHidesOverflow" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClipClass_When_Reconciled_Then_WrapperHidesOverflow" methodname="Given_AClipClass_When_Reconciled_Then_WrapperHidesOverflow" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1961713010" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.003031" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: Hidden
+  But was:  Visible
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AClipClass_When_Reconciled_Then_WrapperHidesOverflow () [0x00030] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:96
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2128" name="Given_AClippedElement_When_ClipClassRemovedByPatch_Then_BindingIsUntracked" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ClipClassRemovedByPatch_Then_BindingIsUntracked" methodname="Given_AClippedElement_When_ClipClassRemovedByPatch_Then_BindingIsUntracked" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="438489613" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.006614" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (1, 0)
+  But was:  (0, 0)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ClipClassRemovedByPatch_Then_BindingIsUntracked () [0x0008c] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:333
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2127" name="Given_AClippedElement_When_ClipClassRemovedByPatch_Then_WrapperIsRemoved" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ClipClassRemovedByPatch_Then_WrapperIsRemoved" methodname="Given_AClippedElement_When_ClipClassRemovedByPatch_Then_WrapperIsRemoved" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1694568989" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.001015" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (True, False)
+  But was:  (False, False)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ClipClassRemovedByPatch_Then_WrapperIsRemoved () [0x0008c] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:313
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2124" name="Given_AClippedElement_When_ClipReplacedByShadowOnPatch_Then_TheShadowPaintTakesOver" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ClipReplacedByShadowOnPatch_Then_TheShadowPaintTakesOver" methodname="Given_AClippedElement_When_ClipReplacedByShadowOnPatch_Then_TheShadowPaintTakesOver" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="967698386" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.013148" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (1, 1)
+  But was:  (0, 1)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ClipReplacedByShadowOnPatch_Then_TheShadowPaintTakesOver () [0x0008c] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:252
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2130" name="Given_AClippedElement_When_ReconcilerDisposed_Then_ClipBindingsAreReleased" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ReconcilerDisposed_Then_ClipBindingsAreReleased" methodname="Given_AClippedElement_When_ReconcilerDisposed_Then_ClipBindingsAreReleased" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="631380755" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000549" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (1, 0)
+  But was:  (0, 0)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ReconcilerDisposed_Then_ClipBindingsAreReleased () [0x0004d] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:373
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2129" name="Given_AClippedElement_When_RepatchedWithTheSameClass_Then_TheSpecInstanceIsReused" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_RepatchedWithTheSameClass_Then_TheSpecInstanceIsReused" methodname="Given_AClippedElement_When_RepatchedWithTheSameClass_Then_TheSpecInstanceIsReused" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1932029095" result="Failed" label="Error" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000424" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[System.ArgumentOutOfRangeException : Index was out of range. Must be non-negative and less than the size of the collection.
+Parameter name: index]]></message>
+                <stack-trace><![CDATA[  at System.Collections.Generic.List`1[T].get_Item (System.Int32 index) [0x00009] in <c5eeda5e65d44b388e164c6c5cfe0702>:0 
+  at UnityEngine.UIElements.VisualElement+Hierarchy.get_Item (System.Int32 key) [0x00001] in /Users/bokken/build/output/unity/unity/Modules/UIElements/Core/VisualElementHierarchy.cs:838 
+  at UnityEngine.UIElements.VisualElement.get_Item (System.Int32 key) [0x0000f] in /Users/bokken/build/output/unity/unity/Modules/UIElements/Core/VisualElementHierarchy.cs:311 
+  at Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_RepatchedWithTheSameClass_Then_TheSpecInstanceIsReused () [0x00032] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:346 
+  at (wrapper managed-to-native) System.Reflection.RuntimeMethodInfo.InternalInvoke(System.Reflection.RuntimeMethodInfo,object,object[],System.Exception&)
+  at System.Reflection.RuntimeMethodInfo.Invoke (System.Object obj, System.Reflection.BindingFlags invokeAttr, System.Reflection.Binder binder, System.Object[] parameters, System.Globalization.CultureInfo culture) [0x0006a] in <c5eeda5e65d44b388e164c6c5cfe0702>:0 ]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2125" name="Given_AClippedElement_When_ShapeChangedByPatch_Then_TheBindingSpecFollows" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ShapeChangedByPatch_Then_TheBindingSpecFollows" methodname="Given_AClippedElement_When_ShapeChangedByPatch_Then_TheBindingSpecFollows" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="839789967" result="Failed" label="Error" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000403" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[System.ArgumentOutOfRangeException : Index was out of range. Must be non-negative and less than the size of the collection.
+Parameter name: index]]></message>
+                <stack-trace><![CDATA[  at System.Collections.Generic.List`1[T].get_Item (System.Int32 index) [0x00009] in <c5eeda5e65d44b388e164c6c5cfe0702>:0 
+  at UnityEngine.UIElements.VisualElement+Hierarchy.get_Item (System.Int32 key) [0x00001] in /Users/bokken/build/output/unity/unity/Modules/UIElements/Core/VisualElementHierarchy.cs:838 
+  at UnityEngine.UIElements.VisualElement.get_Item (System.Int32 key) [0x0000f] in /Users/bokken/build/output/unity/unity/Modules/UIElements/Core/VisualElementHierarchy.cs:311 
+  at Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_ShapeChangedByPatch_Then_TheBindingSpecFollows () [0x00076] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:270 
+  at (wrapper managed-to-native) System.Reflection.RuntimeMethodInfo.InternalInvoke(System.Reflection.RuntimeMethodInfo,object,object[],System.Exception&)
+  at System.Reflection.RuntimeMethodInfo.Invoke (System.Object obj, System.Reflection.BindingFlags invokeAttr, System.Reflection.Binder binder, System.Object[] parameters, System.Globalization.CultureInfo culture) [0x0006a] in <c5eeda5e65d44b388e164c6c5cfe0702>:0 ]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2131" name="Given_AClippedElement_When_Unmounted_Then_BindingIsUntracked" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_Unmounted_Then_BindingIsUntracked" methodname="Given_AClippedElement_When_Unmounted_Then_BindingIsUntracked" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="877855344" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.005303" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (1, 0)
+  But was:  (0, 0)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_Unmounted_Then_BindingIsUntracked () [0x0006f] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:391
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2132" name="Given_AClippedElement_When_Unmounted_Then_WrapperToInnerMapIsEmpty" fullname="Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_Unmounted_Then_WrapperToInnerMapIsEmpty" methodname="Given_AClippedElement_When_Unmounted_Then_WrapperToInnerMapIsEmpty" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1096499411" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000512" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (1, 0)
+  But was:  (0, 0)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AClippedElement_When_Unmounted_Then_WrapperToInnerMapIsEmpty () [0x0006f] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:407
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2126" name="Given_APlainElement_When_ClipClassAddedByPatch_Then_ElementIsWrappedInPlace" fullname="Velvet.Tests.ClipPathWrapTests.Given_APlainElement_When_ClipClassAddedByPatch_Then_ElementIsWrappedInPlace" methodname="Given_APlainElement_When_ClipClassAddedByPatch_Then_ElementIsWrappedInPlace" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1458529729" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000366" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (False, True)
+  But was:  (False, False)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_APlainElement_When_ClipClassAddedByPatch_Then_ElementIsWrappedInPlace () [0x0008d] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:292
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2144" name="Given_APlainElement_When_RingClassAddedByPatch_Then_TheOverlayIsHosted" fullname="Velvet.Tests.ClipPathWrapTests.Given_APlainElement_When_RingClassAddedByPatch_Then_TheOverlayIsHosted" methodname="Given_APlainElement_When_RingClassAddedByPatch_Then_TheOverlayIsHosted" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="729072468" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.012030" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2146" name="Given_ARingedElement_When_ClipClassAddedByPatch_Then_TheRingIsSuppressed" fullname="Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_ClipClassAddedByPatch_Then_TheRingIsSuppressed" methodname="Given_ARingedElement_When_ClipClassAddedByPatch_Then_TheRingIsSuppressed" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1708781304" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.003332" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (1, 0)
+  But was:  (1, 1)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_ClipClassAddedByPatch_Then_TheRingIsSuppressed () [0x0008c] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:625
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2136" name="Given_ARingedElement_When_Reconciled_Then_TheOverlayIsNotCountedAsARenderedChild" fullname="Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_Reconciled_Then_TheOverlayIsNotCountedAsARenderedChild" methodname="Given_ARingedElement_When_Reconciled_Then_TheOverlayIsNotCountedAsARenderedChild" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="789045610" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000675" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2141" name="Given_ARingedElement_When_RingClassRemovedByPatch_Then_TheOverlayLeavesTheParent" fullname="Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_RingClassRemovedByPatch_Then_TheOverlayLeavesTheParent" methodname="Given_ARingedElement_When_RingClassRemovedByPatch_Then_TheOverlayLeavesTheParent" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1103761314" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000845" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2145" name="Given_ARingedElement_When_ShadowClassAddedByPatch_Then_TheRingOverlayIsKept" fullname="Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_ShadowClassAddedByPatch_Then_TheRingOverlayIsKept" methodname="Given_ARingedElement_When_ShadowClassAddedByPatch_Then_TheRingOverlayIsKept" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1113162402" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000339" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2151" name="Given_ARingedElement_When_Unmounted_Then_NoRingBindingResidueRemains" fullname="Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_Unmounted_Then_NoRingBindingResidueRemains" methodname="Given_ARingedElement_When_Unmounted_Then_NoRingBindingResidueRemains" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1622011792" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000301" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2152" name="Given_ARingedElement_When_Unmounted_Then_TheOverlayLeavesTheParent" fullname="Velvet.Tests.ClipPathWrapTests.Given_ARingedElement_When_Unmounted_Then_TheOverlayLeavesTheParent" methodname="Given_ARingedElement_When_Unmounted_Then_TheOverlayLeavesTheParent" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1181386791" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000248" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2123" name="Given_AShadowedElement_When_ClipClassAddedByPatch_Then_TheShadowPaintIsDetached" fullname="Velvet.Tests.ClipPathWrapTests.Given_AShadowedElement_When_ClipClassAddedByPatch_Then_TheShadowPaintIsDetached" methodname="Given_AShadowedElement_When_ClipClassAddedByPatch_Then_TheShadowPaintIsDetached" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="326251195" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000823" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (1, 0)
+  But was:  (1, 1)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AShadowedElement_When_ClipClassAddedByPatch_Then_TheShadowPaintIsDetached () [0x0008c] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:234
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2133" name="Given_AUserWrapElementWithClipClass_When_Patched_Then_NotDoubleWrapped" fullname="Velvet.Tests.ClipPathWrapTests.Given_AUserWrapElementWithClipClass_When_Patched_Then_NotDoubleWrapped" methodname="Given_AUserWrapElementWithClipClass_When_Patched_Then_NotDoubleWrapped" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1962202683" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.010057" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (False, True)
+  But was:  (False, False)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_AUserWrapElementWithClipClass_When_Patched_Then_NotDoubleWrapped () [0x00111] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:442
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2150" name="Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsLayerContainer" fullname="Velvet.Tests.ClipPathWrapTests.Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsLayerContainer" methodname="Given_AZManagedRingedElement_When_Reconciled_Then_TheBandFollowsItIntoItsLayerContainer" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="185709349" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.003448" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2138" name="Given_BareRing_When_Reconciled_Then_OverlayUsesDefaultBlueRingColor" fullname="Velvet.Tests.ClipPathWrapTests.Given_BareRing_When_Reconciled_Then_OverlayUsesDefaultBlueRingColor" methodname="Given_BareRing_When_Reconciled_Then_OverlayUsesDefaultBlueRingColor" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="674483661" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000623" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2122" name="Given_ClipAndShadowClasses_When_Reconciled_Then_NoShadowPaintIsAttached" fullname="Velvet.Tests.ClipPathWrapTests.Given_ClipAndShadowClasses_When_Reconciled_Then_NoShadowPaintIsAttached" methodname="Given_ClipAndShadowClasses_When_Reconciled_Then_NoShadowPaintIsAttached" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1060529311" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000770" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (True, 0)
+  But was:  (False, 1)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_ClipAndShadowClasses_When_Reconciled_Then_NoShadowPaintIsAttached () [0x00030] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:213
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2121" name="Given_ClipAndShadowClasses_When_Reconciled_Then_TheClipWrapperWins" fullname="Velvet.Tests.ClipPathWrapTests.Given_ClipAndShadowClasses_When_Reconciled_Then_TheClipWrapperWins" methodname="Given_ClipAndShadowClasses_When_Reconciled_Then_TheClipWrapperWins" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1620871631" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.001165" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: True
+  But was:  False
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_ClipAndShadowClasses_When_Reconciled_Then_TheClipWrapperWins () [0x00030] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:200
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2120" name="Given_ClipOnMotion_When_Reconciled_Then_NoClipWrapperIsCreated" fullname="Velvet.Tests.ClipPathWrapTests.Given_ClipOnMotion_When_Reconciled_Then_NoClipWrapperIsCreated" methodname="Given_ClipOnMotion_When_Reconciled_Then_NoClipWrapperIsCreated" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="461798135" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.002982" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (False, True)
+  But was:  (False, False)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_ClipOnMotion_When_Reconciled_Then_NoClipWrapperIsCreated () [0x00086] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:182
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2119" name="Given_ClipPathNone_When_Reconciled_Then_ElementIsNotWrapped" fullname="Velvet.Tests.ClipPathWrapTests.Given_ClipPathNone_When_Reconciled_Then_ElementIsNotWrapped" methodname="Given_ClipPathNone_When_Reconciled_Then_ElementIsNotWrapped" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1465954264" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000443" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (False, True)
+  But was:  (False, False)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_ClipPathNone_When_Reconciled_Then_ElementIsNotWrapped () [0x00054] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:159
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2118" name="Given_NoClipClass_When_Reconciled_Then_ElementIsNotWrapped" fullname="Velvet.Tests.ClipPathWrapTests.Given_NoClipClass_When_Reconciled_Then_ElementIsNotWrapped" methodname="Given_NoClipClass_When_Reconciled_Then_ElementIsNotWrapped" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="970196527" result="Failed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000363" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <failure>
+                <message><![CDATA[  Expected: (False, True)
+  But was:  (False, False)
+]]></message>
+                <stack-trace><![CDATA[at Velvet.Tests.ClipPathWrapTests.Given_NoClipClass_When_Reconciled_Then_ElementIsNotWrapped () [0x00054] in ./Packages/com.velvet.core/Runtime/Reconciler/Tests/Editor/ClipPathWrapTests.cs:139
+]]></stack-trace>
+              </failure>
+            </test-case>
+            <test-case id="2140" name="Given_Outline2_When_Reconciled_Then_TheOverlayIsHosted" fullname="Velvet.Tests.ClipPathWrapTests.Given_Outline2_When_Reconciled_Then_TheOverlayIsHosted" methodname="Given_Outline2_When_Reconciled_Then_TheOverlayIsHosted" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1564654832" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.001553" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2137" name="Given_Ring2_When_Reconciled_Then_OverlayCarriesTheRingWidth" fullname="Velvet.Tests.ClipPathWrapTests.Given_Ring2_When_Reconciled_Then_OverlayCarriesTheRingWidth" methodname="Given_Ring2_When_Reconciled_Then_OverlayCarriesTheRingWidth" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1361140758" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.001732" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2134" name="Given_Ring2_When_Reconciled_Then_TheElementItselfStillOccupiesItsSlot" fullname="Velvet.Tests.ClipPathWrapTests.Given_Ring2_When_Reconciled_Then_TheElementItselfStillOccupiesItsSlot" methodname="Given_Ring2_When_Reconciled_Then_TheElementItselfStillOccupiesItsSlot" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="294464072" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000806" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2135" name="Given_Ring2_When_Reconciled_Then_TheOverlayIsHostedBesideTheElement" fullname="Velvet.Tests.ClipPathWrapTests.Given_Ring2_When_Reconciled_Then_TheOverlayIsHostedBesideTheElement" methodname="Given_Ring2_When_Reconciled_Then_TheOverlayIsHostedBesideTheElement" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="835670658" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000954" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2143" name="Given_RingOnMotion_When_Reconciled_Then_NoRingBindingIsCreated" fullname="Velvet.Tests.ClipPathWrapTests.Given_RingOnMotion_When_Reconciled_Then_NoRingBindingIsCreated" methodname="Given_RingOnMotion_When_Reconciled_Then_NoRingBindingIsCreated" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1213399529" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.003752" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[[Motion] A ring-* / outline-* utility on a Motion is ignored: the band is placed from the element's laid-out box, which a Motion's transform does not move, so a slide / scale / layoutId play would leave it behind. Wrap the Motion around a ringed Div instead.
+]]></output>
+            </test-case>
+            <test-case id="2139" name="Given_RingWithColor_When_Reconciled_Then_OverlayUsesThatColor" fullname="Velvet.Tests.ClipPathWrapTests.Given_RingWithColor_When_Reconciled_Then_OverlayUsesThatColor" methodname="Given_RingWithColor_When_Reconciled_Then_OverlayUsesThatColor" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="81603758" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000570" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2142" name="Given_ShadowAndRingTogether_When_Reconciled_Then_BothLayersAttach" fullname="Velvet.Tests.ClipPathWrapTests.Given_ShadowAndRingTogether_When_Reconciled_Then_BothLayersAttach" methodname="Given_ShadowAndRingTogether_When_Reconciled_Then_BothLayersAttach" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1377005672" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000335" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2149" name="Given_ThreeRingedSiblings_When_TheMiddleOneIsRemoved_Then_TheSurvivorsKeepTheirSlotsAndBands" fullname="Velvet.Tests.ClipPathWrapTests.Given_ThreeRingedSiblings_When_TheMiddleOneIsRemoved_Then_TheSurvivorsKeepTheirSlotsAndBands" methodname="Given_ThreeRingedSiblings_When_TheMiddleOneIsRemoved_Then_TheSurvivorsKeepTheirSlotsAndBands" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="1062751453" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.002347" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2147" name="Given_TwoRingedSiblings_When_Reconciled_Then_EachBandSitsDirectlyAfterItsOwnElement" fullname="Velvet.Tests.ClipPathWrapTests.Given_TwoRingedSiblings_When_Reconciled_Then_EachBandSitsDirectlyAfterItsOwnElement" methodname="Given_TwoRingedSiblings_When_Reconciled_Then_EachBandSitsDirectlyAfterItsOwnElement" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="380037354" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000694" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="2148" name="Given_TwoRingedSiblings_When_Reconciled_Then_NeitherBandIsCountedAsARenderedChild" fullname="Velvet.Tests.ClipPathWrapTests.Given_TwoRingedSiblings_When_Reconciled_Then_NeitherBandIsCountedAsARenderedChild" methodname="Given_TwoRingedSiblings_When_Reconciled_Then_NeitherBandIsCountedAsARenderedChild" classname="Velvet.Tests.ClipPathWrapTests" runstate="Runnable" seed="318368144" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000319" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+    <test-suite type="Assembly" id="4853" name="Velvet.Tests.Styling.Editor.dll" fullname="/private/tmp/claude-501/-Users-apple-dev-velvet/bee87e94-ccb3-4737-9014-4b5f945af88e/scratchpad/wt245/Library/ScriptAssemblies/Velvet.Tests.Styling.Editor.dll" runstate="Runnable" testcasecount="1359" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.165956" total="23" passed="23" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="27669" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <test-suite type="TestSuite" id="4854" name="Velvet" fullname="Velvet" runstate="Runnable" testcasecount="1359" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.113433" total="23" passed="23" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="4855" name="Tests" fullname="Velvet.Tests" runstate="Runnable" testcasecount="1359" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.056044" total="23" passed="23" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="4409" name="StyleRingClassTests" fullname="Velvet.Tests.StyleRingClassTests" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" testcasecount="23" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.009025" total="23" passed="23" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="4419" name="Given_ABareOutline_When_Extracted_Then_TheColorStaysOpaque" fullname="Velvet.Tests.StyleRingClassTests.Given_ABareOutline_When_Extracted_Then_TheColorStaysOpaque" methodname="Given_ABareOutline_When_Extracted_Then_TheColorStaysOpaque" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="540343943" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000600" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4417" name="Given_ADefaultColorRing_When_Extracted_Then_TheColorIsHalfAlpha" fullname="Velvet.Tests.StyleRingClassTests.Given_ADefaultColorRing_When_Extracted_Then_TheColorIsHalfAlpha" methodname="Given_ADefaultColorRing_When_Extracted_Then_TheColorIsHalfAlpha" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="1277983027" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000102" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4418" name="Given_AnExplicitColorRing_When_Extracted_Then_TheColorStaysOpaque" fullname="Velvet.Tests.StyleRingClassTests.Given_AnExplicitColorRing_When_Extracted_Then_TheColorStaysOpaque" methodname="Given_AnExplicitColorRing_When_Extracted_Then_TheColorStaysOpaque" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="1905522918" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000092" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4416" name="Given_AVariantColorOverAWidthAndColorBase_When_Extracted_Then_OnlyTheColorSlotMoves" fullname="Velvet.Tests.StyleRingClassTests.Given_AVariantColorOverAWidthAndColorBase_When_Extracted_Then_OnlyTheColorSlotMoves" methodname="Given_AVariantColorOverAWidthAndColorBase_When_Extracted_Then_OnlyTheColorSlotMoves" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="129974811" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000899" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4410" name="Given_BareRing_When_Extracted_Then_UsesDefaultThreePixelWidth" fullname="Velvet.Tests.StyleRingClassTests.Given_BareRing_When_Extracted_Then_UsesDefaultThreePixelWidth" methodname="Given_BareRing_When_Extracted_Then_UsesDefaultThreePixelWidth" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="573628232" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000081" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4427" name="Given_OutlineNone_When_Extracted_Then_NoRing" fullname="Velvet.Tests.StyleRingClassTests.Given_OutlineNone_When_Extracted_Then_NoRing" methodname="Given_OutlineNone_When_Extracted_Then_NoRing" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="519153112" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000325" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4426" name="Given_OutlinePreset_When_Extracted_Then_ResolvesWidth" fullname="Velvet.Tests.StyleRingClassTests.Given_OutlinePreset_When_Extracted_Then_ResolvesWidth" methodname="Given_OutlinePreset_When_Extracted_Then_ResolvesWidth" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="718298001" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000072" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4422" name="Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineDefaultWidthSurvives" fullname="Velvet.Tests.StyleRingClassTests.Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineDefaultWidthSurvives" methodname="Given_OutlineWithARingColorToken_When_Extracted_Then_TheOutlineDefaultWidthSurvives" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="1585174989" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000120" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4428" name="Given_OutlineWithOffset_When_Extracted_Then_OffsetIsResolved" fullname="Velvet.Tests.StyleRingClassTests.Given_OutlineWithOffset_When_Extracted_Then_OffsetIsResolved" methodname="Given_OutlineWithOffset_When_Extracted_Then_OffsetIsResolved" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="387635612" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000076" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4431" name="Given_PlainUtility_When_GateChecked_Then_NotARingClass" fullname="Velvet.Tests.StyleRingClassTests.Given_PlainUtility_When_GateChecked_Then_NotARingClass" methodname="Given_PlainUtility_When_GateChecked_Then_NotARingClass" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="1253423834" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000115" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4429" name="Given_RingArbitraryHexColor_When_Extracted_Then_ResolvesThatColor" fullname="Velvet.Tests.StyleRingClassTests.Given_RingArbitraryHexColor_When_Extracted_Then_ResolvesThatColor" methodname="Given_RingArbitraryHexColor_When_Extracted_Then_ResolvesThatColor" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="1050125110" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000604" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4412" name="Given_RingArbitraryWidth_When_Extracted_Then_ResolvesPixels" fullname="Velvet.Tests.StyleRingClassTests.Given_RingArbitraryWidth_When_Extracted_Then_ResolvesPixels" methodname="Given_RingArbitraryWidth_When_Extracted_Then_ResolvesPixels" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="1022244338" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000098" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4432" name="Given_RingClass_When_GateChecked_Then_IsClaimed" fullname="Velvet.Tests.StyleRingClassTests.Given_RingClass_When_GateChecked_Then_IsClaimed" methodname="Given_RingClass_When_GateChecked_Then_IsClaimed" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="574521510" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000072" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4413" name="Given_RingColorOnly_When_Extracted_Then_KeepsDefaultWidth" fullname="Velvet.Tests.StyleRingClassTests.Given_RingColorOnly_When_Extracted_Then_KeepsDefaultWidth" methodname="Given_RingColorOnly_When_Extracted_Then_KeepsDefaultWidth" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="97038281" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000072" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4424" name="Given_RingInsetAlone_When_Extracted_Then_NoRing" fullname="Velvet.Tests.StyleRingClassTests.Given_RingInsetAlone_When_Extracted_Then_NoRing" methodname="Given_RingInsetAlone_When_Extracted_Then_NoRing" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="702697674" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000103" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4423" name="Given_RingInsetWithRing_When_Extracted_Then_InsetIsSet" fullname="Velvet.Tests.StyleRingClassTests.Given_RingInsetWithRing_When_Extracted_Then_InsetIsSet" methodname="Given_RingInsetWithRing_When_Extracted_Then_InsetIsSet" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="716027826" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000069" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4411" name="Given_RingPreset_When_Extracted_Then_ResolvesWidth" fullname="Velvet.Tests.StyleRingClassTests.Given_RingPreset_When_Extracted_Then_ResolvesWidth" methodname="Given_RingPreset_When_Extracted_Then_ResolvesWidth" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="958038992" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000068" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4421" name="Given_RingThenRingZero_When_Extracted_Then_LaterZeroCancels" fullname="Velvet.Tests.StyleRingClassTests.Given_RingThenRingZero_When_Extracted_Then_LaterZeroCancels" methodname="Given_RingThenRingZero_When_Extracted_Then_LaterZeroCancels" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="1273253134" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000102" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4414" name="Given_RingWidthAndColor_When_Extracted_Then_ColorSlotIsComposite" fullname="Velvet.Tests.StyleRingClassTests.Given_RingWidthAndColor_When_Extracted_Then_ColorSlotIsComposite" methodname="Given_RingWidthAndColor_When_Extracted_Then_ColorSlotIsComposite" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="622631219" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000092" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4425" name="Given_RingWithOffset_When_Extracted_Then_OffsetIsResolved" fullname="Velvet.Tests.StyleRingClassTests.Given_RingWithOffset_When_Extracted_Then_OffsetIsResolved" methodname="Given_RingWithOffset_When_Extracted_Then_OffsetIsResolved" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="1871771735" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000073" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4420" name="Given_RingZero_When_Extracted_Then_NoRing" fullname="Velvet.Tests.StyleRingClassTests.Given_RingZero_When_Extracted_Then_NoRing" methodname="Given_RingZero_When_Extracted_Then_NoRing" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="302570780" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000302" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4415" name="Given_TwoRingWidths_When_Extracted_Then_TheLastOneWins" fullname="Velvet.Tests.StyleRingClassTests.Given_TwoRingWidths_When_Extracted_Then_TheLastOneWins" methodname="Given_TwoRingWidths_When_Extracted_Then_TheLastOneWins" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="1596626085" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000073" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="4430" name="Given_UnrecognizedRingSuffix_When_ExtractedAlone_Then_NoRing" fullname="Velvet.Tests.StyleRingClassTests.Given_UnrecognizedRingSuffix_When_ExtractedAlone_Then_NoRing" methodname="Given_UnrecognizedRingSuffix_When_ExtractedAlone_Then_NoRing" classname="Velvet.Tests.StyleRingClassTests" runstate="Runnable" seed="94778251" result="Passed" start-time="2026-07-31 16:59:37Z" end-time="2026-07-31 16:59:37Z" duration="0.000099" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+              <output><![CDATA[Saving results to: /Users/apple/Library/Application Support/DefaultCompany/velvet/TestResults.xml
+]]></output>
+            </test-case>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>
