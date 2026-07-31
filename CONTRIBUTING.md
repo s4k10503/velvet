@@ -16,6 +16,30 @@ lets you build on it and maintain your own line freely — no need to wait on up
    from `Packages/com.velvet.core/`; edit it in place.
 3. Run the Unity test suites from **Window ▸ General ▸ Test Runner** (EditMode and PlayMode).
 
+### Looking at what Velvet renders
+
+Every `[VelvetPreview]` story can be rendered to a PNG, so a change to layout, styling or paint can
+be inspected rather than only measured:
+
+```bash
+/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity -runTests -batchmode -projectPath "$PWD" -testPlatform PlayMode -testFilter "Velvet.Tests.StoryCaptureTests" -testResults /tmp/capture.xml -logFile /tmp/capture.log
+```
+
+The images land in `Logs/story-captures/` (git-ignored), grouped into a directory per story group, or
+under the directory named by `VELVET_STORY_CAPTURE_DIR`. Each run deletes the captures the previous
+run recorded in its manifest, so a renamed or deleted story leaves nothing stale behind. A file the
+harness never wrote is never removed — but a capture it *did* write is, so point the variable at a
+directory you are content for it to own rather than at one holding anything else. The run fails if a
+story does not mount, if it renders a uniform frame, or — once for the whole run, not per story — if
+the bundled stylesheet resolves none of its plain classes.
+
+**Look at the images.** Those three checks are the floor, not the ceiling: the uniform-frame one in
+particular is satisfied by a single differing pixel, so a story can render almost nothing and still
+pass. The defects found in this harness so far — a missing backdrop that made every semantic-token
+story capture near-blank, and a panel whose height was its content's rather than the story's — were
+green under every check and visible immediately in the PNG. Interactively the same stories are live
+in **Window ▸ Velvet ▸ Preview**.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
