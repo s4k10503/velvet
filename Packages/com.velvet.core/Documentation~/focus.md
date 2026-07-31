@@ -55,7 +55,7 @@ The `focus-visible:` class variant covers keyboard/gamepad-only focus styling: i
 focus NOT caused by a pointer press on the element (keyboard, gamepad navigation, or
 programmatic focus) and stays dark for click-to-focus, mirroring CSS `:focus-visible`.
 
-`Hooks.UseFocusRing` is the render-state channel for the same distinction — React Aria's
+`Hooks.UseFocusRingState` is the render-state channel for the same distinction — React Aria's
 `useFocusRing` parity: it returns the element's `IsFocused` / `IsFocusVisible` as re-rendering
 component state plus a `Ref` to pass as the element's `refCallback:`. Reach for it when the
 component must render differently (say, a "press A to select" hint), not just restyle; it rides
