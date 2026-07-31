@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 
+[assembly: InternalsVisibleTo("Velvet.Tests.BuildInclusion.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Component.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Component.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Hooks.Editor")]

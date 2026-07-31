@@ -203,6 +203,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The four shaders behind drop shadows, the gradient silhouette a `bg-gradient-*` gets on a `skew-*`
+  element, and the `brightness-*` / `saturate-*` filters are now put in front of every player build.
+  They are reached by name from C# alone and none is in a scene, so a build had nothing keeping them:
+  `Shader.Find` returned null in a player and those three paints drew nothing, after working in Play
+  Mode for the whole life of a project and announced only by a warning in the player log. That they
+  resolve from inside a running player has not been observed here — see
+  `Documentation~/player-builds.md`. A build step now adds the four to
+  Graphics Settings' Always Included Shaders before the build and removes them afterwards, so a
+  consumer installs the package and does nothing else and their `ProjectSettings` reads as it did.
+  The cost, stated plainly: those four shaders are compiled into every build of every project that
+  installs the package, used or not, and a build whose injection does not take now fails rather than
+  producing a player that draws nothing. A shader that is missing anyway now names itself in one
+  warning for the run; the drop shadow logged one every time a caster regenerated its content.
+  [`Documentation~/player-builds.md`](Documentation~/player-builds.md) is new and covers it.
 - A `shadow-*` / `drop-shadow-*` paint no longer fades to the square of its caster's opacity during an
   enter or exit. The scheduler scaled the shadow by the caster's sampled opacity each frame on the
   premise that a baked shadow quad ignores UI Toolkit opacity; pixel readback shows the renderer scales
@@ -370,13 +384,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   utility backed by a plain USS rule still works on every channel — the split is that list versus
   everything else, not whole categories, since `gap-4` is spacing and `skew-x-6` is a transform yet
   neither works there. See `Documentation~/styling-variants.md`.
-- A drop shadow attached while an enter / exit animation covering its caster was already running
-  painted at full strength through the already-translucent caster. Each play snapshots the shadows
-  under its subtree when it begins, so one arriving mid-play — from a variant toggle, or from a
-  re-render that patches an element already on screen — was in no snapshot and nothing ever scaled its
-  alpha. Such a shadow now joins the running fade at the caster's current opacity. An element MOUNTED
-  mid-play is not covered: it is not yet parented when its shadow attaches, so the walk that decides
-  which animations cover it has nothing to walk.
 - Losing a `grid` class while keeping a `gap-*` one (`grid grid-cols-3 gap-4` → `flex gap-4`) left the
   children with no spacing at all: the arriving gap manipulator wrote its margins before the departing
   grid manipulator cleared the margins IT had written, and that clear took the new ones with it.
