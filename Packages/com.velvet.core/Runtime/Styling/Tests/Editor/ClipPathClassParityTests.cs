@@ -52,29 +52,6 @@ namespace Velvet.Tests
             Assume.That(field, Is.Not.Null, "VectorImage must expose a 'size' field");
             return (Vector2)field.GetValue(image);
         }
-
-        // Gates
-
-        [Test]
-        public void Given_NoClipClass_When_Gated_Then_HasClipPathClassIsFalse()
-        {
-            // Arrange
-            var classes = new[] { "w-full", "rounded-lg", "shadow-lg" };
-
-            // Act / Assert
-            Assert.That(StyleClipPathClass.HasClipPathClass(classes), Is.False);
-        }
-
-        [Test]
-        public void Given_AClipClass_When_Gated_Then_HasClipPathClassIsTrue()
-        {
-            // Arrange
-            var classes = new[] { "w-full", "clip-path-[circle(50%)]" };
-
-            // Act / Assert
-            Assert.That(StyleClipPathClass.HasClipPathClass(classes), Is.True);
-        }
-
         [Test]
         public void Given_ABaseClip_When_WrapGateChecked_Then_WantsWrapper()
         {

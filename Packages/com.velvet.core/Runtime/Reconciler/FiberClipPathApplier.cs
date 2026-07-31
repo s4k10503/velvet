@@ -24,8 +24,7 @@ namespace Velvet
         // Create-time entry point: when classNames carries an active clip-path-* utility (and the
         // element was not already wrapped by a user wrapElement), wraps element in a clip container
         // and returns the wrapper; otherwise returns element unchanged. Mirrors ApplyShadowOnCreate.
-        // TryExtract alone is the gate — its per-class probe costs the same as a separate
-        // HasClipPathClass scan, so no-clip elements pay one pass, not two.
+        // TryExtract alone is the gate; StyleClipPathClass' own remarks own why there is no cheaper one.
         internal VisualElement ApplyClipPathOnCreate(VisualElement element, string[] classNames)
         {
             // Wrap whenever a clip can EVER apply — base OR a variant (hover:clip-*) — so the stencil wrapper
