@@ -24,10 +24,10 @@ namespace Velvet.SourceGenerators.Tests
     /// </remarks>
     public sealed class BundledStyleSheetCensusTests
     {
-        private const int SurveyedRuleCount = 2134;
-        private const int SurveyedSingleClassRuleCount = 2094;
+        private const int SurveyedRuleCount = 2136;
+        private const int SurveyedSingleClassRuleCount = 2096;
         private const int SurveyedDistinctPropertyNameCount = 63;
-        private const int SurveyedUtilityClassCount = 2138;
+        private const int SurveyedUtilityClassCount = 2139;
         private const int SurveyedTransitionUtilityCount = 36;
 
         private static readonly Census Surveyed = Census.OfBundledStyleSheets();
@@ -229,7 +229,7 @@ namespace Velvet.SourceGenerators.Tests
             // Arrange
             var expected = new Dictionary<SelectorShape, int>
             {
-                [SelectorShape.SingleClass] = 2094,
+                [SelectorShape.SingleClass] = 2096,
                 [SelectorShape.SelectorList] = 2,
                 [SelectorShape.ClassWithPseudoClass] = 32,
                 [SelectorShape.ClassWithStateMarker] = 3,
@@ -510,7 +510,7 @@ namespace Velvet.SourceGenerators.Tests
                         seenGates.Add(target.Gate);
                     }
 
-                    if (rule.Selector.StartsWith(":root", StringComparison.Ordinal))
+                    if (rule.IsTokenBlock)
                     {
                         continue;
                     }

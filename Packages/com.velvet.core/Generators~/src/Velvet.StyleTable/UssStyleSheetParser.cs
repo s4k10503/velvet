@@ -309,6 +309,30 @@ namespace Velvet.StyleTable
         public int Offset { get; }
 
         public ImmutableArray<UssDeclaration> Declarations { get; }
+
+        /// <summary>
+        /// A rule that declares custom properties and nothing else, which is what <c>:root</c> and the theme
+        /// blocks beside it are. What it declares is read through <c>var()</c> by other rules, so the class
+        /// or pseudo-class it is keyed on sets no property on the element that matches it.
+        /// </summary>
+        public bool IsTokenBlock
+        {
+            get
+            {
+                if (Declarations.IsEmpty)
+                {
+                    return false;
+                }
+                foreach (var declaration in Declarations)
+                {
+                    if (!declaration.IsCustomProperty)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
     }
 
     internal readonly struct UssDeclaration
@@ -330,6 +354,8 @@ namespace Velvet.StyleTable
         public string Value { get; }
 
         public int Offset { get; }
+
+        public bool IsCustomProperty => Property.StartsWith("--", StringComparison.Ordinal);
     }
 
     internal readonly struct UssAtRule

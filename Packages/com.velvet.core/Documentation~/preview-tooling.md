@@ -74,7 +74,9 @@ A setup can also hand the host an extra stylesheet to layer over Velvet's utilit
 project's design-token `:root` overrides or a custom theme — by setting
 `VelvetStyleHints.PreviewStyleSheet`. The host attaches that sheet **after** Velvet's utility
 sheet (so its later source order lets equal-specificity `:root` overrides win), consumes the
-hint on the next mount, and removes the sheet it added on teardown.
+hint on the next mount, and removes the sheet it added on teardown. A sheet overriding the
+semantic colours declares them per theme set the way
+[styling-variants.md](styling-variants.md) describes.
 
 ### Real-world example
 
@@ -191,7 +193,9 @@ Two behaviors are worth knowing:
 ### Theme
 
 The **Dark** toggle drives `VelvetTheme.IsDark`, so the mounted story's `dark:` variants
-re-evaluate live. The window captures the editor's (or a running game's) pre-existing theme
+re-evaluate live and the semantic colours switch to the dark token set with them (see
+[styling-variants.md](styling-variants.md)). It defaults on, matching the Dark stage backdrop
+below. The window captures the editor's (or a running game's) pre-existing theme
 once and restores it on close, and only reverts if the live value still equals what it last
 wrote — so toggling Dark in the preview never clobbers a concurrent writer.
 

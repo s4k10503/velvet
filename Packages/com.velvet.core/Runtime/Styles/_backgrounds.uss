@@ -1,6 +1,7 @@
 /* Background Utilities - background-color */
 
 .bg-transparent { background-color: transparent; }
+.bg-background { background-color: var(--color-background); }
 .bg-surface { background-color: var(--color-surface); }
 .bg-surface-strong { background-color: var(--color-surface-strong); }
 .bg-highlight { background-color: var(--color-highlight); }
