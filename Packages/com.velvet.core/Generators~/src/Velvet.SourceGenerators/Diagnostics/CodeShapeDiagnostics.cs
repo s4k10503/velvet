@@ -10,7 +10,7 @@ namespace Velvet.SourceGenerators.Diagnostics
         // Its own category so an assembly that has opted in can dial the shape rules down as a family
         // without touching the correctness rules. AnalyzerReleases.Unshipped.md records the two spellings
         // that make a category severity entry take effect.
-        private const string Category = "Velvet.Shape";
+        private const string Category = DiagnosticCategories.Shape;
 
         public static readonly DiagnosticDescriptor Vel500NestingDepthExceeded = new(
             "VEL500",
