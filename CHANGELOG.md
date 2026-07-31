@@ -72,9 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after all of them, so it paints in that element's own position: overlapping `-space-x-*` avatars
   carrying `ring-2 ring-white` occlude the previous one's band as they do on the web, and two
   `focus:ring-2` siblings render the same whichever was focused first. The deviations from CSS this
-  hosting still carries — `ring-inset` painting over an opaque full-bleed child, and a ring on a
-  `V.Motion` being ignored with a warning — are documented in `Documentation~/styling-variants.md`. A
-  ring on an ordinary element inside a `V.AnimatePresence` fades with its element's enter and exit.
+  hosting still carries — `ring-inset` painting over an opaque full-bleed child, a transform on the
+  ringed element moving the element and not the band, and a ring on a `V.Motion` being ignored with a
+  warning — are documented in `Documentation~/styling-variants.md`. A ring on an ordinary element
+  inside a `V.AnimatePresence` fades with its element's enter and exit.
 - A variant payload spelled as a **USS class** (`dark:bg-neutral-900`, `md:flex-col`) now overrides a
   base utility writing the same properties regardless of the order the bundled stylesheets declare
   them in. Previously the payload was added to the live class list as a bare utility, where it tied
