@@ -288,9 +288,12 @@ namespace Velvet.Tests
         {
             // direction=-1 over 3 children: index 0 → 0.1*(3-1-0)=0.2 (last), index 2 → 0.1*(3-1-2)=0 (first).
             var presence = (AnimatePresenceNode)V.AnimatePresence(staggerSec: 0.1f, staggerDirection: -1);
+
+            // .Within() never reaches a tuple's members under Unity's NUnit (no ValueTupleComparer), so the
+            // folded control term gates a scalar and substitutes NaN, which satisfies no tolerance.
             Assert.That(
-                (presence.StaggerDelaySec(0, 3), presence.StaggerDelaySec(2, 3)),
-                Is.EqualTo((0.2f, 0f)).Within(1e-5f));
+                Math.Abs(presence.StaggerDelaySec(2, 3)) <= 1e-5f ? presence.StaggerDelaySec(0, 3) : float.NaN,
+                Is.EqualTo(0.2f).Within(1e-5f));
         }
 
         [Test]
@@ -299,8 +302,8 @@ namespace Velvet.Tests
             // Forward (default): index 0 → 0, index 2 → 0.1*2 = 0.2 (unchanged from the original stagger).
             var presence = (AnimatePresenceNode)V.AnimatePresence(staggerSec: 0.1f);
             Assert.That(
-                (presence.StaggerDelaySec(0, 5), presence.StaggerDelaySec(2, 5)),
-                Is.EqualTo((0f, 0.2f)).Within(1e-5f));
+                Math.Abs(presence.StaggerDelaySec(0, 5)) <= 1e-5f ? presence.StaggerDelaySec(2, 5) : float.NaN,
+                Is.EqualTo(0.2f).Within(1e-5f));
         }
 
         [Test]
