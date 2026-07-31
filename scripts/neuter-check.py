@@ -7,8 +7,14 @@ layer asks the question a fixture's name makes: with clip-path resolving nothing
 
 Which layer the cut is made at decides the answer, and not by a little. Every vacuous test found so
 far has been green at the applier cut and red at the parser cut, because a gate read one layer up
-survives a neuter one layer down. So a fixture is asked only the cuts it actually reaches, declared
-in neuter-cuts.json — asking a parser-only fixture an applier cut reports its whole body as holes.
+survives a neuter one layer down.
+
+So scope is declared rather than assumed, in neuter-cuts.json, at two granularities — and both are
+needed, which the first run of this harness established by getting the second one wrong. A fixture is
+asked only the cuts it reaches, or a parser-only fixture reports its whole body as holes under an
+applier cut. And a fixture holding cases for two mechanisms declares which of its cases belong to
+which, or every ring case in a clip fixture reports as a hole when the clip applier dies: true, and
+about nothing.
 
 This does not replace mutation-check.py. That one mutates syntax across a diff and asks whether any
 test noticed; this one disables a feature and asks whether the tests named after it noticed. A
@@ -65,8 +71,23 @@ def load_cuts(project):
     raw = json.loads(path.read_text())
     return {
         "cuts": {cut["name"]: cut for cut in raw["cuts"]},
-        "fixtures": {entry["fixture"]: entry["cuts"] for entry in raw["fixtures"]},
+        "fixtures": {entry["fixture"]: entry for entry in raw["fixtures"]},
     }
+
+
+def in_scope(entry, cut, name):
+    """Whether a case is one this cut can say anything about.
+
+    A fixture holding cases for two mechanisms — a ring case and a clip case in one file — hands back
+    every ring case as still passing when the clip applier is cut, which is true and means nothing. So
+    a fixture whose cuts span more than one mechanism declares which of its cases belong to which, and
+    a fixture whose cuts are all one mechanism declares nothing and takes all of them.
+    """
+    scopes = entry.get("caseScopes") or []
+    if not scopes:
+        return True
+    patterns = [scope["pattern"] for scope in scopes if scope["mechanism"] == cut["mechanism"]]
+    return any(re.search(pattern, name) for pattern in patterns)
 
 
 def locate(project, edit):
@@ -95,8 +116,8 @@ def validate(project, cuts):
             _, problem = locate(project, edit)
             if problem:
                 problems.append(f"{name}: {problem}")
-    for fixture, names in cuts["fixtures"].items():
-        for name in names:
+    for fixture, entry in cuts["fixtures"].items():
+        for name in entry["cuts"]:
             if name not in cuts["cuts"]:
                 problems.append(f"{fixture} names an undeclared cut '{name}'")
     return problems
@@ -161,17 +182,19 @@ def outcomes(results):
     }
 
 
-def report_pair(fixture, name, cut, baseline, cut_results, elapsed, peak):
+def report_pair(entry, name, cut, baseline, cut_results, elapsed, peak):
     print(f"\n  cut '{name}' — {cut['summary']}")
     if cut_results is None:
         print("    NO RESULTS — the run produced no readable XML; the cut may not compile")
         return None
+    scoped = [test for test in cut_results if in_scope(entry, cut, test.rsplit(".", 1)[-1])]
     holes = sorted(
-        test for test, result in cut_results.items()
-        if result == "Passed" and baseline.get(test) == "Passed"
+        test for test in scoped
+        if cut_results[test] == "Passed" and baseline.get(test) == "Passed"
     )
     missing = sorted(set(baseline) - set(cut_results))
-    print(f"    {len(cut_results)} cases, {len(holes)} still passing, {elapsed:.0f}s, peak other runs {peak}")
+    print(f"    {len(scoped)} of {len(cut_results)} cases in scope, {len(holes)} still passing, "
+          f"{elapsed:.0f}s, peak other runs {peak}")
     for test in holes:
         print(f"      HOLE {test.rsplit('.', 1)[-1]}")
     for test in missing:
@@ -243,7 +266,8 @@ def main():
             return 1
         print(f"  baseline {len(baseline)} passed, {elapsed:.0f}s, peak other runs {peak}")
 
-        for name in cuts["fixtures"][fixture]:
+        entry = cuts["fixtures"][fixture]
+        for name in entry["cuts"]:
             cut = cuts["cuts"][name]
             if not wait_for_quiet(args.busy_timeout):
                 print("error: the machine did not go quiet", file=sys.stderr)
@@ -255,7 +279,7 @@ def main():
                     out / f"{short}-{name}.xml", out / f"{short}-{name}.log", args.timeout)
             finally:
                 revert(originals)
-            holes = report_pair(fixture, name, cut, baseline,
+            holes = report_pair(entry, name, cut, baseline,
                                 None if killed else outcomes(out / f"{short}-{name}.xml"),
                                 elapsed, peak)
             if holes is None:

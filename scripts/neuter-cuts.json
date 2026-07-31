@@ -2,6 +2,7 @@
   "cuts": [
     {
       "name": "clip-parser",
+      "mechanism": "clip",
       "summary": "the clip-path class parser resolves nothing",
       "edits": [
         {
@@ -13,6 +14,7 @@
     },
     {
       "name": "clip-applier",
+      "mechanism": "clip",
       "summary": "the reconciler applies no clip-path and wraps nothing",
       "edits": [
         {
@@ -29,6 +31,7 @@
     },
     {
       "name": "ring-parser",
+      "mechanism": "ring",
       "summary": "the ring class parser resolves nothing",
       "edits": [
         {
@@ -40,6 +43,7 @@
     },
     {
       "name": "ring-applier",
+      "mechanism": "ring",
       "summary": "the reconciler hosts no ring overlay",
       "edits": [
         {
@@ -58,11 +62,29 @@
   "fixtures": [
     {
       "fixture": "Velvet.Tests.ClipPathWrapTests",
-      "cuts": ["clip-applier", "clip-parser", "ring-applier", "ring-parser"]
+      "cuts": [
+        "clip-applier",
+        "clip-parser",
+        "ring-applier",
+        "ring-parser"
+      ],
+      "caseScopes": [
+        {
+          "mechanism": "clip",
+          "pattern": "Clip"
+        },
+        {
+          "mechanism": "ring",
+          "pattern": "Ring|Outline"
+        }
+      ]
     },
     {
       "fixture": "Velvet.Tests.StyleRingClassTests",
-      "cuts": ["ring-parser"]
+      "cuts": [
+        "ring-parser"
+      ],
+      "caseScopes": []
     }
   ]
 }

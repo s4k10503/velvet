@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -33,8 +34,18 @@ namespace Velvet.Tests
         {
 #pragma warning disable CS0649
             public string name;
+            public string mechanism;
             public string summary;
             public Edit[] edits;
+#pragma warning restore CS0649
+        }
+
+        [Serializable]
+        private sealed class CaseScope
+        {
+#pragma warning disable CS0649
+            public string mechanism;
+            public string pattern;
 #pragma warning restore CS0649
         }
 
@@ -44,6 +55,7 @@ namespace Velvet.Tests
 #pragma warning disable CS0649
             public string fixture;
             public string[] cuts;
+            public CaseScope[] caseScopes;
 #pragma warning restore CS0649
         }
 
@@ -134,6 +146,65 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(missing, Is.Empty, string.Join("\n", missing));
+        }
+
+        [Test]
+        public void Given_AFixtureWhoseCutsSpanTwoMechanisms_When_ItsCasesAreClassified_Then_EachMatchesExactlyOneScope()
+        {
+            // Arrange — a case matching neither scope is never asked anything and reports no holes; a case
+            // matching both is reported as a hole by whichever cut it does not belong to. The first run of
+            // this harness handed back every ring case in the clip fixture as a hole under the clip applier
+            // cut, which is what this case exists to make impossible to repeat.
+            var map = ReadMap();
+
+            // Act
+            var wrong = (from entry in map.fixtures
+                         where Mechanisms(map, entry).Count > 1
+                         from name in CaseNames(entry.fixture)
+                         let matched = entry.caseScopes.Count(scope => Regex.IsMatch(name, scope.pattern))
+                         where matched != 1
+                         select $"{entry.fixture}.{name} matched {matched} scopes").ToList();
+
+            // Assert — the scoped-fixture count is folded in because a map whose fixtures all read as
+            // single-mechanism satisfies this by never classifying anything.
+            Assert.That(
+                (map.fixtures.Count(entry => Mechanisms(map, entry).Count > 1), string.Join("\n", wrong)),
+                Is.EqualTo((1, string.Empty)));
+        }
+
+        [Test]
+        public void Given_AFixtureWhoseCutsAreOneMechanism_When_ItsScopesAreRead_Then_ItDeclaresNone()
+        {
+            // Arrange — every case in such a fixture is in scope for its only mechanism, so a pattern there
+            // silently narrows the sweep instead of classifying it. One case in the ring parser fixture
+            // carries neither "Ring" nor "Outline" in its name, so a pattern would drop it.
+            var map = ReadMap();
+
+            // Act
+            var declaring = map.fixtures
+                .Where(entry => Mechanisms(map, entry).Count == 1 && entry.caseScopes.Length > 0)
+                .Select(entry => entry.fixture)
+                .ToList();
+
+            // Assert
+            Assert.That(declaring, Is.Empty, string.Join("\n", declaring));
+        }
+
+        private static HashSet<string> Mechanisms(CutMap map, FixtureCuts entry) =>
+            map.cuts.Where(cut => entry.cuts.Contains(cut.name))
+                .Select(cut => cut.mechanism)
+                .ToHashSet(StringComparer.Ordinal);
+
+        private static IEnumerable<string> CaseNames(string fixture)
+        {
+            var shortName = fixture.Substring(fixture.LastIndexOf('.') + 1);
+            var path = Directory.EnumerateFiles(
+                Path.GetFullPath("Packages/com.velvet.core"), shortName + ".cs", SearchOption.AllDirectories)
+                .FirstOrDefault();
+            return path == null
+                ? Enumerable.Empty<string>()
+                : Regex.Matches(File.ReadAllText(path), @"public\s+(?:void|IEnumerator)\s+(Given_\w+)")
+                    .Select(match => match.Groups[1].Value);
         }
 
         private static string FirstNonBlankAfter(IReadOnlyList<string> lines, int index)
