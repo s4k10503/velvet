@@ -12,6 +12,12 @@
 # force-push leaves behind, and reading it as pending is how the 7h45m gap started. So a PR
 # with zero checks blocks too, with a different reason.
 #
+# A PR whose checks have all passed and that nobody has merged is the state this exists for as
+# much as a pending one. It reads as "settled", and settled is what an assistant stops on — eight
+# green PRs sat unmerged for nine hours behind a watcher that was alive, emitting nothing, because
+# it only reported checks CHANGING state and every check had finished changing. A live watcher with
+# nothing left to say is indistinguishable from progress.
+#
 # A pending check is forgiven while a watcher is demonstrably alive. The heartbeat is written by
 # the watching process itself on each poll, never by the assistant, so it cannot be satisfied by
 # intending to watch — if the watcher dies the file goes stale within one poll and this blocks
@@ -65,9 +71,24 @@ for pr in $prs; do
     continue
   fi
 
+  pending=$(echo "$checks" | jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo 0)
+  if [ "$pending" = "0" ]; then
+    # Nothing is running, so a watcher has nothing to observe and its heartbeat vouches for nothing.
+    state=$(gh pr view "$pr" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")
+    fails=$(echo "$checks" | jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null || echo 0)
+    if [ "$fails" != "0" ]; then
+      blocked="$blocked
+  PR #$pr — $fails check(s) failed. Read the run, fix or say why it is not yours to fix."
+    elif [ "$state" = "CLEAN" ]; then
+      blocked="$blocked
+  PR #$pr — every check passed and it is unmerged. Merge it, or say what it is waiting on and arm
+    something that brings you back when that arrives."
+    fi
+    continue
+  fi
+
   watcher_is_alive && continue
 
-  pending=$(echo "$checks" | jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo 0)
   if [ "$pending" != "0" ]; then
     names=$(echo "$checks" | jq -r '[.[] | select(.bucket == "pending") | .name] | join(", ")' 2>/dev/null)
     blocked="$blocked
