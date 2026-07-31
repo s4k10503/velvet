@@ -135,6 +135,8 @@ namespace Velvet.Tests
         // subtree: VELVET_STORY_CAPTURE_DIR points wherever its author likes, and a file this harness never
         // wrote is never ours to delete. A directory with no manifest loses nothing and gains one, so the
         // only run that can leave a stale capture behind is the first into a folder that was not ours.
+        // The converse is not safety: a file this harness DID write is deleted on the next run, so a
+        // directory holding both is not one to point the variable at.
         private static void ClearCapturesThisHarnessWrote(string outputDirectory)
         {
             var manifest = ManifestPath(outputDirectory);

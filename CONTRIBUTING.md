@@ -27,9 +27,11 @@ be inspected rather than only measured:
 
 The images land in `Logs/story-captures/` (git-ignored), grouped into a directory per story group, or
 under the directory named by `VELVET_STORY_CAPTURE_DIR`. Each run deletes the captures the previous
-run recorded in its manifest, so a renamed or deleted story leaves nothing stale behind — and a file
-this harness never wrote is never removed, so pointing the variable at a folder of your own is safe. The run fails if a story does not mount, if it mounts with the bundled
-stylesheet inert, or if it renders a uniform frame.
+run recorded in its manifest, so a renamed or deleted story leaves nothing stale behind. A file the
+harness never wrote is never removed — but a capture it *did* write is, so point the variable at a
+directory you are content for it to own rather than at one holding anything else. The run fails if a
+story does not mount, if it renders a uniform frame, or — once for the whole run, not per story — if
+the bundled stylesheet resolves none of its plain classes.
 
 **Look at the images.** Those three checks are the floor, not the ceiling: the uniform-frame one in
 particular is satisfied by a single differing pixel, so a story can render almost nothing and still
