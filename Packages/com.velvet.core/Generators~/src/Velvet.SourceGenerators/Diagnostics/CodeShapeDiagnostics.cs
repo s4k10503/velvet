@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis;
 namespace Velvet.SourceGenerators.Diagnostics
 {
     /// <summary>
-    /// Diagnostic descriptors for the mechanical code-shape limits.
+    /// Diagnostic descriptors for the mechanical code-shape rules.
     /// </summary>
     internal static class CodeShapeDiagnostics
     {
@@ -38,5 +38,17 @@ namespace Velvet.SourceGenerators.Diagnostics
             DiagnosticSeverity.Error,
             isEnabledByDefault: true,
             "The declaration demands more arguments than the limit from every call site. Group the ones that travel together into a type the caller builds once, or split the member along the axis its parameters already divide it by; a parameter carrying a default value is not counted, since a call can leave it out.");
+
+        // A warning rather than an error, unlike its siblings, because the package's own test assemblies still
+        // carry sites it reports and they opt into this category; an error would stop them compiling, and a
+        // test assembly that does not compile runs no tests.
+        public static readonly DiagnosticDescriptor Vel503ToleranceNeverApplied = new(
+            "VEL503",
+            "Tolerance on a tuple comparison is never applied",
+            "The tolerance on this comparison of '{0}' is never applied; its members are compared bit-exactly",
+            Category,
+            DiagnosticSeverity.Warning,
+            isEnabledByDefault: true,
+            "NUnit has no comparer for ValueTuple, so the pair falls through to the expected value's own IEquatable<T>, which is never handed the tolerance. The assertion is bit-exact equality wearing a tolerance suffix, and its failure message prints the tolerance it did not use, so nothing at run time tells the two apart. Round each member before comparing, or compare formatted strings. Three shapes this does not report. A tuple inside an expected collection: the tolerance descends into the collection and then dies at the element, so the assertion traps identically while the expected type itself is an array rather than a tuple. A constraint built in one statement and given its tolerance in another, since only a single chained expression is followed. And a tolerance dropped by another expected type reaching the same IEquatable<T> fall-through.");
     }
 }

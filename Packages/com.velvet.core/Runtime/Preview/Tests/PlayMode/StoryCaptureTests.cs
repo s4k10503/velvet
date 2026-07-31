@@ -1,3 +1,9 @@
+// The preview registry, story and host are all #if UNITY_EDITOR — previewing is an editor activity and
+// none of it is compiled into a player. This fixture drives them, so it is editor-only too. Without the
+// guard the assembly still compiles in the editor and fails only when something builds a standalone
+// player, which is the one configuration that would have caught the shader stripping this repository
+// went on to find.
+#if UNITY_EDITOR
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -284,3 +290,4 @@ namespace Velvet.Tests
 
     }
 }
+#endif

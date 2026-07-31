@@ -50,8 +50,23 @@ Every one was found by mutating the implementation and confirming a test died �
 Three traps in the folding itself, each of which passes a count check:
 
 - **`Is.EqualTo(tuple)` matches a nested collection by reference.** Join to strings instead.
-- **`.Within()` does not reach the members of a tuple.** Unity's NUnit ships no `ValueTupleComparer`, so `NUnitEqualityComparer.AreEqual` falls through to `FirstImplementsIEquatableOfSecond`, which never sees the tolerance — `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` **fails**, while printing the tolerance it did not apply. A fold that moves a scalar comparison into a tuple silently converts it to bit-exact equality wearing a tolerance suffix. A collection of tuples traps the same way: NUnit does walk an expected array element-wise carrying the tolerance, but each element is then a tuple, so `new[] { ("a", 0.99999f) }` against `new[] { ("a", 1f) }` fails where `new[] { 0.99999f }` against `new[] { 1f }` passes. Rounding each term to the tolerance's own decimal place does not restore it, because two values inside the tolerance can still land in different buckets — `83.33334` and `83.33383` are 4.9e-4 apart and round to `83.333` and `83.334` — and comparing values formatted to that many places is the same operation. What does restore it: keep the compared value a scalar (or an array of scalars) and fold the control term in as a gate that substitutes `float.NaN`, which satisfies no tolerance.
+- **Do not fold a scalar comparison into a tuple — the tolerance stops applying.** `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` fails, and prints the tolerance it did not use, so a passing one looks like proof it applied. `VEL503` reports the shape; it does not see a tuple inside an expected collection, which traps the same way. Keep the compared value a scalar or an array of scalars and fold the control in as a gate substituting `float.NaN`. Rounding does not rescue it: two values inside the tolerance can round to different buckets.
 - **The logically sharpest gate is not always the discriminating one.** A `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, and a count term next to it is what goes red.
+
+## Neuter at every layer, not at one
+
+A test whose discriminating term is a **side effect of a different layer than the one under test** survives a neuter of the layer it is aimed at. An expected log line, a suppression flag, a gate read one level up: kill the applier and the parser still says "wants clip", so the warning still fires and the assertion still passes with the feature dead.
+
+Every vacuous test found in three sweeps of one fixture pair was cut-dependent in this direction — green at the applier cut, red at the parser cut — and each sweep at a single cut undercounted. A count of vacuous tests is meaningless without the cut beside it, and the answer changed on every recount taken by reading: three, then four, then five for one half; five, then six for another.
+
+Build the harness instead. Applying each cut, running the fixtures, reverting in a `finally` and diffing the per-test JSON is about three minutes for four cuts, and it reproduces independently where a careful read does not. Two traps inside the harness itself, both of which inflate:
+
+- **Strip comments before deciding which fixture a cut applies to.** A ring test whose comment mentions `clip-path-*` matched as a clip test.
+- **Ask a cut only of a fixture that exercises that layer.** A parser unit test is not vacuous because the applier died; asking it anyway reported 18 phantom holes.
+
+## A test dying under some mutation does not mean it tests what it claims
+
+A mutation that reddens a test proves the test is sensitive to *that mutation*, not that it measures the fact in its name. An assertion whose value is independent of its stated fact is broken even when an unrelated perturbation happens to move it — measured here on a case that survived deleting the very transform it was named for, while a different mutation to the same code path did redden it. Check what the assertion is a function of, not only that something can break it.
 
 ## Sweep for the shape, not the instance
 
@@ -64,7 +79,7 @@ Report what a sweep found, zero included. One nobody hears about is indistinguis
 
 ## A pixel fixture on `RenderTexturePanelHost` mounts without the bundled stylesheet
 
-Every plain USS class silently does nothing there, while arbitrary-value utilities keep working, because Velvet resolves those to inline style. So a fixture written from `w-[60px] bg-[#0000ff] flex flex-row` looks correctly constructed and is not: the sizes and colours land, the `flex-row` does not, and the container stays UI Toolkit's default `column`.
+A class that gets its whole effect from the sheet does nothing there, and what hides that is the classes that do not. Arbitrary values resolve to inline style; `gap-*`, `space-*`, `divide-*`, `ring-*` and the filter families have no rule in any bundled sheet and are realised from C#. `grid` is both — declared at `_layout.uss:13` and driven by `StyleGridClass` — so it half-works, which is the worst case to debug from. Check the class you are relying on rather than reasoning from a category. So a fixture written from `w-[60px] bg-[#0000ff] flex flex-row` looks correctly constructed and is not: the sizes and colours land, the `flex-row` does not, and the container stays UI Toolkit's default `column`.
 
 This has produced a wrong conclusion (a paint was reported as surviving `overflow-hidden` when the clip had never applied) and, separately, two reds that looked like evidence about paint order and were actually a fixture measuring non-overlapping elements. It costs more than either trap above.
 
