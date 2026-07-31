@@ -109,6 +109,19 @@ def locate(project, edit):
     return brace, None
 
 
+def dirty_cut_files(project, cuts):
+    """Cut files git already reports as modified.
+
+    The revert runs in a `finally`, which a killed process does not reach — one interrupted sweep left a
+    neutered parser in the tree. Starting on top of that measures a mutation nobody declared and reports
+    its survivors as holes.
+    """
+    files = sorted({edit["file"] for cut in cuts["cuts"].values() for edit in cut["edits"]})
+    result = subprocess.run(["git", "-C", str(project), "status", "--porcelain", "--"] + files,
+                            capture_output=True, text=True)
+    return [line[3:] for line in result.stdout.splitlines() if line.strip()]
+
+
 def validate(project, cuts):
     problems = []
     for name, cut in cuts["cuts"].items():
@@ -230,6 +243,13 @@ def main():
         edits = sum(len(cut["edits"]) for cut in cuts["cuts"].values())
         print(f"{edits} anchors across {len(cuts['cuts'])} cuts each match exactly once")
         return 0
+
+    dirty = dirty_cut_files(project, cuts)
+    if dirty:
+        print("error: a cut file is already modified; revert it before sweeping", file=sys.stderr)
+        for path in dirty:
+            print(f"  {path}", file=sys.stderr)
+        return 1
 
     out = Path(args.output).resolve() if args.output else project / "Logs" / "neuter-check"
     out.mkdir(parents=True, exist_ok=True)
