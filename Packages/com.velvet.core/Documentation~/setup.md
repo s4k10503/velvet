@@ -83,7 +83,11 @@ ordinary way, and you attach it from that reference. Prefer this when the sheet 
 against project sheets that are already wired through the same assets, or when your project's
 convention is that no runtime code performs asset lookups.
 
-Both put the same rules on the panel; `AttachTo` is the one that needs no scene wiring.
+Both put the same rules on the panel; `AttachTo` is the one that needs no scene wiring. What the
+scene route does not bring with it is the theme binding `AttachTo` performs — call
+`VelvetStyleUtilities.BindThemeTo(root)` as well if you want the semantic colours to follow
+`VelvetTheme.IsDark`, per
+[styling-variants.md](styling-variants.md#theme-the-dark-variant-and-the-token-set-beside-it).
 
 ## Where else the sheet is attached for you
 

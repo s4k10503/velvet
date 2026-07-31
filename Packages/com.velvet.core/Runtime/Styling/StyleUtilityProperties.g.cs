@@ -397,7 +397,7 @@ namespace Velvet
         };
 
         private static readonly Dictionary<string, int> ByClassName =
-            new Dictionary<string, int>(2138, StringComparer.Ordinal)
+            new Dictionary<string, int>(2139, StringComparer.Ordinal)
         {
             { "absolute", 0 },
             { "active-bg-danger-active", 1 },
@@ -491,6 +491,7 @@ namespace Velvet
             { "bg-amber-800", 9 },
             { "bg-amber-900", 9 },
             { "bg-amber-950", 9 },
+            { "bg-background", 9 },
             { "bg-black", 9 },
             { "bg-blue-100", 9 },
             { "bg-blue-200", 9 },
