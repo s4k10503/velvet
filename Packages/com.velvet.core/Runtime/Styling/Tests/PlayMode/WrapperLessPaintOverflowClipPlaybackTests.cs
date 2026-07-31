@@ -70,7 +70,7 @@ namespace Velvet.Tests
             DisposePanel();
             _host = new RenderTexturePanelHost(name, Size, Size);
             _host.Root.style.backgroundColor = backdrop;
-            _host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_host.Root);
         }
 
         private static bool IsRed(Color32 p) => p.r > 140 && p.g < 90 && p.b < 90;
