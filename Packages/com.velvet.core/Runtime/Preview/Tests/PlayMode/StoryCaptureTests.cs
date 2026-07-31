@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -98,27 +99,34 @@ namespace Velvet.Tests
                 // is supposed to be reporting on.
                 var result = new CaptureResult();
                 var path = CapturePath(outputDirectory, story);
-                if (written.Contains(path)) bad.Add($"{story.Id}: would overwrite the capture of another story");
                 yield return Capture(story, path, result);
-                if (File.Exists(path)) written.Add(path);
+                written.Add(path);
                 if (result.Problem != null) bad.Add($"{story.Id}: {result.Problem}");
             }
 
             File.WriteAllLines(ManifestPath(outputDirectory), written);
-            Debug.Log($"[StoryCapture] wrote {written.Count} PNG(s) to {outputDirectory}");
+            // Counted off the filesystem, which is the only party that knows whether two paths are the same
+            // file. Comparing the strings does not: this ran on a case-insensitive volume, where two stories
+            // whose groups differ only in case produce distinct ordinal paths, one PNG, and a second capture
+            // that silently replaced the first — with every string-level term agreeing. APFS is also
+            // normalisation-insensitive, so the same holds for two names differing only in Unicode form.
+            var onDisk = Directory.EnumerateFiles(outputDirectory, "*.png", SearchOption.AllDirectories).Count();
+            Debug.Log($"[StoryCapture] wrote {onDisk} PNG(s) to {outputDirectory}");
 
             // Assert
-            // Every way a capture lies that still writes a file and reports success, in one comparison: the
-            // story did not mount, the bundled stylesheet was inert, the frame came out uniform, or two
-            // stories resolved to one path so the second silently replaced the first. The count is of files
-            // that actually exist on disk afterwards — counting loop iterations against the list the loop
-            // walks cannot fail, which is the shape this fixture already shipped once.
+            // Every way a capture lies that still writes a file and reports success: the story did not mount,
+            // the bundled stylesheet was inert, the frame came out uniform, or two stories landed on one file
+            // so the second replaced the first.
             //
-            // The uniform check is by far the weakest of them: one differing pixel satisfies it. That is why
-            // the stylesheet probe stands beside it rather than being folded into it, and why CONTRIBUTING
+            // The count term has now been written three times. Loop iterations against the list the loop
+            // walks could not fail; nor could a count of paths the loop appended, since every iteration
+            // reaches the write. Only the filesystem can answer the collision question, so it is asked.
+            //
+            // The uniform check is by far the weakest of the four: one differing pixel satisfies it. That is
+            // why the stylesheet probe stands beside it rather than being folded in, and why CONTRIBUTING
             // tells the reader to open the images.
             Assert.That(
-                (written.Count, string.Join(" | ", bad)),
+                (onDisk, string.Join(" | ", bad)),
                 Is.EqualTo((stories.Count, string.Empty)));
         }
 

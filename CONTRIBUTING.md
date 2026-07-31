@@ -35,7 +35,7 @@ the bundled stylesheet resolves none of its plain classes.
 
 **Look at the images.** Those three checks are the floor, not the ceiling: the uniform-frame one in
 particular is satisfied by a single differing pixel, so a story can render almost nothing and still
-pass. Both defects found in this harness so far — a missing backdrop that made every semantic-token
+pass. The defects found in this harness so far — a missing backdrop that made every semantic-token
 story capture near-blank, and a panel whose height was its content's rather than the story's — were
 green under every check and visible immediately in the PNG. Interactively the same stories are live
 in **Window ▸ Velvet ▸ Preview**.
