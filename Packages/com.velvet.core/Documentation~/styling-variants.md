@@ -222,18 +222,76 @@ band takes that element's own paint position, so overlapping `-space-x-*` avatar
 `ring-2 ring-white` occlude the previous one's band as they do on the web, and the order among several
 bands on one parent is their elements' order rather than the order the bands happened to be attached —
 two `focus:ring-2` siblings render the same whichever was focused first. The hosting stays visible in
-two places:
+three places:
 
 - `ring-inset` paints **over** an opaque full-bleed child rather than under it. This matches the
   order CSS gives an inset box-shadow, not an inset outline.
-- A ring on a `V.Motion` is ignored, with a warning. The band is outside the Motion's own opacity, so
-  it could not fade with an enter or exit. Put the ring on a `Div` the Motion wraps.
+- A transform on the ringed element itself — `translate-*`, `scale-*`, `rotate-*`, or an animation
+  driving those — moves the element and leaves the band on the laid-out box, because a transform
+  composites over the transformed element's own subtree and the band is not in it. A transform on an
+  **ancestor** carries element and band together. CSS moves an outline with its element.
+- A ring on a `V.Motion` is ignored, with a warning: it is the transform case above, and animating a
+  transform is what a `V.Motion` is for. Put the ring on a `Div` the Motion wraps — there the band is
+  inside the Motion's subtree, so it rides both the transform and the opacity.
 
 A ring on an ordinary element inside a `V.AnimatePresence` **does** fade with that element's enter and
-exit: the band is driven from the same per-frame opacity sample that fades a drop shadow.
+exit: the band is the one paint the scheduler samples the caster's opacity for each frame, because it
+is the only one hosted outside the element the renderer applies that opacity to.
 
 An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
 `overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.
+
+**Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
+element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
+CSS clips neither a box-shadow nor a border that way, so a painted utility silently loses whatever falls
+outside that box. What matters is the resolved `overflow: hidden`, not the utility that set it: `truncate`
+sets it alongside `white-space` and `text-overflow`, so a truncating label reaches every loss below
+without `overflow-hidden` appearing anywhere in its className.
+
+| Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
+|---|---|
+| `shadow-*` / `drop-shadow-*` | the whole shadow is gone. The paint is not removed — it is cut at the padding box like every other — but the only part of it you see is the halo outside the box, the interior being hidden under the element's own fill by design |
+| `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders |
+| `border-dashed` / `border-dotted` | the whole outline is gone — it is drawn in the border band, which the padding-box clip excludes. A solid border of the same width is a native property and is unaffected, so the same markup renders a border or none depending only on the style |
+| `divide-dashed` / `divide-dotted` | the rule on a clipped child is gone; the gutter that child reserves for it stays, so the row keeps its gap and loses its line |
+| `overline` | unaffected — the rule sits inside the content box |
+
+**`shadow-*` and `skew-*` on a bordered element cost more than the bleed.** Either one takes ownership of
+the element's face: it suppresses the native background and border and repaints both in its own generated
+content. The padding-box clip then takes that repaint too, so a bordered card carrying `shadow-*` or
+`skew-*` plus a hidden overflow loses **its border and a border-wide ring of its own background**, and
+whatever is behind the card shows through that ring. The same card without the shadow keeps both, because
+a native border is not painted through generated content:
+
+```csharp
+// Border and a border-wide ring of white are missing; the parent shows through.
+V.Div(className: "shadow-lg overflow-hidden bg-white border-2 border-black rounded-lg");
+
+// Same card, border intact.
+V.Div(className: "overflow-hidden bg-white border-2 border-black rounded-lg");
+```
+
+The nesting below fixes this case too — the border belongs on whichever element is not clipped.
+
+Put the clip on a child instead of on the painted element:
+
+```csharp
+// The shadow on the outer element, the clip on an inner one.
+V.Div(className: "shadow-lg rounded-2xl", children: new VNode[]
+{
+    V.Div(className: "overflow-hidden rounded-2xl", children: new VNode[]
+    {
+        V.Label(text: "Clipped content"),
+    }),
+});
+```
+
+The ring's sibling hosting is not simply extended to the rest because a paint drawn in the element's own
+content follows that element's transform (`hover:scale-105 shadow-lg` keeps its shadow aligned) and a
+sibling does not, and because a paint hosted outside the element stops receiving the element's opacity
+and has to be driven per frame the way the band is. A band was worth both costs because an outset one is
+wholly outside the padding box and a clip takes all of it; `ring-inset` sits over the box and would have
+survived, but one hosting has to serve both.
 
 **Class channels that are not variants drive none of this.** `whileHoverClass`, `whileTapClass` and
 `whileFocusClass`, the transient enter / exit classes an `AnimatePresence` play applies for the

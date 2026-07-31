@@ -12,6 +12,11 @@ name: Source generators
 # Generator changes reach the Unity side as committed DLLs under Runtime/Plugins, which the Unity test
 # workflow picks up on its own paths; that workflow keeps excluding Generators~, so a generator-only change
 # still runs here alone.
+#
+# setup.md is re-included after the blanket markdown exclusion because a guard here re-derives one of its
+# claims from the bundled stylesheets, and the Unity workflow excludes Documentation~ outright: without
+# this line a PR touching only that guide runs no suite at all, which is precisely when the claim drifts.
+# The re-include must stay after '!**.md' — the last matching pattern is the one that decides.
 on:
   push:
     branches: [main]
@@ -19,12 +24,14 @@ on:
       - 'Packages/com.velvet.core/**'
       - '.github/workflows/generators.yml'
       - '!**.md'
+      - 'Packages/com.velvet.core/Documentation~/setup.md'
   pull_request:
     branches: [main]
     paths:
       - 'Packages/com.velvet.core/**'
       - '.github/workflows/generators.yml'
       - '!**.md'
+      - 'Packages/com.velvet.core/Documentation~/setup.md'
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref.

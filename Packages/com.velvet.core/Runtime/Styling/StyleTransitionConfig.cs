@@ -331,7 +331,7 @@ namespace Velvet
         /// A physics-integrated spring (see the internal SpringIntegrator): <see cref="StyleTransitionConfig.Stiffness"/>
         /// / <see cref="StyleTransitionConfig.Damping"/> / <see cref="StyleTransitionConfig.Mass"/> decide the
         /// curve and settle time instead of a fixed duration — CSS/USS transitions cannot express a spring, so
-        /// this is driven by a per-frame tick that writes inline styles directly (like the drop-shadow co-fade
+        /// this is driven by a per-frame tick that writes inline styles directly (like the ring co-fade
         /// tick), not <c>transition-duration</c>/<c>transition-timing-function</c>.
         /// Only <see cref="Velvet.MotionNode"/>'s variant enter/exit (<c>variants</c> + <c>initial</c>/<c>animate</c>/
         /// <c>exit</c>) plays a spring — the classic preset transitions (<see cref="StyleTransition"/>) are always

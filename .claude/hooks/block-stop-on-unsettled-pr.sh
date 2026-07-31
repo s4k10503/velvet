@@ -12,6 +12,12 @@
 # force-push leaves behind, and reading it as pending is how the 7h45m gap started. So a PR
 # with zero checks blocks too, with a different reason.
 #
+# A PR whose checks have all passed and that nobody has merged is the state this exists for as
+# much as a pending one. It reads as "settled", and settled is what an assistant stops on — eight
+# green PRs sat unmerged for nine hours behind a watcher that was alive, emitting nothing, because
+# it only reported checks CHANGING state and every check had finished changing. A live watcher with
+# nothing left to say is indistinguishable from progress.
+#
 # A pending check is forgiven while a watcher is demonstrably alive. The heartbeat is written by
 # the watching process itself on each poll, never by the assistant, so it cannot be satisfied by
 # intending to watch — if the watcher dies the file goes stale within one poll and this blocks
@@ -30,6 +36,26 @@ HEARTBEAT="$HOME/.velvet-pr-watch.heartbeat"
 # Three polls of the 60s cycle, so one slow `gh` call does not read as a dead watcher.
 STALE_AFTER=180
 
+# A merge held on purpose — a review in flight, a dependency on another PR — is not the failure this
+# guards, but "I am waiting" is exactly what the nine-hour stall said too. So a deferral is accepted
+# and EXPIRES: it names the PR, states what clears it, and stops counting after DEFER_TTL. That cannot
+# decay into permanent silence the way an unqualified exemption did, and re-stating it is the moment
+# the reason gets re-examined, which is the only part that ever mattered.
+#
+#   echo "236 waiting on round-4 review $(date +%s)" >> ~/.velvet-pr-deferrals
+DEFERRALS="$HOME/.velvet-pr-deferrals"
+DEFER_TTL=2700
+
+deferred() {
+  [ -f "$DEFERRALS" ] || return 1
+  local line stamp
+  line=$(grep "^$1 " "$DEFERRALS" 2>/dev/null | tail -1) || return 1
+  [ -n "$line" ] || return 1
+  stamp=${line##* }
+  case "$stamp" in ''|*[!0-9]*) return 1 ;; esac
+  [ $(( $(date +%s) - stamp )) -lt "$DEFER_TTL" ]
+}
+
 watcher_is_alive() {
   [ -f "$HEARTBEAT" ] || return 1
   local beat
@@ -43,6 +69,7 @@ prs=$(gh pr list --state open --json number --jq '.[].number' 2>/dev/null) || ex
 
 blocked=""
 for pr in $prs; do
+  deferred "$pr" && continue
   checks=$(gh pr checks "$pr" --json name,bucket 2>/dev/null || echo "[]")
 
   count=$(echo "$checks" | jq 'length' 2>/dev/null || echo 0)
@@ -53,8 +80,17 @@ for pr in $prs; do
     # conflicting PR reports DIRTY (or UNKNOWN while GitHub is still computing) and never
     # starts CI at all, which is the shape that went unwatched for seven hours.
     state=$(gh pr view "$pr" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")
+    if [ "$state" = "CLEAN" ]; then
+      # Ready, and ready is the state that reads as finished. A docs-only or .claude/-only change
+      # reports no checks at all and so never reached the merge reminder below, which is the same
+      # hole one level down from the one that left eight green PRs sitting.
+      blocked="$blocked
+  PR #$pr — no checks apply to it and it is unmerged. Merge it, or say what it is waiting on and arm
+    something that brings you back when that arrives."
+      continue
+    fi
     case "$state" in
-      CLEAN|UNSTABLE|BEHIND|BLOCKED|"")
+      UNSTABLE|BEHIND|BLOCKED|"")
         continue
         ;;
     esac
@@ -65,9 +101,24 @@ for pr in $prs; do
     continue
   fi
 
+  pending=$(echo "$checks" | jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo 0)
+  if [ "$pending" = "0" ]; then
+    # Nothing is running, so a watcher has nothing to observe and its heartbeat vouches for nothing.
+    state=$(gh pr view "$pr" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")
+    fails=$(echo "$checks" | jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null || echo 0)
+    if [ "$fails" != "0" ]; then
+      blocked="$blocked
+  PR #$pr — $fails check(s) failed. Read the run, fix or say why it is not yours to fix."
+    elif [ "$state" = "CLEAN" ]; then
+      blocked="$blocked
+  PR #$pr — every check passed and it is unmerged. Merge it, or say what it is waiting on and arm
+    something that brings you back when that arrives."
+    fi
+    continue
+  fi
+
   watcher_is_alive && continue
 
-  pending=$(echo "$checks" | jq '[.[] | select(.bucket == "pending")] | length' 2>/dev/null || echo 0)
   if [ "$pending" != "0" ]; then
     names=$(echo "$checks" | jq -r '[.[] | select(.bucket == "pending") | .name] | join(", ")' 2>/dev/null)
     blocked="$blocked
@@ -81,7 +132,12 @@ cat >&2 <<EOF
 Do not stop: an open PR has not settled.
 $blocked
 
-Either wait for it with a Monitor that emits on both pass and fail, or keep working on
+Holding one on purpose is allowed and expires after 45 minutes, so the reason gets re-examined
+rather than forgotten:
+
+  echo "<pr> <what clears it> $(date +%s)" >> $HOME/.velvet-pr-deferrals
+
+Otherwise: wait for it with a Monitor that emits on both pass and fail, or keep working on
 something that is itself on the critical path. Work that is off the critical path satisfies
 "do not idle" while the thing you are actually waiting on goes unwatched.
 

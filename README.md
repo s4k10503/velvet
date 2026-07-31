@@ -83,6 +83,13 @@ The UniTask git URL above tracks its latest release; pin a version by appending 
 (`com.unity.addressables`, `com.unity.nuget.mono-cecil`) are on the Unity registry and resolve
 automatically.
 
+One more step before anything renders styled: attach the bundled utility stylesheet to the panel you
+mount onto. Most utility classes are USS rules, and a panel without the sheet resolves every class the
+sheet declares to nothing — while arbitrary values and the many families Velvet resolves itself rather
+than declaring keep working, which reads as a styling bug rather than a missing sheet. See
+[setup.md](Packages/com.velvet.core/Documentation~/setup.md) for the one-line call and the
+scene-reference alternative.
+
 ## Getting started
 
 A counter built from a functional component and the `UseState` hook:
@@ -112,7 +119,9 @@ public static class CounterApp
     }
 }
 
-// Mount onto any VisualElement (for example a UIDocument root).
+// Attach the utilities the classes above are declared in, then mount onto any VisualElement
+// (for example a UIDocument root).
+VelvetStyleUtilities.AttachTo(rootElement);
 V.Mount(rootElement, V.Component(CounterApp.Render));
 ```
 

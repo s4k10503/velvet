@@ -1799,7 +1799,11 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("h-2/3", out var s);
 
             Assume.That(ok, Is.True, "Precondition: h-2/3 is a recognized fraction");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Height, 200f / 3f)).Within(1e-3f));
+
+            // .Within() never reaches a tuple's members under Unity's NUnit (no ValueTupleComparer), so the
+            // folded control term gates a scalar and substitutes NaN, which satisfies no tolerance.
+            Assert.That(s.Property == ArbitraryProperty.Height ? s.Value : float.NaN,
+                Is.EqualTo(200f / 3f).Within(1e-3f));
         }
 
         [Test]
@@ -1819,7 +1823,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("w-5/12", out var s);
 
             Assume.That(ok, Is.True, "Precondition: w-5/12 is a recognized fraction");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Width, 500f / 12f)).Within(1e-3f));
+            Assert.That(s.Property == ArbitraryProperty.Width ? s.Value : float.NaN,
+                Is.EqualTo(500f / 12f).Within(1e-3f));
         }
 
         [Test]
@@ -1839,7 +1844,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("h-5/6", out var s);
 
             Assume.That(ok, Is.True, "Precondition: h-5/6 is a recognized fraction");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.Height, 500f / 6f)).Within(1e-3f));
+            Assert.That(s.Property == ArbitraryProperty.Height ? s.Value : float.NaN,
+                Is.EqualTo(500f / 6f).Within(1e-3f));
         }
 
         [Test]
@@ -1863,7 +1869,8 @@ namespace Velvet.Tests
             var ok = StyleArbitraryValueResolver.TryParse("duration-[400ms]", out var s);
 
             Assume.That(ok, Is.True, "Precondition: duration-[400ms] is a recognized arbitrary value");
-            Assert.That((s.Property, s.Value), Is.EqualTo((ArbitraryProperty.TransitionDuration, 0.4f)).Within(1e-5f));
+            Assert.That(s.Property == ArbitraryProperty.TransitionDuration ? s.Value : float.NaN,
+                Is.EqualTo(0.4f).Within(1e-5f));
         }
 
         [Test]
