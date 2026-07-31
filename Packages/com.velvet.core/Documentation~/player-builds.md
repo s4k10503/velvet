@@ -45,3 +45,27 @@ missing shader in one warning for the run rather than one per element the paint 
 their partials into a build; [setup.md](setup.md) owns what the sheet is and how to put it on a panel.
 Everything under a `Resources` folder is in every build of every project that installs the package, whether
 the project uses it or not.
+
+**What it costs, measured in a built player rather than argued.** Two StandaloneOSX builds of this
+repository's own sample scene, identical but for the presence of that folder:
+
+| | build |
+|---|---|
+| with the `Resources` folder | 115,751,014 bytes |
+| without it | 115,497,606 bytes |
+| difference | **253,408 bytes**, 0.22% of the build |
+
+The whole difference is `resources.assets`, and the payload is the stylesheet itself: the 605-byte file in
+`Resources` is one `@import`, and what lands in the player is the 184 KB of USS under `Runtime/Styles/`
+serialised as a resolved `StyleSheet`.
+
+**So the number is the cost of shipping the stylesheet, not the cost of the mechanism that ships it.**
+Addressables or a serialized reference would put the same bytes in the same build; what they would change
+is who sets it up. Addressables asks the consumer to create a group and run an Addressables build, and a
+package cannot assume either has happened — a first-run failure there is worse than 253 KB. So `Resources`
+stays, for one asset, and this is the measurement that says so rather than the assumption that said so
+before.
+
+The two mechanisms on this page differ because the inclusion rules do — a build strips shader variants no
+scene reaches, while a `Resources` asset is included wholesale — but the principle is one: the package must
+work on a fresh install with no consumer setup, and each mechanism states what it adds to your build.
