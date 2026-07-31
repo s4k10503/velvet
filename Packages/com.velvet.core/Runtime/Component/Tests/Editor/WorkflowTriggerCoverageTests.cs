@@ -11,7 +11,7 @@ namespace Velvet.Tests
     /// <summary>
     /// Holds the Unity workflow's path filter against two sets read out of the repository rather than
     /// listed here: the markdown <c>DocumentationDriftTests</c> scans, and the repo files the workflow
-    /// itself runs. A workflow that never starts leaves a pull request showing the same absence of a red
+    /// itself names. A workflow that never starts leaves a pull request showing the same absence of a red
     /// check as one that ran and passed, so a guard left outside the path set keeps reporting nothing
     /// until some later, unrelated change happens to carry a file inside it — and then names that change
     /// as the culprit.

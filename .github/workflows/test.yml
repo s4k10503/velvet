@@ -20,7 +20,7 @@ on:
       - 'README.md'
       - '.github/workflows/test.yml'
       - '!Packages/com.velvet.core/Generators~/**'
-      - 'Packages/com.velvet.core/Generators~/**.md'
+      - 'Packages/com.velvet.core/Generators~/*.md'
   pull_request:
     branches: [main]
     paths:
@@ -32,7 +32,7 @@ on:
       - 'README.md'
       - '.github/workflows/test.yml'
       - '!Packages/com.velvet.core/Generators~/**'
-      - 'Packages/com.velvet.core/Generators~/**.md'
+      - 'Packages/com.velvet.core/Generators~/*.md'
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
