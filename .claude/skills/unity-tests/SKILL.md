@@ -45,7 +45,7 @@ Every one was found by mutating the implementation and confirming a test died �
 - **An `Assume` gates the behaviour under test.** The regression reports Inconclusive, which the runner does not count. Fold it into the assertion as one tuple comparison.
 - **An arbitrary value skips the path.** `rounded-tl-[12px]` is not in the scale, so a fallback under test never fires; `rounded-tl-lg` reaches it.
 - **The class under test was inert.** See the stylesheet trap below — the rest of the fixture works, so it looks built.
-- **The arranged condition has no term depending on it.** A case named for a clipped opacity group, or for an inline filter, sets that condition up and then asserts only what is true without it — so it passes with the clip or the filter removed, and pins its context in name only. Found three times in one fixture family, each next door to the one just fixed.
+- **The arranged condition has no term depending on it.** A case named for a clipped opacity group, or for an inline filter, sets that condition up and then asserts only what is true without it — so it passes with the clip or the filter removed, and pins its context in name only. Two instances in one fixture, found in consecutive review rounds — the second was next door to the first and survived the round that fixed it.
 
 Three traps in the folding itself, each of which passes a count check:
 
@@ -55,7 +55,7 @@ Three traps in the folding itself, each of which passes a count check:
 
 ## Sweep for the shape, not the instance
 
-Three consecutive review rounds on one branch each found one instance of the same defect, each fix was right, and the class never moved — because each round fixed what it was handed. Two sweeps end that, and both cost minutes:
+Consecutive review rounds on one branch kept finding one more instance of a defect already fixed, each fix right, the class never moving — because each round fixed what it was handed. Two sweeps end that, and both cost minutes:
 
 - **Every assertion**: remove the condition the case arranges and check that something goes red. If nothing does, the arrangement is decoration.
 - **Every sentence containing `every`, `no other`, `always` or `none`**: check it against the set it quantifies over. Universals written from memory have been false here more often than they have held, including inside the rule that forbids writing an unverified claim, and including in a comment written after that rule landed.
