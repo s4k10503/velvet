@@ -32,8 +32,7 @@ namespace Velvet.Tests
         // source file in this repo uses as code; names an external toolchain owns, which the contributor
         // README states how to invoke — DOTNET_ROOT is the variable the .NET apphost reads, StrykerOutput
         // the directory the mutation runner writes, ProjectReference the MSBuild item a project declares its
-        // dependencies with, which lives only in the `*.csproj` files the root .gitignore excludes and no
-        // scanned extension covers; and the analyzer identifiers, which C# holds only as string literals and
+        // dependencies with, which appears only in `*.csproj` — an extension the corpus does not scan; and the analyzer identifiers, which C# holds only as string literals and
         // the corpus therefore strips.
         //
         // That last group is checked, just not here: DocumentationDiagnosticTableTests over in the
