@@ -41,11 +41,12 @@ Use the `unity-tests` skill for how to run them and how to read the results — 
 
 ## Comments and documentation
 
-A comment states **why**, never what, and states it once. Every sentence must survive the deletion test: delete it, and if a competent reader of the surrounding code plus the remaining sentences still gets it right, it was carrying nothing.
+`CLAUDE.md`'s **Comments** section owns this and is not restated here — it was, verbatim, and the copy went stale the first time the original changed. Read it. The part most often got wrong: a comment has to be **true** before it has to be short, and an unverified mechanism is not written down at all, hedged or otherwise.
 
-Reliably fails that test: restating the declaration below the comment; a consequence that follows from a constraint already stated; arguing that a non-problem is not a problem; re-explaining a sibling file's mechanism instead of naming it.
+Two things that section cannot tell you, because they came out of correcting it:
 
-Reliably passes, at whatever length it needs: engine behaviour that had to be measured or decompiled; an ordering constraint; an invariant a future edit could break silently; a rejected alternative and the one reason it was rejected.
+- A statement can be **true and still not be the reason**. Calling it false is a separate error from writing an unverified one, and it has happened here more than once.
+- Every enumeration written by hand in this repository has come up short. If the set is derivable from a source in the tree, derive it and guard it; do not write the list.
 
 Never put an issue or PR number in a comment. Everything in this repository is written in English.
 
