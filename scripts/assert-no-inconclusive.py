@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 USAGE = "usage: assert-no-inconclusive.py RESULTS_XML_OR_DIRECTORY [...]"
+PROBE = True  # throwaway probe, do not merge
 
 
 def result_files(arguments):
