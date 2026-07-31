@@ -91,8 +91,8 @@ namespace Velvet.SourceGenerators.Tests
         [Fact]
         public void Given_ATupleEqualityChainedIntoAnotherConstraint_When_Analyzed_Then_NothingIsReported()
         {
-            // Every link of a constraint chain is an invocation reached from the same equality, so a rule
-            // that only looked for one below it would report the chain's continuation as a tolerance.
+            // Each invocation in a constraint chain is reached from the same equality, so a rule that only
+            // looked for one below it would report the chain's continuation as a tolerance.
             // Arrange
             var source = Assertion("(1f, 0f)", "Is.EqualTo((1f, 0f)).And.GreaterThan(0f)");
 

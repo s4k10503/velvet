@@ -34,11 +34,7 @@ dotnet test Velvet.SourceGenerators.sln
 - `StubSurfaceDriftTests` — pins the Velvet stub in `GeneratorTestHelper` (the surface every analyzer and generator test compiles its sample user code against) to the runtime signatures, using the same syntax-only parse. It fails on a divergent parameter type, return type, generic constraint, modifier or optionality, and on a runtime overload the stub names but does not model; without it the suite can verify a diagnostic for a call shape no user can write
 - `StyleUtilityTableTests` — one case per USS shape the bundled stylesheets contain, plus the problem each shape they do not produces. Compiles and calls the emitted table rather than pattern-matching its source, which is what puts the bit packing under assertion and is also the only place the emitted C# is proved to compile
 - `CodeShapeBacklogDriftTests` — re-measures the three code-shape limits over the package's own sources and fails on any violation. This is the only job that verifies the marked assemblies pass: `unity-tests` is skipped unless a `UNITY_LICENSE` secret is set, so on a fork or an outside contributor's PR nothing else compiles them. It parses each file both with and without `UNITY_EDITOR` defined, because a body inside an `#if UNITY_EDITOR` is real code in one assembly and disabled text in another, and a scan that saw only one of those would miss several hundred members
-- `SolutionProjectMembershipDriftTests` — compares the `*.csproj` files on disk against what
-  `Velvet.SourceGenerators.sln` names and maps to a build configuration. A project the solution omits is never
-  compiled, so its analyzers never run and every guard asking whether its sources satisfy a rule answers about
-  sources no compiler read — the same silent exemption the opt-in guard closes, one level further out where it
-  cannot see it
+- `SolutionProjectMembershipDriftTests` — compares the `*.csproj` files on disk against what `Velvet.SourceGenerators.sln` names and maps to a build configuration. A project the solution omits, and that no member reaches by `ProjectReference`, is built by nothing: its analyzers never run while the guards that read its sources off disk keep reporting on them — the same silent exemption the opt-in guard closes, one level further out where it cannot see it. Reachability rather than membership is what decides whether a compiler ever sees the file, measured by referencing an omitted project from a member and watching a syntax error in it fail the build; membership is the convention this repository holds to on top of that
 - `BundledStyleSheetCensusTests` — re-derives the table from `../Runtime/Styles/*.uss` and compares it against the committed `../Runtime/Styling/StyleUtilityProperties.g.cs`, and pins the selector-shape and property census the derivation is designed around. This is what makes committing the table safe: a stylesheet edit not accompanied by a regenerated table, or one that introduces an unsurveyed shape, fails here rather than downstream where a class missing from the table is indistinguishable from a class that conflicts with nothing
 
 ## Mutation testing
@@ -226,15 +222,21 @@ Reported: any expected value whose type is a tuple, held in a local as readily a
 literal — the type decides, not the syntax. The tolerance need not be the equality's immediate link, so a
 constraint carrying another modifier between the two is still reported.
 
-Not reported: a constraint built in one statement and given its tolerance in another, since only a single
-chained expression is followed; an `EqualTo`/`Within` pair declared outside NUnit, whose comparison this rule
-knows nothing about; and a tolerance dropped by any other expected type NUnit compares through
-`IEquatable<T>` rather than through its numeric path — a tuple is the shape this repository writes, not the
-only one that loses a tolerance.
+Not reported: a tuple inside an expected collection, where the tolerance descends into the collection and
+then dies at the element — `Is.EqualTo(new[] { ("opacity", 150f) }).Within(1e-3f)` traps exactly as the bare
+tuple does, while the expected type is an array and so does not match; a constraint built in one statement
+and given its tolerance in another, since only a single chained expression is followed; an `EqualTo`/`Within`
+pair declared outside NUnit, whose comparison this rule knows nothing about; and a tolerance dropped by
+another expected type reaching the same `IEquatable<T>` fall-through — a tuple is the shape this repository
+writes, not the only one that loses a tolerance.
+
+The collection case is measured, not inferred: an array of scalars keeps its tolerance
+(`Is.EqualTo(new[] { 1f }).Within(1e-4f)` passes against `0.99999f`) and an array of tuples does not, failing
+with `Values differ at index [0]` and printing the tolerance beneath it.
 
 It is a warning where its three siblings are errors because the package's own test assemblies still carry
-sites it reports, and they opt into this category. An error would stop them compiling, and an assembly that
-does not compile runs none of the rules.
+sites it reports, and they opt into this category. An error would stop them compiling, and a test assembly
+that does not compile runs no tests — including the ones that would have caught the next regression.
 
 ### Why the rules are opt-in per assembly
 

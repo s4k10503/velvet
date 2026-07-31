@@ -70,10 +70,11 @@ namespace Velvet.SourceGenerators.CodeShape
         /// built in a separate statement, which no single expression can be followed across.
         /// </summary>
         /// <remarks>
-        /// The walk starts at the tolerance itself rather than at its receiver, so that the caller's name
-        /// check is the only thing keeping a bare <c>EqualTo</c> from being reported as its own tolerance.
-        /// Skipping the first link would make that check unfalsifiable: the two would have to fail together
-        /// before anything changed.
+        /// The walk starts at the tolerance itself rather than one link lower. Both reach the same equality,
+        /// since a <c>Within</c> is never an <c>EqualTo</c>; what differs is how much of the suite covers the
+        /// caller's name check. Starting here, deleting that check misreports a bare
+        /// <c>Is.EqualTo(&lt;tuple&gt;)</c> as its own tolerance, so the no-tolerance case catches it too;
+        /// starting one link lower, only an equality chained into a second constraint does.
         /// </remarks>
         private static ExpressionSyntax? ExpectedValueOf(
             InvocationExpressionSyntax tolerance, SemanticModel model, CancellationToken cancellationToken)

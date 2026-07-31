@@ -197,7 +197,8 @@ namespace Cysharp.Threading.Tasks
         /// <summary>
         /// The same run, refusing a source that does not compile. An analyzer asking the semantic model about
         /// an unresolved call is answered <c>null</c> and reports nothing, so a fixture whose sample source
-        /// carries a typo passes every "nothing is reported" case while exercising none of the rule.
+        /// carries a typo can pass its "nothing is reported" cases without the rule having reached the shape
+        /// they name.
         /// </summary>
         public static ImmutableArray<Diagnostic> RunAnalyzerOnCompilingSource(
             string userSource, DiagnosticAnalyzer analyzer)
