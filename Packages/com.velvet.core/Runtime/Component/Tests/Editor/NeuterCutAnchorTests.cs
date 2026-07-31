@@ -106,8 +106,9 @@ namespace Velvet.Tests
                          where anchor < 0 || FirstNonBlankAfter(lines, anchor) != "{"
                          select $"{cut.name}: {edit.file}: {edit.anchor}").ToList();
 
-            // Assert
-            Assert.That(wrong, Is.Empty, string.Join("\n", wrong));
+            // Assert — the edit count rides along for the same reason it does above.
+            Assert.That((map.cuts.Sum(cut => cut.edits.Length), string.Join("\n", wrong)),
+                Is.EqualTo((8, string.Empty)));
         }
 
         [Test]
@@ -130,22 +131,20 @@ namespace Velvet.Tests
         [Test]
         public void Given_EveryFixtureInTheCutMap_When_SoughtInTheTestSources_Then_EachIsDeclaredThere()
         {
-            // Arrange — a fixture renamed out from under the map makes -testFilter select nothing, and a
-            // run over no tests reports no holes.
+            // Arrange — a fixture renamed out from under the map makes -testFilter select nothing, and a run
+            // over no tests reports no holes. Matched against class declarations rather than file names:
+            // a file here can declare a second fixture, so the names are not interchangeable in either
+            // direction, and the rename this exists to catch is of the class.
             var map = ReadMap();
-            var sources = Directory.EnumerateFiles(
-                Path.GetFullPath("Packages/com.velvet.core"), "*Tests.cs", SearchOption.AllDirectories)
-                .Select(Path.GetFileNameWithoutExtension)
-                .ToHashSet(StringComparer.Ordinal);
 
             // Act
             var missing = map.fixtures
                 .Select(entry => entry.fixture)
-                .Where(fixture => !sources.Contains(fixture.Substring(fixture.LastIndexOf('.') + 1)))
+                .Where(fixture => DeclaringSource(fixture) == null)
                 .ToList();
 
-            // Assert
-            Assert.That(missing, Is.Empty, string.Join("\n", missing));
+            // Assert — the fixture count is folded in because an empty map has no missing fixture either.
+            Assert.That((map.fixtures.Length, string.Join("\n", missing)), Is.EqualTo((2, string.Empty)));
         }
 
         [Test]
@@ -187,7 +186,37 @@ namespace Velvet.Tests
                 .ToList();
 
             // Assert
-            Assert.That(declaring, Is.Empty, string.Join("\n", declaring));
+            Assert.That((map.fixtures.Length, string.Join("\n", declaring)), Is.EqualTo((2, string.Empty)));
+        }
+
+        [Test]
+        public void Given_AMixedFixture_When_ItsMechanismsAreResolved_Then_EachHasAScope()
+        {
+            // Arrange — scope is filtered by mechanism, so a cut whose mechanism the fixture declares no
+            // scope for puts every one of that fixture's cases out of scope. The sweep then prints zero of
+            // N in scope, finds no hole and exits 0, which reads exactly like a clean result.
+            var map = ReadMap();
+
+            // Act
+            var unscoped = (from entry in map.fixtures
+                            where Mechanisms(map, entry).Count > 1
+                            from mechanism in Mechanisms(map, entry)
+                            where !entry.caseScopes.Any(scope => scope.mechanism == mechanism)
+                            select $"{entry.fixture} asks a {mechanism} cut and scopes no case to it").ToList();
+
+            // Assert
+            Assert.That(
+                (map.fixtures.Count(entry => Mechanisms(map, entry).Count > 1), string.Join("\n", unscoped)),
+                Is.EqualTo((1, string.Empty)));
+        }
+
+        private static string DeclaringSource(string fixture)
+        {
+            var shortName = fixture.Substring(fixture.LastIndexOf('.') + 1);
+            var declaration = new Regex(@"\bclass\s+" + Regex.Escape(shortName) + @"\b");
+            return Directory.EnumerateFiles(
+                Path.GetFullPath("Packages/com.velvet.core"), "*.cs", SearchOption.AllDirectories)
+                .FirstOrDefault(path => declaration.IsMatch(File.ReadAllText(path)));
         }
 
         private static HashSet<string> Mechanisms(CutMap map, FixtureCuts entry) =>
@@ -197,10 +226,7 @@ namespace Velvet.Tests
 
         private static IEnumerable<string> CaseNames(string fixture)
         {
-            var shortName = fixture.Substring(fixture.LastIndexOf('.') + 1);
-            var path = Directory.EnumerateFiles(
-                Path.GetFullPath("Packages/com.velvet.core"), shortName + ".cs", SearchOption.AllDirectories)
-                .FirstOrDefault();
+            var path = DeclaringSource(fixture);
             return path == null
                 ? Enumerable.Empty<string>()
                 : Regex.Matches(File.ReadAllText(path), @"public\s+(?:void|IEnumerator)\s+(Given_\w+)")

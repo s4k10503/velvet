@@ -5,9 +5,10 @@ Mutating a line asks whether any test depends on that line. Disabling a named me
 layer asks the question a fixture's name makes: with clip-path resolving nothing, does a test called
 "the element is wrapped" still pass? A test that does was never measuring the thing it claims.
 
-Which layer the cut is made at decides the answer, and not by a little. Every vacuous test found so
-far has been green at the applier cut and red at the parser cut, because a gate read one layer up
-survives a neuter one layer down.
+Which layer the cut is made at decides the answer. Some vacuous tests are green at the applier cut and
+red at the parser cut, because a gate read one layer up survives a neuter one layer down; others are
+green at every cut of their mechanism, having no term any of them can move. A single cut therefore
+undercounts, and a count means nothing without the cut beside it.
 
 So scope is declared rather than assumed, in neuter-cuts.json, at two granularities — and both are
 needed, which the first run of this harness established by getting the second one wrong. A fixture is
@@ -32,8 +33,6 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity"
-# Anchored at the editor binary so that a wait on this pattern does not match itself and report a
-# busy machine forever on an idle one.
 UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 
 CUTS_FILE = "scripts/neuter-cuts.json"
@@ -201,15 +200,20 @@ def report_pair(entry, name, cut, baseline, cut_results, elapsed, peak):
         print("    NO RESULTS — the run produced no readable XML; the cut may not compile", flush=True)
         return None
     scoped = [test for test in cut_results if in_scope(entry, cut, test.rsplit(".", 1)[-1])]
+    # Only Failed is evidence that a case noticed the cut. A case that went Inconclusive, Skipped or
+    # Ignored asked nothing under it, and scoring that as killed is the direction that hides holes —
+    # the same reason the baseline must be green before any cut is applied.
     holes = sorted(
         test for test in scoped
-        if cut_results[test] == "Passed" and baseline.get(test) == "Passed"
+        if cut_results[test] != "Failed" and baseline.get(test) == "Passed"
     )
+    inconclusive = {test: cut_results[test] for test in holes if cut_results[test] != "Passed"}
     missing = sorted(set(baseline) - set(cut_results))
-    print(f"    {len(scoped)} of {len(cut_results)} cases in scope, {len(holes)} still passing, "
+    print(f"    {len(scoped)} of {len(cut_results)} cases in scope, {len(holes)} not failing, "
           f"{elapsed:.0f}s, peak other runs {peak}", flush=True)
     for test in holes:
-        print(f"      HOLE {test.rsplit('.', 1)[-1]}", flush=True)
+        mark = f" ({inconclusive[test]})" if test in inconclusive else ""
+        print(f"      HOLE{mark} {test.rsplit('.', 1)[-1]}", flush=True)
     for test in missing:
         print(f"      NOT RUN {test.rsplit('.', 1)[-1]}", flush=True)
     return holes

@@ -3,7 +3,7 @@
     {
       "name": "clip-parser",
       "mechanism": "clip",
-      "summary": "the clip-path class parser claims and resolves nothing",
+      "summary": "the clip-path class parser resolves nothing, from a class list or from a live element",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleClipPathClass.cs",
@@ -12,8 +12,8 @@
         },
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleClipPathClass.cs",
-          "anchor": "public static bool HasClipPathClass(string[]? classNames)",
-          "neuter": "return false;"
+          "anchor": "public static bool TryExtractLive(VisualElement? element, out ClipPathSpec? spec)",
+          "neuter": "spec = null; return false;"
         }
       ]
     },

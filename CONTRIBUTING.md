@@ -60,9 +60,10 @@ python3 scripts/neuter-check.py --validate   # every anchor still matches exactl
 python3 scripts/neuter-check.py
 ```
 
-Which layer the cut is made at decides the answer. Every vacuous test found here so far was green at the
-applier cut and red at the parser cut, because a gate read one layer up survives a neuter one layer down —
-so a fixture is asked only the cuts it reaches, declared in `scripts/neuter-cuts.json`. Asking a
+Which layer the cut is made at decides the answer. Some vacuous tests are green at the applier cut and red
+at the parser cut, because a gate read one layer up survives a neuter one layer down; others are green at
+every cut of their mechanism, having no term any of them can move. So a single cut undercounts, and a
+fixture is asked only the cuts it reaches, declared in `scripts/neuter-cuts.json`. Asking a
 parser-only fixture an applier cut reports its whole body as holes, which has happened on two separate
 rebuilds of this instrument. `NeuterCutAnchorTests` fails in CI when an anchor stops matching exactly once,
 so a rename is caught by the pull request that makes it rather than by the next sweep.
