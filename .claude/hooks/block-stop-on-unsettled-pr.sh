@@ -46,14 +46,26 @@ STALE_AFTER=180
 DEFERRALS="$HOME/.velvet-pr-deferrals"
 DEFER_TTL=2700
 
+# Sets DEFER_REASON and DEFER_AGE when a live deferral covers this PR. The reason is free text
+# nothing can check, so a stale one silences the guard exactly as well as a true one — which is what
+# happened: a PR was held as "fix agent working" after the agent had finished and its work sat
+# unpushed in a worktree. Suppression is therefore never silent; the PR is still printed, with what
+# was claimed and how long ago, so a reason that has stopped being true is in front of the reader
+# instead of behind them.
 deferred() {
+  DEFER_REASON=""
+  DEFER_AGE=""
   [ -f "$DEFERRALS" ] || return 1
   local line stamp
   line=$(grep "^$1 " "$DEFERRALS" 2>/dev/null | tail -1) || return 1
   [ -n "$line" ] || return 1
   stamp=${line##* }
   case "$stamp" in ''|*[!0-9]*) return 1 ;; esac
-  [ $(( $(date +%s) - stamp )) -lt "$DEFER_TTL" ]
+  [ $(( $(date +%s) - stamp )) -lt "$DEFER_TTL" ] || return 1
+  DEFER_REASON=${line#"$1 "}
+  DEFER_REASON=${DEFER_REASON% *}
+  DEFER_AGE=$(( ($(date +%s) - stamp) / 60 ))
+  return 0
 }
 
 watcher_is_alive() {
@@ -68,8 +80,13 @@ prs=$(gh pr list --state open --json number --jq '.[].number' 2>/dev/null) || ex
 [ -z "$prs" ] && exit 0
 
 blocked=""
+held=""
 for pr in $prs; do
-  deferred "$pr" && continue
+  if deferred "$pr"; then
+    held="$held
+  PR #$pr — held ${DEFER_AGE}m ago because: $DEFER_REASON"
+    continue
+  fi
   checks=$(gh pr checks "$pr" --json name,bucket 2>/dev/null || echo "[]")
 
   count=$(echo "$checks" | jq 'length' 2>/dev/null || echo 0)
@@ -126,11 +143,22 @@ for pr in $prs; do
   fi
 done
 
-[ -z "$blocked" ] && exit 0
+if [ -z "$blocked" ]; then
+  # A held PR still gets said out loud on the way past, so the claim is re-read rather than trusted.
+  if [ -n "$held" ]; then
+    cat >&2 <<EOF
+Held, not settled — check each reason is still true:
+$held
+EOF
+  fi
+  exit 0
+fi
 
 cat >&2 <<EOF
 Do not stop: an open PR has not settled.
 $blocked
+${held:+
+Held on purpose, and worth re-reading:}$held
 
 Holding one on purpose is allowed and expires after 45 minutes, so the reason gets re-examined
 rather than forgotten:
