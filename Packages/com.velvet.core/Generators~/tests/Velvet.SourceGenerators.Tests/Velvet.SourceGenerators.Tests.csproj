@@ -28,6 +28,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AssemblyMetadata Include="Velvet.CodeShape" Value="enforce" />
+    <ProjectReference Include="..\..\src\Velvet.SourceGenerators.Bootstrap\Velvet.SourceGenerators.Bootstrap.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Remove="Snapshots\**\*" />
     <None Include="Snapshots\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

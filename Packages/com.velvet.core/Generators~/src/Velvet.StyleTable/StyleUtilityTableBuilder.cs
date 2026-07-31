@@ -55,20 +55,19 @@ namespace Velvet.StyleTable
             var parsed = sheets.Select(s => UssStyleSheetParser.Parse(s.Path, s.Text)).ToList();
             ReportOrderThatContradictsTheImports(parsed, problems);
 
-            var accumulated = new Dictionary<string, MutableEntry>(StringComparer.Ordinal);
-            var transitions = new List<StyleTransitionTableEntry>();
+            var accumulator = new TableAccumulator(bitOf, problems);
             foreach (var sheet in parsed)
             {
-                CollectSheet(sheet, bitOf, accumulated, transitions, problems);
+                CollectSheet(sheet, accumulator);
             }
 
-            var entries = accumulated.Values
+            var entries = accumulator.Entries.Values
                 .OrderBy(e => e.ClassName, StringComparer.Ordinal)
                 .Select(e => new StyleUtilityTableEntry(e.ClassName, e.Gate, e.Word0, e.Word1))
                 .ToImmutableArray();
 
             return new StyleUtilityTableResult(
-                new StyleUtilityTable(longhands, entries, transitions.ToImmutableArray()),
+                new StyleUtilityTable(longhands, entries, accumulator.Transitions.ToImmutableArray()),
                 problems.ToImmutable());
         }
 
@@ -141,16 +140,11 @@ namespace Velvet.StyleTable
             }
         }
 
-        private static void CollectSheet(
-            UssSheet sheet,
-            Dictionary<string, int> bitOf,
-            Dictionary<string, MutableEntry> accumulated,
-            List<StyleTransitionTableEntry> transitions,
-            ImmutableArray<UssProblem>.Builder problems)
+        private static void CollectSheet(UssSheet sheet, TableAccumulator accumulator)
         {
             foreach (var error in sheet.Errors)
             {
-                problems.Add(sheet.ProblemAt(
+                accumulator.Problems.Add(sheet.ProblemAt(
                     UssProblemCode.MalformedUss,
                     "Could not read the stylesheet: " + error.Message + ".",
                     error.Offset));
@@ -162,7 +156,7 @@ namespace Velvet.StyleTable
                 // partials it names carry every property the table needs.
                 if (!atRule.Text.StartsWith("@import", StringComparison.Ordinal))
                 {
-                    problems.Add(sheet.ProblemAt(
+                    accumulator.Problems.Add(sheet.ProblemAt(
                         UssProblemCode.UnsupportedConstruct,
                         $"'{atRule.Text}' is not a USS construct the utility property table can model.",
                         atRule.Offset));
@@ -173,7 +167,7 @@ namespace Velvet.StyleTable
             {
                 foreach (var target in UssSelector.Classify(rule.Selector))
                 {
-                    CollectRule(sheet, rule, target, bitOf, accumulated, transitions, problems);
+                    CollectRule(sheet, rule, target, accumulator);
                 }
             }
         }
@@ -182,15 +176,12 @@ namespace Velvet.StyleTable
             UssSheet sheet,
             UssRule rule,
             UssSelectorTarget target,
-            Dictionary<string, int> bitOf,
-            Dictionary<string, MutableEntry> accumulated,
-            List<StyleTransitionTableEntry> transitions,
-            ImmutableArray<UssProblem>.Builder problems)
+            TableAccumulator accumulator)
         {
             switch (target.Kind)
             {
                 case UssSelectorKind.Unsupported:
-                    problems.Add(sheet.ProblemAt(
+                    accumulator.Problems.Add(sheet.ProblemAt(
                         UssProblemCode.UnsupportedConstruct,
                         $"'{rule.Selector}' is not a selector the table can model. It models a class, " +
                         "optionally gated on a pseudo-class or the is-selected marker, plus :root blocks, " +
@@ -203,7 +194,7 @@ namespace Velvet.StyleTable
                     {
                         if (!declaration.IsCustomProperty)
                         {
-                            problems.Add(sheet.ProblemAt(
+                            accumulator.Problems.Add(sheet.ProblemAt(
                                 UssProblemCode.RootDeclaresNonCustomProperty,
                                 $"':root' declares '{declaration.Property}'. The table skips :root because " +
                                 "custom properties are values var() reads, not properties an element holds; " +
@@ -224,14 +215,14 @@ namespace Velvet.StyleTable
                 return;
             }
 
-            if (!accumulated.TryGetValue(target.ClassName, out var entry))
+            if (!accumulator.Entries.TryGetValue(target.ClassName, out var entry))
             {
                 entry = new MutableEntry(target.ClassName, target.Gate);
-                accumulated.Add(target.ClassName, entry);
+                accumulator.Entries.Add(target.ClassName, entry);
             }
             else if (entry.Gate != target.Gate)
             {
-                problems.Add(sheet.ProblemAt(
+                accumulator.Problems.Add(sheet.ProblemAt(
                     UssProblemCode.ClassSpansMultipleGates,
                     $"Utility class '{target.ClassName}' is defined under gate '{entry.Gate}' and again " +
                     $"under gate '{target.Gate}'. A gated and an ungated rule are different cascade layers " +
@@ -244,7 +235,7 @@ namespace Velvet.StyleTable
             {
                 if (declaration.IsCustomProperty)
                 {
-                    problems.Add(sheet.ProblemAt(
+                    accumulator.Problems.Add(sheet.ProblemAt(
                         UssProblemCode.UtilityDeclaresCustomProperty,
                         $"Utility class '{target.ClassName}' declares custom property " +
                         $"'{declaration.Property}' beside properties it sets on the element itself. A rule " +
@@ -255,7 +246,7 @@ namespace Velvet.StyleTable
                 }
                 if (!UssPropertyVocabulary.TryResolve(declaration.Property, out var longhands))
                 {
-                    problems.Add(sheet.ProblemAt(
+                    accumulator.Problems.Add(sheet.ProblemAt(
                         UssProblemCode.UnknownProperty,
                         $"'{declaration.Property}' is not a UI Toolkit longhand or shorthand. Add it to " +
                         "UssPropertyVocabulary if a newer Unity introduced it.",
@@ -264,7 +255,7 @@ namespace Velvet.StyleTable
                 }
                 foreach (var longhand in longhands)
                 {
-                    entry.Set(bitOf[longhand]);
+                    entry.Set(accumulator.BitOf[longhand]);
                 }
                 if (!string.Equals(declaration.Property, TransitionProperty, StringComparison.Ordinal))
                 {
@@ -272,7 +263,7 @@ namespace Velvet.StyleTable
                 }
                 if (target.Gate != UssGate.None)
                 {
-                    problems.Add(sheet.ProblemAt(
+                    accumulator.Problems.Add(sheet.ProblemAt(
                         UssProblemCode.GatedTransitionProperty,
                         $"Utility class '{target.ClassName}' declares transition-property under gate " +
                         $"'{target.Gate}'. MotionNativeTransitionGuard answers from an element's class list " +
@@ -282,7 +273,7 @@ namespace Velvet.StyleTable
                         declaration.Offset));
                     continue;
                 }
-                CollectTransitionDeclaration(sheet, target.ClassName, declaration, bitOf, transitions, problems);
+                CollectTransitionDeclaration(sheet, target.ClassName, declaration, accumulator);
             }
         }
 
@@ -295,9 +286,7 @@ namespace Velvet.StyleTable
             UssSheet sheet,
             string className,
             UssDeclaration declaration,
-            Dictionary<string, int> bitOf,
-            List<StyleTransitionTableEntry> transitions,
-            ImmutableArray<UssProblem>.Builder problems)
+            TableAccumulator accumulator)
         {
             var word0 = 0UL;
             var word1 = 0UL;
@@ -311,7 +300,7 @@ namespace Velvet.StyleTable
                 if (string.Equals(name, "all", StringComparison.Ordinal)
                     || string.Equals(name, "initial", StringComparison.Ordinal))
                 {
-                    foreach (var bit in bitOf.Values)
+                    foreach (var bit in accumulator.BitOf.Values)
                     {
                         Set(bit, ref word0, ref word1);
                     }
@@ -319,7 +308,7 @@ namespace Velvet.StyleTable
                 }
                 if (!UssPropertyVocabulary.TryResolve(name, out var longhands))
                 {
-                    problems.Add(sheet.ProblemAt(
+                    accumulator.Problems.Add(sheet.ProblemAt(
                         UssProblemCode.UnknownTransitionProperty,
                         $"Utility class '{className}' transitions '{name}', which is neither a UI Toolkit " +
                         "property nor the all/none keyword. A name the engine does not know transitions " +
@@ -329,11 +318,12 @@ namespace Velvet.StyleTable
                 }
                 foreach (var longhand in longhands)
                 {
-                    Set(bitOf[longhand], ref word0, ref word1);
+                    Set(accumulator.BitOf[longhand], ref word0, ref word1);
                 }
             }
-            transitions.RemoveAll(entry => string.Equals(entry.ClassName, className, StringComparison.Ordinal));
-            transitions.Add(new StyleTransitionTableEntry(className, word0, word1));
+            accumulator.Transitions.RemoveAll(
+                entry => string.Equals(entry.ClassName, className, StringComparison.Ordinal));
+            accumulator.Transitions.Add(new StyleTransitionTableEntry(className, word0, word1));
         }
 
         private static void Set(int bit, ref ulong word0, ref ulong word1)
@@ -346,6 +336,31 @@ namespace Velvet.StyleTable
             {
                 word1 |= 1UL << (bit - 64);
             }
+        }
+
+        /// <summary>
+        /// Everything one derivation writes as it walks the sheets. Travels as a unit because the collectors
+        /// hand it straight down: a sheet's rules reach the transition recorder three calls deep, and every
+        /// level in between would otherwise carry the parts it does not itself touch.
+        /// </summary>
+        private sealed class TableAccumulator
+        {
+            public TableAccumulator(Dictionary<string, int> bitOf, ImmutableArray<UssProblem>.Builder problems)
+            {
+                BitOf = bitOf;
+                Problems = problems;
+            }
+
+            /// <summary>Which bit of the property set each longhand owns.</summary>
+            public Dictionary<string, int> BitOf { get; }
+
+            public Dictionary<string, MutableEntry> Entries { get; } =
+                new Dictionary<string, MutableEntry>(StringComparer.Ordinal);
+
+            public List<StyleTransitionTableEntry> Transitions { get; } =
+                new List<StyleTransitionTableEntry>();
+
+            public ImmutableArray<UssProblem>.Builder Problems { get; }
         }
 
         private sealed class MutableEntry
