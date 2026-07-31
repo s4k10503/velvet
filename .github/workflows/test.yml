@@ -50,8 +50,9 @@ jobs:
       - id: check
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          FORCE_NO_LICENSE: "1"
         run: |
-          if [ -n "$UNITY_LICENSE" ]; then
+          if [ -n "$UNITY_LICENSE" ] && [ "$FORCE_NO_LICENSE" != "1" ]; then
             echo "has_license=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_license=false" >> "$GITHUB_OUTPUT"
