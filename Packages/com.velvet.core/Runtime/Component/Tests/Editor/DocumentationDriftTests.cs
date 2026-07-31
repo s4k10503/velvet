@@ -29,18 +29,18 @@ namespace Velvet.Tests
         // meta-syntactic placeholders standing in for something the reader supplies; API belonging to the
         // upstream libraries Velvet mirrors, which exists there and deliberately not here; names from
         // Unity or the BCL — types, enum values, event names, asset labels — that the docs mention but no
-        // source file in this repo uses as code; names an external toolchain owns, which the contributor
-        // README states how to invoke — DOTNET_ROOT is the variable the .NET apphost reads, StrykerOutput
-        // the directory the mutation runner writes, ProjectReference the MSBuild item a project declares its
-        // dependencies with, which appears only in `*.csproj` — an extension the corpus does not scan; and the analyzer identifiers, which C# holds only as string literals and
-        // the corpus therefore strips.
+        // source file in this repo uses as code; names an external toolchain owns, which no source file
+        // here spells and which the contributor README quotes when it says how to invoke that toolchain —
+        // DOTNET_ROOT, StrykerOutput, MSB4006, ContinuousIntegrationBuild, ProjectReference. What each one
+        // does is the toolchain's to state and has been got wrong here more than once; the reason for the
+        // entry is only that the name is not code in this repository. And the analyzer identifiers, which
+        // C# holds only as string literals and the corpus therefore strips.
         //
         // That last group is checked, just not here: DocumentationDiagnosticTableTests over in the
-        // Generators~ suite reads the same README and compares its VEL and USS spellings against the real
-        // descriptors and against the derivation's real code range. Two entries sit outside even that.
-        // "VEL" is the ID space written as a shape (VEL###) rather than an ID, which that guard's VEL\d{3}
-        // pattern is right not to match; and "Shape" is the analyzer category Velvet.Shape, which no guard
-        // on either side pins — renaming the category would leave the README describing the old one.
+        // Generators~ suite reads the same README and compares its VEL and USS spellings, and the diagnostic
+        // categories it names, against the real descriptors and against the derivation's real code range.
+        // One entry sits outside even that: "VEL" is the ID space written as a shape (VEL###) rather than an
+        // ID, which that guard's VEL\d{3} pattern is right not to match.
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "ResolveDirection", "Inter", "CS",
@@ -48,8 +48,9 @@ namespace Velvet.Tests
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
-            "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "ProjectReference",
-            "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502", "VEL503", "Shape",
+            "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
+            "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502",
+            "ProjectReference", "VEL503"
         };
 
         private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef" };

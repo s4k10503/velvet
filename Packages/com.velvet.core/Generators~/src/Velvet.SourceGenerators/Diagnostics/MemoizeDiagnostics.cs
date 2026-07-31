@@ -7,11 +7,11 @@ namespace Velvet.SourceGenerators.Diagnostics
     /// </summary>
     internal static class MemoizeDiagnostics
     {
-        private const string Category = "Velvet.Memoize";
+        private const string Category = DiagnosticCategories.Memoize;
         // Per-analyzer category split: VEL100 / VEL101 are hook-rule diagnostics and must not be
         // silenced by a blanket Velvet.Memoize category suppression (e.g.
         // `dotnet_analyzer_diagnostic.category-Velvet.Memoize.severity = none`).
-        private const string HookCategory = "Velvet.Hooks";
+        private const string HookCategory = DiagnosticCategories.Hooks;
 
         private static DiagnosticDescriptor Warn(string id, string title, string messageFormat, string description) =>
             new(id, title, messageFormat, Category, DiagnosticSeverity.Warning, isEnabledByDefault: true, description);

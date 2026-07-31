@@ -88,6 +88,16 @@ This has produced a wrong conclusion (a paint was reported as surviving `overflo
 - **Put a control in the frame.** "The paint was clipped" and "the clip never applied" are indistinguishable without one — an overflowing child on the opposite side answers it in the same capture.
 - Log more than one axis. An x-only diagnostic read a 20px difference that was really a column layout with a 60px y-shift.
 
+## A player build is not just a slower run
+
+`-testPlatform StandaloneOSX` builds a player and runs the tests inside it. It is the only configuration that catches an asset or a shader missing from a build — and it behaves nothing like an editor run.
+
+- **It writes to tracked files** — `ProjectSettings/ProjectSettings.asset` (`m_ShowUnitySplashScreen`, `m_ShowUnitySplashLogo`, `runInBackground`, `resizableWindow`, `fullscreenMode`), the whole `m_Prefiltering*` shader-stripping block in `Assets/Settings/VelvetURPAsset.asset`, `Assets/UniversalRenderPipelineGlobalSettings.asset`, and `Assets/DefaultVolumeProfile.asset` at +785 lines — plus untracked `Assets/InitTestScene*.unity` when a run is killed. None of it is anyone's change; `git restore --` by path clears the four tracked ones. `git add -A` after a player build commits the lot, which is one more reason the rule against it exists.
+- **Run it detached. Foreground is what makes the orphans.** The Bash tool caps at ten minutes whatever timeout is passed, and a player build takes longer, so it SIGTERMs the editor out from under a player that is already up — and killing the editor does not kill the player. The orphan then holds the profiler port and the *next* player run builds, launches, connects and dies with `No activity received from the player in 600 seconds`, which reads as contention from somewhere else entirely.
+- **Reap with `ps -Ao command= | grep '[P]layerWithTests'`.** A pattern aimed at the editor process misses it: the orphan's command line is `<worktree>/Temp/UnityTempFile-*/PlayerWithTests/PlayerWithTests.app`, carrying neither `Unity` nor `-projectPath`. Three accumulated on this machine before anyone looked for the right string, and one spent twenty-two minutes killing the runs of the agent that had created it.
+- **Player runs need the machine to themselves**, not merely "no other run of mine". The profiler connection binds to the host.
+- **Most pixel fixtures cannot pass there at all.** `RenderTexturePanelHost` builds its `PanelSettings` with `ScriptableObject.CreateInstance`, which carries no theme in a player, so anything that renders fails on a null shader. In one measurement 104 of 119 cases failed and the 15 that passed were exactly the ones that never render. Build the player proof out of something other than a pixel read.
+
 ## Reading a result you intend to report
 
 - EditMode batchmode does not run layout. A test that reads `resolvedStyle` must force it through the panel's `ApplyStyles`/`UpdateForRepaint`, or it silently measures nothing. Assertions on measured values belong in PlayMode.
