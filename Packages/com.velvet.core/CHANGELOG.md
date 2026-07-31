@@ -83,6 +83,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The semantic colour tokens are two opaque theme sets instead of one translucent one, and a light theme
+  now exists. `_tokens.uss` declared 27 of its 31 `--color-*` values with an alpha — twelve as white overlays, twelve
+  as translucent accents and three near-black — and no background at all, so the layer could not render itself on a bare panel, `bg-surface` inside
+  `bg-surface` composited to a third colour neither of them declares, and `--color-text` being an opaque
+  near-white left the whole layer dark by construction with nothing to switch to. It now declares
+  `--color-background` and a light set on `:root`, a dark set on `.dark`, and every colour that varies by
+  theme is opaque — two nested elements carrying one background utility land on one colour. **The light
+  set is the default**: an application built on the old dark-only tokens sets `VelvetTheme.IsDark = true`,
+  which is the same flag the `dark:` variants already answer to —
+  `VelvetStyleUtilities.AttachTo` binds the root it attaches the sheet to so the class the dark set keys
+  on follows that flag, and `VelvetStyleUtilities.BindThemeTo(root)` does the binding for a panel that
+  gets the sheet from a scene reference instead. The new `bg-background` utility paints the page colour.
+  The tokens naming a strength rather than a role — the `--color-white-*` ladder, `--color-overlay*`,
+  `--color-shadow` — keep their alpha, and are declared once for both themes.
+  Utilities drawn from `_palette.uss`'s Tailwind scale are untouched. The preview window's Dark toggle now
+  defaults on, matching the dark stage backdrop it already defaulted to.
+  `Documentation~/styling-variants.md` owns the selection mechanism.
 - `ring-*` / `outline-*` behind a variant now renders. `focus:ring-2`, `hover:ring-1`,
   `dark:outline-2` and every other variant form used to toggle a class that drew nothing; they now
   raise and drop the band as the state changes. The band no longer wraps the ringed element either:

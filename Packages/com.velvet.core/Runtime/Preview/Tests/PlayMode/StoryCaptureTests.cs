@@ -48,29 +48,28 @@ namespace Velvet.Tests
         private static readonly Font s_builtinFont =
             Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
-        // _tokens.uss's semantic colors are translucent whites meant to composite over a backdrop the host
-        // supplies — --color-surface is rgba(255,255,255,0.12), --color-border rgba(255,255,255,0.36) —
-        // while --color-text is an opaque near-white, and no background token is declared. A story built
-        // from those (the example set is) captured without a backdrop composites near-white onto nothing
-        // and reads as blank, having passed every check that asks only whether pixels differ. The whole
-        // requirement is that it be opaque and dark enough for that layer to separate — deliberately not
-        // pinned to the preview window's own backdrop, which is private to the editor assembly, so writing
-        // its value here would be an unpinned mirror that drifts the first time the window is restyled.
-        // Utilities drawn from _palette.uss's Tailwind scale are opaque and would not have needed this.
-        private static readonly Color BackdropBehindTheStory = new(0.09f, 0.10f, 0.13f, 1f);
+        // A story built from the semantic tokens (the example set is) paints onto whatever is behind it, so
+        // what goes behind it here is that layer's own page colour rather than one this fixture invented.
+        // Utilities drawn from _palette.uss's Tailwind scale carry their own colour and never needed it.
+        private const string BackdropClass = "bg-background";
 
         private TargetFrameRateScope _frameRateScope;
+        private bool _darkBefore;
 
         [UnitySetUp]
         public IEnumerator UnitySetUp()
         {
             _frameRateScope = new TargetFrameRateScope(120);
+            // Captured on the dark set, which is what the preview window shows over its own dark stage.
+            _darkBefore = VelvetTheme.IsDark;
+            VelvetTheme.IsDark = true;
             yield break;
         }
 
         [UnityTearDown]
         public IEnumerator UnityTearDown()
         {
+            VelvetTheme.IsDark = _darkBefore;
             _frameRateScope.Dispose();
             yield return null;
         }
@@ -193,7 +192,7 @@ namespace Velvet.Tests
             using var host = new RenderTexturePanelHost(story.Id, width, height);
             host.Root.style.unityFontDefinition =
                 new StyleFontDefinition(FontDefinition.FromFont(s_builtinFont));
-            host.Root.style.backgroundColor = BackdropBehindTheStory;
+            host.Root.AddToClassList(BackdropClass);
             // The panel root stretches to the texture's width on its own but its height hugs its content —
             // measured at 95 of 200, 144 of 320 and 1230 of 1400 before this was set. A story authored with
             // `h-full` then resolves against whatever its own content happened to be tall, which is
