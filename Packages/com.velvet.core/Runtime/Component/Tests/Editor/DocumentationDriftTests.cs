@@ -37,11 +37,10 @@ namespace Velvet.Tests
         // C# holds only as string literals and the corpus therefore strips.
         //
         // That last group is checked, just not here: DocumentationDiagnosticTableTests over in the
-        // Generators~ suite reads the same README and compares its VEL and USS spellings against the real
-        // descriptors and against the derivation's real code range. Two entries sit outside even that.
-        // "VEL" is the ID space written as a shape (VEL###) rather than an ID, which that guard's VEL\d{3}
-        // pattern is right not to match; and "Shape" is the analyzer category Velvet.Shape, which no guard
-        // on either side pins — renaming the category would leave the README describing the old one.
+        // Generators~ suite reads the same README and compares its VEL and USS spellings, and the diagnostic
+        // categories it names, against the real descriptors and against the derivation's real code range.
+        // One entry sits outside even that: "VEL" is the ID space written as a shape (VEL###) rather than an
+        // ID, which that guard's VEL\d{3} pattern is right not to match.
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "ResolveDirection", "Inter", "CS",
@@ -50,7 +49,7 @@ namespace Velvet.Tests
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
-            "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502", "Shape",
+            "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502",
             "ProjectReference", "VEL503"
         };
 

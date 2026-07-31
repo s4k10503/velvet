@@ -6,23 +6,29 @@ using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
+using Velvet.SourceGenerators.Diagnostics;
 using Velvet.StyleTable;
 using Xunit;
 
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Doc-drift guard for the diagnostic identifiers: memoization.md's table and Generators~/README.md must
-    /// not talk about a VEL### ID the generator/analyzer assembly does not define, nor about a USS### range
-    /// wider or narrower than the derivation's own codes — the class of bug that once left the docs
-    /// describing a contiguous "VEL001-011" range while the real IDs are the non-contiguous VEL001-009 /
-    /// VEL100-101.
+    /// Doc-drift guard for the diagnostic identifiers and the categories that group them: memoization.md's
+    /// table and Generators~/README.md must not talk about a VEL### ID the generator/analyzer assembly does
+    /// not define, nor about a USS### range wider or narrower than the derivation's own codes — the class of
+    /// bug that once left the docs describing a contiguous "VEL001-011" range while the real IDs are the
+    /// non-contiguous VEL001-009 / VEL100-101 — nor name a category no descriptor carries.
     /// </summary>
     public sealed class DocumentationDiagnosticTableTests
     {
         private static readonly Regex DiagnosticIdPattern = new(@"VEL\d{3}", RegexOptions.Compiled);
 
         private static readonly Regex UssProblemCodePattern = new(@"USS\d{3}", RegexOptions.Compiled);
+
+        // A category is one word under the Velvet root — the shape AnalyzerReleases.Unshipped.md's ID-range
+        // convention uses — so a longer dotted span, a file or project name, is not read as one.
+        private static readonly Regex VelvetNameSpanPattern =
+            new(@"`(Velvet\.[A-Za-z0-9_]+)`", RegexOptions.Compiled);
 
         // "Velvet.Memoize" is the [MemoizeMethod]-attribute diagnostic category (VEL001-009). memoization.md's
         // table intentionally documents only this category and points elsewhere (AnalyzerReleases.Unshipped.md)
@@ -59,6 +65,45 @@ namespace Velvet.SourceGenerators.Tests
             Assert.True(undefinedInReadme.Count == 0,
                 "Generators~/README.md mentions VEL IDs with no matching DiagnosticDescriptor: " +
                 $"[{string.Join(", ", undefinedInReadme)}]");
+        }
+
+        [Fact]
+        public void Given_TheGeneratorsReadme_When_ComparedAgainstAllDescriptors_Then_ItNamesOnlyRealCategories()
+        {
+            // Arrange — the solution's namespaces join the categories: the README names both, and the two
+            // are indistinguishable by shape.
+            var known = AllDiagnosticDescriptors().Select(descriptor => descriptor.Category)
+                .Concat(DeclaredNamespaces())
+                .ToHashSet();
+
+            // Act
+            var unknown = NamedVelvetSpans(File.ReadAllText(GeneratorsReadmePath()))
+                .Except(known)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
+
+            // Assert
+            Assert.True(unknown.Count == 0,
+                "Generators~/README.md names Velvet.* spans that are neither a DiagnosticDescriptor category "
+                + $"nor a namespace this solution declares: [{string.Join(", ", unknown)}]");
+        }
+
+        [Fact]
+        public void Given_TheCodeShapeDescriptors_When_ComparedAgainstTheGeneratorsReadme_Then_TheirCategoryIsNamedThere()
+        {
+            // Arrange — without this, the check above passes on a README that names no category at all, which
+            // is also what a broken extraction looks like.
+            var carried = DescriptorsDeclaredOn(typeof(CodeShapeDiagnostics))
+                .Select(descriptor => descriptor.Category)
+                .Distinct()
+                .OrderBy(category => category, StringComparer.Ordinal)
+                .ToList();
+
+            // Act
+            var named = NamedVelvetSpans(File.ReadAllText(GeneratorsReadmePath()));
+
+            // Assert
+            Assert.Equal(carried, carried.Where(named.Contains).ToList());
         }
 
         [Fact]
@@ -101,34 +146,42 @@ namespace Velvet.SourceGenerators.Tests
         private static HashSet<string> ExtractIds(string text) =>
             DiagnosticIdPattern.Matches(text).Select(m => m.Value).ToHashSet();
 
+        private static HashSet<string> NamedVelvetSpans(string text) =>
+            VelvetNameSpanPattern.Matches(text).Select(m => m.Groups[1].Value).ToHashSet();
+
         // Reflects over every type in the generator/analyzer assembly — not just MemoizeDiagnostics — so a
         // future diagnostic-definition class is picked up automatically instead of needing this test updated.
-        private static List<DiagnosticDescriptor> AllDiagnosticDescriptors()
+        private static List<DiagnosticDescriptor> AllDiagnosticDescriptors() =>
+            TypesIn(typeof(MemoizeMethodGenerator).Assembly).SelectMany(DescriptorsDeclaredOn).ToList();
+
+        private static List<DiagnosticDescriptor> DescriptorsDeclaredOn(Type type) =>
+            type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+                .Where(field => field.FieldType == typeof(DiagnosticDescriptor))
+                .Select(field => field.GetValue(null) as DiagnosticDescriptor)
+                .Where(descriptor => descriptor != null)
+                .ToList()!;
+
+        // Both assemblies, because the README describes both halves of this solution and writes their
+        // namespaces the same way it writes a category.
+        private static HashSet<string> DeclaredNamespaces() =>
+            new[] { typeof(MemoizeMethodGenerator).Assembly, typeof(UssProblem).Assembly }
+                .SelectMany(TypesIn)
+                .Select(type => type.Namespace)
+                .Where(name => name != null)
+                .ToHashSet()!;
+
+        // A type that fails to load still carries the name a document may reference, so the partial result is
+        // kept rather than thrown from.
+        private static Type[] TypesIn(Assembly assembly)
         {
-            var assembly = typeof(MemoizeMethodGenerator).Assembly;
-            Type[] types;
             try
             {
-                types = assembly.GetTypes();
+                return assembly.GetTypes();
             }
             catch (ReflectionTypeLoadException ex)
             {
-                types = ex.Types.Where(t => t != null).ToArray()!;
+                return ex.Types.Where(type => type != null).ToArray()!;
             }
-
-            var descriptors = new List<DiagnosticDescriptor>();
-            foreach (var type in types)
-            {
-                foreach (var field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
-                {
-                    if (field.FieldType == typeof(DiagnosticDescriptor) &&
-                        field.GetValue(null) is DiagnosticDescriptor descriptor)
-                    {
-                        descriptors.Add(descriptor);
-                    }
-                }
-            }
-            return descriptors;
         }
 
         private static string MemoizationDocPath() =>
