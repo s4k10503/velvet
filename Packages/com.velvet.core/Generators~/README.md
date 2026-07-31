@@ -35,6 +35,7 @@ dotnet test Velvet.SourceGenerators.sln
 - `StyleUtilityTableTests` — one case per USS shape the bundled stylesheets contain, plus the problem each shape they do not produces. Compiles and calls the emitted table rather than pattern-matching its source, which is what puts the bit packing under assertion and is also the only place the emitted C# is proved to compile
 - `CodeShapeBacklogDriftTests` — re-measures the three code-shape limits over the package's own sources and fails on any violation. This is the only job that verifies the marked assemblies pass: `unity-tests` is skipped unless a `UNITY_LICENSE` secret is set, so on a fork or an outside contributor's PR nothing else compiles them. It parses each file both with and without `UNITY_EDITOR` defined, because a body inside an `#if UNITY_EDITOR` is real code in one assembly and disabled text in another, and a scan that saw only one of those would miss several hundred members
 - `SolutionProjectMembershipDriftTests` — compares the `*.csproj` files on disk against what `Velvet.SourceGenerators.sln` names and maps to a build configuration. A project the solution omits, and that no member reaches by `ProjectReference`, is built by nothing: its analyzers never run while the guards that read its sources off disk keep reporting on them — the same silent exemption the opt-in guard closes, one level further out where it cannot see it. Reachability rather than membership is what decides whether a compiler ever sees the file, measured by referencing an omitted project from a member and watching a syntax error in it fail the build; membership is the convention this repository holds to on top of that
+- `DocumentationDiagnosticTableTests` — reads this file's diagnostic IDs, failure-code range endpoints and analyzer category names, and [Documentation~/memoization.md](../Documentation~/memoization.md)'s diagnostic table, back against the descriptors and the derivation. The category half is what makes a rename in the descriptors red here rather than leaving this file describing one that is gone
 - `BundledStyleSheetCensusTests` — re-derives the table from `../Runtime/Styles/*.uss` and compares it against the committed `../Runtime/Styling/StyleUtilityProperties.g.cs`, and pins the selector-shape and property census the derivation is designed around. This is what makes committing the table safe: a stylesheet edit not accompanied by a regenerated table, or one that introduces an unsurveyed shape, fails here rather than downstream where a class missing from the table is indistinguishable from a class that conflicts with nothing
 
 ## Mutation testing
@@ -60,7 +61,32 @@ Read survivors rather than the score, and read each one's `coveredBy` in the JSO
 
 **No CI job runs this, and none should gate on it.** A full run is around half an hour against 13 seconds for `dotnet test`, and a threshold would sit on the run-to-run movement described above, so it would be slow and flaky both. A scheduled run reporting the score was rejected for the reason the coverage report already demonstrates: a number nobody has to act on is a number nobody reads.
 
-Nothing equivalent exists for the Unity assemblies. Stryker mutates source and rebuilds through an MSBuild project graph, and Unity compiles asmdefs inside the editor with this package's ILPP in the pipeline — so every mutant would cost an editor recompile plus a full suite run, with no way to amortise it.
+### The Unity assemblies
+
+Stryker cannot reach them: it mutates source and rebuilds through an MSBuild project graph, and Unity compiles asmdefs inside the editor with this package's ILPP in the pipeline. `../../../scripts/mutation-check.py` asks the same question of them without it, scoped to the lines a branch changed rather than to the package:
+
+```bash
+python3 scripts/mutation-check.py --base main --list    # the mutants it would run, without running any
+python3 scripts/mutation-check.py --base main
+python3 scripts/mutation-check.py --files Packages/com.velvet.core/Runtime/Store/Store.cs
+python3 scripts/mutation-check.py --files <source> --filter Velvet.Tests.SomeFixture
+```
+
+Every mutant is one batchmode launch, since the mutated source has to be compiled before the runner starts and there is no coverage pass to attribute it to fewer fixtures. Launching the editor, not running the tests, is the larger half of that: the whole EditMode suite is under half of a mutant's wall clock, so narrowing the run buys little and would let a mutant read as surviving because the fixture that would have killed it was out of scope. A branch touching a few methods is minutes; the package is not, which is why the diff is the unit.
+
+The last form narrows anyway, because it asks a different question — the one to reach for when a fixture is under suspicion rather than a change. A whole-suite run answers whether anything notices, so a fixture that asks nothing stays invisible behind every other test that does; narrowed to one fixture, a surviving mutant is that fixture not noticing.
+
+Only changed lines are mutated, and only in the shapes it knows: a spaced binary operator, a boolean literal, and a statement whose entire value is a call, which it deletes. A change can therefore yield no mutants at all — a rename, a move, a signature — which `--list` shows for free and which means the run asked nothing, not that everything survived scrutiny.
+
+Three of the verdicts need reading rather than counting:
+
+- **survived** — no test failed. Either a test that never asked about the mutated behaviour, or a mutation the behaviour does not depend on.
+- **not rebuilt** — the assembly came out byte-identical to the baseline, so the suite ran the unmutated binary and answered nothing. This is what an edit the editor never compiled looks like, and it is the only case the check catches: a mutation the compiler did see but discarded — one inside an `#if` the editor does not define — still comes out as a different assembly and reads as **survived**, which was measured on this package rather than assumed.
+- **killed** — the failing tests are named, because a mutant killed only by a test that also fails on an unmutated tree was killed by nothing, and because whether the fixture that caught it is the one named for the behaviour is the second question worth asking of a kill.
+
+A run that does not finish inside `--timeout` is counted as killed and says so: a mutation that leaves the suite running forever — an inverted loop bound, most often — did change the behaviour, and the alternative is a harness that waits on it for as long as the machine is left alone.
+
+It computes no score, for the reason the paragraph above gives about this solution's: the denominator is a different set of changed lines on every branch, so the ratio is not comparable with itself and only the survivors are worth reading. A red or inconclusive baseline stops the run before any mutant is applied — a suite that fails on its own would report mutants as killed by its own flakiness, which is worse than no run at all.
 
 ## Directory layout
 

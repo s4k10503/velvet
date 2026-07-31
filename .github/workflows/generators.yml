@@ -16,7 +16,10 @@ name: Source generators
 # setup.md is re-included after the blanket markdown exclusion because a guard here re-derives one of its
 # claims from the bundled stylesheets, and the Unity workflow excludes Documentation~ outright: without
 # this line a PR touching only that guide runs no suite at all, which is precisely when the claim drifts.
-# The re-include must stay after '!**.md' — the last matching pattern is the one that decides.
+# The contributor README is re-included for the same reason — guards here read the diagnostic IDs, the
+# failure-code range and the analyzer categories it names back against the code that defines them, and the
+# Unity workflow excludes Generators~ outright.
+# A re-include must stay after '!**.md' — the last matching pattern is the one that decides.
 on:
   push:
     branches: [main]
@@ -25,6 +28,7 @@ on:
       - '.github/workflows/generators.yml'
       - '!**.md'
       - 'Packages/com.velvet.core/Documentation~/setup.md'
+      - 'Packages/com.velvet.core/Generators~/README.md'
   pull_request:
     branches: [main]
     paths:
@@ -32,6 +36,7 @@ on:
       - '.github/workflows/generators.yml'
       - '!**.md'
       - 'Packages/com.velvet.core/Documentation~/setup.md'
+      - 'Packages/com.velvet.core/Generators~/README.md'
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref.

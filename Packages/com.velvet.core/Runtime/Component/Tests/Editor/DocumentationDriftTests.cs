@@ -37,11 +37,10 @@ namespace Velvet.Tests
         // C# holds only as string literals and the corpus therefore strips.
         //
         // That last group is checked, just not here: DocumentationDiagnosticTableTests over in the
-        // Generators~ suite reads the same README and compares its VEL and USS spellings against the real
-        // descriptors and against the derivation's real code range. Two entries sit outside even that.
-        // "VEL" is the ID space written as a shape (VEL###) rather than an ID, which that guard's VEL\d{3}
-        // pattern is right not to match; and "Shape" is the analyzer category Velvet.Shape, which no guard
-        // on either side pins — renaming the category would leave the README describing the old one.
+        // Generators~ suite reads the same README and compares its VEL and USS spellings, and the diagnostic
+        // categories it names, against the real descriptors and against the derivation's real code range.
+        // One entry sits outside even that: "VEL" is the ID space written as a shape (VEL###) rather than an
+        // ID, which that guard's VEL\d{3} pattern is right not to match.
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "ResolveDirection", "Inter", "CS",
@@ -50,7 +49,7 @@ namespace Velvet.Tests
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
-            "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502", "Shape",
+            "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502",
             "ProjectReference", "VEL503"
         };
 
@@ -136,26 +135,6 @@ namespace Velvet.Tests
             + "|\"(?:\\\\.|[^\"\\\\\n])*\"|/\\*.*?\\*/|//[^\n]*",
             RegexOptions.Compiled | RegexOptions.Singleline);
 
-        // Unity's CWD during a test run is the project root (see CLAUDE.md), so these resolve the same way
-        // whether the suite runs from the Editor or from -runTests batchmode.
-        private static string DocumentationDirectory => Path.GetFullPath("Packages/com.velvet.core/Documentation~");
-
-        // Yields (path, label) pairs. The label disambiguates the two identically-named README.md files
-        // (repo root vs the package) in failure messages, since Path.GetFileName alone collapses both to
-        // the same string.
-        private static IEnumerable<(string Path, string Label)> TargetMarkdownFiles()
-        {
-            foreach (var file in Directory.GetFiles(DocumentationDirectory, "*.md"))
-            {
-                yield return (file, "Documentation~/" + Path.GetFileName(file));
-            }
-            yield return (Path.GetFullPath("README.md"), "README.md (repo root)");
-            yield return (Path.GetFullPath("Packages/com.velvet.core/README.md"), "Packages/com.velvet.core/README.md");
-            yield return (Path.GetFullPath("CLAUDE.md"), "CLAUDE.md");
-            yield return (Path.GetFullPath("Packages/com.velvet.core/Generators~/README.md"),
-                "Generators~/README.md");
-        }
-
         [Test]
         public void Given_DocumentationMarkdown_When_ScannedForVDotReferences_Then_EveryReferenceExistsOnV()
         {
@@ -207,11 +186,11 @@ namespace Velvet.Tests
         public void Given_DocumentationReadmeIndex_When_ComparedAgainstDirectoryContents_Then_LinksAndFilesMatchExactly()
         {
             // Arrange
-            var readmePath = Path.Combine(DocumentationDirectory, "README.md");
+            var readmePath = Path.Combine(DocumentationCorpus.DocumentationDirectory, "README.md");
             var linkedFiles = new HashSet<string>(
                 DocLinkPattern.Matches(File.ReadAllText(readmePath)).Select(m => m.Groups[1].Value));
             var actualFiles = new HashSet<string>(
-                Directory.GetFiles(DocumentationDirectory, "*.md")
+                Directory.GetFiles(DocumentationCorpus.DocumentationDirectory, "*.md")
                     .Select(Path.GetFileName)
                     .Where(name => name != "README.md"));
 
@@ -269,7 +248,7 @@ namespace Velvet.Tests
         private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract)
         {
             var unresolved = new List<string>();
-            foreach (var (path, label) in TargetMarkdownFiles())
+            foreach (var (path, label) in DocumentationCorpus.Files())
             {
                 var prose = FencedBlockPattern.Replace(File.ReadAllText(path), "\n");
                 foreach (Match span in BacktickSpanPattern.Matches(prose))
@@ -400,7 +379,7 @@ namespace Velvet.Tests
             Regex pattern, Func<string, string> select, Func<string, bool> isKnown, string prefix)
         {
             var unresolved = new List<string>();
-            foreach (var (path, label) in TargetMarkdownFiles())
+            foreach (var (path, label) in DocumentationCorpus.Files())
             {
                 var haystack = select(File.ReadAllText(path));
                 foreach (Match match in pattern.Matches(haystack))
