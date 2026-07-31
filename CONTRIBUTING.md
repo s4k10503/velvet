@@ -52,6 +52,22 @@ python3 scripts/mutation-check.py --base main
 [Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
 covers this and the generator solution's own run, and owns what the verdicts mean and how to read a survivor.
 
+A mutation asks whether any test depends on one line. `scripts/neuter-check.py` asks the other question a
+fixture's name makes — with the mechanism it is named for disabled, does it still pass?
+
+```bash
+python3 scripts/neuter-check.py --validate   # every anchor still matches exactly once, no editor needed
+python3 scripts/neuter-check.py
+```
+
+Which layer the cut is made at decides the answer. Some vacuous tests are green at the applier cut and red
+at the parser cut, because a gate read one layer up survives a neuter one layer down; others are green at
+every cut of their mechanism, having no term any of them can move. So a single cut undercounts, and a
+fixture is asked only the cuts it reaches, declared in `scripts/neuter-cuts.json`. Asking a
+parser-only fixture an applier cut reports its whole body as holes, which has happened on two separate
+rebuilds of this instrument. `NeuterCutAnchorTests` fails in CI when an anchor stops matching exactly once,
+so a rename is caught by the pull request that makes it rather than by the next sweep.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
