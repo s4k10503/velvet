@@ -203,9 +203,18 @@ namespace Velvet.SourceGenerators.Tests
 
         private static string SingleFileUnder(string root, string fileName)
         {
-            var found = Directory.Exists(root)
-                ? Directory.EnumerateFiles(root, fileName, SearchOption.AllDirectories).ToList()
-                : new List<string>();
+            // An absent bin directory and two matching assemblies are different accidents and want
+            // different answers. A project the solution does not name is never built, so it reaches here
+            // with nothing under bin at all — and "found 0" sends the reader after a build failure
+            // rather than after the missing solution entry, which is the thing that is actually wrong.
+            if (!Directory.Exists(root))
+            {
+                throw new InvalidOperationException(
+                    $"'{fileName}' was never built: no '{root}'. A project absent from "
+                    + "Velvet.SourceGenerators.sln is not compiled, so check the solution first.");
+            }
+
+            var found = Directory.EnumerateFiles(root, fileName, SearchOption.AllDirectories).ToList();
             if (found.Count != 1)
             {
                 throw new InvalidOperationException(
