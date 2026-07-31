@@ -202,7 +202,7 @@ namespace Velvet.Tests
             // x is inspected. This separates that inertness from a layout defect in Velvet: with the sheet
             // present the declared row and the declared overlap must both land.
             NewPanel("SheetBackedRow");
-            _host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root, V.Div(name: "row", className: "flex flex-row ml-[20px] mt-[70px]",
                 children: new VNode[]
                 {

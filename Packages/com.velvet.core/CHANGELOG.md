@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `VelvetStyleUtilities`, a runtime resolver for the bundled utility stylesheet:
+  `VelvetStyleUtilities.AttachTo(root)` puts it on a panel from the editor and from a player alike,
+  and `VelvetStyleUtilities.Sheet` returns the asset. Until now the sheet was reachable only through
+  `AssetDatabase`, which does not exist in a build, so a shipped game resolved every utility the sheet
+  declares to nothing, while arbitrary values and the many families Velvet resolves itself rather than
+  declaring — the `gap-*` / `divide-*` spacing, the painted and filter families, `animate-*` and more —
+  kept working: a missing sheet that reads as a partial styling bug. `Documentation~/setup.md` carries
+  the command that answers it per class. The sheet keeps its location under `Runtime/Styles/`; a
+  `Resources` asset that imports it is what makes it reachable, and that folder is now part of every
+  build of a project with the package installed. `Documentation~/setup.md` covers this and the
+  alternative of referencing the asset from a scene.
 - `VEL500`, a compile-time analyzer that reports a member body nesting control flow more than four levels
   deep, at error severity. It does not fire on your code: the rule is opt-in per assembly and only the
   package's own assemblies opt in, so upgrading cannot break a build that compiled before. An assembly that
@@ -25,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not counted — which is what leaves the `V.*` factories, whose long optional named lists stand in for JSX
   props, untouched. The same README defines what counts. One consequence for an assembly that opts in:
   `[MemoizeMethod]` supports 1-8 parameters, so its top two arities are unreachable there.
+- `VEL503`, a compile-time analyzer that reports an NUnit tolerance — `.Within(...)` — chained onto an
+  equality whose expected value is a `ValueTuple`. NUnit has no comparer for one, so the tolerance never
+  reaches the members and the assertion is bit-exact equality while its failure message still prints the
+  tolerance. It shares VEL500's opt-in marker, so it likewise does not fire on your code unless the assembly
+  declares it. Unlike its three siblings it is a warning, and the same README says why.
 - `TransitionType.Spring` and `TransitionType.Bezier` variant transitions now animate the
   color-valued (`background-color`, `color`, `border-color`) and length-valued (sizing, padding,
   margin, inset, flex-basis, border width, `border-radius`) properties of a variant delta, not just
@@ -72,9 +88,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after all of them, so it paints in that element's own position: overlapping `-space-x-*` avatars
   carrying `ring-2 ring-white` occlude the previous one's band as they do on the web, and two
   `focus:ring-2` siblings render the same whichever was focused first. The deviations from CSS this
-  hosting still carries — `ring-inset` painting over an opaque full-bleed child, and a ring on a
-  `V.Motion` being ignored with a warning — are documented in `Documentation~/styling-variants.md`. A
-  ring on an ordinary element inside a `V.AnimatePresence` fades with its element's enter and exit.
+  hosting still carries — `ring-inset` painting over an opaque full-bleed child, a transform on the
+  ringed element moving the element and not the band, and a ring on a `V.Motion` being ignored with a
+  warning — are documented in `Documentation~/styling-variants.md`. A ring on an ordinary element
+  inside a `V.AnimatePresence` fades with its element's enter and exit.
 - A variant payload spelled as a **USS class** (`dark:bg-neutral-900`, `md:flex-col`) now overrides a
   base utility writing the same properties regardless of the order the bundled stylesheets declare
   them in. Previously the payload was added to the live class list as a bare utility, where it tied
@@ -163,14 +180,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A `shadow-*` / `drop-shadow-*` paint now tracks an enter or exit animation covering it in the two
-  mount-time cases that previously escaped. An element mounted with the utility already in its class
-  list, under a play that was already running, joined that play's fade nowhere and stayed at resting
-  strength for the rest of it; and a `V.Motion` playing its own mount enter re-sampled a shadow the
-  play had already picked up, at a moment when the caster's from-class has not resolved yet, so the
-  shadow snapped back to resting strength over an `opacity-0` card until the next animation frame —
-  for a staggered `AnimatePresence` list, for the whole stagger delay. A shadow that arrived through
-  a later class change was already handled.
+- A `shadow-*` / `drop-shadow-*` paint no longer fades to the square of its caster's opacity during an
+  enter or exit. The scheduler scaled the shadow by the caster's sampled opacity each frame on the
+  premise that a baked shadow quad ignores UI Toolkit opacity; pixel readback shows the renderer scales
+  that quad exactly as it scales the element's other content, so the correction applied the same opacity
+  a second time — a card halfway through a fade painted its shadow at a quarter strength rather than
+  half, and a staggered `AnimatePresence` list showed it on every row. The per-frame drive is gone; a
+  `ring-*` band, which is hosted beside its element rather than inside it, still needs and keeps one.
 - Two variants naming one of the utilities Velvet realises itself — `gap-*` / `space-*`, `grid` /
   `grid-cols-*`, `divide-*`, `text-balance`, `skew-*`, `shadow-*`, the gradients, `animate-*`,
   `border-dashed` / `border-dotted` — now rank against each other by the precedence table, and within

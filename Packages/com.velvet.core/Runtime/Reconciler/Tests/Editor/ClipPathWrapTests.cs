@@ -35,6 +35,15 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ClipPathWrapTests
     {
+        // KNOWN HOLES, each with the cut it was measured at, because the count changes with the cut and a
+        // count taken by reading has been wrong every time it was checked. A case asserting only that
+        // something is ABSENT also holds against a feature that does nothing, so it pins nothing by itself.
+        // Killing the clip APPLIER leaves five green: both ElementIsNotWrapped cases, ClipOnMotion,
+        // NoShadowPaintIsAttached and NotDoubleWrapped. Killing the clip PARSER leaves three of those, since
+        // ClipOnMotion's expected warning and the shadow's suppression gate both read the parser, not the
+        // applier. The ring half has four at the applier cut: both not-counted-as-a-rendered-child cases,
+        // TheElementItselfStillOccupiesItsSlot and RingOnMotion. Closing any of them takes a control that
+        // RESOLVES in the same assertion — a second term over the same absent thing buys nothing.
         private const string Triangle = "clip-path-[polygon(50%_0%,100%_100%,0%_100%)]";
 
         private static VisualElement Wrapper(VisualElement root) => root[0];
@@ -188,14 +197,14 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: "shadow-lg", name: "card") };
             Mount(scope, before);
-            Assume.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(1));
+            var boundBeforeClip = scope.Reconciler.Context.ShadowBindings.Count;
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before,
                 new VNode[] { V.Div(className: $"shadow-lg {Triangle}", name: "card") });
 
             // Assert
-            Assert.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(0));
+            Assert.That((boundBeforeClip, scope.Reconciler.Context.ShadowBindings.Count), Is.EqualTo((1, 0)));
         }
 
         [Test]
@@ -205,14 +214,15 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: Triangle, name: "card") };
             Mount(scope, before);
-            Assume.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(1));
+            var clippedBeforePatch = scope.Reconciler.Context.ClipPathBindings.Count;
 
             // Act: the clip class goes away and a shadow class appears in the same render.
             scope.Reconciler.Reconcile(scope.Root, before,
                 new VNode[] { V.Div(className: "shadow-lg", name: "card") });
 
-            // Assert
-            Assert.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(1));
+            // Assert: clipped first, then shadowed — asserting only the shadow would hold equally for an
+            // element that was never clipped, which is a plain shadow mount rather than a hand-over.
+            Assert.That((clippedBeforePatch, scope.Reconciler.Context.ShadowBindings.Count), Is.EqualTo((1, 1)));
         }
 
         // Patch: spec change
@@ -244,14 +254,18 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: "", name: "card") };
             Mount(scope, before);
-            Assume.That(scope.Root[0].ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass), Is.False);
+            var wrappedWhilePlain = scope.Root[0].ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before,
                 new VNode[] { V.Div(className: Triangle, name: "card") });
 
-            // Assert
-            Assert.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass), Is.True);
+            // Assert: unwrapped, then wrapped — a create path that wrapped EVERY element would satisfy
+            // "wrapped after" on its own, while the patch under test did nothing.
+            Assert.That(
+                (wrappedWhilePlain,
+                    Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass)),
+                Is.EqualTo((false, true)));
         }
 
         [Test]
@@ -261,14 +275,18 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: Triangle, name: "card") };
             Mount(scope, before);
-            Assume.That(Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass), Is.True);
+            var wrappedBeforeRemoval =
+                Wrapper(scope.Root).ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass);
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before,
                 new VNode[] { V.Div(className: "", name: "card") });
 
             // Assert: the inner element took the wrapper's slot; no wrapper residue.
-            Assert.That(scope.Root[0].ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass), Is.False);
+            Assert.That(
+                (wrappedBeforeRemoval,
+                    scope.Root[0].ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass)),
+                Is.EqualTo((true, false)));
         }
 
         [Test]
@@ -278,14 +296,14 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: Triangle, name: "card") };
             Mount(scope, before);
-            Assume.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(1));
+            var boundBeforeRemoval = scope.Reconciler.Context.ClipPathBindings.Count;
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before,
                 new VNode[] { V.Div(className: "", name: "card") });
 
             // Assert
-            Assert.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(0));
+            Assert.That((boundBeforeRemoval, scope.Reconciler.Context.ClipPathBindings.Count), Is.EqualTo((1, 0)));
         }
 
         // Patch: steady state
@@ -319,13 +337,13 @@ namespace Velvet.Tests
             // destroy any baked VectorImage), symmetric with its ShadowBindings teardown.
             var scope = new ReconcilerScope();
             Mount(scope, new VNode[] { V.Div(className: Triangle, name: "card") });
-            Assume.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(1));
+            var boundWhileMounted = scope.Reconciler.Context.ClipPathBindings.Count;
 
             // Act
             scope.Dispose();
 
             // Assert
-            Assert.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(0));
+            Assert.That((boundWhileMounted, scope.Reconciler.Context.ClipPathBindings.Count), Is.EqualTo((1, 0)));
         }
 
         // Unmount
@@ -337,13 +355,13 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: Triangle, name: "card") };
             Mount(scope, before);
-            Assume.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(1));
+            var boundWhileMounted = scope.Reconciler.Context.ClipPathBindings.Count;
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, Array.Empty<VNode>());
 
             // Assert
-            Assert.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(0));
+            Assert.That((boundWhileMounted, scope.Reconciler.Context.ClipPathBindings.Count), Is.EqualTo((1, 0)));
         }
 
         [Test]
@@ -353,13 +371,13 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var before = new VNode[] { V.Div(className: Triangle, name: "card") };
             Mount(scope, before);
-            Assume.That(scope.Reconciler.Context.WrapperToInnerMap.Count, Is.EqualTo(1));
+            var mappedWhileMounted = scope.Reconciler.Context.WrapperToInnerMap.Count;
 
             // Act
             scope.Reconciler.Reconcile(scope.Root, before, Array.Empty<VNode>());
 
             // Assert
-            Assert.That(scope.Reconciler.Context.WrapperToInnerMap.Count, Is.EqualTo(0));
+            Assert.That((mappedWhileMounted, scope.Reconciler.Context.WrapperToInnerMap.Count), Is.EqualTo((1, 0)));
         }
 
         // User wrapElement opt-out
@@ -378,13 +396,14 @@ namespace Velvet.Tests
             };
             var before = new VNode[] { V.Button(className: Triangle, wrapElement: wrap, key: "b") };
             Mount(scope, before);
-            Assume.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(0));
 
             // Act: a re-render patches the same element.
             scope.Reconciler.Reconcile(scope.Root, before,
                 new VNode[] { V.Button(className: Triangle, wrapElement: wrap, key: "b") });
 
-            // Assert: patch must honor the opt-out and NOT stack a clip wrapper on the user wrapper.
+            // Assert: patch must honor the opt-out and NOT stack a clip wrapper on the user wrapper. This one
+            // count also covers the CREATE-path opt-out, which nothing else in the suite pins — a create that
+            // ignored it binds the element, and the patch then leaves that binding in place for this to find.
             Assert.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(0));
         }
 
@@ -498,9 +517,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_RingOnMotion_When_Reconciled_Then_NoRingBindingIsCreated()
         {
-            // A Motion stands down: the band is hosted beside the element, outside the Motion's own opacity,
-            // so it could not fade with an enter / exit. Warned about rather than silently dropped, like the
-            // shadow-* / clip-path-* / z-* gates on a Motion.
+            // A Motion stands down: the band is placed from the element's laid-out box, which the Motion's
+            // own transform does not move (see FiberNodeFactory.WarnIgnoredMotionUtilities). Warned about
+            // rather than silently dropped, like the shadow-* / clip-path-* / z-* gates on a Motion.
             using var scope = new ReconcilerScope();
             LogAssert.Expect(LogType.Warning, new Regex(@"ring-\*.*on a Motion is ignored"));
 

@@ -10,8 +10,8 @@ using Xunit;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// The code-shape rules are errors that only fire in an assembly carrying the opt-in marker, so a
-    /// package assembly that lacks it is exempt from every one of them with nothing to say so. Without this
+    /// The code-shape rules fire only in an assembly carrying the opt-in marker, so a package assembly that
+    /// lacks it is exempt from every one of them with nothing to say so. Without this
     /// guard a new asmdef starts life outside the rules and the omission is invisible — the suite stays
     /// green precisely because the analyzers never ran there.
     /// </summary>

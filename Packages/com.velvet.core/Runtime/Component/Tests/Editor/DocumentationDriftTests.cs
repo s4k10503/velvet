@@ -29,13 +29,12 @@ namespace Velvet.Tests
         // meta-syntactic placeholders standing in for something the reader supplies; API belonging to the
         // upstream libraries Velvet mirrors, which exists there and deliberately not here; names from
         // Unity or the BCL — types, enum values, event names, asset labels — that the docs mention but no
-        // source file in this repo uses as code; names an external toolchain owns — DOTNET_ROOT is the
-        // variable the .NET apphost reads, StrykerOutput the directory the mutation runner writes,
-        // MSB4006 the error MSBuild raises on a circular project reference, which the contributor README
-        // quotes because it is what rules out the shape of wiring a reader would reach for first, and
-        // ContinuousIntegrationBuild the SDK property that keeps source paths out of the deployed
-        // assemblies, which is what let one be compared byte for byte against a rebuild elsewhere; and the
-        // analyzer identifiers, which C# holds only as string literals and the corpus therefore strips.
+        // source file in this repo uses as code; names an external toolchain owns, which no source file
+        // here spells and which the contributor README quotes when it says how to invoke that toolchain —
+        // DOTNET_ROOT, StrykerOutput, MSB4006, ContinuousIntegrationBuild, ProjectReference. What each one
+        // does is the toolchain's to state and has been got wrong here more than once; the reason for the
+        // entry is only that the name is not code in this repository. And the analyzer identifiers, which
+        // C# holds only as string literals and the corpus therefore strips.
         //
         // That last group is checked, just not here: DocumentationDiagnosticTableTests over in the
         // Generators~ suite reads the same README and compares its VEL and USS spellings against the real
@@ -51,8 +50,8 @@ namespace Velvet.Tests
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
-            "ContinuousIntegrationBuild",
-            "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502", "Shape",
+            "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502", "Shape",
+            "ProjectReference", "VEL503"
         };
 
         private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef" };

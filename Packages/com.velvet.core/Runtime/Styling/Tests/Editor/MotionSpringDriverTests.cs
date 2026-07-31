@@ -27,9 +27,9 @@ namespace Velvet.Tests
     /// Panel-free by design: <c>StyleAnimationScheduler</c>'s spring path never reads <c>resolvedStyle</c> (the
     /// numeric from/to values come from <see cref="MotionSpringClassParser"/>'s class-name parsing, not a style
     /// resolution pass), and the recurring tick this scheduler registers (<c>schedule.Execute(...).Every(16)</c>)
-    /// needs a live panel clock to FIRE automatically, which the EditMode batchmode PlayerLoop never drives. So,
-    /// mirroring <c>ShadowAnimationVisibilityTests</c>' own panel-free approach: the scheduler's synchronous
-    /// setup is asserted directly (no tick needed to observe it), and the recurring tick's own math — along with
+    /// needs a live panel clock to FIRE automatically, which the EditMode batchmode PlayerLoop never drives. So
+    /// the scheduler's synchronous setup is asserted directly (no tick needed to observe it), and the
+    /// recurring tick's own math — along with
     /// the standalone integrator and the layoutId delta math, neither of which involves a panel or VisualElement
     /// at all — is exercised by calling the driver directly in a loop instead of trying to pump a real/simulated
     /// scheduler clock. GWT, one assert per case: every fact a case depends on — channel recognition,

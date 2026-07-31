@@ -8,15 +8,21 @@ using UnityEditor.UIElements.TestFramework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// The ring band's side of the co-fade the <see cref="StyleAnimationScheduler"/> runs for drop shadows
-    /// (specified in <see cref="ShadowAnimationVisibilityTests"/>).
+    /// The co-fade the <see cref="StyleAnimationScheduler"/> runs while an enter or exit fades a ringed
+    /// element, on each of its driving paths.
     /// </summary>
     /// <remarks>
     /// The band is a SIBLING of the ringed element, not a descendant, so UI Toolkit's opacity compositing —
     /// which does reach an overlay belonging to a descendant — never reaches it. An <c>AnimatePresence</c> exit
     /// that fades its element would therefore leave the band at full strength for the whole exit and pop it out
     /// at the end, so the band is driven explicitly. This is the one respect in which the sibling hosting costs
-    /// something the wrapper hosting did not: a wrapper-hosted band was inside the faded subtree.
+    /// something the wrapper hosting did not: a wrapper-hosted band was inside the faded subtree. It is also
+    /// the only paint driven today: one the caster's own opacity reaches needs no push, because the renderer
+    /// already scales it (see <c>ShadowFadeOpacityPlaybackTests</c>).
+    /// <para>
+    /// The tween and spring paths seed and tick the band through separate call sites, so each is covered:
+    /// a missing wire on one of them is invisible from the other.
+    /// </para>
     /// </remarks>
     [TestFixture]
     internal sealed class RingCoFadeTests
@@ -50,6 +56,23 @@ namespace Velvet.Tests
             target = new VisualElement();
             _sim.rootVisualElement.Add(target);
             return RingOverlay.Attach(target, Spec, Array.Empty<string>());
+        }
+
+        [Test]
+        public void Given_ARingedTweenEnter_When_ThePlayStarts_Then_TheBandIsSeededAtTheEnterFromValue()
+        {
+            // Arrange
+            var binding = AttachRingedElement(out var target);
+
+            // Act — a classic tween enter, whose seeding happens synchronously at PlayEnter rather than on
+            // the spring's first tick.
+            _scheduler.PlayEnter(target, StyleTransition.FadeSlideUp);
+
+            // Assert — the band starts invisible so it fades IN with its element instead of standing at full
+            // strength around a still-transparent one. The keyword term is load-bearing: an untouched
+            // StyleFloat also reads back value 0, so a value-only comparison passes for a band nothing seeded.
+            Assert.That((binding.Overlay.style.opacity.keyword, binding.Overlay.style.opacity.value),
+                Is.EqualTo((StyleKeyword.Undefined, 0f)));
         }
 
         [Test]

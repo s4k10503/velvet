@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
 
@@ -9,15 +10,15 @@ namespace Velvet.Tests
     /// reconciler-invisible sibling overlay rather than on a structural wrapper around the ringed element.
     /// Two things the wrapper could not do are pinned here: a ring behind a VARIANT renders (attaching an
     /// overlay is not parent surgery on the element's own slot, so the variant re-sync may do it), and the
-    /// band's per-corner radii follow the element's own. The band's size and position against the USS-scale
-    /// radius are covered by RingGeometryPanelTests.
+    /// band's per-corner radii follow the element's own. The geometry section also pins which transforms the
+    /// band follows, which is what the <c>V.Motion</c> exclusion in <see cref="FiberNodeFactory"/> rests on.
     /// </summary>
     internal sealed class RingOverlayTests : PanelTestBase
     {
         // The per-corner radius case needs a real USS rounded-tl-lg to reflect into resolvedStyle; without
         // the sheet every corner resolves 0 and the whole-element class-scale fallback answers instead,
         // which is exactly the path that case exists to avoid taking.
-        protected override void LoadStyleSheets() => _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+        protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
         private static VisualElement RingOverlayIn(VisualElement host)
         {
@@ -30,6 +31,27 @@ namespace Velvet.Tests
             }
             return null;
         }
+
+        // The band belonging to one particular element, rather than the first in the parent: the transform
+        // cases put two ringed elements under one host.
+        private static VisualElement BandFor(VisualElement element)
+        {
+            var host = element.parent;
+            var next = host.IndexOf(element) + 1;
+            return next < host.childCount && host[next].ClassListContains(RingOverlay.MarkerClass)
+                ? host[next]
+                : null;
+        }
+
+        // How far along x a band paints from the element it rings. worldBound and not layout because layout
+        // is the pre-transform box, and the element's OWN transform is the thing this reading exists to
+        // catch: read from layout, a translated element and a still one both measure -4.
+        // Scope, and the reason the ancestor case below measures absolute positions rather than calling
+        // this: the band and its element are SIBLINGS, so an ancestor's TRANSLATION cancels out of the
+        // difference exactly and this helper cannot see one at all. An ancestor SCALE does not cancel — it
+        // multiplies the difference, so scale-150 over a ring-4 band reads -6 and not -4.
+        private static float BandOffsetX(VisualElement element)
+            => BandFor(element).worldBound.x - element.worldBound.x;
 
         private VisualElement MountRinged(string className)
         {
@@ -126,6 +148,73 @@ namespace Velvet.Tests
             // rounded-lg is 8px.
             Assert.That((overlay?.resolvedStyle.borderTopLeftRadius, overlay?.resolvedStyle.borderTopRightRadius),
                 Is.EqualTo(((float?)12f, (float?)4f)));
+        }
+
+        // Which transforms the band follows. These two are what the V.Motion ring exclusion rests on, so a
+        // change that made the band track its own element's transform should turn the first of them red and
+        // be taken as licence to lift that exclusion.
+
+        [Test]
+        public void Given_ARingedElement_When_ATransformMovesIt_Then_TheBandStaysOnTheUntransformedBox()
+        {
+            // Arrange — two ringed cards under one host, identical but for the transform on the second.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[300px] h-[200px]", children: new VNode[]
+                {
+                    V.Div(name: "still", className: "w-[100px] h-[40px] ring-4"),
+                    V.Div(name: "moved", className: "w-[100px] h-[40px] ring-4 translate-x-8"),
+                }));
+            var still = _window.rootVisualElement.Q<VisualElement>("still");
+            var moved = _window.rootVisualElement.Q<VisualElement>("moved");
+
+            // Act
+            ForcePanelUpdate(still.panel);
+
+            // Assert — the untransformed card is the control: -4 is a band sitting exactly ring-4 outside
+            // its element, so any state in which the translate did not take effect reports -4 twice and
+            // fails here rather than reading as evidence of a band that followed. The transformed card
+            // measures the whole of its own 32px translate further out, because the band is placed from the
+            // laid-out box and is not in the subtree the transform composites over.
+            //
+            // Rounded because .Within() does not reach the members of a ValueTuple under Unity's NUnit —
+            // the comparison is exact, and both quantities are whole pixels by construction.
+            Assert.That((Mathf.Round(BandOffsetX(still)), Mathf.Round(BandOffsetX(moved))),
+                Is.EqualTo((-4f, -36f)));
+        }
+
+        [Test]
+        public void Given_ARingedElement_When_AnAncestorCarriesTheTransform_Then_TheBandMovesWithIt()
+        {
+            // Arrange — two identically laid-out hosts, one translated, each holding one ringed card. Two
+            // hosts and not one, because band and card are siblings: their DIFFERENCE cancels an ancestor's
+            // translation exactly, so the only reading that can see one is an absolute position compared
+            // across a transformed and an untransformed copy of the same arrangement.
+            _mounted = V.Mount(_window.rootVisualElement,
+                V.Div(name: "wrap", className: "w-[300px] h-[200px]", children: new VNode[]
+                {
+                    V.Div(name: "stillHost", className: "w-[300px] h-[60px]", children: new VNode[]
+                    {
+                        V.Div(name: "stillCard", className: "w-[100px] h-[40px] ring-4"),
+                    }),
+                    V.Div(name: "movedHost", className: "w-[300px] h-[60px] translate-x-8", children: new VNode[]
+                    {
+                        V.Div(name: "movedCard", className: "w-[100px] h-[40px] ring-4"),
+                    }),
+                }));
+            var stillCard = _window.rootVisualElement.Q<VisualElement>("stillCard");
+            var movedCard = _window.rootVisualElement.Q<VisualElement>("movedCard");
+
+            // Act
+            ForcePanelUpdate(stillCard.panel);
+
+            // Assert — the card's own 32px shift is the control: it is the ancestor transform actually
+            // resolving and moving the subtree, so a state in which the translate never took effect reports
+            // 0 here and fails rather than reading as evidence. The band shifts by the same 32px, which is
+            // the claim — it sits inside the host and is carried by the transform, unlike the element's own
+            // transform in the case above. This is what makes wrapping a V.Motion around a ringed Div work.
+            var cardShift = Mathf.Round(movedCard.worldBound.x - stillCard.worldBound.x);
+            var bandShift = Mathf.Round(BandFor(movedCard).worldBound.x - BandFor(stillCard).worldBound.x);
+            Assert.That((cardShift, bandShift), Is.EqualTo((32f, 32f)));
         }
     }
 }
