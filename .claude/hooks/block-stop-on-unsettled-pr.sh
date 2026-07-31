@@ -36,6 +36,26 @@ HEARTBEAT="$HOME/.velvet-pr-watch.heartbeat"
 # Three polls of the 60s cycle, so one slow `gh` call does not read as a dead watcher.
 STALE_AFTER=180
 
+# A merge held on purpose — a review in flight, a dependency on another PR — is not the failure this
+# guards, but "I am waiting" is exactly what the nine-hour stall said too. So a deferral is accepted
+# and EXPIRES: it names the PR, states what clears it, and stops counting after DEFER_TTL. That cannot
+# decay into permanent silence the way an unqualified exemption did, and re-stating it is the moment
+# the reason gets re-examined, which is the only part that ever mattered.
+#
+#   echo "236 waiting on round-4 review $(date +%s)" >> ~/.velvet-pr-deferrals
+DEFERRALS="$HOME/.velvet-pr-deferrals"
+DEFER_TTL=2700
+
+deferred() {
+  [ -f "$DEFERRALS" ] || return 1
+  local line stamp
+  line=$(grep "^$1 " "$DEFERRALS" 2>/dev/null | tail -1) || return 1
+  [ -n "$line" ] || return 1
+  stamp=${line##* }
+  case "$stamp" in ''|*[!0-9]*) return 1 ;; esac
+  [ $(( $(date +%s) - stamp )) -lt "$DEFER_TTL" ]
+}
+
 watcher_is_alive() {
   [ -f "$HEARTBEAT" ] || return 1
   local beat
@@ -49,6 +69,7 @@ prs=$(gh pr list --state open --json number --jq '.[].number' 2>/dev/null) || ex
 
 blocked=""
 for pr in $prs; do
+  deferred "$pr" && continue
   checks=$(gh pr checks "$pr" --json name,bucket 2>/dev/null || echo "[]")
 
   count=$(echo "$checks" | jq 'length' 2>/dev/null || echo 0)
@@ -111,7 +132,12 @@ cat >&2 <<EOF
 Do not stop: an open PR has not settled.
 $blocked
 
-Either wait for it with a Monitor that emits on both pass and fail, or keep working on
+Holding one on purpose is allowed and expires after 45 minutes, so the reason gets re-examined
+rather than forgotten:
+
+  echo "<pr> <what clears it> $(date +%s)" >> $HOME/.velvet-pr-deferrals
+
+Otherwise: wait for it with a Monitor that emits on both pass and fail, or keep working on
 something that is itself on the critical path. Work that is off the critical path satisfies
 "do not idle" while the thing you are actually waiting on goes unwatched.
 
