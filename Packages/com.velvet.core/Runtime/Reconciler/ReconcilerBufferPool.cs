@@ -81,7 +81,7 @@ namespace Velvet
 
         #endregion
 
-        #region For FlattenAndFilter
+        #region For inline expansion
 
         private readonly ClearablePool<List<VNode>> _nodeListPool = new(l => l.Clear());
 
