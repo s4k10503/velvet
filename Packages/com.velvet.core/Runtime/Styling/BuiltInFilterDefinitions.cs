@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -15,22 +14,18 @@ namespace Velvet
     // GPU/material economy: UI Toolkit's filter-list transition interpolation matches functions in part by
     // referring to the SAME definition on both sides of a tween, so a fresh CreateInstance per BuildFilter
     // call would silently break transition-all on brightness/saturate (the from/to list shapes would mismatch
-    // and snap instead of tweening). Built lazily off Shader.Find, mirroring DropShadowBaker's EnsureMaterial.
+    // and snap instead of tweening). Built lazily off VelvetShaders.Find, mirroring DropShadowBaker's
+    // EnsureMaterial.
     internal static class BuiltInFilterDefinitions
     {
         private static FilterFunctionDefinition? s_brightness;
         private static FilterFunctionDefinition? s_saturate;
 
-        // Shader paths already warned about as missing, so a build that permanently lacks a filter shader logs
-        // once instead of on every resolve (the properties rebuild whenever the cached definition is null, so a
-        // missing shader is retried every access). Cleared on the editor reset below.
-        private static readonly HashSet<string> s_missingShaderWarned = new();
-
         internal static FilterFunctionDefinition? Brightness
-            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build("Velvet/FilterBrightness", "_Brightness", "velvet-brightness");
+            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build(VelvetShaders.FilterBrightness, "_Brightness", "velvet-brightness");
 
         internal static FilterFunctionDefinition? Saturate
-            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build("Velvet/FilterSaturate", "_Saturate", "velvet-saturate");
+            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", "velvet-saturate");
 
         // Identity checks against the CACHED definitions only (never forcing a lazy Build): a caller probing an
         // arbitrary function's definition must not load the brightness/saturate shaders as a side effect. A
@@ -59,20 +54,13 @@ namespace Velvet
             return passes != null && passes.Length > 0 && passes[0].material != null;
         }
 
-        // Builds the definition for one shader, or null when the shader is unavailable (a stripped player
-        // build that dropped it from Always Included Shaders) — the same un-mitigated gap the bake shaders
-        // already have. Degrade to "layer omitted" with a single warning rather than throw, mirroring
+        // An unavailable shader degrades to "layer omitted" rather than throwing, mirroring
         // DropShadowBaker.EnsureMaterial.
         private static FilterFunctionDefinition? Build(string shaderPath, string propertyName, string filterName)
         {
-            var shader = Shader.Find(shaderPath);
+            var shader = VelvetShaders.Find(shaderPath, "Filter", "brightness/saturate layer");
             if (shader == null)
             {
-                if (s_missingShaderWarned.Add(shaderPath))
-                {
-                    FiberLogger.LogWarning("Filter", $"Shader not found: {shaderPath}. " +
-                        "Ensure it is included in the build (Always Included Shaders); the brightness/saturate layer is omitted.");
-                }
                 return null;
             }
 
@@ -121,9 +109,6 @@ namespace Velvet
         {
             s_brightness = null;
             s_saturate = null;
-            // Re-arm the one-shot missing-shader warning so a shader edit that fixes availability (or newly
-            // breaks it) is reported once in the next session rather than staying silent.
-            s_missingShaderWarned.Clear();
         }
 #endif
     }
