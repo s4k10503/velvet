@@ -26,7 +26,7 @@ namespace Velvet.TestUtilities
         {
             TargetTexture = new RenderTexture(width, height, depth);
             _document = new GameObject(name).AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             _settings.targetTexture = TargetTexture;
             _document.panelSettings = _settings;
