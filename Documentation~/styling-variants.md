@@ -65,6 +65,34 @@ V.Div(className: "bg-neutral-50 dark:bg-neutral-900", ...);
 V.Div(className: "w-full md:w-[320px]", ...);
 ```
 
+### Theme: the `dark:` variant, and the token set beside it
+
+`dark:` is a class-level variant — it adds and removes its payload on the element carrying it. The
+bundled stylesheet's semantic colours are not that. `_tokens.uss` declares them twice, a light set on
+`:root` and a dark set on `.dark`, and a subtree resolves the dark set when it or an ancestor carries
+that class.
+
+Both answer to `VelvetTheme.IsDark`. `VelvetStyleUtilities.AttachTo` binds the element it attaches the
+sheet to, which then carries `VelvetStyleUtilities.DarkThemeClass` (`dark`) exactly while the flag is
+set, so one assignment moves the variants and the colours together:
+
+```csharp
+VelvetStyleUtilities.AttachTo(uiDocument.rootVisualElement);
+VelvetTheme.IsDark = true;
+```
+
+A project that reaches the sheet from a scene reference rather than `AttachTo` (see
+[setup.md](setup.md)) calls `VelvetStyleUtilities.BindThemeTo(root)` for the same binding, or drives
+the class from its own code.
+
+`bg-background` paints the page the rest of the semantic colours sit on, and those colours are opaque:
+`bg-surface` inside `bg-surface` is one colour, not a brighter one. The tokens naming a strength
+rather than a role — the `--color-white-*` ladder, `--color-overlay*`, `--color-shadow` — keep their
+alpha and are declared once for both themes.
+
+To override a token, declare it in a stylesheet of your own attached after Velvet's: a `:root` rule
+for the light set, a `.dark` rule for the dark one.
+
 ### Variants and the USS cascade
 
 **A variant payload beats a base utility that writes the same USS properties, in either direction,

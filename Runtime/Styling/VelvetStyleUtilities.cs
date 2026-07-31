@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -24,7 +25,15 @@ namespace Velvet
         /// </summary>
         public const string ResourcePath = "Velvet/StyleUtilities";
 
+        /// <summary>
+        /// The class the sheet keys its dark token set on. Public so an application that sets the class from
+        /// its own code — a UXML root, a scene hierarchy — names the same one the sheet declares.
+        /// </summary>
+        public const string DarkThemeClass = "dark";
+
         private static StyleSheet? _sheet;
+
+        private static readonly ConditionalWeakTable<VisualElement, ThemeBinding> _themeBindings = new();
 
         /// <summary>
         /// The bundled utility stylesheet. Loads on first access and is held for the lifetime of the domain.
@@ -66,6 +75,58 @@ namespace Velvet
             // already holds — measured, it neither adds a duplicate entry nor moves the existing one to the
             // end of the cascade — so a guard here would only mirror the engine.
             root.styleSheets.Add(Sheet);
+            BindThemeTo(root);
+        }
+
+        /// <summary>
+        /// Keeps <paramref name="root"/> carrying the <see cref="DarkThemeClass"/> class exactly while
+        /// <see cref="VelvetTheme.IsDark"/> holds, which is what selects the sheet's dark token set for
+        /// <paramref name="root"/>'s subtree. <see cref="AttachTo"/> calls this; a project that reaches the
+        /// sheet from a scene reference instead calls it itself. Binding one element twice is harmless.
+        /// </summary>
+        public static void BindThemeTo(VisualElement root)
+        {
+            if (root == null) throw new ArgumentNullException(nameof(root));
+
+            if (_themeBindings.TryGetValue(root, out _)) return;
+            _themeBindings.Add(root, new ThemeBinding(root));
+        }
+
+        private sealed class ThemeBinding
+        {
+            private readonly VisualElement _root;
+            private bool _subscribed;
+
+            internal ThemeBinding(VisualElement root)
+            {
+                _root = root;
+                root.RegisterCallback<AttachToPanelEvent>(_ => Subscribe());
+                root.RegisterCallback<DetachFromPanelEvent>(_ => Unsubscribe());
+                if (root.panel != null)
+                {
+                    Subscribe();
+                }
+            }
+
+            // The theme event is static, so the subscription is held only while the element is on a panel: a
+            // permanent one would keep every root a closed window or a finished test ever attached the sheet
+            // to alive for the lifetime of the domain.
+            private void Subscribe()
+            {
+                if (_subscribed) return;
+                VelvetTheme.DarkModeChanged += Apply;
+                _subscribed = true;
+                Apply();
+            }
+
+            private void Unsubscribe()
+            {
+                if (!_subscribed) return;
+                VelvetTheme.DarkModeChanged -= Apply;
+                _subscribed = false;
+            }
+
+            private void Apply() => _root.EnableInClassList(DarkThemeClass, VelvetTheme.IsDark);
         }
     }
 }
