@@ -257,9 +257,9 @@ someone remembered to redeploy — the failure mode this wiring exists to remove
 
 The bootstrap therefore compiles the sibling's `**/*.cs` through a glob and is not itself opted in; its
 content is measured by the sibling's own compile. A glob that stopped matching would produce an analyzer
-assembly holding no analyzers, and every project in the solution would then build clean with nothing enforced
-and nothing failing, which is why one case compares the two assemblies' declared type names rather than
-trusting the build to notice.
+assembly holding no analyzers, and all four projects would then still build — measured with a violation of
+each rule planted in every one of them, and no error anywhere — which is why one case compares the two
+assemblies' declared type names rather than trusting the build to notice.
 
 ## Using `[MemoizeMethod]`
 

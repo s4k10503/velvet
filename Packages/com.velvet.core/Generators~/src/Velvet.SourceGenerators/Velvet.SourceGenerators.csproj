@@ -12,11 +12,13 @@
     <Version>0.1.0</Version>
     <Authors>s4k10503</Authors>
     <Description>Roslyn Incremental Source Generators for the Velvet Unity package.</Description>
-    <!-- PathMap normalizes source paths to /_/, so the DLL does not carry the machine it was built on. It is
-         still not reproducible across commits: ContinuousIntegrationBuild also embeds the git SHA in
-         AssemblyInformationalVersion, so the committed artifact holds the SHA of the commit *before* the one
-         carrying it, and no rebuild can reproduce those bytes. Nothing may check the deployed DLL against a
-         fresh build of these sources. -->
+    <!-- PathMap normalizes source paths to /_/, so the DLL does not carry the machine it was built on, and
+         two builds at one commit are byte-identical. Two builds at different commits are not: the SDK
+         appends the commit SHA to AssemblyInformationalVersion. That comes from
+         IncludeSourceRevisionInInformationalVersion, which is on by default and independent of both
+         properties set here — turning either of them off leaves the SHA in place, and turning that one off
+         removes it. So the committed artifact carries the SHA of the commit before the one carrying it, and
+         nothing can check the deployed DLL against a rebuild of these sources. -->
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>
