@@ -512,7 +512,21 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
-        public void Given_AUtilityDeclaringACustomProperty_When_TheTableIsDerived_Then_ItIsReported()
+        public void Given_AUtilityDeclaringACustomPropertyBesideARealOne_When_TheTableIsDerived_Then_ItIsReported()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(
+                StyleSheetInput.Uss(".theme-dark { color: rgb(4, 5, 6); --color-surface: rgb(1, 2, 3); }"));
+
+            // Act
+            var codes = run.ProblemCodes;
+
+            // Assert
+            Assert.Equal(new[] { UssProblemCode.UtilityDeclaresCustomProperty }, codes);
+        }
+
+        [Fact]
+        public void Given_AClassDeclaringOnlyCustomProperties_When_TheTableIsDerived_Then_NothingIsReported()
         {
             // Arrange
             var run = StyleTableTestHelper.Derive(
@@ -522,7 +536,22 @@ namespace Velvet.SourceGenerators.Tests
             var codes = run.ProblemCodes;
 
             // Assert
-            Assert.Equal(new[] { UssProblemCode.UtilityDeclaresCustomProperty }, codes);
+            Assert.Empty(codes);
+        }
+
+        [Fact]
+        public void Given_AClassDeclaringOnlyCustomProperties_When_TheTableIsDerived_Then_ItContributesNoEntry()
+        {
+            // Arrange
+            var run = StyleTableTestHelper.Derive(StyleSheetInput.Uss(@"
+.theme-dark { --color-surface: rgb(1, 2, 3); }
+.bg-surface { background-color: var(--color-surface); }"));
+
+            // Act
+            var count = StyleTableTestHelper.Load(run).Count;
+
+            // Assert
+            Assert.Equal(1, count);
         }
 
         [Fact]

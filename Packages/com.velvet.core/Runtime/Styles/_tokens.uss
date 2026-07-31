@@ -57,32 +57,40 @@
     --text-8xl: 96px;
     --text-9xl: 128px;
 
-    /* === Colors === */
-    --color-surface: rgba(255, 255, 255, 0.12);
-    --color-surface-strong: rgba(255, 255, 255, 0.2);
-    --color-highlight: rgba(255, 255, 255, 0.35);
-    --color-border: rgba(255, 255, 255, 0.36);
-    --color-border-strong: rgba(255, 255, 255, 0.55);
-    --color-accent: rgb(90, 200, 250);
-    --color-accent-strong: rgb(10, 132, 255);
-    --color-text: rgb(242, 247, 255);
-    --color-text-subtle: rgba(242, 247, 255, 0.7);
-    --color-primary: rgba(10, 132, 255, 0.75);
-    --color-primary-hover: rgba(10, 132, 255, 0.82);
-    --color-primary-active: rgba(10, 132, 255, 0.65);
-    --color-primary-soft: rgba(10, 132, 255, 0.22);
-    --color-primary-faint: rgba(10, 132, 255, 0.14);
-    --color-danger: rgba(255, 94, 94, 0.75);
-    --color-danger-hover: rgba(255, 94, 94, 0.82);
-    --color-danger-active: rgba(255, 94, 94, 0.62);
-    --color-success: rgba(52, 199, 89, 0.8);
-    --color-success-hover: rgba(52, 199, 89, 0.85);
-    --color-success-active: rgba(52, 199, 89, 0.65);
-    --color-neutral: rgba(255, 255, 255, 0.08);
-    --color-surface-hover: rgba(255, 255, 255, 0.18);
-    --color-surface-active: rgba(255, 255, 255, 0.14);
-    --color-border-hover: rgba(255, 255, 255, 0.7);
-    --color-border-active: rgba(255, 255, 255, 0.5);
+    /* === Colors (light set; the dark set is the .dark block below) ===
+     * A role token — background, surface, text, border, primary, … — is opaque, so an element carrying
+     * bg-surface inside another one resolves to the same colour rather than compositing to a brighter
+     * one. --color-white-*, --color-overlay* and --color-shadow name a colour and a strength rather
+     * than a role: compositing over whatever is behind them is what a scrim and a shadow are for, so
+     * they keep their alpha and are declared once, below, for both themes.
+     */
+    --color-background: rgb(255, 255, 255);
+    --color-surface: rgb(241, 245, 249);
+    --color-surface-strong: rgb(215, 223, 233);
+    --color-highlight: rgb(203, 213, 225);
+    --color-border: rgb(226, 232, 240);
+    --color-border-strong: rgb(176, 190, 207);
+    --color-accent: rgb(2, 132, 199);
+    --color-accent-strong: rgb(3, 105, 161);
+    --color-text: rgb(15, 23, 42);
+    --color-text-subtle: rgb(100, 116, 139);
+    --color-primary: rgb(37, 99, 235);
+    --color-primary-hover: rgb(29, 78, 216);
+    --color-primary-active: rgb(30, 64, 175);
+    --color-primary-soft: rgb(219, 234, 254);
+    --color-primary-faint: rgb(239, 246, 255);
+    --color-danger: rgb(220, 38, 38);
+    --color-danger-hover: rgb(185, 28, 28);
+    --color-danger-active: rgb(153, 27, 27);
+    --color-success: rgb(22, 163, 74);
+    --color-success-hover: rgb(21, 128, 61);
+    --color-success-active: rgb(22, 101, 52);
+    --color-neutral: rgb(248, 250, 252);
+    --color-surface-hover: rgb(226, 232, 240);
+    --color-surface-active: rgb(233, 238, 244);
+    --color-border-hover: rgb(148, 163, 184);
+    --color-border-active: rgb(203, 213, 225);
+
     --color-white-soft: rgba(255, 255, 255, 0.8);
     --color-white-strong: rgba(255, 255, 255, 0.95);
     --color-white-full: rgb(255, 255, 255);
@@ -113,6 +121,40 @@
     --scale-active: 0.97;
     --scale-hover-subtle: 1.02;
     --scale-active-subtle: 0.98;
+}
+
+/*
+ * The dark set, declared after :root so it wins for the subtree of the element carrying the class.
+ * The class goes on and comes off with VelvetTheme.IsDark, the same signal the dark: variant answers to;
+ * Documentation~/styling-variants.md owns that mechanism.
+ */
+.dark {
+    --color-background: rgb(15, 23, 42);
+    --color-surface: rgb(44, 51, 68);
+    --color-surface-strong: rgb(63, 69, 85);
+    --color-highlight: rgb(99, 104, 117);
+    --color-border: rgb(101, 107, 119);
+    --color-border-strong: rgb(147, 151, 159);
+    --color-accent: rgb(90, 200, 250);
+    --color-accent-strong: rgb(10, 132, 255);
+    --color-text: rgb(242, 247, 255);
+    --color-text-subtle: rgb(174, 180, 191);
+    --color-primary: rgb(11, 105, 202);
+    --color-primary-hover: rgb(11, 112, 217);
+    --color-primary-active: rgb(12, 94, 180);
+    --color-primary-soft: rgb(14, 47, 89);
+    --color-primary-faint: rgb(14, 38, 72);
+    --color-danger: rgb(195, 76, 81);
+    --color-danger-hover: rgb(212, 81, 85);
+    --color-danger-active: rgb(164, 67, 74);
+    --color-success: rgb(45, 164, 80);
+    --color-success-hover: rgb(46, 173, 82);
+    --color-success-active: rgb(39, 137, 73);
+    --color-neutral: rgb(34, 42, 59);
+    --color-surface-hover: rgb(58, 65, 80);
+    --color-surface-active: rgb(49, 55, 72);
+    --color-border-hover: rgb(183, 185, 191);
+    --color-border-active: rgb(135, 139, 148);
 }
 
 /*

@@ -201,7 +201,7 @@ namespace Velvet.StyleTable
                 case UssSelectorKind.RootBlock:
                     foreach (var declaration in rule.Declarations)
                     {
-                        if (!IsCustomProperty(declaration.Property))
+                        if (!declaration.IsCustomProperty)
                         {
                             problems.Add(sheet.ProblemAt(
                                 UssProblemCode.RootDeclaresNonCustomProperty,
@@ -215,6 +215,13 @@ namespace Velvet.StyleTable
 
                 case UssSelectorKind.TypeKeyed:
                     return;
+            }
+
+            // A theme block is excluded for the reason :root is: what it declares is read through var(), so
+            // it holds no property a utility could contend with it for.
+            if (rule.IsTokenBlock)
+            {
+                return;
             }
 
             if (!accumulated.TryGetValue(target.ClassName, out var entry))
@@ -235,13 +242,14 @@ namespace Velvet.StyleTable
 
             foreach (var declaration in rule.Declarations)
             {
-                if (IsCustomProperty(declaration.Property))
+                if (declaration.IsCustomProperty)
                 {
                     problems.Add(sheet.ProblemAt(
                         UssProblemCode.UtilityDeclaresCustomProperty,
                         $"Utility class '{target.ClassName}' declares custom property " +
-                        $"'{declaration.Property}'. It acts on whatever reads it through var(), not on the " +
-                        "element carrying the class, which the table cannot express.",
+                        $"'{declaration.Property}' beside properties it sets on the element itself. A rule " +
+                        "declaring custom properties alone is a theme block and is excluded like :root; " +
+                        "one class in both roles is what the table cannot express.",
                         declaration.Offset));
                     continue;
                 }
@@ -339,9 +347,6 @@ namespace Velvet.StyleTable
                 word1 |= 1UL << (bit - 64);
             }
         }
-
-        private static bool IsCustomProperty(string property) =>
-            property.StartsWith("--", StringComparison.Ordinal);
 
         private sealed class MutableEntry
         {
