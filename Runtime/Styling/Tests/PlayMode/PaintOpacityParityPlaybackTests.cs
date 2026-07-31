@@ -155,7 +155,7 @@ namespace Velvet.Tests
             _host?.Dispose();
             _host = new RenderTexturePanelHost(name, Size, Size);
             _host.Root.style.backgroundColor = Color.black;
-            _host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root, V.Div(name: "wrap", className: "w-[240px] h-[160px]",
                 children: new[] { V.Div(name: "probe", className: ProbeClasses + probeExtra) }));
             var wrap = _host.Root.Q<VisualElement>("wrap");

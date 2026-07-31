@@ -92,7 +92,7 @@ namespace Velvet.Tests
             DisposePanel();
             _host = new RenderTexturePanelHost(name, Size, Size);
             _host.Root.style.backgroundColor = Color.black;
-            _host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root, V.Div(name: "caster", className: CasterClasses));
             _host.Root.Q<VisualElement>("caster").style.opacity = opacity;
             yield return WaitRealtime(0.9);
