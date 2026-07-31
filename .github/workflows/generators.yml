@@ -20,6 +20,9 @@ name: Source generators
 # failure-code range and the analyzer categories it names back against the code that defines them, and the
 # Unity workflow excludes Generators~ outright.
 # A re-include must stay after '!**.md' — the last matching pattern is the one that decides.
+#
+# The list is the push trigger's alone. pull_request carries no path filter and must not gain one, for the
+# reason test.yml states over its own triggers.
 on:
   push:
     branches: [main]
@@ -31,12 +34,6 @@ on:
       - 'Packages/com.velvet.core/Generators~/README.md'
   pull_request:
     branches: [main]
-    paths:
-      - 'Packages/com.velvet.core/**'
-      - '.github/workflows/generators.yml'
-      - '!**.md'
-      - 'Packages/com.velvet.core/Documentation~/setup.md'
-      - 'Packages/com.velvet.core/Generators~/README.md'
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
@@ -65,3 +62,25 @@ jobs:
       - name: Test
         working-directory: Packages/com.velvet.core/Generators~
         run: dotnet test Velvet.SourceGenerators.sln -c Release --nologo
+
+  # ---------------------------------------------------------------------------
+  # This workflow's half of what branch protection requires. Same ownership rule
+  # as the aggregate in test.yml, and a distinct name so protection can name both.
+  # ---------------------------------------------------------------------------
+  required-checks:
+    name: Required checks (generators)
+    if: always()
+    needs: [source-generators]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ needs.source-generators.result }}
+        run: |
+          failed=0
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::dependency finished as '$result'"; failed=1 ;;
+            esac
+          done
+          exit "$failed"

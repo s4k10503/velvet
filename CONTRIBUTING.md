@@ -69,13 +69,28 @@ on macOS / Linux, `./build.ps1` on Windows.
 
 ## Continuous integration
 
-| Workflow | Trigger | Unity license |
-|----------|---------|---------------|
-| `Source generators ▸ source-generators` | push / PR | not required |
-| `Test ▸ unity-tests` (EditMode / PlayMode) | push / PR | **required** (skipped if absent) |
-| `UPM ▸ split` | push to `main` | not required |
-| `UPM ▸ release` | manual (`workflow_dispatch`) | not required |
-| `Docs` (DocFX → GitHub Pages) | push to `main` / release / manual | **required** (skipped if absent) |
+| Workflow | Trigger | Unity license | Required to merge |
+|----------|---------|---------------|-------------------|
+| `Source generators ▸ source-generators` | push (filtered) / every PR | not required | no |
+| `Source generators ▸ Required checks (generators)` | every PR | not required | **yes** |
+| `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR | **required** (skipped if absent) | no |
+| `Test ▸ Required checks (Unity)` | every PR | not required | **yes** |
+| `UPM ▸ split` | push to `main` | not required | no |
+| `UPM ▸ release` | manual (`workflow_dispatch`) | not required | no |
+| `Docs` (DocFX → GitHub Pages) | push to `main` / release / manual | **required** (skipped if absent) | no |
+
+The two required checks are aggregates, and the real jobs are not required themselves. A required check
+that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
+a path filter, a matrix change or a rename would each cause. The aggregates carry no path filter, `needs:`
+the real jobs, and pass when every dependency is `success` **or** `skipped` — the second is what lets a
+fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
+
+Path filtering therefore applies to `push` only. Every pull request runs both workflows.
+
+`main` does not require heads to be up to date before merging. That setting serialises the queue — each
+merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the
+combination it exists to protect any better than a merge does. What does test that combination is a merge
+queue, which is a separate change.
 
 The source-generator tests and the `upm`-branch split run with no Unity license, so the pipeline
 works out of the box on a free account. The Unity EditMode/PlayMode job is skipped automatically
