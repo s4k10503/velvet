@@ -88,6 +88,15 @@ This has produced a wrong conclusion (a paint was reported as surviving `overflo
 - **Put a control in the frame.** "The paint was clipped" and "the clip never applied" are indistinguishable without one — an overflowing child on the opposite side answers it in the same capture.
 - Log more than one axis. An x-only diagnostic read a 20px difference that was really a column layout with a 60px y-shift.
 
+## A player build is not just a slower run
+
+`-testPlatform StandaloneOSX` builds a player and runs the tests inside it. It is the only configuration that catches an asset or a shader missing from a build — and it behaves nothing like an editor run.
+
+- **It writes to tracked files.** One run flipped five fields in `ProjectSettings/ProjectSettings.asset`, rewrote the URP shader-prefiltering block in `Assets/Settings/VelvetURPAsset.asset`, expanded `Assets/DefaultVolumeProfile.asset` by 785 lines, touched `Assets/UniversalRenderPipelineGlobalSettings.asset`, and left `Assets/InitTestScene*.unity` behind when killed. None of it is anyone's change. `git add -A` after a player build commits all of it, which is one more reason the rule against it exists.
+- **Killing the editor does not kill the player.** An orphaned `PlayerWithTests` holds the profiler port, so the next player run builds, launches, connects and then dies with `No activity received from the player in 600 seconds`. A tool timeout that SIGTERMs the editor leaves exactly this behind, and the failure looks like contention from somewhere else. Find them with `ps -Ao command= | grep '[P]layerWithTests'`.
+- **Player runs need the machine to themselves**, not merely "no other run of mine". The profiler connection binds to the host.
+- **Most pixel fixtures cannot pass there at all.** `RenderTexturePanelHost` builds its `PanelSettings` with `ScriptableObject.CreateInstance`, which carries no theme in a player, so anything that renders fails on a null shader. In one measurement 104 of 119 cases failed and the 15 that passed were exactly the ones that never render. Build the player proof out of something other than a pixel read.
+
 ## Reading a result you intend to report
 
 - EditMode batchmode does not run layout. A test that reads `resolvedStyle` must force it through the panel's `ApplyStyles`/`UpdateForRepaint`, or it silently measures nothing. Assertions on measured values belong in PlayMode.
