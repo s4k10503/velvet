@@ -43,10 +43,7 @@ Use the `unity-tests` skill for how to run them and how to read the results — 
 
 `CLAUDE.md`'s **Comments** section owns this and is not restated here — it was, verbatim, and the copy went stale the first time the original changed. Read it. The part most often got wrong: a comment has to be **true** before it has to be short, and an unverified mechanism is not written down at all, hedged or otherwise.
 
-Two things that section cannot tell you, because they came out of correcting it:
-
-- A statement can be **true and still not be the reason**. Calling it false is a separate error from writing an unverified one, and it has happened here more than once.
-- Every enumeration written by hand in this repository has come up short. If the set is derivable from a source in the tree, derive it and guard it; do not write the list.
+One thing that section does not say, because it came out of correcting the section itself: a statement can be **true and still not be the reason**. Calling it false is a separate error from writing an unverified one, and it has happened here more than once.
 
 Never put an issue or PR number in a comment. Everything in this repository is written in English.
 
