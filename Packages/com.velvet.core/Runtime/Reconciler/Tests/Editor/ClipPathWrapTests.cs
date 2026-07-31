@@ -517,9 +517,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_RingOnMotion_When_Reconciled_Then_NoRingBindingIsCreated()
         {
-            // A Motion stands down: the band is hosted beside the element, outside the Motion's own opacity,
-            // so it could not fade with an enter / exit. Warned about rather than silently dropped, like the
-            // shadow-* / clip-path-* / z-* gates on a Motion.
+            // A Motion stands down: the band is placed from the element's laid-out box, which the Motion's
+            // own transform does not move (see FiberNodeFactory.WarnIgnoredMotionUtilities). Warned about
+            // rather than silently dropped, like the shadow-* / clip-path-* / z-* gates on a Motion.
             using var scope = new ReconcilerScope();
             LogAssert.Expect(LogType.Warning, new Regex(@"ring-\*.*on a Motion is ignored"));
 

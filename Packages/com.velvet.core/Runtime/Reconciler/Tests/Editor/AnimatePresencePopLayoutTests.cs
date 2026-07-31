@@ -115,7 +115,7 @@ namespace Velvet.Tests
         // real usage (see ZIndexPanelTests.Mount's own comment on this same attach).
         private MountedTree MountZManagedLaidOut()
         {
-            _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
             var mounted = V.Mount(_window.rootVisualElement, V.Component(ZManagedPresenceList, key: "list"));
             EditorPanelTestHelpers.ForcePanelUpdate(_window.rootVisualElement.panel);
             return mounted;

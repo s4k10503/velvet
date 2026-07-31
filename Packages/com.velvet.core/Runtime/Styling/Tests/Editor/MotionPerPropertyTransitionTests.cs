@@ -66,13 +66,14 @@ namespace Velvet.Tests
             // Assert — transition-property is exactly [opacity, scale] (not the implicit "all"), each POSITIONALLY
             // paired with its OWN override duration instead of the shared top-level 0.3f. The scheduler authors
             // TimeValue entries in milliseconds (TimeUnit.Millisecond), and resolvedStyle reports them back in
-            // that same unit (unlike a USS duration-* utility, which is parsed straight to seconds). Zipped into
-            // an array of (property, durationMs) pairs so the array-of-scalar-tuples compares deep-equal instead
-            // of a tuple-of-arrays (which NUnit does not expand element-wise).
-            var props = element.resolvedStyle.transitionProperty.Select(p => p.ToString());
-            var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value);
-            var resolved = props.Zip(durationsMs, (property, durationMs) => (property, durationMs)).ToArray();
-            Assert.That(resolved, Is.EqualTo(new[] { ("opacity", 150f), ("scale", 500f) }).Within(1e-3f));
+            // that same unit (unlike a USS duration-* utility, which is parsed straight to seconds). NUnit walks
+            // an expected array element-wise carrying the tolerance, but drops it on any element that is a
+            // ValueTuple (no ValueTupleComparer), so the pairing is pinned by gating the joined property list
+            // over an array of durations the tolerance still reaches.
+            var props = string.Join(",", element.resolvedStyle.transitionProperty.Select(p => p.ToString()));
+            var durationsMs = element.resolvedStyle.transitionDuration.Select(t => t.value).ToArray();
+            Assert.That(props == "opacity,scale" ? durationsMs : new[] { float.NaN },
+                Is.EqualTo(new[] { 150f, 500f }).Within(1e-3f));
         }
 
         [Test]

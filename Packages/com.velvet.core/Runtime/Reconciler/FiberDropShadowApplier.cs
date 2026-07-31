@@ -9,22 +9,14 @@ namespace Velvet
     internal sealed class FiberDropShadowApplier
     {
         private readonly ReconcilerContext _ctx;
-        // One delegate for the whole reconciler: the caster is read back off the event, so deferring an
-        // enrolment allocates no per-element closure on the create path.
-        private readonly EventCallback<AttachToPanelEvent> _onAttachedToPanel;
 
-        public FiberDropShadowApplier(ReconcilerContext ctx)
-        {
-            _ctx = ctx;
-            _onAttachedToPanel = EnrollOnAttach;
-        }
+        public FiberDropShadowApplier(ReconcilerContext ctx) => _ctx = ctx;
 
         // Create-time entry point: when classNames carries a shadow-* utility, attaches the drop-shadow
         // paint onto the element (no structural wrapper — the baked shadow texture is the element's own
         // generateVisualContent, drawn behind its content and bleeding outside the box). Composes like skew
         // and gradient: a paint, not a wrapper, so it works alongside a clip wrapper and a user
-        // wrapElement. The element is NOT yet in the hierarchy here, which the paint itself does not need but
-        // the co-fade enrolment does — hence EnrollForCoFade's deferral.
+        // wrapElement.
         internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)
         {
             if (!StyleShadowClass.HasShadowClass(classNames) || !StyleShadowClass.TryExtract(classNames, out var spec))
@@ -53,40 +45,6 @@ namespace Velvet
             var shadowBinding = DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
             _ctx.ShadowBindings[element] = shadowBinding;
             DropShadowSilhouette.SetWantSpacer(element, shadowBinding, WrapperInfrastructure.CarriesFilter(classNames), classNames);
-            EnrollForCoFade(element, shadowBinding);
-        }
-
-        // Enrols a freshly attached paint in every in-flight enter / exit covering its caster. The scheduler
-        // answers "which plays cover this element" by walking the element's ANCESTORS, so an element the
-        // factory has not parented yet matches nothing and enrols nowhere.
-        // The deferral waits for the PANEL rather than merely for a parent, even though the ancestor walk
-        // alone would be satisfied earlier: the enrolment samples the caster's live resolvedStyle.opacity,
-        // which resolves to a default off-panel.
-        // One-shot: a play that begins while the caster is in the tree walks it and finds the binding itself
-        // (CollectShadowsForCoFade), so the detach/attach of a keyed reorder has nothing left to enrol and
-        // would only re-scan every in-flight play. Enrolling twice is harmless — AdoptShadow is idempotent per
-        // play — so this is about not repeating the work, not about correctness.
-        private void EnrollForCoFade(VisualElement element, DropShadowBinding binding)
-        {
-            if (element.panel != null)
-            {
-                _ctx.StyleAnimationScheduler.AdoptShadowForCoFade(element, binding);
-                return;
-            }
-            binding.OnAttachedToPanel = _onAttachedToPanel;
-            element.RegisterCallback(_onAttachedToPanel);
-        }
-
-        private void EnrollOnAttach(AttachToPanelEvent evt)
-        {
-            var element = (VisualElement)evt.currentTarget;
-            element.UnregisterCallback(_onAttachedToPanel);
-            if (!_ctx.ShadowBindings.TryGetValue(element, out var binding))
-            {
-                return;
-            }
-            binding.OnAttachedToPanel = null;
-            _ctx.StyleAnimationScheduler.AdoptShadowForCoFade(element, binding);
         }
 
         // Patch-time reconciliation of an element's shadow state against its new class list. Mirrors the
@@ -131,10 +89,6 @@ namespace Velvet
                 var fresh = DropShadowSilhouette.Attach(element, spec, classNames, skewXDeg, casterSkewed);
                 _ctx.ShadowBindings[element] = fresh;
                 DropShadowSilhouette.SetWantSpacer(element, fresh, WrapperInfrastructure.CarriesFilter(classNames), classNames);
-                // A paint that appears while an enter / exit covering this element is already running has to
-                // join that fade: the play snapshotted the subtree's shadows when it began, and this one was
-                // not there, so nothing else would ever scale its alpha.
-                EnrollForCoFade(element, fresh);
             }
             else if (bound)
             {

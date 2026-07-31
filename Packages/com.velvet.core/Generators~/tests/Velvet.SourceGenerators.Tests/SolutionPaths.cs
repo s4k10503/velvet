@@ -37,5 +37,19 @@ namespace Velvet.SourceGenerators.Tests
             }
             return root;
         }
+
+        /// <summary>
+        /// The shipped guides. Same contract as <see cref="RuntimeRoot"/>: a guard that re-derives what a
+        /// guide claims must throw on a moved tree rather than pass with nothing to compare against.
+        /// </summary>
+        public static string DocumentationRoot()
+        {
+            var root = Path.GetFullPath(Path.Combine(GeneratorsRoot(), "..", "Documentation~"));
+            if (!Directory.Exists(root))
+            {
+                throw new InvalidOperationException($"Velvet documentation not found at '{root}'.");
+            }
+            return root;
+        }
     }
 }

@@ -56,7 +56,7 @@ namespace Velvet.Tests
         // the sheet this fixture would relocate elements that never really were absolute.
         private void Mount(System.Func<VNode> body)
         {
-            _host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root, V.Component(body, key: "root"));
             EditorPanelTestHelpers.ForcePanelUpdate(_host.Panel);
         }
