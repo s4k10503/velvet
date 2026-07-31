@@ -17,14 +17,11 @@ namespace Velvet.Tests
     {
         // A class list that resolves to NO ring resolves here to a spec no assertion can match, so a parser
         // that stopped extracting fails every case that comes through here instead of skipping it. An Assume
-        // would instead gate the very component this fixture exists to pin — measured, a TryExtract hardwired
-        // to return false left all sixteen of those cases inconclusive and none of them failed, which the
-        // runner reports as a pass.
-        // KNOWN HOLE: the five cases that call TryExtract directly and assert Is.False never come through
-        // here, and that same hardwired-false parser leaves them green, because its broken return value IS
-        // what they expect. The gate case asserting HasRingClass is false is a sixth of that shape, one
-        // method over. No substitute value can reach a case that does not call this, so closing them needs
-        // each to carry a control that RESOLVES in its own assertion.
+        // would instead gate the very component this fixture exists to pin, and an inconclusive case is not
+        // a failure to the runner — which is why CI ends on scripts/assert-no-inconclusive.py.
+        // No substitute value reaches a case that asserts the parser said NO, since that broken return value
+        // IS what such a case expects. Each of those instead compares its negative against a class list the
+        // working parser RESOLVES, in the same assertion.
         private static readonly RingSpec NoRing = new(
             float.NaN, new Color(float.NaN, float.NaN, float.NaN, float.NaN), float.NaN, inset: false);
 
@@ -108,14 +105,18 @@ namespace Velvet.Tests
         [Test]
         public void Given_RingZero_When_Extracted_Then_NoRing()
         {
-            Assert.That(StyleRingClass.TryExtract(new[] { "ring-0" }, out _), Is.False);
+            Assert.That((StyleRingClass.TryExtract(new[] { "ring-0" }, out _), Extract("ring-1").Width),
+                Is.EqualTo((false, 1f)));
         }
 
         [Test]
         public void Given_RingThenRingZero_When_Extracted_Then_LaterZeroCancels()
         {
-            // ring-2 then ring-0 in the cascade: the later width-0 cancels the ring.
-            Assert.That(StyleRingClass.TryExtract(new[] { "ring-2", "ring-0" }, out _), Is.False);
+            // The control is the same list minus the trailing ring-0, which separates a CANCELLATION from
+            // a ring that was never resolved in the first place.
+            Assert.That(
+                (Extract("ring-2").Width, StyleRingClass.TryExtract(new[] { "ring-2", "ring-0" }, out _)),
+                Is.EqualTo((2f, false)));
         }
 
         [Test]
@@ -125,7 +126,11 @@ namespace Velvet.Tests
             // the colour token re-flagged the spec as the ring family, silently widening a bare `outline`
             // from the outline default to the 3px ring default. Only reachable now that a colour can arrive
             // from a variant, which is why it is pinned rather than left as a latent parser quirk.
-            Assert.That(Extract("outline", "ring-red-500").Width, Is.EqualTo(1f));
+            // The colour is asserted alongside: a parser that ignored the token outright also leaves the
+            // width at the outline default, and that is not what the case is about.
+            VelvetPalette.TryResolveColorToken("red-500", out var red);
+            var spec = Extract("outline", "ring-red-500");
+            Assert.That((spec.Width, spec.Color), Is.EqualTo((1f, red)));
         }
 
         [Test]
@@ -137,8 +142,12 @@ namespace Velvet.Tests
         [Test]
         public void Given_RingInsetAlone_When_Extracted_Then_NoRing()
         {
-            // ring-inset is only a modifier; with no ring width/color/bare it establishes no ring.
-            Assert.That(StyleRingClass.TryExtract(new[] { "ring-inset" }, out _), Is.False);
+            // ring-inset is only a modifier; with no ring width/color/bare it establishes no ring. The
+            // control is the flag it sets beside a width, so a parser that dropped the token entirely —
+            // which also establishes no ring — does not satisfy the case.
+            Assert.That(
+                (StyleRingClass.TryExtract(new[] { "ring-inset" }, out _), Extract("ring-2", "ring-inset").Inset),
+                Is.EqualTo((false, true)));
         }
 
         [Test]
@@ -156,7 +165,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_OutlineNone_When_Extracted_Then_NoRing()
         {
-            Assert.That(StyleRingClass.TryExtract(new[] { "outline-none" }, out _), Is.False);
+            Assert.That(
+                (Extract("outline").Width, StyleRingClass.TryExtract(new[] { "outline-none" }, out _)),
+                Is.EqualTo((1f, false)));
         }
 
         [Test]
@@ -176,14 +187,23 @@ namespace Velvet.Tests
         [Test]
         public void Given_UnrecognizedRingSuffix_When_ExtractedAlone_Then_NoRing()
         {
-            // ring-foo is neither a width nor a color token, so it establishes no ring on its own.
-            Assert.That(StyleRingClass.TryExtract(new[] { "ring-foo" }, out _), Is.False);
+            // ring-foo is neither a width nor a color token, so it establishes no ring on its own. The
+            // control puts it beside a width, where it must be IGNORED rather than cancel what the rest of
+            // the list resolved.
+            Assert.That(
+                (StyleRingClass.TryExtract(new[] { "ring-foo" }, out _), Extract("ring-2", "ring-foo").Width),
+                Is.EqualTo((false, 2f)));
         }
 
         [Test]
         public void Given_PlainUtility_When_GateChecked_Then_NotARingClass()
         {
-            Assert.That(StyleRingClass.HasRingClass(new[] { "bg-red-500", "p-4" }), Is.False);
+            // The control is the same list with one ring token appended: what the gate owes is a
+            // DISCRIMINATION, and a gate hardwired to false answers the plain list correctly.
+            Assert.That(
+                (StyleRingClass.HasRingClass(new[] { "bg-red-500", "p-4" }),
+                    StyleRingClass.HasRingClass(new[] { "bg-red-500", "p-4", "ring-2" })),
+                Is.EqualTo((false, true)));
         }
 
         [Test]

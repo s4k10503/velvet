@@ -127,8 +127,9 @@ namespace Velvet
         // containers counted — the physical bound the reconciler used before it addressed slots logically.
         // Superseded by LogicalChildSlots.Count, which counts rendered children wherever they sit and so
         // does NOT count that leading container; the two disagree by exactly that, which is why this is not
-        // a synonym. No production caller remains — it is kept only to avoid editing unrelated fixtures in
-        // the refactor that retired it, and reaching for it from reconciler code gives the wrong number.
+        // a synonym. FiberZLayerCoordinator is the one production caller left and wants exactly this reading —
+        // a z-managed element hosts its band and its own container, so the physical count is the question it
+        // asks. Anywhere else in reconciler code this gives the wrong number; reach for LogicalChildSlots.
         internal static int NonSpacerChildCount(VisualElement container)
         {
             var n = container.childCount;
