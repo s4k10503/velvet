@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -10,9 +9,7 @@ namespace Velvet
     // the element itself (a drop shadow needs NO structural wrapper — the baked shadow texture is painted by
     // the element's own generateVisualContent, BEHIND its content and bleeding outside the box, matching CSS
     // box-shadow as a non-structural paint). Holds the resolved spec (color/blur/offset/spread), the corner
-    // radius and skew the bake follows, the registered callbacks (so they can be unregistered on detach), and
-    // a co-fade opacity multiplier (animation-driven — see SetCoFade / EndCoFade) so the shadow fades together
-    // with its element during an enter / exit.
+    // radius and skew the bake follows, and the registered callbacks (so they can be unregistered on detach).
     internal sealed class DropShadowBinding
     {
         public ShadowSpec Spec;
@@ -46,95 +43,10 @@ namespace Velvet
         public Action<MeshGenerationContext>? OnGenerate;
         public EventCallback<GeometryChangedEvent>? OnGeometryChanged;
         public EventCallback<CustomStyleResolvedEvent>? OnStyleResolved;
-        // Set while a co-fade enrolment is still waiting for the caster to enter the tree; see
-        // FiberDropShadowApplier's deferral. Held here so Detach can unregister it with the rest.
-        public EventCallback<AttachToPanelEvent>? OnAttachedToPanel;
 
         // The native-face stash + sentinel suppression (UPRIGHT casters only). Shared with the skew layer; a
         // skewed caster leaves this untouched (HasStash false) because its SkewSilhouette owns the face.
         public readonly SilhouetteFaceStash Face = new();
-
-        // Multiplier applied to the shadow's alpha at paint time (Draw), driven by each enter / exit fade
-        // covering the caster (see SetCoFade / EndCoFade). 1 = fully shown (at rest).
-        //
-        // Measured on 6000.3.11f1 by reading back a render-texture panel: UI Toolkit scales a textured
-        // mgc.Allocate quad by the element's own opacity AND by an animating ancestor's, byte-for-byte the same
-        // as it scales painter2D output (white-on-black at opacity 0.5 reads 128 for both, at opacity 1 reads
-        // 255 for both). So this multiplier is a SECOND application of an opacity the renderer has already
-        // applied, and a fading shadow lands at opacity squared rather than at the caster's opacity. Whether
-        // the correction should exist at all is unresolved; do not restore the claim that the baked quad is
-        // opacity-blind without re-measuring, because that claim is what this note replaces.
-        public float ShadowOpacity = 1f;
-
-        // Co-fade drivers: each in-flight enter / exit covering this shadow contributes a [0,1] factor, and
-        // ShadowOpacity is their PRODUCT (1 when none). Nested fades (an enclosing screen-enter wrapping a
-        // list-item fade that both cover this shadow) compose multiplicatively, matching how UI Toolkit
-        // composites ancestor opacity down the tree. The common case is zero or one driver, so the first slot
-        // is inline; a dictionary is allocated only when a second overlapping animation appears.
-        private object? _driver0;
-        private float _factor0 = 1f;
-        private Dictionary<object, float>? _extraDrivers;
-
-        // Registers or updates this driver's factor, recomputing ShadowOpacity. A driver not seen before is
-        // added; the same driver re-setting its factor each tick is updated in place.
-        public void SetCoFadeFactor(object driver, float factor)
-        {
-            factor = Mathf.Clamp01(factor);
-            if (_driver0 == null || ReferenceEquals(_driver0, driver))
-            {
-                _driver0 = driver;
-                _factor0 = factor;
-            }
-            else
-            {
-                (_extraDrivers ??= new Dictionary<object, float>())[driver] = factor;
-            }
-            RecomputeShadowOpacity();
-        }
-
-        // Drops this driver's contribution. When the inline slot is freed, one extra driver is promoted into it
-        // so the single-driver fast path stays allocation-free; when no drivers remain ShadowOpacity returns to 1.
-        public void RemoveCoFadeDriver(object driver)
-        {
-            if (ReferenceEquals(_driver0, driver))
-            {
-                _driver0 = null;
-                _factor0 = 1f;
-                if (_extraDrivers != null && _extraDrivers.Count > 0)
-                {
-                    object? promotedKey = null;
-                    foreach (var kv in _extraDrivers)
-                    {
-                        _driver0 = kv.Key;
-                        _factor0 = kv.Value;
-                        promotedKey = kv.Key;
-                        break;
-                    }
-                    if (promotedKey != null)
-                    {
-                        _extraDrivers.Remove(promotedKey);
-                    }
-                }
-            }
-            else
-            {
-                _extraDrivers?.Remove(driver);
-            }
-            RecomputeShadowOpacity();
-        }
-
-        private void RecomputeShadowOpacity()
-        {
-            var product = _driver0 != null ? _factor0 : 1f;
-            if (_extraDrivers != null)
-            {
-                foreach (var f in _extraDrivers.Values)
-                {
-                    product *= f;
-                }
-            }
-            ShadowOpacity = product;
-        }
     }
 
     // The four values the reconciler resolves together for one patch; each means what the like-named
@@ -262,11 +174,6 @@ namespace Velvet
             {
                 element.UnregisterCallback(binding.OnStyleResolved);
             }
-            if (binding.OnAttachedToPanel != null)
-            {
-                element.UnregisterCallback(binding.OnAttachedToPanel);
-                binding.OnAttachedToPanel = null;
-            }
             if (binding.Face.SuppressionApplied)
             {
                 binding.Face.Release(element);
@@ -365,26 +272,6 @@ namespace Velvet
         public static DropShadowBinding? TryGet(VisualElement element)
             => s_byElement.TryGetValue(element, out var binding) ? binding : null;
 
-        // Registers / updates an enter or exit animation's co-fade factor on this shadow and repaints: the
-        // scheduler samples the caster's animated opacity each frame and pushes it here, and Draw multiplies
-        // the shadow alpha by the resulting ShadowOpacity (whose own note carries what the renderer already
-        // does with that opacity). factor 0 = fully faded, 1 = at rest. OVERLAPPING drivers compose
-        // multiplicatively (see DropShadowBinding), so the shadow can never out-shine the most-faded fade
-        // covering it.
-        public static void SetCoFade(DropShadowBinding binding, VisualElement element, object driver, float factor)
-        {
-            binding.SetCoFadeFactor(driver, factor);
-            element.MarkDirtyRepaint();
-        }
-
-        // Drops a finished / cancelled animation's contribution and repaints. When the LAST driver is gone the
-        // shadow returns to full strength (ShadowOpacity 1), so a cancelled fade never leaves it stuck faded.
-        public static void EndCoFade(DropShadowBinding binding, VisualElement element, object driver)
-        {
-            binding.RemoveCoFadeDriver(driver);
-            element.MarkDirtyRepaint();
-        }
-
         // Radius prefers the laid-out resolvedStyle.borderTopLeftRadius (handles %, arbitrary, and inline
         // radii) once on a panel, and falls back to the rounded-* class scale off-panel / pre-layout so a
         // value is always set.
@@ -412,10 +299,7 @@ namespace Velvet
         // captured background color, and (3) the border stroke. The opaque fill covers the shadow silhouette's
         // interior and its offset-up overlap, leaving only the outer halo. A SKEWED caster skips (2)/(3): its
         // SkewSilhouette repaints the sheared fill/border just after this paint. Skipped before layout gives a
-        // real size. During an enter / exit only the shadow QUAD's alpha is scaled by the co-fade ShadowOpacity
-        // (DrawShadowQuad); the repainted upright fill/border are left at full alpha because UI Toolkit already
-        // scales them by the caster's own animated opacity — which, as measured, it also does to the quad (see
-        // DropShadowBinding.ShadowOpacity), so the asymmetry between the two is not the engine's.
+        // real size.
         private static void Draw(MeshGenerationContext mgc, VisualElement ve, DropShadowBinding binding)
         {
             var w = ve.layout.width;
@@ -440,13 +324,19 @@ namespace Velvet
 
         // Draws the baked shadow silhouette quad. Returns early if the shadow color is transparent or the bake
         // is not yet available (no graphics device / shader) — the geometry callback retries.
+        //
+        // The alpha is the spec's alone: a fading caster needs no correction here. Measured on 6000.3.11f1 by
+        // reading back a render-texture panel, UI Toolkit scales a textured mgc.Allocate quad by the element's
+        // own opacity and by an ancestor's byte-for-byte the same as it scales painter2D output — under a
+        // clipped opacity group, under an inline filter, and on this very paint with the sentinel face
+        // suppression active. An animation-driven multiplier here therefore applies the caster's opacity a
+        // SECOND time and lands the shadow at opacity squared; one existed and was removed. Restoring one
+        // needs a fresh measurement, not the old claim that a baked quad is opacity-blind.
         private static void DrawShadowQuad(MeshGenerationContext mgc, VisualElement ve, DropShadowBinding binding,
             float w, float h)
         {
             var spec = binding.Spec;
-            // Scale the shadow alpha by the co-fade multiplier (1 at rest). Bail before baking when
-            // effectively invisible.
-            var alpha = spec.Color.a * binding.ShadowOpacity;
+            var alpha = spec.Color.a;
             if (alpha <= 0.004f)
             {
                 return;
