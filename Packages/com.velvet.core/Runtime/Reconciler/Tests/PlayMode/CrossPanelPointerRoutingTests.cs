@@ -69,7 +69,7 @@ namespace Velvet.Tests
             // layer draws frontmost (PanelHostFactory's sortingOrder offset), so it should win.
             _docGo = new GameObject("MainPanel");
             var doc = _docGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             _mounted = V.Mount(doc.rootVisualElement, V.Component(SceneRender, key: "root"));
@@ -112,7 +112,7 @@ namespace Velvet.Tests
             // treat "an overlay panel EXISTS" as "the overlay panel has content everywhere".
             _docGo = new GameObject("MainPanel");
             var doc = _docGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             _mounted = V.Mount(doc.rootVisualElement, V.Component(WideMainRender, key: "root"));

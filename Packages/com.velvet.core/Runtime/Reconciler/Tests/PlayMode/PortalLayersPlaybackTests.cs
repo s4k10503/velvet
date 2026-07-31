@@ -52,7 +52,7 @@ namespace Velvet.Tests
         {
             _docGo = new GameObject("MainPanel");
             var doc = _docGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             if (withTheme)
             {
