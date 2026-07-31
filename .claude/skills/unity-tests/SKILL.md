@@ -33,7 +33,7 @@ Concurrent Unity instances make unrelated tests fail. A failure measured while a
 
 **`inconclusive` is not counted as a failure by the runner.** A non-zero count means a test skipped rather than reported — usually an `Assume` gating the behaviour under test. Treat it as a failure and find the test.
 
-## Eight ways a test here has passed while checking nothing
+## Nine ways a test here has passed while checking nothing
 
 Every one was found by mutating the implementation and confirming a test died — none by reading the test, because each reads as reasonable. The common shape is that **the input's form never reaches the code under test**.
 
@@ -45,12 +45,22 @@ Every one was found by mutating the implementation and confirming a test died �
 - **An `Assume` gates the behaviour under test.** The regression reports Inconclusive, which the runner does not count. Fold it into the assertion as one tuple comparison.
 - **An arbitrary value skips the path.** `rounded-tl-[12px]` is not in the scale, so a fallback under test never fires; `rounded-tl-lg` reaches it.
 - **The class under test was inert.** See the stylesheet trap below — the rest of the fixture works, so it looks built.
+- **The arranged condition has no term depending on it.** A case named for a clipped opacity group, or for an inline filter, sets that condition up and then asserts only what is true without it — so it passes with the clip or the filter removed, and pins its context in name only. Found three times in one fixture family, each next door to the one just fixed.
 
 Three traps in the folding itself, each of which passes a count check:
 
 - **`Is.EqualTo(tuple)` matches a nested collection by reference.** Join to strings instead.
 - **`.Within()` does not reach the members of a tuple.** Unity's NUnit ships no `ValueTupleComparer`, so `NUnitEqualityComparer.AreEqual` falls through to `FirstImplementsIEquatableOfSecond`, which never sees the tolerance — `Assert.That((0.99999f, 0.00001f), Is.EqualTo((1f, 0f)).Within(1e-4f))` **fails**, while printing the tolerance it did not apply. A fold that moves a scalar comparison into a tuple silently converts it to bit-exact equality wearing a tolerance suffix. Round each term before comparing, or compare formatted strings.
 - **The logically sharpest gate is not always the discriminating one.** A `ReferenceEquals` precondition on a LIFO pool holds even when the mechanism is neutered, and a count term next to it is what goes red.
+
+## Sweep for the shape, not the instance
+
+Three consecutive review rounds on one branch each found one instance of the same defect, each fix was right, and the class never moved — because each round fixed what it was handed. Two sweeps end that, and both cost minutes:
+
+- **Every assertion**: remove the condition the case arranges and check that something goes red. If nothing does, the arrangement is decoration.
+- **Every sentence containing `every`, `no other`, `always` or `none`**: check it against the set it quantifies over. Universals written from memory have been false here more often than they have held, including inside the rule that forbids writing an unverified claim, and including in a comment written after that rule landed.
+
+Report what a sweep found, zero included. One nobody hears about is indistinguishable from one nobody ran.
 
 ## A pixel fixture on `RenderTexturePanelHost` mounts without the bundled stylesheet
 
