@@ -12,7 +12,7 @@ using Xunit;
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// The code-shape rules reach this solution through two MSBuild items per project — the opt-in marker and
+    /// A project here declares two MSBuild items to be held to the code-shape rules — the opt-in marker and
     /// an analyzer reference to the bootstrap — and a project carrying neither compiles clean, so it is exempt
     /// with nothing anywhere to say so. That is the state the whole solution was in before the wiring existed,
     /// and a project added later would return to it silently.
@@ -29,6 +29,12 @@ namespace Velvet.SourceGenerators.Tests
     /// read out of MSBuild's evaluation. The marker cannot use evaluation alone, because an item that
     /// survives evaluation still reaches no assembly under <c>GenerateAssemblyInfo=false</c>; the reference
     /// cannot use metadata at all, because <c>ReferenceOutputAssembly=false</c> is what keeps it out.
+    /// </para>
+    /// <para>
+    /// Declaring both is necessary and not sufficient. Measured on a project carrying both, with a
+    /// parameter-count violation planted in it, <c>dotnet build -p:RunAnalyzers=false</c> and
+    /// <c>dotnet build -p:NoWarn=VEL502</c> each build it clean — properties, and no guard here reads a
+    /// property.
     /// </para>
     /// </remarks>
     public sealed class GeneratorProjectOptInDriftTests

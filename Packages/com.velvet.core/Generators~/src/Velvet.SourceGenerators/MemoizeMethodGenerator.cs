@@ -159,8 +159,7 @@ namespace Velvet.SourceGenerators
         }
 
         /// <summary>
-        /// Each of these leaves the V.Memoized wrapper unwritable rather than merely unusual — the seam
-        /// against the declaration half, which reports only what a modifier can fix.
+        /// Each of these leaves the V.Memoized wrapper unwritable rather than merely unusual.
         /// </summary>
         private static bool ValidateSignature(
             MethodDeclarationSyntax decl,

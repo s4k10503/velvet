@@ -245,8 +245,10 @@ reference alone leaves the gate closed:
 ```
 
 `GeneratorProjectOptInDriftTests` fails when a project under `Generators~` carries neither, for the reason
-its Unity counterpart exists: a project that escapes looks exactly like one that complies. It reads both out
-of the project file, because only the marker leaves a trace in the built assembly.
+its Unity counterpart exists: a project that escapes looks exactly like one that complies. Neither half is
+decided from the project XML — the marker goes through `CodeShapeMembers.OptsIntoCodeShapeRules`, the
+analyzers' own gate, against the built assembly, and the reference through MSBuild's evaluation. That
+fixture owns why each half needs the instrument it uses, and what the pair of them still does not reach.
 
 The analyzers arrive from a **second compile** of the same sources rather than from the project that declares
 them, because a project cannot reference itself as an analyzer — MSBuild rejects the cycle with `MSB4006`
@@ -275,4 +277,6 @@ Which paths trigger it is stated in the repository's `CLAUDE.md`; the reason `Ru
 
 **CI does not check the committed DLLs under `../Runtime/Plugins/` at all.** It tests the sources; it never compares the deployed assemblies against a rebuild, so a PR that edits generator sources and forgets to rerun the build script goes green while Unity keeps consuming the stale binaries. Rebuilding and committing them is the contributor's responsibility. The third committed artifact, `../Runtime/Styling/StyleUtilityProperties.g.cs`, is the exception — `BundledStyleSheetCensusTests` compares it against a fresh derivation, so forgetting to regenerate that one is caught.
 
-A plain `git diff --exit-code` on the deployed DLLs would not close that gap either: the build embeds the git `HEAD` commit id in the assembly, so rebuilding at commit *N* never reproduces the DLL committed *in* commit *N* (it was necessarily built at *N-1*). The build is otherwise deterministic — repeated rebuilds of unchanged sources at the same `HEAD` are byte-identical.
+A plain `git diff --exit-code` against a rebuild would not close that gap either: the SDK writes the commit `HEAD` was at when the build ran into the assembly's informational version (`0.1.0+<sha>`), so a rebuild at any other commit carries a different id. What does compare is a build at the commit the assembly names — measured byte-identical from a separate working tree, because `ContinuousIntegrationBuild` replaces the source paths with `/_/`.
+
+The deployed pair is still not checkable that way. `build.sh` runs before the commit that carries its output, so a redeploy that also edits generator sources names a commit those sources are not in. And when that commit lived only on a PR branch, the squash merge left nothing to build at: the pair on `main` names one that no ref here reaches.
