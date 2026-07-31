@@ -84,8 +84,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - The semantic colour tokens are two opaque theme sets instead of one translucent one, and a light theme
-  now exists. `_tokens.uss` declared 27 of its 31 `--color-*` values as translucent white overlays and no
-  background at all, so the layer could not render itself on a bare panel, `bg-surface` inside
+  now exists. `_tokens.uss` declared 27 of its 31 `--color-*` values with an alpha — twelve as white overlays, twelve
+  as translucent accents and three near-black — and no background at all, so the layer could not render itself on a bare panel, `bg-surface` inside
   `bg-surface` composited to a third colour neither of them declares, and `--color-text` being an opaque
   near-white left the whole layer dark by construction with nothing to switch to. It now declares
   `--color-background` and a light set on `:root`, a dark set on `.dark`, and every colour that varies by

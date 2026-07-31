@@ -87,10 +87,13 @@ namespace Velvet.Tests
                     Ratio: ContrastRatio(Lookup(set.Tokens, token), Lookup(set.Tokens, "--color-background")))))
                 .ToList();
 
-            // Assert
+            // Assert — the count is written out rather than derived from the arrays that produced it. As
+            // sets.Length * TextTokens.Length it is the same expression on both sides and holds for any
+            // content of either, including empty ones, where All() is vacuously true and the case passes
+            // having measured nothing.
             Assert.That(
                 (measured.Count, measured.All(pair => pair.Ratio >= BodyTextContrastMinimum)),
-                Is.EqualTo((sets.Length * TextTokens.Length, true)),
+                Is.EqualTo((4, true)),
                 string.Join(", ", measured.Select(pair => $"{pair.Label}={pair.Ratio:F2}")));
         }
 
