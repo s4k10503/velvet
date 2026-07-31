@@ -7,7 +7,8 @@
 ;   VEL200-VEL299  Velvet.Routing       (reserved)
 ;   VEL300-VEL399  Velvet.Reactive      (reserved)
 ;   VEL400-VEL499  Velvet.Style         (reserved)
-;   VEL500-VEL599  Velvet.Shape         Mechanical code-shape limits (nesting depth, branch count, parameters)
+;   VEL500-VEL599  Velvet.Shape         Mechanical code-shape rules (nesting depth, branch count, parameters,
+;                                       tolerance on a tuple comparison)
 ; New IDs follow the convention so IDE category filtering (e.g.
 ; `dotnet_analyzer_diagnostic.category-Velvet.Memoize.severity = none`) doesn't accidentally
 ; silence diagnostics from unrelated subsystems. The bulk key is `dotnet_analyzer_diagnostic`;
@@ -32,3 +33,4 @@ VEL101 | Velvet.Hooks | Warning | Hook call inside conditional control flow (Rul
 VEL500 | Velvet.Shape | Error | Member body nests control flow more than 4 levels deep
 VEL501 | Velvet.Shape | Error | Member body makes more than 20 branching decisions
 VEL502 | Velvet.Shape | Error | Member demands more than 6 arguments from every caller
+VEL503 | Velvet.Shape | Warning | Tolerance chained onto an NUnit equality whose expected value is a tuple
