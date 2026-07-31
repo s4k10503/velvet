@@ -41,9 +41,9 @@ Use the `unity-tests` skill for how to run them and how to read the results — 
 
 ## Comments and documentation
 
-`CLAUDE.md`'s **Comments** section owns this and is not restated here — it was, verbatim, and the copy went stale the first time the original changed. Read it. The part most often got wrong: a comment has to be **true** before it has to be short, and an unverified mechanism is not written down at all, hedged or otherwise.
+`CLAUDE.md`'s **Comments** section owns this and is not restated here — a condensed version was, and it drifted from the original. Read it. The part most often got wrong: a comment has to be **true** before it has to be short, and an unverified mechanism is not written down at all, hedged or otherwise.
 
-One thing that section does not say, because it came out of correcting the section itself: a statement can be **true and still not be the reason**. Calling it false is a separate error from writing an unverified one, and it has happened here more than once.
+The second failure that section names is the one to read twice: a statement can be **true and still not be the reason**, and calling it false is a separate error from writing an unverified one. Every correction round here has produced at least one.
 
 Never put an issue or PR number in a comment. Everything in this repository is written in English.
 
