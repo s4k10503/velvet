@@ -70,7 +70,7 @@ namespace Velvet.Tests
             // The spring case reads resolvedStyle across the swap, so the utility classes the
             // variants name must actually resolve (opacity-0 -> 0); the inline-slot and class-list
             // assertions elsewhere don't care, and no element here declares transition utilities.
-            _sim.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_sim.rootVisualElement);
             _reconciler = new Reconciler();
             s_labelStore = null;
             s_keyStore = null;

@@ -18,7 +18,7 @@ namespace Velvet.Tests
         // The per-corner radius case needs a real USS rounded-tl-lg to reflect into resolvedStyle; without
         // the sheet every corner resolves 0 and the whole-element class-scale fallback answers instead,
         // which is exactly the path that case exists to avoid taking.
-        protected override void LoadStyleSheets() => _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+        protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
         private static VisualElement RingOverlayIn(VisualElement host)
         {

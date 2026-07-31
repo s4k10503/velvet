@@ -24,7 +24,7 @@ namespace Velvet.Tests
         private const float NarrowWidth = 500f;
         private const float Space4 = 16f;
 
-        protected override void LoadStyleSheets() => _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+        protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
         // Mounts a container at the given panel width and resolves it: the panel needs a forced layout pass
         // before resolvedStyle.width exists, and the responsive manipulator re-reads that width off a
