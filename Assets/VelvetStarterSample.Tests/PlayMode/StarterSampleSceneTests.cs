@@ -32,6 +32,10 @@ namespace Velvet.Tests
         private const string AboutLinkName = "nav-about";
         private const string BackLinkName = "back-link";
 
+        // The nav sits in the layout and survives both routes, so the departure term has to come from
+        // the task route's own body.
+        private const string DraftFieldName = "draft-field";
+
         private const double SettleSeconds = 20;
 
         private bool _loaded;
@@ -110,13 +114,18 @@ namespace Velvet.Tests
             // Arrange
             yield return PlaySampleScene();
             yield return WaitUntil(() => PanelRoot()?.Q<Button>(AboutLinkName) != null);
+            var tasksBefore = Find(DraftFieldName) != null;
 
             // Act
             PanelRoot().Q<Button>(AboutLinkName).SimulateClick();
             yield return WaitUntil(() => PanelRoot()?.Q<Button>(BackLinkName) != null);
 
-            // Assert — an element only the About route renders.
-            Assert.That(PanelRoot().Q<Button>(BackLinkName), Is.Not.Null);
+            // Assert — arrival alone is satisfied by an outlet that appends rather than replaces, and the
+            // departure term alone is satisfied by a task route that never rendered. All three in one
+            // comparison is what makes this case pin the swap its name claims.
+            Assert.That(
+                (tasksBefore, Find(DraftFieldName) != null, PanelRoot().Q<Button>(BackLinkName) != null),
+                Is.EqualTo((true, false, true)));
         }
     }
 }
