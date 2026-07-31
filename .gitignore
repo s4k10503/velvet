@@ -13,8 +13,8 @@
 /[Uu]ser[Ss]ettings/
 /[Mm]emoryCaptures/
 
-# Recordings can get excessive in size
-[Rr]ecordings/
+# Recordings can get excessive in size. Anchored for the reason above.
+/[Rr]ecordings/
 
 # Asset meta data should only be ignored when the corresponding asset is also ignored
 !/[Aa]ssets/**/*.meta
@@ -86,12 +86,6 @@ docs/bin/
 # Disposable build-time copy of Packages/com.velvet.core/Documentation~ staged by docs/build.sh
 # so DocFX's TOC/xref resolution can see the guides; Documentation~ remains the single source.
 docs/guides/
-# The hand-authored DocFX project must be tracked despite the blanket *.csproj ignore above.
-!docs/Velvet.Docs.csproj
-
-# The Source-generator solution + projects are hand-authored and must be tracked (CI builds them)
-# despite the blanket *.csproj / *.sln ignore above.
-!Packages/com.velvet.core/Generators~/Velvet.SourceGenerators.sln
-!Packages/com.velvet.core/Generators~/src/Velvet.SourceGenerators/Velvet.SourceGenerators.csproj
-!Packages/com.velvet.core/Generators~/src/Velvet.SourceGenerators.CodeFixes/Velvet.SourceGenerators.CodeFixes.csproj
-!Packages/com.velvet.core/Generators~/tests/Velvet.SourceGenerators.Tests/Velvet.SourceGenerators.Tests.csproj
+# The hand-authored DocFX and source-generator projects need no re-include: the *.csproj / *.sln rules
+# above are anchored to the root, so no rule ever matched them. Four negations sat here saying otherwise
+# and reached nothing.
