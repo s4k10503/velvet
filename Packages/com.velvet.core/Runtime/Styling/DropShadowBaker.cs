@@ -17,13 +17,10 @@ namespace Velvet
     // in-element paint draws ONE quad; the size-keyed LRU cache below bounds the per-size bakes.
     internal static class DropShadowBaker
     {
-        private const string ShadowShaderPath = "Velvet/DropShadow";
-
         // Bleed margin added around the blur so the soft edge is not clipped by the quad. Public so the paint
         // binding can size and offset the draw quad to match the bake.
         internal const float ExtraPadding = 5f;
 
-        // Cached across all shadows: Shader.Find is a project-wide lookup, identical for every shadow.
         private static Shader? s_shader;
 
         // The single bake Material, lazily created from the shader. It is only a bake tool (the baked textures
@@ -141,12 +138,10 @@ namespace Velvet
             }
             if (s_shader == null)
             {
-                s_shader = Shader.Find(ShadowShaderPath);
+                s_shader = VelvetShaders.Find(VelvetShaders.DropShadow, "DropShadow", "shadow");
             }
             if (s_shader == null)
             {
-                FiberLogger.LogWarning("DropShadow", $"Shader not found: {ShadowShaderPath}. " +
-                    "Ensure the project uses URP and the shader is included in the build.");
                 material = null!;
                 return false;
             }
