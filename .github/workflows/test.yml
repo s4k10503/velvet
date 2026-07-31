@@ -1,13 +1,13 @@
 name: Test
 
-# Beyond what Unity compiles, this list carries what a job here reads: the drift guards scan the guides,
-# both README.md files and CLAUDE.md, and the last step of each Unity job runs
-# scripts/assert-no-inconclusive.py. A guard whose file starts no run reports green by never running,
-# which is why WorkflowTriggerCoverageTests fails when this list stops covering one of those.
+# pull_request carries no path filter, and must not gain one. A check GitHub is asked to require reports
+# Pending forever when a path filter stops its workflow from starting, which blocks the pull request with
+# no way to satisfy it. The push filter is a different question — a push to main has already passed the
+# pull request — so it keeps the list, and WorkflowTriggerCoverageTests holds both halves.
 #
-# Generators~ sources stay out: the Unity side consumes their committed DLLs under Runtime/Plugins, so a
-# generator change reaches this workflow when the redeployed DLLs are committed. Markdown under it is
-# back in, because a guard here reads the contributor README.
+# Generators~ sources stay out of the push list: the Unity side consumes their committed DLLs under
+# Runtime/Plugins, so a generator change reaches this workflow when the redeployed DLLs are committed.
+# Markdown under it is back in, because a guard here reads the contributor README.
 on:
   push:
     branches: [main]
@@ -23,16 +23,6 @@ on:
       - 'Packages/com.velvet.core/Generators~/*.md'
   pull_request:
     branches: [main]
-    paths:
-      - 'Assets/**'
-      - 'Packages/**'
-      - 'ProjectSettings/**'
-      - 'scripts/**'
-      - 'CLAUDE.md'
-      - 'README.md'
-      - '.github/workflows/test.yml'
-      - '!Packages/com.velvet.core/Generators~/**'
-      - 'Packages/com.velvet.core/Generators~/*.md'
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
@@ -126,3 +116,32 @@ jobs:
         with:
           name: Test results (${{ matrix.testMode }})
           path: ${{ matrix.testMode }}-results
+
+  # ---------------------------------------------------------------------------
+  # The one check branch protection requires from this workflow. Naming a real
+  # job instead would tie branch protection to that job's name and to its
+  # continuing to run at all; this reports for every pull request whatever the
+  # jobs above do.
+  #
+  # skipped counts as passing, which is what lets a fork with no UNITY_LICENSE
+  # merge anything: unity-tests is skipped in exactly that case. cancelled does
+  # not, because a superseded run and a run somebody stopped both arrive here
+  # with nothing having been tested.
+  # ---------------------------------------------------------------------------
+  required-checks:
+    name: Required checks (Unity)
+    if: always()
+    needs: [license-check, unity-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }}
+        run: |
+          failed=0
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::dependency finished as '$result'"; failed=1 ;;
+            esac
+          done
+          exit "$failed"
