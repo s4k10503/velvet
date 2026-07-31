@@ -88,7 +88,7 @@ namespace Velvet.Tests
             // Assert — the edit count is folded in because a map that parsed to nothing satisfies
             // "no anchor is wrong" exactly, and a renamed JSON key is what produces that.
             Assert.That((map.cuts.Sum(cut => cut.edits.Length), string.Join("\n", wrong)),
-                Is.EqualTo((6, string.Empty)));
+                Is.EqualTo((8, string.Empty)));
         }
 
         [Test]
@@ -149,21 +149,21 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AFixtureWhoseCutsSpanTwoMechanisms_When_ItsCasesAreClassified_Then_EachMatchesExactlyOneScope()
+        public void Given_AFixtureWhoseCutsSpanTwoMechanisms_When_ItsCasesAreClassified_Then_EachMatchesAtLeastOne()
         {
-            // Arrange — a case matching neither scope is never asked anything and reports no holes; a case
-            // matching both is reported as a hole by whichever cut it does not belong to. The first run of
-            // this harness handed back every ring case in the clip fixture as a hole under the clip applier
-            // cut, which is what this case exists to make impossible to repeat.
+            // Arrange — a case matching no scope is asked nothing and can never be reported, which is the
+            // failure this catches. Matching two is not a failure: a case named for a ring suppressed by a
+            // clip belongs to both mechanisms and is correctly asked both cuts. The first run of this
+            // harness handed back every ring case in the clip fixture as a hole under the clip applier cut,
+            // which is what the scopes exist to prevent and what this case keeps honest.
             var map = ReadMap();
 
             // Act
             var wrong = (from entry in map.fixtures
                          where Mechanisms(map, entry).Count > 1
                          from name in CaseNames(entry.fixture)
-                         let matched = entry.caseScopes.Count(scope => Regex.IsMatch(name, scope.pattern))
-                         where matched != 1
-                         select $"{entry.fixture}.{name} matched {matched} scopes").ToList();
+                         where !entry.caseScopes.Any(scope => Regex.IsMatch(name, scope.pattern))
+                         select $"{entry.fixture}.{name} matches no scope").ToList();
 
             // Assert — the scoped-fixture count is folded in because a map whose fixtures all read as
             // single-mechanism satisfies this by never classifying anything.

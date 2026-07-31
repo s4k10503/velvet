@@ -3,12 +3,17 @@
     {
       "name": "clip-parser",
       "mechanism": "clip",
-      "summary": "the clip-path class parser resolves nothing",
+      "summary": "the clip-path class parser claims and resolves nothing",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleClipPathClass.cs",
           "anchor": "public static bool TryExtract(string[]? classNames, out ClipPathSpec? spec)",
           "neuter": "spec = null; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleClipPathClass.cs",
+          "anchor": "public static bool HasClipPathClass(string[]? classNames)",
+          "neuter": "return false;"
         }
       ]
     },
@@ -32,12 +37,17 @@
     {
       "name": "ring-parser",
       "mechanism": "ring",
-      "summary": "the ring class parser resolves nothing",
+      "summary": "the ring class parser claims and resolves nothing",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
           "anchor": "public static bool TryExtract(string[] classNames, out RingSpec spec)",
           "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+          "anchor": "public static bool HasRingClass(string[] classNames)",
+          "neuter": "return false;"
         }
       ]
     },
