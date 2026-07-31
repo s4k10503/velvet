@@ -1,11 +1,13 @@
 name: Test
 
-# Only changes that can affect what Unity compiles or imports trigger the
-# Unity jobs: the embedded package, project settings/assets, and this
-# workflow. Generators~ sources are excluded — the Unity side consumes their
-# committed DLLs under Runtime/Plugins, so a generator change reaches this
-# workflow when the redeployed DLLs are committed. Docs and markdown never
-# affect the tests.
+# The path set is everything a job here reads, not only what Unity compiles: the drift guards scan the
+# guides, both README.md files and CLAUDE.md, and the last step of each Unity job runs
+# scripts/assert-no-inconclusive.py. A guard whose file starts no run reports green by never running,
+# which is why WorkflowTriggerCoverageTests fails when this list stops covering one.
+#
+# Generators~ sources stay out: the Unity side consumes their committed DLLs under Runtime/Plugins, so a
+# generator change reaches this workflow when the redeployed DLLs are committed. Markdown under it is
+# back in, because a guard here reads the contributor README.
 on:
   push:
     branches: [main]
@@ -13,20 +15,24 @@ on:
       - 'Assets/**'
       - 'Packages/**'
       - 'ProjectSettings/**'
+      - 'scripts/**'
+      - 'CLAUDE.md'
+      - 'README.md'
       - '.github/workflows/test.yml'
       - '!Packages/com.velvet.core/Generators~/**'
-      - '!Packages/com.velvet.core/Documentation~/**'
-      - '!**.md'
+      - 'Packages/com.velvet.core/Generators~/**.md'
   pull_request:
     branches: [main]
     paths:
       - 'Assets/**'
       - 'Packages/**'
       - 'ProjectSettings/**'
+      - 'scripts/**'
+      - 'CLAUDE.md'
+      - 'README.md'
       - '.github/workflows/test.yml'
       - '!Packages/com.velvet.core/Generators~/**'
-      - '!Packages/com.velvet.core/Documentation~/**'
-      - '!**.md'
+      - 'Packages/com.velvet.core/Generators~/**.md'
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
