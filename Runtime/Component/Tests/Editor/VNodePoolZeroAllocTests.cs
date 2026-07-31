@@ -1,6 +1,6 @@
+using System;
 using NUnit.Framework;
-using UnityEngine.TestTools.Constraints;
-using Is = UnityEngine.TestTools.Constraints.Is;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests.Performance
 {
@@ -11,7 +11,7 @@ namespace Velvet.Tests.Performance
     /// Velvet uses an immutable virtual-DOM model: one node object (<see cref="ElementNode"/> etc.) is allocated
     /// per element per render and is intentionally never pooled, so a *full* per-render zero-alloc is not a
     /// goal. What <b>is</b> a hard contract — and what these specs pin with
-    /// <c>UnityEngine.TestTools.Constraints.Is.Not.AllocatingGCMemory()</c> — is that the pooled, reusable
+    /// <see cref="GCAllocationProbe"/> — is that the pooled, reusable
     /// pieces (<see cref="FiberElementProps"/>, single-event arrays, and child <see cref="VNode"/>[] arrays)
     /// cost <b>zero GC</b> on a warm rent/return cycle. A regression here (e.g. an accidental boxing or a
     /// resize on the hot path) is exactly the kind of silent GC churn this guard is meant to catch.
@@ -35,15 +35,21 @@ namespace Velvet.Tests.Performance
     [Category("Performance")]
     internal sealed class VNodePoolZeroAllocTests
     {
-        [SetUp]
-        public void SkipInCi()
+        // A probe stuck at zero satisfies every guard below without measuring anything, and nothing else
+        // in the repository would notice. This is the only case here that asserts a NON-zero count, and it
+        // is what makes the three that follow mean something.
+        [Test]
+        public void Given_ADelegateAllocatingAKnownArray_When_Probed_Then_TheProbeCountsIt()
         {
-            // Allocation guards measure GC, which differs across runtimes: the CI runner reports
-            // allocations that a warm local run does not. Run these locally, not in CI.
-            if (System.Environment.GetEnvironmentVariable("GITHUB_ACTIONS") == "true")
-            {
-                Assert.Ignore("Zero-allocation guards are environment-sensitive; run locally.");
-            }
+            // Arrange
+            Action canary = () => GC.KeepAlive(new byte[16]);
+            canary();
+
+            // Act
+            var blocks = GCAllocationProbe.SampleBlocksDuring(canary);
+
+            // Assert
+            Assert.That(blocks, Is.GreaterThan(0));
         }
 
         // Warming must include the measured DELEGATE itself, not just the pool: the first execution
@@ -54,41 +60,41 @@ namespace Velvet.Tests.Performance
         public void Given_WarmPropsPool_When_RentReturnCycle_Then_DoesNotAllocate()
         {
             // Warm: the first cycle populates the pool AND runs the measured delegate once.
-            NUnit.Framework.TestDelegate cycle = () =>
+            Action cycle = () =>
             {
                 var props = VNodePool.RentProps();
                 VNodePool.ReturnProps(props);
             };
             cycle();
 
-            Assert.That(cycle, Is.Not.AllocatingGCMemory());
+            Assert.That(GCAllocationProbe.SampleBlocksDuring(cycle), Is.Zero);
         }
 
         [Test]
         public void Given_WarmSingleEventArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
         {
-            NUnit.Framework.TestDelegate cycle = () =>
+            Action cycle = () =>
             {
                 var events = VNodePool.RentSingleEventArray();
                 VNodePool.ReturnEventArray(events);
             };
             cycle();
 
-            Assert.That(cycle, Is.Not.AllocatingGCMemory());
+            Assert.That(GCAllocationProbe.SampleBlocksDuring(cycle), Is.Zero);
         }
 
         [Test]
         public void Given_WarmNodeArrayPool_When_RentReturnCycle_Then_DoesNotAllocate()
         {
             // The first cycle also warms the length-keyed bucket (array, dictionary entry, stack).
-            NUnit.Framework.TestDelegate cycle = () =>
+            Action cycle = () =>
             {
                 var array = VNodePool.RentNodeArray(4);
                 VNodePool.ReturnNodeArray(array);
             };
             cycle();
 
-            Assert.That(cycle, Is.Not.AllocatingGCMemory());
+            Assert.That(GCAllocationProbe.SampleBlocksDuring(cycle), Is.Zero);
         }
     }
 }
