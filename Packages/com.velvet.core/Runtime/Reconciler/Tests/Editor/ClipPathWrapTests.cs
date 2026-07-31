@@ -35,18 +35,21 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class ClipPathWrapTests
     {
-        // KNOWN HOLES, each with the cut it was measured at, because the count changes with the cut and a
-        // count taken by reading has been wrong every time it was checked. A case asserting only that
-        // something is ABSENT also holds against a feature that does nothing, so it pins nothing by itself.
-        // Killing the clip APPLIER leaves five green: both ElementIsNotWrapped cases, ClipOnMotion,
-        // NoShadowPaintIsAttached and NotDoubleWrapped. Killing the clip PARSER leaves three of those, since
-        // ClipOnMotion's expected warning and the shadow's suppression gate both read the parser, not the
-        // applier. The ring half has four at the applier cut: both not-counted-as-a-rendered-child cases,
-        // TheElementItselfStillOccupiesItsSlot and RingOnMotion. Closing any of them takes a control that
-        // RESOLVES in the same assertion — a second term over the same absent thing buys nothing.
+        // A case asserting only that something is ABSENT holds equally against a layer that produces
+        // nothing at all, so every negative here compares that absence against a term the working layer
+        // RESOLVES — a wrapper around a sibling, a hosted band, a bound element. The control has to come
+        // from the layer the case is aimed at: the Motion warnings and the shadow / ring suppression
+        // gates all read the PARSERS, so each of them stays true with the wrapper and band appliers dead
+        // and controls nothing about them.
         private const string Triangle = "clip-path-[polygon(50%_0%,100%_100%,0%_100%)]";
 
         private static VisualElement Wrapper(VisualElement root) => root[0];
+
+        // Reads the element's own parent rather than a fixed root slot, so one case can ask this of two
+        // siblings whose clip state puts them at different depths.
+        private static bool IsClipWrapped(VisualElement element)
+            => element.parent != null
+                && element.parent.ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass);
 
         // The ring band is a sibling of the ringed element, not a child of a wrapper, so it is found by its
         // marker rather than at a fixed index.
@@ -126,10 +129,17 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
 
             // Act
-            Mount(scope, new VNode[] { V.Div(className: "rounded-2xl", name: "plain") });
+            Mount(scope, new VNode[]
+            {
+                V.Div(className: "rounded-2xl", name: "plain", key: "p"),
+                V.Div(className: Triangle, name: "clipped", key: "c"),
+            });
 
             // Assert
-            Assert.That(scope.Root[0].ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass), Is.False);
+            Assert.That(
+                (IsClipWrapped(scope.Root.Q<VisualElement>("plain")),
+                    IsClipWrapped(scope.Root.Q<VisualElement>("clipped"))),
+                Is.EqualTo((false, true)));
         }
 
         [Test]
@@ -139,10 +149,17 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
 
             // Act
-            Mount(scope, new VNode[] { V.Div(className: "clip-path-none", name: "plain") });
+            Mount(scope, new VNode[]
+            {
+                V.Div(className: "clip-path-none", name: "plain", key: "p"),
+                V.Div(className: Triangle, name: "clipped", key: "c"),
+            });
 
             // Assert
-            Assert.That(scope.Root[0].ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass), Is.False);
+            Assert.That(
+                (IsClipWrapped(scope.Root.Q<VisualElement>("plain")),
+                    IsClipWrapped(scope.Root.Q<VisualElement>("clipped"))),
+                Is.EqualTo((false, true)));
         }
 
         [Test]
@@ -155,10 +172,17 @@ namespace Velvet.Tests
             LogAssert.Expect(LogType.Warning, new Regex(@"clip-path-\* utility on a Motion is ignored"));
 
             // Act
-            Mount(scope, new VNode[] { V.Motion(Triangle, key: "m") });
+            Mount(scope, new VNode[]
+            {
+                V.Motion(Triangle, key: "m", name: "motion"),
+                V.Div(className: Triangle, name: "card", key: "c"),
+            });
 
             // Assert
-            Assert.That(scope.Root[0].ClassListContains(FiberWrapperElementAppliers.ClipPathWrapperClass), Is.False);
+            Assert.That(
+                (IsClipWrapped(scope.Root.Q<VisualElement>("motion")),
+                    IsClipWrapped(scope.Root.Q<VisualElement>("card"))),
+                Is.EqualTo((false, true)));
         }
 
         // Clip suppresses the shadow paint (CSS clip-path clips the box-shadow too)
@@ -185,8 +209,11 @@ namespace Velvet.Tests
             // Act
             Mount(scope, new VNode[] { V.Div(className: $"shadow-lg {Triangle}", name: "card") });
 
-            // Assert
-            Assert.That(scope.Reconciler.Context.ShadowBindings.Count, Is.EqualTo(0));
+            // Assert: wrapped AND unshadowed — the wrapper is the only term here that says the clip took.
+            Assert.That(
+                (IsClipWrapped(scope.Root.Q<VisualElement>("card")),
+                    scope.Reconciler.Context.ShadowBindings.Count),
+                Is.EqualTo((true, 0)));
         }
 
         [Test]
@@ -394,17 +421,28 @@ namespace Velvet.Tests
                 w.Add(el);
                 return w;
             };
-            var before = new VNode[] { V.Button(className: Triangle, wrapElement: wrap, key: "b") };
+            var before = new VNode[]
+            {
+                V.Button(className: Triangle, wrapElement: wrap, key: "b", name: "user"),
+                V.Div(className: Triangle, name: "plain", key: "p"),
+            };
             Mount(scope, before);
 
-            // Act: a re-render patches the same element.
-            scope.Reconciler.Reconcile(scope.Root, before,
-                new VNode[] { V.Button(className: Triangle, wrapElement: wrap, key: "b") });
+            // Act: a re-render patches the same elements.
+            scope.Reconciler.Reconcile(scope.Root, before, new VNode[]
+            {
+                V.Button(className: Triangle, wrapElement: wrap, key: "b", name: "user"),
+                V.Div(className: Triangle, name: "plain", key: "p"),
+            });
 
-            // Assert: patch must honor the opt-out and NOT stack a clip wrapper on the user wrapper. This one
-            // count also covers the CREATE-path opt-out, which nothing else in the suite pins — a create that
+            // Assert: patch must honor the opt-out and NOT stack a clip wrapper on the user wrapper. This
+            // also covers the CREATE-path opt-out, which nothing else in the suite pins — a create that
             // ignored it binds the element, and the patch then leaves that binding in place for this to find.
-            Assert.That(scope.Reconciler.Context.ClipPathBindings.Count, Is.EqualTo(0));
+            var bindings = scope.Reconciler.Context.ClipPathBindings;
+            Assert.That(
+                (bindings.ContainsKey(scope.Root.Q<VisualElement>("user")),
+                    bindings.ContainsKey(scope.Root.Q<VisualElement>("plain"))),
+                Is.EqualTo((false, true)));
         }
 
         // Ring / outline overlay
@@ -413,12 +451,13 @@ namespace Velvet.Tests
         public void Given_Ring2_When_Reconciled_Then_TheElementItselfStillOccupiesItsSlot()
         {
             // The property the sibling-overlay model exists for: a ring adds nothing to the element's own
-            // slot, so every layout relationship it has with its parent is the one it declared.
+            // slot, so every layout relationship it has with its parent is the one it declared. The hosted
+            // band is the control — an unringed element occupies slot 0 too.
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That(scope.Root[0].name, Is.EqualTo("card"));
+            Assert.That((RingOverlayIn(scope.Root) != null, scope.Root[0].name), Is.EqualTo((true, "card")));
         }
 
         [Test]
@@ -436,11 +475,14 @@ namespace Velvet.Tests
         {
             // The overlay rides SilhouetteBoundsSpacer's reconciler-invisible-child predicate, which is what
             // keeps the child reconciler's slot indexing, the structural variants and [&>*]: from seeing it.
+            // The physical count is the control: it has to be the one the predicate discounts, since a band
+            // that was never hosted leaves the rendered count at 1 as well.
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[] { V.Div(className: "ring-2", name: "card") });
 
-            Assert.That(SilhouetteBoundsSpacer.NonSpacerChildCount(scope.Root), Is.EqualTo(1));
+            Assert.That((scope.Root.childCount, SilhouetteBoundsSpacer.NonSpacerChildCount(scope.Root)),
+                Is.EqualTo((2, 1)));
         }
 
         [Test]
@@ -523,9 +565,17 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             LogAssert.Expect(LogType.Warning, new Regex(@"ring-\*.*on a Motion is ignored"));
 
-            Mount(scope, new VNode[] { V.Motion("ring-2", key: "m") });
+            Mount(scope, new VNode[]
+            {
+                V.Motion("ring-2", key: "m", name: "motion"),
+                V.Div(className: "ring-2", name: "card", key: "c"),
+            });
 
-            Assert.That(scope.Reconciler.Context.RingBindings.Count, Is.EqualTo(0));
+            var bindings = scope.Reconciler.Context.RingBindings;
+            Assert.That(
+                (bindings.ContainsKey(scope.Root.Q<VisualElement>("motion")),
+                    bindings.ContainsKey(scope.Root.Q<VisualElement>("card"))),
+                Is.EqualTo((false, true)));
         }
 
         [Test]
@@ -606,6 +656,7 @@ namespace Velvet.Tests
             // LogicalChildSlots.Count, not the superseded physical NonSpacerChildCount: the bands sit
             // ADJACENT to their elements rather than in a trailing run — which is what gives each band its
             // own element's paint position — and a count that only trims a trailing run reports 3 here.
+            // Same control as the single-element case next door: the two discounted children.
             using var scope = new ReconcilerScope();
 
             Mount(scope, new VNode[]
@@ -614,7 +665,7 @@ namespace Velvet.Tests
                 V.Div(className: "ring-2", name: "b", key: "b"),
             });
 
-            Assert.That(LogicalChildSlots.Count(scope.Root), Is.EqualTo(2));
+            Assert.That((scope.Root.childCount, LogicalChildSlots.Count(scope.Root)), Is.EqualTo((4, 2)));
         }
 
         [Test]
@@ -666,8 +717,12 @@ namespace Velvet.Tests
 
             Mount(scope, new VNode[] { V.Div(className: "absolute z-10 ring-2", name: "card") });
 
+            // Relocated AND accompanied: the band is beside the element in its ordinary slot too, so asking
+            // only where the band is holds equally for an element that never left.
             var card = scope.Root.Q<VisualElement>("card");
-            Assert.That(RingOverlayIn(card.parent), Is.Not.Null);
+            Assert.That(
+                (FiberZLayerCoordinator.IsLayerContainer(card.parent), RingOverlayIn(card.parent) != null),
+                Is.EqualTo((true, true)));
         }
 
         [Test]
