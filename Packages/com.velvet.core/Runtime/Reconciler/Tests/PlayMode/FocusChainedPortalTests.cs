@@ -44,7 +44,7 @@ namespace Velvet.Tests
             s_setShowFirstPortal = default;
             _panelGo = new GameObject("ChainedPortalPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
@@ -431,7 +431,7 @@ namespace Velvet.Tests
         {
             _docGo = new GameObject("MainPanel");
             var doc = _docGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             return doc.rootVisualElement;

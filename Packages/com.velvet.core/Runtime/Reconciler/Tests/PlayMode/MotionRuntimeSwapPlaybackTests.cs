@@ -80,7 +80,7 @@ namespace Velvet.Tests
             // the Motion mounts resting at the hidden variant.
             _go = new GameObject("RuntimeSwapPlayback");
             var doc = _go.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
@@ -171,7 +171,7 @@ namespace Velvet.Tests
             // Arrange — a real UIDocument panel with the bundled utilities so opacity-0/100 resolve.
             _go = new GameObject("EnterPlayback");
             var doc = _go.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
@@ -256,7 +256,7 @@ namespace Velvet.Tests
             // h-[..] resolve.
             _go = new GameObject("LayoutIdPlayback");
             var doc = _go.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
