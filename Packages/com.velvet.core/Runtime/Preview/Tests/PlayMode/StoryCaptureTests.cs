@@ -167,7 +167,7 @@ namespace Velvet.Tests
         private static IEnumerator CheckBundledStyleSheetResolves(CaptureResult result)
         {
             using var host = new RenderTexturePanelHost("StyleSheetProbe", 16, 16);
-            host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(host.Root);
             var probe = new VisualElement();
             probe.AddToClassList("bg-slate-700");
             host.Root.Add(probe);
@@ -196,7 +196,7 @@ namespace Velvet.Tests
             // locals written here cannot fail, and reads as a guard while being one.
             host.Root.style.width = width;
             host.Root.style.height = height;
-            host.Root.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(host.Root);
 
             using var previewHost = new VelvetPreviewHost(host.Root);
             previewHost.Mount(story);
