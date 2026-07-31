@@ -10,6 +10,9 @@
 /[Bb]uild/
 /[Bb]uilds/
 /[Ll]ogs/
+# Test-result XML from a hand-run sweep. The harnesses under scripts/ default to Logs/, already ignored
+# above; this covers the directory a hand-run names instead, after nine such files reached a commit.
+/merged/
 /[Uu]ser[Ss]ettings/
 /[Mm]emoryCaptures/
 
