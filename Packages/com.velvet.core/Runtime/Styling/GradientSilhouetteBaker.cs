@@ -13,8 +13,7 @@ namespace Velvet
     // against, so only a rasterized SDF bake can produce a soft edge here.
     //
     // Bake-then-draw (not a live material) for the same reason DropShadow bakes: UITK freezes a custom
-    // material's draw order under an animating ancestor transform. Returns null on a headless device or a
-    // missing shader (non-URP / stripped), so the caller simply paints nothing that frame.
+    // material's draw order under an animating ancestor transform.
     internal static class GradientSilhouetteBaker
     {
         private const string ShaderPath = "Velvet/GradientSilhouette";
@@ -26,7 +25,6 @@ namespace Velvet
 
         private static Shader? s_shader;
         private static Material? s_material;
-        private static bool s_warned;
 
         // Leak guard: every baked texture is HideAndDontSave and survives a play-mode exit without a Domain
         // Reload. The owning binding releases its texture on teardown (Release), but if a play session exits
@@ -72,7 +70,6 @@ namespace Velvet
             }
             s_baked.Clear();
             s_shader = null;
-            s_warned = false;
         }
 #endif
 
@@ -95,16 +92,10 @@ namespace Velvet
             }
             if (s_shader == null)
             {
-                s_shader = VelvetShaders.Find(ShaderPath);
+                s_shader = VelvetShaders.Find(ShaderPath, "Gradient", "gradient");
             }
             if (s_shader == null)
             {
-                if (!s_warned)
-                {
-                    FiberLogger.LogWarning("Gradient", $"Shader not found: {ShaderPath}. " +
-                        "It ships in the package's Resources folder; the gradient is omitted without it.");
-                    s_warned = true;
-                }
                 return null;
             }
             if (s_material == null)

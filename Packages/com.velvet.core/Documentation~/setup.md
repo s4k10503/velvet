@@ -72,7 +72,8 @@ above uses instead is a `Resources` asset the package ships,
 and every partial into the build as dependencies of the imported asset.
 
 A `Resources` folder is included in every build of every project that has the package installed,
-whether or not anything calls `AttachTo`. For Velvet that is the utility sheet and its partials.
+whether or not anything calls `AttachTo`. [player-builds.md](player-builds.md) lists what Velvet's
+carries and what that costs.
 
 ## The alternative: reference the asset from your scene
 

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace Velvet.Tests
 {
@@ -12,8 +13,8 @@ namespace Velvet.Tests
     /// references is not put into a build at all, so one added outside the <c>Resources</c> folder resolves
     /// in the editor and to null in a player, where its paint draws nothing and only a log warning says so.
     /// <para>
-    /// Both cases enumerate the tree rather than a written list, and both fold the enumeration's size into
-    /// the assertion: an empty walk would otherwise satisfy every "for each" below.
+    /// The two cases that walk the runtime tree enumerate it rather than a written list, and both fold the
+    /// enumeration's size into the assertion: an empty walk would otherwise satisfy every "for each" below.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -67,7 +68,7 @@ namespace Velvet.Tests
                         + $" but loads as '{resourcesPath}'");
                     continue;
                 }
-                if (VelvetShaders.Find(resourcesPath) == null)
+                if (VelvetShaders.Find(resourcesPath, "Shader", "paint") == null)
                 {
                     problems.Add($"{resourcesPath} did not load");
                 }
@@ -75,6 +76,40 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((shipped.Length > 0, string.Join(", ", problems)), Is.EqualTo((true, string.Empty)));
+        }
+
+        [Test]
+        public void Given_AShaderNameThatDoesNotResolve_When_LookedUpTwice_Then_ItIsReportedOnce()
+        {
+            // Arrange — a fresh name per run, so the process-wide gate under test has never seen it. Nothing
+            // caches a failed lookup, so a paint whose shader is absent asks again on its next bake or
+            // resolve, and the report has to be gated at the lookup for the player log to stay readable.
+            var absent = $"Velvet/AbsentShader-{Guid.NewGuid():N}";
+            var warnings = 0;
+            void Count(string condition, string stackTrace, LogType type)
+            {
+                if (type == LogType.Warning && condition.Contains(absent, StringComparison.Ordinal))
+                {
+                    warnings++;
+                }
+            }
+
+            // Act
+            Application.logMessageReceived += Count;
+            Shader? second;
+            try
+            {
+                VelvetShaders.Find(absent, "Shader", "paint");
+                second = VelvetShaders.Find(absent, "Shader", "paint");
+            }
+            finally
+            {
+                Application.logMessageReceived -= Count;
+            }
+
+            // Assert — the lookup's own failure is folded in: were the name to resolve, no warning is due at
+            // all and a bare count of 1 would then be the wrong thing to demand.
+            Assert.That((second == null, warnings), Is.EqualTo((true, 1)));
         }
     }
 }

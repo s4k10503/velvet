@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Velvet
@@ -22,6 +23,27 @@ namespace Velvet
     // Documentation~/player-builds.md owns that cost.
     internal static class VelvetShaders
     {
-        internal static Shader? Find(string shaderName) => Resources.Load<Shader>(shaderName);
+        // A failed lookup is cached nowhere: the next bake and the next filter resolve ask again. Gating the
+        // report here rather than in each caller is what keeps a permanently missing shader to one log line
+        // for the run instead of one per element that asks.
+        private static readonly HashSet<string> s_missingWarned = new();
+
+        internal static Shader? Find(string shaderName, string logTag, string omitted)
+        {
+            var shader = Resources.Load<Shader>(shaderName);
+            if (shader == null && s_missingWarned.Add(shaderName))
+            {
+                FiberLogger.LogWarning(logTag, $"Shader not found: {shaderName}. " +
+                    $"It ships in the package's Resources folder; the {omitted} is omitted.");
+            }
+            return shader;
+        }
+
+#if UNITY_EDITOR
+        // Re-arm so a shader edit that fixes availability, or newly breaks it, is reported in the next play
+        // session rather than staying silent behind a gate the prior session closed.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetWarnings() => s_missingWarned.Clear();
+#endif
     }
 }

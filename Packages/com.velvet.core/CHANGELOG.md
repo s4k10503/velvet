@@ -183,7 +183,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   announced only by a warning in the player log. The shaders now ship in the package's `Resources`
   folder and load from there, which is the same path in the editor and in a player. The cost, stated
   plainly: those four shaders are in every build of every project that installs the package, used or
-  not. [`Documentation~/player-builds.md`](Documentation~/player-builds.md) is new and covers it.
+  not. A shader that is missing anyway now names itself in one warning for the run; the drop shadow
+  logged one every time a caster regenerated its content.
+  [`Documentation~/player-builds.md`](Documentation~/player-builds.md) is new and covers it.
 - A `shadow-*` / `drop-shadow-*` paint no longer fades to the square of its caster's opacity during an
   enter or exit. The scheduler scaled the shadow by the caster's sampled opacity each frame on the
   premise that a baked shadow quad ignores UI Toolkit opacity; pixel readback shows the renderer scales

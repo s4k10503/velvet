@@ -140,12 +140,10 @@ namespace Velvet
             }
             if (s_shader == null)
             {
-                s_shader = VelvetShaders.Find(ShadowShaderPath);
+                s_shader = VelvetShaders.Find(ShadowShaderPath, "DropShadow", "shadow");
             }
             if (s_shader == null)
             {
-                FiberLogger.LogWarning("DropShadow", $"Shader not found: {ShadowShaderPath}. " +
-                    "It ships in the package's Resources folder; the shadow is omitted without it.");
                 material = null!;
                 return false;
             }

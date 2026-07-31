@@ -74,13 +74,21 @@ namespace Velvet.Tests
             return count;
         }
 
-        // The blue backdrop. Counted alongside every paint so that "the paint is missing" and "the panel drew
-        // nothing at all" cannot report as the same failure.
+        // The blue backdrop. Counted beside a paint asserted as PRESENT, so that "the paint is missing" and
+        // "the panel drew nothing at all" cannot report as the same failure.
         private int CountBackdrop() => CountPixels(p => p.b > 200 && p.r < 40 && p.g < 40);
 
         // Red-dominant rather than near-#ff0000: a blue backdrop cannot produce a red-dominant pixel by any
         // blend, and the loose band survives whatever anti-aliasing the runner's GPU applies.
         private int CountRedDominant() => CountPixels(p => p.r > 120 && p.b < 140);
+
+        // saturate-[0] writes the fill's luminance into all three channels, and a luminance is a weighted
+        // mean, so it lands strictly inside #c02020's own 0x20..0xc0 channel range — a bound derived from the
+        // declared fill rather than from a measured pixel. The only other thing on the frame is the parent's
+        // blue fill, which is not neutral, so this counts what the element painted through the filter and
+        // nothing else — which the backdrop count cannot: that fill survives the element painting nothing.
+        private int CountDesaturatedFill() => CountPixels(p => Mathf.Abs(p.r - p.g) < 12
+            && Mathf.Abs(p.r - p.b) < 12 && p.r > 0x20 && p.r < 0xc0);
 
         [UnityTest]
         public IEnumerator Given_ADropShadowCaster_When_RenderedOnARuntimePanel_Then_TheShadowPaintsItsColour()
@@ -140,12 +148,12 @@ namespace Velvet.Tests
                 className: "w-[40px] h-[40px] bg-[#c02020] saturate-[0]"));
 
             // Act
-            var backdrop = CountBackdrop();
+            var desaturated = CountDesaturatedFill();
             var unfiltered = CountPixels(p => Mathf.Abs(p.r - 0xc0) < 12 && Mathf.Abs(p.g - 0x20) < 12
                 && Mathf.Abs(p.b - 0x20) < 12);
 
             // Assert
-            Assert.That((backdrop > 0, unfiltered == 0), Is.EqualTo((true, true)));
+            Assert.That((desaturated > 0, unfiltered == 0), Is.EqualTo((true, true)));
         }
     }
 }
