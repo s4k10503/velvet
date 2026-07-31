@@ -1,0 +1,17 @@
+{
+    "name": "Velvet.Samples.StarterApp",
+    "rootNamespace": "Velvet.Samples.StarterApp",
+    "references": [
+        "Velvet",
+        "UniTask"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -4,6 +4,9 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/VelvetStarterSample/StarterApp.unity
+    guid: 0f9b5b2f7c91343dd85df4e001e29e6b
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0
