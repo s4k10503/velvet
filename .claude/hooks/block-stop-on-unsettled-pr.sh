@@ -59,8 +59,17 @@ for pr in $prs; do
     # conflicting PR reports DIRTY (or UNKNOWN while GitHub is still computing) and never
     # starts CI at all, which is the shape that went unwatched for seven hours.
     state=$(gh pr view "$pr" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")
+    if [ "$state" = "CLEAN" ]; then
+      # Ready, and ready is the state that reads as finished. A docs-only or .claude/-only change
+      # reports no checks at all and so never reached the merge reminder below, which is the same
+      # hole one level down from the one that left eight green PRs sitting.
+      blocked="$blocked
+  PR #$pr — no checks apply to it and it is unmerged. Merge it, or say what it is waiting on and arm
+    something that brings you back when that arrives."
+      continue
+    fi
     case "$state" in
-      CLEAN|UNSTABLE|BEHIND|BLOCKED|"")
+      UNSTABLE|BEHIND|BLOCKED|"")
         continue
         ;;
     esac
