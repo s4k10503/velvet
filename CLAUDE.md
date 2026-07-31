@@ -74,7 +74,7 @@ Four ways a green test has lied here:
 
 - An `Assume` that gates the behavior under test is folded into the assertion — one comparison over a tuple of the gated state and the state under test — rather than deleted; deletion is correct only when the assertion alone would still fail on the broken behavior.
 - A threshold compared against a measured value is platform-dependent, since font metrics and layout land differently on a CI runner than on a developer machine: assert declared values, and where a measured one must take part, let the floating-point margin separate the right outcome from the wrong one rather than a hand-picked pixel budget.
-- `GC.GetAllocatedBytesForCurrentThread()` and `GC.GetTotalMemory()` both report 0 under Unity's Mono while allocation is happening, so "no allocations" holds only after a canary that allocates a known amount moves the instrument — `Unity.PerformanceTesting`'s `.GC()` recorder is the one that measures.
+- `GC.GetAllocatedBytesForCurrentThread()` and `GC.GetTotalMemory()` both report 0 under Unity's Mono while allocation is happening, so "no allocations" holds only after a canary that allocates a known amount moves the instrument. What measures it is the `GC.Alloc` recorder, reached through `Unity.PerformanceTesting`'s `.GC()` or through `TestUtilities/GCAllocationProbe`; `Is.Not.AllocatingGCMemory()` reads that counter after widening it back to every thread, so it cannot fail for a reason the delegate owns.
 - A benchmark is evidence only for the code its fixture drives — a paint change measured free on the manipulator-reconcile fixture, whose class strings never take the paint path it changed — so confirm the code under test runs in a fixture before citing its numbers.
 
 ## Conventions
