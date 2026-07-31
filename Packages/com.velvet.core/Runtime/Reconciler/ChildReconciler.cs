@@ -1508,40 +1508,6 @@ namespace Velvet
 
         #region Helpers
 
-        // Filters nulls and recursively expands FragmentNodes.
-        internal static VNode?[] FlattenAndFilter(VNode?[] nodes, ReconcilerBufferPool pool)
-        {
-            if (nodes == null || nodes.Length == 0)
-            {
-                return Array.Empty<VNode>();
-            }
-
-            var needsProcessing = false;
-            foreach (var n in nodes)
-            {
-                if (n is null or FragmentNode) { needsProcessing = true; break; }
-            }
-
-            if (!needsProcessing)
-            {
-                return nodes;
-            }
-
-            var buffer = pool.RentNodeList();
-            try
-            {
-                FlattenAndFilterRecursive(nodes, buffer);
-                // ToArray() incurs a heap allocation, but callers (ReconcileIndexed / ReconcileKeyed /
-                // CreateElement) require VNode?[], so changing the API to List<VNode> would be far-reaching.
-                // The vast majority of cases without Fragment / null hit the early-exit above (zero allocation).
-                return buffer.Count == 0 ? Array.Empty<VNode>() : buffer.ToArray();
-            }
-            finally
-            {
-                pool.ReturnNodeList(buffer);
-            }
-        }
-
         // IReconcilerHost entry for a Provider value change observed outside inline expansion (a Provider
         // patched in place by FiberNodePatcher). Forwards to the general path, which owns the live
         // context-propagation walk shared with the inline-expansion Provider push.
@@ -1567,29 +1533,6 @@ namespace Velvet
                 $"[ChildReconciler] DOM index invariant violated: slotStart + old.index={slotStart + oldIndex} "
                 + $">= renderedChildCount={LogicalChildSlots.Count(parent)}. "
                 + "Pass 1 may have modified parent's child order.");
-        }
-
-        private static void FlattenAndFilterRecursive(VNode?[] nodes, System.Collections.Generic.List<VNode> result)
-        {
-            foreach (var node in nodes)
-            {
-                switch (node)
-                {
-                    case null:
-                        continue;
-                    case FragmentNode fragment:
-                    {
-                        if (fragment.Children != null)
-                        {
-                            FlattenAndFilterRecursive(fragment.Children, result);
-                        }
-                        break;
-                    }
-                    default:
-                        result.Add(node);
-                        break;
-                }
-            }
         }
 
         // Processes one new-side keyed node: matches it against oldKeyMap and patches the existing element in
