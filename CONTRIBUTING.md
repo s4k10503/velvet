@@ -121,3 +121,4 @@ docs/build.sh                     # → docs/_site/index.html
 For a non-default editor install, set `UnityEditorContents` (see `docs/build.sh`). The
 **Docs** workflow publishes the site to GitHub Pages on release (it needs the Unity license secret;
 verify its editor-image tag and managed-assembly path on the first run).
+
