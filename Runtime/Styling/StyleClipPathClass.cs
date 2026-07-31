@@ -80,9 +80,10 @@ namespace Velvet
     }
 
     // Parses Velvet's clip-path-[…] utility into a ClipPathSpec.
-    // Same shape as StyleShadowClass: a cheap prefix gate (HasClipPathClass) plus a
-    // cascade-correct extractor (TryExtract, last matching class wins; clip-path-none
-    // resolves to "no clip" so it can override an earlier clip in the cascade).
+    // The extractor is cascade-correct: last matching class wins, and clip-path-none resolves to
+    // "no clip" so it can override an earlier clip in the cascade. Unlike StyleShadowClass there is no
+    // separate prefix gate — TryExtract's per-class probe costs the same, so a no-clip element pays one
+    // pass rather than two.
     //
     // The value follows the arbitrary-value convention — underscores stand in for spaces —
     // and the CSS clip-path <basic-shape> grammar (the subset UI Toolkit can honor):
@@ -106,24 +107,6 @@ namespace Velvet
         // True when cls is a clip-path utility this layer owns (recognized or not-yet-valid).
         public static bool IsClipPathClass(string? cls)
             => cls == NoneClass || (cls != null && cls.StartsWith(ArbitraryPrefix, StringComparison.Ordinal));
-
-        // Cheap early-out gate: true when ANY class is a clip-path utility. Used to skip the full
-        // parse on the ~99% of elements that carry no clip-path class and no binding.
-        public static bool HasClipPathClass(string[]? classNames)
-        {
-            if (classNames == null)
-            {
-                return false;
-            }
-            foreach (var cls in classNames)
-            {
-                if (!string.IsNullOrEmpty(cls) && IsClipPathClass(cls))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
 
         // True when the class list resolves to an ACTIVE clip (a parseable clip-path-[…] not
         // overridden by a later clip-path-none). Used by the Motion create-path warning; the patch
