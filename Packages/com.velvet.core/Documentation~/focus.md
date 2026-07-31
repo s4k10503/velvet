@@ -88,3 +88,4 @@ blurred synchronously and the target focused on its own panel's next tick.
 - No cross-panel containment — `contain` is per panel. A globally exclusive modal is the Topmost
   layer plus a full-screen scrim, which makes outside input land in the modal's own panel
   physically.
+
