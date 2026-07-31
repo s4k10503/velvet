@@ -85,9 +85,25 @@ Four ways a green test has lied here:
 - A fact the bundled stylesheets own — the longhands a utility writes, where it sits in the cascade — is derived from them rather than restated in C#: `Generators~/src/Velvet.StyleTable` reads `Runtime/Styles/*.uss` and emits `Runtime/Styling/StyleUtilityProperties.g.cs`. Where a mirror is genuinely unavoidable it is pinned by a test that fails when the stylesheet moves, because an unpinned one drifts silently — a guard that unioned property sets where the cascade takes only the last declaration suspended the transitions it existed to protect.
 - Documentation is single-source-of-truth: a given fact (the hooks table, the factory list, the diagnostic-ID table, a feature's behavior description) lives in exactly one owning document. Other documents link to it and add at most a one-line summary instead of restating it. Duplicated statements are how docs drift — when the fact changes, only one copy gets updated. This holds for comments too: name a sibling's mechanism ("same ownership rule as `StyleGapManipulator`"), never re-explain it.
 
-## Comment length
+## Comments
 
-A comment states why, never what — and states it once. Length is not capped, but every sentence must survive the **deletion test**: delete it; if a competent reader of the surrounding code plus the remaining sentences would still get it right, the sentence was carrying nothing. Delete it for real.
+### True first
+
+A comment states why — never what, and once. Before any question of economy, it has to be **true**. The commonest failure is a comment naming a *mechanism* the author never verified, in the shape "X because Y" with X observed and Y assumed; a second one is rarer and worse, calling a true statement false because it named a term that was not the operative one. Five of the six that shipped in one session are below. The sixth is not, and its absence is the entry: a single sentence about which transform a reading carries was corrected four times, each correction wrong in a new way, and the fifth attempt is this paragraph declining to make it. **When a sentence has been corrected twice and is still wrong, delete it.** Nothing in the code needed it; four rounds of review went into prose that was load-bearing for nobody.
+
+- "the uniform-frame check catches an unstyled capture" — it does not; a backdrop and a font leave the frame varied
+- "without the stylesheet this class is inert, so the control holds" — that class has no USS rule at all and is written from C#
+- "the halo lies wholly outside the box, so the clip removes the paint" — the interior survives untouched
+- "without the sheet a panel resolves none of the utility classes" — the families Velvet realises from C# resolve, and every attempt to enumerate them has come up short: first four were named, then at least eleven more were found. The list belongs in a guard derived from the sheets, not in a sentence
+- "the tolerance propagates into a tuple comparison" — it does not, and this one sat in a skill
+
+A reader who trusts a wrong reason is worse off than one who finds no reason and goes to look. So **an unverified mechanism is not written down** — not hedged, not softened, not marked "probably". Write what was measured, or write nothing and let the code speak. If the reason is worth having, it is worth the measurement that earns it; a reason nobody could be bothered to check is a reason nobody should be asked to trust.
+
+The same holds for `Documentation~` prose, a PR description, and a commit message. `DocumentationDriftTests` pins names and paths, never claims.
+
+### Then short
+
+Length is not capped, but every sentence must survive the **deletion test**: delete it; if a competent reader of the surrounding code plus the remaining sentences would still get it right, the sentence was carrying nothing. Delete it for real.
 
 Four things reliably fail the test and should not be written:
 
@@ -96,12 +112,17 @@ Four things reliably fail the test and should not be written:
 - an argument that a non-problem is not a problem;
 - a sibling file's mechanism re-explained instead of named.
 
-Four things pass, and stay however long they need to be:
+Three things pass, and stay however long they need to be:
 
-- engine behavior that had to be measured, decompiled, or read out of Unity's source;
 - an ordering constraint between passes, writes, or events;
 - an invariant a future edit could silently break;
 - a rejected alternative and the one reason it was rejected.
+
+Each is a statement about a decision made here. That is what makes it safe to write: the author owns it, and nothing outside this repository can turn it false.
+
+**A fact about the engine is not one of them, and that is where every false comment came from.** Of the six that shipped in one session, four described UI Toolkit rather than a decision — which transform a reading carries, whether a tolerance reaches a tuple's members, what a check catches, what a build embeds. A measured engine fact is a claim about somebody else's code, held by nothing here, and it goes stale when they change it or when the measurement was subtly of something else. So it does not go in a comment on its own. It goes where the stylesheet mirrors go — into a **test that fails when it stops being true** — and the comment names that test instead of restating the fact. This is the same rule as `Generators~/src/Velvet.StyleTable`, one level out: an unpinned mirror drifts silently, and a sentence is a mirror.
+
+Where no test can hold it, say what was measured and on what — `decompiled from com.unity.ext.nunit 2.0.5`, `measured on 6000.3.11f1` — so a reader meets a dated observation rather than a standing truth. The datestamp is what stops the next author correcting it from memory, which is how one sentence here was rewritten wrongly four times.
 
 Two checks that need no judgement:
 

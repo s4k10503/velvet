@@ -280,8 +280,10 @@ namespace Velvet.Tests
             // Assert — unskew released the out-of-flow child untouched instead of restoring the stale Null
             // capture. The pre-unskew state joins the assertion because a child that never reached out-of-flow
             // carrying its own 4px would read 4px afterwards for reasons the release path had no part in.
-            Assert.That((ownTranslateBeforeUnskew, child.style.translate.value.x.value),
-                Is.EqualTo((true, 4f)).Within(0.01f));
+            // .Within() never reaches a tuple's members under Unity's NUnit (no ValueTupleComparer), so the
+            // folded control term gates a scalar and substitutes NaN, which satisfies no tolerance.
+            Assert.That(ownTranslateBeforeUnskew ? child.style.translate.value.x.value : float.NaN,
+                Is.EqualTo(4f).Within(0.01f));
         }
 
         [Test]
@@ -364,8 +366,11 @@ namespace Velvet.Tests
             // replaced it with its own 4px, so that authored translate survives instead of being clobbered back
             // to the stale Null capture. The out-of-flow transition is asserted with it: a child still in flow
             // never reaches the relinquish path at all, and would carry its own 4px regardless.
-            Assert.That((child.resolvedStyle.position, child.style.translate.value.x.value),
-                Is.EqualTo((Position.Absolute, 4f)).Within(0.01f));
+            Assert.That(
+                child.resolvedStyle.position == Position.Absolute
+                    ? child.style.translate.value.x.value
+                    : float.NaN,
+                Is.EqualTo(4f).Within(0.01f));
         }
 
         [Test]

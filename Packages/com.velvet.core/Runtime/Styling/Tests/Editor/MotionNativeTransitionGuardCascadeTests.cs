@@ -15,7 +15,7 @@ namespace Velvet.Tests
     internal sealed class MotionNativeTransitionGuardCascadeTests : PanelTestBase
     {
         protected override void LoadStyleSheets() =>
-            _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
         /// <summary>
         /// Classes go straight onto a bare element rather than through a VNode, so the class-list order is the

@@ -426,9 +426,11 @@ namespace Velvet
         //   one that touches the element's PARENT rather than the element.
         // The particles spacer is here, not in the Particles-settings diff, because it follows the CLASS list
         // (a filter comes and goes via a class swap or a variant).
-        // paintTail is the one per-path knob, and it is the same distinction the gradient's skewable flag
-        // draws: an ElementNode may render a sheared silhouette, a Motion never does, so a Motion's gradient
-        // stays on the straight background-image path and the three silhouette layers stand down entirely.
+        // paintTail is the one per-path knob, and for the three silhouette layers it is the same distinction
+        // the gradient's skewable flag draws: an ElementNode may render a sheared silhouette, a Motion never
+        // does, so a Motion's gradient stays on the straight background-image path and those three stand down
+        // entirely. The ring rides the same knob on a reason of its own, stated where the Motion path warns
+        // about it (FiberNodeFactory.WarnIgnoredMotionUtilities).
         private void ApplyResolvedClassPasses(VisualElement element, string[] classNames, bool classesChanged,
             bool paintTail, bool clipActive, bool canReleaseFace)
         {

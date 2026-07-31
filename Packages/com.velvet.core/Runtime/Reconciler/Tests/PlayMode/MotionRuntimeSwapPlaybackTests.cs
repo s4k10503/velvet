@@ -84,7 +84,7 @@ namespace Velvet.Tests
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
-            doc.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(doc.rootVisualElement);
             _store = new LabelStore();
             s_labelStore = _store;
             _mounted = V.Mount(doc.rootVisualElement, V.Component(SwapHost, key: "root"));
@@ -175,7 +175,7 @@ namespace Velvet.Tests
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
-            doc.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(doc.rootVisualElement);
 
             // Act — mount, then let the panel run past the whole 0.4s enter while sampling.
             _mounted = V.Mount(doc.rootVisualElement, V.Component(EnterHost, key: "root"));
@@ -260,7 +260,7 @@ namespace Velvet.Tests
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
-            doc.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(doc.rootVisualElement);
             _mounted = V.Mount(doc.rootVisualElement, V.Component(SharedBoxRender, key: "root"));
             var element = doc.rootVisualElement.Q<VisualElement>("shared");
             Assume.That(element, Is.Not.Null, "Precondition: the Motion mounted");

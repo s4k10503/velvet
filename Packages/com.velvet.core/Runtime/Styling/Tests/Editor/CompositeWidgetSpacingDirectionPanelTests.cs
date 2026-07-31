@@ -25,7 +25,7 @@ namespace Velvet.Tests
         private const float Space4 = 16f;
         private const float DivideWidth = 1f;
 
-        protected override void LoadStyleSheets() => _window.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+        protected override void LoadStyleSheets() => VelvetStyleUtilities.AttachTo(_window.rootVisualElement);
 
         private static VNode[] ThreeLabels() => new VNode[]
         {

@@ -4,7 +4,6 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
-using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -70,7 +69,7 @@ namespace Velvet.Tests
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
-            doc.rootVisualElement.LoadBundledStyleUtilitiesForTest();
+            VelvetStyleUtilities.AttachTo(doc.rootVisualElement);
 
             _cameraGo = new GameObject("AnchoredPlaybackCamera");
             s_camera = _cameraGo.AddComponent<Camera>();

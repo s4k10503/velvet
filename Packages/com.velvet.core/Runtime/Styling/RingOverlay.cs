@@ -49,8 +49,11 @@ namespace Velvet
     /// Toolkit paints an absolutely-positioned sibling in child order against an in-flow one rather than
     /// lifting positioned elements above the in-flow ones as CSS does; that engine fact is measured by
     /// pixel readback in <c>RingSiblingPaintOrderPlaybackTests</c>, and the whole placement rests on it.
-    /// The deviation it does carry: <c>ring-inset</c> paints over an opaque full-bleed child rather than
-    /// under it.
+    /// The two deviations it does carry: <c>ring-inset</c> paints over an opaque full-bleed child rather than
+    /// under it, and a transform on the ringed element moves the element out from under the band, since the
+    /// placement below is built from the laid-out box and a transform composites over the transformed
+    /// element's own subtree only. That second one is why a <c>ring-*</c> on a <c>V.Motion</c> is refused
+    /// outright (<see cref="FiberNodeFactory"/>).
     /// </para>
     /// </remarks>
     internal static class RingOverlay

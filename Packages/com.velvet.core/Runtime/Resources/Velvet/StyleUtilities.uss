@@ -1,0 +1,11 @@
+/*
+ * Runtime entry point for the bundled utilities. `AssetDatabase` does not exist in a player, so the
+ * real sheet under `Runtime/Styles/` is unreachable from runtime code; a Resources folder is the one
+ * lookup that survives the build. This file imports rather than replaces it, so the sheet stays where
+ * `Generators~/src/Velvet.StyleTable` reads it from and where every existing literal points.
+ *
+ * Nested under `Velvet/` because Resources names are a flat project-wide namespace shared with every
+ * other package and the user's own assets.
+ */
+
+@import url("../../Styles/StyleUtilities.uss");
