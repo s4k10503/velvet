@@ -9,21 +9,32 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Holds the Unity workflow's path filter against two sets read out of the repository rather than
+    /// Holds the Unity workflow's push path filter against two sets read out of the repository rather than
     /// listed here: the markdown <c>DocumentationDriftTests</c> scans, and the repo files the workflow
-    /// itself names. A workflow that never starts leaves a pull request showing the same absence of a red
-    /// check as one that ran and passed, so a guard left outside the path set keeps reporting nothing
-    /// until some later, unrelated change happens to carry a file inside it — and then names that change
-    /// as the culprit.
+    /// itself names. A workflow that never starts leaves a push showing the same absence of a red check as
+    /// one that ran and passed, so a guard left outside the path set keeps reporting nothing until some
+    /// later, unrelated change happens to carry a file inside it — and then names that change as the
+    /// culprit.
+    /// <para>
+    /// The pull_request side is held by a different rule, and the last case here is the whole of it: it
+    /// carries no filter at all, because branch protection requires a check from each of these workflows
+    /// and a required check whose workflow never starts stays Pending with nothing able to satisfy it.
+    /// </para>
     /// </summary>
     [TestFixture]
     internal sealed class WorkflowTriggerCoverageTests
     {
-        // One workflow: the one whose job runs this fixture. Pairing the drift guards in the Generators~
-        // solution with the workflow that runs THEM would take a fixture-to-job mapping nothing in this
-        // assembly can read, and writing that out by hand is the maintained-by-memory list this fixture
-        // exists to replace.
+        // One workflow for the coverage cases: the one whose job runs this fixture. Pairing the drift guards
+        // in the Generators~ solution with the workflow that runs THEM would take a fixture-to-job mapping
+        // nothing in this assembly can read, and writing that out by hand is the maintained-by-memory list
+        // this fixture exists to replace.
         private const string WorkflowPath = ".github/workflows/test.yml";
+
+        private static readonly string[] RequiredCheckWorkflows =
+        {
+            ".github/workflows/test.yml",
+            ".github/workflows/generators.yml",
+        };
 
         private const string GeneratorSourceRoot = "Packages/com.velvet.core/Generators~/src";
 
@@ -136,6 +147,62 @@ namespace Velvet.Tests
                 $"{WorkflowPath} excludes the generator solution, but starts for:\n" + string.Join("\n", started));
         }
 
+        [Test]
+        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_OnlyPushFiltersByPath()
+        {
+            // Arrange
+            var filters = RequiredCheckWorkflows.SelectMany(TriggerFilters).ToList();
+
+            // Act — both halves in one reading: a parser that found nothing satisfies "no pull_request
+            // filter" exactly, and that is the state a renamed key or a reformatted trigger block produces.
+            var onPush = filters.Count(entry => entry.Trigger == "push");
+            var onPullRequest = filters
+                .Where(entry => entry.Trigger == "pull_request")
+                .Select(entry => $"{entry.Workflow}: {entry.Key}")
+                .ToList();
+
+            // Assert
+            Assert.That((onPush, string.Join(", ", onPullRequest)), Is.EqualTo((2, string.Empty)),
+                "A required check reports Pending forever when a path filter stops its workflow from "
+                + "starting, and no push can clear it. Filter the push trigger instead.");
+        }
+
+        // Both paths and paths-ignore stop a workflow from starting, so a guard naming one leaves the other
+        // free to reintroduce the block.
+        private static IEnumerable<(string Workflow, string Trigger, string Key)> TriggerFilters(string workflow)
+        {
+            var lines = File.ReadAllLines(Path.GetFullPath(workflow));
+            var underOn = false;
+            var trigger = string.Empty;
+            foreach (var line in lines)
+            {
+                var key = KeyPattern.Match(line);
+                if (!key.Success)
+                {
+                    continue;
+                }
+                var indent = key.Groups[1].Value.Length;
+                var name = key.Groups[2].Value;
+                if (indent == 0)
+                {
+                    underOn = name == "on";
+                    continue;
+                }
+                if (!underOn)
+                {
+                    continue;
+                }
+                if (indent == 2)
+                {
+                    trigger = name;
+                }
+                else if (name is "paths" or "paths-ignore")
+                {
+                    yield return (workflow, trigger, name);
+                }
+            }
+        }
+
         // An unreadable workflow would leave every check above comparing against an empty rule set, where
         // "no file is uncovered" and "no pattern is unsupported" both hold for want of anything to compare.
         // Reported as a failure of the check rather than assumed away, so the fixture cannot pass by parsing
@@ -159,10 +226,10 @@ namespace Velvet.Tests
         private static string RepoRelative(string path) =>
             Path.GetRelativePath(Path.GetFullPath("."), path).Replace('\\', '/');
 
-        // Each paths: block, labelled by the trigger holding it, so a failure says whether it is the push
-        // side or the pull_request side that stopped covering a file. Both are checked: they are written
-        // twice in the file and can drift apart, and a filter that only covers pull_request lets a merge
-        // to main go untested.
+        // Every paths: block, labelled by the trigger holding it, rather than the push one by name: a block
+        // appearing under a trigger that should carry none is a failure the case above reports, and reading
+        // only the expected one would leave this half comparing against a filter that is no longer the
+        // operative one.
         private static List<PathFilter> ReadPathFilters()
         {
             var lines = File.ReadAllLines(Path.GetFullPath(WorkflowPath));
