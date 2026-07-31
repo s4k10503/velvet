@@ -1,0 +1,68 @@
+{
+  "cuts": [
+    {
+      "name": "clip-parser",
+      "summary": "the clip-path class parser resolves nothing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleClipPathClass.cs",
+          "anchor": "public static bool TryExtract(string[]? classNames, out ClipPathSpec? spec)",
+          "neuter": "spec = null; return false;"
+        }
+      ]
+    },
+    {
+      "name": "clip-applier",
+      "summary": "the reconciler applies no clip-path and wraps nothing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs",
+          "anchor": "internal VisualElement ApplyClipPathOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return element;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberClipPathApplier.cs",
+          "anchor": "internal bool ApplyClipPathOnPatch(VisualElement element, string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "ring-parser",
+      "summary": "the ring class parser resolves nothing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleRingClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out RingSpec spec)",
+          "neuter": "spec = default; return false;"
+        }
+      ]
+    },
+    {
+      "name": "ring-applier",
+      "summary": "the reconciler hosts no ring overlay",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberRingApplier.cs",
+          "anchor": "internal void ApplyRingOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberRingApplier.cs",
+          "anchor": "internal void ApplyRingOnPatch(VisualElement element, string[] classNames, bool clipActive)",
+          "neuter": "return;"
+        }
+      ]
+    }
+  ],
+  "fixtures": [
+    {
+      "fixture": "Velvet.Tests.ClipPathWrapTests",
+      "cuts": ["clip-applier", "clip-parser", "ring-applier", "ring-parser"]
+    },
+    {
+      "fixture": "Velvet.Tests.StyleRingClassTests",
+      "cuts": ["ring-parser"]
+    }
+  ]
+}
