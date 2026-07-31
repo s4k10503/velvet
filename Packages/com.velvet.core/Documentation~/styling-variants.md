@@ -236,12 +236,14 @@ is the only one hosted outside the element the renderer applies that opacity to.
 An ancestor's `overflow-hidden` clips the band, as CSS does. The ringed element's **own**
 `overflow-hidden` does not — so `overflow-hidden rounded-full ring-2`, the avatar pattern, renders.
 
-**Where the other wrapper-less paints deviate from CSS under `overflow-hidden`.** UI Toolkit applies an
+**Where the other wrapper-less paints deviate from CSS under a hidden overflow.** UI Toolkit applies an
 element's own overflow clip to the element's own painted content, and cuts it at the **padding** box.
 CSS clips neither a box-shadow nor a border that way, so a painted utility silently loses whatever falls
-outside that box:
+outside that box. What matters is the resolved `overflow: hidden`, not the utility that set it: `truncate`
+sets it alongside `white-space` and `text-overflow`, so a truncating label reaches every loss below
+without `overflow-hidden` appearing anywhere in its className.
 
-| Utility | On an element that also carries `overflow-hidden` |
+| Utility | On an element whose overflow resolves to hidden (`overflow-hidden`, `truncate`, or an inline / USS `overflow: hidden`) |
 |---|---|
 | `shadow-*` / `drop-shadow-*` | the whole shadow is gone. The paint is not removed — it is cut at the padding box like every other — but the only part of it you see is the halo outside the box, the interior being hidden under the element's own fill by design |
 | `skew-*` (and a gradient on a skewed element) | the shear overhang past the box edge is cut; the rest of the face renders |
@@ -252,7 +254,7 @@ outside that box:
 **`shadow-*` and `skew-*` on a bordered element cost more than the bleed.** Either one takes ownership of
 the element's face: it suppresses the native background and border and repaints both in its own generated
 content. The padding-box clip then takes that repaint too, so a bordered card carrying `shadow-*` or
-`skew-*` plus `overflow-hidden` loses **its border and a border-wide ring of its own background**, and
+`skew-*` plus a hidden overflow loses **its border and a border-wide ring of its own background**, and
 whatever is behind the card shows through that ring. The same card without the shadow keeps both, because
 a native border is not painted through generated content:
 

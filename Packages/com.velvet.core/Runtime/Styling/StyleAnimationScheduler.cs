@@ -1434,12 +1434,12 @@ namespace Velvet
         }
 
         // Ring-band co-fade bookkeeping for every StyleAnimationScheduler play (tween / spring / bezier, enter /
-        // exit). A ring band is a SIBLING of its element (see RingOverlay), so UI Toolkit's opacity compositing
-        // never reaches it and only an explicit per-frame push fades it with its caster. No other wrapper-less
-        // paint needs this: every one of them is drawn in the caster's OWN generateVisualContent, which the
-        // renderer already scales by the caster's resolved opacity (see DropShadowSilhouette.DrawShadowQuad for
-        // the measurement). Depends only on the PendingAnimation instance each play already carries, not on any
-        // of the scheduler's own map/pool state.
+        // exit). A ring band is a separate element parented BESIDE its caster (see RingOverlay), so it is
+        // outside the subtree the caster's opacity composites and only an explicit per-frame push fades it
+        // along. A paint that the caster's own opacity does reach needs no push, because the renderer already
+        // scales it (measured in DropShadowSilhouette.DrawShadowQuad) — which is why nothing else is driven
+        // here today, and equally why a paint MOVED out of its caster would have to join. Depends only on the
+        // PendingAnimation instance each play already carries, not on any of the scheduler's own map/pool state.
         private static class RingCoFadeCoordinator
         {
             // Binds the element's own band (if it has one) to this play and seeds it at the play's start factor

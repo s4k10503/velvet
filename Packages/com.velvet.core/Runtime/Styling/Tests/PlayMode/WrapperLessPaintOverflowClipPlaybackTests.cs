@@ -131,8 +131,9 @@ namespace Velvet.Tests
             });
         }
 
-        // Every case mounts its box at the same place and size, so one strip definition serves them all: a
-        // column entirely to the LEFT of the box, where only a paint that leaves the box can land.
+        // Shared by the cases that mount a single 80-square box, so one set of sample rects serves them:
+        // LeftOfBox is a column entirely to the LEFT of it, where only a paint that leaves the box can land.
+        // The divide, overline and transform cases build their own geometry and do not use these.
         private const string BoxBase = "w-[80px] h-[80px] mt-[70px] ml-[70px]";
         private static readonly RectInt LeftOfBox = new(30, 70, 38, 80);
         private static readonly RectInt TopBorderBand = new(70, 70, 80, 12);
@@ -410,12 +411,16 @@ namespace Velvet.Tests
                 $"openDivider={openDivider} clippedDivider={clippedDivider}");
         }
 
-        // A themeless RenderTexture panel supplies no font, so an empty runtime theme measures every label
-        // 0 tall; both the font and the wrap behaviour are supplied inline through the ref, the one channel
-        // that reaches a bare panel (the same incantation TextOverlinePlaybackTests uses).
-        private static readonly Func<VisualElement, Action> s_enableTextMeasurement = el =>
+        // The label's control cannot be an added child, the way every box case's is: Yoga takes a node's
+        // measure function only while it is a LEAF, so giving a Label a child drops its text measurement and
+        // collapses it to height 0 — measured, and it silently moves every sample derived from the box. The
+        // control here is therefore the label's OWN text, set to overflow a fixed width without wrapping, so
+        // the ink past the right edge is what the clip removes while the rule stays inside. The font comes
+        // through the ref because a themeless RenderTexture panel supplies none and an empty runtime theme
+        // measures every label 0 tall (the same incantation TextOverlinePlaybackTests uses).
+        private static readonly Func<VisualElement, Action> s_measureWithoutWrapping = el =>
         {
-            el.style.whiteSpace = WhiteSpace.Normal;
+            el.style.whiteSpace = WhiteSpace.NoWrap;
             el.style.unityFontDefinition = new StyleFontDefinition(FontDefinition.FromFont(
                 Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf")));
             return null;
@@ -425,10 +430,33 @@ namespace Velvet.Tests
         {
             NewPanel(name);
             _mounted = V.Mount(_host.Root, V.Label(name: "lbl",
-                className: "overline text-[48px] text-[#ff0000] mt-[60px] ml-[40px]",
-                text: "moon", refCallback: s_enableTextMeasurement));
+                className: "overline text-[48px] text-[#ff0000] mt-[60px] ml-[40px] w-[100px]",
+                text: "moonmoon", refCallback: s_measureWithoutWrapping));
             if (clip) _host.Root.Q<Label>("lbl").style.overflow = Overflow.Hidden;
             yield return WaitRealtime(0.9);
+        }
+
+        // The ink that spills past the label's right edge — present unclipped, gone clipped. Vertically it is
+        // the glyph band, well below the rule's own band, so the two readings never share a pixel.
+        private int OverflowingInkRed(VisualElement label)
+        {
+            var box = label.worldBound;
+            return Count(new RectInt(Mathf.RoundToInt(box.xMax), Mathf.RoundToInt(box.yMin),
+                80, Mathf.Max(4, Mathf.RoundToInt(box.height))), IsRed);
+        }
+
+        // The painted rule alone: the top fifth of the label's laid-out box, which for an x-height-only string
+        // sits above every glyph's ink (the margin either side of that is reasoned out in
+        // TextOverlinePlaybackTests, which picked the same string for the same reason). Counting the whole
+        // frame instead mixes in rasterised text, and two mounts of the same label do NOT produce the same
+        // glyph pixel count — measured at 1771 against 1202 for two identical mounts — so an equality over
+        // that total fails for reasons having nothing to do with the clip.
+        private int OverlineRuleRed(VisualElement label)
+        {
+            var box = label.worldBound;
+            return Count(new RectInt(
+                Mathf.RoundToInt(box.xMin), Mathf.RoundToInt(box.yMin),
+                Mathf.RoundToInt(box.width), Mathf.Max(4, Mathf.RoundToInt(box.height * 0.2f))), IsRed);
         }
 
         [UnityTest]
@@ -436,16 +464,23 @@ namespace Velvet.Tests
         {
             // Arrange
             yield return MountOverlinedLabel("OverlineOpen", clip: false);
-            var open = CountAll(IsRed);
+            var open = OverlineRuleRed(_host.Root.Q<Label>("lbl"));
+            var openControl = OverflowingInkRed(_host.Root.Q<Label>("lbl"));
 
             // Act
             yield return MountOverlinedLabel("OverlineClipped", clip: true);
-            var clipped = CountAll(IsRed);
+            var clipped = OverlineRuleRed(_host.Root.Q<Label>("lbl"));
+            var clippedControl = OverflowingInkRed(_host.Root.Q<Label>("lbl"));
 
             // Assert — the rule is placed in the label's CONTENT box, inside the clip rect on every side, so
-            // this is the one wrapper-less paint the element's own overflow costs nothing. Comparing the two
+            // this is the one wrapper-less paint the element's own overflow costs nothing. The two control
+            // terms are what make that a finding rather than a tautology: a case whose verdict is "nothing
+            // changed" is satisfied by a clip that never applied, so the overflowing child has to be present
+            // unclipped and gone clipped for the surviving rule to mean anything. Comparing the two rule
             // counts rather than asserting a bare non-zero is what would catch a rule that partly survived.
-            Assert.That((open > 0, clipped), Is.EqualTo((true, open)), $"open={open} clipped={clipped}");
+            Assert.That((open > 0, openControl > 0, clippedControl == 0, clipped),
+                Is.EqualTo((true, true, true, open)),
+                $"open={open} clipped={clipped} control open={openControl} clipped={clippedControl}");
         }
 
         [UnityTest]

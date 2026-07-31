@@ -222,18 +222,28 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_AFilteredElement_When_ItPaintsBothWays_Then_TheQuadAndTheFillMatch()
         {
-            // Arrange / Act — RED marks under grayscale, at half self-opacity. Red is what makes the filter
-            // observable: it desaturates to gray, so the green channel rising off zero is proof the filter ran.
-            // A white probe would read identical filtered or not, and the case would pin nothing.
-            yield return MountProbe("Grayscale", 1f, false, " grayscale-[1]", 0.5f, Color.red);
+            // Arrange — RED marks under grayscale. Red is what makes the filter observable: it desaturates to
+            // gray, so the green channel rising off zero is proof the filter ran. A white probe would read
+            // identical filtered or not, and the case would pin nothing. The FILTERED probe at full opacity is
+            // the reference the half-opacity reading is judged against, so the arranged opacity is under an
+            // assertion too rather than merely being set.
+            yield return MountProbe("GrayscaleOpaque", 1f, false, " grayscale-[1]", 1f, Color.red);
+            var opaqueQuad = Average(QuadSample);
+
+            // Act
+            yield return MountProbe("GrayscaleHalf", 1f, false, " grayscale-[1]", 0.5f, Color.red);
             var quad = Average(QuadSample);
             var fill = Average(FillSample);
 
-            // Assert — the filter ran (a red mark reads a zero green channel until it does), the quad came
-            // through it desaturated, and the fill matches the quad on both channels.
-            Assert.That((quad.g > 0, quad.r == quad.g, fill.r == quad.r, fill.g == quad.g),
-                Is.EqualTo((true, true, true, true)),
-                $"quad=({quad.r},{quad.g},{quad.b}) fill=({fill.r},{fill.g},{fill.b})");
+            // Assert — the filter ran (a red mark reads a zero green channel until it does), the self-opacity
+            // reached the frame, the quad came through desaturated, and the fill matches the quad on both
+            // channels. Both readings are taken through the filter, so the opacity term compares like with
+            // like rather than charging the filter's own darkening to the opacity.
+            Assert.That(
+                (quad.g > 0, quad.r < opaqueQuad.r, quad.r == quad.g, fill.r == quad.r, fill.g == quad.g),
+                Is.EqualTo((true, true, true, true, true)),
+                $"opaque=({opaqueQuad.r},{opaqueQuad.g}) quad=({quad.r},{quad.g},{quad.b}) "
+                + $"fill=({fill.r},{fill.g},{fill.b})");
         }
     }
 }

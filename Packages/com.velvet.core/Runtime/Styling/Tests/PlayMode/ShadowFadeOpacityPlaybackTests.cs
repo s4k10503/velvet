@@ -13,11 +13,12 @@ namespace Velvet.Tests
     /// translucent — at rest, and while an enter is in flight over it.
     /// </summary>
     /// <remarks>
-    /// The shadow is a textured <c>mgc.Allocate</c> quad in the caster's own generated content. UI Toolkit
-    /// resolves an element's opacity once and stamps it onto every mesh entry, with no texture-conditional
-    /// branch, so that quad is scaled exactly like the <c>painter2D</c> face repainted beside it. A scheduler
-    /// that ALSO scaled the shadow while an animation fades the caster therefore applied the same opacity
-    /// twice and landed the shadow at opacity squared; one did, and these cases are what keeps it gone.
+    /// The shadow is a textured <c>mgc.Allocate</c> quad in the caster's own generated content, and the
+    /// renderer scales it by the caster's resolved opacity exactly as it scales the <c>painter2D</c> face
+    /// repainted beside it — measured as byte-for-byte parity across every context that could have separated
+    /// them, in <see cref="PaintOpacityParityPlaybackTests"/>. A scheduler that ALSO scaled the shadow while
+    /// an animation fades the caster therefore applied the same opacity twice and landed the shadow at
+    /// opacity squared; one did, and these cases are what keeps it gone.
     /// <para>
     /// The caster's opacity is pinned by INLINE style, which outranks the play's own class-driven fade, so the
     /// in-flight case samples a known translucency instead of racing the tween. Whether a play is running at
@@ -120,19 +121,23 @@ namespace Velvet.Tests
             _mounted.Root.Reconciler.Context.StyleAnimationScheduler.PlayEnter(caster, LongEnter);
             yield return WaitRealtime(1.2);
             var stillPlaying = caster.ClassListContains(EnterToClass);
+            var casterOpacityPercent = Mathf.RoundToInt(caster.resolvedStyle.opacity * 100f);
             var fading = HaloRed(caster);
 
-            // Assert — the reference reading is strong enough to tell the two outcomes apart, a play really is
-            // covering the caster at the moment of the read, and the in-flight halo lands on the "scaled once"
-            // reading rather than the halved one. A play-driven multiplier reads back at half the reference.
-            // All three in one comparison: the last term is satisfied on its own by a black frame, and by a
-            // play that never began.
+            // Assert — the reference reading is strong enough to tell the two outcomes apart, the caster really
+            // is at the arranged half opacity, a play really is covering it at the moment of the read, and the
+            // in-flight halo lands on the "scaled once" reading rather than the halved one. A play-driven
+            // multiplier reads back at half the reference. All four in one comparison: the last term is
+            // satisfied on its own by a black frame, by a play that never began, and — the reason the opacity
+            // term is here — by an OPAQUE caster, for which the two hypotheses predict the same halo and the
+            // case would pin nothing while still reading green.
             var halved = resting * 0.5f;
             Assert.That(
-                (resting > SeparableHalo, stillPlaying,
+                (resting > SeparableHalo, casterOpacityPercent, stillPlaying,
                     Mathf.Abs(fading - resting) < Mathf.Abs(fading - halved)),
-                Is.EqualTo((true, true, true)),
-                $"resting={resting} fading={fading} halved={halved} playing={stillPlaying}");
+                Is.EqualTo((true, 50, true, true)),
+                $"resting={resting} fading={fading} halved={halved} playing={stillPlaying} "
+                + $"casterOpacity={casterOpacityPercent}");
         }
 
         [UnityTest]

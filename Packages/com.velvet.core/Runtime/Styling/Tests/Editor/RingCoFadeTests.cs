@@ -17,8 +17,8 @@ namespace Velvet.Tests
     /// that fades its element would therefore leave the band at full strength for the whole exit and pop it out
     /// at the end, so the band is driven explicitly. This is the one respect in which the sibling hosting costs
     /// something the wrapper hosting did not: a wrapper-hosted band was inside the faded subtree. It is also
-    /// the only paint that needs driving — every other one is drawn in the caster's own generated content,
-    /// which the renderer already scales (see <c>ShadowFadeOpacityPlaybackTests</c>).
+    /// the only paint driven today: one the caster's own opacity reaches needs no push, because the renderer
+    /// already scales it (see <c>ShadowFadeOpacityPlaybackTests</c>).
     /// <para>
     /// The tween and spring paths seed and tick the band through separate call sites, so each is covered:
     /// a missing wire on one of them is invisible from the other.
