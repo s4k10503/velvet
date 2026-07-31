@@ -40,6 +40,18 @@ story capture near-blank, and a panel whose height was its content's rather than
 green under every check and visible immediately in the PNG. Interactively the same stories are live
 in **Window ▸ Velvet ▸ Preview**.
 
+### Checking that the tests can fail
+
+A green suite says nothing about whether the tests would have noticed the change. `scripts/mutation-check.py`
+answers that for the lines a branch touched, by breaking each of them and rerunning the suite:
+
+```bash
+python3 scripts/mutation-check.py --base main
+```
+
+[Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
+covers this and the generator solution's own run, and owns what the verdicts mean and how to read a survivor.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
