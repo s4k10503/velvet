@@ -161,7 +161,10 @@ namespace Velvet.Editor.Preview
 
         private void LoadViewPrefs()
         {
-            _dark = EditorPrefs.GetBool(DarkKey, false);
+            // Defaulted on to agree with the Dark stage backdrop this window also defaults to: the toggle
+            // now selects the bundled sheet's token set as well as the dark: variants, so a light story over
+            // a near-black stage is what the two defaults would otherwise compose to.
+            _dark = EditorPrefs.GetBool(DarkKey, true);
             _background = EditorPrefs.GetString(BackgroundKey, BgDark);
             _zoom = EditorPrefs.GetString(ZoomKey, ZoomFit);
             _outline = EditorPrefs.GetBool(OutlineKey, false);
