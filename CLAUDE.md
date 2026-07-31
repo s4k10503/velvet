@@ -39,7 +39,7 @@ dotnet test Velvet.SourceGenerators.sln -c Release   # generator unit tests (no 
 
 A generator change is complete only once the redeployed DLLs are committed with it; `Generators~/README.md` owns the build and deploy steps.
 
-CI is split by what a change can affect: `.github/workflows/generators.yml` runs `source-generators` (no license) for `Generators~/**` changes and for `Runtime/**` changes (its drift guards re-derive the hook surface and the generator test stub's signatures from the runtime sources, so a rename there must run the generator suite), and `.github/workflows/test.yml` runs `unity-tests` (EditMode/PlayMode, **skipped unless a `UNITY_LICENSE` secret is set** — see CONTRIBUTING.md) only for package/project changes; docs and markdown trigger neither. Docs (`docs/`) are DocFX-generated from XML comments via `docs/build.sh`.
+CI is split by what a change can affect: `.github/workflows/generators.yml` runs `source-generators` (no license) for `Generators~/**` changes and for `Runtime/**` changes (its drift guards re-derive the hook surface and the generator test stub's signatures from the runtime sources, so a rename there must run the generator suite), and `.github/workflows/test.yml` runs `unity-tests` (EditMode/PlayMode, **skipped unless a `UNITY_LICENSE` secret is set** — see CONTRIBUTING.md) for package/project changes and for the guides, both `README.md` files, this file, and `scripts/` — `assert-no-inconclusive.py` there is what each Unity job runs as its last step. `WorkflowTriggerCoverageTests` fails when a file `DocumentationDriftTests` scans starts no run. Docs (`docs/`) are DocFX-generated from XML comments via `docs/build.sh`.
 
 ## Architecture (the parts that span many files)
 
