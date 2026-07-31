@@ -16,7 +16,6 @@ namespace Velvet
     // material's draw order under an animating ancestor transform.
     internal static class GradientSilhouetteBaker
     {
-        private const string ShaderPath = "Velvet/GradientSilhouette";
 
         // AA edge half-width (px) and the bleed margin added around the sheared bounding box so the soft
         // edge is not clipped at the texture border.
@@ -92,7 +91,7 @@ namespace Velvet
             }
             if (s_shader == null)
             {
-                s_shader = VelvetShaders.Find(ShaderPath, "Gradient", "gradient");
+                s_shader = VelvetShaders.Find(VelvetShaders.GradientSilhouette, "Gradient", "gradient");
             }
             if (s_shader == null)
             {

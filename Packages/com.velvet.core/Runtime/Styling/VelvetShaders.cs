@@ -3,38 +3,39 @@ using UnityEngine;
 
 namespace Velvet
 {
-    // Shader.Find resolves every one of Velvet's shaders in the editor and returns null in a built player: a
-    // shader that no material, scene or Resources asset references is not put into the build at all, and a
-    // package shader reached only by name from C# is exactly that case. Measured in a macOS standalone, not
-    // inferred — Play Mode resolves all four.
+    // The names below are the package's whole shader surface, and they are what the build-time inclusion
+    // mechanism resolves — so a shader added to the package without a name here would ship unreachable.
+    // BundledShaderInclusionTests pins the two against each other by walking the runtime tree.
     //
-    // The shaders therefore live under Runtime/Resources/Velvet/, where each file's Resources-relative path is
-    // its declared Shader name: the one string that puts a shader into the build is the one that looks it up,
-    // so no second list can drift from the first. Graphics Settings' Always Included Shaders was the
-    // alternative and cannot be shipped — that list is a project setting the consumer owns, not something a
-    // package carries.
-    //
-    // Keeping Shader.Find would work now that the Resources folder puts the shaders in the build — measured in
-    // the same player — but nothing in the editor could guard it, because Shader.Find succeeds there whether or
-    // not the shader is in a build. Resources.Load is the one call an EditMode test can make and have mean the
-    // same thing in a player, which is what BundledShaderResourceTests asserts.
-    //
-    // Everything under that folder is in every consumer's build whether or not anything uses it;
-    // Documentation~/player-builds.md owns that cost.
+    // Velvet.Editor.BundledShaderBuildInclusion is what keeps these resolvable in a player;
+    // Documentation~/player-builds.md owns that mechanism and what it costs.
     internal static class VelvetShaders
     {
-        // A failed lookup is cached nowhere: the next bake and the next filter resolve ask again. Gating the
-        // report here rather than in each caller is what keeps a permanently missing shader to one log line
-        // for the run instead of one per element that asks.
+        internal const string DropShadow = "Velvet/DropShadow";
+        internal const string GradientSilhouette = "Velvet/GradientSilhouette";
+        internal const string FilterBrightness = "Velvet/FilterBrightness";
+        internal const string FilterSaturate = "Velvet/FilterSaturate";
+
+        internal static readonly string[] Names =
+        {
+            DropShadow,
+            GradientSilhouette,
+            FilterBrightness,
+            FilterSaturate,
+        };
+
+        // Every lookup goes through here so a name that does not resolve is reported once per run rather than
+        // once per ask: nothing caches a failed lookup, so a drop-shadow caster asks again on every bake and a
+        // filter definition asks again on every resolve.
         private static readonly HashSet<string> s_missingWarned = new();
 
         internal static Shader? Find(string shaderName, string logTag, string omitted)
         {
-            var shader = Resources.Load<Shader>(shaderName);
+            var shader = Shader.Find(shaderName);
             if (shader == null && s_missingWarned.Add(shaderName))
             {
-                FiberLogger.LogWarning(logTag, $"Shader not found: {shaderName}. " +
-                    $"It ships in the package's Resources folder; the {omitted} is omitted.");
+                FiberLogger.LogWarning(logTag,
+                    $"Shader not found: {shaderName}. It ships with the package; the {omitted} is omitted.");
             }
             return shader;
         }

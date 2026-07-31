@@ -16,8 +16,8 @@ namespace Velvet.Tests
     /// is attached and none is needed: the fixture measures the paint, never the cascade.
     /// </para>
     /// <para>
-    /// Run this fixture against a built player (<c>-testPlatform StandaloneOSX</c>) to exercise the part the
-    /// editor cannot: whether the shaders survive the build at all.
+    /// Whether those shaders survive into a player is not what this measures;
+    /// <c>BundledShaderPlayerInclusionTests</c> is the case that answers it.
     /// </para>
     /// </summary>
     [Timeout(600000)]

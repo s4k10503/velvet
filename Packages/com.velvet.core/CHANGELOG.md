@@ -182,14 +182,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Drop shadows, the gradient silhouette a `bg-gradient-*` gets on a `skew-*` element, and the
   `brightness-*` / `saturate-*` filters now render in a built player. All four of the shaders behind
-  them were resolved by name with `Shader.Find`, which finds a shader in the editor whether or not it
-  is in the build and returns null in a player for one nothing references — so every project shipped
-  those three paints blank after seeing them work in Play Mode for the whole life of the project,
-  announced only by a warning in the player log. The shaders now ship in the package's `Resources`
-  folder and load from there, which is the same path in the editor and in a player. The cost, stated
-  plainly: those four shaders are in every build of every project that installs the package, used or
-  not. A shader that is missing anyway now names itself in one warning for the run; the drop shadow
-  logged one every time a caster regenerated its content.
+  them are reached by name from C# alone, and a build strips a shader no scene reaches — so every
+  project shipped those three paints blank after seeing them work in Play Mode for the whole life of
+  the project, announced only by a warning in the player log. A build step now adds the four to
+  Graphics Settings' Always Included Shaders before the build and removes them afterwards, so a
+  consumer installs the package and does nothing else and their `ProjectSettings` reads as it did.
+  The cost, stated plainly: those four shaders are compiled into every build of every project that
+  installs the package, used or not, and a build whose injection does not take now fails rather than
+  producing a player that draws nothing. A shader that is missing anyway now names itself in one
+  warning for the run; the drop shadow logged one every time a caster regenerated its content.
   [`Documentation~/player-builds.md`](Documentation~/player-builds.md) is new and covers it.
 - A `shadow-*` / `drop-shadow-*` paint no longer fades to the square of its caster's opacity during an
   enter or exit. The scheduler scaled the shadow by the caster's sampled opacity each frame on the

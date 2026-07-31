@@ -22,10 +22,10 @@ namespace Velvet
         private static FilterFunctionDefinition? s_saturate;
 
         internal static FilterFunctionDefinition? Brightness
-            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build("Velvet/FilterBrightness", "_Brightness", "velvet-brightness");
+            => IsUsable(s_brightness) ? s_brightness : s_brightness = Build(VelvetShaders.FilterBrightness, "_Brightness", "velvet-brightness");
 
         internal static FilterFunctionDefinition? Saturate
-            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build("Velvet/FilterSaturate", "_Saturate", "velvet-saturate");
+            => IsUsable(s_saturate) ? s_saturate : s_saturate = Build(VelvetShaders.FilterSaturate, "_Saturate", "velvet-saturate");
 
         // Identity checks against the CACHED definitions only (never forcing a lazy Build): a caller probing an
         // arbitrary function's definition must not load the brightness/saturate shaders as a side effect. A
