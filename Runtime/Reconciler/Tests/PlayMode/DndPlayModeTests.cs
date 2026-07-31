@@ -34,7 +34,7 @@ namespace Velvet.Tests
             s_ended.Clear();
             _panelGo = new GameObject("DndPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;

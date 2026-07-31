@@ -4,6 +4,7 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -28,7 +29,7 @@ namespace Velvet.Tests
         {
             _panelGo = new GameObject("FocusInterceptionPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;
@@ -210,7 +211,7 @@ namespace Velvet.Tests
         {
             _panelGo = new GameObject("FocusScopePlaybackPanel");
             var doc = _panelGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             yield return null;

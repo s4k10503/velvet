@@ -6,6 +6,7 @@ using Unity.PerformanceTesting;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests.Performance
 {
@@ -32,7 +33,7 @@ namespace Velvet.Tests.Performance
         {
             _gameObject = new GameObject("E2EBenchmarkRoot");
             _uiDocument = _gameObject.AddComponent<UIDocument>();
-            _panelSettings = ScriptableObject.CreateInstance<PanelSettings>();
+            _panelSettings = TestPanelSettings.Create();
             _uiDocument.panelSettings = _panelSettings;
 
             yield return null;

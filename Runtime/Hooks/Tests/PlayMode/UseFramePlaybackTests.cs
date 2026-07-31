@@ -55,7 +55,7 @@ namespace Velvet.Tests
         {
             _docGo = new GameObject("UseFramePanel");
             var doc = _docGo.AddComponent<UIDocument>();
-            _settings = ScriptableObject.CreateInstance<PanelSettings>();
+            _settings = TestPanelSettings.Create();
             _settings.scaleMode = PanelScaleMode.ConstantPixelSize;
             doc.panelSettings = _settings;
             return doc.rootVisualElement;
