@@ -35,6 +35,7 @@ dotnet test Velvet.SourceGenerators.sln
 - `StyleUtilityTableTests` — one case per USS shape the bundled stylesheets contain, plus the problem each shape they do not produces. Compiles and calls the emitted table rather than pattern-matching its source, which is what puts the bit packing under assertion and is also the only place the emitted C# is proved to compile
 - `CodeShapeBacklogDriftTests` — re-measures the three code-shape limits over the package's own sources and fails on any violation. This is the only job that verifies the marked assemblies pass: `unity-tests` is skipped unless a `UNITY_LICENSE` secret is set, so on a fork or an outside contributor's PR nothing else compiles them. It parses each file both with and without `UNITY_EDITOR` defined, because a body inside an `#if UNITY_EDITOR` is real code in one assembly and disabled text in another, and a scan that saw only one of those would miss several hundred members
 - `SolutionProjectMembershipDriftTests` — compares the `*.csproj` files on disk against what `Velvet.SourceGenerators.sln` names and maps to a build configuration. A project the solution omits, and that no member reaches by `ProjectReference`, is built by nothing: its analyzers never run while the guards that read its sources off disk keep reporting on them — the same silent exemption the opt-in guard closes, one level further out where it cannot see it. Reachability rather than membership is what decides whether a compiler ever sees the file, measured by referencing an omitted project from a member and watching a syntax error in it fail the build; membership is the convention this repository holds to on top of that
+- `DocumentationDiagnosticTableTests` — reads this file's diagnostic IDs, failure-code range endpoints and analyzer category names, and [Documentation~/memoization.md](../Documentation~/memoization.md)'s diagnostic table, back against the descriptors and the derivation. The category half is what makes a rename in the descriptors red here rather than leaving this file describing one that is gone
 - `BundledStyleSheetCensusTests` — re-derives the table from `../Runtime/Styles/*.uss` and compares it against the committed `../Runtime/Styling/StyleUtilityProperties.g.cs`, and pins the selector-shape and property census the derivation is designed around. This is what makes committing the table safe: a stylesheet edit not accompanied by a regenerated table, or one that introduces an unsurveyed shape, fails here rather than downstream where a class missing from the table is indistinguishable from a class that conflicts with nothing
 
 ## Mutation testing
@@ -47,11 +48,11 @@ dotnet-stryker    # reads stryker-config.json
 
 The tool is pinned for the same reason the SDK and the Roslyn host are: how many mutants it creates, and which, is its version's answer, and the counts below are 4.16.0's. It ships a `net8.0` asset with major roll-forward, so it runs on whatever runtime is installed and does not constrain `global.json`. Without `DOTNET_ROOT` a Homebrew install fails to launch it — the apphost probes only `/usr/local/share/dotnet`.
 
-Stryker mutates the three source projects one behaviour change at a time, rebuilds, and reruns **only the tests its coverage pass attributes to that mutant** — not the suite. The report lands in `StrykerOutput/<timestamp>/reports/`. It answers what line coverage does not: whether the tests that run a line would notice that line being wrong.
+Stryker mutates the source projects one behaviour change at a time, rebuilds, and reruns **only the tests its coverage pass attributes to that mutant** — not the suite. The report lands in `StrykerOutput/<timestamp>/reports/`. It answers what line coverage does not: whether the tests that run a line would notice that line being wrong.
 
-The score is `(killed + timeout) / (killed + timeout + survived + no-coverage)`, counting a mutant no test reaches as not rejected. Of the 2586 mutants created here, 377 fall to Stryker's own "block already covered" filter and 314 do not compile; neither is scored, so the denominator is 1895. That split is deterministic. How the 1895 divide between killed and survived is not — two runs over an unchanged tree moved 29 of them — so no percentage is quoted here: one would be stale by the next commit and nothing checks it.
+The score is `(killed + timeout) / (killed + timeout + survived + no-coverage)`, counting a mutant no test reaches as not rejected. Stryker's own "block already covered" filter and the mutants that do not compile are both excluded from the denominator, and that exclusion is deterministic. How the remainder divides between killed and survived is not — two runs over an unchanged tree moved 29 of them — so no score is quoted here, and neither are the mutant counts, which were taken against a tree four of the mutated files have since been rewritten in. Nothing re-derives them. Run the tool to learn the current figures.
 
-`Velvet.SourceGenerators.CodeFixes` is worth pulling out of any aggregate, because an aggregate hides it: 2 mutants killed, 4 survived, 17 reached by no test at all, and 32 of its 61 failing to compile under mutation. That is not a bad score, it is the absence of one — and it ships as a committed DLL under `../Runtime/Plugins/Analyzers/`.
+`Velvet.SourceGenerators.CodeFixes` is worth pulling out of any aggregate, because an aggregate hides it. Measured at `f0ba4b6` and **not re-measured since**: 2 mutants killed, 4 survived, 17 reached by no test at all, and 32 of its 61 failing to compile under mutation. That is not a bad score, it is the absence of one — and it ships as a committed DLL under `../Runtime/Plugins/Analyzers/`. Treat the figures as the shape of the problem rather than as its current size; the claim they support is that this project is covered by almost nothing, which no edit since has set out to change.
 
 Read survivors rather than the score, and read each one's `coveredBy` in the JSON report first — it is the set of tests Stryker actually ran against that mutant. A small set usually just means a narrow code path, which is what one-scenario-per-test fixtures are supposed to produce; it is the fixture that tells you whether the attribution is wrong, never the count.
 
@@ -80,7 +81,7 @@ Only changed lines are mutated, and only in the shapes it knows: a spaced binary
 Three of the verdicts need reading rather than counting:
 
 - **survived** — no test failed. Either a test that never asked about the mutated behaviour, or a mutation the behaviour does not depend on.
-- **not built** — the assembly came out byte-identical to the baseline, so the suite ran against unmutated code and answered nothing. A mutation inside an `#if` the editor does not define lands here.
+- **not rebuilt** — the assembly came out byte-identical to the baseline, so the suite ran the unmutated binary and answered nothing. This is what an edit the editor never compiled looks like, and it is the only case the check catches: a mutation the compiler did see but discarded — one inside an `#if` the editor does not define — still comes out as a different assembly and reads as **survived**, which was measured on this package rather than assumed.
 - **killed** — the failing tests are named, because a mutant killed only by a test that also fails on an unmutated tree was killed by nothing, and because whether the fixture that caught it is the one named for the behaviour is the second question worth asking of a kill.
 
 A run that does not finish inside `--timeout` is counted as killed and says so: a mutation that leaves the suite running forever — an inverted loop bound, most often — did change the behaviour, and the alternative is a harness that waits on it for as long as the machine is left alone.
@@ -108,9 +109,11 @@ Generators~/
 │   ├── Diagnostics/CodeShapeDiagnostics.cs   (diagnostic descriptors — see "The code-shape rules")
 │   ├── AnalyzerReleases.*.md                 (Roslyn analyzer release tracking)
 │   └── Shared/                               (SourceBuilder, VelvetWellKnownNames, …)
+├── src/Velvet.SourceGenerators.Bootstrap/    (second compile of the sibling's sources — see "How this solution opts in")
+│   └── Velvet.SourceGenerators.Bootstrap.csproj
 ├── src/Velvet.SourceGenerators.CodeFixes/    (ships to ../Runtime/Plugins/Analyzers/)
 ├── src/Velvet.StyleTable/                    (console tool — writes ../Runtime/Styling/StyleUtilityProperties.g.cs)
-│   ├── Velvet.StyleTable.csproj              (force-added — the root .gitignore ignores *.csproj)
+│   ├── Velvet.StyleTable.csproj              (CLI entry point below)
 │   ├── Program.cs                            (CLI: --styles <dir> --output <file>)
 │   ├── UssStyleSheetParser.cs                (rules and declarations, straight off the text)
 │   ├── UssCascadeOrder.cs                    (the @import order the importer flattens the sheets to)
@@ -286,6 +289,38 @@ for.
 
 A consumer who wants the limits on their own assembly opts in with the same line.
 
+### How this solution opts in
+
+This solution is where the three analyzers are written, and for a long time it was the one place they never
+ran: it references nothing from the package, so the `RoslynAnalyzer` label never reaches it. A project here
+opts in with **two** MSBuild items, and needs both — the marker alone leaves the analyzers unloaded, and the
+reference alone leaves the gate closed:
+
+```xml
+<AssemblyMetadata Include="Velvet.CodeShape" Value="enforce" />
+<ProjectReference Include="..\Velvet.SourceGenerators.Bootstrap\Velvet.SourceGenerators.Bootstrap.csproj"
+                  OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+```
+
+`GeneratorProjectOptInDriftTests` fails when a project under `Generators~` carries neither, for the reason
+its Unity counterpart exists: a project that escapes looks exactly like one that complies. Neither half is
+decided from the project XML — the marker goes through `CodeShapeMembers.OptsIntoCodeShapeRules`, the
+analyzers' own gate, against the built assembly, and the reference through MSBuild's evaluation. That
+fixture owns why each half needs the instrument it uses, and what the pair of them still does not reach.
+
+The analyzers arrive from a **second compile** of the same sources rather than from the project that declares
+them, because a project cannot reference itself as an analyzer — MSBuild rejects the cycle with `MSB4006`
+during restore, before any compile starts. The alternative, pointing at the already-committed
+`../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`, was rejected: nothing verifies that artifact was
+rebuilt from the current sources, so an edit to a rule would go on being enforced by the previous rule until
+someone remembered to redeploy — the failure mode this wiring exists to remove.
+
+The bootstrap therefore compiles the sibling's `**/*.cs` through a glob and is not itself opted in; its
+content is measured by the sibling's own compile. A glob that stopped matching would produce an analyzer
+assembly holding no analyzers, and all four projects would then still build — measured with a violation of
+each rule planted in every one of them, and no error anywhere — which is why one case compares the two
+assemblies' declared type names rather than trusting the build to notice.
+
 ## Using `[MemoizeMethod]`
 
 End-user guidance — usage, constraints, diagnostic IDs, and examples — has moved to [Documentation~/memoization.md](../Documentation~/memoization.md).
@@ -300,4 +335,6 @@ Which paths trigger it is stated in the repository's `CLAUDE.md`; the reason `Ru
 
 **CI does not check the committed DLLs under `../Runtime/Plugins/` at all.** It tests the sources; it never compares the deployed assemblies against a rebuild, so a PR that edits generator sources and forgets to rerun the build script goes green while Unity keeps consuming the stale binaries. Rebuilding and committing them is the contributor's responsibility. The third committed artifact, `../Runtime/Styling/StyleUtilityProperties.g.cs`, is the exception — `BundledStyleSheetCensusTests` compares it against a fresh derivation, so forgetting to regenerate that one is caught.
 
-A plain `git diff --exit-code` on the deployed DLLs would not close that gap either: the build embeds the git `HEAD` commit id in the assembly, so rebuilding at commit *N* never reproduces the DLL committed *in* commit *N* (it was necessarily built at *N-1*). The build is otherwise deterministic — repeated rebuilds of unchanged sources at the same `HEAD` are byte-identical.
+A plain `git diff --exit-code` against a rebuild would not close that gap either: the SDK writes the commit `HEAD` was at when the build ran into the assembly's informational version (`0.1.0+<sha>`), so a rebuild at any other commit carries a different id. What does compare is a build at the commit the assembly names — measured byte-identical from a separate working tree, because `ContinuousIntegrationBuild` replaces the source paths with `/_/`.
+
+The deployed pair is still not checkable that way. `build.sh` runs before the commit that carries its output, so a redeploy that also edits generator sources names a commit those sources are not in. And when that commit lived only on a PR branch, the squash merge left nothing to build at: the pair on `main` names one that no ref here reaches.

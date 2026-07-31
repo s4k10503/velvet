@@ -33,7 +33,7 @@ KILLED = "killed"
 SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
 UNCOMPILABLE = "uncompilable"
-NOT_BUILT = "not built"
+NOT_BUILT = "not rebuilt"
 
 
 class Mutant:
@@ -393,11 +393,13 @@ def main():
     print("baseline: {} passed in {:.0f}s".format(baseline["passed"], baseline_wall))
 
     # A mutant whose assembly comes out byte-identical to this ran the unmutated code, and a run
-    # over the pristine binary is green for the same reason a surviving mutant is. Editing the
-    # source is not evidence that the edit was compiled: the file may sit behind an inactive
-    # preprocessor branch, outside the assembly, or emit the same IL.
+    # over the pristine binary is green for the same reason a surviving mutant is. Writing the
+    # file is not evidence that the editor compiled it.
     # Reading the editor log for a compile line was tried instead and does not answer it — the
     # line appears for an artifact the build cache served without compiling anything.
+    # This detects an edit that never reached the compiler, and only that. A mutation the
+    # compiler read and discarded, inside a preprocessor branch the editor does not define,
+    # still produces a different assembly here and so reads as survived.
     assemblies_dir = project / "Library" / "ScriptAssemblies"
     baseline_hashes = {path.name: sha(path) for path in assemblies_dir.glob("*.dll")}
 
@@ -457,7 +459,7 @@ def main():
 
     unmeasured = [m for m in mutants if m.verdict == NOT_BUILT]
     if unmeasured:
-        print("\n--- mutants that never reached the binary; nothing was asked of the suite ---")
+        print("\n--- mutants the editor never compiled; nothing was asked of the suite ---")
         for mutant in unmeasured:
             print("{}  {}".format(mutant.describe(project), mutant.detail))
 
