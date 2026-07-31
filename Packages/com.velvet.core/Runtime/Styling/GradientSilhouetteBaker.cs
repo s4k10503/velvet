@@ -95,14 +95,14 @@ namespace Velvet
             }
             if (s_shader == null)
             {
-                s_shader = Shader.Find(ShaderPath);
+                s_shader = VelvetShaders.Find(ShaderPath);
             }
             if (s_shader == null)
             {
                 if (!s_warned)
                 {
                     FiberLogger.LogWarning("Gradient", $"Shader not found: {ShaderPath}. " +
-                        "Ensure the project uses URP and the shader is included in the build.");
+                        "It ships in the package's Resources folder; the gradient is omitted without it.");
                     s_warned = true;
                 }
                 return null;

@@ -163,6 +163,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Drop shadows, the gradient silhouette a `bg-gradient-*` gets on a `skew-*` element, and the
+  `brightness-*` / `saturate-*` filters now render in a built player. All four of the shaders behind
+  them were resolved by name with `Shader.Find`, which finds a shader in the editor whether or not it
+  is in the build and returns null in a player for one nothing references — so every project shipped
+  those three paints blank after seeing them work in Play Mode for the whole life of the project,
+  announced only by a warning in the player log. The shaders now ship in the package's `Resources`
+  folder and load from there, which is the same path in the editor and in a player. The cost, stated
+  plainly: those four shaders are in every build of every project that installs the package, used or
+  not. [`Documentation~/player-builds.md`](Documentation~/player-builds.md) is new and covers it.
 - A `shadow-*` / `drop-shadow-*` paint now tracks an enter or exit animation covering it in the two
   mount-time cases that previously escaped. An element mounted with the utility already in its class
   list, under a play that was already running, joined that play's fade nowhere and stayed at resting

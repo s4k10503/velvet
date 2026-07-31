@@ -23,7 +23,6 @@ namespace Velvet
         // binding can size and offset the draw quad to match the bake.
         internal const float ExtraPadding = 5f;
 
-        // Cached across all shadows: Shader.Find is a project-wide lookup, identical for every shadow.
         private static Shader? s_shader;
 
         // The single bake Material, lazily created from the shader. It is only a bake tool (the baked textures
@@ -141,12 +140,12 @@ namespace Velvet
             }
             if (s_shader == null)
             {
-                s_shader = Shader.Find(ShadowShaderPath);
+                s_shader = VelvetShaders.Find(ShadowShaderPath);
             }
             if (s_shader == null)
             {
                 FiberLogger.LogWarning("DropShadow", $"Shader not found: {ShadowShaderPath}. " +
-                    "Ensure the project uses URP and the shader is included in the build.");
+                    "It ships in the package's Resources folder; the shadow is omitted without it.");
                 material = null!;
                 return false;
             }

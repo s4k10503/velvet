@@ -15,7 +15,8 @@ namespace Velvet
     // GPU/material economy: UI Toolkit's filter-list transition interpolation matches functions in part by
     // referring to the SAME definition on both sides of a tween, so a fresh CreateInstance per BuildFilter
     // call would silently break transition-all on brightness/saturate (the from/to list shapes would mismatch
-    // and snap instead of tweening). Built lazily off Shader.Find, mirroring DropShadowBaker's EnsureMaterial.
+    // and snap instead of tweening). Built lazily off VelvetShaders.Find, mirroring DropShadowBaker's
+    // EnsureMaterial.
     internal static class BuiltInFilterDefinitions
     {
         private static FilterFunctionDefinition? s_brightness;
@@ -59,19 +60,17 @@ namespace Velvet
             return passes != null && passes.Length > 0 && passes[0].material != null;
         }
 
-        // Builds the definition for one shader, or null when the shader is unavailable (a stripped player
-        // build that dropped it from Always Included Shaders) — the same un-mitigated gap the bake shaders
-        // already have. Degrade to "layer omitted" with a single warning rather than throw, mirroring
-        // DropShadowBaker.EnsureMaterial.
+        // An unavailable shader degrades to "layer omitted" with a single warning rather than throwing,
+        // mirroring DropShadowBaker.EnsureMaterial.
         private static FilterFunctionDefinition? Build(string shaderPath, string propertyName, string filterName)
         {
-            var shader = Shader.Find(shaderPath);
+            var shader = VelvetShaders.Find(shaderPath);
             if (shader == null)
             {
                 if (s_missingShaderWarned.Add(shaderPath))
                 {
                     FiberLogger.LogWarning("Filter", $"Shader not found: {shaderPath}. " +
-                        "Ensure it is included in the build (Always Included Shaders); the brightness/saturate layer is omitted.");
+                        "It ships in the package's Resources folder; the brightness/saturate layer is omitted.");
                 }
                 return null;
             }
