@@ -75,10 +75,16 @@ namespace Velvet.Tests
                 .Where(script => wired.Contains(script))
                 .Select(script => File.ReadAllText(Path.GetFullPath(HookDirectory + "/" + script))));
 
-            // Act
+            // Python imports name the module, not the file; stem matching covers that route the
+            // same way lib/deferrals.sh is reached by its path. Stem matching is looser than the
+            // full name — a hook quoting a stem in prose would read as sourced when it is not —
+            // which is accepted because reporting a genuinely imported file as an orphan blocks
+            // sharing the way deferrals.sh was extracted to stop.
             var orphans = scripts
                 .Where(script => !wired.Contains(script))
-                .Where(script => !sourced.Contains(Path.GetFileName(script), StringComparison.Ordinal))
+                .Where(script =>
+                    !sourced.Contains(Path.GetFileName(script), StringComparison.Ordinal)
+                    && !sourced.Contains(Path.GetFileNameWithoutExtension(script), StringComparison.Ordinal))
                 .ToList();
 
             // Assert
