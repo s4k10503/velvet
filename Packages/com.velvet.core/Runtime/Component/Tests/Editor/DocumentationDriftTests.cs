@@ -67,20 +67,6 @@ namespace Velvet.Tests
         private static readonly Regex YamlCommentPattern =
             new(@"(?<=^|\s)#[^\n]*", RegexOptions.Compiled | RegexOptions.Multiline);
 
-        // The walk is rooted rather than filtered because this repo's own workflow puts full checkouts of
-        // itself under .claude/worktrees/ while a suite runs: an exclusion list has to anticipate every such
-        // directory, and one it misses resolves every name the docs carry against a copy of the very sources
-        // the rename was supposed to remove them from — leaving the check structurally green on a developer
-        // machine and red only on CI.
-        private static readonly string[] WalkedRoots =
-            { "Packages", "Assets", ".github", "scripts", "ProjectSettings", "docs" };
-
-        // Build output and generated documentation: nothing a document names lives there, DocFX's api/ and
-        // _site/ carry a stale copy of every runtime type name until docs/build.sh is re-run, and Library
-        // alone would make the walk the slowest thing in this fixture.
-        private static readonly HashSet<string> UnwalkedDirectories =
-            new() { ".git", "Library", "Temp", "Logs", "Build", "UserSettings", "obj", "bin", "api", "_site" };
-
         private static readonly Regex VReferencePattern = new(@"\bV\.([A-Z][A-Za-z0-9_]*)", RegexOptions.Compiled);
         private static readonly Regex HookReferencePattern = new(@"\bUse[A-Z]\w*", RegexOptions.Compiled);
         private static readonly Regex DocLinkPattern = new(@"\]\(([A-Za-z0-9_.-]+\.md)\)", RegexOptions.Compiled);
@@ -176,7 +162,7 @@ namespace Velvet.Tests
             {
                 var whole = new HashSet<string>(StringComparer.Ordinal);
                 var inComments = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var entry in RepoEntries.Value.Where(e =>
+                foreach (var entry in DocumentationCorpus.RepoEntries(includeClaude: false).Where(e =>
                              e.EndsWith(extension, StringComparison.Ordinal) && File.Exists(e)))
                 {
                     var text = File.ReadAllText(entry);
@@ -200,7 +186,7 @@ namespace Velvet.Tests
             // it by widening both sides. What a widened one cannot do is leave the sheets' own selectors in
             // the corpus: it takes everything between a file's first and last comment with it.
             var selector = new Regex(@"^[^\S\n]*\.([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Multiline);
-            foreach (var entry in RepoEntries.Value.Where(e =>
+            foreach (var entry in DocumentationCorpus.RepoEntries(includeClaude: false).Where(e =>
                          e.EndsWith(".uss", StringComparison.Ordinal) && File.Exists(e)))
             {
                 unheld.AddRange(selector.Matches(File.ReadAllText(entry))
@@ -227,7 +213,7 @@ namespace Velvet.Tests
             var labelPattern = new Regex(RegionLabelAlternation, RegexOptions.Multiline);
             var withRegions = new HashSet<string>(StringComparer.Ordinal);
             var labelWords = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var entry in RepoEntries.Value.Where(
+            foreach (var entry in DocumentationCorpus.RepoEntries(includeClaude: false).Where(
                          e => e.EndsWith(".cs", StringComparison.Ordinal) && File.Exists(e)))
             {
                 var text = File.ReadAllText(entry);
@@ -387,52 +373,6 @@ namespace Velvet.Tests
             return unresolved.Distinct().ToList();
         }
 
-        // Every entry under the walked roots, repo-relative and slash-separated, so a path reference can be
-        // matched as a SUFFIX: the docs write `Component/V.cs` for a file under Packages/com.velvet.core/Runtime.
-        // A directory that vanishes mid-walk is skipped rather than thrown from — this repo creates and deletes
-        // worktrees while suites run, and Lazy caches a thrown exception for the rest of the domain, which would
-        // turn one transient miss into a permanently failing fixture.
-        private static readonly Lazy<List<string>> RepoEntries = new(() =>
-        {
-            var root = Path.GetFullPath(".");
-            var entries = new List<string>();
-            // Depth-bounded rather than visited-set guarded: a symlink cycle yields a FRESH path string every
-            // lap, so a set keyed on the path never closes it, and the link-resolving API that would is not in
-            // Unity's target framework. The deepest real directory here sits at 7, so a bound of 32 stops a
-            // cycle while leaving room the layout will not reach.
-            const int maxDepth = 32;
-            var pending = new Stack<(string Directory, int Depth)>(
-                WalkedRoots.Select(Path.GetFullPath).Where(Directory.Exists).Select(walked => (walked, 1)));
-            entries.AddRange(WalkedRoots.Where(walked => Directory.Exists(Path.GetFullPath(walked))));
-            entries.AddRange(Directory.EnumerateFiles(root).Select(file => Path.GetFileName(file)));
-            while (pending.Count > 0)
-            {
-                var (directory, depth) = pending.Pop();
-                string[] children;
-                try
-                {
-                    children = Directory.GetFileSystemEntries(directory);
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                    continue;
-                }
-                foreach (var entry in children)
-                {
-                    if (UnwalkedDirectories.Contains(Path.GetFileName(entry)))
-                    {
-                        continue;
-                    }
-                    entries.Add(Path.GetRelativePath(root, entry).Replace('\\', '/'));
-                    if (Directory.Exists(entry) && depth < maxDepth)
-                    {
-                        pending.Push((entry, depth + 1));
-                    }
-                }
-            }
-            return entries;
-        });
-
         // Every identifier-shaped word in the repo's own CODE. A name surviving nowhere in it was renamed or
         // deleted, which is the drift this checks for. It deliberately does not care WHERE the word occurs:
         // resolving this mix of runtime types, Unity types, generator symbols and CI variables against their
@@ -443,7 +383,7 @@ namespace Velvet.Tests
         {
             var words = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
             var identifiers = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var entry in RepoEntries.Value)
+            foreach (var entry in DocumentationCorpus.RepoEntries(includeClaude: false))
             {
                 if (!SourceExtensions.Any(extension => entry.EndsWith(extension, StringComparison.Ordinal))
                     || !File.Exists(entry))
@@ -498,11 +438,12 @@ namespace Velvet.Tests
             var leaf = trimmed[(separator + 1)..];
             if (!leaf.Contains('*'))
             {
-                return trimmed.Contains('*') || RepoEntries.Value.Any(entry => IsSuffixPath(entry, trimmed));
+                return trimmed.Contains('*') || DocumentationCorpus.RepoEntries(includeClaude: false)
+                    .Any(entry => IsSuffixPath(entry, trimmed));
             }
             var directory = separator < 0 ? string.Empty : trimmed[..separator];
             var extension = leaf.TrimStart('*');
-            return RepoEntries.Value.Any(entry =>
+            return DocumentationCorpus.RepoEntries(includeClaude: false).Any(entry =>
                 entry.EndsWith(extension, StringComparison.Ordinal)
                 && entry.LastIndexOf('/') >= 0
                 && IsSuffixPath(entry[..entry.LastIndexOf('/')], directory));
