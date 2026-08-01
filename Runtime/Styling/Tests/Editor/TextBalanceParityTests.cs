@@ -68,15 +68,15 @@ namespace Velvet.Tests
             using var scope = new ReconcilerScope();
             var tree1 = new VNode[] { V.Label(className: "text-balance", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), tree1);
-            Assume.That(GetManipulatorCount(scope.Reconciler), Is.EqualTo(1),
-                "Precondition: the text-balance class registered a manipulator");
+            var attached = GetManipulatorCount(scope.Reconciler);
 
             // Act — patch the same label without the text-balance class.
             var tree2 = new VNode[] { V.Label(text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert
-            Assert.That(GetManipulatorCount(scope.Reconciler), Is.EqualTo(0));
+            // Assert — the registration is folded in rather than assumed: a reconciler that registered
+            // nothing in the first place also holds none here, and detaching is the claim.
+            Assert.That((attached, GetManipulatorCount(scope.Reconciler)), Is.EqualTo((1, 0)));
         }
 
         [Test]
@@ -186,6 +186,7 @@ namespace Velvet.Tests
             Assume.That(label, Is.Not.Null, "Precondition: the label mounted");
             Assume.That(label.style.width.value.value, Is.EqualTo(50f),
                 "Precondition: the co-present w-[50px] utility resolved its own value at mount");
+            var attached = GetManipulatorCount(scope.Reconciler);
 
             // Act — patch away JUST the text-balance token; the w-[50px] utility stays in the class list.
             var tree2 = new VNode[] { V.Label(className: "w-[50px]", text: "hello") };
@@ -193,8 +194,10 @@ namespace Velvet.Tests
 
             // Assert — the utility's own value survives text-balance's teardown instead of being left
             // cleared by it (StyleTextBalanceManipulator.Clear unconditionally nulls the width first; the
-            // reconciler must restore the co-present utility's value right after).
-            Assert.That(label.style.width.value.value, Is.EqualTo(50f));
+            // reconciler must restore the co-present utility's value right after). The attachment rides
+            // along because a reconciler that never attached anything clears no width either, and the
+            // surviving value alone cannot tell that apart from a restore.
+            Assert.That((attached, label.style.width.value.value), Is.EqualTo((1, 50f)));
         }
 
         [Test]
@@ -208,13 +211,15 @@ namespace Velvet.Tests
             var label = scope.Root.Q<Label>();
             Assume.That(label.style.width.value.value, Is.EqualTo(40f),
                 "Precondition: the co-present size-[40px] utility resolved its own width at mount");
+            var attached = GetManipulatorCount(scope.Reconciler);
 
             // Act
             var tree2 = new VNode[] { V.Label(className: "size-[40px]", text: "hello") };
             scope.Reconciler.Reconcile(scope.Root, tree1, tree2);
 
-            // Assert
-            Assert.That(label.style.width.value.value, Is.EqualTo(40f));
+            // Assert — the attachment rides along because a reconciler that never attached anything clears
+            // no width either, and the surviving value alone cannot tell that apart from a restore.
+            Assert.That((attached, label.style.width.value.value), Is.EqualTo((1, 40f)));
         }
 
         private static int GetManipulatorCount(Reconciler reconciler)

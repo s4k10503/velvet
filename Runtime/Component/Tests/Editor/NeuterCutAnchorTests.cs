@@ -88,7 +88,7 @@ namespace Velvet.Tests
             // Assert — the edit count is folded in because a map that parsed to nothing satisfies
             // "no anchor is wrong" exactly, and a renamed JSON key is what produces that.
             Assert.That((map.cuts.Sum(cut => cut.edits.Length), string.Join("\n", wrong)),
-                Is.EqualTo((8, string.Empty)));
+                Is.EqualTo((19, string.Empty)));
         }
 
         [Test]
@@ -108,7 +108,7 @@ namespace Velvet.Tests
 
             // Assert — the edit count rides along for the same reason it does above.
             Assert.That((map.cuts.Sum(cut => cut.edits.Length), string.Join("\n", wrong)),
-                Is.EqualTo((8, string.Empty)));
+                Is.EqualTo((19, string.Empty)));
         }
 
         [Test]
@@ -125,7 +125,7 @@ namespace Velvet.Tests
                             select $"{entry.fixture} names '{name}'").ToList();
 
             // Assert
-            Assert.That((map.fixtures.Length, string.Join("\n", dangling)), Is.EqualTo((2, string.Empty)));
+            Assert.That((map.fixtures.Length, string.Join("\n", dangling)), Is.EqualTo((6, string.Empty)));
         }
 
         [Test]
@@ -144,7 +144,7 @@ namespace Velvet.Tests
                 .ToList();
 
             // Assert — the fixture count is folded in because an empty map has no missing fixture either.
-            Assert.That((map.fixtures.Length, string.Join("\n", missing)), Is.EqualTo((2, string.Empty)));
+            Assert.That((map.fixtures.Length, string.Join("\n", missing)), Is.EqualTo((6, string.Empty)));
         }
 
         [Test]
@@ -168,7 +168,7 @@ namespace Velvet.Tests
             // single-mechanism satisfies this by never classifying anything.
             Assert.That(
                 (map.fixtures.Count(entry => Mechanisms(map, entry).Count > 1), string.Join("\n", wrong)),
-                Is.EqualTo((1, string.Empty)));
+                Is.EqualTo((3, string.Empty)));
         }
 
         [Test]
@@ -186,7 +186,7 @@ namespace Velvet.Tests
                 .ToList();
 
             // Assert
-            Assert.That((map.fixtures.Length, string.Join("\n", declaring)), Is.EqualTo((2, string.Empty)));
+            Assert.That((map.fixtures.Length, string.Join("\n", declaring)), Is.EqualTo((6, string.Empty)));
         }
 
         [Test]
@@ -207,7 +207,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That(
                 (map.fixtures.Count(entry => Mechanisms(map, entry).Count > 1), string.Join("\n", unscoped)),
-                Is.EqualTo((1, string.Empty)));
+                Is.EqualTo((3, string.Empty)));
         }
 
         private static string DeclaringSource(string fixture)
