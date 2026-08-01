@@ -147,13 +147,6 @@ namespace Velvet.Editor
             {
                 return;
             }
-            // OnPostprocessBuild and the editor-load repair both arrive here without the build's refusal
-            // ahead of them. Declining keeps the record, which is what lets a later pass finish; mutating
-            // and failing to save is what leaves the entries with nothing able to remove them.
-            if (!CanWriteSettings())
-            {
-                return;
-            }
             var settings = new SerializedObject(
                 AssetDatabase.LoadAssetAtPath<GraphicsSettings>(GraphicsSettingsAsset));
             var included = settings.FindProperty(AlwaysIncludedShaders);
@@ -166,9 +159,8 @@ namespace Velvet.Editor
                 {
                     // Only this arm keeps the record. A name that resolves while the list holds no entry
                     // for it is finished business — the consumer deleted it themselves, say — and keeping
-                    // its record would strand it: the editor-load repair would then rewrite and save the
-                    // consumer's project settings on every domain reload, for the rest of the project's
-                    // life, and only a completed build could ever clear it.
+                    // its record would strand it: every domain reload from then on rewrites the record and
+                    // flushes the consumer's whole dirty asset set, until a build overwrites it.
                     unresolved.Add(name);
                     continue;
                 }
@@ -184,6 +176,14 @@ namespace Velvet.Editor
 
             if (removed)
             {
+                // OnPostprocessBuild and the editor-load repair both arrive here without the build's
+                // refusal ahead of them. Declining keeps the record, which is what lets a later pass
+                // finish; mutating and failing to save is what leaves the entries with nothing able to
+                // remove them. A pass that removed nothing writes nothing, so it need not ask.
+                if (!CanWriteSettings())
+                {
+                    return;
+                }
                 settings.ApplyModifiedProperties();
                 // A build saves project settings while it runs, so undoing the injection in the loaded
                 // object alone would leave the entries in the file the consumer sees.

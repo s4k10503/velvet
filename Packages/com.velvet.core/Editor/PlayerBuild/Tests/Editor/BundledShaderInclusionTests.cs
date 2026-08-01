@@ -250,8 +250,9 @@ namespace Velvet.Tests
             // Assert — the record survives carrying exactly what could not be removed, so a later pass can
             // finish. Both terms in one comparison: a revert that deleted the file and one that left it
             // holding the whole original list are different failures.
+            var kept = File.Exists(RecordFilePath()) ? File.ReadAllLines(RecordFilePath()) : null;
             Assert.That(
-                (File.Exists(RecordFilePath()), string.Join(", ", File.ReadAllLines(RecordFilePath()))),
+                (kept != null, string.Join(", ", kept ?? System.Array.Empty<string>())),
                 Is.EqualTo((true, "Velvet/NoSuchShader")));
         }
 
