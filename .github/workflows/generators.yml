@@ -65,17 +65,89 @@ jobs:
         run: dotnet test Velvet.SourceGenerators.sln -c Release --nologo
 
   # ---------------------------------------------------------------------------
+  # Repository settings live only in GitHub's own state; nothing in this
+  # repository reads them back. contents:read is enough for the rulesets
+  # endpoints on the canonical repository — measured here with GITHUB_TOKEN at
+  # that permission, both list and get answering HTTP 200. A fork's token cannot
+  # read the upstream ruleset, and the check names are upstream's, so the job
+  # skips when github.repository is not s4k10503/velvet.
+  # ---------------------------------------------------------------------------
+  repository-settings:
+    name: Repository settings
+    if: github.repository == 's4k10503/velvet'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert protect-main ruleset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          failed=0
+
+          rulesets=$(gh api "repos/${GITHUB_REPOSITORY}/rulesets")
+          protect_count=$(jq '[.[] | select(.name == "protect-main")] | length' <<<"$rulesets")
+          if [ "$protect_count" -eq 0 ]; then
+            echo "::error::protect-main ruleset not found: branch protection is decided only in GitHub's state, and without this ruleset merges are not gated by Required checks (Unity) or Required checks (generators)."
+            exit 1
+          fi
+          if [ "$protect_count" -gt 1 ]; then
+            echo "::error::protect-main ruleset is ambiguous ($protect_count matches): lookup is by name so recreating the ruleset must not leave the check passing against nothing."
+            exit 1
+          fi
+
+          ruleset_id=$(jq -r '.[] | select(.name == "protect-main") | .id' <<<"$rulesets")
+          ruleset=$(gh api "repos/${GITHUB_REPOSITORY}/rulesets/${ruleset_id}")
+
+          enforcement=$(jq -r '.enforcement' <<<"$ruleset")
+          if [ "$enforcement" != "active" ]; then
+            echo "::error::protect-main enforcement is '${enforcement}', expected 'active': inactive or disabled enforcement would let merges bypass Required checks (Unity) and Required checks (generators) without a code change."
+            failed=1
+          fi
+
+          ref_include_count=$(jq '[.conditions.ref_name.include[]?] | length' <<<"$ruleset")
+          if [ "$ref_include_count" -ne 1 ] || [ "$(jq -r '.conditions.ref_name.include[0] // empty' <<<"$ruleset")" != "refs/heads/main" ]; then
+            actual=$(jq -c '.conditions.ref_name.include // []' <<<"$ruleset")
+            echo "::error::protect-main conditions.ref_name.include must be exactly [\"refs/heads/main\"], got ${actual}: only main is protected by design; an extra ref would gate branches this repository does not intend to protect."
+            failed=1
+          fi
+
+          rsc_rule_count=$(jq '[.rules[]? | select(.type == "required_status_checks")] | length' <<<"$ruleset")
+          if [ "$rsc_rule_count" -eq 0 ]; then
+            echo "::error::protect-main has no required_status_checks rule: without it merges are not gated by Required checks (Unity) and Required checks (generators), which are the two aggregates this repository deliberately requires."
+            failed=1
+          elif [ "$rsc_rule_count" -gt 1 ]; then
+            echo "::error::protect-main has ${rsc_rule_count} required_status_checks rules, expected exactly one: duplicate rules would make the required-context assertion ambiguous."
+            failed=1
+          else
+            strict=$(jq -r '.rules[] | select(.type == "required_status_checks") | .parameters.strict_required_status_checks_policy' <<<"$ruleset")
+            if [ "$strict" != "false" ]; then
+              echo "::error::protect-main strict_required_status_checks_policy is '${strict}', expected false: requiring every head to be up to date would serialise every merge against a 21-25 minute Unity matrix, and a silent flip to true would look like GitHub being slow rather than like a setting change."
+              failed=1
+            fi
+
+            context_count=$(jq '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]?] | length' <<<"$ruleset")
+            contexts=$(jq -c '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context]' <<<"$ruleset")
+            unity_count=$(jq '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | select(.context == "Required checks (Unity)")] | length' <<<"$ruleset")
+            generators_count=$(jq '[.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[]? | select(.context == "Required checks (generators)")] | length' <<<"$ruleset")
+            if [ "$context_count" -ne 2 ] || [ "$unity_count" -ne 1 ] || [ "$generators_count" -ne 1 ]; then
+              echo "::error::protect-main required_status_checks must list exactly Required checks (Unity) and Required checks (generators), got ${contexts} (${context_count} entries): those names are the required-checks aggregates in test.yml and this workflow, and branch protection must require both."
+              failed=1
+            fi
+          fi
+
+          exit "$failed"
+
+  # ---------------------------------------------------------------------------
   # This workflow's half of what branch protection requires. Same ownership rule
   # as the aggregate in test.yml, and a distinct name so protection can name both.
   # ---------------------------------------------------------------------------
   required-checks:
     name: Required checks (generators)
     if: always()
-    needs: [source-generators]
+    needs: [source-generators, repository-settings]
     runs-on: ubuntu-latest
     steps:
       - env:
-          RESULTS: ${{ needs.source-generators.result }}
+          RESULTS: ${{ needs.source-generators.result }} ${{ needs.repository-settings.result }}
         run: |
           failed=0
           for result in $RESULTS; do
