@@ -67,6 +67,138 @@
           "neuter": "return;"
         }
       ]
+    },
+    {
+      "name": "balance-attach",
+      "mechanism": "balance",
+      "summary": "the balance manipulator subscribes to nothing on its target",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceManipulator.cs",
+          "anchor": "protected override void RegisterCallbacksOnTarget()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "balance-apply",
+      "mechanism": "balance",
+      "summary": "the balance manipulator narrows nothing it observes",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceManipulator.cs",
+          "anchor": "private void Apply()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "stylesheet-inject",
+      "mechanism": "stylesheet-build",
+      "summary": "no build preloads the bundled stylesheet's holder",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs",
+          "anchor": "internal static void Inject()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "stylesheet-revert",
+      "mechanism": "stylesheet-build",
+      "summary": "a finished build takes the stylesheet's holder back out of nothing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs",
+          "anchor": "internal static void Revert()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "shader-inject",
+      "mechanism": "shader-build",
+      "summary": "no build adds the bundled shaders to the always-included list",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Editor/PlayerBuild/BundledShaderBuildInclusion.cs",
+          "anchor": "internal static void Inject()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "shader-revert",
+      "mechanism": "shader-build",
+      "summary": "a finished build takes the bundled shaders back out of nothing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Editor/PlayerBuild/BundledShaderBuildInclusion.cs",
+          "anchor": "internal static void Revert()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "balance-register",
+      "mechanism": "balance-wiring",
+      "summary": "the reconciler attaches and detaches no balance manipulator",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberNodePatcher.cs",
+          "anchor": "private void ApplyTextBalanceManipulator(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "stylesheet-repair",
+      "mechanism": "stylesheet-build",
+      "summary": "a domain reload repairs nothing an ended build left in the stylesheet settings",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs",
+          "anchor": "internal static void RevertWhatAnEndedSessionLeft()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "stylesheet-gate",
+      "mechanism": "stylesheet-gate",
+      "summary": "the stylesheet build step never refuses an unwritable settings file",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs",
+          "anchor": "private static void RequireWritableSettings()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "shader-repair",
+      "mechanism": "shader-build",
+      "summary": "a domain reload repairs nothing an ended build left in the shader settings",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Editor/PlayerBuild/BundledShaderBuildInclusion.cs",
+          "anchor": "internal static void RevertWhatAnEndedSessionLeft()",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "shader-gate",
+      "mechanism": "shader-gate",
+      "summary": "the shader build step never refuses an unwritable settings file",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Editor/PlayerBuild/BundledShaderBuildInclusion.cs",
+          "anchor": "private static void RequireWritableSettings()",
+          "neuter": "return;"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -95,6 +227,59 @@
         "ring-parser"
       ],
       "caseScopes": []
+    },
+    {
+      "fixture": "Velvet.Tests.TextBalanceParityTests",
+      "cuts": [
+        "balance-register"
+      ],
+      "caseScopes": []
+    },
+    {
+      "fixture": "Velvet.Tests.TextBalancePlaybackTests",
+      "cuts": [
+        "balance-attach",
+        "balance-apply"
+      ],
+      "caseScopes": []
+    },
+    {
+      "fixture": "Velvet.Tests.BundledStyleSheetInclusionTests",
+      "cuts": [
+        "stylesheet-inject",
+        "stylesheet-revert",
+        "stylesheet-repair",
+        "stylesheet-gate"
+      ],
+      "caseScopes": [
+        {
+          "mechanism": "stylesheet-build",
+          "pattern": "PreprocessInjects|InjectsAndReverts|InjectedAndReverted|RevertRuns|RepairRuns|Repairs|LoadsAgain|Record"
+        },
+        {
+          "mechanism": "stylesheet-gate",
+          "pattern": "WouldInject"
+        }
+      ]
+    },
+    {
+      "fixture": "Velvet.Tests.BundledShaderInclusionTests",
+      "cuts": [
+        "shader-inject",
+        "shader-revert",
+        "shader-repair",
+        "shader-gate"
+      ],
+      "caseScopes": [
+        {
+          "mechanism": "shader-build",
+          "pattern": "PreprocessInjects|InjectsAndReverts|InjectedAndReverted|RevertRuns|RepairRuns|Repairs|LoadsAgain|Record"
+        },
+        {
+          "mechanism": "shader-gate",
+          "pattern": "WouldInject"
+        }
+      ]
     }
   ]
 }
