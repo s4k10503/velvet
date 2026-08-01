@@ -5,6 +5,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Build;
+using UnityEngine;
 using UnityEngine.UIElements;
 using Velvet.Editor;
 
@@ -25,6 +26,7 @@ namespace Velvet.Tests
     internal sealed class BundledStyleSheetInclusionTests
     {
         private const string SettingsAsset = "ProjectSettings/ProjectSettings.asset";
+        private const string CanaryPath = "Assets/VelvetWriteGateCanary.asset";
 
         // Revert leaves the record in place when a recorded path no longer resolves, which is the behaviour
         // one case here arranges, and returns before erasing the session marker. Both are cleared here so
@@ -210,6 +212,38 @@ namespace Velvet.Tests
             Assert.That(
                 (kept != null, string.Join(", ", kept ?? System.Array.Empty<string>())),
                 Is.EqualTo((true, "Packages/com.velvet.core/Runtime/Assets/NoSuchHolder.asset")));
+        }
+
+        [Test]
+        public void Given_ARecordThatNamesNothingRemovable_When_TheRevertRuns_Then_ItSavesNothing()
+        {
+            // Arrange — a record the revert must keep, which is the state it can be left in indefinitely.
+            // The repair runs on every domain reload, so a pass that writes here writes on every script
+            // recompile for as long as the record sits there. A dirty asset is the instrument: SaveAssets
+            // flushes every dirty asset in the project, so its running is observable without depending on
+            // whether an identical PlayerSettings array is treated as a change.
+            File.WriteAllLines(RecordFilePath(), new[] { "Packages/com.velvet.core/Runtime/Assets/NoSuchHolder.asset" });
+            SessionState.EraseString(LiveSessionKey());
+            var canary = ScriptableObject.CreateInstance<VelvetRuntimeAssets>();
+            AssetDatabase.CreateAsset(canary, CanaryPath);
+            AssetDatabase.SaveAssets();
+            EditorUtility.SetDirty(canary);
+            var dirtyBefore = EditorUtility.IsDirty(canary);
+
+            // Act
+            bool dirtyAfter;
+            try
+            {
+                BundledStyleSheetBuildInclusion.Revert();
+                dirtyAfter = EditorUtility.IsDirty(canary);
+            }
+            finally
+            {
+                AssetDatabase.DeleteAsset(CanaryPath);
+            }
+
+            // Assert — the arranged state rides along, so a canary that was never dirty could not satisfy it.
+            Assert.That((dirtyBefore, dirtyAfter), Is.EqualTo((true, true)));
         }
 
         [Test]
