@@ -87,10 +87,10 @@ on macOS / Linux, `./build.ps1` on Windows.
 
 | Workflow | Trigger | Unity license | Required to merge |
 |----------|---------|---------------|-------------------|
-| `Source generators ▸ source-generators` | push (filtered) / every PR | not required | no |
-| `Source generators ▸ Required checks (generators)` | every PR | not required | **yes** |
-| `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR | **required** (skipped if absent) | no |
-| `Test ▸ Required checks (Unity)` | every PR | not required | **yes** |
+| `Source generators ▸ source-generators` | push (filtered) / every PR / merge group | not required | no |
+| `Source generators ▸ Required checks (generators)` | every PR / merge group | not required | **yes** |
+| `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
+| `Test ▸ Required checks (Unity)` | every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` | not required | no |
 | `UPM ▸ release` | manual (`workflow_dispatch`) | not required | no |
 | `Docs` (DocFX → GitHub Pages) | push to `main` / release / manual | **required** (skipped if absent) | no |
@@ -101,7 +101,11 @@ a path filter, a matrix change or a rename would each cause. The aggregates carr
 the real jobs, and pass when every dependency is `success` **or** `skipped` — the second is what lets a
 fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly that case.
 
-Path filtering therefore applies to `push` only. Every pull request runs both workflows.
+Path filtering therefore applies to `push` only. Every pull request runs both workflows, and so does every
+merge-group entry once a queue is turned on — the `merge_group:` keys are there for that, and
+`WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either workflow,
+or gains a path filter. Skipping work per queue entry is a job-level condition, not a trigger filter: a
+required check that does not start has nothing able to clear it.
 
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each
 merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the
