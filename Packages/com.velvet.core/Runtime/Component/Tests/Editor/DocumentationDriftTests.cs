@@ -46,9 +46,9 @@ namespace Velvet.Tests
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "ResolveDirection", "Inter", "CS",
             "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
+            "Collision",
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
-            "Collision",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
             "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502",
             "ProjectReference", "VEL503"
@@ -131,33 +131,61 @@ namespace Velvet.Tests
         // because C# closes a raw string with a run of the SAME length and allows any length from three up:
         // a fixture demonstrating a raw string needs four, and against a fixed three that spelling matches
         // three of the four and desyncs everything after it.
-        private static readonly Regex CSharpCommentOrStringPattern = new(
+        // The #region alternative rides in this same alternation rather than in a pass of its own, for the
+        // reason the forms above need one: a label consuming a line can carry a string's closing delimiter
+        // with it, and a separate earlier pass would then let the string form run past it and swallow real
+        // declarations. It names region and endregion rather than any directive so that a condition token a
+        // document may cite — UNITY_EDITOR, which #if is where it lives — stays in the corpus.
+        private const string CommentOrStringAlternation =
             "(\"{3,})(?:(?!\\1)[\\s\\S])*?\\1(?!\")|'(?:\\\\.|[^'\\\\\n])*'|@\"(?:[^\"]|\"\")*\""
-            + "|\"(?:\\\\.|[^\"\\\\\n])*\"|/\\*.*?\\*/|//[^\n]*",
-            RegexOptions.Compiled | RegexOptions.Singleline);
+            + "|\"(?:\\\\.|[^\"\\\\\n])*\"|/\\*.*?\\*/|//[^\n]*";
 
-        // A #region label is free prose the compiler never reads, so a name that survives only in one is a
-        // deleted name as far as any caller is concerned. Stripped alongside comments and strings, and
-        // separately from them so that no other directive loses its condition tokens — a document may cite
-        // UNITY_EDITOR, and #if is where that word lives.
-        private static readonly Regex CSharpRegionLabelPattern = new(
-            @"^[^\S\n]*#(?:region|endregion)[^\n]*$", RegexOptions.Compiled | RegexOptions.Multiline);
+        private const string RegionLabelAlternation = "^[^\\S\n]*#[^\\S\n]*(?:region|endregion)[^\n]*$";
+
+        private static readonly Regex CSharpCommentOrStringPattern = new(
+            CommentOrStringAlternation + "|" + RegionLabelAlternation,
+            RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.Multiline);
 
         [Test]
-        public void Given_ASourceFile_When_ItsIdentifiersAreCollected_Then_ARegionLabelContributesNone()
+        public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_TheRegionStripTakesOnlyLabelWords()
         {
-            // Arrange — a region label carrying a word that is nowhere else in the snippet, beside an #if
-            // whose condition a document is allowed to cite. Both are directives; only one is prose.
-            const string snippet = "#region LabelOnlyWord\n#if UNITY_EDITOR\nclass Declared { }\n#endif\n#endregion";
+            // Arrange — the same corpus built without the region alternative, which is the control: the
+            // difference between the two sets is exactly what the strip removes, and nothing else here can
+            // produce it. Comparing against the shipped set rather than re-deriving it is what makes this
+            // read the corpus builder's behaviour instead of a copy of its regex.
+            var word = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
+            var keepingRegions = new Regex(
+                CommentOrStringAlternation, RegexOptions.Singleline | RegexOptions.Multiline);
+            var labelPattern = new Regex(RegionLabelAlternation, RegexOptions.Multiline);
+            var withRegions = new HashSet<string>(StringComparer.Ordinal);
+            var labelWords = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in RepoEntries.Value.Where(
+                         e => e.EndsWith(".cs", StringComparison.Ordinal) && File.Exists(e)))
+            {
+                var text = File.ReadAllText(entry);
+                foreach (Match token in word.Matches(keepingRegions.Replace(text, " ")))
+                {
+                    withRegions.Add(token.Value);
+                }
+                foreach (Match line in labelPattern.Matches(text))
+                {
+                    foreach (Match token in word.Matches(line.Value)) labelWords.Add(token.Value);
+                }
+            }
 
             // Act
-            var stripped = CSharpRegionLabelPattern.Replace(snippet, " ");
+            var removed = withRegions.Where(w => !SourceIdentifiers.Value.Contains(w)).ToList();
+            var notFromALabel = removed
+                .Where(w => !labelWords.Contains(w))
+                .OrderBy(w => w, StringComparer.Ordinal);
 
-            // Assert — the condition riding along is what separates stripping the prose from stripping every
-            // directive, which would take UNITY_EDITOR with it.
+            // Assert — an empty removal means the strip is not running at all. The second term catches a
+            // strip widened by any route other than the shared spelling both sides read; widening that
+            // spelling to every directive is caught instead by the identifier case, loudly, because a guide
+            // cites UNITY_EDITOR.
             Assert.That(
-                (stripped.Contains("LabelOnlyWord"), stripped.Contains("UNITY_EDITOR")),
-                Is.EqualTo((false, true)));
+                (removed.Count > 0, string.Join(", ", notFromALabel)),
+                Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
@@ -357,7 +385,6 @@ namespace Velvet.Tests
                 var text = File.ReadAllText(entry);
                 if (entry.EndsWith(".cs", StringComparison.Ordinal))
                 {
-                    text = CSharpRegionLabelPattern.Replace(text, " ");
                     text = CSharpCommentOrStringPattern.Replace(text, " ");
                 }
                 foreach (Match match in words.Matches(text))
