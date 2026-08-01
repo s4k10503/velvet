@@ -209,10 +209,13 @@ namespace Velvet.Tests
             // Assert — the record survives carrying exactly what could not be removed, so a later pass can
             // finish. The lines are read before the comparison so that a revert which deleted the file
             // reports as a missing record rather than throwing out of the tuple's second element.
+            // The removal rides along because a surviving record is also what a revert that never ran at all
+            // leaves, and the first two terms alone cannot tell those apart.
             var kept = File.Exists(RecordFilePath()) ? File.ReadAllLines(RecordFilePath()) : null;
             Assert.That(
-                (kept != null, string.Join(", ", kept ?? System.Array.Empty<string>())),
-                Is.EqualTo((true, "Packages/com.velvet.core/Runtime/Assets/NoSuchHolder.asset")));
+                (kept != null, string.Join(", ", kept ?? System.Array.Empty<string>()),
+                    BundledStyleSheetBuildInclusion.Unreached()),
+                Is.EqualTo((true, "Packages/com.velvet.core/Runtime/Assets/NoSuchHolder.asset", true)));
         }
 
         [Test]
