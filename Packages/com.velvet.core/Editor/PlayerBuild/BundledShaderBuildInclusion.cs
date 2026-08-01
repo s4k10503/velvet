@@ -158,22 +158,37 @@ namespace Velvet.Editor
                 AssetDatabase.LoadAssetAtPath<GraphicsSettings>(GraphicsSettingsAsset));
             var included = settings.FindProperty(AlwaysIncludedShaders);
             var unresolved = new List<string>();
+            var removed = false;
             foreach (var name in File.ReadAllLines(RecordFile))
             {
                 var shader = Shader.Find(name);
-                var index = shader == null ? -1 : IndexOf(included, shader);
+                if (shader == null)
+                {
+                    // Only this arm keeps the record. A name that resolves while the list holds no entry
+                    // for it is finished business — the consumer deleted it themselves, say — and keeping
+                    // its record would strand it: the editor-load repair would then rewrite and save the
+                    // consumer's project settings on every domain reload, for the rest of the project's
+                    // life, and only a completed build could ever clear it.
+                    unresolved.Add(name);
+                    continue;
+                }
+                var index = IndexOf(included, shader);
                 if (index < 0)
                 {
-                    unresolved.Add(name);
                     continue;
                 }
                 included.GetArrayElementAtIndex(index).objectReferenceValue = null;
                 included.DeleteArrayElementAtIndex(index);
+                removed = true;
             }
-            settings.ApplyModifiedProperties();
-            // The build writes project settings to disk while it runs, so undoing the injection in the
-            // loaded object alone would leave the entries in the file the consumer sees.
-            AssetDatabase.SaveAssets();
+
+            if (removed)
+            {
+                settings.ApplyModifiedProperties();
+                // A build saves project settings while it runs, so undoing the injection in the loaded
+                // object alone would leave the entries in the file the consumer sees.
+                AssetDatabase.SaveAssets();
+            }
 
             // A name this pass could not resolve is still in the consumer's file, and deleting the record is
             // the only thing that could make it unremovable: injection would then read the entry as theirs and

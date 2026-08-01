@@ -214,6 +214,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ARecordedNameWhoseEntryIsAlreadyGone_When_TheRevertRuns_Then_TheRecordIsGone()
+        {
+            // Arrange — a record naming shaders that resolve, with the list holding none of them: the
+            // consumer opened Graphics Settings and removed the entries themselves while the record sat in
+            // Library. The session marker is erased here rather than inherited from whatever ran before,
+            // because the repair only reverts when it is empty.
+            File.WriteAllLines(RecordFilePath(), VelvetShaders.Names);
+            SessionState.EraseString(LiveSessionKey());
+            var entriesPresent = Unreached().Length < VelvetShaders.Names.Length;
+
+            // Act — what an editor load runs.
+            BundledShaderBuildInclusion.RevertWhatAnEndedSessionLeft();
+
+            // Assert — the arranged state rides along: none of the recorded names was in the list, so the
+            // record named nothing to remove. Kept, it would be kept forever, and every reload until a
+            // build completes would rewrite and save the consumer's project settings for nothing.
+            Assert.That((entriesPresent, File.Exists(RecordFilePath())), Is.EqualTo((false, false)));
+        }
+
+        [Test]
         public void Given_ARecordedNameThatNoLongerResolves_When_TheRevertRuns_Then_ItKeepsTheRecord()
         {
             // Arrange — a build died leaving a record, and by the time it is read one recorded name resolves

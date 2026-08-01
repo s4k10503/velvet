@@ -203,6 +203,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A build's shader entries are no longer re-applied and re-saved on every domain reload once the consumer
+  has removed them. The record of what a build added kept a name whenever the revert found no entry for it,
+  which covered both "the name no longer resolves to a shader" — where the entry may still be in the file
+  under a reference the pass cannot name — and "the shader resolves and the list simply has no entry",
+  where there is nothing left to do. Only the first keeps the record now, and Graphics Settings is written
+  only when something was actually removed.
+
 - The four shaders behind drop shadows, the gradient silhouette a `bg-gradient-*` gets on a `skew-*`
   element, and the `brightness-*` / `saturate-*` filters are now put in front of every player build.
   They are reached by name from C# alone and none is in a scene, so a build had nothing keeping them:
