@@ -47,7 +47,8 @@ namespace Velvet.Tests
             "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
-            "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
+            "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
+            "Collision",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
             "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502",
             "ProjectReference", "VEL503"
@@ -134,6 +135,30 @@ namespace Velvet.Tests
             "(\"{3,})(?:(?!\\1)[\\s\\S])*?\\1(?!\")|'(?:\\\\.|[^'\\\\\n])*'|@\"(?:[^\"]|\"\")*\""
             + "|\"(?:\\\\.|[^\"\\\\\n])*\"|/\\*.*?\\*/|//[^\n]*",
             RegexOptions.Compiled | RegexOptions.Singleline);
+
+        // A #region label is free prose the compiler never reads, so a name that survives only in one is a
+        // deleted name as far as any caller is concerned. Stripped alongside comments and strings, and
+        // separately from them so that no other directive loses its condition tokens — a document may cite
+        // UNITY_EDITOR, and #if is where that word lives.
+        private static readonly Regex CSharpRegionLabelPattern = new(
+            @"^[^\S\n]*#(?:region|endregion)[^\n]*$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+        [Test]
+        public void Given_ASourceFile_When_ItsIdentifiersAreCollected_Then_ARegionLabelContributesNone()
+        {
+            // Arrange — a region label carrying a word that is nowhere else in the snippet, beside an #if
+            // whose condition a document is allowed to cite. Both are directives; only one is prose.
+            const string snippet = "#region LabelOnlyWord\n#if UNITY_EDITOR\nclass Declared { }\n#endif\n#endregion";
+
+            // Act
+            var stripped = CSharpRegionLabelPattern.Replace(snippet, " ");
+
+            // Assert — the condition riding along is what separates stripping the prose from stripping every
+            // directive, which would take UNITY_EDITOR with it.
+            Assert.That(
+                (stripped.Contains("LabelOnlyWord"), stripped.Contains("UNITY_EDITOR")),
+                Is.EqualTo((false, true)));
+        }
 
         [Test]
         public void Given_DocumentationMarkdown_When_ScannedForVDotReferences_Then_EveryReferenceExistsOnV()
@@ -332,6 +357,7 @@ namespace Velvet.Tests
                 var text = File.ReadAllText(entry);
                 if (entry.EndsWith(".cs", StringComparison.Ordinal))
                 {
+                    text = CSharpRegionLabelPattern.Replace(text, " ");
                     text = CSharpCommentOrStringPattern.Replace(text, " ");
                 }
                 foreach (Match match in words.Matches(text))
