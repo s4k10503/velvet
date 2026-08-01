@@ -269,11 +269,14 @@ namespace Velvet.Tests
 
             // Assert — the record survives carrying exactly what could not be removed, so a later pass can
             // finish. Both terms in one comparison: a revert that deleted the file and one that left it
-            // holding the whole original list are different failures.
+            // holding the whole original list are different failures. The count of shaders no longer in the
+            // list rides along because a surviving record is also what a revert that never ran at all
+            // leaves, and the first two terms alone cannot tell those apart.
             var kept = File.Exists(RecordFilePath()) ? File.ReadAllLines(RecordFilePath()) : null;
             Assert.That(
-                (kept != null, string.Join(", ", kept ?? System.Array.Empty<string>())),
-                Is.EqualTo((true, "Velvet/NoSuchShader")));
+                (kept != null, string.Join(", ", kept ?? System.Array.Empty<string>()),
+                    BundledShaderBuildInclusion.Unreached().Length),
+                Is.EqualTo((true, "Velvet/NoSuchShader", VelvetShaders.Names.Length)));
         }
 
         private static string RecordFilePath()
