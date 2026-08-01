@@ -254,7 +254,7 @@
       "caseScopes": [
         {
           "mechanism": "stylesheet-build",
-          "pattern": "PreprocessInjects|InjectsAndReverts|InjectedAndReverted|RevertRuns|RepairRuns|Repairs|LoadsAgain|Record"
+          "pattern": "PreprocessInjects|InjectsAndReverts|InjectedAndReverted|RevertRuns|RepairRuns|Repairs|LoadsAgain|Record|IsRead|AreRead"
         },
         {
           "mechanism": "stylesheet-gate",
@@ -273,7 +273,7 @@
       "caseScopes": [
         {
           "mechanism": "shader-build",
-          "pattern": "PreprocessInjects|InjectsAndReverts|InjectedAndReverted|RevertRuns|RepairRuns|Repairs|LoadsAgain|Record"
+          "pattern": "PreprocessInjects|InjectsAndReverts|InjectedAndReverted|RevertRuns|RepairRuns|Repairs|LoadsAgain|Record|IsRead|AreRead"
         },
         {
           "mechanism": "shader-gate",
