@@ -68,9 +68,9 @@ namespace Velvet
         // mirroring StyleGridManipulator's WrapSafetyPx.
         private const float HeightEpsilonPx = 0.5f;
 
-        // Content room at or below this leaves nothing to redistribute, and keeps the search from being
-        // entered with a floor above its own upper bound. A frame wider than the ceiling reaches it too,
-        // which is why the released box can be far wider than this value.
+        // Content room below this leaves nothing to redistribute, and keeps the search from being entered
+        // with a floor above its own upper bound. A frame wider than the room around it reaches this too,
+        // so the released box can be far wider than the value itself.
         private const float MinBalanceableWidthPx = 1f;
 
         // Answers whether the target's parent is a grid container, whose manipulator writes the same slot.

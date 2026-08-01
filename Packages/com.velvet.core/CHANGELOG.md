@@ -209,8 +209,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were the same number, so the text was handed less room than the search had assumed. Measured on a
   themeless panel, a balanced label with three pixels of horizontal padding came out one line taller than
   its unbalanced sibling at four of five wrapper widths, and the width written was identical to the
-  unpadded case. Velvet's own utility model makes a padded text element ordinary — any `px-*` or `p-*` on a
-  balanced label reached this.
+  unpadded case. Velvet's own utility model makes a padded text element ordinary — any non-zero `px-*` or
+  `p-*` on a balanced label reached this.
 
 - The four shaders behind drop shadows, the gradient silhouette a `bg-gradient-*` gets on a `skew-*`
   element, and the `brightness-*` / `saturate-*` filters are now put in front of every player build.

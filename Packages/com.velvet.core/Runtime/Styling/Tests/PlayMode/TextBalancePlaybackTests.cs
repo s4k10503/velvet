@@ -48,6 +48,8 @@ namespace Velvet.Tests
             element.style.whiteSpace = WhiteSpace.Normal;
             element.style.paddingLeft = PaddingPx;
             element.style.paddingRight = PaddingPx;
+            element.style.borderLeftWidth = PaddingPx;
+            element.style.borderRightWidth = PaddingPx;
             element.style.unityFontDefinition = new StyleFontDefinition(
                 FontDefinition.FromFont(UnityEngine.Resources.GetBuiltinResource<UnityEngine.Font>("LegacyRuntime.ttf")));
             return null;
@@ -281,7 +283,7 @@ namespace Velvet.Tests
             Assume.That(probe.resolvedStyle.height, Is.LessThan(probe.resolvedStyle.fontSize * 1.8f),
                 "Precondition: the text fits one line at the wrapper's own width, so only the ceiling makes it wrap");
 
-            // Assert — the single-line gate measures at the ceiling-clamped width, so this text counts as
+            // Assert — the single-line gate measures at the width the text gets, so this text counts as
             // wrapping and gets balanced. Measuring at the parent's width instead would dismiss it as
             // single-line and leave the box sitting at EXACTLY the ceiling, so the bound only has to clear
             // that value: how far under it a balanced width lands is font metrics, which differ per
