@@ -27,8 +27,8 @@ namespace Velvet.Tests
         private const string SettingsAsset = "ProjectSettings/ProjectSettings.asset";
 
         // Revert leaves the record in place when a recorded path no longer resolves, which is the behaviour
-        // one case here arranges. Deleting it afterwards is what stops that case handing the next one a
-        // record it cannot act on, and the session key with it.
+        // one case here arranges, and returns before erasing the session marker. Both are cleared here so
+        // that case cannot decide whether a later one's repair runs at all.
         [TearDown]
         public void TearDown()
         {
@@ -142,8 +142,8 @@ namespace Velvet.Tests
         {
             // Arrange — the one link no other run can see: a player reads the sheet through the holder's
             // reference alone, while an editor falls back to the asset path when that reference is broken.
-            // So a broken reference leaves every editor run working and the shipped player resolving no
-            // plain utility class at all.
+            // So a broken reference leaves every editor run working and the shipped player resolving every
+            // utility the sheet declares to nothing.
             var holder = AssetDatabase.LoadAssetAtPath<VelvetRuntimeAssets>(RuntimeAssetsPath());
 
             // Act
@@ -215,19 +215,20 @@ namespace Velvet.Tests
         [Test]
         public void Given_ARecordFromABuildThatNeverAddedTheEntry_When_TheRevertRuns_Then_TheRecordIsGone()
         {
-            // Arrange — a record naming a holder that resolves, with no matching entry in the list. A build
-            // cancelled between the record write and any save leaves exactly this, and the injection no
-            // longer saves, so the window is a whole build rather than a few milliseconds.
+            // Arrange — a record naming a holder that resolves, with no matching entry in the list: the
+            // consumer deleted the entry themselves while the record was on disk. The session marker is
+            // erased here rather than inherited from whatever ran before, because the repair only reverts
+            // when it is empty and this case would otherwise pass or fail on execution order.
             File.WriteAllLines(RecordFilePath(), new[] { RuntimeAssetsPath() });
-            var stranded = File.Exists(RecordFilePath());
+            SessionState.EraseString(LiveSessionKey());
+            var entryPresent = !BundledStyleSheetBuildInclusion.Unreached();
 
-            // Act — the repair every domain reload runs.
+            // Act — what an editor load runs.
             BundledStyleSheetBuildInclusion.RevertWhatAnEndedSessionLeft();
 
-            // Assert — the arranged record rides along, so a case that ran against no record at all could
-            // not satisfy it. A record kept here is kept forever: nothing but a completed build clears it,
-            // and every reload until then saves the consumer's project settings for nothing.
-            Assert.That((stranded, File.Exists(RecordFilePath())), Is.EqualTo((true, false)));
+            // Assert — the arranged state rides along: the entry really was absent, so the record named
+            // nothing to remove. Kept, it would be kept forever — nothing but a completed build clears it.
+            Assert.That((entryPresent, File.Exists(RecordFilePath())), Is.EqualTo((false, false)));
         }
 
         [Test]

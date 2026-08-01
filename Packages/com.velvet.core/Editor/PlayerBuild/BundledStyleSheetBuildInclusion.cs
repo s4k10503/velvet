@@ -14,9 +14,10 @@ namespace Velvet.Editor
     /// build, and takes it out again afterwards.
     /// </summary>
     /// <remarks>
-    /// Same shape and the same reasons as <see cref="BundledShaderBuildInclusion"/>, which owns the
-    /// explanation of why the record lives on disk, why the revert must save, and why an entry the consumer
-    /// already had is left alone.
+    /// <see cref="BundledShaderBuildInclusion"/> owns the explanation of why the record lives on disk, why
+    /// the revert must save, and why an entry the consumer already had is left alone. Both classes drop a
+    /// recorded name once it resolves to nothing the list holds, and keep it only while the name itself
+    /// cannot be resolved.
     /// </remarks>
     internal sealed class BundledStyleSheetBuildInclusion : IPreprocessBuildWithReport, IPostprocessBuildWithReport
     {
@@ -84,8 +85,8 @@ namespace Velvet.Editor
             {
                 throw new BuildFailedException(
                     $"{VelvetStyleUtilities.RuntimeAssetsPath} did not load, so the bundled utility "
-                    + "stylesheet would not reach the player and every plain utility class would resolve to "
-                    + "nothing.");
+                    + "stylesheet would not reach the player and every utility the sheet declares would "
+                    + "resolve to nothing there.");
             }
 
             var preloaded = PlayerSettings.GetPreloadedAssets().ToList();
@@ -110,8 +111,8 @@ namespace Velvet.Editor
             {
                 throw new BuildFailedException(
                     $"{VelvetStyleUtilities.RuntimeAssetsPath} did not reach PlayerSettings' preloaded "
-                    + "assets, so the bundled utility stylesheet would not reach the player and every plain "
-                    + "utility class would resolve to nothing.");
+                    + "assets, so the bundled utility stylesheet would not reach the player and every "
+                    + "utility the sheet declares would resolve to nothing there.");
             }
         }
 
@@ -136,11 +137,9 @@ namespace Velvet.Editor
                 var holder = HolderAt(path);
                 if (holder == null)
                 {
-                    // Only this arm keeps the record. A path that resolves but names nothing in the list is
-                    // finished business — a build that recorded and then never added, which is a whole build
-                    // long now that the injection does not save — and holding its record would strand it:
-                    // the repair runs on every domain reload, so it would save project settings on every
-                    // script recompile for the rest of the project's life.
+                    // Only this arm keeps the record. A path that resolves while naming nothing in the list
+                    // is finished business — the consumer deleted the entry themselves, say — and keeping
+                    // its record would strand it: nothing but a completed build could ever clear it.
                     unresolved.Add(path);
                     continue;
                 }
@@ -152,9 +151,8 @@ namespace Velvet.Editor
                 // Everything else goes back untouched, for the reason the injection leaves it alone.
                 PlayerSettings.SetPreloadedAssets(preloaded.ToArray());
 
-                // A build saves project settings before this runs — which is what the file round-trip case
-                // arranges — so undoing the injection in the loaded object alone would leave the entry in
-                // the file the consumer sees.
+                // Written through, not left in the loaded object: the file round-trip case arranges a save
+                // between the two callbacks, and undoing the injection in memory alone leaves that on disk.
                 AssetDatabase.SaveAssets();
             }
 

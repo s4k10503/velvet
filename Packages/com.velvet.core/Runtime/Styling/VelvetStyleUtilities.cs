@@ -25,7 +25,8 @@ namespace Velvet
         internal const string RuntimeAssetsPath =
             "Packages/com.velvet.core/Runtime/Assets/VelvetRuntimeAssets.asset";
 
-        /// <summary>The package path of the sheet itself, which the editor loads directly.</summary>
+        /// <summary>The package path of the sheet itself, which an editor reads when the holder cannot
+        /// answer.</summary>
         internal const string StyleSheetAssetPath =
             "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
 
