@@ -37,6 +37,7 @@ namespace Velvet.Tests
             BundledStyleSheetBuildInclusion.Revert();
             File.Delete(RecordFilePath());
             SessionState.EraseString(LiveSessionKey());
+            AssetDatabase.DeleteAsset(CanaryPath);
         }
 
         [Test]
@@ -215,35 +216,44 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ARecordThatNamesNothingRemovable_When_TheRevertRuns_Then_ItSavesNothing()
+        public void Given_ARecordThatNamesNothingRemovable_When_TheRepairRuns_Then_ItSavesNothing()
         {
-            // Arrange — a record the revert must keep, which is the state it can be left in indefinitely.
-            // The repair runs on every domain reload, so a pass that writes here writes on every script
-            // recompile for as long as the record sits there. A dirty asset is the instrument: SaveAssets
-            // flushes every dirty asset in the project, so its running is observable without depending on
-            // whether an identical PlayerSettings array is treated as a change.
+            // Arrange — a record the repair must keep, which is the state a project can sit in
+            // indefinitely: the repair runs on every domain reload, so a pass that writes here writes on
+            // every script recompile. The instrument is a dirty asset rather than the settings file,
+            // because whether handing PlayerSettings an identical array counts as a change is decided
+            // natively and cannot be read from IL.
             File.WriteAllLines(RecordFilePath(), new[] { "Packages/com.velvet.core/Runtime/Assets/NoSuchHolder.asset" });
             SessionState.EraseString(LiveSessionKey());
+            var writableBefore = CanWriteSettingsForTest();
             var canary = ScriptableObject.CreateInstance<VelvetRuntimeAssets>();
             AssetDatabase.CreateAsset(canary, CanaryPath);
-            AssetDatabase.SaveAssets();
             EditorUtility.SetDirty(canary);
             var dirtyBefore = EditorUtility.IsDirty(canary);
 
             // Act
-            bool dirtyAfter;
+            bool dirtyAfterRepair;
+            bool dirtyAfterSave;
             try
             {
-                BundledStyleSheetBuildInclusion.Revert();
-                dirtyAfter = EditorUtility.IsDirty(canary);
+                BundledStyleSheetBuildInclusion.RevertWhatAnEndedSessionLeft();
+                dirtyAfterRepair = EditorUtility.IsDirty(canary);
+                AssetDatabase.SaveAssets();
+                dirtyAfterSave = EditorUtility.IsDirty(canary);
             }
             finally
             {
                 AssetDatabase.DeleteAsset(CanaryPath);
             }
 
-            // Assert — the arranged state rides along, so a canary that was never dirty could not satisfy it.
-            Assert.That((dirtyBefore, dirtyAfter), Is.EqualTo((true, true)));
+            // Assert — four readings, each able to fail on its own. The settings file being writable is what
+            // makes the repair reach the gate at all; the canary starting dirty is what makes it an
+            // instrument; it still being dirty is the behaviour under test; and it going clean under a save
+            // this case performs itself is what shows the instrument moves — without that term, an
+            // instrument that stopped registering a save would read as the gate working.
+            Assert.That(
+                (writableBefore, dirtyBefore, dirtyAfterRepair, dirtyAfterSave),
+                Is.EqualTo((true, true, true, false)));
         }
 
         [Test]
@@ -313,6 +323,19 @@ namespace Velvet.Tests
             => (string)typeof(VelvetStyleUtilities)
                 .GetField(field, BindingFlags.NonPublic | BindingFlags.Static)!
                 .GetRawConstantValue()!;
+
+        private static bool CanWriteSettingsForTest()
+        {
+            try
+            {
+                using var probe = File.Open(SettingsAsset, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+                return true;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
 
         private static string RecordFilePath()
             => (string)typeof(BundledStyleSheetBuildInclusion)
