@@ -235,11 +235,44 @@ namespace Velvet.Tests
 
             // Assert — a strip that is not running removes nothing, so an empty first term is the shape
             // that catches it. The second catches a strip widened by any route other than the spelling both
-            // sides read; widening that spelling to every directive is caught instead by the identifier
-            // case, and only for as long as a guide keeps citing UNITY_EDITOR — Generators~/README.md is
-            // the one that does.
+            // sides read; widening that spelling to every directive is caught by the case below.
             Assert.That(
                 (removed.Count > 0, string.Join(", ", notFromALabel)),
+                Is.EqualTo((true, string.Empty)));
+        }
+
+        [Test]
+        public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_ItKeepsEveryDirectiveCondition()
+        {
+            // Arrange — the conditions are read from the raw text while the corpus is built from the
+            // stripped text, so a strip that widens from the two region labels to every directive takes
+            // them out of one side and not the other. Deriving them rather than listing them is what keeps
+            // this from being a second copy of the strip: nothing here has to be updated when a condition
+            // is added or dropped.
+            var directive = new Regex(@"^[^\S\n]*#[^\S\n]*(?:if|elif)\b([^\n]*)$", RegexOptions.Multiline);
+            var word = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
+            var conditions = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in DocumentationCorpus.RepoEntries(includeClaude: false).Where(
+                         e => e.EndsWith(".cs", StringComparison.Ordinal) && File.Exists(e)))
+            {
+                foreach (Match line in directive.Matches(File.ReadAllText(entry)))
+                {
+                    foreach (Match token in word.Matches(line.Groups[1].Value))
+                    {
+                        conditions.Add(token.Value);
+                    }
+                }
+            }
+
+            // Act
+            var absent = conditions
+                .Where(name => !SourceIdentifiers.Value.Contains(name))
+                .OrderBy(name => name, StringComparer.Ordinal);
+
+            // Assert — the count of conditions found rides along, because a walk that read no directive at
+            // all would satisfy an emptiness check on its own.
+            Assert.That(
+                (conditions.Count > 0, string.Join(", ", absent)),
                 Is.EqualTo((true, string.Empty)));
         }
 
