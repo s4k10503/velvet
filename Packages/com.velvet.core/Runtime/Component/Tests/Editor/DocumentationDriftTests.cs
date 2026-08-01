@@ -55,12 +55,15 @@ namespace Velvet.Tests
 
         private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef" };
 
-        // USS has only the block form; there is no line comment to miss.
+        // Non-greedy, so the match closes on the first terminator rather than the last: a greedy one takes
+        // every declaration between a file's first and last comment with it.
         private static readonly Regex UssCommentPattern =
             new(@"/\*.*?\*/", RegexOptions.Compiled | RegexOptions.Singleline);
 
-        // A YAML comment needs the hash at the start of a line or after whitespace, which is what keeps a
-        // hash inside a value — a colour literal, a fragment in a URL — out of it.
+        // A hash run at a line start or after whitespace. That is wider than YAML's own comment rule — a
+        // hash inside a quoted scalar or a `run: |` block matches too — and the direction is why it is
+        // acceptable: every consumer of the corpus reports words that are ABSENT from it, so over-stripping
+        // can only add a report, never hide a name.
         private static readonly Regex YamlCommentPattern =
             new(@"(?<=^|\s)#[^\n]*", RegexOptions.Compiled | RegexOptions.Multiline);
 
@@ -155,30 +158,60 @@ namespace Velvet.Tests
             RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.Multiline);
 
         [Test]
-        public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_NoWordSurvivesOnlyInAComment()
+        public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_EachFormatsCommentsAreTaken()
         {
-            // Arrange — the same corpus with the non-C# formats left whole, which is the control: the
-            // difference between the two sets is what their comments were contributing, and nothing else
-            // here can produce it.
+            // Arrange — the words each stripped format contributes when left whole, which is the control,
+            // and the words its comments hold. Both are re-derived here, so this reads what the corpus
+            // builder did rather than a copy of how it did it.
             var word = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
-            var keepingComments = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var entry in RepoEntries.Value.Where(e =>
-                         (e.EndsWith(".uss", StringComparison.Ordinal)
-                          || e.EndsWith(".yml", StringComparison.Ordinal)) && File.Exists(e)))
+            var formats = new[]
             {
-                foreach (Match token in word.Matches(File.ReadAllText(entry)))
+                (Extension: ".uss", Comment: UssCommentPattern),
+                (Extension: ".yml", Comment: YamlCommentPattern),
+            };
+
+            // Act — per format, so one arm going missing cannot hide behind the other.
+            var unheld = new List<string>();
+            foreach (var (extension, comment) in formats)
+            {
+                var whole = new HashSet<string>(StringComparer.Ordinal);
+                var inComments = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var entry in RepoEntries.Value.Where(e =>
+                             e.EndsWith(extension, StringComparison.Ordinal) && File.Exists(e)))
                 {
-                    keepingComments.Add(token.Value);
+                    var text = File.ReadAllText(entry);
+                    foreach (Match token in word.Matches(text)) whole.Add(token.Value);
+                    foreach (Match span in comment.Matches(text))
+                    {
+                        foreach (Match token in word.Matches(span.Value)) inComments.Add(token.Value);
+                    }
                 }
+                var removed = whole.Where(w => !SourceIdentifiers.Value.Contains(w)).ToList();
+                if (removed.Count == 0)
+                {
+                    unheld.Add($"{extension}: nothing removed");
+                }
+                unheld.AddRange(removed
+                    .Where(w => !inComments.Contains(w))
+                    .Select(w => $"{extension}: {w} came out of no comment"));
             }
 
-            // Act
-            var removed = keepingComments.Where(w => !SourceIdentifiers.Value.Contains(w)).ToList();
+            // The subset term above reads the same pattern the strip does, so a widened pattern satisfies
+            // it by widening both sides. What a widened one cannot do is leave the sheets' own selectors in
+            // the corpus: it takes everything between a file's first and last comment with it.
+            var selector = new Regex(@"^[^\S\n]*\.([A-Za-z_][A-Za-z0-9_]*)", RegexOptions.Multiline);
+            foreach (var entry in RepoEntries.Value.Where(e =>
+                         e.EndsWith(".uss", StringComparison.Ordinal) && File.Exists(e)))
+            {
+                unheld.AddRange(selector.Matches(File.ReadAllText(entry))
+                    .Select(match => match.Groups[1].Value)
+                    .Where(name => !SourceIdentifiers.Value.Contains(name))
+                    .Select(name => $".uss: the selector .{name} left the corpus"));
+            }
 
-            // Assert — a strip that is not running removes nothing, so an empty reading is the shape that
-            // catches it. What it removes is not enumerated: the sheets and the workflows are edited freely
-            // and the list would be a mirror of them.
-            Assert.That(removed.Count, Is.GreaterThan(0));
+            // Assert — nothing removed means that format's strip is not running; a word removed that no
+            // comment holds, or a declared selector missing, means it is taking more than comments.
+            Assert.That(string.Join(", ", unheld.Distinct()), Is.Empty);
         }
 
         [Test]
@@ -405,8 +438,7 @@ namespace Velvet.Tests
         // resolving this mix of runtime types, Unity types, generator symbols and CI variables against their
         // real declarations would need every one of those toolchains loaded into the test. What it does care
         // about is that the word is code — see the stripping patterns for why prose cannot be trusted here.
-        // Only C# is stripped: a string in USS, JSON, YAML or an asmdef IS the content, not a label for it,
-        // and the CI variable names a document cites live in exactly those.
+        // What is stripped per format is StripProse's to say.
         private static readonly Lazy<HashSet<string>> SourceIdentifiers = new(() =>
         {
             var words = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
@@ -430,8 +462,9 @@ namespace Velvet.Tests
         // Comments are prose in every format that has them, so a name surviving only in one is a deleted
         // name as far as any caller is concerned. Strings are not: in C# a string is a label for code, while
         // in USS, YAML, JSON and an asmdef the string IS the content, and the CI variable names a document
-        // cites live in exactly those. So C# loses both and the rest lose only their comments. JSON and
-        // asmdef have no comment syntax to lose.
+        // cites live in exactly those. So C# loses both and the rest lose only their comments. Nothing is
+        // taken from JSON or an asmdef, and no file of either carries a comment for the guard to be wrong
+        // about.
         private static string StripProse(string entry, string text)
         {
             if (entry.EndsWith(".cs", StringComparison.Ordinal))
