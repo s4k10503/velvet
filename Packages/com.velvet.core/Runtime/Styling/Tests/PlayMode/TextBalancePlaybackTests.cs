@@ -40,6 +40,22 @@ namespace Velvet.Tests
             return null;
         };
 
+        // The same font and wrap as its sibling above plus horizontal padding, which is what separates the
+        // width the search measures text at from the width it writes.
+        private static readonly Func<VisualElement, Action> s_wrapWithFontAndPaddingRef = element =>
+        {
+            element.style.whiteSpace = WhiteSpace.Normal;
+            element.style.paddingLeft = PaddingPx;
+            element.style.paddingRight = PaddingPx;
+            element.style.borderLeftWidth = PaddingPx;
+            element.style.borderRightWidth = PaddingPx;
+            element.style.unityFontDefinition = new StyleFontDefinition(
+                FontDefinition.FromFont(UnityEngine.Resources.GetBuiltinResource<UnityEngine.Font>("LegacyRuntime.ttf")));
+            return null;
+        };
+
+        private const float PaddingPx = 3f;
+
         // The wrapper's direction, supplied inline for the same reason the font is: no stylesheet is
         // loaded, so `flex-row` would be an inert class name and the engine's own default is a column.
         private static readonly Func<VisualElement, Action> s_rowRef = element =>
@@ -149,6 +165,82 @@ namespace Velvet.Tests
             yield return WaitRealtime(0.5);
         }
 
+        // The same pair as MountPair with horizontal padding on both labels, which is the case where the
+        // width the manipulator writes and the width the text is measured at come apart.
+        private IEnumerator MountPaddedPair(string text, int wrapperWidthPx)
+        {
+            _host = new RenderTexturePanelHost("TextBalancePaddedPanel", 400, 400);
+            var tree = V.Div(children: new VNode[]
+            {
+                V.Div(className: $"w-[{wrapperWidthPx}px]", children: new VNode[]
+                {
+                    V.Label(name: "unbalanced", text: text, refCallback: s_wrapWithFontAndPaddingRef),
+                }),
+                V.Div(className: $"w-[{wrapperWidthPx}px]", children: new VNode[]
+                {
+                    V.Label(name: "balanced", text: text, className: "text-balance",
+                        refCallback: s_wrapWithFontAndPaddingRef),
+                }),
+            });
+            _mounted = V.Mount(_host.Root, tree);
+            yield return WaitRealtime(0.5);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_APaddedBalancedLabel_When_ItsBoxIsCompared_Then_ItIsNotTheOneAnUnpaddedLabelGets()
+        {
+            // Arrange / Act — two balanced labels, same text, same wrapper width, differing only in
+            // padding. This is the shape of the defect stated without reference to where a wrap threshold
+            // falls: the search answered the same number for both, because it never read the padding.
+            _host = new RenderTexturePanelHost("TextBalancePaddingResponsePanel", 400, 400);
+            var tree = V.Div(children: new VNode[]
+            {
+                V.Div(className: $"w-[{WrapperWidthPx}px]", children: new VNode[]
+                {
+                    V.Label(name: "unpadded", text: LongWrapText, className: "text-balance",
+                        refCallback: s_wrapWithFontRef),
+                }),
+                V.Div(className: $"w-[{WrapperWidthPx}px]", children: new VNode[]
+                {
+                    V.Label(name: "padded", text: LongWrapText, className: "text-balance",
+                        refCallback: s_wrapWithFontAndPaddingRef),
+                }),
+            });
+            _mounted = V.Mount(_host.Root, tree);
+            yield return WaitRealtime(0.5);
+            var unpadded = _host.Root.Q<Label>("unpadded");
+            var padded = _host.Root.Q<Label>("padded");
+            Assume.That(padded.resolvedStyle.height, Is.GreaterThan(padded.resolvedStyle.fontSize * 1.5f),
+                "Precondition: the text wrapped, so balance wrote a real width rather than releasing");
+
+            // Assert — the two boxes differ. Before the fix they were bit-identical whatever the text did,
+            // so the floating-point margin separates the right outcome from the wrong one without a
+            // hand-picked pixel budget.
+            Assert.That(
+                Mathf.Abs(padded.resolvedStyle.width - unpadded.resolvedStyle.width),
+                Is.GreaterThan(0.5f));
+        }
+
+        [UnityTest]
+        public IEnumerator Given_APaddedWrappedLabel_When_Balanced_Then_ItIsNarrowerThanItsUnbalancedSiblingAtTheSameHeight()
+        {
+            // Arrange / Act — the same claim the unpadded pair makes, on a box whose padding separates the
+            // width the search measures text at from the width it writes into.
+            yield return MountPaddedPair(LongWrapText, 320);
+            var unbalanced = _host.Root.Q<Label>("unbalanced");
+            var balanced = _host.Root.Q<Label>("balanced");
+            Assume.That(unbalanced.resolvedStyle.height, Is.GreaterThan(unbalanced.resolvedStyle.fontSize * 1.5f),
+                "Precondition: the long text actually wrapped onto multiple lines in the unbalanced sibling");
+
+            // Assert — a narrower box at the same line count. A search that measured at the outer width
+            // hands the text less room than it assumed and takes an extra line to fit, so the height half
+            // is what this case is for and the width half is what keeps it honest.
+            Assert.That(
+                (balanced.resolvedStyle.width < unbalanced.resolvedStyle.width,
+                 Mathf.Abs(balanced.resolvedStyle.height - unbalanced.resolvedStyle.height) < 0.5f),
+                Is.EqualTo((true, true)));
+        }
+
         [UnityTest]
         public IEnumerator Given_ABalancedLabelBesideAnArbitraryMaxWidth_When_ItsTextWraps_Then_TheBalancedBoxStaysInsideThatCeiling()
         {
@@ -201,7 +293,7 @@ namespace Velvet.Tests
             Assume.That(probe.resolvedStyle.height, Is.LessThan(probe.resolvedStyle.fontSize * 1.8f),
                 "Precondition: the text fits one line at the wrapper's own width, so only the ceiling makes it wrap");
 
-            // Assert — the single-line gate measures at the ceiling-clamped width, so this text counts as
+            // Assert — the single-line gate measures at the width the text gets, so this text counts as
             // wrapping and gets balanced. Measuring at the parent's width instead would dismiss it as
             // single-line and leave the box sitting at EXACTLY the ceiling, so the bound only has to clear
             // that value: how far under it a balanced width lands is font metrics, which differ per

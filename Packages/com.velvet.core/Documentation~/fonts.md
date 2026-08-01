@@ -186,9 +186,11 @@ multiplier of 1 included — is already a real value, so there is nothing to res
 **`text-balance`** approximates CSS `text-wrap: balance` even though UI Toolkit's text engine
 exposes no line-break hook. `StyleTextBalanceManipulator` narrows the box instead: it
 binary-searches `TextElement.MeasureTextSize` — the same method the engine's own autosize pass
-calls — for the narrowest inline **`width`** that still measures the height a normal, unbalanced
-layout would take at the available width. Comparing heights stands in for comparing line counts,
-since font metrics are constant across candidates.
+calls — for the narrowest width that still measures the height a normal, unbalanced layout would
+take at the available width. Comparing heights stands in for comparing line counts, since font
+metrics are constant across candidates. The search runs over the width the text gets, and the
+element's own horizontal padding and border are added back to the inline **`width`** it writes,
+since a `width` in UI Toolkit covers them.
 
 **What it honours.** `text-balance` writes the element's inline `width` and never its `max-width`:
 
@@ -228,7 +230,8 @@ no-op** on a default `Label` — pair it with `text-wrap` / `whitespace-normal` 
 white-space) for it to have any effect.
 
 **Single-line gate:** CSS balance is a no-op on one line, and this approximation shrinks the box,
-so a width is written only when the text wraps at the ceiling-clamped available width. Otherwise —
+so a width is written only when the text wraps at the width the text actually gets — the
+ceiling-clamped available width less the element's own horizontal padding and border. Otherwise —
 empty text included — the slot goes back to the element's own cascade, dropping a previously
 balanced width and restoring a co-present `w-*` value. A `white-space: nowrap` element reaches the
 same verdict through the same comparison, which is why the prerequisite above is silent rather than
