@@ -12,15 +12,31 @@ status checks, so that field answers CLEAN for a branch eight commits behind. A 
 would never fire.
 """
 import json
+import os
 import re
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from velvet_hooks import BRANCH_BASES
 
 
 def git(*args):
     return subprocess.run(
         ["git", *args], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30
     )
+
+
+def branch_base(name):
+    try:
+        with open(BRANCH_BASES, encoding="utf-8") as bases:
+            matches = [line for line in bases if line.startswith(f"{name} ")]
+    except OSError:
+        return None
+    if not matches:
+        return None
+    parts = matches[-1].split(None, 1)
+    return parts[1].strip() if len(parts) == 2 else None
 
 
 def main():
@@ -50,15 +66,29 @@ def main():
         return 0
 
     behind = git("rev-list", "--count", "origin/{}..origin/main".format(head)).stdout.decode().strip()
-    sys.stderr.write(
-        "PR #{} does not contain the current main — it is {} commit(s) behind.\n\n"
-        "Its checks passed against a main this merge does not produce. That is how main was broken "
-        "here: two branches, each green, neither containing the other's change.\n\n"
-        "Merge origin/main into {}, let the checks re-run, then merge.\n\n"
-        "Note mergeStateStatus says CLEAN for this PR. GitHub only reports BEHIND when the base "
-        "requires the head to be up to date, which protect-main does not — so that field cannot be "
-        "the thing you check.\n".format(pr, behind or "?", head)
-    )
+    base = branch_base(head)
+    if base:
+        sys.stderr.write(
+            "PR #{} does not contain the current main — it is {} commit(s) behind.\n\n"
+            "Its checks passed against a main this merge does not produce. That is how main was broken "
+            "here: two branches, each green, neither containing the other's change.\n\n"
+            "This branch was created on top of unmerged work. After the parent merges, replay only "
+            "this branch's commits with:\n"
+            "git rebase --onto origin/main {}\n\n"
+            "Note mergeStateStatus says CLEAN for this PR. GitHub only reports BEHIND when the base "
+            "requires the head to be up to date, which protect-main does not — so that field cannot be "
+            "the thing you check.\n".format(pr, behind or "?", base)
+        )
+    else:
+        sys.stderr.write(
+            "PR #{} does not contain the current main — it is {} commit(s) behind.\n\n"
+            "Its checks passed against a main this merge does not produce. That is how main was broken "
+            "here: two branches, each green, neither containing the other's change.\n\n"
+            "Merge origin/main into {}, let the checks re-run, then merge.\n\n"
+            "Note mergeStateStatus says CLEAN for this PR. GitHub only reports BEHIND when the base "
+            "requires the head to be up to date, which protect-main does not — so that field cannot be "
+            "the thing you check.\n".format(pr, behind or "?", head)
+        )
     return 2
 
 

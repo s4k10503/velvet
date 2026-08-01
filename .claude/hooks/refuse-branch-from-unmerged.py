@@ -14,6 +14,9 @@ import re
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from velvet_hooks import BRANCH_BASES
+
 # Anchored at a command position — start of input, or after a separator or newline — so the same
 # text quoted inside an argument does not trip it. The blind-add sibling records the first version
 # refused the change that would have fixed it.
@@ -64,6 +67,16 @@ def head_description(cwd):
     return f"detached at {sha.stdout.strip()}"
 
 
+def record_branch_base(name, sha):
+    try:
+        with open(BRANCH_BASES, "a", encoding="utf-8") as bases:
+            bases.write(f"{name} {sha}\n")
+        return True
+    except OSError as err:
+        sys.stderr.write(f"Could not record branch base in {BRANCH_BASES}: {err}\n")
+        return False
+
+
 def main():
     try:
         event = json.load(sys.stdin)
@@ -76,10 +89,20 @@ def main():
     if not name:
         return 0
 
+    cwd = event.get("cwd") or "."
+
     if deferred(name):
+        # Parent tip at branch creation is gone after squash-merge; rebase --onto needs it recorded now.
+        head_sha = git(cwd, "rev-parse", "HEAD").stdout.strip()
+        record_branch_base(name, head_sha)
+        sys.stderr.write(
+            f"Recorded base {head_sha} for `{name}`. "
+            f"After parent merges (assumes origin/main is current — fetch first if unsure):\n"
+            f"git fetch origin main\n"
+            f"git rebase --onto origin/main {head_sha}\n"
+        )
         return 0
 
-    cwd = event.get("cwd") or "."
 
     head_not_main = False
     head_ref = git(cwd, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
