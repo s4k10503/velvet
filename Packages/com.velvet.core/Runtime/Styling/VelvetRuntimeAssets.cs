@@ -1,5 +1,6 @@
 #nullable enable
 using UnityEngine;
+using UnityEngine.Scripting;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -13,10 +14,10 @@ namespace Velvet
     /// find it. So the preloaded object is this one, and it publishes itself as it loads.
     /// <para>
     /// The alternative was a <c>Resources</c> folder, which is a lookup by name and needs no build step at
-    /// all. It was measured at 46 ms of engine startup against 21 ms for this, on a build of this
-    /// repository's own sample scene, and Unity documents the folder as the thing to avoid.
+    /// all. <c>Documentation~/player-builds.md</c> holds what each one cost.
     /// </para>
     /// </remarks>
+    [Preserve]
     public sealed class VelvetRuntimeAssets : ScriptableObject
     {
         [SerializeField]
@@ -24,13 +25,14 @@ namespace Velvet
 
         private static VelvetRuntimeAssets? s_instance;
 
-        /// <summary>The loaded instance, or null in an editor that has not opened the asset.</summary>
+        /// <summary>The loaded instance, or null before anything has loaded the asset.</summary>
         internal static VelvetRuntimeAssets? Instance => s_instance;
 
         internal StyleSheet? StyleUtilities => _styleUtilities;
 
-        // Unity calls this as the preloaded asset is loaded, before the first scene's Awake, which is what
-        // makes the reference available to anything a scene does on start.
+        // Do not read this from a SubsystemRegistration hook: Velvet's own resetters run there, and whether
+        // preloading has happened by then is not something this package establishes anywhere.
+        [Preserve]
         private void OnEnable() => s_instance = this;
 
         private void OnDisable()

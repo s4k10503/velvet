@@ -5,6 +5,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Build;
+using UnityEngine.UIElements;
 using Velvet.Editor;
 
 namespace Velvet.Tests
@@ -15,9 +16,10 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// Whether the sheet then resolves in a player is not something an editor run can answer, because the
-    /// editor reads it from the asset database either way.
-    /// <c>BundledStyleSheetPlayerInclusionTests</c> is the case that answers it, and only when the suite runs
-    /// with <c>-testPlatform StandaloneOSX</c>.
+    /// editor reads it from the asset database either way. <c>BundledStyleUtilitiesRuntimeTests</c> is the
+    /// fixture that answers it, and only when the suite runs with <c>-testPlatform StandaloneOSX</c>. What
+    /// an editor run can answer is whether the holder still points at the sheet, which is the one link that
+    /// fails in a player alone.
     /// </remarks>
     [TestFixture]
     internal sealed class BundledStyleSheetInclusionTests
@@ -52,9 +54,8 @@ namespace Velvet.Tests
             // Arrange — a consumer's own entry, which reads exactly like an injected one and is told apart
             // only by the record the injection keeps of what it added.
             var holder = BundledStyleSheetBuildInclusion.Holder();
-            var owned = PlayerSettings.GetPreloadedAssets().Where(asset => asset != null).ToList();
-            owned.Add(holder);
-            PlayerSettings.SetPreloadedAssets(owned.ToArray());
+            var owned = PlayerSettings.GetPreloadedAssets();
+            PlayerSettings.SetPreloadedAssets(owned.Concat(new[] { holder }).ToArray());
             var injector = new BundledStyleSheetBuildInclusion();
 
             // Act
@@ -67,8 +68,7 @@ namespace Velvet.Tests
             }
             finally
             {
-                PlayerSettings.SetPreloadedAssets(
-                    PlayerSettings.GetPreloadedAssets().Where(a => a != null && a != holder).ToArray());
+                PlayerSettings.SetPreloadedAssets(owned);
             }
 
             // Assert — what separates a revert that removed what it added from one that removed every entry
@@ -134,6 +134,75 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TheHolderAsset_When_ItsSheetIsRead_Then_ItIsTheOneTheEditorLoadsFromTheAssetPath()
+        {
+            // Arrange — the one link no other run can see: a player reads the sheet through the holder's
+            // reference, every editor path reads it from the asset database, and a broken reference leaves
+            // both of those working while the shipped player resolves no plain utility class at all.
+            var holder = AssetDatabase.LoadAssetAtPath<VelvetRuntimeAssets>(RuntimeAssetsPath());
+
+            // Act
+            var throughHolder = HolderSheet(holder);
+            var throughAssetPath = AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetAssetPath());
+
+            // Assert — object identity, not a path comparison: a reference pointing at the right file but
+            // the wrong object inside it reads as the same path and loads as a different sheet. The
+            // asset-path side rides along, so a case that resolved neither could not satisfy it.
+            Assert.That(
+                (throughAssetPath != null, ReferenceEquals(throughHolder, throughAssetPath)),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_PreloadedAssetsHoldingAnEmptySlot_When_ABuildInjectsAndReverts_Then_TheSlotSurvives()
+        {
+            // Arrange — an empty slot, which the inspector's Size field produces and which deleting a
+            // referenced asset leaves behind. It is the consumer's, and it is not ours to tidy.
+            var owned = PlayerSettings.GetPreloadedAssets();
+            PlayerSettings.SetPreloadedAssets(owned.Concat(new UnityEngine.Object[] { null }).ToArray());
+            var injector = new BundledStyleSheetBuildInclusion();
+
+            // Act
+            int slots;
+            try
+            {
+                injector.OnPreprocessBuild(null);
+                injector.OnPostprocessBuild(null);
+                slots = PlayerSettings.GetPreloadedAssets().Count(asset => asset == null);
+            }
+            finally
+            {
+                PlayerSettings.SetPreloadedAssets(owned);
+            }
+
+            // Assert
+            Assert.That(slots, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Given_ARecordedPathThatNoLongerResolves_When_TheRevertRuns_Then_ItKeepsTheRecord()
+        {
+            // Arrange — a build died leaving a record, and by the time it is read the recorded path resolves
+            // to nothing: a package update moved the holder in the meantime. Deleting the record then is
+            // what makes the leftover entry permanent, because injection is additive and would read it as
+            // the consumer's own from that point on.
+            var injector = new BundledStyleSheetBuildInclusion();
+            injector.OnPreprocessBuild(null);
+            File.AppendAllLines(
+                RecordFilePath(), new[] { "Packages/com.velvet.core/Runtime/Assets/NoSuchHolder.asset" });
+
+            // Act
+            BundledStyleSheetBuildInclusion.Revert();
+
+            // Assert — the record survives carrying exactly what could not be removed, so a later pass can
+            // finish. Both terms in one comparison: a revert that deleted the file and one that left it
+            // holding the whole original list are different failures.
+            Assert.That(
+                (File.Exists(RecordFilePath()), string.Join(", ", File.ReadAllLines(RecordFilePath()))),
+                Is.EqualTo((true, "Packages/com.velvet.core/Runtime/Assets/NoSuchHolder.asset")));
+        }
+
+        [Test]
         public void Given_ABuildThatDiedBeforeItsPostprocess_When_TheEditorLoadsAgain_Then_TheEntryIsGone()
         {
             // Arrange — the record on disk outlives the editor; erasing the session marker is what a new
@@ -167,6 +236,20 @@ namespace Velvet.Tests
             // Assert
             Assert.That((before, BundledStyleSheetBuildInclusion.Unreached()), Is.EqualTo((true, false)));
         }
+
+        private static StyleSheet HolderSheet(VelvetRuntimeAssets holder)
+            => (StyleSheet)typeof(VelvetRuntimeAssets)
+                .GetProperty("StyleUtilities", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(holder);
+
+        private static string RuntimeAssetsPath() => DeclaredPath("RuntimeAssetsPath");
+
+        private static string StyleSheetAssetPath() => DeclaredPath("StyleSheetAssetPath");
+
+        private static string DeclaredPath(string field)
+            => (string)typeof(VelvetStyleUtilities)
+                .GetField(field, BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetRawConstantValue()!;
 
         private static string RecordFilePath()
             => (string)typeof(BundledStyleSheetBuildInclusion)

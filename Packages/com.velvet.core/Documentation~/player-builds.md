@@ -48,28 +48,41 @@ assets** in an `IPreprocessBuildWithReport` step and removes again in the matchi
 
 The holder exists because the two environments answer different questions. A player has no asset database,
 so the sheet has to arrive as a reference something already holds; preloading loads an object but gives no
-way to look one up, so the preloaded object publishes itself as it loads. The editor has no preloaded
-assets and reads the file directly. Neither path is a fallback for the other.
+way to look one up, so the preloaded object publishes itself as it loads. The editor reads the file
+directly, and falls back to it whenever the holder is not loaded or its reference no longer resolves — so
+no editor run can see a broken holder, which is why `BundledStyleSheetInclusionTests` pins the reference
+against the sheet rather than waiting for a failure.
 
 **What it costs, measured in built players rather than argued.** Three StandaloneOSX builds of this
 repository's own sample scene, differing only in how the sheet reaches them:
 
-| | engine startup |
-|---|---|
-| preloaded holder (what ships) | 0.106 / 0.105 / 0.105 s |
-| a `Resources` folder (what shipped before) | 0.133 / 0.131 / 0.130 s |
-| neither, so the sheet is absent | 0.084 / 0.084 / 0.086 s |
+| | engine startup | over the sheet-absent build |
+|---|---|---|
+| preloaded holder (what ships) | 0.106 / 0.105 / 0.105 s | ~21 ms |
+| a `Resources` folder (what shipped before) | 0.133 / 0.131 / 0.130 s | ~46 ms |
+| neither, so the sheet is absent | 0.084 / 0.084 / 0.086 s | — |
 
 Startup is `Time.realtimeSinceStartup` read from a `[RuntimeInitializeOnLoadMethod]`, three runs each, one
-to two milliseconds of spread inside each arm. So the sheet costs about **21 ms** to have in a player, and
-the `Resources` folder cost about **46 ms** for the same sheet — the folder loads its whole contents at
-startup whether the project touches them or not.
+to two milliseconds of spread inside each arm. What the two mechanisms cost is the third column: having the
+sheet at all is ~21 ms, and the `Resources` folder was ~46 ms for the same sheet. Why the folder cost more
+was not measured, and is not claimed here.
 
-The bytes are the same either way: 253,408 bytes, 0.22% of the build, and that is the stylesheet itself —
-184 KB of USS serialised as a resolved `StyleSheet`. Any mechanism that delivers it carries that.
+**What it costs you.**
 
-**Why not `Resources`, given it needs no build step.** Unity documents the folder as the thing to avoid,
-and it measured at more than twice the startup for the same asset. **Why not Addressables**, which is the
-documented replacement: it asks the consumer to create a group and run an Addressables build, and a package
-cannot assume either has happened — a first-run failure there is worse than either number here.
+- The sheet is in every player build of every project that installs the package, whether or not anything
+  calls `AttachTo`. There is no per-project opt-out short of deleting the holder from the package.
+- The entry exists only while the build runs. `ProjectSettings/ProjectSettings.asset` is written back byte
+  for byte afterwards, so nothing lands in your diff; an entry you added yourself is left alone, and the
+  rest of your preloaded assets — including an empty slot — go back exactly as they were. A build that dies
+  before it can undo the injection leaves the entry on disk; the next time the editor starts, it is removed.
+- A `ProjectSettings/ProjectSettings.asset` that cannot be opened for writing **fails the build** before
+  anything is written, because the injection has to be undone afterwards and a write that cannot land would
+  leave you the diff. Check the file out of version control and build again.
+- If the injection does not take for any other reason, the build **fails** and names the holder and what its
+  absence would cost, rather than producing a player in which every plain utility class resolves to nothing.
+
+**Why not `Resources`, given it needs no build step.** Unity documents the folder as the thing to avoid, and
+it measured at more than twice the added startup. **Why not Addressables**, which is the documented
+replacement: it asks the consumer to create a group and run an Addressables build, and a package cannot
+assume either has happened — a first-run failure there is worse than either number here.
 

@@ -13,9 +13,9 @@ namespace Velvet.SourceGenerators.Tests
     /// an asset that is not there throws when something calls it, which no compile does; a holder whose
     /// reference was cleared still loads, still preloads and still publishes itself, so the sheet is simply
     /// absent and the utilities it declares resolve to nothing while the C#-realised families and
-    /// arbitrary-value classes keep working — a partial styling bug in a build, with the editor unaffected
-    /// because it never reads the holder. The license-free generator workflow fires on any change under
-    /// Runtime/, so a break is caught there rather than only in a Unity run.
+    /// arbitrary-value classes keep working — a partial styling bug in a build, and one the editor is
+    /// insulated from because it falls back to the asset path. The license-free generator workflow fires on
+    /// any change under Runtime/, so a break is caught there rather than only in a Unity run.
     /// </remarks>
     public sealed class RuntimeStyleSheetResourceTests
     {
@@ -71,8 +71,9 @@ namespace Velvet.SourceGenerators.Tests
             var reference = HolderReferencePattern.Match(holder);
             var sheetGuid = MetaGuidPattern.Match(meta).Groups[1].Value;
 
-            // Assert — the object id takes part because a reference cleared to the right file but no object
-            // serialises as fileID 0 with the guid intact, which a guid-only comparison passes.
+            // Assert — the object id takes part only to separate a live reference from a cleared one. Which
+            // object inside the file it names is not decided here; BundledStyleSheetInclusionTests compares
+            // the two loaded objects, which is the only place that can.
             Assert.Equal(
                 (sheetGuid, true),
                 (reference.Groups[2].Value, reference.Groups[1].Value != "0"));

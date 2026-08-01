@@ -18,7 +18,7 @@ namespace Velvet.Editor
     /// explanation of why the record lives on disk, why the revert must save, and why an entry the consumer
     /// already had is left alone.
     /// </remarks>
-    public sealed class BundledStyleSheetBuildInclusion : IPreprocessBuildWithReport, IPostprocessBuildWithReport
+    internal sealed class BundledStyleSheetBuildInclusion : IPreprocessBuildWithReport, IPostprocessBuildWithReport
     {
         private const string RecordFile = "Library/VelvetBundledStyleSheetInclusion.txt";
         private const string LiveSessionKey = "Velvet.BundledStyleSheetBuildInclusion.Live";
@@ -72,8 +72,10 @@ namespace Velvet.Editor
             }
         }
 
-        internal static UnityEngine.Object Holder()
-            => AssetDatabase.LoadAssetAtPath<VelvetRuntimeAssets>(VelvetStyleUtilities.RuntimeAssetsPath);
+        internal static UnityEngine.Object Holder() => HolderAt(VelvetStyleUtilities.RuntimeAssetsPath);
+
+        private static UnityEngine.Object HolderAt(string path)
+            => AssetDatabase.LoadAssetAtPath<VelvetRuntimeAssets>(path);
 
         internal static void Inject()
         {
@@ -86,21 +88,31 @@ namespace Velvet.Editor
                     + "nothing.");
             }
 
-            var preloaded = PlayerSettings.GetPreloadedAssets().Where(asset => asset != null).ToList();
+            var preloaded = PlayerSettings.GetPreloadedAssets().ToList();
             if (preloaded.Contains(holder))
             {
                 // Already the consumer's own entry. Recording it would have the revert remove something this
                 // build did not add.
                 return;
             }
-            preloaded.Add(holder);
-            PlayerSettings.SetPreloadedAssets(preloaded.ToArray());
 
-            // Recorded before the apply, not after: a record naming something that never landed is removed on
-            // the next pass, while an entry applied with no record is the permanent diff.
-            File.WriteAllText(RecordFile, VelvetStyleUtilities.RuntimeAssetsPath);
-            AssetDatabase.SaveAssets();
+            // Written before the list is mutated: a record naming something that never landed is removed on
+            // the next pass, while an entry added with no record is the permanent diff.
+            File.WriteAllLines(RecordFile, new[] { VelvetStyleUtilities.RuntimeAssetsPath });
+            preloaded.Add(holder);
+
+            // The list goes back carrying whatever else it held, nulls included. A consumer's empty slot is
+            // theirs — dropping it here is a diff they did not ask for and cannot undo.
+            PlayerSettings.SetPreloadedAssets(preloaded.ToArray());
             SessionState.SetString(LiveSessionKey, "1");
+
+            if (Unreached())
+            {
+                throw new BuildFailedException(
+                    $"{VelvetStyleUtilities.RuntimeAssetsPath} did not reach PlayerSettings' preloaded "
+                    + "assets, so the bundled utility stylesheet would not reach the player and every plain "
+                    + "utility class would resolve to nothing.");
+            }
         }
 
         internal static void Revert()
@@ -114,19 +126,33 @@ namespace Velvet.Editor
                 return;
             }
 
-            var holder = Holder();
-            if (holder == null)
+            // What the build recorded, not what the constant names today: a package update that moves the
+            // holder must still be able to remove the entry an older build added.
+            var preloaded = PlayerSettings.GetPreloadedAssets().ToList();
+            var unresolved = new List<string>();
+            foreach (var path in File.ReadAllLines(RecordFile))
             {
-                // The asset moved or was removed since the build recorded it. Keeping the record is what
-                // lets a later pass finish; deleting it is what would make the leftover entry permanent.
-                return;
+                var holder = HolderAt(path);
+                if (holder == null || !preloaded.Remove(holder))
+                {
+                    unresolved.Add(path);
+                }
             }
 
-            var preloaded = PlayerSettings.GetPreloadedAssets()
-                .Where(asset => asset != null && asset != holder)
-                .ToArray();
-            PlayerSettings.SetPreloadedAssets(preloaded);
+            // Everything else goes back untouched, for the reason the injection leaves it alone.
+            PlayerSettings.SetPreloadedAssets(preloaded.ToArray());
+
+            // The build writes project settings to disk while it runs, so undoing the injection in the
+            // loaded object alone would leave the entry in the file the consumer sees.
             AssetDatabase.SaveAssets();
+
+            // Same reason the sibling keeps its record: an entry this pass could not resolve is still in the
+            // consumer's file, and deleting the record is the only thing that could make it unremovable.
+            if (unresolved.Count > 0)
+            {
+                File.WriteAllLines(RecordFile, unresolved);
+                return;
+            }
             File.Delete(RecordFile);
             SessionState.EraseString(LiveSessionKey);
         }

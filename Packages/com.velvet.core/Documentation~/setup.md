@@ -68,8 +68,8 @@ rather than returning null when the asset cannot be found, because a null sheet 
 `AssetDatabase`, the ordinary way to reach an asset by path, exists only in the editor. In a player the
 call above reads a reference instead: the package ships
 `Packages/com.velvet.core/Runtime/Assets/VelvetRuntimeAssets.asset`, a holder pointing at the sheet, and a
-build step adds it to PlayerSettings' preloaded assets so it is in the build and loaded before the first
-scene runs. You do not configure any of that.
+build step adds it to PlayerSettings' preloaded assets so the build carries it. You do not configure any of
+that.
 
 The sheet is in every build of every project that has the package installed, whether or not anything calls
 `AttachTo`. [player-builds.md](player-builds.md) says what that costs and why this mechanism rather than a

@@ -67,10 +67,10 @@ namespace Velvet
             }
         }
 
-        // Two paths because the two environments answer different questions. A player has no asset
-        // database, so the sheet has to arrive as a reference something already holds — the preloaded
-        // holder. The editor has no preloaded assets, so it reads the file. Neither is a fallback for the
-        // other: each is the only one that works where it runs.
+        // The holder first, because it is the only thing a player has; the asset database second, because
+        // an editor may not have loaded the holder at all. An editor that has loaded it still falls through
+        // when its reference is broken, so no editor run can see that break — which is why
+        // BundledStyleSheetInclusionTests pins the holder against the sheet instead of waiting for one.
         private static StyleSheet? Load()
         {
             var preloaded = VelvetRuntimeAssets.Instance;
