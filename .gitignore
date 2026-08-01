@@ -92,3 +92,9 @@ docs/guides/
 # The hand-authored DocFX and source-generator projects need no re-include: the *.csproj / *.sln rules
 # above are anchored to the root, so no rule ever matched them. Four negations sat here saying otherwise
 # and reached nothing.
+
+# Written by com.unity.settings-manager the first time a package that uses it loads. The one the
+# Code Coverage package leaves holds an empty dictionary, and CI passes its coverage options on the
+# command line rather than reading this, so tracking it would only make every checkout dirty after
+# its first run.
+ProjectSettings/Packages/
