@@ -122,9 +122,9 @@ namespace Velvet.Tests
         // Mounts one balanced label carrying an extra sizing utility — a ceiling or a declared width —
         // inside a wrapper wider than anything that utility asks for, then waits for layout to settle.
         // loadUtilities attaches the bundled stylesheet, which the USS scale forms need and the
-        // arbitrary-value forms resolve without. probeText adds a plain sibling carrying that text, which
-        // is what "the width a label stretches to when nothing writes its slot" has to be read from: the
-        // wrapper's own width is not that number once a theme gives Labels a margin.
+        // arbitrary-value forms resolve without. probeText adds a plain sibling, which is where a case
+        // that needs "the width nothing writes" reads it from — measured, rather than restated as the
+        // wrapper constant, which is the same number only on a panel whose theme styles Labels not at all.
         private IEnumerator MountWithSizingClass(
             string panelName, string text, string boundClass, bool loadUtilities = false, string probeText = null)
         {
@@ -450,8 +450,6 @@ namespace Velvet.Tests
             var balanced = _host.Root.Q<Label>("balanced");
             s_setSwapText.Invoke(LongWrapText);
             yield return WaitRealtime(0.6);
-            // The width the cascade gives an unbalanced label, read from a plain sibling rather than from
-            // the wrapper: a theme that gives Labels a margin puts the two several pixels apart.
             var releasedWidth = _host.Root.Q<Label>("probe").resolvedStyle.width;
             Assume.That(balanced.resolvedStyle.width, Is.LessThan(releasedWidth - 0.5f),
                 "Precondition: balance is holding a width narrower than an unbalanced sibling");
@@ -557,8 +555,6 @@ namespace Velvet.Tests
             var balanced = _host.Root.Q<Label>("balanced");
             s_setSwapText.Invoke(LongWrapText);
             yield return WaitRealtime(0.6);
-            // The width the cascade gives an unbalanced label, read from a plain sibling rather than from
-            // the wrapper: a theme that gives Labels a margin puts the two several pixels apart.
             var releasedWidth = _host.Root.Q<Label>("probe").resolvedStyle.width;
             Assume.That(balanced.resolvedStyle.width, Is.LessThan(releasedWidth - 0.5f),
                 "Precondition: balance is holding a width narrower than an unbalanced sibling");
