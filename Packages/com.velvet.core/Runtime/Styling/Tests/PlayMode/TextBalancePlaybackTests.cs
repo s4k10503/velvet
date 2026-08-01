@@ -41,6 +41,22 @@ namespace Velvet.Tests
             return null;
         };
 
+        // The same font and wrap as its sibling above plus horizontal padding, which is what separates the
+        // width the search measures text at from the width it writes.
+        private static readonly Func<VisualElement, Action> s_wrapWithFontAndPaddingRef = element =>
+        {
+            element.style.whiteSpace = WhiteSpace.Normal;
+            element.style.paddingLeft = PaddingPx;
+            element.style.paddingRight = PaddingPx;
+            element.style.unityFontDefinition = new StyleFontDefinition(
+                FontDefinition.FromFont(UnityEngine.Resources.GetBuiltinResource<UnityEngine.Font>("LegacyRuntime.ttf")));
+            return null;
+        };
+
+        // Wide enough that the frame it adds moves the wrap point, narrow enough to stay inside the
+        // wrapper widths below.
+        private const float PaddingPx = 3f;
+
         // The wrapper's direction, supplied inline for the same reason the font is: no stylesheet is
         // loaded, so `flex-row` would be an inert class name and the engine's own default is a column.
         private static readonly Func<VisualElement, Action> s_rowRef = element =>
@@ -137,6 +153,47 @@ namespace Velvet.Tests
             });
             _mounted = V.Mount(_host.Root, tree);
             yield return WaitRealtime(0.5);
+        }
+
+        // The same pair as MountPair with horizontal padding on both labels, which is the case where the
+        // width the manipulator writes and the width the text is measured at come apart.
+        private IEnumerator MountPaddedPair(string text, int wrapperWidthPx)
+        {
+            _host = new RenderTexturePanelHost("TextBalancePaddedPanel", 400, 400);
+            var tree = V.Div(children: new VNode[]
+            {
+                V.Div(className: $"w-[{wrapperWidthPx}px]", children: new VNode[]
+                {
+                    V.Label(name: "unbalanced", text: text, refCallback: s_wrapWithFontAndPaddingRef),
+                }),
+                V.Div(className: $"w-[{wrapperWidthPx}px]", children: new VNode[]
+                {
+                    V.Label(name: "balanced", text: text, className: "text-balance",
+                        refCallback: s_wrapWithFontAndPaddingRef),
+                }),
+            });
+            _mounted = V.Mount(_host.Root, tree);
+            yield return WaitRealtime(0.5);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_APaddedWrappedLabel_When_Balanced_Then_ItIsNarrowerThanItsUnbalancedSiblingAtTheSameHeight()
+        {
+            // Arrange / Act — the same claim the unpadded pair makes, on a box whose padding separates the
+            // width the search measures text at from the width it writes into.
+            yield return MountPaddedPair(LongWrapText, 320);
+            var unbalanced = _host.Root.Q<Label>("unbalanced");
+            var balanced = _host.Root.Q<Label>("balanced");
+            Assume.That(unbalanced.resolvedStyle.height, Is.GreaterThan(unbalanced.resolvedStyle.fontSize * 1.5f),
+                "Precondition: the long text actually wrapped onto multiple lines in the unbalanced sibling");
+
+            // Assert — a narrower box at the same line count. A search that measured at the outer width
+            // hands the text less room than it assumed and takes an extra line to fit, so the height half
+            // is what this case is for and the width half is what keeps it honest.
+            Assert.That(
+                (balanced.resolvedStyle.width < unbalanced.resolvedStyle.width,
+                 Mathf.Abs(balanced.resolvedStyle.height - unbalanced.resolvedStyle.height) < 0.5f),
+                Is.EqualTo((true, true)));
         }
 
         [UnityTest]

@@ -186,9 +186,11 @@ multiplier of 1 included — is already a real value, so there is nothing to res
 **`text-balance`** approximates CSS `text-wrap: balance` even though UI Toolkit's text engine
 exposes no line-break hook. `StyleTextBalanceManipulator` narrows the box instead: it
 binary-searches `TextElement.MeasureTextSize` — the same method the engine's own autosize pass
-calls — for the narrowest inline **`width`** that still measures the height a normal, unbalanced
-layout would take at the available width. Comparing heights stands in for comparing line counts,
-since font metrics are constant across candidates.
+calls — for the narrowest width that still measures the height a normal, unbalanced layout would
+take at the available width. Comparing heights stands in for comparing line counts, since font
+metrics are constant across candidates. The search runs over the width the text gets, and the
+element's own horizontal padding and border are added back to the inline **`width`** it writes,
+since a `width` in UI Toolkit covers them.
 
 **What it honours.** `text-balance` writes the element's inline `width` and never its `max-width`:
 

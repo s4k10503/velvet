@@ -49,8 +49,8 @@ namespace Velvet
     // Re-derives on attach, on its own and its PARENT's GeometryChangedEvent, and on ChangeEvent<string>
     // (a text swap that keeps the same box size raises no geometry event). The parent subscription is what
     // catches an ancestor WIDENING: the written width pins the target's own rect, so nothing fires on the
-    // target. A signature over the clamped available width, the text and the font size absorbs the
-    // GeometryChangedEvent this manipulator's own write provokes.
+    // target. A signature over the clamped content width, the frame around it, the text and the font size
+    // absorbs the GeometryChangedEvent this manipulator's own write provokes.
     //
     // Lifecycle mirrors StyleGapManipulator / StyleGridManipulator: the reconciler attaches one per
     // element, tracks it in ReconcilerContext.TextBalanceManipulators, and removes it on cleanup. Detach
@@ -176,9 +176,19 @@ namespace Velvet
                 available = Mathf.Min(available, ceiling);
             }
 
+            // The search measures text, which is laid out inside the element's content box, while the value
+            // it writes is a `width` — and a width in UI Toolkit covers the padding and the border. So the
+            // two are separated here: everything below searches over content widths, and the frame is added
+            // back at the write. Measuring at the outer width instead hands the text less room than the
+            // measurement assumed and it wraps one line further than the search settled on.
+            var frame = textElement.resolvedStyle.paddingLeft + textElement.resolvedStyle.paddingRight
+                        + textElement.resolvedStyle.borderLeftWidth
+                        + textElement.resolvedStyle.borderRightWidth;
+            var content = available - frame;
+
             var text = textElement.text ?? string.Empty;
             var fontSize = textElement.resolvedStyle.fontSize;
-            var signature = ComputeSignature(available, text, fontSize);
+            var signature = ComputeSignature(content, frame, text, fontSize);
             if (_hasSignature && signature == _lastSignature)
             {
                 return;
@@ -213,7 +223,7 @@ namespace Velvet
                 return;
             }
 
-            if (available < MinBalanceableWidthPx)
+            if (content < MinBalanceableWidthPx)
             {
                 // The engine applies a ceiling this narrow to the released box on its own.
                 ReleaseWidth(textElement);
@@ -227,7 +237,7 @@ namespace Velvet
                 text, float.NaN, VisualElement.MeasureMode.Undefined,
                 float.NaN, VisualElement.MeasureMode.Undefined).y;
             var naturalHeight = textElement.MeasureTextSize(
-                text, available, VisualElement.MeasureMode.Exactly,
+                text, content, VisualElement.MeasureMode.Exactly,
                 float.NaN, VisualElement.MeasureMode.Undefined).y;
 
             if (naturalHeight <= 0f || float.IsNaN(naturalHeight))
@@ -246,9 +256,9 @@ namespace Velvet
                 return;
             }
 
-            var minWidth = Mathf.Max(1f, available * MinWidthFraction);
-            var narrowest = FindNarrowestWidth(textElement, text, minWidth, available, naturalHeight);
-            textElement.style.width = new StyleLength(narrowest);
+            var minWidth = Mathf.Max(1f, content * MinWidthFraction);
+            var narrowest = FindNarrowestWidth(textElement, text, minWidth, content, naturalHeight);
+            textElement.style.width = new StyleLength(narrowest + frame);
 
             _lastSignature = signature;
             _hasSignature = true;
@@ -341,12 +351,15 @@ namespace Velvet
 
         // The available width is already ceiling-clamped, so a ceiling change that can alter the outcome
         // changes the signature. The full text rather than its length, which would miss a same-length swap.
-        private static int ComputeSignature(float available, string text, float fontSize)
+        // The frame is its own term rather than folded into the content width: a padding change that a
+        // container width change cancels out leaves the same content width and a different value to write.
+        private static int ComputeSignature(float content, float frame, string text, float fontSize)
         {
             unchecked
             {
                 var hash = 17;
-                hash = hash * 31 + Mathf.RoundToInt(available);
+                hash = hash * 31 + Mathf.RoundToInt(content);
+                hash = hash * 31 + Mathf.RoundToInt(frame);
                 hash = hash * 31 + text.GetHashCode();
                 hash = hash * 31 + fontSize.GetHashCode();
                 return hash;
