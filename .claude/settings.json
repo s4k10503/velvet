@@ -61,6 +61,11 @@
           },
           {
             "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-branch-from-unmerged.py\"",
+            "timeout": 15000
+          },
+          {
+            "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-blind-git-add.py\"",
             "timeout": 10000
           },
