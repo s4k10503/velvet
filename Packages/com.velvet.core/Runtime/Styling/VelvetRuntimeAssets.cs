@@ -17,8 +17,8 @@ namespace Velvet
     /// all. <c>Documentation~/player-builds.md</c> holds what each one cost.
     /// </para>
     /// <para>
-    /// <c>Preserve</c> rather than leaving it to the linker: if the enable message is stripped the sheet is
-    /// unreachable for the whole run, and the attribute costs a build nothing to carry.
+    /// <c>Preserve</c> rather than leaving it to the linker: no managed code calls the enable message, and
+    /// if it is stripped the sheet is unreachable for the whole run.
     /// </para>
     /// </remarks>
     [Preserve]

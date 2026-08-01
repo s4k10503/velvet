@@ -80,8 +80,8 @@ was not measured, and is not claimed here.
   leave you the diff. Check the file out of version control and build again.
 - If the injection does not take for any other reason, the build **fails** and names the holder and what its
   absence would cost, rather than producing a player in which every utility the sheet declares resolves to
-  nothing. [setup.md](setup.md) lists the families that hold without the sheet, which is why the symptom is
-  partial styling rather than none.
+  nothing. The families Velvet realises from C# hold without it, so the symptom is
+  partial styling rather than none — [setup.md](setup.md) carries the command that answers it per class.
 
 **Why not `Resources`, given it needs no build step.** Unity documents the folder as the thing to avoid, and
 it measured at more than twice the added startup. **Why not Addressables**, which is the documented

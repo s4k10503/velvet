@@ -142,8 +142,8 @@ namespace Velvet.Tests
         {
             // Arrange — the one link no other run can see: a player reads the sheet through the holder's
             // reference alone, while an editor falls back to the asset path when that reference is broken.
-            // So a broken reference leaves every editor run working and the shipped player resolving every
-            // utility the sheet declares to nothing.
+            // So a broken reference leaves every editor run working and throws out of the first AttachTo in
+            // the shipped player.
             var holder = AssetDatabase.LoadAssetAtPath<VelvetRuntimeAssets>(RuntimeAssetsPath());
 
             // Act

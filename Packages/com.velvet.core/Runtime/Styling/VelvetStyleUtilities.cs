@@ -60,7 +60,8 @@ namespace Velvet
                             "Velvet's bundled utility stylesheet was not found. In a player it arrives "
                             + $"through '{RuntimeAssetsPath}', which the package's build step adds to "
                             + "PlayerSettings' preloaded assets; a build that cannot find it was made with "
-                            + "that step disabled or with the asset removed from the package.");
+                            + "that step disabled, with the asset removed from the package, or with the "
+                            + "asset's own reference to the stylesheet broken.");
                     }
                 }
 

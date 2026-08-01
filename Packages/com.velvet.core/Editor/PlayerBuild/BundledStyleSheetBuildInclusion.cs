@@ -14,10 +14,8 @@ namespace Velvet.Editor
     /// build, and takes it out again afterwards.
     /// </summary>
     /// <remarks>
-    /// <see cref="BundledShaderBuildInclusion"/> owns the explanation of why the record lives on disk, why
-    /// the revert must save, and why an entry the consumer already had is left alone. Both classes drop a
-    /// recorded name once it resolves to nothing the list holds, and keep it only while the name itself
-    /// cannot be resolved.
+    /// <see cref="BundledShaderBuildInclusion"/> owns the explanation of why the record lives on disk and
+    /// why an entry the consumer already had is left alone.
     /// </remarks>
     internal sealed class BundledStyleSheetBuildInclusion : IPreprocessBuildWithReport, IPostprocessBuildWithReport
     {
