@@ -44,10 +44,10 @@ namespace Velvet.Tests
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "ResolveDirection", "Inter", "CS",
-            "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration",
+            "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration", "Collision",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
-            "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel",
+            "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
             "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502",
             "ProjectReference", "VEL503"
@@ -130,10 +130,63 @@ namespace Velvet.Tests
         // because C# closes a raw string with a run of the SAME length and allows any length from three up:
         // a fixture demonstrating a raw string needs four, and against a fixed three that spelling matches
         // three of the four and desyncs everything after it.
-        private static readonly Regex CSharpCommentOrStringPattern = new(
+        // The #region alternative rides in this same alternation rather than in a pass of its own, for the
+        // reason the forms above need one: a label consuming a line can carry a string's closing delimiter
+        // with it, and a separate earlier pass would then let the string form run past it and swallow real
+        // declarations. It names region and endregion rather than any directive so that a condition token a
+        // guide may cite stays in the corpus; UNITY_EDITOR is one such, and #if is where it lives.
+        private const string CommentOrStringAlternation =
             "(\"{3,})(?:(?!\\1)[\\s\\S])*?\\1(?!\")|'(?:\\\\.|[^'\\\\\n])*'|@\"(?:[^\"]|\"\")*\""
-            + "|\"(?:\\\\.|[^\"\\\\\n])*\"|/\\*.*?\\*/|//[^\n]*",
-            RegexOptions.Compiled | RegexOptions.Singleline);
+            + "|\"(?:\\\\.|[^\"\\\\\n])*\"|/\\*.*?\\*/|//[^\n]*";
+
+        private const string RegionLabelAlternation = "^[^\\S\n]*#[^\\S\n]*(?:region|endregion)[^\n]*$";
+
+        private static readonly Regex CSharpCommentOrStringPattern = new(
+            CommentOrStringAlternation + "|" + RegionLabelAlternation,
+            RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.Multiline);
+
+        [Test]
+        public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_TheRegionStripTakesOnlyLabelWords()
+        {
+            // Arrange — the same corpus built without the region alternative, which is the control: the
+            // difference between the two sets is exactly what the strip removes, and nothing else here can
+            // produce it. Comparing against the shipped set rather than re-deriving it is what makes this
+            // read the corpus builder's behaviour instead of a copy of its regex.
+            var word = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
+            var keepingRegions = new Regex(
+                CommentOrStringAlternation, RegexOptions.Singleline | RegexOptions.Multiline);
+            var labelPattern = new Regex(RegionLabelAlternation, RegexOptions.Multiline);
+            var withRegions = new HashSet<string>(StringComparer.Ordinal);
+            var labelWords = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in RepoEntries.Value.Where(
+                         e => e.EndsWith(".cs", StringComparison.Ordinal) && File.Exists(e)))
+            {
+                var text = File.ReadAllText(entry);
+                foreach (Match token in word.Matches(keepingRegions.Replace(text, " ")))
+                {
+                    withRegions.Add(token.Value);
+                }
+                foreach (Match line in labelPattern.Matches(text))
+                {
+                    foreach (Match token in word.Matches(line.Value)) labelWords.Add(token.Value);
+                }
+            }
+
+            // Act
+            var removed = withRegions.Where(w => !SourceIdentifiers.Value.Contains(w)).ToList();
+            var notFromALabel = removed
+                .Where(w => !labelWords.Contains(w))
+                .OrderBy(w => w, StringComparer.Ordinal);
+
+            // Assert — a strip that is not running removes nothing, so an empty first term is the shape
+            // that catches it. The second catches a strip widened by any route other than the spelling both
+            // sides read; widening that spelling to every directive is caught instead by the identifier
+            // case, and only for as long as a guide keeps citing UNITY_EDITOR — Generators~/README.md is
+            // the one that does.
+            Assert.That(
+                (removed.Count > 0, string.Join(", ", notFromALabel)),
+                Is.EqualTo((true, string.Empty)));
+        }
 
         [Test]
         public void Given_DocumentationMarkdown_When_ScannedForVDotReferences_Then_EveryReferenceExistsOnV()

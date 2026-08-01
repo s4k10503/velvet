@@ -134,7 +134,7 @@ own frames. `transition-filter` sets exactly that, plus a default duration and c
 > either of those two puts Velvet's tween and a native animation on the same property at once, and a
 > list naming either of them *without* `filter` animates your filters with nothing in the declaration
 > mentioning filters. Neither case is diagnosed. Everything above is measured on Unity 6000.3; a
-> future engine fix would invert it, which is what the `Group D` tests in
+> future engine fix would invert it, which is what the Group D tests in
 > `FilterTransitionPanelTests` exist to catch.
 
 Under `transition-filter`, Velvet's tween interpolates every native filter type (`blur`, `contrast`,
