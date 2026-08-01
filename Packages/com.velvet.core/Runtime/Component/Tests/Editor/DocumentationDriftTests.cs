@@ -44,9 +44,8 @@ namespace Velvet.Tests
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "ResolveDirection", "Inter", "CS",
-            "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration",
+            "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration", "Collision",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
-            "Collision",
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
@@ -135,7 +134,7 @@ namespace Velvet.Tests
         // reason the forms above need one: a label consuming a line can carry a string's closing delimiter
         // with it, and a separate earlier pass would then let the string form run past it and swallow real
         // declarations. It names region and endregion rather than any directive so that a condition token a
-        // document may cite — UNITY_EDITOR, which #if is where it lives — stays in the corpus.
+        // guide may cite stays in the corpus; UNITY_EDITOR is one such, and #if is where it lives.
         private const string CommentOrStringAlternation =
             "(\"{3,})(?:(?!\\1)[\\s\\S])*?\\1(?!\")|'(?:\\\\.|[^'\\\\\n])*'|@\"(?:[^\"]|\"\")*\""
             + "|\"(?:\\\\.|[^\"\\\\\n])*\"|/\\*.*?\\*/|//[^\n]*";
@@ -179,10 +178,11 @@ namespace Velvet.Tests
                 .Where(w => !labelWords.Contains(w))
                 .OrderBy(w => w, StringComparer.Ordinal);
 
-            // Assert — an empty removal means the strip is not running at all. The second term catches a
-            // strip widened by any route other than the shared spelling both sides read; widening that
-            // spelling to every directive is caught instead by the identifier case, loudly, because a guide
-            // cites UNITY_EDITOR.
+            // Assert — a strip that is not running removes nothing, so an empty first term is the shape
+            // that catches it. The second catches a strip widened by any route other than the spelling both
+            // sides read; widening that spelling to every directive is caught instead by the identifier
+            // case, and only for as long as a guide keeps citing UNITY_EDITOR — Generators~/README.md is
+            // the one that does.
             Assert.That(
                 (removed.Count > 0, string.Join(", ", notFromALabel)),
                 Is.EqualTo((true, string.Empty)));
