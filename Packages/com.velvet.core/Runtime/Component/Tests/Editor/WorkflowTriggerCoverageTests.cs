@@ -16,9 +16,9 @@ namespace Velvet.Tests
     /// later, unrelated change happens to carry a file inside it — and then names that change as the
     /// culprit.
     /// <para>
-    /// The trigger side is held by different rules, and the last two cases here are the whole of them:
-    /// branch protection requires a check from each of these workflows, so each must subscribe to every
-    /// event that asks for one, and neither of those subscriptions may carry a path filter.
+    /// The trigger side is held by two rules, and the last two cases here are the whole of them: branch
+    /// protection requires a check from each of these workflows, so each must subscribe to both events that
+    /// ask for one, and neither of those subscriptions may carry a path filter.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -148,16 +148,19 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_EachSubscribesToTheMergeGroup()
+        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_EachSubscribesToBoth()
         {
-            // Arrange — a required check reports nothing for a queue entry unless its workflow subscribes to
-            // merge_group, and the entry then waits on a check that can never arrive. The subscription is a
-            // key with no children, which is the shape an edit removes without leaving a gap.
+            // Arrange — a required check reports nothing for a pull request or a queue entry unless its
+            // workflow subscribes to the event, and the thing waiting on it then waits forever. merge_group
+            // subscribes through a key with no children, which is the shape an edit removes without leaving
+            // a gap; pull_request has children and was held by nothing at all.
             var workflows = RequiredCheckWorkflows;
 
             // Act
             var missing = workflows
-                .Where(workflow => !Triggers(workflow).Contains("merge_group"))
+                .SelectMany(workflow => new[] { "pull_request", "merge_group" }
+                    .Where(trigger => !Triggers(workflow).Contains(trigger))
+                    .Select(trigger => $"{workflow}: {trigger}"))
                 .ToList();
 
             // Assert — the list's size rides along, so a reader that found no workflows at all would report
@@ -180,16 +183,16 @@ namespace Velvet.Tests
                 .Select(entry => $"{entry.Workflow}: {entry.Trigger}.{entry.Key}")
                 .ToList();
 
-            // Assert — the two gated triggers fail differently and are held together anyway: a path filter
-            // under pull_request leaves the check Pending, and under merge_group GitHub rejects the file
-            // outright. Filter the push trigger instead.
+            // Assert — a filter under pull_request leaves the check Pending today. Under merge_group GitHub
+            // accepts it and does not honour it, so the bar there is against stating an intent the required
+            // checks could not survive if that changed. Filter the push trigger instead.
             Assert.That((onPush, string.Join(", ", onGated)), Is.EqualTo((2, string.Empty)),
                 "A required check GitHub does not start has nothing able to clear it.");
         }
 
-        // The trigger names a workflow subscribes to. Read separately from the filters below because their
-        // absence and a trigger's absence are different failures: a filter that should not be there fails
-        // the guard by appearing, and a trigger that must be there fails it by not.
+        // Read separately from the filters below because their absence and a trigger's absence are
+        // different failures: a filter that should not be there fails the guard by appearing, and a trigger
+        // that must be there fails it by not.
         private static IEnumerable<string> Triggers(string workflow)
         {
             var underOn = false;

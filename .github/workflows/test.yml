@@ -1,11 +1,13 @@
 name: Test
 
-# pull_request and merge_group carry no path filter, and must not gain one. Under pull_request a filter
-# leaves a required check Pending forever with no way to satisfy it; under merge_group GitHub rejects the
-# key outright and nothing runs at all. The push filter is a different question — a push to main has
-# already passed the pull request — so it keeps the list. WorkflowTriggerCoverageTests holds both the
-# absence of those filters and the presence of the triggers themselves, since a merge_group key with no
-# children is the shape an edit removes without leaving a gap.
+# pull_request and merge_group carry no path filter, and must not gain one: a required check GitHub is
+# asked to require reports Pending forever when a filter stops its workflow from starting, and nothing can
+# clear it. GitHub does not honour a path filter under merge_group today — it is accepted and ignored — so
+# one there is a lie about intent rather than a live outage, and it must not sit waiting for GitHub to
+# start honouring it. The push filter is a different question — a push to main has already passed the pull
+# request — so it keeps the list. WorkflowTriggerCoverageTests holds both the absence of those filters and
+# the presence of the triggers themselves, since a merge_group key with no children is the shape an edit
+# removes without leaving a gap.
 #
 # Generators~ sources stay out of the push list: the Unity side consumes their committed DLLs under
 # Runtime/Plugins, so a generator change reaches this workflow when the redeployed DLLs are committed.
