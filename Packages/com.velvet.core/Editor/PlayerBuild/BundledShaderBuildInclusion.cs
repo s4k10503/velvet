@@ -147,33 +147,47 @@ namespace Velvet.Editor
             {
                 return;
             }
-            // OnPostprocessBuild and the editor-load repair both arrive here without the build's refusal
-            // ahead of them. Declining keeps the record, which is what lets a later pass finish; mutating
-            // and failing to save is what leaves the entries with nothing able to remove them.
-            if (!CanWriteSettings())
-            {
-                return;
-            }
             var settings = new SerializedObject(
                 AssetDatabase.LoadAssetAtPath<GraphicsSettings>(GraphicsSettingsAsset));
             var included = settings.FindProperty(AlwaysIncludedShaders);
             var unresolved = new List<string>();
+            var removed = false;
             foreach (var name in File.ReadAllLines(RecordFile))
             {
                 var shader = Shader.Find(name);
-                var index = shader == null ? -1 : IndexOf(included, shader);
+                if (shader == null)
+                {
+                    // Only this arm keeps the record. A name that resolves while the list holds no entry
+                    // for it is finished business — the consumer deleted it themselves, say — and keeping
+                    // its record would strand it, with nothing but a later build's own write to clear it.
+                    unresolved.Add(name);
+                    continue;
+                }
+                var index = IndexOf(included, shader);
                 if (index < 0)
                 {
-                    unresolved.Add(name);
                     continue;
                 }
                 included.GetArrayElementAtIndex(index).objectReferenceValue = null;
                 included.DeleteArrayElementAtIndex(index);
+                removed = true;
             }
-            settings.ApplyModifiedProperties();
-            // The build writes project settings to disk while it runs, so undoing the injection in the
-            // loaded object alone would leave the entries in the file the consumer sees.
-            AssetDatabase.SaveAssets();
+
+            if (removed)
+            {
+                // OnPostprocessBuild and the editor-load repair both arrive here without the build's
+                // refusal ahead of them. Declining keeps the record, which is what lets a later pass
+                // finish; mutating and failing to save is what leaves the entries with nothing able to
+                // remove them. A pass that removed nothing writes nothing, so it need not ask.
+                if (!CanWriteSettings())
+                {
+                    return;
+                }
+                settings.ApplyModifiedProperties();
+                // A build saves project settings while it runs, so undoing the injection in the loaded
+                // object alone would leave the entries in the file the consumer sees.
+                AssetDatabase.SaveAssets();
+            }
 
             // A name this pass could not resolve is still in the consumer's file, and deleting the record is
             // the only thing that could make it unremovable: injection would then read the entry as theirs and
