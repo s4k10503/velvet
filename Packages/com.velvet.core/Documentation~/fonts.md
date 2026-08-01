@@ -230,7 +230,8 @@ no-op** on a default `Label` — pair it with `text-wrap` / `whitespace-normal` 
 white-space) for it to have any effect.
 
 **Single-line gate:** CSS balance is a no-op on one line, and this approximation shrinks the box,
-so a width is written only when the text wraps at the ceiling-clamped available width. Otherwise —
+so a width is written only when the text wraps at the width the text actually gets — the
+ceiling-clamped available width less the element's own horizontal padding and border. Otherwise —
 empty text included — the slot goes back to the element's own cascade, dropping a previously
 balanced width and restoring a co-present `w-*` value. A `white-space: nowrap` element reaches the
 same verdict through the same comparison, which is why the prerequisite above is silent rather than

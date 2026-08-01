@@ -39,8 +39,8 @@ namespace Velvet
     // the class again.
     //
     // Single-line gate: CSS balance is a no-op on one line, and narrowing a single-line box would shrink it
-    // for no parity benefit. Measured at the ceiling-clamped width, so text that fits the parent but wraps
-    // inside the ceiling still balances. A nowrap element reaches the same verdict through the same
+    // for no parity benefit. Measured at the width the text actually gets — ceiling-clamped, less the
+    // element's own frame — so text that fits the parent but wraps inside either still balances. A nowrap element reaches the same verdict through the same
     // comparison, since MeasureTextSize honors the element's own resolved white-space.
     //
     // Prerequisite: Velvet's Label ships no base white-space rule, so its engine default is nowrap and
@@ -68,8 +68,9 @@ namespace Velvet
         // mirroring StyleGridManipulator's WrapSafetyPx.
         private const float HeightEpsilonPx = 0.5f;
 
-        // A ceiling at or below this leaves nothing to redistribute, and keeps the search from being
-        // entered with a floor above its own upper bound.
+        // Content room at or below this leaves nothing to redistribute, and keeps the search from being
+        // entered with a floor above its own upper bound. A frame wider than the ceiling reaches it too,
+        // which is why the released box can be far wider than this value.
         private const float MinBalanceableWidthPx = 1f;
 
         // Answers whether the target's parent is a grid container, whose manipulator writes the same slot.
@@ -225,7 +226,7 @@ namespace Velvet
 
             if (content < MinBalanceableWidthPx)
             {
-                // The engine applies a ceiling this narrow to the released box on its own.
+                // Nothing to search over. Whatever the cascade then gives the box is the right answer here.
                 ReleaseWidth(textElement);
                 _lastSignature = signature;
                 _hasSignature = true;

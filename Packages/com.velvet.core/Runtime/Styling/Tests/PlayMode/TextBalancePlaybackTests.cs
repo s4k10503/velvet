@@ -53,8 +53,6 @@ namespace Velvet.Tests
             return null;
         };
 
-        // Wide enough that the frame it adds moves the wrap point, narrow enough to stay inside the
-        // wrapper widths below.
         private const float PaddingPx = 3f;
 
         // The wrapper's direction, supplied inline for the same reason the font is: no stylesheet is
@@ -174,6 +172,41 @@ namespace Velvet.Tests
             });
             _mounted = V.Mount(_host.Root, tree);
             yield return WaitRealtime(0.5);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_APaddedBalancedLabel_When_ItsBoxIsCompared_Then_ItIsNotTheOneAnUnpaddedLabelGets()
+        {
+            // Arrange / Act — two balanced labels, same text, same wrapper width, differing only in
+            // padding. This is the shape of the defect stated without reference to where a wrap threshold
+            // falls: the search answered the same number for both, because it never read the padding.
+            _host = new RenderTexturePanelHost("TextBalancePaddingResponsePanel", 400, 400);
+            var tree = V.Div(children: new VNode[]
+            {
+                V.Div(className: $"w-[{WrapperWidthPx}px]", children: new VNode[]
+                {
+                    V.Label(name: "unpadded", text: LongWrapText, className: "text-balance",
+                        refCallback: s_wrapWithFontRef),
+                }),
+                V.Div(className: $"w-[{WrapperWidthPx}px]", children: new VNode[]
+                {
+                    V.Label(name: "padded", text: LongWrapText, className: "text-balance",
+                        refCallback: s_wrapWithFontAndPaddingRef),
+                }),
+            });
+            _mounted = V.Mount(_host.Root, tree);
+            yield return WaitRealtime(0.5);
+            var unpadded = _host.Root.Q<Label>("unpadded");
+            var padded = _host.Root.Q<Label>("padded");
+            Assume.That(padded.resolvedStyle.height, Is.GreaterThan(padded.resolvedStyle.fontSize * 1.5f),
+                "Precondition: the text wrapped, so balance wrote a real width rather than releasing");
+
+            // Assert — the two boxes differ. Before the fix they were bit-identical whatever the text did,
+            // so the floating-point margin separates the right outcome from the wrong one without a
+            // hand-picked pixel budget.
+            Assert.That(
+                Mathf.Abs(padded.resolvedStyle.width - unpadded.resolvedStyle.width),
+                Is.GreaterThan(0.5f));
         }
 
         [UnityTest]
