@@ -22,7 +22,7 @@ name: Source generators
 # A re-include must stay after '!**.md' — the last matching pattern is the one that decides.
 #
 # The list is the push trigger's alone. pull_request and merge_group carry no path filter and must not
-# gain one, for the reason test.yml states over its own triggers.
+# gain one, and both triggers must stay present, for the reasons test.yml states over its own.
 on:
   push:
     branches: [main]

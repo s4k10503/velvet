@@ -16,9 +16,9 @@ namespace Velvet.Tests
     /// later, unrelated change happens to carry a file inside it — and then names that change as the
     /// culprit.
     /// <para>
-    /// The pull_request side is held by a different rule, and the last case here is the whole of it: it
-    /// carries no filter at all, because branch protection requires a check from each of these workflows
-    /// and a required check whose workflow never starts stays Pending with nothing able to satisfy it.
+    /// The trigger side is held by different rules, and the last two cases here are the whole of them:
+    /// branch protection requires a check from each of these workflows, so each must subscribe to every
+    /// event that asks for one, and neither of those subscriptions may carry a path filter.
     /// </para>
     /// </summary>
     [TestFixture]
@@ -148,24 +148,69 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_EachSubscribesToTheMergeGroup()
+        {
+            // Arrange — a required check reports nothing for a queue entry unless its workflow subscribes to
+            // merge_group, and the entry then waits on a check that can never arrive. The subscription is a
+            // key with no children, which is the shape an edit removes without leaving a gap.
+            var workflows = RequiredCheckWorkflows;
+
+            // Act
+            var missing = workflows
+                .Where(workflow => !Triggers(workflow).Contains("merge_group"))
+                .ToList();
+
+            // Assert — the list's size rides along, so a reader that found no workflows at all would report
+            // nothing missing and pass having read nothing.
+            Assert.That((workflows.Length, string.Join(", ", missing)), Is.EqualTo((2, string.Empty)));
+        }
+
+        [Test]
         public void Given_TheWorkflowsBranchProtectionRequires_When_TheirTriggersAreRead_Then_OnlyPushFiltersByPath()
         {
             // Arrange
             var filters = RequiredCheckWorkflows.SelectMany(TriggerFilters).ToList();
 
-            // Act — both halves in one reading: a parser that found nothing satisfies "no pull_request
-            // filter" exactly, and that is the state a renamed key or a reformatted trigger block produces.
+            // Act — both halves in one reading: a parser that found nothing satisfies "no filter on either
+            // gated trigger" exactly, and that is the state a renamed key or a reformatted trigger block
+            // produces.
             var onPush = filters.Count(entry => entry.Trigger == "push");
             var onGated = filters
                 .Where(entry => entry.Trigger is "pull_request" or "merge_group")
                 .Select(entry => $"{entry.Workflow}: {entry.Trigger}.{entry.Key}")
                 .ToList();
 
-            // Assert — merge_group answers to the same rule as pull_request: a queue entry whose required
-            // check never starts is stranded exactly as a pull request is.
+            // Assert — the two gated triggers fail differently and are held together anyway: a path filter
+            // under pull_request leaves the check Pending, and under merge_group GitHub rejects the file
+            // outright. Filter the push trigger instead.
             Assert.That((onPush, string.Join(", ", onGated)), Is.EqualTo((2, string.Empty)),
-                "A required check reports Pending forever when a path filter stops its workflow from "
-                + "starting, and no push can clear it. Filter the push trigger instead.");
+                "A required check GitHub does not start has nothing able to clear it.");
+        }
+
+        // The trigger names a workflow subscribes to. Read separately from the filters below because their
+        // absence and a trigger's absence are different failures: a filter that should not be there fails
+        // the guard by appearing, and a trigger that must be there fails it by not.
+        private static IEnumerable<string> Triggers(string workflow)
+        {
+            var underOn = false;
+            foreach (var line in File.ReadAllLines(Path.GetFullPath(workflow)))
+            {
+                var key = KeyPattern.Match(line);
+                if (!key.Success)
+                {
+                    continue;
+                }
+                var indent = key.Groups[1].Value.Length;
+                var name = key.Groups[2].Value;
+                if (indent == 0)
+                {
+                    underOn = name == "on";
+                }
+                else if (underOn && indent == 2)
+                {
+                    yield return name;
+                }
+            }
         }
 
         // Both paths and paths-ignore stop a workflow from starting, so a guard naming one leaves the other
