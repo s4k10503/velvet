@@ -40,6 +40,25 @@ story capture near-blank, and a panel whose height was its content's rather than
 green under every check and visible immediately in the PNG. Interactively the same stories are live
 in **Window ▸ Velvet ▸ Preview**.
 
+### A batchmode run that finishes but stays in the process list
+
+A Unity process can finish its work and then fail to exit. It shows in `ps` with state `UE` —
+uninterruptible wait while exiting — and `kill -9` does not remove it: measured on the editor
+process, still `UE` two seconds after the signal.
+
+The run's result is not affected. Check the log before treating one as a failure:
+
+```bash
+ps -eo pid,stat,etime,time,comm | grep -i unity
+grep -c "Exiting batchmode successfully now!" <logfile>
+```
+
+A log carrying that line has done its work, and its results stand even while the process is still
+listed. Every such log observed here ends inside the shutdown sequence and none inside a build.
+
+Ten of these were resident while twenty-five editor invocations ran on the same machine — eight
+player builds and fifteen EditMode suites — and all twenty-five completed.
+
 ### Checking that the tests can fail
 
 A green suite says nothing about whether the tests would have noticed the change. `scripts/mutation-check.py`
