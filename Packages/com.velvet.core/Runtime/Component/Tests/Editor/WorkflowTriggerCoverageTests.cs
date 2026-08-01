@@ -183,11 +183,10 @@ namespace Velvet.Tests
                 .Select(entry => $"{entry.Workflow}: {entry.Trigger}.{entry.Key}")
                 .ToList();
 
-            // Assert — a filter under pull_request leaves the check Pending today. Under merge_group GitHub
-            // accepts it and does not honour it, so the bar there is against stating an intent the required
-            // checks could not survive if that changed. Filter the push trigger instead.
+            // Assert
             Assert.That((onPush, string.Join(", ", onGated)), Is.EqualTo((2, string.Empty)),
-                "A required check GitHub does not start has nothing able to clear it.");
+                "Filter the push trigger, never pull_request or merge_group: a required check that does "
+                + "not start has nothing able to clear it.");
         }
 
         // Read separately from the filters below because their absence and a trigger's absence are

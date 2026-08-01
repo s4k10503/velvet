@@ -103,10 +103,9 @@ fork with no `UNITY_LICENSE` merge, since `unity-tests` is skipped in exactly th
 
 Path filtering therefore applies to `push` only. Every pull request runs both workflows, and so does every
 merge-group entry once a queue is turned on — the `merge_group:` keys are there for that, and
-`WorkflowTriggerCoverageTests` fails if either goes missing or gains a filter. GitHub accepts a path filter
-under `merge_group` and does not honour it, so one there does not skip anything today; it is barred because
-it states an intent the required checks cannot survive if GitHub ever starts honouring it. Skipping work per
-queue entry is a job-level condition, not a trigger filter.
+`WorkflowTriggerCoverageTests` fails if either of the two gated triggers goes missing from either workflow,
+or gains a path filter. Skipping work per queue entry is a job-level condition, not a trigger filter: a
+required check that does not start has nothing able to clear it.
 
 `main` does not require heads to be up to date before merging. That setting serialises the queue — each
 merge invalidates every other branch's run, and the Unity matrix is 21–25 minutes — without testing the
