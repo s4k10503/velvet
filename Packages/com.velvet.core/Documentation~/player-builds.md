@@ -49,11 +49,16 @@ the project uses it or not.
 **What it costs, measured in a built player rather than argued.** Two StandaloneOSX builds of this
 repository's own sample scene, identical but for the presence of that folder:
 
-| | build |
-|---|---|
-| with the `Resources` folder | 115,751,014 bytes |
-| without it | 115,497,606 bytes |
-| difference | **253,408 bytes**, 0.22% of the build |
+| | build | engine startup |
+|---|---|---|
+| with the `Resources` folder | 115,751,014 bytes | 0.133 / 0.131 / 0.130 s |
+| without it | 115,497,606 bytes | 0.084 / 0.084 / 0.086 s |
+| difference | **253,408 bytes**, 0.22% of the build | **about 46 ms** |
+
+Startup is `Time.realtimeSinceStartup` read from a `[RuntimeInitializeOnLoadMethod]`, three runs each, and
+the spread within an arm is one to two milliseconds. The 46 ms is what eager loading costs: everything in
+a `Resources` folder is loaded whether the project touches it or not, which is the one charge the
+alternatives genuinely avoid — they would move it to whenever the sheet is first attached.
 
 The whole difference is `resources.assets`, and the payload is the stylesheet itself: the 605-byte file in
 `Resources` is one `@import`, and what lands in the player is the 184 KB of USS under `Runtime/Styles/`
