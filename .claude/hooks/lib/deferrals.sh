@@ -1,3 +1,6 @@
+# shellcheck shell=bash
+# shellcheck disable=SC2034  # DEFER_REASON and DEFER_AGE are read by the guard that calls this.
+#
 # A merge or a pause held on purpose — a review in flight, a dependency on another change, a user
 # waiting on an answer — is not the failure the Stop guards exist for, but "I am waiting" is exactly
 # what a nine-hour stall said too. So a deferral is accepted and EXPIRES: it names what is held,
