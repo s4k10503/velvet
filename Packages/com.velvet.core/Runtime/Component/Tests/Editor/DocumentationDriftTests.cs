@@ -43,7 +43,7 @@ namespace Velvet.Tests
         // ID, which that guard's VEL\d{3} pattern is right not to match.
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
-            "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "ResolveDirection", "Inter", "CS",
+            "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "Npx", "ResolveDirection", "Inter", "CS",
             "AnimatedList", "PointerSensor", "KeyboardSensor", "MeasuringConfiguration", "Collision",
             "MultiColumnListView", "PopupWindow", "TreeView", "TabView", "ToggleButtonGroup", "Raycast",
             "GetAllocatedBytesForCurrentThread", "FocusController", "ScaleWithScreenSize", "RoslynAnalyzer",
@@ -54,6 +54,15 @@ namespace Velvet.Tests
         };
 
         private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef" };
+
+        // USS has only the block form; there is no line comment to miss.
+        private static readonly Regex UssCommentPattern =
+            new(@"/\*.*?\*/", RegexOptions.Compiled | RegexOptions.Singleline);
+
+        // A YAML comment needs the hash at the start of a line or after whitespace, which is what keeps a
+        // hash inside a value — a colour literal, a fragment in a URL — out of it.
+        private static readonly Regex YamlCommentPattern =
+            new(@"(?<=^|\s)#[^\n]*", RegexOptions.Compiled | RegexOptions.Multiline);
 
         // The walk is rooted rather than filtered because this repo's own workflow puts full checkouts of
         // itself under .claude/worktrees/ while a suite runs: an exclusion list has to anticipate every such
@@ -144,6 +153,33 @@ namespace Velvet.Tests
         private static readonly Regex CSharpCommentOrStringPattern = new(
             CommentOrStringAlternation + "|" + RegionLabelAlternation,
             RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.Multiline);
+
+        [Test]
+        public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_NoWordSurvivesOnlyInAComment()
+        {
+            // Arrange — the same corpus with the non-C# formats left whole, which is the control: the
+            // difference between the two sets is what their comments were contributing, and nothing else
+            // here can produce it.
+            var word = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
+            var keepingComments = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var entry in RepoEntries.Value.Where(e =>
+                         (e.EndsWith(".uss", StringComparison.Ordinal)
+                          || e.EndsWith(".yml", StringComparison.Ordinal)) && File.Exists(e)))
+            {
+                foreach (Match token in word.Matches(File.ReadAllText(entry)))
+                {
+                    keepingComments.Add(token.Value);
+                }
+            }
+
+            // Act
+            var removed = keepingComments.Where(w => !SourceIdentifiers.Value.Contains(w)).ToList();
+
+            // Assert — a strip that is not running removes nothing, so an empty reading is the shape that
+            // catches it. What it removes is not enumerated: the sheets and the workflows are edited freely
+            // and the list would be a mirror of them.
+            Assert.That(removed.Count, Is.GreaterThan(0));
+        }
 
         [Test]
         public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_TheRegionStripTakesOnlyLabelWords()
@@ -382,11 +418,7 @@ namespace Velvet.Tests
                 {
                     continue;
                 }
-                var text = File.ReadAllText(entry);
-                if (entry.EndsWith(".cs", StringComparison.Ordinal))
-                {
-                    text = CSharpCommentOrStringPattern.Replace(text, " ");
-                }
+                var text = StripProse(entry, File.ReadAllText(entry));
                 foreach (Match match in words.Matches(text))
                 {
                     identifiers.Add(match.Value);
@@ -394,6 +426,28 @@ namespace Velvet.Tests
             }
             return identifiers;
         });
+
+        // Comments are prose in every format that has them, so a name surviving only in one is a deleted
+        // name as far as any caller is concerned. Strings are not: in C# a string is a label for code, while
+        // in USS, YAML, JSON and an asmdef the string IS the content, and the CI variable names a document
+        // cites live in exactly those. So C# loses both and the rest lose only their comments. JSON and
+        // asmdef have no comment syntax to lose.
+        private static string StripProse(string entry, string text)
+        {
+            if (entry.EndsWith(".cs", StringComparison.Ordinal))
+            {
+                return CSharpCommentOrStringPattern.Replace(text, " ");
+            }
+            if (entry.EndsWith(".uss", StringComparison.Ordinal))
+            {
+                return UssCommentPattern.Replace(text, " ");
+            }
+            if (entry.EndsWith(".yml", StringComparison.Ordinal))
+            {
+                return YamlCommentPattern.Replace(text, " ");
+            }
+            return text;
+        }
 
         // A wildcard leaf (Runtime/Styles/*.uss) resolves only when its directory actually holds a matching
         // file: the directory existing is not the claim the document made. A wildcard anywhere EARLIER in the
