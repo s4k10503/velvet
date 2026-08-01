@@ -41,36 +41,35 @@ missing shader in one warning for the run rather than one per element the paint 
 
 ## The utility stylesheet
 
-`Runtime/Resources/Velvet/StyleUtilities.uss` imports the bundled utilities, which is what pulls them and
-their partials into a build; [setup.md](setup.md) owns what the sheet is and how to put it on a panel.
-Everything under a `Resources` folder is in every build of every project that installs the package, whether
-the project uses it or not.
+`Runtime/Styles/StyleUtilities.uss` and its partials reach a build through
+`Runtime/Assets/VelvetRuntimeAssets.asset`, a small holder the package adds to **PlayerSettings' preloaded
+assets** in an `IPreprocessBuildWithReport` step and removes again in the matching post-process step.
+[setup.md](setup.md) owns what the sheet is and how to put it on a panel.
 
-**What it costs, measured in a built player rather than argued.** Two StandaloneOSX builds of this
-repository's own sample scene, identical but for the presence of that folder:
+The holder exists because the two environments answer different questions. A player has no asset database,
+so the sheet has to arrive as a reference something already holds; preloading loads an object but gives no
+way to look one up, so the preloaded object publishes itself as it loads. The editor has no preloaded
+assets and reads the file directly. Neither path is a fallback for the other.
 
-| | build | engine startup |
-|---|---|---|
-| with the `Resources` folder | 115,751,014 bytes | 0.133 / 0.131 / 0.130 s |
-| without it | 115,497,606 bytes | 0.084 / 0.084 / 0.086 s |
-| difference | **253,408 bytes**, 0.22% of the build | **about 46 ms** |
+**What it costs, measured in built players rather than argued.** Three StandaloneOSX builds of this
+repository's own sample scene, differing only in how the sheet reaches them:
 
-Startup is `Time.realtimeSinceStartup` read from a `[RuntimeInitializeOnLoadMethod]`, three runs each, and
-the spread within an arm is one to two milliseconds. The 46 ms is what eager loading costs: everything in
-a `Resources` folder is loaded whether the project touches it or not, which is the one charge the
-alternatives genuinely avoid — they would move it to whenever the sheet is first attached.
+| | engine startup |
+|---|---|
+| preloaded holder (what ships) | 0.106 / 0.105 / 0.105 s |
+| a `Resources` folder (what shipped before) | 0.133 / 0.131 / 0.130 s |
+| neither, so the sheet is absent | 0.084 / 0.084 / 0.086 s |
 
-The whole difference is `resources.assets`, and the payload is the stylesheet itself: the 605-byte file in
-`Resources` is one `@import`, and what lands in the player is the 184 KB of USS under `Runtime/Styles/`
-serialised as a resolved `StyleSheet`.
+Startup is `Time.realtimeSinceStartup` read from a `[RuntimeInitializeOnLoadMethod]`, three runs each, one
+to two milliseconds of spread inside each arm. So the sheet costs about **21 ms** to have in a player, and
+the `Resources` folder cost about **46 ms** for the same sheet — the folder loads its whole contents at
+startup whether the project touches them or not.
 
-**So the number is the cost of shipping the stylesheet, not the cost of the mechanism that ships it.**
-Addressables or a serialized reference would put the same bytes in the same build; what they would change
-is who sets it up. Addressables asks the consumer to create a group and run an Addressables build, and a
-package cannot assume either has happened — a first-run failure there is worse than 253 KB. So `Resources`
-stays, for one asset, and this is the measurement that says so rather than the assumption that said so
-before.
+The bytes are the same either way: 253,408 bytes, 0.22% of the build, and that is the stylesheet itself —
+184 KB of USS serialised as a resolved `StyleSheet`. Any mechanism that delivers it carries that.
 
-The two mechanisms on this page differ because the inclusion rules do — a build strips shader variants no
-scene reaches, while a `Resources` asset is included wholesale — but the principle is one: the package must
-work on a fresh install with no consumer setup, and each mechanism states what it adds to your build.
+**Why not `Resources`, given it needs no build step.** Unity documents the folder as the thing to avoid,
+and it measured at more than twice the startup for the same asset. **Why not Addressables**, which is the
+documented replacement: it asks the consumer to create a group and run an Addressables build, and a package
+cannot assume either has happened — a first-run failure there is worse than either number here.
+

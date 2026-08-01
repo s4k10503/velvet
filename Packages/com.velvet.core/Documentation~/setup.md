@@ -65,15 +65,15 @@ rather than returning null when the asset cannot be found, because a null sheet 
 
 ### How it reaches a player, and what that costs
 
-`AssetDatabase`, the ordinary way to reach an asset by path, exists only in the editor. What the call
-above uses instead is a `Resources` asset the package ships,
-`Packages/com.velvet.core/Runtime/Resources/Velvet/StyleUtilities.uss`, which does nothing but
-`@import` the sheet above it — the utilities keep their single location, and the import pulls them
-and every partial into the build as dependencies of the imported asset.
+`AssetDatabase`, the ordinary way to reach an asset by path, exists only in the editor. In a player the
+call above reads a reference instead: the package ships
+`Packages/com.velvet.core/Runtime/Assets/VelvetRuntimeAssets.asset`, a holder pointing at the sheet, and a
+build step adds it to PlayerSettings' preloaded assets so it is in the build and loaded before the first
+scene runs. You do not configure any of that.
 
-A `Resources` folder is included in every build of every project that has the package installed,
-whether or not anything calls `AttachTo`. [player-builds.md](player-builds.md) lists what Velvet's
-carries and what that costs.
+The sheet is in every build of every project that has the package installed, whether or not anything calls
+`AttachTo`. [player-builds.md](player-builds.md) says what that costs and why this mechanism rather than a
+`Resources` folder.
 
 ## The alternative: reference the asset from your scene
 

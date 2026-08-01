@@ -20,10 +20,14 @@ namespace Velvet
     public static class VelvetStyleUtilities
     {
         /// <summary>
-        /// The <see cref="Resources"/> path of the sheet, without extension. Public so a project that builds
-        /// its own asset pipeline around <c>Resources.Load</c> can address the same asset.
+        /// The package path of the holder a build preloads, which is what carries the sheet into a player.
         /// </summary>
-        public const string ResourcePath = "Velvet/StyleUtilities";
+        internal const string RuntimeAssetsPath =
+            "Packages/com.velvet.core/Runtime/Assets/VelvetRuntimeAssets.asset";
+
+        /// <summary>The package path of the sheet itself, which the editor loads directly.</summary>
+        internal const string StyleSheetAssetPath =
+            "Packages/com.velvet.core/Runtime/Styles/StyleUtilities.uss";
 
         /// <summary>
         /// The class the sheet keys its dark token set on. Public so an application that sets the class from
@@ -38,8 +42,8 @@ namespace Velvet
         /// <summary>
         /// The bundled utility stylesheet. Loads on first access and is held for the lifetime of the domain.
         /// </summary>
-        /// <exception cref="InvalidOperationException">The package's <c>Resources</c> asset is absent — the
-        /// build stripped it, or the package was vendored without <c>Runtime/Resources/</c>.</exception>
+        /// <exception cref="InvalidOperationException">Neither the preloaded holder nor, in the editor, the
+        /// asset itself could be resolved.</exception>
         public static StyleSheet Sheet
         {
             get
@@ -48,18 +52,37 @@ namespace Velvet
                 // destroyed asset, which a domain-surviving static would otherwise keep handing out.
                 if (_sheet == null)
                 {
-                    _sheet = Resources.Load<StyleSheet>(ResourcePath);
+                    _sheet = Load();
                     if (_sheet == null)
                     {
                         throw new InvalidOperationException(
-                            $"Velvet's bundled utility stylesheet was not found at Resources path " +
-                            $"'{ResourcePath}'. It ships in com.velvet.core under Runtime/Resources/; a build " +
-                            $"that cannot find it has had the package's Resources folder removed.");
+                            "Velvet's bundled utility stylesheet was not found. In a player it arrives "
+                            + $"through '{RuntimeAssetsPath}', which the package's build step adds to "
+                            + "PlayerSettings' preloaded assets; a build that cannot find it was made with "
+                            + "that step disabled or with the asset removed from the package.");
                     }
                 }
 
                 return _sheet;
             }
+        }
+
+        // Two paths because the two environments answer different questions. A player has no asset
+        // database, so the sheet has to arrive as a reference something already holds — the preloaded
+        // holder. The editor has no preloaded assets, so it reads the file. Neither is a fallback for the
+        // other: each is the only one that works where it runs.
+        private static StyleSheet? Load()
+        {
+            var preloaded = VelvetRuntimeAssets.Instance;
+            if (preloaded != null && preloaded.StyleUtilities != null)
+            {
+                return preloaded.StyleUtilities;
+            }
+#if UNITY_EDITOR
+            return UnityEditor.AssetDatabase.LoadAssetAtPath<StyleSheet>(StyleSheetAssetPath);
+#else
+            return null;
+#endif
         }
 
         /// <summary>
