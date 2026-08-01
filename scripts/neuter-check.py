@@ -108,6 +108,74 @@ def locate(project, edit):
     return brace, None
 
 
+def git_porcelain(project):
+    result = subprocess.run(["git", "-C", str(project), "status", "--porcelain"],
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "git status failed")
+    entries = {}
+    for line in result.stdout.splitlines():
+        if not line.strip():
+            continue
+        status = line[:2]
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        entries[path] = status
+    return entries
+
+
+def path_in_harness_output(project, path, output_dir):
+    try:
+        output_dir.resolve().relative_to(project.resolve())
+    except ValueError:
+        return False
+    resolved = (project / path).resolve()
+    output_resolved = output_dir.resolve()
+    try:
+        resolved.relative_to(output_resolved)
+        return True
+    except ValueError:
+        pass
+    try:
+        output_resolved.relative_to(resolved)
+        return True
+    except ValueError:
+        return False
+
+
+def restore_foreign_dirty(project, cut, before_dirty, output_dir):
+    """A cut's revert() only puts back files listed in the cut map.
+
+    The cut runs first, so the fixture exercises disabled code and its teardown cannot undo what that
+    run wrote. Cutting the revert of BundledShaderBuildInclusion and BundledStyleSheetBuildInclusion left
+    ProjectSettings/GraphicsSettings.asset and ProjectSettings/ProjectSettings.asset modified after the
+    sweep finished.
+    """
+    try:
+        after_dirty = git_porcelain(project)
+    except RuntimeError as exc:
+        print(f"    failed to read git status: {exc}", flush=True)
+        return
+    cut_files = {edit["file"] for edit in cut["edits"]}
+    foreign = sorted(
+        path for path in set(after_dirty) - set(before_dirty) - cut_files
+        if not path_in_harness_output(project, path, output_dir)
+    )
+    for path in foreign:
+        if after_dirty[path] == "??":
+            command = ["git", "-C", str(project), "clean", "-fd", "--", path]
+        else:
+            command = ["git", "-C", str(project), "restore", "--source=HEAD",
+                         "--staged", "--worktree", "--", path]
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout).strip()
+            print(f"    failed to restore {path}: {detail}", flush=True)
+        else:
+            print(f"    restored {path}", flush=True)
+
+
 def dirty_cut_files(project, cuts):
     """Cut files git already reports as modified.
 
@@ -296,6 +364,7 @@ def main():
             if not wait_for_quiet(args.busy_timeout):
                 print("error: the machine did not go quiet", file=sys.stderr)
                 return 1
+            before_dirty = git_porcelain(project)
             originals = apply_cut(project, cut)
             try:
                 elapsed, killed, peak = run_suite(
@@ -303,6 +372,7 @@ def main():
                     out / f"{short}-{name}.xml", out / f"{short}-{name}.log", args.timeout)
             finally:
                 revert(originals)
+                restore_foreign_dirty(project, cut, before_dirty, out)
             holes = report_pair(entry, name, cut, baseline,
                                 None if killed else outcomes(out / f"{short}-{name}.xml"),
                                 elapsed, peak)
