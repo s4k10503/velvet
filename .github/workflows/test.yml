@@ -96,6 +96,7 @@ jobs:
             Library-${{ matrix.testMode }}-
 
       - name: Run ${{ matrix.testMode }} tests
+        id: unity-tests
         uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -116,6 +117,13 @@ jobs:
           projectPath: .
           artifactsPath: ${{ matrix.testMode }}-results
           githubToken: ${{ secrets.GITHUB_TOKEN }}
+          # Without assemblyFilters the default covers Assets/ only, and the package lives under
+          # Packages/com.velvet.core: measured, the default reports 236 coverable lines of sample
+          # code where the filter below reports 27255 of the package's own.
+          # Unity.Velvet.CodeGen is left out because the compilation pipeline loads it rather than
+          # the test domain, so a figure for it would read zero for code every compile exercises.
+          coverageOptions: >-
+            generateAdditionalMetrics;generateHtmlReport;generateBadgeReport;dontClear;assemblyFilters:+Velvet,+Velvet.Editor
 
       # Unity exits 0 on an inconclusive case and game-ci's reporter reads only
       # passed/failed/skipped off <test-run>, so a test whose Assume stopped holding
@@ -130,6 +138,15 @@ jobs:
         with:
           name: Test results (${{ matrix.testMode }})
           path: ${{ matrix.testMode }}-results
+
+      # game-ci passes -enableCodeCoverage on every run whatever this workflow asks for, so the
+      # recorder's cost is paid either way; what the manifest's com.unity.testtools.codecoverage
+      # adds is the directory this output names.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: Code coverage (${{ matrix.testMode }})
+          path: ${{ steps.unity-tests.outputs.coveragePath }}
 
   # ---------------------------------------------------------------------------
   # The one check branch protection requires from this workflow. Naming a real
