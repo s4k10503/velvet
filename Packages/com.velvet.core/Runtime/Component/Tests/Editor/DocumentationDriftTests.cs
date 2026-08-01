@@ -412,7 +412,7 @@ namespace Velvet.Tests
         // real declarations would need every one of those toolchains loaded into the test. What it does care
         // about is that the word is code — see the stripping patterns for why prose cannot be trusted here.
         // What is stripped per format is StripProse's to say.
-        private static readonly Lazy<HashSet<string>> SourceIdentifiers = new(() =>
+        internal static readonly Lazy<HashSet<string>> SourceIdentifiers = new(() =>
         {
             var words = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
             var identifiers = new HashSet<string>(StringComparer.Ordinal);
