@@ -17,9 +17,8 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// A themeless <see cref="RenderTexturePanelHost"/> panel has no font — every Label measures zero
-    /// tall — and a Label's engine default is nowrap, so every label here supplies both inline via
-    /// refCallback (a built-in Font plus <c>WhiteSpace.Normal</c>) rather than relying on a stylesheet
-    /// that was never loaded onto this panel. No stylesheet is needed for the `w-[Npx]` wrapper width or
+    /// tall — so every label here supplies one inline via refCallback, along with the white-space its own
+    /// classes would otherwise have to come from a stylesheet for. No stylesheet is needed for the `w-[Npx]` wrapper width or
     /// the `text-balance` class either: both are arbitrary-value / classifier tokens Velvet resolves in
     /// C#, independent of any USS asset (mirrors <c>BuiltInFilterShaderPlaybackTests</c>' own
     /// stylesheet-less `w-[100px]` usage). The one exception is the `max-w-32` case, which exists only as
@@ -124,7 +123,7 @@ namespace Velvet.Tests
         // loadUtilities attaches the bundled stylesheet, which the USS scale forms need and the
         // arbitrary-value forms resolve without. probeText adds a plain sibling, which is where a case
         // that needs "the width nothing writes" reads it from — measured, rather than restated as the
-        // wrapper constant, which is the same number only on a panel whose theme styles Labels not at all.
+        // wrapper constant.
         private IEnumerator MountWithSizingClass(
             string panelName, string text, string boundClass, bool loadUtilities = false, string probeText = null)
         {
@@ -675,10 +674,8 @@ namespace Velvet.Tests
         {
             // Arrange — the over-estimate the class doc calls harmless is not, in a row: the search
             // measures against the whole row, so the balanced box plus its sibling exceed it. Measured to
-            // be the same under either write slot, because Yoga folds a child's max-width into the MEASURE
-            // constraint before computing a flex basis, and wrapping text measured under that cap returns
-            // the cap itself — the same basis a width sets outright. So this pins a consequence of
-            // measuring against the parent, not of the slot.
+            // be the same under either write slot, so this pins a consequence of measuring against the
+            // parent rather than of the slot.
             _host = new RenderTexturePanelHost("TextBalanceRowSiblingPanel", 400, 400);
             var tree = V.Div(className: $"w-[{WrapperWidthPx}px]", refCallback: s_rowRef, children: new VNode[]
             {
