@@ -234,6 +234,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnUnwritableSettingsFile_When_TheRecordNamesNothingToRemove_Then_TheRecordIsStillGone()
+        {
+            // Arrange — the same finished record as the case above, on a project whose settings file cannot
+            // be written. A Perforce checkout is the ordinary way to get here, and it is where a consumer
+            // is likeliest to have removed the entries by hand in the first place.
+            File.WriteAllLines(RecordFilePath(), VelvetShaders.Names);
+            SessionState.EraseString(LiveSessionKey());
+
+            // Act
+            using (File.Open(GraphicsSettingsAsset, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                BundledShaderBuildInclusion.RevertWhatAnEndedSessionLeft();
+            }
+
+            // Assert — a pass that removes nothing writes nothing, so it has no reason to ask whether it
+            // could. Asking anyway is what left the record here forever.
+            Assert.That(File.Exists(RecordFilePath()), Is.False);
+        }
+
+        [Test]
         public void Given_ARecordedNameThatNoLongerResolves_When_TheRevertRuns_Then_ItKeepsTheRecord()
         {
             // Arrange — a build died leaving a record, and by the time it is read one recorded name resolves

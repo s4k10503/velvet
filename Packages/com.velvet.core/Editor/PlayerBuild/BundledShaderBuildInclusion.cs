@@ -159,8 +159,7 @@ namespace Velvet.Editor
                 {
                     // Only this arm keeps the record. A name that resolves while the list holds no entry
                     // for it is finished business — the consumer deleted it themselves, say — and keeping
-                    // its record would strand it: every domain reload from then on rewrites the record and
-                    // flushes the consumer's whole dirty asset set, until a build overwrites it.
+                    // its record would strand it, with nothing but a later build's own write to clear it.
                     unresolved.Add(name);
                     continue;
                 }
