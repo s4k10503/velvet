@@ -16,6 +16,11 @@ namespace Velvet
     /// The alternative was a <c>Resources</c> folder, which is a lookup by name and needs no build step at
     /// all. <c>Documentation~/player-builds.md</c> holds what each one cost.
     /// </para>
+    /// <para>
+    /// Kept explicitly rather than left to the linker: a build that strips this type or its enable message
+    /// leaves the sheet unreachable for the whole run, and no suite in this repository builds under managed
+    /// stripping, so nothing here would report it.
+    /// </para>
     /// </remarks>
     [Preserve]
     public sealed class VelvetRuntimeAssets : ScriptableObject
@@ -30,8 +35,6 @@ namespace Velvet
 
         internal StyleSheet? StyleUtilities => _styleUtilities;
 
-        // Do not read this from a SubsystemRegistration hook: Velvet's own resetters run there, and whether
-        // preloading has happened by then is not something this package establishes anywhere.
         [Preserve]
         private void OnEnable() => s_instance = this;
 

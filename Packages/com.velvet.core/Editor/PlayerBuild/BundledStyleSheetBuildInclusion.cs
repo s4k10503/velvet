@@ -130,21 +130,33 @@ namespace Velvet.Editor
             // holder must still be able to remove the entry an older build added.
             var preloaded = PlayerSettings.GetPreloadedAssets().ToList();
             var unresolved = new List<string>();
+            var removed = false;
             foreach (var path in File.ReadAllLines(RecordFile))
             {
                 var holder = HolderAt(path);
-                if (holder == null || !preloaded.Remove(holder))
+                if (holder == null)
                 {
+                    // Only this arm keeps the record. A path that resolves but names nothing in the list is
+                    // finished business — a build that recorded and then never added, which is a whole build
+                    // long now that the injection does not save — and holding its record would strand it:
+                    // the repair runs on every domain reload, so it would save project settings on every
+                    // script recompile for the rest of the project's life.
                     unresolved.Add(path);
+                    continue;
                 }
+                removed |= preloaded.Remove(holder);
             }
 
-            // Everything else goes back untouched, for the reason the injection leaves it alone.
-            PlayerSettings.SetPreloadedAssets(preloaded.ToArray());
+            if (removed)
+            {
+                // Everything else goes back untouched, for the reason the injection leaves it alone.
+                PlayerSettings.SetPreloadedAssets(preloaded.ToArray());
 
-            // The build writes project settings to disk while it runs, so undoing the injection in the
-            // loaded object alone would leave the entry in the file the consumer sees.
-            AssetDatabase.SaveAssets();
+                // A build saves project settings before this runs — which is what the file round-trip case
+                // arranges — so undoing the injection in the loaded object alone would leave the entry in
+                // the file the consumer sees.
+                AssetDatabase.SaveAssets();
+            }
 
             // Same reason the sibling keeps its record: an entry this pass could not resolve is still in the
             // consumer's file, and deleting the record is the only thing that could make it unremovable.
@@ -157,7 +169,7 @@ namespace Velvet.Editor
             SessionState.EraseString(LiveSessionKey);
         }
 
-        /// <summary>Whether the holder is currently absent from the preloaded assets.</summary>
+        /// <summary>Whether the preloaded assets currently carry no loadable holder.</summary>
         internal static bool Unreached()
         {
             var holder = Holder();

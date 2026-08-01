@@ -48,10 +48,10 @@ assets** in an `IPreprocessBuildWithReport` step and removes again in the matchi
 
 The holder exists because the two environments answer different questions. A player has no asset database,
 so the sheet has to arrive as a reference something already holds; preloading loads an object but gives no
-way to look one up, so the preloaded object publishes itself as it loads. The editor reads the file
-directly, and falls back to it whenever the holder is not loaded or its reference no longer resolves — so
-no editor run can see a broken holder, which is why `BundledStyleSheetInclusionTests` pins the reference
-against the sheet rather than waiting for a failure.
+way to look one up, so the preloaded object publishes itself as it loads. An editor resolves the sheet
+through the holder too when one is loaded, and falls back to reading the file whenever it is not or its
+reference no longer resolves — so no editor run can see a broken holder, which is why
+`BundledStyleSheetInclusionTests` pins the reference against the sheet rather than waiting for a failure.
 
 **What it costs, measured in built players rather than argued.** Three StandaloneOSX builds of this
 repository's own sample scene, differing only in how the sheet reaches them:

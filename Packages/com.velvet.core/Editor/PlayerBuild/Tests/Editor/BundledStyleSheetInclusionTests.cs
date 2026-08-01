@@ -15,22 +15,26 @@ namespace Velvet.Tests
     /// consumer's PlayerSettings read afterwards exactly as before.
     /// </summary>
     /// <remarks>
-    /// Whether the sheet then resolves in a player is not something an editor run can answer, because the
-    /// editor reads it from the asset database either way. <c>BundledStyleUtilitiesRuntimeTests</c> is the
-    /// fixture that answers it, and only when the suite runs with <c>-testPlatform StandaloneOSX</c>. What
-    /// an editor run can answer is whether the holder still points at the sheet, which is the one link that
-    /// fails in a player alone.
+    /// Whether the sheet then resolves in a player is not something an editor run can answer, because an
+    /// editor that cannot resolve it through the holder falls back to the asset path.
+    /// <c>BundledStyleUtilitiesRuntimeTests</c> is the fixture that answers it, and only when the suite runs
+    /// with <c>-testPlatform StandaloneOSX</c>. What an editor run can answer is whether the holder still
+    /// points at the sheet, which is the one link that fails in a player alone.
     /// </remarks>
     [TestFixture]
     internal sealed class BundledStyleSheetInclusionTests
     {
         private const string SettingsAsset = "ProjectSettings/ProjectSettings.asset";
 
+        // Revert leaves the record in place when a recorded path no longer resolves, which is the behaviour
+        // one case here arranges. Deleting it afterwards is what stops that case handing the next one a
+        // record it cannot act on, and the session key with it.
         [TearDown]
         public void TearDown()
         {
             BundledStyleSheetBuildInclusion.Revert();
             File.Delete(RecordFilePath());
+            SessionState.EraseString(LiveSessionKey());
         }
 
         [Test]
@@ -137,8 +141,9 @@ namespace Velvet.Tests
         public void Given_TheHolderAsset_When_ItsSheetIsRead_Then_ItIsTheOneTheEditorLoadsFromTheAssetPath()
         {
             // Arrange — the one link no other run can see: a player reads the sheet through the holder's
-            // reference, every editor path reads it from the asset database, and a broken reference leaves
-            // both of those working while the shipped player resolves no plain utility class at all.
+            // reference alone, while an editor falls back to the asset path when that reference is broken.
+            // So a broken reference leaves every editor run working and the shipped player resolving no
+            // plain utility class at all.
             var holder = AssetDatabase.LoadAssetAtPath<VelvetRuntimeAssets>(RuntimeAssetsPath());
 
             // Act
@@ -172,11 +177,15 @@ namespace Velvet.Tests
             }
             finally
             {
+                // Saved as well as set, because the revert this case drives saves: leaving the list restored
+                // in memory alone would hand the next case a settings file it never wrote.
                 PlayerSettings.SetPreloadedAssets(owned);
+                AssetDatabase.SaveAssets();
             }
 
-            // Assert
-            Assert.That(slots, Is.EqualTo(1));
+            // Assert — a delta on what the project already held, so a checkout whose preloaded assets carry
+            // an empty slot of their own reads the same as one that does not.
+            Assert.That(slots, Is.EqualTo(owned.Count(asset => asset == null) + 1));
         }
 
         [Test]
@@ -195,11 +204,30 @@ namespace Velvet.Tests
             BundledStyleSheetBuildInclusion.Revert();
 
             // Assert — the record survives carrying exactly what could not be removed, so a later pass can
-            // finish. Both terms in one comparison: a revert that deleted the file and one that left it
-            // holding the whole original list are different failures.
+            // finish. The lines are read before the comparison so that a revert which deleted the file
+            // reports as a missing record rather than throwing out of the tuple's second element.
+            var kept = File.Exists(RecordFilePath()) ? File.ReadAllLines(RecordFilePath()) : null;
             Assert.That(
-                (File.Exists(RecordFilePath()), string.Join(", ", File.ReadAllLines(RecordFilePath()))),
+                (kept != null, string.Join(", ", kept ?? System.Array.Empty<string>())),
                 Is.EqualTo((true, "Packages/com.velvet.core/Runtime/Assets/NoSuchHolder.asset")));
+        }
+
+        [Test]
+        public void Given_ARecordFromABuildThatNeverAddedTheEntry_When_TheRevertRuns_Then_TheRecordIsGone()
+        {
+            // Arrange — a record naming a holder that resolves, with no matching entry in the list. A build
+            // cancelled between the record write and any save leaves exactly this, and the injection no
+            // longer saves, so the window is a whole build rather than a few milliseconds.
+            File.WriteAllLines(RecordFilePath(), new[] { RuntimeAssetsPath() });
+            var stranded = File.Exists(RecordFilePath());
+
+            // Act — the repair every domain reload runs.
+            BundledStyleSheetBuildInclusion.RevertWhatAnEndedSessionLeft();
+
+            // Assert — the arranged record rides along, so a case that ran against no record at all could
+            // not satisfy it. A record kept here is kept forever: nothing but a completed build clears it,
+            // and every reload until then saves the consumer's project settings for nothing.
+            Assert.That((stranded, File.Exists(RecordFilePath())), Is.EqualTo((true, false)));
         }
 
         [Test]
