@@ -17,9 +17,8 @@ namespace Velvet
     /// all. <c>Documentation~/player-builds.md</c> holds what each one cost.
     /// </para>
     /// <para>
-    /// Kept explicitly rather than left to the linker: a build that strips this type or its enable message
-    /// leaves the sheet unreachable for the whole run, and no suite in this repository builds under managed
-    /// stripping, so nothing here would report it.
+    /// <c>Preserve</c> rather than leaving it to the linker: if the enable message is stripped the sheet is
+    /// unreachable for the whole run, and the attribute costs a build nothing to carry.
     /// </para>
     /// </remarks>
     [Preserve]
