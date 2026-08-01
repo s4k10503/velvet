@@ -156,13 +156,14 @@ namespace Velvet.Tests
             // Act — both halves in one reading: a parser that found nothing satisfies "no pull_request
             // filter" exactly, and that is the state a renamed key or a reformatted trigger block produces.
             var onPush = filters.Count(entry => entry.Trigger == "push");
-            var onPullRequest = filters
-                .Where(entry => entry.Trigger == "pull_request")
-                .Select(entry => $"{entry.Workflow}: {entry.Key}")
+            var onGated = filters
+                .Where(entry => entry.Trigger is "pull_request" or "merge_group")
+                .Select(entry => $"{entry.Workflow}: {entry.Trigger}.{entry.Key}")
                 .ToList();
 
-            // Assert
-            Assert.That((onPush, string.Join(", ", onPullRequest)), Is.EqualTo((2, string.Empty)),
+            // Assert — merge_group answers to the same rule as pull_request: a queue entry whose required
+            // check never starts is stranded exactly as a pull request is.
+            Assert.That((onPush, string.Join(", ", onGated)), Is.EqualTo((2, string.Empty)),
                 "A required check reports Pending forever when a path filter stops its workflow from "
                 + "starting, and no push can clear it. Filter the push trigger instead.");
         }

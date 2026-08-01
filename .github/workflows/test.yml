@@ -1,9 +1,10 @@
 name: Test
 
-# pull_request carries no path filter, and must not gain one. A check GitHub is asked to require reports
-# Pending forever when a path filter stops its workflow from starting, which blocks the pull request with
-# no way to satisfy it. The push filter is a different question — a push to main has already passed the
-# pull request — so it keeps the list, and WorkflowTriggerCoverageTests holds both halves.
+# pull_request and merge_group carry no path filter, and must not gain one. A check GitHub is asked to
+# require reports Pending forever when a path filter stops its workflow from starting, which blocks the
+# pull request or strands the queue entry with no way to satisfy it. The push filter is a different
+# question — a push to main has already passed the queue — so it keeps the list, and
+# WorkflowTriggerCoverageTests holds all three.
 #
 # Generators~ sources stay out of the push list: the Unity side consumes their committed DLLs under
 # Runtime/Plugins, so a generator change reaches this workflow when the redeployed DLLs are committed.
@@ -23,6 +24,7 @@ on:
       - 'Packages/com.velvet.core/Generators~/*.md'
   pull_request:
     branches: [main]
+  merge_group:
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref.

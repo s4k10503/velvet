@@ -21,8 +21,8 @@ name: Source generators
 # Unity workflow excludes Generators~ outright.
 # A re-include must stay after '!**.md' — the last matching pattern is the one that decides.
 #
-# The list is the push trigger's alone. pull_request carries no path filter and must not gain one, for the
-# reason test.yml states over its own triggers.
+# The list is the push trigger's alone. pull_request and merge_group carry no path filter and must not
+# gain one, for the reason test.yml states over its own triggers.
 on:
   push:
     branches: [main]
@@ -34,6 +34,7 @@ on:
       - 'Packages/com.velvet.core/Generators~/README.md'
   pull_request:
     branches: [main]
+  merge_group:
   workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
