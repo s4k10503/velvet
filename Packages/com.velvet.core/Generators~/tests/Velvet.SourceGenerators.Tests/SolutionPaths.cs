@@ -39,6 +39,28 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         /// <summary>
+        /// The Unity project the package is embedded in, which is what an asset path stored in runtime code
+        /// is relative to. Anchored on <c>ProjectSettings/ProjectVersion.txt</c> because that is the marker
+        /// Unity itself resolves those paths against.
+        /// </summary>
+        public static string ProjectRoot()
+        {
+            var dir = new DirectoryInfo(GeneratorsRoot());
+            while (dir != null
+                   && !File.Exists(Path.Combine(dir.FullName, "ProjectSettings", "ProjectVersion.txt")))
+            {
+                dir = dir.Parent;
+            }
+            if (dir == null)
+            {
+                throw new InvalidOperationException(
+                    "Could not locate the Unity project root (ProjectSettings/ProjectVersion.txt) above "
+                    + GeneratorsRoot());
+            }
+            return dir.FullName;
+        }
+
+        /// <summary>
         /// The shipped guides. Same contract as <see cref="RuntimeRoot"/>: a guard that re-derives what a
         /// guide claims must throw on a moved tree rather than pass with nothing to compare against.
         /// </summary>

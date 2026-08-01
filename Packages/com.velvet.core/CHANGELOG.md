@@ -22,10 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declares to nothing, while arbitrary values and the many families Velvet resolves itself rather than
   declaring — the `gap-*` / `divide-*` spacing, the painted and filter families, `animate-*` and more —
   kept working: a missing sheet that reads as a partial styling bug. `Documentation~/setup.md` carries
-  the command that answers it per class. The sheet keeps its location under `Runtime/Styles/`; a
-  `Resources` asset that imports it is what makes it reachable, and that folder is now part of every
-  build of a project with the package installed. `Documentation~/setup.md` covers this and the
-  alternative of referencing the asset from a scene.
+  the command that answers it per class. The sheet keeps its location under `Runtime/Styles/`; a build step
+  puts a holder asset that references it into PlayerSettings' preloaded assets for the duration of a build,
+  which is what makes it reachable, and the sheet is part of every build of a project with the package
+  installed. `Documentation~/setup.md` covers this and the alternative of referencing the asset from a
+  scene, and `Documentation~/player-builds.md` covers what the build step does to your project settings and
+  what the sheet costs.
 - `VEL500`, a compile-time analyzer that reports a member body nesting control flow more than four levels
   deep, at error severity. It does not fire on your code: the rule is opt-in per assembly and only the
   package's own assemblies opt in, so upgrading cannot break a build that compiled before. An assembly that
