@@ -17,9 +17,8 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// A themeless <see cref="RenderTexturePanelHost"/> panel has no font — every Label measures zero
-    /// tall — and a Label's engine default is nowrap, so every label here supplies both inline via
-    /// refCallback (a built-in Font plus <c>WhiteSpace.Normal</c>) rather than relying on a stylesheet
-    /// that was never loaded onto this panel. No stylesheet is needed for the `w-[Npx]` wrapper width or
+    /// tall — so every label here supplies one inline via refCallback, along with the white-space its own
+    /// classes would otherwise have to come from a stylesheet for. No stylesheet is needed for the `w-[Npx]` wrapper width or
     /// the `text-balance` class either: both are arbitrary-value / classifier tokens Velvet resolves in
     /// C#, independent of any USS asset (mirrors <c>BuiltInFilterShaderPlaybackTests</c>' own
     /// stylesheet-less `w-[100px]` usage). The one exception is the `max-w-32` case, which exists only as
@@ -122,19 +121,30 @@ namespace Velvet.Tests
         // Mounts one balanced label carrying an extra sizing utility — a ceiling or a declared width —
         // inside a wrapper wider than anything that utility asks for, then waits for layout to settle.
         // loadUtilities attaches the bundled stylesheet, which the USS scale forms need and the
-        // arbitrary-value forms resolve without.
-        private IEnumerator MountWithSizingClass(string panelName, string text, string boundClass, bool loadUtilities = false)
+        // arbitrary-value forms resolve without. probeText adds a plain sibling, which is where a case
+        // that needs "the width nothing writes" reads it from — measured, rather than restated as the
+        // wrapper constant.
+        private IEnumerator MountWithSizingClass(
+            string panelName, string text, string boundClass, bool loadUtilities = false, string probeText = null)
         {
             _host = new RenderTexturePanelHost(panelName, 400, 400);
             if (loadUtilities)
             {
                 VelvetStyleUtilities.AttachTo(_host.Root);
             }
-            var tree = V.Div(className: $"w-[{WrapperWidthPx}px]", children: new VNode[]
-            {
-                V.Label(name: "balanced", text: text,
-                    className: $"text-balance {boundClass}", refCallback: s_wrapWithFontRef),
-            });
+            var children = probeText == null
+                ? new VNode[]
+                {
+                    V.Label(name: "balanced", text: text,
+                        className: $"text-balance {boundClass}", refCallback: s_wrapWithFontRef),
+                }
+                : new VNode[]
+                {
+                    V.Label(name: "probe", text: probeText, refCallback: s_wrapWithFontRef),
+                    V.Label(name: "balanced", text: text,
+                        className: $"text-balance {boundClass}", refCallback: s_wrapWithFontRef),
+                };
+            var tree = V.Div(className: $"w-[{WrapperWidthPx}px]", children: children);
             _mounted = V.Mount(_host.Root, tree);
             yield return WaitRealtime(0.5);
         }
@@ -296,6 +306,7 @@ namespace Velvet.Tests
             s_setSwapText = setText;
             return V.Div(className: $"w-[{WrapperWidthPx}px]", children: new VNode[]
             {
+                V.Label(name: "probe", text: "Hi", refCallback: s_wrapWithFontRef),
                 V.Label(name: "balanced", text: text, className: "text-balance", refCallback: s_wrapWithFontRef),
             });
         }
@@ -438,9 +449,9 @@ namespace Velvet.Tests
             var balanced = _host.Root.Q<Label>("balanced");
             s_setSwapText.Invoke(LongWrapText);
             yield return WaitRealtime(0.6);
-            var wrapperWidth = balanced.parent.resolvedStyle.width;
-            Assume.That(balanced.resolvedStyle.width, Is.LessThan(wrapperWidth - 0.5f),
-                "Precondition: balance is holding a width narrower than the wrapper");
+            var releasedWidth = _host.Root.Q<Label>("probe").resolvedStyle.width;
+            Assume.That(balanced.resolvedStyle.width, Is.LessThan(releasedWidth - 0.5f),
+                "Precondition: balance is holding a width narrower than an unbalanced sibling");
 
             // Act — back to text that fits one line, which is a gate balance declines to act on.
             s_setSwapText.Invoke("Hi");
@@ -448,7 +459,7 @@ namespace Velvet.Tests
 
             // Assert — the box returns to what the cascade gives it, rather than staying at the width
             // balance wrote while it still had a reason to.
-            Assert.That(balanced.resolvedStyle.width, Is.EqualTo(wrapperWidth).Within(0.5f));
+            Assert.That(balanced.resolvedStyle.width, Is.EqualTo(releasedWidth).Within(0.5f));
         }
 
         // Two cells of a grid, one balanced. `grid-cols-2` carries no bare `grid` token, so this also
@@ -472,7 +483,7 @@ namespace Velvet.Tests
             yield return MountGridCells($"grid-cols-2 w-[{WrapperWidthPx}px]");
             var plain = _host.Root.Q<Label>("plain");
             var balanced = _host.Root.Q<Label>("balanced");
-            Assume.That(plain.resolvedStyle.width, Is.LessThan(WrapperWidthPx),
+            Assume.That(plain.resolvedStyle.width, Is.LessThan(plain.parent.resolvedStyle.width),
                 "Precondition: the grid sized its children into columns narrower than the container");
 
             // Act — assigned straight onto the element, which is the trigger that reaches balance without
@@ -522,7 +533,7 @@ namespace Velvet.Tests
             yield return WaitRealtime(0.5);
             var plain = _host.Root.Q<Label>("plain");
             var balanced = _host.Root.Q<Label>("balanced");
-            Assume.That(plain.resolvedStyle.width, Is.LessThan(WrapperWidthPx),
+            Assume.That(plain.resolvedStyle.width, Is.LessThan(plain.parent.resolvedStyle.width),
                 "Precondition: the grid sized the contentContainer's children into columns");
 
             // Act
@@ -543,16 +554,16 @@ namespace Velvet.Tests
             var balanced = _host.Root.Q<Label>("balanced");
             s_setSwapText.Invoke(LongWrapText);
             yield return WaitRealtime(0.6);
-            var wrapperWidth = balanced.parent.resolvedStyle.width;
-            Assume.That(balanced.resolvedStyle.width, Is.LessThan(wrapperWidth - 0.5f),
-                "Precondition: balance is holding a width narrower than the wrapper");
+            var releasedWidth = _host.Root.Q<Label>("probe").resolvedStyle.width;
+            Assume.That(balanced.resolvedStyle.width, Is.LessThan(releasedWidth - 0.5f),
+                "Precondition: balance is holding a width narrower than an unbalanced sibling");
 
             // Act
             s_setSwapText.Invoke(string.Empty);
             yield return WaitRealtime(0.6);
 
             // Assert
-            Assert.That(balanced.resolvedStyle.width, Is.EqualTo(wrapperWidth).Within(0.5f));
+            Assert.That(balanced.resolvedStyle.width, Is.EqualTo(releasedWidth).Within(0.5f));
         }
 
         [UnityTest]
@@ -579,8 +590,10 @@ namespace Velvet.Tests
         {
             // Arrange — a bracket variant width takes the inline-resolved branch, which fires no layout
             // re-sync at all: only the layer probe sees either edge of it.
-            yield return MountWithSizingClass("TextBalanceVariantLayerEdgePanel", LongWrapText, "dark:w-[200px]");
+            yield return MountWithSizingClass(
+                "TextBalanceVariantLayerEdgePanel", LongWrapText, "dark:w-[200px]", probeText: LongWrapText);
             var balanced = _host.Root.Q<Label>("balanced");
+            var probe = _host.Root.Q<Label>("probe");
             VelvetTheme.IsDark = true;
             yield return WaitRealtime(0.6);
             Assume.That(balanced.resolvedStyle.width, Is.EqualTo(200f).Within(0.5f),
@@ -590,8 +603,8 @@ namespace Velvet.Tests
             VelvetTheme.IsDark = false;
             yield return WaitRealtime(0.6);
 
-            // Assert — back to a balanced box rather than the full wrapper it would stretch to unbalanced.
-            Assert.That(balanced.resolvedStyle.width, Is.LessThan(WrapperWidthPx - 0.5f));
+            // Assert — back to a balanced box rather than the width the plain sibling stretches to.
+            Assert.That(balanced.resolvedStyle.width, Is.LessThan(probe.resolvedStyle.width - 0.5f));
         }
 
         [UnityTest]
@@ -661,10 +674,8 @@ namespace Velvet.Tests
         {
             // Arrange — the over-estimate the class doc calls harmless is not, in a row: the search
             // measures against the whole row, so the balanced box plus its sibling exceed it. Measured to
-            // be the same under either write slot, because Yoga folds a child's max-width into the MEASURE
-            // constraint before computing a flex basis, and wrapping text measured under that cap returns
-            // the cap itself — the same basis a width sets outright. So this pins a consequence of
-            // measuring against the parent, not of the slot.
+            // be the same under either write slot, so this pins a consequence of measuring against the
+            // parent rather than of the slot.
             _host = new RenderTexturePanelHost("TextBalanceRowSiblingPanel", 400, 400);
             var tree = V.Div(className: $"w-[{WrapperWidthPx}px]", refCallback: s_rowRef, children: new VNode[]
             {
@@ -706,10 +717,11 @@ namespace Velvet.Tests
             // Arrange / Act — the mirror hazard: re-asserting Size on an element that has no Size layer
             // would null the height along with the width, and this height comes from a layer of its own.
             // Short text, so the single-line gate releases the slot.
-            yield return MountWithSizingClass("TextBalanceHeightOnlyPanel", "Hi", "h-[100px]");
+            yield return MountWithSizingClass("TextBalanceHeightOnlyPanel", "Hi", "h-[100px]", probeText: "Hi");
             var balanced = _host.Root.Q<Label>("balanced");
-            Assume.That(balanced.resolvedStyle.width, Is.EqualTo(WrapperWidthPx).Within(0.5f),
-                "Precondition: the width slot was released, so the box stretches to the wrapper");
+            var probe = _host.Root.Q<Label>("probe");
+            Assume.That(balanced.resolvedStyle.width, Is.EqualTo(probe.resolvedStyle.width).Within(0.5f),
+                "Precondition: the width slot was released, so the box lays out like its plain sibling");
 
             // Assert
             Assert.That(balanced.resolvedStyle.height, Is.EqualTo(100f).Within(0.5f));
