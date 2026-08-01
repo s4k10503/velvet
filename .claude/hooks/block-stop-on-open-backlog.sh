@@ -2,17 +2,16 @@
 # Blocks Stop while assigned work is open and nothing is in flight to carry it.
 #
 # block-stop-on-unsettled-pr.sh returns 0 before looking at anything when the open-pull-request
-# list is empty. That is the state this fires in, and it is the state the failure happened in:
-# six issues open, a next action named in the closing paragraph, and the turn ended without it.
-# Naming the next action is what the stall looks like from inside — it reads as a plan rather
-# than as stopping — so the guard cannot key on intent. It keys on the backlog being non-empty
-# with nothing carrying it.
+# list is empty. That is the state this fires in, and it is the state the failure happened in: a
+# backlog of assigned issues, the next action named in a closing paragraph, and the turn ending
+# without it. Naming the next action is what the stall looks like from inside — it reads as a plan
+# rather than as stopping — so the guard cannot key on intent. It keys on the backlog being
+# non-empty with nothing carrying it.
 #
-# An open pull request means the other guard owns the decision; reporting the same stall from two
-# hooks would double every message and let a fix in one be undone by silence in the other.
+# An open pull request hands the decision to the other guard, so one stall is never reported twice.
 #
-# Only issues assigned to the authenticated user count. A contributor with nothing assigned is
-# not held by this repository's backlog.
+# Only issues assigned to the authenticated user count, so a contributor is not held by somebody
+# else's backlog.
 #
 # `blocked` is the exclusion, and it is a label rather than a deferral because the two say
 # different things: a deferral is a claim that work will resume, and it expires so the claim gets
@@ -27,26 +26,8 @@ set -uo pipefail
 command -v gh >/dev/null 2>&1 || exit 0
 command -v jq >/dev/null 2>&1 || exit 0
 
-# Shared with the pull-request guard so a held item is re-read in one place, under the same
-# expiry. `backlog` holds every issue at once, for a pause that is not about any one of them.
-DEFERRALS="$HOME/.velvet-pr-deferrals"
-DEFER_TTL=2700
-
-deferred() {
-  DEFER_REASON=""
-  DEFER_AGE=""
-  [ -f "$DEFERRALS" ] || return 1
-  local line stamp
-  line=$(grep "^$1 " "$DEFERRALS" 2>/dev/null | tail -1) || return 1
-  [ -n "$line" ] || return 1
-  stamp=${line##* }
-  case "$stamp" in ''|*[!0-9]*) return 1 ;; esac
-  [ $(( $(date +%s) - stamp )) -lt "$DEFER_TTL" ] || return 1
-  DEFER_REASON=${line#"$1 "}
-  DEFER_REASON=${DEFER_REASON% *}
-  DEFER_AGE=$(( ($(date +%s) - stamp) / 60 ))
-  return 0
-}
+# shellcheck source=lib/deferrals.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib/deferrals.sh"
 
 deferred backlog && exit 0
 
