@@ -166,7 +166,7 @@ namespace Velvet.Tests
             AddOverflowControl(wrap);
             PaintQuadAndFill(probe, tint);
             probe.MarkDirtyRepaint();
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
         }
 
         [UnityTest]

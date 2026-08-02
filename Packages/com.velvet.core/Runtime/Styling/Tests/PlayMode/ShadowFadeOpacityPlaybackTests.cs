@@ -95,7 +95,7 @@ namespace Velvet.Tests
             VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root, V.Div(name: "caster", className: CasterClasses));
             _host.Root.Q<VisualElement>("caster").style.opacity = opacity;
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
         }
 
         private const string EnterToClass = "opacity-100";
@@ -119,7 +119,7 @@ namespace Velvet.Tests
             yield return MountCaster("ShadowFading", 0.5f);
             var caster = _host.Root.Q<VisualElement>("caster");
             _mounted.Root.Reconciler.Context.StyleAnimationScheduler.PlayEnter(caster, LongEnter);
-            yield return WaitRealtime(1.2);
+            yield return WaitRealtimeDraining(1.2, _host.TargetTexture);
             var stillPlaying = caster.ClassListContains(EnterToClass);
             var casterOpacityPercent = Mathf.RoundToInt(caster.resolvedStyle.opacity * 100f);
             var fading = HaloRed(caster);
