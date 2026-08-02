@@ -7,6 +7,11 @@
             "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/report-stale-main.sh",
             "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/report-wedged-processes.sh",
+            "timeout": 10000
           }
         ]
       }
