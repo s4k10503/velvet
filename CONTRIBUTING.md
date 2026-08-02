@@ -40,24 +40,29 @@ story capture near-blank, and a panel whose height was its content's rather than
 green under every check and visible immediately in the PNG. Interactively the same stories are live
 in **Window ▸ Velvet ▸ Preview**.
 
-### A batchmode run that finishes but stays in the process list
+### A run that stays in the process list
 
-A Unity process can finish its work and then fail to exit. It shows in `ps` with state `UE` —
-uninterruptible wait while exiting — and `kill -9` does not remove it: measured on the editor
-process, still `UE` two seconds after the signal.
-
-The run's result is not affected. Check the log before treating one as a failure:
+A process can enter macOS state `UE` — uninterruptible wait while exiting — where no signal
+reaches it, `kill -9` included, and only a reboot clears it. Two different situations end there,
+and they want opposite responses, so read the log before deciding which one is in front of you:
 
 ```bash
-ps -eo pid,stat,etime,time,comm | grep -i unity
-grep -c "Exiting batchmode successfully now!" <logfile>
+ps -eo pid,stat,etime,time,comm | awk '$2 ~ /^UE/'
+tail -3 <logfile>
 ```
 
-A log carrying that line has done its work, and its results stand even while the process is still
-listed. Every such log observed here ends inside the shutdown sequence and none inside a build.
+**The log ends after `Exiting batchmode successfully now!`** — the run did its work and then could
+not exit. Its results stand while the process is still listed. Ten of these were resident while
+twenty-five editor invocations ran on the same machine, eight player builds and fifteen EditMode
+suites, and all twenty-five completed. Nothing needs doing.
 
-Ten of these were resident while twenty-five editor invocations ran on the same machine — eight
-player builds and fifteen EditMode suites — and all twenty-five completed.
+**The log stops mid-compile and stays that size** — the run stalled, and the `netcorerun` it
+launched wedges while the editor is still alive, before anything is killed. `SIGTERM` on the editor
+reaps the editor; the wedged child does not follow it out, and no signal recovers it.
+
+Not every unreapable process here comes from Unity, and none of them blocks a later run. They
+accumulate, so `.claude/hooks/report-wedged-processes.sh` reports the set at session start once it
+holds enough memory for a reboot to be worth the interruption, and says nothing below that.
 
 ### Checking that the tests can fail
 
