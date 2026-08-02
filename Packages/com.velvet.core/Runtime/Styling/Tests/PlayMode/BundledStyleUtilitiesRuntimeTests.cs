@@ -47,7 +47,7 @@ namespace Velvet.Tests
             }
 
             _mounted = V.Mount(_host.Root, V.Div(name: "probe", className: "flex-row"));
-            return WaitRealtime(0.5);
+            return WaitRealtimeDraining(0.5, _host.TargetTexture);
         }
 
         private FlexDirection ProbeDirection() => _host.Root.Q<VisualElement>("probe").resolvedStyle.flexDirection;
@@ -88,7 +88,7 @@ namespace Velvet.Tests
             }));
 
             // Act
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
 
             // Assert — 4 units on the shared spacing scale, 4px each, on the leading edge of the column the
             // container resolves to without a direction class.

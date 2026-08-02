@@ -79,7 +79,7 @@ namespace Velvet.Tests
             var classNames = overline ? "overline " + LabelClasses : LabelClasses;
             _mounted = V.Mount(_host.Root, V.Label(
                 name: "lbl", className: classNames, text: GlyphOnlyText, refCallback: s_enableTextMeasurement));
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
         }
 
         // Counts red pixels in the TOP band (the top 20% of the label's own resolved height) of the ONLY

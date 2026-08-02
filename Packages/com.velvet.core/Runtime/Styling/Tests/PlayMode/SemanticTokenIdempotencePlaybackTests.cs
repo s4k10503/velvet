@@ -101,7 +101,7 @@ namespace Velvet.Tests
                     {
                         V.Div(name: "inner", className: "bg-surface w-[40px] h-[60px]"),
                     }));
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
         }
 
         private Reading Read()

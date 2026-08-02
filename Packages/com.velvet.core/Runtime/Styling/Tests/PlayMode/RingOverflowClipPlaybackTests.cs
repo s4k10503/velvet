@@ -116,7 +116,7 @@ namespace Velvet.Tests
             {
                 box.style.overflow = Overflow.Hidden;
             }
-            return WaitRealtime(0.8);
+            return WaitRealtimeDraining(0.8, _host.TargetTexture);
         }
 
         [UnityTest]
@@ -127,7 +127,7 @@ namespace Velvet.Tests
             PaintOutsideOwnBox(open);
             AddControlChild(open);
             open.MarkDirtyRepaint();
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
             var openPaint = RedPixels();
 
             // Act
@@ -135,7 +135,7 @@ namespace Velvet.Tests
             PaintOutsideOwnBox(clipped);
             AddControlChild(clipped);
             clipped.MarkDirtyRepaint();
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
             var clippedControl = GreenPixels();
             var clippedPaint = RedPixels();
 
@@ -159,7 +159,7 @@ namespace Velvet.Tests
             AddControlChild(avatar);
 
             // Act
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
             var control = GreenPixels();
             var band = RedPixels();
 

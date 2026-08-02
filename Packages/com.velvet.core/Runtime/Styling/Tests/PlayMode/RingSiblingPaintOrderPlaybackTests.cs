@@ -118,7 +118,7 @@ namespace Velvet.Tests
             _host.Root.Q<VisualElement>("b").style.marginLeft = -20f;
 
             // Act
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
             var a = _host.Root.Q<VisualElement>("a").worldBound;
             var b = _host.Root.Q<VisualElement>("b").worldBound;
             var covered = BandStrip(a, right: true);
@@ -165,7 +165,7 @@ namespace Velvet.Tests
                 }));
             _host.Root.Q<VisualElement>("row").style.flexDirection = FlexDirection.Row;
             _host.Root.Q<VisualElement>("b").style.marginLeft = -40f;
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
 
             var elementA = _host.Root.Q<VisualElement>("a");
             var a = elementA.worldBound;
@@ -178,7 +178,7 @@ namespace Velvet.Tests
             // therefore the last band touch in this frame.
             var binding = _mounted.Root.Reconciler.Context.RingBindings[elementA];
             RingOverlay.Sync(elementA, binding, binding.Spec, binding.ClassNames);
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
             var greenAfterReSync = CountInPanelRect(shared, IsGreen);
             var redAfterReSync = CountInPanelRect(shared, IsRed);
 
@@ -211,7 +211,7 @@ namespace Velvet.Tests
                 }));
 
             // Act
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
             var a = _host.Root.Q<VisualElement>("a").worldBound;
             var b = _host.Root.Q<VisualElement>("b").worldBound;
 

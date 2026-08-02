@@ -123,7 +123,7 @@ namespace Velvet.Tests
                     V.Div(name: "fill", className: "w-[400px] h-[400px] bg-[#ef4444]"),
                 }),
             }));
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _cameraRt);
 
             // Assert — the camera's output carries the panel's red pixels.
             var pixels = RenderTexturePixelReader.ReadPixels(_cameraRt, new RectInt(0, 0, 200, 200));
