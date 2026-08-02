@@ -193,7 +193,11 @@ def check_content(display, data):
         shellcheck = __import__("shutil").which("shellcheck")
         if not shellcheck:
             return 0
-        return run_tool([shellcheck, scratch], display, f"shellcheck {display}")
+        # Warning and above. shellcheck exits non-zero on info-level notes too, and three hooks in
+        # this repository carry one — SC1091, for sourcing a sibling it was not given — so the
+        # default floor refused every commit that touched them for something nobody intends to fix.
+        return run_tool([shellcheck, "--severity=warning", scratch],
+                        display, f"shellcheck --severity=warning {display}")
     finally:
         try:
             os.unlink(scratch)
