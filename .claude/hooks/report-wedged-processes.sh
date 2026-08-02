@@ -20,27 +20,10 @@ case "$THRESHOLD_MB" in
   ''|*[!0-9]*) THRESHOLD_MB=500 ;;
 esac
 
-report=$(ps ax -o stat=,rss=,comm= 2>/dev/null | awk -v limit="$THRESHOLD_MB" '
-  $1 ~ /^UE/ {
-    kb += $2
-    n += 1
-    name = $3
-    for (i = 4; i <= NF; i++) { name = name " " $i }
-    sub(/.*\//, "", name)
-    held[name] += 1
-  }
-  END {
-    mb = kb / 1024
-    if (n == 0 || mb < limit) { exit 1 }
-    printf "%d processes cannot be reaped, holding %.0f MB. Only a reboot clears them.\n\n", n, mb
-    sorter = "sort -rn"
-    fflush()
-    for (name in held) { printf "  %4d  %s\n", held[name], name | sorter }
-    close(sorter)
-    printf "\nEach is in state UE, where no signal reaches it. A run that is only slow is a\n"
-    printf "different thing; CONTRIBUTING.md separates the two.\n"
-  }
-')
+filter="$(dirname "${BASH_SOURCE[0]}")/lib/wedged.awk"
+[ -f "$filter" ] || exit 0
+
+report=$(ps ax -o stat=,rss=,comm= 2>/dev/null | awk -v limit="$THRESHOLD_MB" -f "$filter")
 
 [ -n "$report" ] || exit 0
 printf '%s\n' "$report"
