@@ -62,9 +62,13 @@ namespace Velvet.Tests
         {
             // Arrange
             var wired = new HashSet<string>(ReadWiring().Select(reference => reference.Name), StringComparer.Ordinal);
+            // __pycache__ is written beside a hook by anything that imports it, so its contents are
+            // output rather than scripts. Counting them made this fixture fail for the presence of a
+            // sibling fixture's bytecode, which says nothing about whether a guard is wired.
             var scripts = Directory
                 .GetFiles(Path.GetFullPath(HookDirectory), "*", SearchOption.AllDirectories)
                 .Select(RelativeToHookDirectory)
+                .Where(script => !script.Contains("__pycache__", StringComparison.Ordinal))
                 .ToList();
             Assume.That(scripts, Is.Not.Empty, "the hook directory is empty");
 
