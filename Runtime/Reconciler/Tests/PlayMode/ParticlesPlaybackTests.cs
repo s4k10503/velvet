@@ -97,7 +97,7 @@ namespace Velvet.Tests
 
             // Act
             MountPanel(effect, PlayTrigger.Mount);
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
 
             // Assert — the element's center carries particle-colored pixels.
             Assert.That(CountParticlePixels(), Is.GreaterThan(20));
@@ -109,12 +109,12 @@ namespace Velvet.Tests
             // Arrange
             var effect = CreateEmitter();
             MountPanel(effect, PlayTrigger.Mount);
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
             var first = Snapshot();
             Assume.That(CountParticlePixels(), Is.GreaterThan(20), "Precondition: particles are visible");
 
             // Act — no Velvet re-render: the simulation alone must change the drawn output.
-            yield return WaitRealtime(0.4);
+            yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
 
             // Assert
             var second = Snapshot();
@@ -182,7 +182,7 @@ namespace Velvet.Tests
 
             // Act — Manual instantiates the host stopped; nothing should emit or draw.
             MountPanel(effect, PlayTrigger.Manual);
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert
             Assert.That(CountParticlePixels(), Is.EqualTo(0));
@@ -194,14 +194,14 @@ namespace Velvet.Tests
             // Arrange — Manual's other half: the element exposes the imperative trigger.
             var effect = CreateEmitter();
             MountPanel(effect, PlayTrigger.Manual);
-            yield return WaitRealtime(0.3);
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
             Assume.That(CountParticlePixels(), Is.EqualTo(0), "Precondition: nothing draws before Play");
             var element = _host.Root.Q<ParticlesElement>();
             Assume.That(element, Is.Not.Null, "Precondition: the particles element mounted");
 
             // Act
             element.Play();
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
 
             // Assert
             Assert.That(CountParticlePixels(), Is.GreaterThan(20));
@@ -216,12 +216,12 @@ namespace Velvet.Tests
             s_effect = effect;
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
             _mounted = V.Mount(_host.Root, V.Component(TriggerFlipHost, key: "root"));
-            yield return WaitRealtime(0.3);
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
             Assume.That(CountParticlePixels(), Is.EqualTo(0), "Precondition: Manual draws nothing");
 
             // Act
             s_setFlag.Invoke(true);
-            yield return WaitRealtime(0.8);
+            yield return WaitRealtimeDraining(0.8, _host.TargetTexture);
 
             // Assert
             Assert.That(CountParticlePixels(), Is.GreaterThan(20));
@@ -238,14 +238,14 @@ namespace Velvet.Tests
             s_effect = effect;
             _host = new RenderTexturePanelHost("ParticlesPanel", 300, 300);
             _mounted = V.Mount(_host.Root, V.Component(ReorderHost, key: "root"));
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             Assume.That(CountParticlePixels(), Is.GreaterThan(20), "Precondition: particles are visible");
 
             // Act — swap the keyed siblings, then let the simulation advance.
             s_setFlag.Invoke(true);
-            yield return WaitRealtime(0.3);
+            yield return WaitRealtimeDraining(0.3, _host.TargetTexture);
             var first = Snapshot();
-            yield return WaitRealtime(0.4);
+            yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
 
             // Assert — the drawn output still changes after the move (the tick survived the reorder).
             var second = Snapshot();

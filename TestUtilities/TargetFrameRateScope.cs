@@ -51,6 +51,26 @@ namespace Velvet.TestUtilities
             }
         }
 
+        /// <summary>
+        /// Yields for the given realtime, draining the render queue on every frame.
+        /// </summary>
+        /// <remarks>
+        /// For a fixture that needs real time to pass AND draws every frame. Where rasterisation is
+        /// queued rather than executed, a plain realtime wait spins as many frames as the CPU allows
+        /// and each one queues a full render that the next readback pays for; draining each frame
+        /// makes the frame cost what it costs, so the number of frames falls to what the wall clock
+        /// affords and the total is bounded by the wait rather than by the spin rate.
+        /// </remarks>
+        public static IEnumerator WaitRealtimeDraining(double seconds, RenderTexture texture)
+        {
+            var deadline = Time.realtimeSinceStartupAsDouble + seconds;
+            while (Time.realtimeSinceStartupAsDouble < deadline)
+            {
+                yield return null;
+                RenderTexturePixelReader.ReadPixels(texture, new RectInt(0, 0, 1, 1));
+            }
+        }
+
         /// <summary>Yields until at least <paramref name="seconds"/> of realtime have elapsed.</summary>
         public static IEnumerator WaitRealtime(double seconds)
         {
