@@ -53,7 +53,7 @@ namespace Velvet.Tests
         {
             _host = new RenderTexturePanelHost("FilterPanel", 100, 100);
             _mounted = V.Mount(_host.Root, V.Div(className: $"w-[100px] h-[100px] bg-[{fillColor}] {filterToken}"));
-            yield return WaitRealtime(0.4);
+            yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
         }
 
         // The gap between a pixel's widest and narrowest colour channel — how far its colour sits from gray.
@@ -103,7 +103,7 @@ namespace Velvet.Tests
             // luminance gray. A deterministic endpoint that sanity-checks the shader's luma lerp.
             _host = new RenderTexturePanelHost("FilterPanel", 100, 100);
             _mounted = V.Mount(_host.Root, V.Div(className: "w-[100px] h-[100px] bg-[#c02020] saturate-[0]"));
-            yield return WaitRealtime(0.4);
+            yield return WaitRealtimeDraining(0.4, _host.TargetTexture);
             var c = SampleCenterAverage(20);
             Assume.That((int)c.r + c.g + c.b, Is.GreaterThan(0), "Precondition: the fill rendered a non-black pixel");
 

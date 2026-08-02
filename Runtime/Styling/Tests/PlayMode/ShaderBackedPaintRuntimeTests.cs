@@ -56,7 +56,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(_host.Root, V.Div(
                 className: $"w-[{PanelSize}px] h-[{PanelSize}px] bg-[#0000ff] p-[30px]",
                 children: new[] { child }));
-            return WaitRealtime(0.6);
+            return WaitRealtimeDraining(0.6, _host.TargetTexture);
         }
 
         private int CountPixels(Func<Color32, bool> predicate)

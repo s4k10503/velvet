@@ -146,7 +146,7 @@ namespace Velvet.Tests
             var box = _host.Root.Q<VisualElement>("box");
             if (clip) box.style.overflow = Overflow.Hidden;
             AddControlChild(box);
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
         }
 
         [UnityTest]
@@ -174,7 +174,7 @@ namespace Velvet.Tests
             box.MarkDirtyRepaint();
 
             // Act
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
             var bounds = box.worldBound;
             var border = box.resolvedStyle.borderLeftWidth;
             var leftmost = LeftmostMatch(IsRed);
@@ -250,7 +250,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(_host.Root, V.Div(name: "card", className: BorderedCard + extra));
             var card = _host.Root.Q<VisualElement>("card");
             if (clip) card.style.overflow = Overflow.Hidden;
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
         }
 
         private (int Border, int Backdrop) SampleBorderStrip()
@@ -393,7 +393,7 @@ namespace Velvet.Tests
 
             NewPanel("DivideOpen");
             _mounted = V.Mount(_host.Root, V.Div(name: "list", className: list, children: children()));
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
             var openDivider = CountAll(IsRed);
 
             // Act
@@ -401,7 +401,7 @@ namespace Velvet.Tests
             _mounted = V.Mount(_host.Root, V.Div(name: "list", className: list, children: children()));
             var second = _host.Root.Q<VisualElement>("second");
             second.style.overflow = Overflow.Hidden;
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
             var clippedDivider = CountAll(IsRed);
 
             // Assert — the dashed divider sits in the child's own border band, so the same padding-box clip
@@ -433,7 +433,7 @@ namespace Velvet.Tests
                 className: "overline text-[48px] text-[#ff0000] mt-[60px] ml-[40px] w-[100px]",
                 text: "moonmoon", refCallback: s_measureWithoutWrapping));
             if (clip) _host.Root.Q<Label>("lbl").style.overflow = Overflow.Hidden;
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
         }
 
         // The ink that spills past the label's right edge — present unclipped, gone clipped. Vertically it is
@@ -515,14 +515,14 @@ namespace Velvet.Tests
                     backgroundColor = new Color(0f, 1f, 0f, 1f),
                 },
             });
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
             var ownAtRest = LeftmostMatch(IsRed);
             var siblingAtRest = LeftmostMatch(IsGreen);
 
             // Act
             box.style.scale = new StyleScale(new Scale(new Vector3(2f, 2f, 1f)));
             box.MarkDirtyRepaint();
-            yield return WaitRealtime(0.9);
+            yield return WaitRealtimeDraining(0.9, _host.TargetTexture);
             var ownScaled = LeftmostMatch(IsRed);
             var siblingScaled = LeftmostMatch(IsGreen);
 

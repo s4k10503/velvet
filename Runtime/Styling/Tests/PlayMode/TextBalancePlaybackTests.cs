@@ -131,7 +131,7 @@ namespace Velvet.Tests
                 }),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
         }
 
         // Mounts one balanced label carrying an extra sizing utility — a ceiling or a declared width —
@@ -162,7 +162,7 @@ namespace Velvet.Tests
                 };
             var tree = V.Div(className: $"w-[{WrapperWidthPx}px]", children: children);
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
         }
 
         // The same pair as MountPair with horizontal padding on both labels, which is the case where the
@@ -183,7 +183,7 @@ namespace Velvet.Tests
                 }),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
         }
 
         [UnityTest]
@@ -207,7 +207,7 @@ namespace Velvet.Tests
                 }),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var unpadded = _host.Root.Q<Label>("unpadded");
             var padded = _host.Root.Q<Label>("padded");
             Assume.That(padded.resolvedStyle.height, Is.GreaterThan(padded.resolvedStyle.fontSize * 1.5f),
@@ -287,7 +287,7 @@ namespace Velvet.Tests
                     className: $"text-balance {CoPresentMaxWidthClass}", refCallback: s_wrapWithFontRef),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var probe = _host.Root.Q<Label>("probe");
             var balanced = _host.Root.Q<Label>("balanced");
             Assume.That(probe.resolvedStyle.height, Is.LessThan(probe.resolvedStyle.fontSize * 1.8f),
@@ -368,7 +368,7 @@ namespace Velvet.Tests
             // Arrange
             _host = new RenderTexturePanelHost("TextBalanceWidenPanel", 400, 400);
             _mounted = V.Mount(_host.Root, V.Component(WidenHost, key: "root"));
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var balanced = _host.Root.Q<Label>("balanced");
             Assume.That(balanced, Is.Not.Null, "Precondition: the label mounted");
             var narrowWidth = balanced.resolvedStyle.width;
@@ -377,7 +377,7 @@ namespace Velvet.Tests
 
             // Act — widen the wrapper, an ANCESTOR of the label, not the label itself.
             s_setWrapperWide.Invoke(true);
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             Assume.That(balanced.resolvedStyle.height, Is.GreaterThan(balanced.resolvedStyle.fontSize * 1.5f),
                 "Precondition: the text still wraps multi-line at the wider wrapper, so this is a real re-balance and not the single-line clear path");
@@ -410,7 +410,7 @@ namespace Velvet.Tests
             // unconstrained: no inline width exists yet, giving the swap below a clean edge to observe.
             _host = new RenderTexturePanelHost("TextBalanceTextSwapPanel", 400, 400);
             _mounted = V.Mount(_host.Root, V.Component(TextSwapHost, key: "root"));
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var balanced = _host.Root.Q<Label>("balanced");
             Assume.That(balanced, Is.Not.Null, "Precondition: the label mounted");
             Assume.That(balanced.resolvedStyle.height, Is.LessThan(balanced.resolvedStyle.fontSize * 1.8f),
@@ -420,7 +420,7 @@ namespace Velvet.Tests
 
             // Act — swap in text long enough to wrap at the SAME (unchanged) wrapper width.
             s_setSwapText.Invoke(LongWrapText);
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             Assume.That(balanced.resolvedStyle.height, Is.GreaterThan(balanced.resolvedStyle.fontSize * 1.5f),
                 "Precondition: the new text actually wrapped onto multiple lines");
@@ -459,14 +459,14 @@ namespace Velvet.Tests
             _host = new RenderTexturePanelHost("TextBalanceLateCeilingPanel", 400, 400);
             VelvetStyleUtilities.AttachTo(_host.Root);
             _mounted = V.Mount(_host.Root, V.Component(LateCeilingHost, key: "root"));
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var balanced = _host.Root.Q<Label>("balanced");
             Assume.That(balanced.resolvedStyle.width, Is.GreaterThan(ScaleMaxWidthPx),
                 "Precondition: balance is holding a width wider than the ceiling that is about to arrive");
 
             // Act — the ceiling class enters the class list while that width is held.
             s_setAddCeiling.Invoke(true);
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert — a ceiling is read fresh on every pass, so one that appears mid-life binds like one
             // present at mount. Reading it once and caching cannot see this, since a label whose text
@@ -489,14 +489,14 @@ namespace Velvet.Tests
                     className: $"text-balance {ScaleMaxWidthClass} dark:max-w-[80px]", refCallback: s_wrapWithFontRef),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var balanced = _host.Root.Q<Label>("balanced");
             Assume.That(balanced.resolvedStyle.width, Is.GreaterThan(80.5f),
                 "Precondition: the base ceiling is the one binding, so balance holds a width above the narrower one");
 
             // Act
             VelvetTheme.IsDark = true;
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert
             Assert.That(balanced.resolvedStyle.width, Is.LessThanOrEqualTo(80.5f));
@@ -517,14 +517,14 @@ namespace Velvet.Tests
                     className: $"text-balance {ScaleMaxWidthClass} dark:max-w-[80px]", refCallback: s_wrapWithFontRef),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var balanced = _host.Root.Q<Label>("balanced");
             Assume.That(balanced.resolvedStyle.width, Is.LessThanOrEqualTo(80.5f),
                 "Precondition: the dark layer's narrower ceiling is the one binding to begin with");
 
             // Act
             VelvetTheme.IsDark = false;
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert
             Assert.That(balanced.resolvedStyle.width, Is.LessThanOrEqualTo(ScaleMaxWidthPx + 0.5f));
@@ -537,17 +537,17 @@ namespace Velvet.Tests
             // stops needing a balanced value must hand that slot back or stay pinned at it forever.
             _host = new RenderTexturePanelHost("TextBalanceReleaseWidthPanel", 400, 400);
             _mounted = V.Mount(_host.Root, V.Component(TextSwapHost, key: "root"));
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var balanced = _host.Root.Q<Label>("balanced");
             s_setSwapText.Invoke(LongWrapText);
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
             var releasedWidth = _host.Root.Q<Label>("probe").resolvedStyle.width;
             Assume.That(balanced.resolvedStyle.width, Is.LessThan(releasedWidth - 0.5f),
                 "Precondition: balance is holding a width narrower than an unbalanced sibling");
 
             // Act — back to text that fits one line, which is a gate balance declines to act on.
             s_setSwapText.Invoke("Hi");
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert — the box returns to what the cascade gives it, rather than staying at the width
             // balance wrote while it still had a reason to.
@@ -565,7 +565,7 @@ namespace Velvet.Tests
                 V.Label(name: "balanced", text: "Hi", className: "text-balance", refCallback: s_wrapWithFontRef),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
         }
 
         [UnityTest]
@@ -582,7 +582,7 @@ namespace Velvet.Tests
             // reaching the grid: TextElement raises ChangeEvent<string> synchronously, while the grid's own
             // re-derive is gated on a container width that a child re-wrapping never moves.
             balanced.text = LongWrapText;
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert — the grid owns this slot, so balance stands down instead of taking the column.
             Assert.That(balanced.resolvedStyle.width, Is.EqualTo(plain.resolvedStyle.width).Within(0.5f));
@@ -599,7 +599,7 @@ namespace Velvet.Tests
                 V.Label(name: "balanced", text: LongWrapText, className: "text-balance", refCallback: s_wrapWithFontRef),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var balanced = _host.Root.Q<Label>("balanced");
             Assume.That(balanced.resolvedStyle.height, Is.GreaterThan(balanced.resolvedStyle.fontSize * 1.5f),
                 "Precondition: the text wrapped inside the widget's inner box");
@@ -622,7 +622,7 @@ namespace Velvet.Tests
                 V.Label(name: "balanced", text: "Hi", className: "text-balance", refCallback: s_wrapWithFontRef),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var plain = _host.Root.Q<Label>("plain");
             var balanced = _host.Root.Q<Label>("balanced");
             Assume.That(plain.resolvedStyle.width, Is.LessThan(plain.parent.resolvedStyle.width),
@@ -630,7 +630,7 @@ namespace Velvet.Tests
 
             // Act
             balanced.text = LongWrapText;
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert
             Assert.That(balanced.resolvedStyle.width, Is.EqualTo(plain.resolvedStyle.width).Within(0.5f));
@@ -642,17 +642,17 @@ namespace Velvet.Tests
             // Arrange — the empty-text gate has its own release branch, reached before any measurement.
             _host = new RenderTexturePanelHost("TextBalanceReleaseEmptyPanel", 400, 400);
             _mounted = V.Mount(_host.Root, V.Component(TextSwapHost, key: "root"));
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var balanced = _host.Root.Q<Label>("balanced");
             s_setSwapText.Invoke(LongWrapText);
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
             var releasedWidth = _host.Root.Q<Label>("probe").resolvedStyle.width;
             Assume.That(balanced.resolvedStyle.width, Is.LessThan(releasedWidth - 0.5f),
                 "Precondition: balance is holding a width narrower than an unbalanced sibling");
 
             // Act
             s_setSwapText.Invoke(string.Empty);
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert
             Assert.That(balanced.resolvedStyle.width, Is.EqualTo(releasedWidth).Within(0.5f));
@@ -671,7 +671,7 @@ namespace Velvet.Tests
 
             // Act
             VelvetTheme.IsDark = true;
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert — `.w-40 { width: var(--space-40); }` with `--space-40: 160px`.
             Assert.That(balanced.resolvedStyle.width, Is.EqualTo(160f).Within(0.5f));
@@ -687,13 +687,13 @@ namespace Velvet.Tests
             var balanced = _host.Root.Q<Label>("balanced");
             var probe = _host.Root.Q<Label>("probe");
             VelvetTheme.IsDark = true;
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
             Assume.That(balanced.resolvedStyle.width, Is.EqualTo(200f).Within(0.5f),
                 "Precondition: the variant's width took the box over while it was active");
 
             // Act — the OFF edge removes the layer, which nothing else reports.
             VelvetTheme.IsDark = false;
-            yield return WaitRealtime(0.6);
+            yield return WaitRealtimeDraining(0.6, _host.TargetTexture);
 
             // Assert — back to a balanced box rather than the width the plain sibling stretches to.
             Assert.That(balanced.resolvedStyle.width, Is.LessThan(probe.resolvedStyle.width - 0.5f));
@@ -775,7 +775,7 @@ namespace Velvet.Tests
                 V.Div(name: "sibling", className: "w-[200px] h-[10px]"),
             });
             _mounted = V.Mount(_host.Root, tree);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var balanced = _host.Root.Q<Label>("balanced");
             var sibling = _host.Root.Q<VisualElement>("sibling");
             Assume.That(balanced.resolvedStyle.height, Is.GreaterThan(balanced.resolvedStyle.fontSize * 1.5f),

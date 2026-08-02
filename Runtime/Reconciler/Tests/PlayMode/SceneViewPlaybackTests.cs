@@ -73,7 +73,7 @@ namespace Velvet.Tests
 
             // Act
             MountPanelWithSceneView(cam);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
 
             // Assert — the element's pixels carry the camera's clear color (loose bounds absorb the
             // sRGB/linear round-trip; a missing wire-up leaves the panel's default background instead).
@@ -88,13 +88,13 @@ namespace Velvet.Tests
             // Arrange
             var cam = CreateSolidColorCamera(Color.red);
             MountPanelWithSceneView(cam);
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
             var before = SamplePanelCenterOfElement();
             Assume.That(before.r > 180, Is.True, "Precondition: the initial camera color rendered");
 
             // Act — no Velvet re-render: the element must sample the live texture.
             cam.backgroundColor = Color.blue;
-            yield return WaitRealtime(0.5);
+            yield return WaitRealtimeDraining(0.5, _host.TargetTexture);
 
             // Assert
             var c = SamplePanelCenterOfElement();
