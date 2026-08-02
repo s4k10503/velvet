@@ -85,6 +85,46 @@ namespace Velvet.Tests
             ("gh issue list", ""),
         };
 
+        // Built at runtime for the same reason as the merge table above.
+        private static (string Command, string Expected)[] Undeleted()
+        {
+            var m = "gh pr " + "merge";
+            return new[]
+            {
+                (m + " 333", "333"),
+                (m + " 333 --squash", "333"),
+                (m + " --squash 333", "333"),
+                (m, "<current>"),
+                (m + " 333 --squash --delete-branch", "-"),
+                (m + " --delete-branch 333 --squash", "-"),
+                (m + " 333 -d", "-"),
+                ("gh pr comment 5 --body \"then " + m + " 333\"", "-"),
+                ("gh pr view 333", "-"),
+                ("git status", "-"),
+            };
+        }
+
+        [Test]
+        public void Given_TheMergeTable_When_TheDeletionGuardReadsEach_Then_ItNamesOnlyTheMergesLeavingABranch()
+        {
+            // Arrange
+            var hook = Path.GetFullPath(".claude/hooks/refuse-merge-without-branch-deletion.py");
+            Assume.That(File.Exists(hook), Is.True, "Precondition: the guard exists");
+            var table = Undeleted();
+
+            // Act
+            const string expression =
+                "lambda g,c: ','.join(t or '<current>' for t in g.merges_without_deletion(c)) or '-'";
+            var answers = Ask(hook, expression, table.Select(row => row.Command));
+            Assume.That(answers?.Count, Is.EqualTo(table.Length), "Precondition: one answer per command");
+
+            var disagreements = Disagreements(table, answers);
+
+            // Assert
+            Assert.That(disagreements, Is.Empty,
+                "a merge the guard does not read leaves a branch nothing can safely delete later");
+        }
+
         [Test]
         public void Given_TheStagingTable_When_TheBlindAddGuardReadsEach_Then_ItSeesOnlyTheSweepingForms()
         {
