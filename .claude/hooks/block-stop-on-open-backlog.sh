@@ -37,15 +37,43 @@ command -v jq >/dev/null 2>&1 || exit 0
 # shellcheck source=lib/deferrals.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib/deferrals.sh"
 
-deferred backlog && exit 0
+# Printed rather than exited on quietly: this is the one key that suppresses the whole guard, and
+# lib/deferrals.sh states the invariant that suppression names what was claimed and how long ago.
+if deferred backlog; then
+  cat >&2 <<EOF
+The whole backlog is held — check the reason is still true:
+  held ${DEFER_AGE}m ago because: $DEFER_REASON
+EOF
+  exit 0
+fi
 
-prs=$(gh pr list --state open --json number --jq '.[].number' 2>/dev/null) || exit 0
+# A gh that cannot answer is not an empty answer. Every one of these used to take `|| exit 0` with
+# stderr discarded, so an unauthenticated, offline or rate-limited run reported exactly what a
+# cleared backlog reports. Refusing instead is what puts the difference in front of the reader; the
+# deferral below is the way past it when the network is the thing that is wrong.
+unreachable() {
+  cat >&2 <<EOF
+Do not stop: the backlog could not be read, so nothing here says it is clear.
+
+  gh $1 exited $2
+$3
+
+If gh is unauthenticated or the network is down, say so and arm the deferral rather than treating
+an unanswered question as a settled one:
+
+  echo "backlog <what clears it> \$(date +%s)" >> $HOME/.velvet-pr-deferrals
+EOF
+  exit 2
+}
+
+prs=$(gh pr list --state open --json number --jq '.[].number' 2>&1) || unreachable "pr list" "$?" "$prs"
 [ -n "$prs" ] && exit 0
 
-me=$(gh api user --jq .login 2>/dev/null) || exit 0
-[ -n "$me" ] || exit 0
+me=$(gh api user --jq .login 2>&1) || unreachable "api user" "$?" "$me"
+[ -n "$me" ] || unreachable "api user" "0" "  it named no login"
 
-issues=$(gh issue list --state open --assignee "$me" --json number,title,labels 2>/dev/null) || exit 0
+issues=$(gh issue list --state open --assignee "$me" --json number,title,labels 2>&1) \
+  || unreachable "issue list" "$?" "$issues"
 
 open_work=""
 held=""
