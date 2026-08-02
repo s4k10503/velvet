@@ -52,6 +52,23 @@ namespace Velvet.TestUtilities
         }
 
         /// <summary>
+        /// Yields for a fixed number of frames, draining the render queue on each one.
+        /// </summary>
+        /// <remarks>
+        /// Eight frames of one story cost 96.8 s queued and 13.4 s drained on a runner that
+        /// rasterises on the CPU, for the same eight frames and a byte-identical capture. Paying per
+        /// frame is not merely a redistribution of when the cost lands.
+        /// </remarks>
+        public static IEnumerator WaitFramesDraining(int frames, RenderTexture texture)
+        {
+            for (var frame = 0; frame < frames; frame++)
+            {
+                yield return null;
+                RenderTexturePixelReader.ReadPixels(texture, new RectInt(0, 0, 1, 1));
+            }
+        }
+
+        /// <summary>
         /// Yields for the given realtime, draining the render queue on every frame.
         /// </summary>
         /// <remarks>
