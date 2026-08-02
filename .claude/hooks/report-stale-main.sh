@@ -39,7 +39,11 @@ fetch_origin_main() {
   wait "$pid"
 }
 
-fetch_origin_main || exit 0
+# A failed fetch is not a reason to say nothing. main only ever advances here, so the ref already
+# on disk is a lower bound on how far behind the checkout is — the answer it gives is incomplete
+# in one direction only, and reporting it beats reporting silence over an unreachable remote.
+fetch_failed=""
+fetch_origin_main || fetch_failed="yes"
 git rev-parse --verify refs/remotes/origin/main >/dev/null 2>&1 || exit 0
 
 main_report=""
@@ -59,34 +63,52 @@ git merge --ff-only origin/main"
   fi
 fi
 
-if [ -n "$branch" ] && [ "$branch" != "main" ]; then
+# A detached HEAD has no branch name, and skipping it on that basis left the one checkout shape
+# whose staleness nothing else reports — local main can be current while HEAD is arbitrarily behind.
+if [ "$branch" != "main" ]; then
   if ! git merge-base --is-ancestor origin/main HEAD 2>/dev/null; then
     branch_behind=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)
     if [ "${branch_behind:-0}" -gt 0 ]; then
       commit_word=commits
       [ "$branch_behind" -eq 1 ] && commit_word=commit
-      branch_report="Branch $branch is $branch_behind $commit_word behind origin/main.
+      if [ -n "$branch" ]; then
+        branch_report="Branch $branch is $branch_behind $commit_word behind origin/main.
 
 git fetch origin
 git rebase origin/main
 git push origin $branch --force-with-lease"
+      else
+        branch_report="HEAD is detached at $(git rev-parse --short HEAD 2>/dev/null) and is \
+$branch_behind $commit_word behind origin/main.
+
+git fetch origin
+git checkout main
+git merge --ff-only origin/main"
+      fi
     fi
   fi
 fi
 
 [ -z "$main_report" ] && [ -z "$branch_report" ] && exit 0
 
+fetch_note=""
+if [ -n "$fetch_failed" ]; then
+  fetch_note="
+origin/main could not be fetched, so the counts above are against the ref already on disk and the
+real distance may be greater."
+fi
+
 if [ -n "$main_report" ] && [ -n "$branch_report" ]; then
-  printf '%s\n\n%s\n' \
+  printf '%s\n\n%s\n%s\n' \
     "This checkout may not match origin/main.
 
 $main_report" \
-    "$branch_report"
+    "$branch_report" "$fetch_note"
 else
   report="${main_report:-$branch_report}"
   printf 'This checkout may not match origin/main.
 
-%s\n' "$report"
+%s\n%s\n' "$report" "$fetch_note"
 fi
 
 exit 0
