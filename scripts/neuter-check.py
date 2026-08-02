@@ -301,6 +301,8 @@ def main():
                         help="seconds to wait for a quiet machine (default: 1800)")
     parser.add_argument("--output", default="", help="directory for the per-run logs and XML")
     parser.add_argument("--unity", default=DEFAULT_UNITY, help="editor binary")
+    parser.add_argument("--report", metavar="FILE",
+                        help="write every hole as one stable line (fixture, cut, case), sorted")
     args = parser.parse_args()
 
     project = Path(args.project).resolve()
@@ -333,6 +335,7 @@ def main():
         return 1
 
     total_holes = 0
+    report_lines = []
     for fixture in fixtures:
         short = fixture.rsplit(".", 1)[-1]
         print(f"\n{fixture}", flush=True)
@@ -379,6 +382,12 @@ def main():
             if holes is None:
                 return 1
             total_holes += len(holes)
+            for test in holes:
+                report_lines.append(f"{fixture}\t{name}\t{test.rsplit('.', 1)[-1]}")
+
+    if args.report:
+        Path(args.report).write_text(
+            "\n".join(sorted(report_lines)) + ("\n" if report_lines else ""))
 
     print(f"\n{total_holes} hole(s) across {len(fixtures)} fixture(s)", flush=True)
     return 1 if total_holes else 0
