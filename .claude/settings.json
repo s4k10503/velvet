@@ -88,6 +88,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-commit-failing-fast-checks.py\"",
             "timeout": 15000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-merge-without-branch-deletion.py\"",
+            "timeout": 10000
           }
         ]
       }
