@@ -182,3 +182,32 @@ def git_invocations(command, subcommands):
         if invocation and invocation[1] in subcommands:
             found.append(invocation)
     return found
+
+
+def leading_program(tokens):
+    """The index of the command word, past any environment assignment or leading keyword."""
+    index = 0
+    while index < len(tokens) and (
+        ENV_ASSIGNMENT.match(tokens[index]) or tokens[index] in LEADING_WORDS
+    ):
+        index += 1
+    return index
+
+
+def program_invocations(command, program, words):
+    """Operands after `program` followed by `words`, once per segment that runs it.
+
+    For programs whose subcommand is a fixed word sequence — `gh issue create`, `gh pr merge`.
+    A pattern over the whole command answered yes to the words appearing inside an argument.
+    """
+    found = []
+    for segment in command_segments(command):
+        tokens = without_redirections(tokens_of(segment))
+        index = leading_program(tokens)
+        if index >= len(tokens) or os.path.basename(tokens[index]) != program:
+            continue
+        index += 1
+        if tokens[index:index + len(words)] != list(words):
+            continue
+        found.append(tokens[index + len(words):])
+    return found

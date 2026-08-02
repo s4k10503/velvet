@@ -9,7 +9,7 @@ hooks:
     - matcher: Bash
       hooks:
         - type: command
-          command: ${CLAUDE_PROJECT_DIR}/.claude/hooks/block-shared-git-state.sh
+          command: python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/block-shared-git-state.py"
 ---
 
 You implement one change in the Velvet repository and report on it. You do not push.
