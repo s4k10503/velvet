@@ -98,3 +98,7 @@ docs/guides/
 # command line rather than reading this, so tracking it would only make every checkout dirty after
 # its first run.
 ProjectSettings/Packages/
+
+# Python bytecode, written beside a hook by anything that imports it.
+__pycache__/
+*.pyc
