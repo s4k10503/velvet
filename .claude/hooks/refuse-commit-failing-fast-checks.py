@@ -1,303 +1,239 @@
 #!/usr/bin/env python3
-"""Refuse `git commit` when staged files would fail fast deterministic checks.
+"""Refuse `git commit` when the content it would record fails a fast deterministic check.
 
-Every check this repository owns runs either at CI, twenty minutes away, or never.
-Nothing looks at what is about to be committed until integration. These checks finish
-in well under a second and would have caught defects that instead reached a commit or CI today.
+Every check this repository owns runs either at CI, twenty minutes away, or never. Nothing looks
+at what is about to be committed until integration. These checks finish in well under a second and
+would have caught defects that instead reached a commit or CI.
+
+What is checked is what the commit records, not what the working tree happens to hold. Those are
+different files: a broken blob whose working copy was fixed afterwards passed every check, and a
+file staged and then deleted was refused with a `FileNotFoundError` for a commit git would accept.
+`git commit -a` and `git commit <pathspec>` record the working tree, so for those it is read too.
 """
 
 import json
 import os
-import re
-import shutil
 import subprocess
 import sys
+import tempfile
 
-# Anchored at a command position — start of input, or after a separator or newline. Quoted
-# arguments and heredoc bodies are masked before matching; a commit message that names
-# `git commit` is not one.
-_GIT = r"git\s+(?:-C\s+\S+\s+)?"
-ANCHOR = r"(?:^|[;&|]|\n)\s*"
-COMMIT = re.compile(ANCHOR + _GIT + r"commit\b")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from shell_commands import git_invocations
+
 NEUTER_CUTS = "scripts/neuter-cuts.json"
 
-
-def mask_shell_literals(command):
-    out = list(command)
-    i = 0
-    n = len(command)
-    while i < n:
-        ch = command[i]
-        if ch in "'\"":
-            quote = ch
-            out[i] = " "
-            i += 1
-            while i < n:
-                if quote == '"' and command[i] == "\\" and i + 1 < n:
-                    out[i] = out[i + 1] = " "
-                    i += 2
-                    continue
-                if command[i] == quote:
-                    out[i] = " "
-                    i += 1
-                    break
-                out[i] = " "
-                i += 1
-        elif ch == "\\" and i + 1 < n:
-            out[i] = out[i + 1] = " "
-            i += 2
-        elif command.startswith("<<", i):
-            j = i + 2
-            strip_tabs = j < n and command[j] == "-"
-            if strip_tabs:
-                j += 1
-            if j < n and command[j] in "'\"":
-                quote = command[j]
-                j += 1
-                start = j
-                while j < n and command[j] != quote:
-                    j += 1
-                delimiter = command[start:j]
-                if j < n:
-                    j += 1
-            else:
-                start = j
-                while j < n and not command[j].isspace():
-                    j += 1
-                delimiter = command[start:j]
-            while i < j:
-                out[i] = " "
-                i += 1
-            while i < n and command[i] != "\n":
-                out[i] = " "
-                i += 1
-            if i < n:
-                out[i] = "\n"
-                i += 1
-            while i < n:
-                line_start = i
-                line_end = command.find("\n", i)
-                if line_end == -1:
-                    line_end = n
-                line = command[line_start:line_end]
-                body = line.lstrip("\t") if strip_tabs else line
-                if body == delimiter:
-                    for k in range(line_start, line_end):
-                        out[k] = " "
-                    if line_end < n:
-                        i = line_end + 1
-                    else:
-                        i = line_end
-                    break
-                for k in range(line_start, line_end):
-                    out[k] = " "
-                if line_end < n:
-                    out[line_end] = " "
-                    i = line_end + 1
-                else:
-                    i = line_end
-        else:
-            i += 1
-    return "".join(out)
+# `git commit` options that take a value, so their argument is not mistaken for a pathspec.
+COMMIT_VALUE_FLAGS = {
+    "-m", "--message", "-F", "--file", "-c", "--reedit-message", "-C", "--reuse-message",
+    "--fixup", "--squash", "--author", "--date", "-t", "--template", "--cleanup",
+    "-S", "--gpg-sign", "--trailer", "--pathspec-from-file",
+}
+COMMIT_ALL_FLAGS = {"-a", "--all"}
 
 
 def git(cwd, *args):
-    return subprocess.run(
-        ["git", "-C", cwd, *args],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=30)
+
+
+def git_bytes(cwd, *args):
+    result = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
+    return result.stdout if result.returncode == 0 else None
 
 
 def repo_root(cwd):
     result = git(cwd, "rev-parse", "--show-toplevel")
-    if result.returncode != 0:
-        return cwd
-    return result.stdout.strip()
+    return result.stdout.strip() if result.returncode == 0 else cwd
+
+
+def commit_invocations(command):
+    """(directory, commits all, pathspecs) for each `git commit` in the command."""
+    found = []
+    for directory, _, operands in git_invocations(command, {"commit"}):
+        commits_all = False
+        pathspecs = []
+        index = 0
+        after_separator = False
+        while index < len(operands):
+            token = operands[index]
+            if token == "--":
+                after_separator = True
+                index += 1
+                continue
+            if not after_separator and token.startswith("--"):
+                flag = token.partition("=")[0]
+                if flag in COMMIT_ALL_FLAGS:
+                    commits_all = True
+                if flag in COMMIT_VALUE_FLAGS and "=" not in token:
+                    index += 2
+                    continue
+                index += 1
+                continue
+
+            if not after_separator and token.startswith("-") and len(token) > 1:
+                # In a short group such as -am each letter is its own flag; the first value-taking
+                # one ends the group, taking either the rest of the token or the next one.
+                takes_next = False
+                for position, letter in enumerate(token[1:]):
+                    if letter == "a":
+                        commits_all = True
+                    if "-" + letter in COMMIT_VALUE_FLAGS:
+                        takes_next = position + 2 == len(token)
+                        break
+                index += 2 if takes_next else 1
+                continue
+            pathspecs.append(token)
+            index += 1
+        found.append((directory, commits_all, pathspecs))
+    return found
 
 
 def staged_paths(cwd):
-    result = git(cwd, "diff", "--cached", "--name-only", "--diff-filter=ACM")
+    # R is included: a rename reports it, and dropping it left a file renamed and broken in one
+    # staged change checked by nothing.
+    result = git(cwd, "diff", "--cached", "--name-only", "--diff-filter=ACMR")
     if result.returncode != 0:
         return []
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
-def cut_targets(repo_root):
-    cuts_path = os.path.join(repo_root, NEUTER_CUTS)
+def worktree_paths(cwd, pathspecs):
+    args = ["diff", "--name-only", "--diff-filter=ACMR"]
+    if pathspecs:
+        args += ["--", *pathspecs]
+    result = git(cwd, *args)
+    if result.returncode != 0:
+        return []
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+def committed_content(cwd, commits_all, pathspecs):
+    """path -> bytes the commit would record."""
+    content = {}
+    for path in staged_paths(cwd):
+        blob = git_bytes(cwd, "show", ":" + path)
+        if blob is not None:
+            content[path] = blob
+    if commits_all or pathspecs:
+        for path in worktree_paths(cwd, pathspecs):
+            try:
+                with open(os.path.join(cwd, path), "rb") as handle:
+                    content[path] = handle.read()
+            except OSError:
+                continue
+    return content
+
+
+def cut_targets(root):
+    cuts_path = os.path.join(root, NEUTER_CUTS)
     if not os.path.exists(cuts_path):
-        return set()
-    with open(cuts_path, encoding="utf-8") as cuts_file:
-        raw = json.load(cuts_file)
-    targets = set()
-    for cut in raw.get("cuts", []):
-        for edit in cut.get("edits", []):
-            targets.add(edit["file"])
-    return targets
+        return set(), []
+    # A malformed cut file used to raise out of main, and a hook that exits 1 is treated as
+    # non-blocking — so the one file whose breakage matters most turned every check off.
+    try:
+        with open(cuts_path, encoding="utf-8") as cuts_file:
+            raw = json.load(cuts_file)
+    except (OSError, ValueError):
+        return set(), []
+    edits = [edit for cut in raw.get("cuts", []) for edit in cut.get("edits", [])]
+    return {edit["file"] for edit in edits}, edits
 
 
-def refuse(path, output, reproduce):
+def refuse(display, output, reproduce):
     sys.stderr.write(
-        f"Refusing `git commit`: {path} failed a fast check.\n\n"
+        f"Refusing `git commit`: {display} failed a fast check.\n\n"
         f"{output.rstrip()}\n\n"
         f"Reproduce: {reproduce}\n"
     )
     return 2
 
 
-def check_python(path):
-    reproduce = f"python3 -m py_compile {path}"
-    proc = subprocess.run(
-        ["python3", "-m", "py_compile", path],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+def run_tool(argv, display, reproduce):
+    proc = subprocess.run(argv, capture_output=True, text=True, timeout=30)
     if proc.returncode != 0:
-        output = proc.stderr or proc.stdout
-        return refuse(path, output, reproduce)
+        return refuse(display, proc.stderr or proc.stdout, reproduce)
     return 0
 
 
-def check_shell(path):
-    reproduce_bash = f"bash -n {path}"
-    proc = subprocess.run(
-        ["bash", "-n", path],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if proc.returncode != 0:
-        output = proc.stderr or proc.stdout
-        return refuse(path, output, reproduce_bash)
-
-    shellcheck = shutil.which("shellcheck")
-    if not shellcheck:
+def check_content(display, data):
+    """Runs whichever fast check the path's extension names, over the content itself."""
+    suffix = os.path.splitext(display)[1]
+    if suffix == ".json":
+        try:
+            json.loads(data.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError) as err:
+            return refuse(display, str(err), f"python3 -c 'import json; json.load(open(\"{display}\"))'")
         return 0
 
-    reproduce_sc = f"shellcheck {path}"
-    proc = subprocess.run(
-        [shellcheck, path],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if proc.returncode != 0:
-        output = proc.stderr or proc.stdout
-        return refuse(path, output, reproduce_sc)
-    return 0
-
-
-def check_json(path):
-    reproduce = f"python3 -c 'import json; json.load(open({json.dumps(path)}))'"
-    try:
-        with open(path, encoding="utf-8") as json_file:
-            json.load(json_file)
-    except json.JSONDecodeError as err:
-        return refuse(path, str(err), reproduce)
-    except OSError as err:
-        return refuse(path, str(err), reproduce)
-    return 0
-
-
-def check_yaml(path):
-    try:
-        import yaml
-    except ImportError:
+    if suffix in (".yml", ".yaml"):
+        try:
+            import yaml
+        except ImportError:
+            return 0
+        try:
+            yaml.safe_load(data.decode("utf-8"))
+        except (yaml.YAMLError, UnicodeDecodeError) as err:
+            return refuse(display, str(err), f"python3 -c 'import yaml; yaml.safe_load(open(\"{display}\"))'")
         return 0
 
-    reproduce = (
-        f"python3 -c 'import yaml; yaml.safe_load(open({json.dumps(path)}))'"
-    )
-    try:
-        with open(path, encoding="utf-8") as yaml_file:
-            yaml.safe_load(yaml_file)
-    except yaml.YAMLError as err:
-        return refuse(path, str(err), reproduce)
-    except OSError as err:
-        return refuse(path, str(err), reproduce)
-    return 0
-
-
-def check_neuter(repo_root):
-    script = os.path.join(repo_root, "scripts", "neuter-check.py")
-    reproduce = "python3 scripts/neuter-check.py --validate"
-    proc = subprocess.run(
-        ["python3", script, "--validate", "--project", repo_root],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        cwd=repo_root,
-    )
-    if proc.returncode != 0:
-        output = proc.stderr or proc.stdout
-        return refuse(NEUTER_CUTS, output, reproduce)
-    return 0
-
-
-def run_checks(cwd):
-    root = repo_root(cwd)
-    paths = staged_paths(cwd)
-    if not paths:
+    if suffix not in (".py", ".sh"):
         return 0
 
-    targets = cut_targets(root)
-    neuter_needed = NEUTER_CUTS in paths or any(p in targets for p in paths)
+    # py_compile and shellcheck both want a file, and the content under test is the index's rather
+    # than the working tree's, so it is written out rather than read from the checkout.
+    handle, scratch = tempfile.mkstemp(suffix=suffix)
+    try:
+        with os.fdopen(handle, "wb") as scratch_file:
+            scratch_file.write(data)
+        if suffix == ".py":
+            return run_tool(["python3", "-B", "-m", "py_compile", scratch],
+                            display, f"python3 -m py_compile {display}")
+        code = run_tool(["bash", "-n", scratch], display, f"bash -n {display}")
+        if code:
+            return code
+        shellcheck = __import__("shutil").which("shellcheck")
+        if not shellcheck:
+            return 0
+        # Warning and above. shellcheck exits non-zero on info-level notes too, and three hooks in
+        # this repository carry one — SC1091, for sourcing a sibling it was not given — so the
+        # default floor refused every commit that touched them for something nobody intends to fix.
+        return run_tool([shellcheck, "--severity=warning", scratch],
+                        display, f"shellcheck --severity=warning {display}")
+    finally:
+        try:
+            os.unlink(scratch)
+        except OSError:
+            pass
 
-    for rel in paths:
-        path = os.path.join(root, rel)
-        if rel.endswith(".py"):
-            code = check_python(path)
-            if code:
-                return code
-        elif rel.endswith(".sh"):
-            code = check_shell(path)
-            if code:
-                return code
-        elif rel.endswith(".json"):
-            code = check_json(path)
-            if code:
-                return code
-        elif rel.endswith(".yml") or rel.endswith(".yaml"):
-            code = check_yaml(path)
-            if code:
-                return code
 
-    if neuter_needed:
-        return check_neuter(root)
+def check_neuter(root):
+    script = os.path.join(root, "scripts", "neuter-check.py")
+    if not os.path.exists(script):
+        return 0
+    proc = subprocess.run(["python3", "-B", script, "--validate", "--project", root],
+                          capture_output=True, text=True, timeout=30, cwd=root)
+    if proc.returncode != 0:
+        return refuse(NEUTER_CUTS, proc.stderr or proc.stdout,
+                      "python3 scripts/neuter-check.py --validate")
     return 0
 
 
-def staged_neuters(repo_root):
-    """Cuts present in the staged content of the files the cut map names.
+def carried_neuters(content, edits):
+    """Cuts present in the content the commit would record.
 
     A sweep holds a neuter in a production source until its `finally` restores it, and while it is
-    there the cut reads as an ordinary modification — `git status` shows the file changed and the
-    diff shows a plausible early return. Committing then captures a method that silently does
-    nothing, for a reason the author cannot see in their own diff.
-
-    Asked of the staged content rather than of the process list. A pattern over `ps` matches any
-    command line that merely names the script, including the one carrying this check's own text,
-    and it says nothing about a sweep that died leaving a neuter behind — the state
-    `neuter-check.py`'s own `dirty_cut_files` refuses to start on top of.
+    there the cut reads as an ordinary modification — the diff shows a plausible early return.
+    Committing then captures a method that silently does nothing, for a reason the author cannot
+    see in their own diff.
     """
-    cuts = os.path.join(repo_root, NEUTER_CUTS)
-    if not os.path.exists(cuts):
-        return []
-    try:
-        with open(cuts, encoding="utf-8") as handle:
-            edits = [edit for cut in json.load(handle)["cuts"] for edit in cut["edits"]]
-    except Exception:
-        return []
-
     found = []
     for edit in edits:
-        blob = subprocess.run(["git", "-C", repo_root, "show", ":" + edit["file"]],
-                              capture_output=True, text=True)
-        if blob.returncode != 0:
+        data = content.get(edit["file"])
+        if data is None:
             continue
-        lines = blob.stdout.splitlines()
+        try:
+            lines = data.decode("utf-8").splitlines()
+        except UnicodeDecodeError:
+            continue
         for index, line in enumerate(lines):
             if line.strip() != edit["anchor"]:
                 continue
@@ -309,8 +245,33 @@ def staged_neuters(repo_root):
     return found
 
 
-def is_commit(command):
-    return COMMIT.search(mask_shell_literals(command)) is not None
+def audit(cwd, commits_all, pathspecs):
+    root = repo_root(cwd)
+    content = committed_content(root, commits_all, pathspecs)
+    if not content:
+        return 0
+
+    targets, edits = cut_targets(root)
+    neutered = carried_neuters(content, edits)
+    if neutered:
+        sys.stderr.write(
+            "Refusing `git commit`: the content being committed carries a neuter from a sweep.\n\n"
+            + "\n".join("  " + entry for entry in neutered)
+            + "\n\nEach names a method whose body would begin with the cut's early return — it "
+              "compiles, it reads as an ordinary change, and it does nothing. Wait for a running "
+              "sweep to restore it, or restore it yourself:\n"
+              "  git checkout -- <file>\n"
+        )
+        return 2
+
+    for path in sorted(content):
+        code = check_content(path, content[path])
+        if code:
+            return code
+
+    if NEUTER_CUTS in content or any(path in targets for path in content):
+        return check_neuter(root)
+    return 0
 
 
 def main():
@@ -320,27 +281,17 @@ def main():
         return 0
     if event.get("tool_name") != "Bash":
         return 0
-    command = event.get("tool_input", {}).get("command", "")
-    if not is_commit(command):
+
+    commits = commit_invocations(event.get("tool_input", {}).get("command", ""))
+    if not commits:
         return 0
 
     cwd = event.get("cwd") or "."
-    root = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
-                          capture_output=True, text=True)
-    if root.returncode == 0:
-        neutered = staged_neuters(root.stdout.strip())
-        if neutered:
-            sys.stderr.write(
-                "Refusing `git commit`: the staged content carries a neuter from a sweep.\n\n"
-                + "\n".join("  " + entry for entry in neutered)
-                + "\n\nEach names a method whose body would begin with the cut's early return — it "
-                  "compiles, it reads as an ordinary change, and it does nothing. Wait for a running "
-                  "sweep to restore it, or restore it yourself:\n"
-                  "  git checkout -- <file>\n"
-            )
-            return 2
-
-    return run_checks(cwd)
+    for directory, commits_all, pathspecs in commits:
+        code = audit(directory or cwd, commits_all, pathspecs)
+        if code:
+            return code
+    return 0
 
 
 if __name__ == "__main__":
