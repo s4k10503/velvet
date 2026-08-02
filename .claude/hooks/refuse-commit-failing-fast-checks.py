@@ -269,6 +269,46 @@ def run_checks(cwd):
     return 0
 
 
+def staged_neuters(repo_root):
+    """Cuts present in the staged content of the files the cut map names.
+
+    A sweep holds a neuter in a production source until its `finally` restores it, and while it is
+    there the cut reads as an ordinary modification — `git status` shows the file changed and the
+    diff shows a plausible early return. Committing then captures a method that silently does
+    nothing, for a reason the author cannot see in their own diff.
+
+    Asked of the staged content rather than of the process list. A pattern over `ps` matches any
+    command line that merely names the script, including the one carrying this check's own text,
+    and it says nothing about a sweep that died leaving a neuter behind — the state
+    `neuter-check.py`'s own `dirty_cut_files` refuses to start on top of.
+    """
+    cuts = os.path.join(repo_root, NEUTER_CUTS)
+    if not os.path.exists(cuts):
+        return []
+    try:
+        with open(cuts, encoding="utf-8") as handle:
+            edits = [edit for cut in json.load(handle)["cuts"] for edit in cut["edits"]]
+    except Exception:
+        return []
+
+    found = []
+    for edit in edits:
+        blob = subprocess.run(["git", "-C", repo_root, "show", ":" + edit["file"]],
+                              capture_output=True, text=True)
+        if blob.returncode != 0:
+            continue
+        lines = blob.stdout.splitlines()
+        for index, line in enumerate(lines):
+            if line.strip() != edit["anchor"]:
+                continue
+            body = next((i for i in range(index + 1, len(lines)) if lines[i].strip()), None)
+            after = next((lines[i].strip() for i in range(body + 1, len(lines))
+                          if lines[i].strip()), "") if body is not None else ""
+            if after == edit["neuter"]:
+                found.append(f"{edit['file']}: {edit['anchor']}")
+    return found
+
+
 def is_commit(command):
     return COMMIT.search(mask_shell_literals(command)) is not None
 
@@ -285,6 +325,21 @@ def main():
         return 0
 
     cwd = event.get("cwd") or "."
+    root = subprocess.run(["git", "-C", cwd, "rev-parse", "--show-toplevel"],
+                          capture_output=True, text=True)
+    if root.returncode == 0:
+        neutered = staged_neuters(root.stdout.strip())
+        if neutered:
+            sys.stderr.write(
+                "Refusing `git commit`: the staged content carries a neuter from a sweep.\n\n"
+                + "\n".join("  " + entry for entry in neutered)
+                + "\n\nEach names a method whose body would begin with the cut's early return — it "
+                  "compiles, it reads as an ordinary change, and it does nothing. Wait for a running "
+                  "sweep to restore it, or restore it yourself:\n"
+                  "  git checkout -- <file>\n"
+            )
+            return 2
+
     return run_checks(cwd)
 
 
