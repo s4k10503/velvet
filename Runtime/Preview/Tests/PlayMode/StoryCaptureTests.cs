@@ -177,7 +177,7 @@ namespace Velvet.Tests
             probe.AddToClassList("bg-slate-700");
             host.Root.Add(probe);
 
-            yield return WaitFrames(8);
+            yield return WaitFramesDraining(8, host.TargetTexture);
 
             result.Problem = probe.resolvedStyle.backgroundColor == default
                 ? "the bundled stylesheet resolves none of its plain classes"
@@ -206,13 +206,14 @@ namespace Velvet.Tests
             using var previewHost = new VelvetPreviewHost(host.Root);
             previewHost.Mount(story);
 
-            // Frames rather than seconds. What a capture needs is that the panel has been drawn, and
-            // a realtime wait spins as many frames as it can — on a runner whose rasterisation is
-            // queued rather than executed that is hundreds, each queueing a full render that the
-            // readback below then pays for. Eight covers the first-run text shaping and glyph-atlas
-            // warm-up the half second was absorbing; too few would surface as the uniform-frame
-            // failure the assertion already makes.
-            yield return WaitFrames(8);
+            // Frames rather than seconds, and drained rather than queued. What a capture needs is
+            // that the panel has been drawn; a realtime wait spins as many frames as it can, and on
+            // a runner whose rasterisation is queued rather than executed that is hundreds. Eight
+            // covers the first-run text shaping and glyph-atlas warm-up the half second was
+            // absorbing — too few would surface as the uniform-frame failure the assertion already
+            // makes — and draining each of them is what stops the readback below paying for all
+            // eight at once.
+            yield return WaitFramesDraining(8, host.TargetTexture);
 
             Debug.Log($"[StoryCapture] {story.Id}: texture {width}x{height}, root layout {host.Root.layout}");
 
