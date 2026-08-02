@@ -13,11 +13,19 @@
 # Only issues assigned to the authenticated user count, so a contributor is not held by somebody
 # else's backlog.
 #
-# `blocked` is the exclusion, and it is a label rather than a deferral because the two say
+# Two labels are the exclusion, and they are labels rather than deferrals because the two forms say
 # different things: a deferral is a claim that work will resume, and it expires so the claim gets
-# re-read; a `blocked` label says the work cannot proceed for a reason outside this repository,
-# which no amount of re-reading changes. Labelling it also puts that state in the issue list,
-# where the next reader sees it without running anything.
+# re-read; a label says the work is not the assistant's to advance, which no amount of re-reading
+# changes. Labelling also puts that state in the issue list, where the next reader sees it without
+# running anything.
+#
+# `blocked` — cannot proceed for a reason outside this repository.
+# `needs-decision` — measured to the point where what remains is a call only the owner can make.
+#
+# The second was added after an issue reached that state and this guard kept naming it, because the
+# only alternative was a deferral that expires every forty-five minutes on a reason that does not
+# change. Both labels are visible in the issue list, which is what stops either being a quiet way to
+# silence this: applying one is on the record.
 #
 # Exit 2 with output on stderr is what Stop reads as "do not stop, here is why".
 
@@ -50,7 +58,8 @@ while IFS=$'\t' read -r number title; do
   fi
   open_work="$open_work
   #$number $title"
-done < <(echo "$issues" | jq -r '.[] | select([.labels[].name] | index("blocked") | not)
+done < <(echo "$issues" | jq -r '.[]
+  | select([.labels[].name] | (index("blocked") // index("needs-decision")) | not)
   | [.number, .title] | @tsv' 2>/dev/null)
 
 if [ -z "$open_work" ]; then
@@ -79,9 +88,11 @@ arm the deferral. It expires after 45 minutes so the reason gets re-examined rat
 
 A single issue is deferred the same way, by its number in place of \`backlog\`.
 
-Work that cannot proceed for a reason outside this repository is labelled \`blocked\` instead, which
-stops it counting here and says so in the issue list:
+Work that is not yours to advance is labelled instead, which stops it counting here and says so in
+the issue list. \`blocked\` is for a reason outside this repository; \`needs-decision\` is for work
+measured to the point where what remains is a call only the owner can make:
 
   gh issue edit <n> --add-label blocked
+  gh issue edit <n> --add-label needs-decision
 EOF
 exit 2
