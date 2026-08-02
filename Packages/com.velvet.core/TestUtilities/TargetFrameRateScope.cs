@@ -35,6 +35,22 @@ namespace Velvet.TestUtilities
     /// </summary>
     public static class PlayModeRealtimeTestHelpers
     {
+        /// <summary>
+        /// Yields for a fixed number of frames.
+        /// </summary>
+        /// <remarks>
+        /// For a fixture that needs the panel drawn rather than time elapsed. A realtime wait spins as
+        /// many frames as it can, and where a frame's rasterisation is queued rather than executed it
+        /// can spin hundreds — each queueing a full panel render that the next readback pays for.
+        /// </remarks>
+        public static IEnumerator WaitFrames(int frames)
+        {
+            for (var frame = 0; frame < frames; frame++)
+            {
+                yield return null;
+            }
+        }
+
         /// <summary>Yields until at least <paramref name="seconds"/> of realtime have elapsed.</summary>
         public static IEnumerator WaitRealtime(double seconds)
         {
