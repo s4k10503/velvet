@@ -31,9 +31,16 @@ deferred() {
   [ -n "$line" ] || return 1
   stamp=${line##* }
   case "$stamp" in ''|*[!0-9]*) return 1 ;; esac
-  [ $(( $(date +%s) - stamp )) -lt "$DEFER_TTL" ] || return 1
+  # 10# because bash reads a leading zero as octal, and a stamp like 0900 then aborts arithmetic
+  # evaluation — which discarded the whole backlog rather than one deferral.
+  local age
+  age=$(( $(date +%s) - 10#$stamp )) || return 1
+  # Bounded below as well as above. A stamp in the future — a millisecond epoch, a typo, a backward
+  # clock step — was live indefinitely, which is the permanent silence the expiry exists to prevent.
+  [ "$age" -ge 0 ] || return 1
+  [ "$age" -lt "$DEFER_TTL" ] || return 1
   DEFER_REASON=${line#"$1 "}
   DEFER_REASON=${DEFER_REASON% *}
-  DEFER_AGE=$(( ($(date +%s) - stamp) / 60 ))
+  DEFER_AGE=$(( age / 60 ))
   return 0
 }

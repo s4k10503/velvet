@@ -41,13 +41,32 @@ STALE_AFTER=180
 
 watcher_is_alive() {
   [ -f "$HEARTBEAT" ] || return 1
-  local beat
+  local beat age
   beat=$(cat "$HEARTBEAT" 2>/dev/null) || return 1
   case "$beat" in ''|*[!0-9]*) return 1 ;; esac
-  [ $(( $(date +%s) - beat )) -lt "$STALE_AFTER" ]
+  # Same two bounds as lib/deferrals.sh, and for the same reason: a leading zero reads as octal and
+  # aborts the comparison, and a stamp in the future vouches for a watcher permanently.
+  age=$(( $(date +%s) - 10#$beat )) || return 1
+  [ "$age" -ge 0 ] || return 1
+  [ "$age" -lt "$STALE_AFTER" ]
 }
 
-prs=$(gh pr list --state open --json number --jq '.[].number' 2>/dev/null) || exit 0
+# A gh that cannot answer is not an answer of "nothing open". Taking `|| exit 0` here reported
+# exactly what a settled repository reports.
+prs=$(gh pr list --state open --json number --jq '.[].number' 2>&1) || {
+  cat >&2 <<EOF
+Do not stop: the open pull requests could not be read, so nothing here says they are settled.
+
+  gh pr list exited $?
+$prs
+
+If gh is unauthenticated or the network is down, say so and arm the deferral rather than treating
+an unanswered question as a settled one:
+
+  echo "backlog <what clears it> \$(date +%s)" >> $HOME/.velvet-pr-deferrals
+EOF
+  exit 2
+}
 [ -z "$prs" ] && exit 0
 
 blocked=""
@@ -93,14 +112,23 @@ for pr in $prs; do
   if [ "$pending" = "0" ]; then
     # Nothing is running, so a watcher has nothing to observe and its heartbeat vouches for nothing.
     state=$(gh pr view "$pr" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")
-    fails=$(echo "$checks" | jq '[.[] | select(.bucket == "fail")] | length' 2>/dev/null || echo 0)
+    # A cancelled check is counted here rather than nowhere. In gh's buckets it is neither `pass`
+    # nor `fail`, so a run that was cancelled outright used to read as every check having passed.
+    fails=$(echo "$checks" | jq '[.[] | select(.bucket == "fail" or .bucket == "cancel")] | length' 2>/dev/null || echo 0)
     if [ "$fails" != "0" ]; then
       blocked="$blocked
-  PR #$pr — $fails check(s) failed. Read the run, fix or say why it is not yours to fix."
+  PR #$pr — $fails check(s) failed or were cancelled. Read the run, fix or say why it is not yours
+    to fix. A cancelled run does not restart on its own."
     elif [ "$state" = "CLEAN" ]; then
       blocked="$blocked
   PR #$pr — every check passed and it is unmerged. Merge it, or say what it is waiting on and arm
     something that brings you back when that arrives."
+    else
+      # Every other merge state, rather than the ones seen so far. Listing them made an unlisted
+      # state mean "settled", which is how a green DIRTY or DRAFT pull request passed both guards.
+      blocked="$blocked
+  PR #$pr — checks are settled but the merge state is ${state:-unknown}, so it cannot go green on
+    its own. Rebase it, take it out of draft, or say what it is waiting on."
     fi
     continue
   fi
