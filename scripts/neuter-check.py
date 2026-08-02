@@ -262,6 +262,58 @@ def outcomes(results):
     }
 
 
+BASELINE_DRIFT_EXIT = 2
+# Holes already force exit 1; a second meaning on 1 would make CI unable to tell drift from an ordinary hole count.
+
+
+def read_hole_lines(path):
+    return [line for line in path.read_text().splitlines() if line.strip()]
+
+
+def baseline_arg_problems(args):
+    """Arguments that would make --baseline meaningless, checked before the first editor run."""
+    problems = []
+    if not args.baseline:
+        return problems
+    baseline = Path(args.baseline).resolve()
+    if not baseline.is_file():
+        problems.append(f"baseline file not found: {baseline}")
+    if args.report and Path(args.report).resolve() == baseline:
+        problems.append(
+            "--report and --baseline name the same file; --report writes the sweep holes before "
+            "--baseline compares them, so the comparison can only pass")
+    return problems
+
+
+def compare_baseline(sweep_lines, baseline_path):
+    """Returns an exit code when the baseline drifts or is absent; None when it matches."""
+    path = Path(baseline_path).resolve()
+    if not path.is_file():
+        print(f"error: baseline file not found: {path}", file=sys.stderr)
+        return BASELINE_DRIFT_EXIT
+    baseline_lines = read_hole_lines(path)
+    sweep_set = set(sweep_lines)
+    baseline_set = set(baseline_lines)
+    only_sweep = sorted(sweep_set - baseline_set)
+    only_baseline = sorted(baseline_set - sweep_set)
+    if not only_sweep and not only_baseline:
+        return None
+    print(f"\nBaseline comparison against {path}:", flush=True)
+    if only_sweep:
+        print("\n  Only in this sweep — passes with its mechanism disabled though it did not before:",
+              flush=True)
+        for line in only_sweep:
+            print(f"    {line}", flush=True)
+    if only_baseline:
+        print("\n  Only in baseline — started failing its cut, or the case or cut left the map;"
+              " confirm which before treating the baseline as stale:", flush=True)
+        for line in only_baseline:
+            print(f"    {line}", flush=True)
+    print("\n  Regenerate the baseline after an intended change:", flush=True)
+    print(f"    {sys.executable} scripts/neuter-check.py --report {path}", flush=True)
+    return BASELINE_DRIFT_EXIT
+
+
 def report_pair(entry, name, cut, baseline, cut_results, elapsed, peak):
     print(f"\n  cut '{name}' — {cut['summary']}", flush=True)
     if cut_results is None:
@@ -303,6 +355,8 @@ def main():
     parser.add_argument("--unity", default=DEFAULT_UNITY, help="editor binary")
     parser.add_argument("--report", metavar="FILE",
                         help="write every hole as one stable line (fixture, cut, case), sorted")
+    parser.add_argument("--baseline", metavar="FILE",
+                        help="compare holes from this sweep against an approved baseline file")
     args = parser.parse_args()
 
     project = Path(args.project).resolve()
@@ -324,6 +378,10 @@ def main():
         for path in dirty:
             print(f"  {path}", file=sys.stderr)
         return 1
+
+    for problem in baseline_arg_problems(args):
+        print(f"error: {problem}", file=sys.stderr)
+        return BASELINE_DRIFT_EXIT
 
     out = Path(args.output).resolve() if args.output else project / "Logs" / "neuter-check"
     out.mkdir(parents=True, exist_ok=True)
@@ -388,6 +446,12 @@ def main():
     if args.report:
         Path(args.report).write_text(
             "\n".join(sorted(report_lines)) + ("\n" if report_lines else ""))
+
+    if args.baseline:
+        drift = compare_baseline(report_lines, args.baseline)
+        if drift is not None:
+            print(f"\n{total_holes} hole(s) across {len(fixtures)} fixture(s)", flush=True)
+            return drift
 
     print(f"\n{total_holes} hole(s) across {len(fixtures)} fixture(s)", flush=True)
     return 1 if total_holes else 0
