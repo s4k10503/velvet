@@ -13,12 +13,27 @@ would never fire.
 """
 import json
 import os
-import re
 import subprocess
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from shell_commands import program_invocations
 from velvet_hooks import BRANCH_BASES
+
+
+def merge_targets(command):
+    """The pull requests a merge in this command would land, "" meaning the current branch's.
+
+    Read off tokens. The pattern this replaces required the number to sit immediately after the
+    subcommand, so putting a flag first — this repository's own squash convention does — matched
+    nothing and the guard returned 0 without spawning anything. It also carried no command-position
+    anchor, so naming the command inside an argument spent a `gh pr view` and a `git fetch` on a
+    refusal; that happened while this fix was being tested.
+    """
+    return [
+        next((token for token in operands if token.isdigit()), "")
+        for operands in program_invocations(command, "gh", ("pr", "merge"))
+    ]
 
 
 def git(*args):
@@ -46,14 +61,18 @@ def main():
         return 0
 
     command = (payload.get("tool_input") or {}).get("command") or ""
-    match = re.search(r"gh\s+pr\s+merge\s+(\d+)", command)
-    if not match:
+    targets = merge_targets(command)
+    if not targets:
         return 0
-    pr = match.group(1)
+    pr = targets[0]
 
     try:
+        view = ["gh", "pr", "view"]
+        if pr:
+            view.append(pr)
+        view += ["--json", "headRefName", "--jq", ".headRefName"]
         head = subprocess.run(
-            ["gh", "pr", "view", pr, "--json", "headRefName", "--jq", ".headRefName"],
+            view,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=20,
         ).stdout.decode().strip()
     except Exception:
@@ -67,9 +86,12 @@ def main():
 
     behind = git("rev-list", "--count", "origin/{}..origin/main".format(head)).stdout.decode().strip()
     base = branch_base(head)
+    # gh merges the current branch's pull request when no number is given, and naming it "#" reads
+    # as a number nobody typed.
+    label = "PR #" + pr if pr else "The pull request for " + head
     if base:
         sys.stderr.write(
-            "PR #{} does not contain the current main — it is {} commit(s) behind.\n\n"
+            "{} does not contain the current main — it is {} commit(s) behind.\n\n"
             "Its checks passed against a main this merge does not produce. That is how main was broken "
             "here: two branches, each green, neither containing the other's change.\n\n"
             "This branch was created on top of unmerged work. After the parent merges, replay only "
@@ -77,17 +99,17 @@ def main():
             "git rebase --onto origin/main {}\n\n"
             "Note mergeStateStatus says CLEAN for this PR. GitHub only reports BEHIND when the base "
             "requires the head to be up to date, which protect-main does not — so that field cannot be "
-            "the thing you check.\n".format(pr, behind or "?", base)
+            "the thing you check.\n".format(label, behind or "?", base)
         )
     else:
         sys.stderr.write(
-            "PR #{} does not contain the current main — it is {} commit(s) behind.\n\n"
+            "{} does not contain the current main — it is {} commit(s) behind.\n\n"
             "Its checks passed against a main this merge does not produce. That is how main was broken "
             "here: two branches, each green, neither containing the other's change.\n\n"
             "Merge origin/main into {}, let the checks re-run, then merge.\n\n"
             "Note mergeStateStatus says CLEAN for this PR. GitHub only reports BEHIND when the base "
             "requires the head to be up to date, which protect-main does not — so that field cannot be "
-            "the thing you check.\n".format(pr, behind or "?", head)
+            "the thing you check.\n".format(label, behind or "?", head)
         )
     return 2
 

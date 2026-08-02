@@ -17,18 +17,35 @@ author, so a self-assignment adds nothing.
 """
 
 import json
-import re
+import os
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from shell_commands import program_invocations
 
 # Anchored at a command position — start of input, or after a separator or newline — so the same
 # text quoted inside an argument or named in a body does not trip it. This file argues for a
 # refusal by naming the command it refuses, which is exactly the text that would.
-CREATE = re.compile(r"(?:^|[;&|]|\n)\s*gh\s+(issue|pr)\s+create\b")
+LABEL_FLAGS = ("--label", "-l")
+ASSIGNEE_FLAGS = ("--assignee", "-a")
 
-LABEL = re.compile(r"(?:^|\s)(?:--label(?:=|\s)|-l\s)")
-ASSIGNEE = re.compile(r"(?:^|\s)(?:--assignee(?:=|\s)|-a\s)")
-WEB = re.compile(r"(?:^|\s)--web(?:\s|$)")
+
+def carries(operands, flags):
+    """Whether one of `flags` is present as a flag rather than as text inside an argument."""
+    for token in operands:
+        if token.partition("=")[0] in flags:
+            return True
+    return False
+
+
+def creations(command):
+    """(kind, operands) for each `gh issue create` / `gh pr create` the command runs."""
+    found = []
+    for kind in ("issue", "pr"):
+        for operands in program_invocations(command, "gh", (kind, "create")):
+            found.append((kind, operands))
+    return found
 
 
 def labels(cwd):
@@ -46,16 +63,21 @@ def main():
     if event.get("tool_name") != "Bash":
         return 0
     command = event.get("tool_input", {}).get("command", "")
-    match = CREATE.search(command)
-    if not match or WEB.search(command):
-        return 0
-
-    kind = match.group(1)
+    # Flags read off tokens rather than searched for in the whole command: the flag name occurring
+    # as delimited text inside a --title or --body satisfied the guard, and an unlabelled issue was
+    # created on the strength of prose describing one.
     missing = []
-    if not LABEL.search(command):
-        missing.append("--label")
-    if kind == "issue" and not ASSIGNEE.search(command):
-        missing.append("--assignee")
+    kind = ""
+    for kind, operands in creations(command):
+        if "--web" in operands:
+            continue
+        missing = []
+        if not carries(operands, LABEL_FLAGS):
+            missing.append("--label")
+        if kind == "issue" and not carries(operands, ASSIGNEE_FLAGS):
+            missing.append("--assignee")
+        if missing:
+            break
     if not missing:
         return 0
 

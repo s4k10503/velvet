@@ -12,15 +12,34 @@ paths are to hand rather than something to go and look up.
 """
 
 import json
-import re
+import os
 import subprocess
 import sys
 
-# Anchored at a command position — start of input, or after a separator or newline — so the same text
-# quoted inside an argument does not trip it. The first version was not, and refused its own first use:
-# a pull request body that named the command in prose, and then the edit that would have fixed it.
-BLIND = re.compile(
-    r"(?:^|[;&|]|\n)\s*git\s+(?:-C\s+\S+\s+)?add\s+(?:-A\b|--all\b|\.(?:\s|$))")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+from shell_commands import git_invocations
+
+# The sweeping forms. `-u` is not among them: it stages tracked modifications and cannot pick up a
+# file that arrived by accident, which is what both incidents were.
+#
+# Read off tokens rather than matched as text. The pattern this replaces required whitespace or
+# end-of-input after the dot, so the ordinary `git add .; git commit` one-liner passed, and its
+# command-position anchor accepted only a separator — so a `then`, a `do`, a subshell or an absolute
+# path to git all passed as well. Quoting inside an argument is handled by the tokeniser, which is
+# what the anchor was there for: the first version of this guard refused its own first use, on a
+# pull request body that named the command in prose.
+SWEEPING = {"-A", "--all", "--no-ignore-removal", ".", ":/", "*"}
+
+
+def sweeps(command):
+    """Whether any segment stages everything rather than named paths."""
+    for _, subcommand, operands in git_invocations(command, {"add", "stage"}):
+        for token in operands:
+            if token == "--":
+                continue
+            if token in SWEEPING:
+                return True
+    return False
 
 
 def main():
@@ -31,7 +50,7 @@ def main():
     if event.get("tool_name") != "Bash":
         return 0
     command = event.get("tool_input", {}).get("command", "")
-    if not BLIND.search(command):
+    if not sweeps(command):
         return 0
 
     cwd = event.get("cwd") or "."
