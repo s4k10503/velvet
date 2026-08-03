@@ -52,6 +52,37 @@ jobs:
             exit 1
           fi
 
+      # Ahead of the split, because the split checks out the package-at-root tree, where neither this
+      # script nor its CHANGELOG path exists — and ahead of the tagging, so a CHANGELOG that cannot
+      # produce a note fails the release outright instead of leaving tags behind for one that was
+      # never published.
+      - name: Build release notes from CHANGELOG (release only)
+        if: github.event_name == 'workflow_dispatch'
+        id: notes
+        env:
+          VERSION: ${{ inputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          MAIN_TAG="v${VERSION}-main"
+          PREV_MAIN_TAG=$(git tag -l "v*-main" --sort=-v:refname | grep -vx "$MAIN_TAG" | head -1)
+          NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+          ARGS=(
+            --version "$VERSION"
+            --repo "$REPOSITORY"
+            --compare-tag "$MAIN_TAG"
+            --changelog "$PREFIX/CHANGELOG.md"
+            --package-json "$PREFIX/package.json"
+            --output "$NOTES_FILE"
+          )
+          # Absent for the first release, where the compare link has no earlier tag to start from.
+          if [ -n "$PREV_MAIN_TAG" ]; then
+            ARGS+=(--previous-compare-tag "$PREV_MAIN_TAG")
+          fi
+          python3 scripts/release_notes.py "${ARGS[@]}"
+          echo "file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          echo "Release notes for $VERSION ($(wc -c < "$NOTES_FILE") bytes):"
+          cat "$NOTES_FILE"
+
       - name: Subtree split (tests stripped) → upm branch
         id: split
         run: |
@@ -81,6 +112,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}
           SPLIT_SHA: ${{ steps.split.outputs.sha }}
+          NOTES_FILE: ${{ steps.notes.outputs.file }}
         run: |
           TAG="v${VERSION}"
           git tag "$TAG" "$SPLIT_SHA"
@@ -93,10 +125,4 @@ jobs:
           MAIN_TAG="v${VERSION}-main"
           git tag "$MAIN_TAG" "$GITHUB_SHA"
           git push origin "$MAIN_TAG"
-          PREV_MAIN_TAG=$(git tag -l "v*-main" --sort=-v:refname | grep -vx "$MAIN_TAG" | head -1)
-          if [ -n "$PREV_MAIN_TAG" ]; then
-            gh release create "$TAG" --title "$TAG" \
-              --notes "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_MAIN_TAG}...${MAIN_TAG}"
-          else
-            gh release create "$TAG" --title "$TAG" --generate-notes
-          fi
+          gh release create "$TAG" --title "$TAG" --notes-file "$NOTES_FILE"

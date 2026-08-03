@@ -114,6 +114,7 @@ on macOS / Linux, `./build.ps1` on Windows.
 | `Source generators ▸ source-generators` | push (filtered) / every PR / merge group | not required | no |
 | `Source generators ▸ Required checks (generators)` | every PR / merge group | not required | **yes** |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
+| `Test ▸ release-notes` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ Required checks (Unity)` | every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` | not required | no |
 | `UPM ▸ release` | manual (`workflow_dispatch`) | not required | no |
@@ -162,10 +163,22 @@ the license on the same account.
 
 ## Releasing
 
-1. Bump `version` in `Packages/com.velvet.core/package.json` and update `CHANGELOG.md`.
+1. Close the version in `Packages/com.velvet.core/CHANGELOG.md` — rename the working section to
+   `## [X.Y.Z] - YYYY-MM-DD` — and bump `version` in `package.json` to match.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
+
+The release notes are built from that CHANGELOG section by `scripts/release_notes.py`, so a release
+is never written twice. Each version therefore needs a `### Highlights` block above its
+`### Added` / `### Changed` / `### Fixed` headings: a handful of one-paragraph bullets, which the
+note leads with and the long-form entries follow, collapsed. A version missing one fails the release
+— and fails the `Test ▸ release-notes` check on the pull request that introduced it, which is where
+you want to hear about it. Preview a note before merging:
+
+```bash
+python3 scripts/release_notes.py --version X.Y.Z --repo s4k10503/velvet
+```
 
 Consumers then install a pinned version with:
 
