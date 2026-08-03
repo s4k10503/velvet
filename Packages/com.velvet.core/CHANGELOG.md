@@ -362,9 +362,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `null` preserves; give it an explicit `key` when the index itself moves, such as a provider appended
   after a variable number of siblings — keying the provider pins its own place among its siblings, so an
   unkeyed fragment or component enclosing it needs a key of its own if that is what moves.
-  (or plain) form as the base, or render one direction class computed in C#. The `gap-*` and `divide-*`
-  polyfills resolve their axis from the same precedence and were updated in lockstep, so spacing and
-  dividers still follow the axis the container actually renders on.
 - `divide-x-*` / `divide-y-*` drew their rule on the wrong side of every pair inside a
   `flex-row-reverse` / `flex-col-reverse` container. The divider edge was picked from the axis alone
   and never consulted the container's direction, so the rule between the two visually adjacent
