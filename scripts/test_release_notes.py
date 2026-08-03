@@ -214,7 +214,19 @@ class BuildNotes(unittest.TestCase):
         notes = notes_for(COMPLETE)
 
         # Assert
-        self.assertIn("Requires Unity 6000.3 or newer.", notes)
+        self.assertIn("Requires Unity 6000.3 or newer", notes)
+
+    def test_Given_the_install_snippet_When_building_Then_the_peer_dependency_is_named(self):
+        # Arrange — installing from the snippet alone does not compile without UniTask, which
+        # package.json deliberately does not declare.
+        notes = notes_for(COMPLETE)
+
+        # Act / Assert
+        self.assertIn(
+            f"[UniTask](https://github.com/Cysharp/UniTask) already in the project — see "
+            f"[Installation](https://github.com/{REPO}/blob/v2.0.0/README.md#installation)",
+            notes,
+        )
 
     def test_Given_a_changelog_relative_link_When_building_Then_it_points_at_the_tag(self):
         # Arrange
