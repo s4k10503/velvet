@@ -124,8 +124,8 @@ dotnet test Velvet.SourceGenerators.sln -c Release   # run generator unit tests
 
 The compiled DLLs under `Packages/com.velvet.core/Runtime/Plugins/` are committed, so a change to
 generator source is only complete once they are rebuilt and committed too. Build and DLL-shipping
-steps live in [Generators~/README.md](Packages/com.velvet.core/Generators~/README.md) — `./build.sh`
-on macOS / Linux, `./build.ps1` on Windows.
+steps live in [Generators~/README.md](Packages/com.velvet.core/Generators~/README.md) — `./build.py`
+on every platform.
 
 ## Continuous integration
 
@@ -219,9 +219,9 @@ Generate the site locally:
 /path/to/Unity -batchmode -nographics -quit -projectPath . -logFile -
 # 2. Install DocFX and build:
 dotnet tool install -g docfx     # once; ensure ~/.dotnet/tools is on PATH
-docs/build.sh                     # → docs/_site/index.html
+docs/build.py                     # → docs/_site/index.html
 ```
 
-For a non-default editor install, set `UnityEditorContents` (see `docs/build.sh`). The
+For a non-default editor install, set `UnityEditorContents` (see `docs/build.py`). The
 **Docs** workflow publishes the site to GitHub Pages on release (it needs the Unity license secret;
 verify its editor-image tag and managed-assembly path on the first run).

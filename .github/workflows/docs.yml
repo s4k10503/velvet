@@ -132,7 +132,7 @@ jobs:
           }
           cd docs
           # Stage a disposable copy of the Documentation~ guides so DocFX's TOC/xref resolution
-          # can see them (see docs/build.sh for why this can't reference Documentation~ in place).
+          # can see them (see docs/build.py for why this can't reference Documentation~ in place).
           rm -rf guides
           mkdir -p guides
           cp ../Packages/com.velvet.core/Documentation~/*.md guides/
