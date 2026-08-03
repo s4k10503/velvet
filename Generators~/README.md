@@ -63,13 +63,13 @@ Read survivors rather than the score, and read each one's `coveredBy` in the JSO
 
 ### The Unity assemblies
 
-Stryker cannot reach them: it mutates source and rebuilds through an MSBuild project graph, and Unity compiles asmdefs inside the editor with this package's ILPP in the pipeline. `../../../scripts/mutation-check.py` asks the same question of them without it, scoped to the lines a branch changed rather than to the package:
+Stryker cannot reach them: it mutates source and rebuilds through an MSBuild project graph, and Unity compiles asmdefs inside the editor with this package's ILPP in the pipeline. `../../../scripts/test_quality/mutation_check.py` asks the same question of them without it, scoped to the lines a branch changed rather than to the package:
 
 ```bash
-python3 scripts/mutation-check.py --base main --list    # the mutants it would run, without running any
-python3 scripts/mutation-check.py --base main
-python3 scripts/mutation-check.py --files Packages/com.velvet.core/Runtime/Store/Store.cs
-python3 scripts/mutation-check.py --files <source> --filter Velvet.Tests.SomeFixture
+python3 scripts/test_quality/mutation_check.py --base main --list    # the mutants it would run, without running any
+python3 scripts/test_quality/mutation_check.py --base main
+python3 scripts/test_quality/mutation_check.py --files Packages/com.velvet.core/Runtime/Store/Store.cs
+python3 scripts/test_quality/mutation_check.py --files <source> --filter Velvet.Tests.SomeFixture
 ```
 
 Every mutant is one batchmode launch, since the mutated source has to be compiled before the runner starts and there is no coverage pass to attribute it to fewer fixtures. Launching the editor, not running the tests, is the larger half of that: the whole EditMode suite is under half of a mutant's wall clock, so narrowing the run buys little and would let a mutant read as surviving because the fixture that would have killed it was out of scope. A branch touching a few methods is minutes; the package is not, which is why the diff is the unit.
