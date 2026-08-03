@@ -18,6 +18,7 @@ from release_notes import (
     extract_version_section,
     read_unity_requirement,
     split_highlights,
+    unwrap_soft_breaks,
 )
 
 REPO = "s4k10503/velvet"
@@ -127,6 +128,36 @@ class SplitHighlights(unittest.TestCase):
         # Act / Assert
         with self.assertRaises(ReleaseNotesError):
             split_highlights(section, "2.0.0")
+
+
+class UnwrapSoftBreaks(unittest.TestCase):
+    def test_Given_a_wrapped_item_When_unwrapping_Then_it_becomes_one_line(self):
+        # Arrange / Act
+        unwrapped = unwrap_soft_breaks(["- One sentence", "  wrapped at a column."])
+
+        # Assert
+        self.assertEqual(unwrapped, ["- One sentence wrapped at a column."])
+
+    def test_Given_a_nested_item_When_unwrapping_Then_it_keeps_its_own_line(self):
+        # Arrange / Act
+        unwrapped = unwrap_soft_breaks(["- Parent:", "  - Child one", "  - Child two"])
+
+        # Assert
+        self.assertEqual(unwrapped, ["- Parent:", "  - Child one", "  - Child two"])
+
+    def test_Given_a_wrapped_nested_item_When_unwrapping_Then_it_joins_onto_the_child(self):
+        # Arrange / Act
+        unwrapped = unwrap_soft_breaks(["- Parent:", "  - Child", "    wrapped."])
+
+        # Assert
+        self.assertEqual(unwrapped, ["- Parent:", "  - Child wrapped."])
+
+    def test_Given_a_blank_line_between_items_When_unwrapping_Then_the_separation_survives(self):
+        # Arrange / Act
+        unwrapped = unwrap_soft_breaks(["- One", "", "  Not a continuation of anything."])
+
+        # Assert
+        self.assertEqual(unwrapped, ["- One", "", "  Not a continuation of anything."])
 
 
 class BuildNotes(unittest.TestCase):

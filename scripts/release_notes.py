@@ -86,6 +86,34 @@ def split_highlights(section_lines, version):
     return trim_blank_edges(highlights), trim_blank_edges(remainder)
 
 
+def render_block(lines):
+    """Prepare a CHANGELOG block for a release body."""
+    return unwrap_soft_breaks(trim_blank_edges(lines))
+
+
+def unwrap_soft_breaks(lines):
+    """Join each list item's wrapped continuation lines back into one line.
+
+    A release body renders a single newline as a line break, where a file view collapses it, so the
+    CHANGELOG's own hard wrap would otherwise break every bullet mid-sentence at the column it was
+    authored to rather than at the reader's window. A nested item opens a line of its own.
+    """
+    joined = []
+    for line in lines:
+        stripped = line.strip()
+        continuation = (
+            joined
+            and joined[-1].strip()
+            and line.startswith((" ", "\t"))
+            and not stripped.startswith("- ")
+        )
+        if continuation:
+            joined[-1] = f"{joined[-1].rstrip()} {stripped}"
+        else:
+            joined.append(line)
+    return joined
+
+
 def trim_blank_edges(lines):
     """Drop leading and trailing blank lines, keeping the interior spacing."""
     start = 0
@@ -138,6 +166,7 @@ def build_notes(
 ):
     section = extract_version_section(changelog_text, version)
     highlights, remainder = split_highlights(section, version)
+    highlights, remainder = render_block(highlights), render_block(remainder)
 
     package_url = f"https://github.com/{repo}.git#{install_tag}"
     parts = [
