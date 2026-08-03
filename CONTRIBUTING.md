@@ -112,6 +112,13 @@ the tree readable:
   `StarterSampleShippingTests` and `DocumentationDriftTests` each name one, so a rename that misses a
   reference fails a pull request instead of failing the next person to run it.
 
+The same holds for `.claude/hooks/` and for the two build scripts, so nothing in this repository is
+written in shell. That is not a preference about shell: the guards under `.claude/hooks/` parse a
+tool call's JSON, compare it against git state and format a refusal, and each of those was already
+reaching for `python3` from inside a shell script by the end. What the rule buys is that a guard can
+be tested by importing it, and that `Generators~/build` is one file instead of a bash and a
+PowerShell copy that nothing compared.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
