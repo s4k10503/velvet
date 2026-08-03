@@ -61,7 +61,7 @@ launched wedges while the editor is still alive, before anything is killed. `SIG
 reaps the editor; the wedged child does not follow it out, and no signal recovers it.
 
 Not every unreapable process here comes from Unity, and none of them blocks a later run. They
-accumulate, so `.claude/hooks/report-wedged-processes.sh` reports the set at session start once it
+accumulate, so `.claude/hooks/report-wedged-processes.py` reports the set at session start once it
 holds enough memory for a reboot to be worth the interruption, and says nothing below that.
 
 ### Checking that the tests can fail

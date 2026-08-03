@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins which STAT values <c>.claude/hooks/lib/wedged.awk</c> counts as a process that cannot be
+    /// Pins which STAT values <c>.claude/hooks/lib/wedged.py</c> counts as a process that cannot be
     /// reaped. The report is gated on total memory, so a spelling the filter drops does not merely go
     /// unlisted — it keeps the set under the threshold that would have reported the rest of it.
     /// </summary>
@@ -21,7 +21,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class WedgedProcessFilterTests
     {
-        private const string FilterPath = ".claude/hooks/lib/wedged.awk";
+        private const string FilterPath = ".claude/hooks/lib/wedged.py";
 
         private static readonly (string Stat, bool Counts)[] Table =
         {
@@ -48,7 +48,7 @@ namespace Velvet.Tests
             // Arrange
             var filter = Path.GetFullPath(FilterPath);
             Assume.That(File.Exists(filter), Is.True, $"Precondition: {FilterPath} exists");
-            Assume.That(Counted(filter, "UE"), Is.True, "Precondition: awk ran the filter");
+            Assume.That(Counted(filter, "UE"), Is.True, "Precondition: python3 ran the filter");
 
             // Act
             var disagreements = Table
@@ -64,7 +64,7 @@ namespace Velvet.Tests
         // One line, one megabyte, gate of zero: the row is reported if and only if it was counted.
         private static bool Counted(string filter, string stat)
         {
-            var start = new ProcessStartInfo("awk")
+            var start = new ProcessStartInfo("python3")
             {
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -72,10 +72,9 @@ namespace Velvet.Tests
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            start.ArgumentList.Add("-v");
-            start.ArgumentList.Add("limit=0");
-            start.ArgumentList.Add("-f");
             start.ArgumentList.Add(filter);
+            start.ArgumentList.Add("--limit");
+            start.ArgumentList.Add("0");
 
             try
             {
