@@ -10,7 +10,7 @@ do is decide what the release contains, so the whole job here is getting `CHANGE
 then dispatching.
 
 `Packages/com.velvet.core/CHANGELOG.md` is the single source of truth for the release note.
-`scripts/release_notes.py` turns one version's section into the published body — Highlights, install
+`scripts/release/release_notes.py` turns one version's section into the published body — Highlights, install
 instructions, the long-form entries collapsed, the compare link. Nothing about a release is written
 twice, and nothing is written straight into the GitHub release.
 
@@ -23,7 +23,7 @@ its `### Added` / `### Changed` / `### Fixed` headings.
 bullets, one short paragraph each, ordered by what a user notices first — a fix for something that
 was silently broken outranks a new utility. Lead the last bullet with `**Breaking:**` and list every
 breaking change in it. Write them fresh: a bullet copied verbatim from a long-form entry below fails
-`scripts/test_release_notes.py`, because the note would then say the same thing twice.
+`scripts/release/test_release_notes.py`, because the note would then say the same thing twice.
 
 Bump `version` in `Packages/com.velvet.core/package.json` to match. SemVer against the previous
 release: a `feat` on `main` makes it a minor, a breaking change makes it a major.
@@ -31,7 +31,7 @@ release: a `feat` on `main` makes it a minor, a breaking change makes it a major
 Check the note before opening the pull request:
 
 ```bash
-python3 scripts/test_release_notes.py && python3 scripts/release_notes.py --version X.Y.Z --repo s4k10503/velvet
+python3 scripts/release/test_release_notes.py && python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
 ```
 
 ## 2. Land it on main
@@ -68,7 +68,7 @@ notes used to be, before this was automated. If a published release needs repair
 the CHANGELOG rather than writing prose into the release:
 
 ```bash
-python3 scripts/release_notes.py --version X.Y.Z --repo s4k10503/velvet \
+python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet \
   --compare-tag vX.Y.Z-main --previous-compare-tag vW.V.U-main --output /tmp/notes.md
 gh release edit vX.Y.Z --notes-file /tmp/notes.md
 ```

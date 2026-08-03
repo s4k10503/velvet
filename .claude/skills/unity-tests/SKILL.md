@@ -59,12 +59,12 @@ A test whose discriminating term is a **side effect of a different layer than th
 
 Every vacuous test found in three sweeps of one fixture pair was cut-dependent in this direction — green at the applier cut, red at the parser cut — and each sweep at a single cut undercounted. A count of vacuous tests is meaningless without the cut beside it, and the answer changed on every recount taken by reading: three, then four, then five for one half; five, then six for another.
 
-**The harness is committed — do not rebuild it.** `scripts/neuter-check.py` applies each cut, runs the fixtures, reverts in a `finally` and diffs the per-test results, and `scripts/neuter-cuts.json` holds the cut definitions and the per-fixture cut map. `--validate` checks every anchor without an editor. Three sweeps rebuilt this in a scratchpad and each one independently re-made the same two mistakes, which is why it is in the repository and why a new cut belongs in that file rather than in a session:
+**The harness is committed — do not rebuild it.** `scripts/test_quality/neuter_check.py` applies each cut, runs the fixtures, reverts in a `finally` and diffs the per-test results, and `scripts/test_quality/neuter_cuts.json` holds the cut definitions and the per-fixture cut map. `--validate` checks every anchor without an editor. Three sweeps rebuilt this in a scratchpad and each one independently re-made the same two mistakes, which is why it is in the repository and why a new cut belongs in that file rather than in a session:
 
 - **Ask a cut only of a fixture that exercises that layer.** A parser unit test is not vacuous because the applier died; asking it anyway reported 18 phantom holes on one rebuild and 22 on another. The cut map is what encodes this.
 - **Strip comments before deciding which fixture a cut applies to.** A ring test whose comment mentions `clip-path-*` matched as a clip test.
 
-The other instrument is `scripts/mutation-check.py`, which mutates the lines a branch changed. The two answer different questions and neither subsumes the other: a mutation lands inside one method, so it cannot ask about a mechanism spread over two files; a cut disables a whole mechanism, so it cannot ask about one boundary condition.
+The other instrument is `scripts/test_quality/mutation_check.py`, which mutates the lines a branch changed. The two answer different questions and neither subsumes the other: a mutation lands inside one method, so it cannot ask about a mechanism spread over two files; a cut disables a whole mechanism, so it cannot ask about one boundary condition.
 
 ## A test dying under some mutation does not mean it tests what it claims
 

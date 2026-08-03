@@ -78,7 +78,7 @@ jobs:
           if [ -n "$PREV_MAIN_TAG" ]; then
             ARGS+=(--previous-compare-tag "$PREV_MAIN_TAG")
           fi
-          python3 scripts/release_notes.py "${ARGS[@]}"
+          python3 scripts/release/release_notes.py "${ARGS[@]}"
           echo "file=$NOTES_FILE" >> "$GITHUB_OUTPUT"
           echo "Release notes for $VERSION ($(wc -c < "$NOTES_FILE") bytes):"
           cat "$NOTES_FILE"

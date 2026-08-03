@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for release_notes.py, plus guards over this repository's own CHANGELOG.
 
-Run: python3 scripts/test_release_notes.py
+Run: python3 scripts/release/test_release_notes.py
 """
 
 import json

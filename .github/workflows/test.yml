@@ -131,7 +131,7 @@ jobs:
       # has failures.
       - name: Assert no inconclusive results
         if: always()
-        run: python3 scripts/assert-no-inconclusive.py "${{ matrix.testMode }}-results"
+        run: python3 scripts/test_quality/assert_no_inconclusive.py "${{ matrix.testMode }}-results"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -160,7 +160,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - run: python3 scripts/test_release_notes.py
+      - run: python3 scripts/release/test_release_notes.py
 
   # ---------------------------------------------------------------------------
   # The one check branch protection requires from this workflow. Naming a real

@@ -10,14 +10,14 @@ red at the parser cut, because a gate read one layer up survives a neuter one la
 green at every cut of their mechanism, having no term any of them can move. A single cut therefore
 undercounts, and a count means nothing without the cut beside it.
 
-So scope is declared rather than assumed, in neuter-cuts.json, at two granularities — and both are
+So scope is declared rather than assumed, in neuter_cuts.json, at two granularities — and both are
 needed, which the first run of this harness established by getting the second one wrong. A fixture is
 asked only the cuts it reaches, or a parser-only fixture reports its whole body as holes under an
 applier cut. And a fixture holding cases for two mechanisms declares which of its cases belong to
 which, or every ring case in a clip fixture reports as a hole when the clip applier dies: true, and
 about nothing.
 
-This does not replace mutation-check.py. That one mutates syntax across a diff and asks whether any
+This does not replace mutation_check.py. That one mutates syntax across a diff and asks whether any
 test noticed; this one disables a feature and asks whether the tests named after it noticed. A
 mutation lands inside one method, so it cannot answer a question about a mechanism spread over two
 files, and a cut cannot answer one about a single boundary condition.
@@ -35,7 +35,7 @@ from pathlib import Path
 DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity"
 UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 
-CUTS_FILE = "scripts/neuter-cuts.json"
+CUTS_FILE = "scripts/test_quality/neuter_cuts.json"
 
 
 def unity_processes():
@@ -310,7 +310,7 @@ def compare_baseline(sweep_lines, baseline_path):
         for line in only_baseline:
             print(f"    {line}", flush=True)
     print("\n  Regenerate the baseline after an intended change:", flush=True)
-    print(f"    {sys.executable} scripts/neuter-check.py --report {path}", flush=True)
+    print(f"    {sys.executable} scripts/test_quality/neuter_check.py --report {path}", flush=True)
     return BASELINE_DRIFT_EXIT
 
 
@@ -383,7 +383,7 @@ def main():
         print(f"error: {problem}", file=sys.stderr)
         return BASELINE_DRIFT_EXIT
 
-    out = Path(args.output).resolve() if args.output else project / "Logs" / "neuter-check"
+    out = Path(args.output).resolve() if args.output else project / "Logs" / "neuter_check"
     out.mkdir(parents=True, exist_ok=True)
 
     fixtures = args.fixtures or sorted(cuts["fixtures"])

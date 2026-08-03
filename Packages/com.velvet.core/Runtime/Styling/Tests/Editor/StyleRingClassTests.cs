@@ -18,7 +18,7 @@ namespace Velvet.Tests
         // A class list that resolves to NO ring resolves here to a spec no assertion can match, so a parser
         // that stopped extracting fails every case that comes through here instead of skipping it. An Assume
         // would instead gate the very component this fixture exists to pin, and an inconclusive case is not
-        // a failure to the runner — which is why CI ends on scripts/assert-no-inconclusive.py.
+        // a failure to the runner — which is why CI ends on scripts/test_quality/assert_no_inconclusive.py.
         // No substitute value reaches a case that asserts the parser said NO, since that broken return value
         // IS what such a case expects. Each of those instead compares its negative against a class list the
         // working parser RESOLVES, in the same assertion.

@@ -334,7 +334,7 @@ def main():
     args = parser.parse_args()
 
     project = Path(args.project).resolve()
-    output = Path(args.output).resolve() if args.output else project / "Logs" / "mutation-check"
+    output = Path(args.output).resolve() if args.output else project / "Logs" / "mutation_check"
     output.mkdir(parents=True, exist_ok=True)
     scope = []
     if args.assemblies:

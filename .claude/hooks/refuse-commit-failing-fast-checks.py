@@ -20,7 +20,7 @@ import tempfile
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
 from shell_commands import git_invocations
 
-NEUTER_CUTS = "scripts/neuter-cuts.json"
+NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"
 
 # `git commit` options that take a value, so their argument is not mistaken for a pathspec.
 COMMIT_VALUE_FLAGS = {
@@ -206,14 +206,14 @@ def check_content(display, data):
 
 
 def check_neuter(root):
-    script = os.path.join(root, "scripts", "neuter-check.py")
+    script = os.path.join(root, "scripts", "test_quality", "neuter_check.py")
     if not os.path.exists(script):
         return 0
     proc = subprocess.run(["python3", "-B", script, "--validate", "--project", root],
                           capture_output=True, text=True, timeout=30, cwd=root)
     if proc.returncode != 0:
         return refuse(NEUTER_CUTS, proc.stderr or proc.stdout,
-                      "python3 scripts/neuter-check.py --validate")
+                      "python3 scripts/test_quality/neuter_check.py --validate")
     return 0
 
 

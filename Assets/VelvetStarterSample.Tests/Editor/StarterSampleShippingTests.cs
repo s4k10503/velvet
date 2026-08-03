@@ -70,7 +70,7 @@ namespace Velvet.Tests
             // Assert
             Assert.That(differences, Is.Empty,
                 "The shipped sample has drifted from the copy this project imports. "
-                + "Run scripts/sync-starter-sample.sh.\n" + string.Join("\n", differences));
+                + "Run scripts/unity/sync_starter_sample.py.\n" + string.Join("\n", differences));
         }
 
         private static string Fault(Sample sample)
