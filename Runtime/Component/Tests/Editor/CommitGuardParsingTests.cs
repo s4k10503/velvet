@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins which commands <c>.claude/hooks/refuse-commit-failing-fast-checks.py</c> reads as a commit,
+    /// Pins which commands <c>.claude/hooks/refuse/commit_failing_fast_checks.py</c> reads as a commit,
     /// and what it reads out of each: the repository the command names, whether the working tree is
     /// being committed, and any pathspecs. Those three decide what content is audited, so a
     /// misreading is not a missed refusal but an audit of the wrong bytes.
@@ -16,7 +16,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class CommitGuardParsingTests
     {
-        private const string HookPath = ".claude/hooks/refuse-commit-failing-fast-checks.py";
+        private const string HookPath = ".claude/hooks/refuse/commit_failing_fast_checks.py";
 
         // Expected is "directory|all|pathspecs" per invocation, joined by ';'. Empty for no commit.
         private static readonly (string Command, string Expected)[] Table =

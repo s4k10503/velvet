@@ -79,11 +79,11 @@ namespace Velvet.Tests
                 .Where(script => wired.Contains(script))
                 .Select(script => File.ReadAllText(Path.GetFullPath(HookDirectory + "/" + script))));
 
-            // Python imports name the module, not the file; stem matching covers that route the
-            // same way lib/deferrals.sh is reached by its path. Stem matching is looser than the
-            // full name — a hook quoting a stem in prose would read as sourced when it is not —
-            // which is accepted because reporting a genuinely imported file as an orphan blocks
-            // sharing the way deferrals.sh was extracted to stop.
+            // Python imports name the module, not the file, so a shared file under lib/ is reached
+            // by its stem and by nothing a wiring holds. Stem matching is looser than the full name
+            // — a hook quoting a stem in prose would read as sourced when it is not — which is
+            // accepted because reporting a genuinely imported file as an orphan blocks the sharing
+            // lib/ exists for.
             var orphans = scripts
                 .Where(script => !wired.Contains(script))
                 .Where(script =>
@@ -94,6 +94,55 @@ namespace Velvet.Tests
             // Assert
             Assert.That(orphans, Is.Empty,
                 $"nothing runs these, so whatever they guard is unguarded:\n{string.Join("\n", orphans)}");
+        }
+
+        // A file name a hook builds a path from, rather than one a wiring names. The lookbehind is
+        // what forces a whole name instead of its tail — `merged.py` out of `branch_from_unmerged.py`
+        // — and it must not list `/`, or a name written inside a path stops matching at every
+        // position and the reference goes unread. Three of the five in the tree are path-qualified.
+        private static readonly Regex NamedScriptPattern =
+            new(@"(?<![.\w-])([A-Za-z0-9_][A-Za-z0-9_-]*\.(?:py|sh|bash|awk|ps1))", RegexOptions.Compiled);
+
+        // Where a hook's siblings live. A name resolving to neither is either a typo or a script
+        // somewhere new, and both want the failure: adding the directory here is what says the
+        // second one was meant.
+        private static readonly string[] SearchedDirectories = { HookDirectory, "scripts" };
+
+        [Test]
+        public void Given_TheHookScripts_When_EachScriptNameTheyBuildAPathFromIsResolved_Then_EveryOneExists()
+        {
+            // Arrange
+            // The two tests above pair hooks against what runs them, and both stayed green while one
+            // hook went on naming the shell file a port had replaced with a Python one. Nothing
+            // compiles a name in a string, so the guard's whole deferral path went dead: it refused
+            // the creation a live deferral had been armed for, and printed the instruction to arm
+            // one.
+            var known = new HashSet<string>(
+                SearchedDirectories
+                    .Select(Path.GetFullPath)
+                    .Where(Directory.Exists)
+                    .SelectMany(directory => Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
+                    .Select(Path.GetFileName),
+                StringComparer.Ordinal);
+            var hooks = Directory
+                .GetFiles(Path.GetFullPath(HookDirectory), "*.py", SearchOption.AllDirectories)
+                .Where(hook => !hook.Contains("__pycache__", StringComparison.Ordinal))
+                .ToList();
+            Assume.That(hooks, Is.Not.Empty, "no hook scripts were found to read");
+
+            // Act
+            var dangling = (from hook in hooks
+                            from Match match in NamedScriptPattern.Matches(File.ReadAllText(hook))
+                            let named = match.Groups[1].Value
+                            where !known.Contains(named)
+                            select $"{RepoRelative(hook)} names {named}")
+                .Distinct()
+                .ToList();
+
+            // Assert
+            Assert.That(dangling, Is.Empty,
+                "a name nothing compiles outlives the file it named, and the hook goes quiet rather than "
+                + "failing:\n" + string.Join("\n", dangling));
         }
 
         private static List<(string Name, string Source)> ReadWiring() =>
