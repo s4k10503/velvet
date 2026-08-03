@@ -86,11 +86,6 @@ def split_highlights(section_lines, version):
     return trim_blank_edges(highlights), trim_blank_edges(remainder)
 
 
-def render_block(lines):
-    """Prepare a CHANGELOG block for a release body."""
-    return unwrap_soft_breaks(trim_blank_edges(lines))
-
-
 def unwrap_soft_breaks(lines):
     """Join each list item's wrapped continuation lines back into one line.
 
@@ -166,7 +161,7 @@ def build_notes(
 ):
     section = extract_version_section(changelog_text, version)
     highlights, remainder = split_highlights(section, version)
-    highlights, remainder = render_block(highlights), render_block(remainder)
+    highlights, remainder = unwrap_soft_breaks(highlights), unwrap_soft_breaks(remainder)
 
     package_url = f"https://github.com/{repo}.git#{install_tag}"
     parts = [
