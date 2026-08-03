@@ -9,7 +9,7 @@ using UnityEngine;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Holds the source anchors <c>scripts/neuter-check.py</c> cuts at. The harness fails loudly when one
+    /// Holds the source anchors <c>scripts/test_quality/neuter_check.py</c> cuts at. The harness fails loudly when one
     /// stops matching, but it fails at next use — a rename can sit broken for as long as nobody sweeps,
     /// and the sweep is the thing that finds tests which stopped asking anything. Pinning the anchors
     /// here moves that failure to the pull request that renames the member.
@@ -17,7 +17,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class NeuterCutAnchorTests
     {
-        private const string CutsFile = "scripts/neuter-cuts.json";
+        private const string CutsFile = "scripts/test_quality/neuter_cuts.json";
 
         [Serializable]
         private sealed class Edit

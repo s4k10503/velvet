@@ -260,7 +260,7 @@ namespace Velvet.Tests
                 ? new[] { $"no paths: filter could be read out of {WorkflowPath}" }
                 : Array.Empty<string>();
 
-        // The one that matters here is scripts/assert-no-inconclusive.py: no other file in the repository
+        // The one that matters here is scripts/test_quality/assert_no_inconclusive.py: no other file in the repository
         // invokes it, and its failure mode is passing a run it should have failed, which stays invisible
         // until a test starts skipping.
         private static List<string> NamedRepoFiles() =>

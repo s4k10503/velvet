@@ -66,31 +66,51 @@ holds enough memory for a reboot to be worth the interruption, and says nothing 
 
 ### Checking that the tests can fail
 
-A green suite says nothing about whether the tests would have noticed the change. `scripts/mutation-check.py`
+A green suite says nothing about whether the tests would have noticed the change. `scripts/test_quality/mutation_check.py`
 answers that for the lines a branch touched, by breaking each of them and rerunning the suite:
 
 ```bash
-python3 scripts/mutation-check.py --base main
+python3 scripts/test_quality/mutation_check.py --base main
 ```
 
 [Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
 covers this and the generator solution's own run, and owns what the verdicts mean and how to read a survivor.
 
-A mutation asks whether any test depends on one line. `scripts/neuter-check.py` asks the other question a
+A mutation asks whether any test depends on one line. `scripts/test_quality/neuter_check.py` asks the other question a
 fixture's name makes — with the mechanism it is named for disabled, does it still pass?
 
 ```bash
-python3 scripts/neuter-check.py --validate   # every anchor still matches exactly once, no editor needed
-python3 scripts/neuter-check.py
+python3 scripts/test_quality/neuter_check.py --validate   # every anchor still matches exactly once, no editor needed
+python3 scripts/test_quality/neuter_check.py
 ```
 
 Which layer the cut is made at decides the answer. Some vacuous tests are green at the applier cut and red
 at the parser cut, because a gate read one layer up survives a neuter one layer down; others are green at
 every cut of their mechanism, having no term any of them can move. So a single cut undercounts, and a
-fixture is asked only the cuts it reaches, declared in `scripts/neuter-cuts.json`. Asking a
+fixture is asked only the cuts it reaches, declared in `scripts/test_quality/neuter_cuts.json`. Asking a
 parser-only fixture an applier cut reports its whole body as holes, which has happened on two separate
 rebuilds of this instrument. `NeuterCutAnchorTests` fails in CI when an anchor stops matching exactly once,
 so a rename is caught by the pull request that makes it rather than by the next sweep.
+
+Most holes are legitimate — a negative assertion no cut can falsify, a case whose subject is another cut's
+layer — so what is worth catching is not the count but a change to the set, which a hole appearing while
+another disappears leaves identical. `scripts/test_quality/neuter_holes.txt` carries the approved set;
+`--report` regenerates it, so a sweep is read as a diff against it. Nothing runs the sweep automatically:
+wiring it into CI needs a licence activation this repository does not have.
+
+### Repository scripts
+
+`scripts/` holds the harnesses, grouped by what they are for — `test_quality/` (mutation, neuter,
+inconclusive-result guard), `release/` (the release-note builder), `unity/` (sample sync). Two rules keep
+the tree readable:
+
+- **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
+  than only through a shell invocation — which is what `release/test_release_notes.py` does. Python needs no
+  runtime or configuration file this repository does not already have; `python3` is on the CI runner and on
+  every developer machine that can run the Unity suites.
+- **A script's name reaches C#.** `NeuterCutAnchorTests`, `WorkflowTriggerCoverageTests`,
+  `StarterSampleShippingTests` and `DocumentationDriftTests` each name one, so a rename that misses a
+  reference fails a pull request instead of failing the next person to run it.
 
 ### Source generators
 
@@ -169,7 +189,7 @@ the license on the same account.
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
 
-The release notes are built from that CHANGELOG section by `scripts/release_notes.py`, so a release
+The release notes are built from that CHANGELOG section by `scripts/release/release_notes.py`, so a release
 is never written twice. Each version therefore needs a `### Highlights` block above its
 `### Added` / `### Changed` / `### Fixed` headings: a handful of one-paragraph bullets, which the
 note leads with and the long-form entries follow, collapsed. A version missing one fails the release
@@ -177,7 +197,7 @@ note leads with and the long-form entries follow, collapsed. A version missing o
 you want to hear about it. Preview a note before merging:
 
 ```bash
-python3 scripts/release_notes.py --version X.Y.Z --repo s4k10503/velvet
+python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet
 ```
 
 Consumers then install a pinned version with:

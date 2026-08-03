@@ -10,7 +10,7 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-USAGE = "usage: assert-no-inconclusive.py RESULTS_XML_OR_DIRECTORY [...]"
+USAGE = "usage: assert_no_inconclusive.py RESULTS_XML_OR_DIRECTORY [...]"
 
 
 def result_files(arguments):

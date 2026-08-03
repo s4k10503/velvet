@@ -20,7 +20,7 @@ SUBSECTION_HEADING = re.compile(r"^### +(?P<title>.+?)\s*$")
 
 HIGHLIGHTS_TITLE = "Highlights"
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_CHANGELOG = REPO_ROOT / "Packages" / "com.velvet.core" / "CHANGELOG.md"
 DEFAULT_PACKAGE_JSON = REPO_ROOT / "Packages" / "com.velvet.core" / "package.json"
 
