@@ -17,10 +17,10 @@ anything; it declines a merge that leaves the litter behind.
 """
 
 import json
-import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations
 
 DELETE_FLAGS = ("--delete-branch", "-d")

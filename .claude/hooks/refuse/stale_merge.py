@@ -12,11 +12,11 @@ status checks, so that field answers CLEAN for a branch eight commits behind. A 
 would never fire.
 """
 import json
-import os
 import subprocess
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations
 from velvet_hooks import BRANCH_BASES
 

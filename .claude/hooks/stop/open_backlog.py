@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Block Stop while assigned work is open and nothing is in flight to carry it.
 
-block-stop-on-unsettled-pr.py returns 0 before looking at anything when the open-pull-request list
+unsettled_pr.py returns 0 before looking at anything when the open-pull-request list
 is empty. That is the state this fires in, and it is the state the failure happened in: a backlog of
 assigned issues, the next action named in a closing paragraph, and the turn ending without it.
 Naming the next action is what the stall looks like from inside — it reads as a plan rather than as
@@ -37,7 +37,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from deferrals import DEFERRALS, deferred  # noqa: E402
 

@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins which commands <c>.claude/hooks/refuse-branch-from-unmerged.py</c> reads as creating a
+    /// Pins which commands <c>.claude/hooks/refuse/branch_from_unmerged.py</c> reads as creating a
     /// branch. The guard's only failure mode is silence — a spelling it does not recognise exits 0 with
     /// no output, which is what a guard with nothing to say also does — so the coverage is asserted
     /// rather than assumed. Eleven of the fifteen spellings below were missed at once, quoting the
@@ -17,7 +17,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class BranchGuardParsingTests
     {
-        private const string HookPath = ".claude/hooks/refuse-branch-from-unmerged.py";
+        private const string HookPath = ".claude/hooks/refuse/branch_from_unmerged.py";
 
         // Expected value is the comma-joined names the guard should extract, empty for no creation.
         private static readonly (string Command, string Expected)[] Table =

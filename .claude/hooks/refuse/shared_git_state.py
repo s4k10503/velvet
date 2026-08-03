@@ -15,8 +15,9 @@ case the rule exists for — was invisible to it.
 import json
 import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import git_invocations
 
 # `git stash list` and `git stash show` read; every other form moves the shared stash.

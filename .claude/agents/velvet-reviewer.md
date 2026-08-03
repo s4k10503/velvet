@@ -8,7 +8,7 @@ hooks:
     - matcher: Bash
       hooks:
         - type: command
-          command: python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/block-shared-git-state.py"
+          command: python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/shared_git_state.py"
 ---
 
 You review a change in the Velvet repository and report what is wrong with it. You find defects; you do not fix them.

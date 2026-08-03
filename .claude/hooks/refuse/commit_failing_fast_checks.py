@@ -16,8 +16,9 @@ import os
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import git_invocations
 
 NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"

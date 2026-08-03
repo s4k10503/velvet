@@ -5,17 +5,17 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/report-stale-main.py",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/stale_main.py\"",
             "timeout": 15000
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/report-wedged-processes.py",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/wedged_processes.py\"",
             "timeout": 10000
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/report-repository-litter.py",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/repository_litter.py\"",
             "timeout": 10000
           }
         ]
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/report-untracked-scratch.py",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/untracked_scratch.py\"",
             "timeout": 15000
           }
         ]
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report-gitignored-write.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/report/gitignored_write.py\"",
             "timeout": 10000
           }
         ]
@@ -49,12 +49,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-stop-on-unsettled-pr.py",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop/unsettled_pr.py\"",
             "timeout": 20000
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-stop-on-open-backlog.py",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/stop/open_backlog.py\"",
             "timeout": 20000
           }
         ]
@@ -66,32 +66,32 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-stale-merge.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/stale_merge.py\"",
             "timeout": 25000
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-branch-from-unmerged.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/branch_from_unmerged.py\"",
             "timeout": 15000
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-blind-git-add.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/blind_git_add.py\"",
             "timeout": 10000
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-metadata-less-create.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/metadata_less_create.py\"",
             "timeout": 15000
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-commit-failing-fast-checks.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/commit_failing_fast_checks.py\"",
             "timeout": 15000
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse-merge-without-branch-deletion.py\"",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_without_branch_deletion.py\"",
             "timeout": 10000
           }
         ]
