@@ -149,6 +149,20 @@ jobs:
           path: ${{ steps.unity-tests.outputs.coveragePath }}
 
   # ---------------------------------------------------------------------------
+  # The release note is assembled from the CHANGELOG at release time, by which point no pull
+  # request is left to fail: a version section that cannot produce one would publish a release
+  # whose body is missing rather than stopping anything. This runs the same builder here, so
+  # that failure lands on the pull request that introduced it. No Unity license needed.
+  # ---------------------------------------------------------------------------
+  release-notes:
+    name: Release notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - run: python3 scripts/test_release_notes.py
+
+  # ---------------------------------------------------------------------------
   # The one check branch protection requires from this workflow. Naming a real
   # job instead would tie branch protection to that job's name and to its
   # continuing to run at all; this reports for every pull request whatever the
@@ -162,11 +176,11 @@ jobs:
   required-checks:
     name: Required checks (Unity)
     if: always()
-    needs: [license-check, unity-tests]
+    needs: [license-check, unity-tests, release-notes]
     runs-on: ubuntu-latest
     steps:
       - env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }}
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.release-notes.result }}
         run: |
           failed=0
           for result in $RESULTS; do

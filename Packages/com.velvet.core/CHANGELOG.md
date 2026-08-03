@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [2.0.0] - 2026-08-02
 
+### Highlights
+
+- **Player builds now render what the editor rendered.** The bundled utility stylesheet reaches a build
+  through the new `VelvetStyleUtilities.AttachTo(root)`, and the four shaders behind drop shadows,
+  skewed gradients and the `brightness-*` / `saturate-*` filters are put in front of every build. Each
+  previously resolved to nothing in a player.
+- **A variant payload spelled as a class now overrides the base utility it names.** `bg-white
+  dark:bg-neutral-900`, `w-full md:w-64` and `items-center md:items-start` were silent no-ops decided by
+  stylesheet declaration order; each element now ranks its classes per priority layer. The important
+  modifier (`!bg-red-500`) applies to class-only utilities too.
+- **Variants drive the utilities Velvet paints itself.** `md:gap-4`, `hover:divide-y`, `md:grid`,
+  `dark:bg-gradient-to-r`, `focus:-skew-x-6`, `hover:animate-pulse`, `md:shadow-lg` and
+  `dark:text-balance` did nothing until an unrelated re-render happened to bring the bare class in.
+- **`ring-*` / `outline-*` behind a variant renders, and a ring no longer wraps its element.** The band
+  is drawn on a separate element, so `w-full`, `absolute`, `self-*`, `mx-auto` and grid sizing behave on
+  a ringed element exactly as they do without the ring.
+- **Spring and bezier transitions animate colours and lengths**, not just opacity and the
+  translate/scale/rotate trio, and they suspend an element's own USS transitions for the play.
+- **A light theme, and it is the default.** The semantic colour tokens are two opaque sets — light on
+  `:root`, dark on `.dark` — so nested `bg-surface` elements land on one colour. An application built
+  on the old dark-only tokens sets `VelvetTheme.IsDark = true`.
+- **Starter App**, the package's first importable sample: a scene to open and press Play on, with the
+  panel host, the stylesheet attach and `V.Mount` already assembled.
+- **`VEL500`–`VEL503`**, compile-time analyzers for nesting depth, branch count, parameter count and a
+  tolerance NUnit silently drops. All four are opt-in per assembly and cannot break your build.
+- **Breaking:** `[Memoize]` is renamed `[MemoizeMethod]`; a narrower utility now wins over a broader one
+  (`size-8 w-4` lays out at 16px); `gap-*` / `divide-*` on a composite widget read the direction of the
+  box their children are in; and `flex flex-col md:flex-row` lays out as a row above the breakpoint.
+
 ### Added
 
 - **Starter App**, the package's first importable sample, offered by Package Manager's Samples section.
@@ -333,9 +362,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as `null` preserves; give it an explicit `key` when the index itself moves, such as a provider appended
   after a variable number of siblings — keying the provider pins its own place among its siblings, so an
   unkeyed fragment or component enclosing it needs a key of its own if that is what moves.
-  (or plain) form as the base, or render one direction class computed in C#. The `gap-*` and `divide-*`
-  polyfills resolve their axis from the same precedence and were updated in lockstep, so spacing and
-  dividers still follow the axis the container actually renders on.
 - `divide-x-*` / `divide-y-*` drew their rule on the wrong side of every pair inside a
   `flex-row-reverse` / `flex-col-reverse` container. The divider edge was picked from the axis alone
   and never consulted the container's direction, so the rule between the two visually adjacent
@@ -380,13 +406,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   applies the rule: `[&>*]:shadow-lg` paints at mount on a child that declares some variant-gated
   payload of its own (any one — `hover:gap-4` suffices), and only from the child's next render on a
   child that declares none. Put the utility on the child rather than relying on either.
-- **`ring-*` is deliberately NOT among them: a ring variant such as `focus:ring-2` stays inert.** A
-  ring is not a paint — UI Toolkit has neither `box-shadow` nor `outline`, so the band is drawn on a
-  wrapper element, and only a reconcile pass may add or remove a wrapper. The alternative, wrapping
-  every element that mentions a ring variant for its whole life, would impose the wrapper's layout
-  limitation permanently: it is transparent for `flex-grow` / `flex-shrink` only, so a
-  percentage-width or stretch-sized inner would start measuring against the wrapper instead of its
-  real parent. Declare `ring-*` literally, or compute the class in C#.
 - The class channels that are not variants — `whileHoverClass` / `whileTapClass` / `whileFocusClass`,
   the transient enter / exit classes an `AnimatePresence` play applies, and drag-and-drop's
   `whileDraggingClass` / `whileOverClass` / `whileDragActiveClass` — write their utilities onto the
@@ -480,6 +499,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   descendant already did.
 
 ## [1.6.0] - 2026-07-25
+
+### Highlights
+
+- **`z-0`…`z-50`, `z-[N]` and their negative forms** bring CSS `z-index` to `absolute` descendants,
+  compared among siblings under one parent. A no-op on an in-flow element and on `V.Motion` — wrap the
+  Motion in a z-managed `Div`.
+- **`text-balance`**, approximating CSS `text-wrap: balance` by narrowing the box a wrapped label lays
+  out in, so the last line is no longer near-empty.
+- **`leading-none`…`leading-loose` and `leading-[Npx]`** (line-height), realised through UI Toolkit's
+  rich-text tag, so they compose with any `text-*` size.
+- **`whitespace-pre`, `whitespace-pre-wrap` and `whitespace-pre-line`**, filling out the previous
+  normal/nowrap pair, and **`overline`**, joining the text-decoration axis.
+- **`V.Portal(targetId:)` bubbles `events:` handlers to the logical ancestor chain**, matching what the
+  layer and world-space portals already did. Across all three forms, children a later patch adds bubble
+  too; on the other two, a handler calling `StopPropagation()` partway up now stops the walk, and one
+  portal mounted inside another's content reaches past the inner boundary.
+- **`Hooks.UseFrame(priority:)`** (r3f `useFrame` ordering parity), backed by one per-panel dispatcher
+  so firing order survives a keyed reorder, and **`V.Anchored(occlude:, distanceFactor:)`**, closing two
+  drei `<Html>` gaps.
+- Fixed: a variant Motion's resting `variants[animate]` classes survived neither presence interruption
+  window, and a wrapped Motion inside an `AnimatePresence` child never had its variants applied at all.
+- Fixed: a `Transition`-lane re-render could be starved indefinitely — the anti-starvation clock
+  restarted on every coalesced re-signal, and the promotion it eventually made was to a tier that
+  sustained `Normal` work still outranks.
 
 ### Added
 
@@ -642,6 +685,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.5.0] - 2026-07-19
 
+### Highlights
+
+- **`transition-filter`** transitions the filter utilities (`blur-*`, `brightness-*`, …) smoothly when
+  they change, matching CSS `transition: filter`. A scheduler tween drives the filter parameters
+  frame-by-frame; opt in with the class, which honours `duration-*` and the easing longhand.
+- **`TransitionType.Bezier`**, a third transition model sampling an exact CSS
+  `cubic-bezier(x1,y1,x2,y2)` curve rather than one of the five `EasingMode` keywords. Defaults to
+  Tailwind's own curve, which the bundled USS only approximates.
+- **`skew-x-*` / `skew-y-*` now shear their descendants**, not only the caster's painted silhouette —
+  the per-row counter-translate a CSS author would otherwise hand-write, applied automatically.
+- **The `[&>*]:<utility>` child-combinator variant**, CSS's `& > *` applied to Velvet's utilities
+  (`[&>*]:mt-2`, `[&>*]:hover:bg-red-500`).
+- **`border-dashed` / `border-dotted`** and their `divide-*` counterparts, stroked by the element itself
+  since UI Toolkit has no `border-style`, with the layout gutter a solid border reserves.
+- **`brightness-*` and `saturate-*` cover the full CSS range**, each through a first-party custom-filter
+  shader, so a Linear project matches the browser instead of over-darkening.
+- Fixed: hook-state writes landing in a commit phase were silently discarded, and callback refs
+  re-invoked on every render instead of only when their identity changed.
+- Fixed: the fiber-tree recycle path stranded one pooled props bag per re-render for every element
+  nested below the top level, pinned forever by the pool's ownership tracking.
+- Fixed: four Tailwind defaults were off — the default ring colour's alpha, the default transition
+  easing, the `tracking-*` scale, and the `checked:` variant's rank against the interaction states.
+
 ### Added
 
 - Filter utilities (`blur-*`, `brightness-*`, …) now transition smoothly when they change on an element
@@ -788,6 +854,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.4.0] - 2026-07-17
 
+### Highlights
+
+- **A focus / gamepad navigation layer** (React Aria parity): `V.FocusScope` with `contain` /
+  `restoreFocus` / `autoFocus` / `singleTabStop`, `TabIndex` / `DelegatesFocus` element props, and
+  `Hooks.UseFocusRing` — composing with the engine's own focus ring and spatial 2D navigation rather
+  than reimplementing them.
+- **Drag and drop** (dnd-kit core parity): `V.DndContext` / `V.Draggable` / `V.Droppable` /
+  `V.DragOverlay`, with pluggable collision detection and activation constraints that keep clicks
+  working on a draggable control.
+- **Cross-panel input routing** for layer and world-space panels: `events:` bindings bubble
+  synthetically across the panel boundary, overlapping layers are arbitrated by `sortingOrder`, and a
+  world-space host gets the collider Unity's input system needs to pick it.
+- **Cross-panel Tab order**: `V.Portal(layer:)` / `V.WorldSpace` accept
+  `focusOrder: PanelFocusOrder.Chained` (iframe semantics) as the explicit cross-panel focus escape.
+- **`V.Anchored(target:)`** — drei `<Html>` parity: a screen-space element tracking a 3D transform.
+- **`Hooks.UseAnimationSequence`** (Framer `useAnimate` timeline parity) and **`V.Motion(layoutId:)`**
+  shared-element FLIP animation.
+- Fixed: a pooled `Button` / `Slider` / `TextField` / `Toggle` silently lost its focusability on reuse
+  and dropped out of Tab and gamepad navigation entirely.
+
 ### Added
 
 - Drag-and-drop primitives, dnd-kit core parity: `V.DndContext` (the scope — `onDragStart` /
@@ -862,6 +948,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     panel instead of leaving it dangling. Automatic Tab/Shift-Tab focus chaining across panel
     boundaries is intentionally not implemented — see the portals guide.
 
+### Changed
+
+- `V.SceneView`: the owned RenderTexture's backing resolution now rounds its larger axis up to the
+  nearest 16px step (rescaling the other axis by the same factor, so the texture's aspect ratio
+  still matches the element's) instead of matching the element's laid-out pixel size exactly, so
+  small, rapid resizes that keep the element's aspect ratio unchanged (a drag-resize, an animated
+  layout) reuse the existing texture instead of reallocating on every change.
+
 ### Fixed
 
 - A `Button`/`Slider`/`TextField`/`Toggle` recycled through the element pool silently lost its
@@ -886,22 +980,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   continuing to patch/replace later slots — matching every other `CanPatch`-gated call site (the
   Common-phase indexed loop and the time-sliced keyed scan already did).
 
-### Changed
-
-- `V.SceneView`: the owned RenderTexture's backing resolution now rounds its larger axis up to the
-  nearest 16px step (rescaling the other axis by the same factor, so the texture's aspect ratio
-  still matches the element's) instead of matching the element's laid-out pixel size exactly, so
-  small, rapid resizes that keep the element's aspect ratio unchanged (a drag-resize, an animated
-  layout) reuse the existing texture instead of reallocating on every change.
-
-### Fixed
-
 - `V.VirtualList`: a same-key item whose node type changes across a re-render (e.g. a slot
   swapping from `V.Label` to `V.SceneView` while keeping the same key) is now created fresh
   instead of patched onto the old element — the fast path was missing the type-compatibility
   check the general keyed reconcile path already applies before reusing an element.
 
 ## [1.3.0] - 2026-07-13
+
+### Highlights
+
+- **`V.Portal(layer:)`** — framework-managed screen-space layer panels (`Background` / `Overlay` /
+  `Topmost`) sorted around the app's main panel, created lazily and destroyed with the tree.
+- **`V.WorldSpace(position, rotation, panelSize)`** — children rendered into a world-space panel
+  positioned by a scene transform and depth-tested against scene geometry. Display-only in this
+  release.
+- **`V.SceneView(camera)`** — a Camera's output as an element (`<canvas>` parity). The framework owns
+  the RenderTexture, sizes it to the element and releases it on unmount.
+- **`V.Particles(effect)`** — a ParticleSystem's live simulation drawn as textured quads inside the
+  element, with no camera, RenderTexture or render-pipeline coupling.
+- **`Hooks.UseFrame(dt => …)`** — a per-frame callback that always invokes the latest render's closure,
+  so per-frame data flows without touching component state.
+- **A custom filter registry**: `VelvetFilters.Register("dissolve", definition)` exposes a Unity 6.3
+  filter shader to class strings as `filter-[dissolve:0.4]`, with variant layering and the same
+  transition behaviour as any other filter.
+- Fixed: an error boundary whose own fallback content threw could escape uncaught, recurse into itself,
+  or falsely report the original exception as caught.
 
 ### Added
 
@@ -989,6 +1092,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.2.0] - 2026-07-12
 
+### Highlights
+
+- **Opt-in spring physics**: `StyleTransitionConfig { Type = TransitionType.Spring, Stiffness, Damping,
+  Mass }` drives variant enters and exits with a velocity-preserving integrator, so an interrupted
+  spring retargets from where it is instead of restarting.
+- **`V.AnimatePresence(mode: AnimatePresenceMode.PopLayout)`** — an exiting child is pinned out of flow
+  at its last laid-out rect so its siblings reflow immediately (Framer's `mode="popLayout"`).
+- **Standalone mount enters**: a `V.Motion` outside `AnimatePresence` plays its `initial` → `animate`
+  enter on mount, matching Framer, where `initial` / `animate` work on any `motion.*` element.
+- **Orchestration for plain variant propagation**: `StaggerChildrenSec` / `DelayChildrenSec` / `When` on
+  a parent Motion's transition stagger its inheriting children with no `AnimatePresence` boundary.
+- **Runtime variant swaps ride the Motion's own transition config**, so a changed `animate` label tweens
+  with no `transition-*` utilities required — Framer parity, where `transition` applies to every update.
+- **Per-property transition overrides**: `StyleTransitionConfig.PropertyOverrides` gives individual USS
+  properties their own duration, easing and delay within one variant transition.
+- **A Motion & AnimatePresence guide** (`Documentation~/motion.md`).
+- Fixed: a classic tween enter could snap straight to its end pose on a runtime panel, and `gap-*` /
+  `grid-cols-*` / `divide-*` counted absolutely-positioned children in their spacing.
+
 ### Added
 
 - Standalone mount enters: a `V.Motion` outside `AnimatePresence` now plays its `initial` →
@@ -1030,6 +1152,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an out-of-flow child neither receives inter-child margins nor shifts its siblings' spacing.
 
 ## [1.1.0] - 2026-07-11
+
+### Highlights
+
+- **`data:` / `aria:` parameters on every element factory** that takes a class string, so
+  `data-[...]:` / `aria-[...]:` styling no longer needs a hand-built `FiberElementProps`.
+- **The `transition-*` utilities bundle a default duration and easing**, matching Tailwind's
+  standalone-utility contract: a property change with no `duration-*` class beside it now animates.
+- Fixed: a duplicate key among new siblings silently dropped a row and desynced the committed child
+  count, and an inline component displaced by a keyed reorder could insert a permanent duplicate.
+- Fixed: a render that threw — a routine Suspense re-suspend included — discarded an earlier commit's
+  pending `UseEffect` work and the fiber's context dependencies, which could detach a memoized consumer
+  from its Provider forever.
+- Fixed: several element-pool leaks and mis-returns, including a `V.Custom<T>` subclass of a poolable
+  primitive being recycled with its constructor-wired callbacks still live.
+- Fixed: `Nullable<T>` values compare by value in the identity comparer, so an unchanged `int?`-selected
+  store slice no longer re-renders its subscribers on every unrelated update.
+- Fixed: stacked variants (`dark:hover:` and friends) keep a continuously-held hover, focus or active
+  across the outer condition closing and reopening.
+- Reworked the preview window's zoom and resolution handling.
 
 ### Added
 
@@ -1097,6 +1238,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-07-05
 
+### Highlights
+
+- **The initial public release of Velvet**, a React-style declarative UI framework for Unity UI Toolkit.
+- **A virtual DOM and reconciler** with lane-based priority scheduling.
+- **React-parity hooks** — `UseState`, `UseReducer`, `UseEffect`, `UseLayoutEffect`, `UseCallback`,
+  `UseMemo`, `UseContext`, `UseTransition`, `UseDeferredValue`, `UseId`, `UseRef` and
+  `UseImperativeHandle`.
+- **Velvet-only hooks** — `UseService`, `UseBlocker`, `UseMutation` and `UseStore` — over a
+  Zustand-style `Store` with selector-based reactive binding.
+- **Utility-first styling**: `StyleUtilities`, `StyleClassNames`, `StyleRecipe` / `StyleSlotRecipe`, and
+  an arbitrary-value resolver.
+- **Compile-time memoization**: a source generator plus an IL post-processor for static expansion.
+- **Minimum supported Unity is 6000.3 (Unity 6.3 LTS)**, matching what the bundled USS actually uses.
+
+### Added
+
+- Initial public release of **Velvet** — a React-style declarative UI framework for Unity UI Toolkit.
+- Virtual DOM and reconciler with lane-based priority scheduling.
+- React-parity hooks: `UseState`, `UseReducer`, `UseEffect`, `UseLayoutEffect`, `UseCallback`,
+  `UseMemo`, `UseContext`, `UseTransition`, `UseDeferredValue`, `UseId`, `UseRef`, `UseImperativeHandle`.
+  `UseTransition` returns `(isPending, startTransition)`, matching the element order of React's
+  `[isPending, startTransition]`.
+- Velvet-only hooks: `UseService`, `UseBlocker`, `UseMutation`, `UseStore`.
+- Zustand-style `Store` with selector-based reactive binding.
+- Utility-first styling: `StyleUtilities`, `StyleClassNames`, `StyleRecipe` / `StyleSlotRecipe`,
+  and an arbitrary-value resolver.
+- Source Generator-driven memoization (`[Memoize]`, `[Component(Memoize = true)]`) and an
+  IL post-processor for static expansion.
+
 ### Changed
 
 - **Minimum supported Unity raised to 6000.3 (Unity 6.3 LTS).** The bundled USS uses properties
@@ -1120,17 +1290,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to empty-string equality).
 - `V.When` throws `ArgumentNullException` when the condition is true but the factory is null.
 
-### Added
-
-- Initial public release of **Velvet** — a React-style declarative UI framework for Unity UI Toolkit.
-- Virtual DOM and reconciler with lane-based priority scheduling.
-- React-parity hooks: `UseState`, `UseReducer`, `UseEffect`, `UseLayoutEffect`, `UseCallback`,
-  `UseMemo`, `UseContext`, `UseTransition`, `UseDeferredValue`, `UseId`, `UseRef`, `UseImperativeHandle`.
-  `UseTransition` returns `(isPending, startTransition)`, matching the element order of React's
-  `[isPending, startTransition]`.
-- Velvet-only hooks: `UseService`, `UseBlocker`, `UseMutation`, `UseStore`.
-- Zustand-style `Store` with selector-based reactive binding.
-- Utility-first styling: `StyleUtilities`, `StyleClassNames`, `StyleRecipe` / `StyleSlotRecipe`,
-  and an arbitrary-value resolver.
-- Source Generator-driven memoization (`[Memoize]`, `[Component(Memoize = true)]`) and an
-  IL post-processor for static expansion.
