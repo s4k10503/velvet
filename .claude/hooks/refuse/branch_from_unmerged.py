@@ -14,11 +14,12 @@ each miss is silent: exit 0 and no output is what a guard with nothing to say lo
 """
 
 import json
-import os
 import subprocess
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from deferrals import deferred
 from shell_commands import command_segments, git_invocation, tokens_of, without_redirections
 from velvet_hooks import BRANCH_BASES
 
@@ -110,21 +111,6 @@ def git(cwd, *args):
         ["git", "-C", cwd, *args],
         capture_output=True, text=True, timeout=30,
     )
-
-
-def deferred(key):
-    hook_dir = os.path.dirname(os.path.abspath(__file__))
-    deferrals = os.path.join(hook_dir, "lib", "deferrals.sh")
-    proc = subprocess.run(
-        ["bash", "-c",
-         f'. "{deferrals}" && deferred "$1" && printf "%s\\t%s" "$DEFER_REASON" "$DEFER_AGE"',
-         "deferred_check", key],
-        capture_output=True, text=True, timeout=5,
-    )
-    if proc.returncode != 0 or not proc.stdout.strip():
-        return None
-    reason, age = proc.stdout.strip().split("\t", 1)
-    return reason, int(age)
 
 
 def head_description(cwd):

@@ -61,7 +61,7 @@ launched wedges while the editor is still alive, before anything is killed. `SIG
 reaps the editor; the wedged child does not follow it out, and no signal recovers it.
 
 Not every unreapable process here comes from Unity, and none of them blocks a later run. They
-accumulate, so `.claude/hooks/report-wedged-processes.py` reports the set at session start once it
+accumulate, so `.claude/hooks/report/wedged_processes.py` reports the set at session start once it
 holds enough memory for a reboot to be worth the interruption, and says nothing below that.
 
 ### Checking that the tests can fail
@@ -118,6 +118,19 @@ tool call's JSON, compare it against git state and format a refusal, and each of
 reaching for `python3` from inside a shell script by the end. What the rule buys is that a guard can
 be tested by importing it, and that `Generators~/build` is one file instead of a bash and a
 PowerShell copy that nothing compared.
+
+`.claude/hooks/` is grouped by what a script is able to stop:
+
+- `refuse/` — `PreToolUse`. Stops the tool call, by exiting 2 with the reason on stderr or by
+  answering with a `permissionDecision` of `deny`.
+- `stop/` — `Stop`. Exits 2 to refuse the end of a turn.
+- `report/` — `SessionStart`, `SubagentStop`, `PostToolUse`. Stops nothing: `PostToolUse` fires
+  after the tool has already run, so it writes into the transcript and exits 0 whatever it finds.
+- `lib/` — imported by the rest, wired to no event of its own.
+
+Every failure mode here is silence, so the wiring is asserted rather than trusted.
+`HookWiringCoverageTests` pairs each script against the settings and agent frontmatter that run it,
+in both directions, and fails on a script name a hook builds a path from that no file answers to.
 
 ### Source generators
 

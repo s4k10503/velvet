@@ -17,11 +17,11 @@ author, so a self-assignment adds nothing.
 """
 
 import json
-import os
 import subprocess
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations
 
 # Anchored at a command position — start of input, or after a separator or newline — so the same

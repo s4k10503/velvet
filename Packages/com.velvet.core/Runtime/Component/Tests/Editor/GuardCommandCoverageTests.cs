@@ -13,16 +13,17 @@ namespace Velvet.Tests
     /// guard with nothing to say reports — so the recognition is asserted rather than assumed.
     /// </summary>
     /// <remarks>
-    /// The fourth guard, <c>.claude/hooks/block-shared-git-state.py</c>, is driven end to end instead:
-    /// its answer depends on whether an operand names a file that exists, which is the question it
-    /// replaced a slash-matching pattern with, and only the process can answer it.
+    /// The fourth guard, <c>.claude/hooks/refuse/shared_git_state.py</c>, is absent from these tables
+    /// rather than covered elsewhere: its answer depends on whether an operand names a file that
+    /// exists, which is the question it replaced a slash-matching pattern with, and a table of
+    /// commands cannot pose it. Nothing poses it — that guard is unasserted.
     /// </remarks>
     [TestFixture]
     internal sealed class GuardCommandCoverageTests
     {
         private const string Driver =
             "import importlib.util,sys,os\n" +
-            "sys.path.insert(0, os.path.join(os.path.dirname(sys.argv[1]), 'lib'))\n" +
+            "sys.path.insert(0, os.path.join(os.path.dirname(sys.argv[1]), '..', 'lib'))\n" +
             "spec=importlib.util.spec_from_file_location('guard', sys.argv[1])\n" +
             "guard=importlib.util.module_from_spec(spec)\n" +
             "spec.loader.exec_module(guard)\n" +
@@ -108,7 +109,7 @@ namespace Velvet.Tests
         public void Given_TheMergeTable_When_TheDeletionGuardReadsEach_Then_ItNamesOnlyTheMergesLeavingABranch()
         {
             // Arrange
-            var hook = Path.GetFullPath(".claude/hooks/refuse-merge-without-branch-deletion.py");
+            var hook = Path.GetFullPath(".claude/hooks/refuse/merge_without_branch_deletion.py");
             Assume.That(File.Exists(hook), Is.True, "Precondition: the guard exists");
             var table = Undeleted();
 
@@ -129,7 +130,7 @@ namespace Velvet.Tests
         public void Given_TheStagingTable_When_TheBlindAddGuardReadsEach_Then_ItSeesOnlyTheSweepingForms()
         {
             // Arrange
-            var hook = Path.GetFullPath(".claude/hooks/refuse-blind-git-add.py");
+            var hook = Path.GetFullPath(".claude/hooks/refuse/blind_git_add.py");
             Assume.That(File.Exists(hook), Is.True, "Precondition: the guard exists");
 
             // Act
@@ -146,7 +147,7 @@ namespace Velvet.Tests
         public void Given_TheMergeTable_When_TheStaleMergeGuardReadsEach_Then_ItNamesTheRequestBeingMerged()
         {
             // Arrange
-            var hook = Path.GetFullPath(".claude/hooks/refuse-stale-merge.py");
+            var hook = Path.GetFullPath(".claude/hooks/refuse/stale_merge.py");
             Assume.That(File.Exists(hook), Is.True, "Precondition: the guard exists");
             var table = Merges();
 
@@ -168,7 +169,7 @@ namespace Velvet.Tests
         public void Given_TheCreationTable_When_TheMetadataGuardReadsEach_Then_ItNamesOnlyTheFlagsAbsentAsFlags()
         {
             // Arrange
-            var hook = Path.GetFullPath(".claude/hooks/refuse-metadata-less-create.py");
+            var hook = Path.GetFullPath(".claude/hooks/refuse/metadata_less_create.py");
             Assume.That(File.Exists(hook), Is.True, "Precondition: the guard exists");
 
             // Act

@@ -12,11 +12,11 @@ paths are to hand rather than something to go and look up.
 """
 
 import json
-import os
 import subprocess
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import git_invocations
 
 # The sweeping forms. `-u` is not among them: it stages tracked modifications and cannot pick up a
