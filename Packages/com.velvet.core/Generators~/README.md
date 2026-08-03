@@ -7,13 +7,12 @@ Compile-time tooling bundled with `com.velvet.core`: the Roslyn analyzers and in
 Run the following inside the `Generators~/` directory:
 
 ```bash
-./build.sh    # macOS / Linux
-./build.ps1   # Windows
+./build.py
 ```
 
-On Windows, run `build.ps1` from PowerShell 7 (`pwsh`) and close Unity and any IDE first: Windows PowerShell 5.1's default execution policy refuses unsigned scripts, and Windows cannot overwrite an analyzer assembly a Roslyn host still holds open.
+Needs `python3` on PATH alongside the .NET SDK. On Windows, close Unity and any IDE first: Windows cannot overwrite an analyzer assembly a Roslyn host still holds open.
 
-Either script regenerates all three committed artifacts, leaving the tree in the same state:
+It regenerates all three committed artifacts, leaving the tree in the same state:
 
 - `../Runtime/Styling/StyleUtilityProperties.g.cs`
 - `../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`
@@ -96,7 +95,7 @@ Generators~/
 ├── .gitignore                                (bin/, obj/, StrykerOutput/)
 ├── Velvet.SourceGenerators.sln
 ├── stryker-config.json                       (mutation-testing run — report only, never a gate)
-├── build.sh / build.ps1                      (derive the style table, build the assemblies, stage them)
+├── build.py                                  (derive the style table, build the assemblies, stage them)
 ├── src/Velvet.SourceGenerators/              (abridged — generators, analyzers, shared helpers)
 │   ├── Velvet.SourceGenerators.csproj
 │   ├── MemoOverloadGenerator.cs              (auto-generates Memoized<T1..T8>)
@@ -337,4 +336,4 @@ Which paths trigger it is stated in the repository's `CLAUDE.md`; the reason `Ru
 
 A plain `git diff --exit-code` against a rebuild would not close that gap either: the SDK writes the commit `HEAD` was at when the build ran into the assembly's informational version (`0.1.0+<sha>`), so a rebuild at any other commit carries a different id. What does compare is a build at the commit the assembly names — measured byte-identical from a separate working tree, because `ContinuousIntegrationBuild` replaces the source paths with `/_/`.
 
-The deployed pair is still not checkable that way. `build.sh` runs before the commit that carries its output, so a redeploy that also edits generator sources names a commit those sources are not in. And when that commit lived only on a PR branch, the squash merge left nothing to build at: the pair on `main` names one that no ref here reaches.
+The deployed pair is still not checkable that way. `build.py` runs before the commit that carries its output, so a redeploy that also edits generator sources names a commit those sources are not in. And when that commit lived only on a PR branch, the squash merge left nothing to build at: the pair on `main` names one that no ref here reaches.

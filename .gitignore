@@ -86,7 +86,7 @@ docs/api/
 docs/_site/
 docs/obj/
 docs/bin/
-# Disposable build-time copy of Packages/com.velvet.core/Documentation~ staged by docs/build.sh
+# Disposable build-time copy of Packages/com.velvet.core/Documentation~ staged by docs/build.py
 # so DocFX's TOC/xref resolution can see the guides; Documentation~ remains the single source.
 docs/guides/
 # The hand-authored DocFX and source-generator projects need no re-include: the *.csproj / *.sln rules

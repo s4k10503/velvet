@@ -43,7 +43,7 @@ namespace Velvet.Tests
             { "Packages", "Assets", ".github", "scripts", "ProjectSettings", "docs" };
 
         // Build output and generated documentation: nothing a document names lives there, DocFX's api/ and
-        // _site/ carry a stale copy of every runtime type name until docs/build.sh is re-run, and Library
+        // _site/ carry a stale copy of every runtime type name until docs/build.py is re-run, and Library
         // alone would make the walk the slowest thing in this fixture.
         private static readonly HashSet<string> BaseUnwalkedDirectories =
             new() { ".git", "Library", "Temp", "Logs", "Build", "UserSettings", "obj", "bin", "api", "_site" };

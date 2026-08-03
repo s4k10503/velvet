@@ -123,4 +123,4 @@ Separate dotnet solution, no Unity licence needed:
 cd Packages/com.velvet.core/Generators~ && dotnet test Velvet.SourceGenerators.sln -c Release
 ```
 
-`./build.sh` rebuilds and redeploys the committed DLLs and regenerates the derived stylesheet table. Run it after changing generator or stylesheet sources, and commit what it produces.
+`./build.py` rebuilds and redeploys the committed DLLs and regenerates the derived stylesheet table. Run it after changing generator or stylesheet sources, and commit what it produces.
