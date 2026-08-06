@@ -49,6 +49,12 @@ Three focus-related element props ride `FiberElementProps` alongside the existin
 `DelegatesFocus` (focusing the element forwards to its first focusable child), and `FocusScope`
 (the settings record behind the scope knobs above).
 
+`Focusable` is restored rather than coalesced when a later render stops declaring it: dropping the
+prop hands the element back the focusability it was constructed with, so a `V.Div` that carried
+`Focusable = true` for one render stops being a Tab stop again, and a control that is focusable by
+construction keeps its own default. `TabIndex` and `DelegatesFocus` behave differently: dropping either
+coalesces to `0` / `false`.
+
 ## Focus-visible styling and state
 
 The `focus-visible:` class variant covers keyboard/gamepad-only focus styling: it lights for
