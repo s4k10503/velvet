@@ -11,8 +11,9 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies what an abandoned navigation leaves behind. Its provisional history mutations happen before
-    /// the Guard and Blocker awaits, so every way of leaving those awaits has to undo them — by exception
-    /// when a blocker honors its token, and by return value when one awaits without forwarding it.
+    /// the Guard and Blocker awaits, so an attempt that abandons them has to undo those mutations whether it
+    /// leaves by exception (a blocker honoring its token) or by return value (one awaiting without
+    /// forwarding it).
     /// <list type="bullet">
     /// <item>The provisional Back/Forward index is restored, so the history keeps describing the entry the
     /// user is still on.</item>
@@ -169,10 +170,10 @@ namespace Velvet.Tests
         {
             // The guard snapshot was taken before the newer navigation pushed, so replaying it would delete
             // entries that belong to the location now on screen.
-            // The asserted count records today's behaviour, not the intended one: the third entry is the
-            // provisional /guarded push, a path the user never arrived at, stranded precisely because the
-            // skipped restore is the correct choice here — a Back from /x re-runs its guard and lands on
-            // /target. Reclaiming just that entry is a separate open defect.
+            // The asserted count records today's behaviour, not the intended one: the count is 3 because the
+            // middle entry is the provisional /guarded push, a path the user never arrived at, stranded
+            // precisely because the skipped restore is the correct choice here — a Back from /x re-runs its
+            // guard and lands on /target. Reclaiming just that entry is a separate open defect.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[]
@@ -229,6 +230,97 @@ namespace Velvet.Tests
             Assert.That($"idx={router.HistoryIndex} status={router.Status}", Is.EqualTo("idx=0 status=Ready"),
                 "A blocker returning after it was superseded must roll back neither the index nor the Status "
                 + "the newer navigation established");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SupersededByAnUnmatchedPath_When_ItResumes_Then_TheIndexIsStillRestored()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // A navigation that matches no route returns before the index is ever touched, so it takes no
+            // claim on it. The parked attempt is then still the only holder and must put the index back —
+            // leaving it moved would strand it away from the location the user never left.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("/", children: new[] { Route("home"), Route("about"), Route("contact") }));
+            await router.NavigateAsync("/about");
+            await router.NavigateAsync("/contact");
+            var (check, entered, resumeCancelled, _) = MakeDeferredBlocker();
+            using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
+            var superseded = router.GoBack();
+            await entered.Task;
+            var unmatched = await router.NavigateAsync("/no-such-route");
+            Assume.That(unmatched, Is.EqualTo(NavigationResult.NotFound),
+                "Precondition: the superseding navigation returned without reaching the history index");
+
+            // Act
+            resumeCancelled();
+            await superseded;
+
+            // Assert
+            Assert.That($"idx={router.HistoryIndex} at={router.CurrentLocation?.Path}",
+                Is.EqualTo("idx=2 at=/contact"),
+                "Only an attempt that took the index may stop the parked one from restoring it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SupersededRedirectReturnsLate_When_NewerNavigationHasPushed_Then_ItsHistorySurvives()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // The inner redirect returns Cancelled from its own blocker check instead of throwing, so the
+            // outer reaches the returned-result restore rather than the exception one. Same stale snapshot,
+            // a different line has to refuse to replay it.
+            // The asserted count records today's behaviour for the same reason as the case above.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("/", children: new[]
+                {
+                    Route("home"),
+                    Route("guarded", guard: _ => "/target"),
+                    Route("target"),
+                    Route("x"),
+                }));
+            var (check, entered, _, resumeUnblocked) = MakeDeferredBlocker();
+            using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
+            var superseded = router.NavigateAsync("/guarded");
+            await entered.Task;
+            await router.NavigateAsync("/x");
+            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/x"),
+                "Precondition: the newer navigation committed while the redirect was still parked");
+
+            // Act
+            resumeUnblocked();
+            await superseded;
+
+            // Assert
+            Assert.That($"count={HistoryCountOf(router)} idx={router.HistoryIndex}", Is.EqualTo("count=3 idx=2"),
+                "A redirect that returns Cancelled after being superseded must not replay its stale snapshot");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_BlockerParkedAcrossDispose_When_DisposeCancelsIt_Then_TheDeadRouterIsNotWritten()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // Dispose retires the claim before cancelling, the opposite order to a navigation taking one.
+            // A blocker of this shape unwinds synchronously inside that Cancel, so with the navigation
+            // ordering it would still hold the claim and write to a router that is being torn down.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("/", children: new[] { Route("home"), Route("about") }));
+            await router.NavigateAsync("/about");
+            var (check, entered) = MakeOneShotBlocker();
+            using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
+            var statusEvents = 0;
+            var parked = router.GoBack();
+            await entered.Task;
+            router.OnStatusChanged += _ => statusEvents++;
+
+            // Act
+            router.Dispose();
+            await parked;
+
+            // Assert
+            Assert.That($"statusEvents={statusEvents} idx={router.HistoryIndex}", Is.EqualTo("statusEvents=0 idx=0"),
+                "Teardown leaves nothing for a resuming blocker to restore, so it must write neither field");
         });
 
         // The history list has no accessor of its own, and adding one would put a test-only member on a

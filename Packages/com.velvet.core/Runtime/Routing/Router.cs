@@ -26,10 +26,10 @@ namespace Velvet
         // nav unwinds (NavigationResult.Cancelled) and the latest nav takes over, so concurrent
         // navigations during the blocker window resolve to the most recent one.
         private CancellationTokenSource? _activeNavigationCts;
-        // Claimed by each top-level navigation and inherited by the redirects it spawns. An attempt that has
-        // lost the claim must not put the router state back: cancelling its token does not force it to resume
-        // at that moment, so it can unwind after a newer navigation has already committed, and by then the
-        // state it saved describes a router that no longer exists.
+        // Identifies whoever currently owns _historyIndex. An attempt that has lost the claim must not put
+        // the index or Status back: cancelling its token does not force it to resume at that moment, so it
+        // can reach its rollback after a newer navigation has moved the index, and by then the value it
+        // saved describes a router that no longer exists.
         private int _navigationSequence;
 
         /// <summary>
@@ -270,10 +270,9 @@ namespace Velvet
         {
             // Concurrent-navigation handling. Recursive redirect calls (redirectCount > 0) reuse the
             // outer navigation's CTS so a redirect doesn't cancel its own initiator, and inherit its
-            // sequence so a redirect's rollback is judged by whether the INITIATOR is still current.
+            // history claim so a redirect's rollback is judged by whether the INITIATOR still holds it.
             CancellationTokenSource? myCts = null;
             CancellationToken navToken = cancellationToken;
-            var sequence = initiatorSequence;
             if (redirectCount == 0)
             {
                 // Cancel any in-flight navigation so it unwinds (Blocker.CheckAsync await observes
@@ -284,14 +283,11 @@ namespace Velvet
                 myCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 _activeNavigationCts = myCts;
                 navToken = myCts.Token;
-                // Claimed after that Cancel, so a prior navigation that does unwind synchronously inside it
-                // still sees itself as current and puts its own state back before this one reads the index.
-                sequence = ++_navigationSequence;
             }
 
             try
             {
-                return await NavigateCore(path, mode, navToken, redirectCount, sequence);
+                return await NavigateCore(path, mode, navToken, redirectCount, initiatorSequence);
             }
             catch (OperationCanceledException) when (myCts != null && myCts.IsCancellationRequested)
             {
@@ -319,7 +315,7 @@ namespace Velvet
             NavigationMode mode,
             CancellationToken cancellationToken,
             int redirectCount,
-            int sequence)
+            int initiatorSequence)
         {
             if (redirectCount >= MaxRedirects)
             {
@@ -346,6 +342,12 @@ namespace Velvet
             }
 
             var savedHistoryIndex = ApplyProvisionalHistoryIndex(mode);
+            // The claim is taken here, where the index is, and not when the navigation started: every return
+            // above this line leaves the index untouched, so a navigation that matches no route must not
+            // dispossess an attempt parked in a blocker — that attempt is then the only one able to put the
+            // index back. A redirect inherits its initiator's claim rather than taking one, so it does not
+            // dispossess the navigation it is part of.
+            var sequence = redirectCount == 0 ? ++_navigationSequence : initiatorSequence;
             var provisional = new ProvisionalHistoryState(sequence, savedHistoryIndex);
 
             try
@@ -407,10 +409,6 @@ namespace Velvet
         private bool StillCurrent(ProvisionalHistoryState provisional) =>
             provisional.Sequence == _navigationSequence;
 
-        // Every index/Status rollback goes through here rather than writing the two fields directly, so no
-        // site can be added that forgets the ownership test: an attempt can resume long after a newer
-        // navigation committed — a blocker is only obliged to observe its token when it next resumes — and
-        // putting this attempt's saved index back then would describe a router that no longer exists.
         private void RollBackProvisional(ProvisionalHistoryState provisional)
         {
             if (!StillCurrent(provisional))
@@ -846,15 +844,17 @@ namespace Velvet
 
         public void Dispose()
         {
+            // Retire the outstanding claim BEFORE the Cancel, which inverts the ordering a navigation uses.
+            // A navigation takes its claim afterwards so that a prior attempt unwinding synchronously inside
+            // the Cancel still restores its own state; here there is no such attempt worth restoring, and
+            // that same synchronous unwind would write an index back and raise OnStatusChanged on a router
+            // being torn down.
+            _navigationSequence++;
             // Cancel and dispose any in-flight navigation CTS so a pending Blocker await unwinds
             // cleanly during shutdown.
             _activeNavigationCts?.Cancel();
             _activeNavigationCts?.Dispose();
             _activeNavigationCts = null;
-            // Retire the outstanding claim after that Cancel, on the same reasoning as a newer navigation
-            // taking one: an await that resumes past this point must not write an index back or raise
-            // OnStatusChanged on a router that is gone.
-            _navigationSequence++;
             _loaderRunner.Dispose();
             if (Current == this)
             {

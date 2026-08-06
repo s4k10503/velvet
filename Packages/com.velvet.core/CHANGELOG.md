@@ -18,11 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   route id, so neither the re-publish check nor the history write-back could separate them — `/users/1`
   re-rendered with user 2's record and kept it.
 
-  This narrows a second, still-open defect rather than fixing it: a history entry left before its Suspend
-  loader resolved is cached as an empty-but-complete snapshot, and Back or Forward serves that snapshot
-  without re-running the loader, so the page shows no data. Previously the departing round sometimes
-  resolved into the cache by luck; now it is reliably cancelled, so that entry keeps its pre-resolution
-  snapshot every time. Wrong data is traded for absent data.
+  A separate defect in the same area remains open: a history entry left before its Suspend loader resolved
+  is cached as an empty-but-complete snapshot, and Back or Forward serves that snapshot without re-running
+  the loader, so the page shows no data.
 
 - A navigation abandoned while a Blocker or a Guard redirect was still awaiting now leaves the router as
   it found it. A blocker that honors its token raises `OperationCanceledException` out of the await,
