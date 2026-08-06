@@ -16,11 +16,14 @@ namespace Velvet.Tests
     /// <item>Setting a state to an equal value inside a transition schedules no re-render.</item>
     /// <item>A Normal-priority update may interrupt a pending transition, but <c>isPending</c> stays true while the
     /// transition lane remains queued and returns to false only after a subsequent flush drains that lane.</item>
-    /// <item>An async <c>startTransition</c> keeps <c>isPending</c> true across awaits until the task completes.</item>
+    /// <item>An async <c>startTransition</c> keeps <c>isPending</c> true across awaits until the task completes,
+    /// and its post-await updates still take the transition lane.</item>
     /// <item>A nested <c>startTransition</c> joins the outer transition: it applies its updates without starting a
     /// new transition and without throwing.</item>
     /// <item>Each <c>UseTransition</c> slot tracks its own pending flag independently of other slots in the same
-    /// component.</item>
+    /// component, including a slot started while another slot's async transition is still awaiting.</item>
+    /// <item>A discrete update on the same component keeps its urgent priority while an async transition is in
+    /// flight there, unless the handler wrapped it in a <c>startTransition</c> of its own.</item>
     /// <item>Calling the hook outside a render throws an <see cref="InvalidOperationException"/>.</item>
     /// <item>Pending state does not survive unmount: a remounted component starts with <c>isPending == false</c>.</item>
     /// </list>
@@ -256,6 +259,29 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnAsyncTransition_When_ItsContinuationSetsStateAfterTheAwait_Then_ThatUpdateTakesTheTransitionLane()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                await gate.Task;
+                s_transitionSetValue.Invoke(1);
+            };
+            s_transitionStarter.Invoke(asyncUpdates);
+            Assume.That(s_transitionFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
+
+            // Act — the awaited task completes, so the continuation runs with nothing of the starter call left
+            // on the stack
+            gate.TrySetResult();
+
+            // Assert
+            Assert.That(s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition), Is.True,
+                "An async action's post-await update is still scheduled on the transition lane");
+        }
+
+        [Test]
         public void Given_AsyncStartTransition_When_TaskCompletesAndFlushes_Then_IsPendingClears()
         {
             // Arrange
@@ -333,6 +359,72 @@ namespace Velvet.Tests
                 "Both slots clear after the transition flush completes");
         }
 
+        [Test]
+        public void Given_OneSlotsAsyncTransitionAwaiting_When_ASecondSlotStartsItsOwn_Then_TheSecondSlotReportsPending()
+        {
+            // Arrange — slot A's async action parks on its await, so A's transition is still in flight
+            using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                await gate.Task;
+                s_twoSetValue.Invoke(1);
+            };
+            s_twoStarterA.Invoke(asyncUpdates);
+            Assume.That(s_twoFiber.IsTransitionPending, Is.True, "Precondition: slot A's async transition is awaiting");
+
+            // Act — an unrelated second slot starts its own transition inside that window
+            s_twoStartB.Invoke(() => s_twoSetValueB.Invoke(1));
+
+            // Assert
+            Assert.That(s_twoFiber.TransitionSlots[1].IsPending, Is.True,
+                "A slot started while another slot's async transition is in flight reports its own pending");
+        }
+
+        #endregion
+
+        #region Discrete updates during an in-flight async transition
+
+        [Test]
+        public void Given_AnAwaitingAsyncTransition_When_AClickSetsStateOnTheSameComponent_Then_ItCommitsInsideTheClick()
+        {
+            // Arrange — the async action parks on its await without having scheduled anything
+            using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            s_clickableStarter.Invoke(asyncUpdates);
+            Assume.That(s_clickableFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
+
+            // Act — a discrete click sets state on the same component
+            _root.Q<Button>("bump").SimulateClick();
+
+            // Assert — the discrete event's synchronous flush drains the immediate tier only, so a label
+            // showing the new value means the click's update was not demoted to the transition lane
+            Assert.That(_root.Q<Label>("out").text, Is.EqualTo("1"),
+                "A discrete update is not demoted while an async transition is in flight on the same fiber");
+        }
+
+        [Test]
+        public void Given_AnAwaitingAsyncTransition_When_AClickReusesTheSameStarter_Then_ItsUpdateStaysOnTheTransitionLane()
+        {
+            // Arrange — the slot's async action parks on its await, so a further call on it joins that owner
+            using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            s_clickableStarter.Invoke(asyncUpdates);
+            Assume.That(s_clickableFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
+
+            // Act — a discrete click whose handler wraps its update in that same starter
+            _root.Q<Button>("bump-deferred").SimulateClick();
+
+            // Assert — an explicitly wrapped update keeps transition priority even when the discrete carve-out
+            // would otherwise apply, so it is queued rather than committed by the click's synchronous flush
+            Assert.That(
+                (_root.Q<Label>("out").text, s_clickableFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                Is.EqualTo(("0", true)),
+                "A joined startTransition call keeps its updates on the transition lane inside a discrete event");
+        }
+
         #endregion
 
         #region Two-transition component
@@ -341,12 +433,15 @@ namespace Velvet.Tests
         private static Action<int> s_twoSetValueB;
         private static Action<Action> s_twoStartA;
         private static Action<Action> s_twoStartB;
+        private static TransitionStarter s_twoStarterA;
         private static bool s_twoLastIsPendingA;
         private static bool s_twoLastIsPendingB;
+        private static ComponentFiber s_twoFiber;
 
         [Component]
         private static VNode TwoTransitionRender()
         {
+            s_twoFiber = FiberAmbientStack.Current;
             var (_, setValueA) = Hooks.UseState(0);
             var (_, setValueB) = Hooks.UseState(0);
             s_twoSetValue = setValueA;
@@ -355,9 +450,32 @@ namespace Velvet.Tests
             var (isPendingB, startB) = Hooks.UseTransition();
             s_twoStartA = startA;
             s_twoStartB = startB;
+            s_twoStarterA = startA;
             s_twoLastIsPendingA = isPendingA;
             s_twoLastIsPendingB = isPendingB;
             return V.Label();
+        }
+
+        #endregion
+
+        #region Clickable transition component (UseTransition + a discrete click)
+
+        private static TransitionStarter s_clickableStarter;
+        private static ComponentFiber s_clickableFiber;
+
+        [Component]
+        private static VNode ClickableTransitionRender()
+        {
+            s_clickableFiber = FiberAmbientStack.Current;
+            var (value, setValue) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_clickableStarter = start;
+            return V.Div(children: new VNode[]
+            {
+                V.Button(name: "bump", onClick: () => setValue.Invoke(v => v + 1)),
+                V.Button(name: "bump-deferred", onClick: () => start.Invoke(() => setValue.Invoke(v => v + 1))),
+                V.Label(name: "out", text: value.ToString()),
+            });
         }
 
         #endregion
@@ -383,8 +501,12 @@ namespace Velvet.Tests
             s_twoSetValueB = null;
             s_twoStartA = null;
             s_twoStartB = null;
+            s_twoStarterA = default;
             s_twoLastIsPendingA = false;
             s_twoLastIsPendingB = false;
+            s_twoFiber = null;
+            s_clickableStarter = default;
+            s_clickableFiber = null;
         }
 
         [Component]

@@ -342,10 +342,10 @@ namespace Velvet.Tests
             scheduler.DrainImmediateForTest();
             var renderedByImmediateWave = s_lastRendered;
 
-            // The reader is inside a transition (the async-transition await window): a store mutation now routes
-            // its re-render to the delayed (Transition) tier, so the next drain is a SOLO delayed drain with no
-            // immediate drain to open a fresh wave.
-            readerFiber.IsInTransition = true;
+            // The reader is inside a startTransition callback: a store mutation now routes its re-render to the
+            // delayed (Transition) tier, so the next drain is a SOLO delayed drain with no immediate drain to
+            // open a fresh wave.
+            readerFiber.TransitionCallDepth = 1;
             store.Set("v2");
             scheduler.DrainDelayedForTest();
 

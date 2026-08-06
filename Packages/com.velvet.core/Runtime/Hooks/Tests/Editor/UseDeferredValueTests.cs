@@ -10,6 +10,7 @@ namespace Velvet.Tests
     /// <item>The first render returns the input value as-is.</item>
     /// <item>An urgent re-render that carries a changed input returns the previously committed value and queues the new value as pending on the transition lane.</item>
     /// <item>The next transition flush commits the pending value, so the new value is returned.</item>
+    /// <item>An unrelated re-render that drains ahead of that transition flush leaves the pending value deferred.</item>
     /// <item>An urgent re-render whose input is unchanged returns the current value and schedules no transition.</item>
     /// <item>Reverting the input to the committed value clears any pending value, so a later change to the same value defers again instead of committing immediately.</item>
     /// <item>The initialValue overload returns initialValue on the first render and schedules a transition that defers toward the live value; when initialValue already equals the value it commits the value with no transition.</item>
@@ -113,6 +114,27 @@ namespace Velvet.Tests
             // Assert — only the single urgent re-render is counted; no extra transition render
             Assert.That(s_deferredRenderCount - renderCountBefore, Is.EqualTo(1),
                 "An unchanged input schedules no transition lane and produces no extra render");
+        }
+
+        [Test]
+        public void Given_PendingValue_When_AnUnrelatedUrgentReRenderPrecedesTheTransitionFlush_Then_StillReturnsPreviousValue()
+        {
+            // Arrange — beta is pending on the transition lane while alpha stays committed
+            s_deferredInput = "alpha";
+            using var mounted = V.Mount(_root, V.Component(DeferredRender, key: "deferred-interleave"));
+            s_deferredInput = "beta";
+            s_deferredForceSetter.Invoke(s_deferredForceValue + 1);
+            mounted.FlushStateForTest();
+            Assume.That(s_deferredObserved, Is.EqualTo("alpha"), "Precondition: beta is pending, alpha is committed");
+
+            // Act — a sibling state change re-renders on the Normal lane, which drains ahead of the
+            // still-queued transition lane, with the deferred input unchanged at beta
+            s_deferredForceSetter.Invoke(s_deferredForceValue + 1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_deferredObserved, Is.EqualTo("alpha"),
+                "A re-render that is not the transition flush leaves the pending value deferred");
         }
 
         [Test]

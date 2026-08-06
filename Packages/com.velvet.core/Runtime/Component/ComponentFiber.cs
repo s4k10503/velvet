@@ -94,7 +94,10 @@ namespace Velvet
     internal sealed class LaneState
     {
         public FiberLaneSet Queue;
-        public bool IsInTransition;
+        // Depth of StartTransition callbacks executing on this fiber's synchronous call stack, not a
+        // boolean: several may be open at once, and whichever exits first would clear the others' scope by
+        // writing a flag back to false.
+        public int TransitionCallDepth;
         public int TransitionStarvationCounter;
         // The settle sweep keys off the Transition label's presence, which starvation promotion erases
         // (relabelling the lane to Normal) while the promoted work may still be queued — e.g. parked
@@ -102,10 +105,13 @@ namespace Velvet
         // as "settled" and clear isPending before the promoted content commits.
         public bool HasPromotedTransition;
 
+        // TransitionCallDepth is deliberately not reset here. Its increment and decrement are paired inside
+        // one StartTransition call, and an unmount driven from inside that call's updates would zero a depth
+        // the pending decrement then takes negative — leaving a retained fiber unable to reach a positive
+        // depth on its next transition.
         public void Clear()
         {
             Queue.Clear();
-            IsInTransition = false;
             TransitionStarvationCounter = 0;
             HasPromotedTransition = false;
         }
@@ -369,10 +375,36 @@ namespace Velvet
             }
         }
 
-        internal bool IsInTransition
+        internal int TransitionCallDepth
         {
-            get => Lanes?.IsInTransition ?? false;
-            set => EnsureLanes().IsInTransition = value;
+            get => Lanes?.TransitionCallDepth ?? 0;
+            set => EnsureLanes().TransitionCallDepth = value;
+        }
+
+        /// <summary>
+        /// True while any <see cref="Hooks.UseTransition"/> slot on this fiber has an async action between
+        /// its callback returning and that task completing. Derived from the per-slot
+        /// <c>IsAsyncInFlight</c> flags rather than counted separately, so the settle sweep
+        /// (<see cref="ClearAllTransitionPending"/>) and the lane classification in
+        /// <c>FiberWorkLoop.RequestRenderFromHook</c> cannot disagree about which transitions are live.
+        /// </summary>
+        internal bool HasAsyncTransitionInFlight
+        {
+            get
+            {
+                if (TransitionSlots == null)
+                {
+                    return false;
+                }
+                foreach (var slot in TransitionSlots)
+                {
+                    if (slot.IsAsyncInFlight)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
         }
 
         internal int TransitionStarvationCounter

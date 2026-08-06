@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Hooks.UseDeferredValue` now hands its new value over only on the render that drains the Transition
+  lane. Previously any re-render still carrying the same input promoted it — a sibling `UseState` setter
+  firing before that lane drained was enough — so the expensive subtree the deferral exists to keep off
+  the urgent path was reconciled there anyway. A re-render that is not that flush now keeps returning the
+  previously committed value and re-queues the lane.
+
+- Two `UseTransition` slots in one component are independent again while one of them is awaiting. A
+  second slot started during another slot's async transition took a re-entrancy path meant for a
+  genuinely nested `startTransition`, so its `isPending` was never set and its spinner never appeared;
+  the re-entrancy join is now scoped to the slot whose transition is running rather than to the whole
+  component.
+
+- An ordinary state update made from a click, a value change or another discrete input keeps its urgent
+  priority while an async transition is in flight on the same component. It was routed to the Transition
+  lane for the whole in-flight window, so it missed the discrete event's synchronous commit and landed a
+  frame delay later. Updates the async action itself makes after an await are still transition-lane
+  updates, as is anything a handler wraps in a `startTransition` of its own.
+
 - `font-<family>` and the text-transform / text-decoration / `whitespace-pre-line` / `leading-*`
   utilities now take effect behind a variant. `dark:font-mono`, `md:font-display`,
   `hover:uppercase`, `md:dark:hover:underline` and `md:leading-loose` all changed nothing before:

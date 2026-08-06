@@ -119,6 +119,11 @@ namespace Velvet
         // lane queue as "the transition settled" and wipe the flag mid-flight. Only the async completion
         // path clears IsPending while this is set.
         public bool IsAsyncInFlight;
+        // Set while a StartTransition call owns THIS slot's pending lifecycle, so a further call on the
+        // same slot joins it instead of opening a second scope whose exit would clear a flag the first
+        // call is still managing. Scoped to the slot, not the fiber: a call on a different slot is a
+        // concurrent transition, not a nested one, and owns its own pending flag.
+        public bool HasActiveOwner;
         public TransitionStarter Starter = default!;
     }
 

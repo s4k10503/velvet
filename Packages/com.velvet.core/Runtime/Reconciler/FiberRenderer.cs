@@ -213,7 +213,7 @@ namespace Velvet
             // but removing here keeps the pending set from retaining a dead fiber reference until drain.
             fiber.Reconciler?.Context.BatchScheduler.Remove(fiber);
             // For components whose LaneState has not been allocated (Lane never used), do not call Clear() to
-            // preserve zero-allocation. LaneState.Clear initializes every queue/transition-related field.
+            // preserve zero-allocation.
             fiber.Lanes?.Clear();
 
             // A mid-pass unmount takes its own deferred inline baselines with it: the end-of-pass
