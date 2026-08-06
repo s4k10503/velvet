@@ -158,8 +158,9 @@ not, each still occupies a layer of its own, so turning one off never disturbs a
 | 8 | Element state — `checked:` < `hover:` < `focus:` < `focus-visible:` < `active:` |
 | 9 | The important band — rows 1–8 again, one level each, for anything carrying `!` |
 
-A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts, so it sits above
-either one alone.
+A **stacked** variant (`dark:hover:bg-red`) layers at the higher of its two parts — row 8's `hover:`
+layer here, not a layer of its own above it. So it outranks the weaker part alone and only **ties**
+with the stronger one; *Same family, different values* above settles such a tie.
 
 ### The important modifier
 
