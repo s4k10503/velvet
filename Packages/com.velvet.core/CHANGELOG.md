@@ -42,6 +42,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pushed. Disposing the router retires the claim the same way, so a blocker resuming after teardown no
   longer writes to it.
 
+- `UseEffect` no longer stops running across the whole tree after a subtree is removed. One scheduled
+  callback drains every pending passive effect in a mounted tree, and it used to be registered on the
+  mount point of whichever fiber staged an effect first — routinely a container inside a subtree that
+  a route change, an error-boundary fallback or a conditional render then removed before the next
+  frame. Removing that container took the callback out of the panel's scheduler, and the flag marking it
+  as already registered was never cleared, so nothing registered a replacement. From then on the frame
+  tick ran no passive effect anywhere in the tree — subscriptions did not attach, fetches did not fire
+  and cleanups did not run — until something else forced them: a click or another discrete event, which
+  flushes pending passive effects synchronously, or the removed container being rented back out of the
+  element pool and re-attached, which resumed the callback at an arbitrary later moment. The drain is now
+  registered on the root mount element, the same tree-stable host the batch scheduler already uses for
+  its own drains and for the same reason.
+
 - An exception thrown by a mutation's `onError` handler no longer changes what the mutation reports.
   Through `MutateAsync` it used to replace the mutation's own exception, so the caller awaited a
   failure and received the handler's error instead of the one the mutation function raised, and

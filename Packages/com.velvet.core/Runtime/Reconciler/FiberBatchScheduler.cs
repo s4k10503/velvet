@@ -104,6 +104,10 @@ namespace Velvet
         // root fiber that owns this context mounts.
         internal void SetAnchor(VisualElement anchor) => _anchor = anchor;
 
+        // Also hosts the passive-effect drain (FiberEffects.ScheduleRunEffects): that callback serves the
+        // whole context too, so it needs the same tree stability the tier drains do.
+        internal VisualElement? Anchor => _anchor;
+
         // Registers a probe reporting whether a reconcile pass is currently on the stack. Called once by the
         // owning Reconciler so FlushImmediate can block a synchronous discrete-event flush during
         // a time-sliced resume, which runs outside the batch Drain (so _draining is false)
