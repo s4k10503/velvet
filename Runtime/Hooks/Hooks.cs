@@ -1794,7 +1794,14 @@ namespace Velvet
                 }
                 slot.Result.Error = ex;
                 slot.Result.Status = MutationStatus.Error;
-                slot.OnError?.Invoke(ex, variables);
+                try
+                {
+                    slot.OnError?.Invoke(ex, variables);
+                }
+                catch (Exception handlerEx)
+                {
+                    UniTask.FromException(handlerEx).Forget();
+                }
                 RequestRender(fiber);
                 if (rethrowOnFailure) throw;
                 return default!;
