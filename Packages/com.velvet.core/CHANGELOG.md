@@ -5,6 +5,21 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- An exception thrown by a mutation's `onError` handler no longer changes what the mutation reports.
+  Through `MutateAsync` it used to replace the mutation's own exception, so the caller awaited a
+  failure and received the handler's error instead of the one the mutation function raised, and
+  nothing was logged; through `Mutate` the same exception was already logged and the outcome was
+  already unaffected. The handler's exception now goes to the unobserved-exception channel in both
+  cases, and `MutateAsync` rethrows the mutation's own exception.
+
+  A throwing `onSuccess` handler is unchanged and still makes the mutation an error, which is what
+  React does — the success state is dispatched after the handler runs, so a handler that throws never
+  reaches it.
+
 ## [2.0.0] - 2026-08-02
 
 ### Highlights
