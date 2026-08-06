@@ -127,7 +127,7 @@ namespace Velvet
             // attribute store from the props and evaluate, so a data-[..]/aria-[..] variant lights from
             // the element's carried attribute values at mount.
             _patcher.ApplyAttributes(element, elementNode.Props);
-            StyleFontResolver.ApplyIfPresent(element, elementNode.ClassNames);
+            _patcher.ApplyFontLayerOnCreate(element, elementNode.ClassNames);
             // After ReconcileChildren so the gap / divide manipulators see the final child list.
             // [&>*]: runs before gap / divide / grid so those win a shared child edge (see
             // ApplyPostChildrenClassPasses for the same ordering on the patch path).
@@ -142,7 +142,7 @@ namespace Velvet
             _patcher.ApplyHasVariantManipulators(element);
             // text-transform / -decoration cascade: after children are placed so it can reach descendant
             // text leaves, and after the element's own text is set so it transforms the final value.
-            StyleTextEffectResolver.Apply(_ctx, element, elementNode.ClassNames);
+            _patcher.ApplyTextEffects(element, elementNode.ClassNames);
 
             // The paint layers read a class source that also carries what the passes above have already
             // written onto the live class list, so a payload ALREADY LIT at this point paints from the
@@ -285,7 +285,7 @@ namespace Velvet
             _patcher.ApplyVariantManipulators(element, appliedClasses);
             _patcher.ApplyAttributes(element, motionNode.Props);
             ApplyOptionalCreateBindings(element, motionNode.Props, appliedClasses);
-            StyleFontResolver.ApplyIfPresent(element, appliedClasses);
+            _patcher.ApplyFontLayerOnCreate(element, appliedClasses);
             _patcher.ApplyChildVariantManipulator(element, appliedClasses);
             _patcher.ApplyLayoutManipulators(element, appliedClasses);
             _patcher.ApplyStructuralVariants(element);
@@ -487,7 +487,7 @@ namespace Velvet
             // ScrollView's direct children are the height spacer + absolutely-positioned visible
             // container, not the list items, so gap-* would have nothing meaningful to space.
             _patcher.ApplyVariantManipulators(scrollView, virtualListNode.ClassNames);
-            StyleFontResolver.ApplyIfPresent(scrollView, virtualListNode.ClassNames);
+            _patcher.ApplyFontLayerOnCreate(scrollView, virtualListNode.ClassNames);
             return scrollView;
         }
 

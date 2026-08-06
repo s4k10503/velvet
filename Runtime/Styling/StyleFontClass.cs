@@ -80,7 +80,7 @@ namespace Velvet
 
             foreach (var cls in classNames)
             {
-                if (IsFontClass(cls))
+                if (IsFontToken(cls))
                 {
                     return true;
                 }
@@ -89,7 +89,16 @@ namespace Velvet
             return false;
         }
 
-        private static bool IsFontClass(string cls)
+        /// <summary>
+        /// Whether <paramref name="cls"/> can change what <see cref="TryExtract"/> builds. Both readers ask
+        /// it as a cheap over-approximation and pay only a wasted resolve for a false positive — the
+        /// presence gate below decides whether to run the resolver at all, and
+        /// <c>StyleVariantPayload.IsVariantGateToken</c> decides whether to track a payload for it. Reading
+        /// the <c>font-</c> prefix rather than the parse is what keeps it on the cheap side of that trade:
+        /// a suffix <see cref="TryExtract"/> goes on to reject still enters, where a spelling this failed to
+        /// recognise would cost the payload its effect.
+        /// </summary>
+        public static bool IsFontToken(string cls)
         {
             if (string.IsNullOrEmpty(cls))
             {

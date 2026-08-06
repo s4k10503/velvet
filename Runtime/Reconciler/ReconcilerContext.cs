@@ -502,9 +502,8 @@ namespace Velvet
         public Dictionary<VisualElement, StyleTextBalanceManipulator> TextBalanceManipulators { get; } = new();
 
         // Elements a VARIANT currently has a gate token toggled onto, keyed by that element. A gate token is
-        // one whose mere presence in a class array decides what a class-driven pass builds — the four layout
-        // manipulators (gap-* / space-* / grid / grid-cols-* / divide-* / text-balance) and the five paint
-        // layers (skew-*, shadow-*, bg-gradient-* and its stops, animate-*, border-dashed / -dotted). Those
+        // one whose mere presence in a class array decides what a class-driven pass builds; the families are
+        // enumerated once, in StyleVariantPayload.IsVariantGateToken. Those
         // passes are configured from the RECONCILED class array, which never carries such a token: `md:grid`
         // is a variant token, and the bare `grid` it resolves to is written straight onto the live class list
         // by the conditional manipulator without passing back through the reconciler. An entry here marks the
