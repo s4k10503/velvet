@@ -260,11 +260,19 @@ namespace Velvet
             {
                 context.PendingPassiveEffectFibers.Add(fiber);
             }
-            if (!context.PassiveEffectDrainScheduled)
-            {
-                context.PassiveEffectDrainScheduled = true;
-                fiber.MountPoint.schedule.Execute(() => DrainPassiveEffects(context));
-            }
+            if (context.PassiveEffectDrainScheduled) return;
+            // One drain serves the whole context and only that drain clears the latch below, so the
+            // registration has to sit on a host outliving any single subtree: the batch scheduler's
+            // tree-stable anchor, the same hazard SetAnchor exists for, one level out. Whichever fiber
+            // stages first is the one that registers, and that is routinely a descendant.
+            // PassiveEffectDrainHostTests fails if this moves back onto the staging fiber's MountPoint.
+            var anchor = context.BatchScheduler.Anchor;
+            // Armed only for a registration that actually happened: a context whose scheduler has no anchor
+            // must not latch a drain nothing will run. That the production mount path sets the anchor before
+            // any fiber stages — so this return is never on it — is held by PassiveEffectDrainArmingTests.
+            if (anchor == null) return;
+            context.PassiveEffectDrainScheduled = true;
+            anchor.schedule.Execute(() => DrainPassiveEffects(context));
         }
 
         // Tree-ordered, 2-phase passive (UseEffect) commit across every fiber staged in the current
