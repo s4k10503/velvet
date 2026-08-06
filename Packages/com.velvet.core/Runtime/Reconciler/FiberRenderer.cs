@@ -146,22 +146,30 @@ namespace Velvet
             // re-render lands here), defeating the documented lazy-allocation invariant, and a FiberLaneSet
             // handed back by a property getter is a copy — RetainAll() through it would mutate a throwaway
             // value instead of the backing queue.
-            fiber.Lanes?.Queue.RetainAll(fiber.Lanes.LanesRequestedSinceReset);
-            // The subsuming render committed the fiber's latest (eagerly-written) state, so any
-            // starvation-promoted work is satisfied too — a marker left true on the now-clean fiber
-            // would mis-time a LATER transition's settle (its sweep would be skipped while other lanes
-            // queue).
             if (fiber.Lanes != null)
             {
+                fiber.Lanes.Queue.RetainAll(fiber.Lanes.LanesRequestedSinceReset);
+                // Consumed here as well as reset by the render, so a settle reached without one reads an
+                // empty set and retains nothing — what this did before the record existed. The reset in
+                // RenderInlineForExpansion is what scopes the window; requests made between windows would
+                // otherwise accumulate into it.
+                fiber.Lanes.LanesRequestedSinceReset.Clear();
+                // The subsuming render committed the fiber's latest (eagerly-written) state, so any
+                // starvation-promoted work is satisfied too — a marker left true on the now-clean fiber
+                // would mis-time a LATER transition's settle (its sweep would be skipped while other lanes
+                // queue).
                 fiber.Lanes.HasPromotedTransition = false;
             }
 
             if (fiber.LaneQueue.Count > 0)
             {
-                // The surviving lane usually has no tier at all: the fiber was already dirty when the render
-                // requested it, and ScheduleRerender only schedules when it was not, or when the new lane
-                // outranks what was scheduled — which a Transition lane never does. Re-enrol it here.
-                // ScheduleFlush dedups, so asking unconditionally costs nothing when it is already enrolled.
+                // Re-enrol, for two reasons the surviving lane cannot tell apart here. A drain empties its
+                // tier's pending set before flushing any fiber, so when the settle runs inside one, an
+                // enrolment predating that pass is already gone. And a fiber that was dirty carrying only
+                // Normal was enrolled on the immediate tier alone: a Transition request satisfies neither
+                // term of ScheduleRerender's escalation check, so it scheduled nothing, and RetainAll has
+                // just dropped the Normal that was holding the only enrolment it had.
+                // ScheduleFlush dedups, so asking unconditionally costs nothing when the lane has a tier.
                 fiber.IsDirty = true;
                 FiberWorkLoop.ScheduleFlush(fiber, fiber.LaneQueue.Min);
                 // Mirrors FlushState's settle rule so a surviving Transition lane keeps isPending lit until
