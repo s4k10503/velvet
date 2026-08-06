@@ -83,6 +83,13 @@ namespace Velvet
             return true;
         }
 
+        /// <summary>
+        /// Un-enrolls every lane in <paramref name="lanes"/>, leaving the rest. Distinct from
+        /// <see cref="Clear"/> because a caller that satisfied a captured set of lanes must not also discard
+        /// one enrolled after that capture — see <c>FiberRenderer.SettleSubsumedFiber</c>.
+        /// </summary>
+        internal void RemoveAll(FiberLaneSet lanes) => _mask &= (byte)~lanes._mask;
+
         internal void Clear() => _mask = 0;
     }
 
@@ -94,9 +101,8 @@ namespace Velvet
     internal sealed class LaneState
     {
         public FiberLaneSet Queue;
-        // Depth of StartTransition callbacks executing on this fiber's synchronous call stack, not a
-        // boolean: several may be open at once, and whichever exits first would clear the others' scope by
-        // writing a flag back to false.
+        // Several StartTransition callbacks can be open on one fiber at once — a call on another slot, a call
+        // joining an owner — so whichever exits first would clear the others' scope if this were a boolean.
         public int TransitionCallDepth;
         public int TransitionStarvationCounter;
         // The settle sweep keys off the Transition label's presence, which starvation promotion erases
@@ -375,6 +381,27 @@ namespace Velvet
             }
         }
 
+        /// <summary>
+        /// Hands every transition slot back to nobody, called from unmount. The slot list survives an unmount
+        /// so a remount reuses it, and an async action that outlives the unmount cannot run its own release —
+        /// so without this a remounted component's first <c>startTransition</c> would find the slot still
+        /// owned and join a transition that no longer exists.
+        /// </summary>
+        internal void ReleaseTransitionSlotOwnership()
+        {
+            if (TransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in TransitionSlots)
+            {
+                slot.OwnerGeneration++;
+                slot.HasActiveOwner = false;
+                slot.IsAsyncInFlight = false;
+                slot.IsPending = false;
+            }
+        }
+
         internal int TransitionCallDepth
         {
             get => Lanes?.TransitionCallDepth ?? 0;
@@ -519,6 +546,15 @@ namespace Velvet
         /// a Transition slice time-sliced across frames. 0 for synchronous lanes.
         /// </summary>
         internal double PendingReconcileBudgetMs { get; set; }
+
+        /// <summary>
+        /// Whether the lane that started the in-flight reconcile was carrying transition work, so a resume
+        /// restores <c>FiberWorkLoop.IsRenderingTransitionLane</c> to the same answer. A parked slice can
+        /// still evaluate component bodies: <c>GeneralPathReconciler.NeedsExpansion</c> looks one level
+        /// down, so a container of host children whose own descendants are components takes the
+        /// time-sliced path and expands them on resume.
+        /// </summary>
+        internal bool PendingReconcileDrainsTransitionWork { get; set; }
 
         /// <summary>Sentinel indicating whether the asynchronous effect flush has been scheduled via schedule.Execute.</summary>
         internal bool EffectFlushScheduled { get; set; }

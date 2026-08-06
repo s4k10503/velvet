@@ -25,7 +25,8 @@ namespace Velvet.Tests
     /// <item>A discrete update on the same component keeps its urgent priority while an async transition is in
     /// flight there, unless the handler wrapped it in a <c>startTransition</c> of its own.</item>
     /// <item>Calling the hook outside a render throws an <see cref="InvalidOperationException"/>.</item>
-    /// <item>Pending state does not survive unmount: a remounted component starts with <c>isPending == false</c>.</item>
+    /// <item>Pending state does not survive unmount: a remounted component starts with <c>isPending == false</c>,
+    /// and its slots are owned by nobody even when the unmounted owner's task has not settled.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -425,6 +426,30 @@ namespace Velvet.Tests
                 "A joined startTransition call keeps its updates on the transition lane inside a discrete event");
         }
 
+        [Test]
+        public void Given_AnAwaitingAsyncTransition_When_AClickCompletesItsAwaitedTask_Then_TheResumedUpdateTakesUrgentPriority()
+        {
+            // Arrange — the action's only update comes after its await
+            using var mounted = V.Mount(_root, V.Component(ClickableTransitionRender, key: "clickable"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            s_clickableGate = gate;
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                await gate.Task;
+                s_clickableSetValue.Invoke(v => v + 1);
+            };
+            s_clickableStarter.Invoke(asyncUpdates);
+            Assume.That(s_clickableFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
+
+            // Act — a discrete click completes the awaited task, which resumes the action inside the handler
+            _root.Q<Button>("release").SimulateClick();
+
+            // Assert — the accepted cost of the discrete carve-out: this fiber looks exactly as it does for an
+            // unrelated write from the same handler, so the resumed update commits at the handler's priority
+            Assert.That(_root.Q<Label>("out").text, Is.EqualTo("1"),
+                "An action resumed inside a discrete handler has its updates classified as that handler's");
+        }
+
         #endregion
 
         #region Two-transition component
@@ -458,10 +483,46 @@ namespace Velvet.Tests
 
         #endregion
 
+        #region Ownership across unmount
+
+        [Test]
+        public void Given_AFiberUnmountedWhileItsAsyncTransitionAwaits_When_ItIsMountedAgain_Then_TheSlotStartsUnownedAndTheNextTransitionReportsPending()
+        {
+            // Arrange — the Unmount then Mount pair reuses one fiber and its hook slots, so a slot can enter
+            // the new mount still owned by an action parked on an await the unmount could not settle
+            var fiber = FiberRenderer.CreateRoot(TransitionRender);
+            FiberRenderer.Mount(fiber, _root);
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            s_transitionStarter.Invoke(asyncUpdates);
+            Assume.That(fiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
+            var slotBeforeUnmount = fiber.TransitionSlots[0];
+            FiberRenderer.Unmount(fiber);
+            FiberRenderer.Mount(fiber, _root);
+            var pendingAfterRemount = fiber.IsTransitionPending;
+
+            // Act — the remounted fiber starts a fresh transition on that same slot
+            s_transitionStarter.Invoke(() => s_transitionSetValue.Invoke(1));
+
+            // Assert — three terms, because pending after the new call is true either way while the old
+            // owner's flag survives: the slot must be the same object (a fresh one proves nothing about
+            // ownership), the remount must start it clear, and the new call must light it again
+            Assert.That(
+                (ReferenceEquals(fiber.TransitionSlots[0], slotBeforeUnmount),
+                 pendingAfterRemount,
+                 fiber.IsTransitionPending),
+                Is.EqualTo((true, false, true)),
+                "A remounted slot is owned by nobody, so the next startTransition opens its own pending scope");
+        }
+
+        #endregion
+
         #region Clickable transition component (UseTransition + a discrete click)
 
         private static TransitionStarter s_clickableStarter;
         private static ComponentFiber s_clickableFiber;
+        private static StateUpdater<int> s_clickableSetValue;
+        private static Cysharp.Threading.Tasks.UniTaskCompletionSource s_clickableGate;
 
         [Component]
         private static VNode ClickableTransitionRender()
@@ -470,10 +531,12 @@ namespace Velvet.Tests
             var (value, setValue) = Hooks.UseState(0);
             var (_, start) = Hooks.UseTransition();
             s_clickableStarter = start;
+            s_clickableSetValue = setValue;
             return V.Div(children: new VNode[]
             {
                 V.Button(name: "bump", onClick: () => setValue.Invoke(v => v + 1)),
                 V.Button(name: "bump-deferred", onClick: () => start.Invoke(() => setValue.Invoke(v => v + 1))),
+                V.Button(name: "release", onClick: () => s_clickableGate?.TrySetResult()),
                 V.Label(name: "out", text: value.ToString()),
             });
         }
@@ -507,6 +570,8 @@ namespace Velvet.Tests
             s_twoFiber = null;
             s_clickableStarter = default;
             s_clickableFiber = null;
+            s_clickableSetValue = default;
+            s_clickableGate = null;
         }
 
         [Component]

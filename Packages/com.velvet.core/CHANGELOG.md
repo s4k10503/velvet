@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the urgent path was reconciled there anyway. A re-render that is not that flush now keeps returning the
   previously committed value and re-queues the lane.
 
+- A re-render request a component makes from inside its own render is no longer discarded when a parent
+  re-render subsumed that component into its own pass. The settle after such a subsuming render dropped
+  the component's entire pending-lane queue on the premise that the render had just satisfied all of it,
+  which is true only of updates pending before it ran. `UseDeferredValue` is the visible case: fed from a
+  prop, it queues its Transition lane during the parent's render, so the deferral had nothing left to
+  commit on.
+
 - Two `UseTransition` slots in one component are independent again while one of them is awaiting. A
   second slot started during another slot's async transition took a re-entrancy path meant for a
   genuinely nested `startTransition`, so its `isPending` was never set and its spinner never appeared;
@@ -23,9 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - An ordinary state update made from a click, a value change or another discrete input keeps its urgent
   priority while an async transition is in flight on the same component. It was routed to the Transition
-  lane for the whole in-flight window, so it missed the discrete event's synchronous commit and landed a
-  frame delay later. Updates the async action itself makes after an await are still transition-lane
-  updates, as is anything a handler wraps in a `startTransition` of its own.
+  lane for the whole in-flight window, so it missed the discrete event's synchronous commit and landed on
+  the delayed tier roughly 100 ms later. Updates the async action makes after an await are still
+  transition-lane updates, as is anything a handler wraps in a `startTransition` of its own — with one
+  exception the framework cannot see past: completing the awaited task from inside a discrete handler
+  resumes the action within that handler, and its updates take the handler's urgent priority.
 
 - `font-<family>` and the text-transform / text-decoration / `whitespace-pre-line` / `leading-*`
   utilities now take effect behind a variant. `dark:font-mono`, `md:font-display`,

@@ -178,13 +178,15 @@ namespace Velvet
                 existingFiber.MountSlotStart = site.SlotStart;
                 if (propsChanged || existingFiber.IsDirty || refChanged)
                 {
+                    // Captured before the render: only the lanes already pending are the ones it subsumes.
+                    var subsumedLanes = existingFiber.LaneQueue;
                     FiberRenderer.RenderInlineForExpansion(existingFiber);
                     // This re-render subsumes the child into the parent's single batch pass: it ran with
-                    // the child's latest state, satisfying every pending lane at once (lane coalescing).
-                    // Settle the whole lane queue and drop the fiber from the batch scheduler so a later
-                    // drain does not redundantly re-render it or silently drop a stranded higher-priority
-                    // lane — merely clearing IsDirty would leave both behind.
-                    FiberRenderer.SettleSubsumedFiber(existingFiber);
+                    // the child's latest state, satisfying those pending lanes at once (lane coalescing).
+                    // Settle them and drop the fiber from the batch scheduler so a later drain does not
+                    // redundantly re-render it or silently drop a stranded higher-priority lane — merely
+                    // clearing IsDirty would leave both behind.
+                    FiberRenderer.SettleSubsumedFiber(existingFiber, subsumedLanes);
                 }
             }
             else if (propsChanged || refChanged)

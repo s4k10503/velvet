@@ -11,6 +11,8 @@ namespace Velvet.Tests
     /// <item>An urgent re-render that carries a changed input returns the previously committed value and queues the new value as pending on the transition lane.</item>
     /// <item>The next transition flush commits the pending value, so the new value is returned.</item>
     /// <item>An unrelated re-render that drains ahead of that transition flush leaves the pending value deferred.</item>
+    /// <item>A deferred value fed from a prop still commits: the transition lane its body queues during the
+    /// parent's subsuming render survives that render's settle.</item>
     /// <item>An urgent re-render whose input is unchanged returns the current value and schedules no transition.</item>
     /// <item>Reverting the input to the committed value clears any pending value, so a later change to the same value defers again instead of committing immediately.</item>
     /// <item>The initialValue overload returns initialValue on the first render and schedules a transition that defers toward the live value; when initialValue already equals the value it commits the value with no transition.</item>
@@ -32,6 +34,8 @@ namespace Velvet.Tests
             _root = new VisualElement();
             ResetDeferred();
             ResetInitialValue();
+            ResetProp();
+            ResetSliced();
         }
 
         [Test]
@@ -165,6 +169,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADeferredProp_When_TheParentReRendersAndTheTransitionLaneDrains_Then_ItCommitsTheNewValue()
+        {
+            // Arrange — the deferred input arrives as a prop, so the child re-renders through the parent's
+            // inline expansion rather than through a flush of its own
+            using var mounted = V.Mount(_root, V.Component(PropParentRender, key: "prop-parent"));
+            Assume.That(s_propObserved, Is.EqualTo("alpha"), "Precondition: the child committed the mount value");
+
+            // Act — the parent's state change re-renders the child with the new prop, then the transition
+            // lane the child queued during that render drains
+            s_propSetQuery.Invoke("beta");
+            mounted.FlushStateForTest();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_propObserved, Is.EqualTo("beta"),
+                "A transition lane queued during a subsuming parent render survives to commit the deferred value");
+        }
+
+        [Test]
         public void Given_InitialValueDifferentFromValue_When_FirstRender_Then_ReturnsInitialValue()
         {
             // Arrange
@@ -235,6 +258,109 @@ namespace Velvet.Tests
             s_deferredForceSetter = setTick;
             s_deferredObserved = Hooks.UseDeferredValue(s_deferredInput);
             return V.Label(text: s_deferredObserved ?? string.Empty);
+        }
+
+        #endregion
+
+        [Test]
+        public void Given_APendingValueUnderAParkedTransitionSlice_When_TheSliceResumes_Then_ItCommitsTheDeferredValue()
+        {
+            // Arrange — one transition render leaves beta pending on the child
+            using var mounted = V.Mount(_root, V.Component(SlicedParentRender, key: "sliced-parent"));
+            var parent = s_slicedFiber;
+            // Only the parent flushes: a whole-tree flush would drain the child's own transition lane too,
+            // committing beta before the parked slice this case is about ever runs
+            s_slicedStart.Invoke(() => s_slicedSetQuery.Invoke("beta"));
+            FiberWorkLoop.FlushState(parent);
+            Assume.That(s_slicedObserved, Is.EqualTo("alpha"), "Precondition: beta is pending, alpha is committed");
+
+            // Act — a second transition render parks on its first slice, so the child is reached only by the
+            // resume rather than by the flush's own render
+            s_slicedStart.Invoke(() => s_slicedSetTick.Invoke(1));
+            parent.FlushStateWithTinyBudgetForTest();
+            var parked = parent.HasPendingReconcileWorkForTest();
+            parent.DrainTimeSlicedReconcileForTest();
+
+            // Assert — the park travels with the assertion: without one the child is expanded by the flush's
+            // own render, where the marker is set for a reason this case does not pin
+            Assert.That((parked, s_slicedObserved), Is.EqualTo((true, "beta")),
+                "A resumed slice answers the deferred-commit question the same way the flush that parked it did");
+        }
+
+        #region Sliced parent (a parked transition reconcile that expands the child on resume)
+
+        private static string s_slicedObserved;
+        private static StateUpdater<string> s_slicedSetQuery;
+        private static StateUpdater<int> s_slicedSetTick;
+        private static TransitionStarter s_slicedStart;
+        private static ComponentFiber s_slicedFiber;
+
+        private static void ResetSliced()
+        {
+            s_slicedObserved = null;
+            s_slicedSetQuery = default;
+            s_slicedSetTick = default;
+            s_slicedStart = default;
+            s_slicedFiber = null;
+        }
+
+        [Component]
+        private static VNode SlicedParentRender()
+        {
+            s_slicedFiber = FiberAmbientStack.Current;
+            var (query, setQuery) = Hooks.UseState("alpha");
+            var (tick, setTick) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_slicedSetQuery = setQuery;
+            s_slicedSetTick = setTick;
+            s_slicedStart = start;
+            // A top-level Fragment of host nodes is unwrapped to the flat array, so the fiber's own reconcile
+            // takes the time-sliceable fast path — GeneralPathReconciler.NeedsExpansion looks only at this
+            // array, and the component is one level below its last entry, so a parked slice reaches it on
+            // resume rather than in the pass that parked.
+            var rows = new VNode[9];
+            for (var i = 0; i < rows.Length - 1; i++)
+            {
+                rows[i] = V.Label(name: $"row{i}", text: $"{i}-{tick}");
+            }
+            rows[^1] = V.Div(name: "host-of-child",
+                children: new VNode[] { V.Component(SlicedChildRender, query, key: "sliced-child") });
+            return V.Fragment(children: rows);
+        }
+
+        [Component]
+        private static VNode SlicedChildRender(string query)
+        {
+            s_slicedObserved = Hooks.UseDeferredValue(query);
+            return V.Label(text: s_slicedObserved ?? string.Empty);
+        }
+
+        #endregion
+
+        #region Deferred prop component (the input arrives from a parent)
+
+        private static string s_propObserved;
+        private static StateUpdater<string> s_propSetQuery;
+
+        private static void ResetProp()
+        {
+            s_propObserved = null;
+            s_propSetQuery = default;
+        }
+
+        [Component]
+        private static VNode PropParentRender()
+        {
+            var (query, setQuery) = Hooks.UseState("alpha");
+            s_propSetQuery = setQuery;
+            return V.Div(children: new VNode[] { V.Component(PropChildRender, query, key: "prop-child") });
+        }
+
+        [Component]
+        private static VNode PropChildRender(string query)
+        {
+            s_propObserved = Hooks.UseDeferredValue(query);
+            return V.Label(text: s_propObserved ?? string.Empty);
         }
 
         #endregion
