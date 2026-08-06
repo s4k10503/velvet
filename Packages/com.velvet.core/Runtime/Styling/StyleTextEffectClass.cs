@@ -157,49 +157,19 @@ namespace Velvet
         // Overline.
         public static TextEffect Parse(string[] classNames)
         {
-            TextTransformKind? transform = null;
-            TextDecorationKind? decoration = null;
-            WhitespaceCollapseKind? whitespace = null;
-            LeadingValue? leading = null;
             if (classNames == null)
             {
                 return default;
             }
-            var sawExplicitWhitespaceClass = false;
+            var facets = default(TextEffectFacets);
             foreach (var cls in classNames)
             {
-                switch (cls)
-                {
-                    case "uppercase": transform = TextTransformKind.Upper; break;
-                    case "lowercase": transform = TextTransformKind.Lower; break;
-                    case "capitalize": transform = TextTransformKind.Capitalize; break;
-                    case "normal-case": transform = TextTransformKind.None; break;
-                    case "underline": decoration = TextDecorationKind.Underline; break;
-                    case "line-through": decoration = TextDecorationKind.LineThrough; break;
-                    case "overline": decoration = TextDecorationKind.Overline; break;
-                    case "no-underline": decoration = TextDecorationKind.None; break;
-                    case "whitespace-pre-line": whitespace = WhitespaceCollapseKind.PreLine; break;
-                    case "whitespace-normal":
-                    case "whitespace-nowrap":
-                    case "whitespace-pre":
-                    case "whitespace-pre-wrap":
-                        sawExplicitWhitespaceClass = true;
-                        break;
-                    default:
-                        if (s_leadingPresets.TryGetValue(cls, out var em))
-                        {
-                            leading = new LeadingValue(LeadingUnit.Em, em);
-                        }
-                        else if (TryParseLeadingBracket(cls, out var px))
-                        {
-                            leading = new LeadingValue(LeadingUnit.Pixel, px);
-                        }
-                        break;
-                }
+                ParseToken(cls, ref facets);
             }
+            var whitespace = facets.Whitespace;
             // An explicit whitespace-{normal,nowrap,pre,pre-wrap} class on the SAME element always wins over
             // that element's own whitespace-pre-line token, regardless of which appears earlier/later in the
-            // class list — order-dependent "last wins" (the rule every other case above uses) is not a
+            // class list — order-dependent "last wins" (the rule every other case in ParseToken uses) is not a
             // meaningful concept across two independently-authored utility families, so the choice is made
             // unconditionally instead. This is the least-surprising option: pre-line mutates the displayed
             // string, so a reader who also reached for a direct, single-purpose whitespace-* class most
@@ -208,11 +178,67 @@ namespace Velvet
             // pre-line request from a FARTHER ancestor from still reaching this element through the normal
             // cascade — the same explicit-reset semantics normal-case / no-underline already give
             // Transform/Decoration.
-            if (sawExplicitWhitespaceClass)
+            if (facets.SawExplicitWhitespaceClass)
             {
                 whitespace = WhitespaceCollapseKind.None;
             }
-            return new TextEffect(transform, decoration, whitespace, leading);
+            return new TextEffect(facets.Transform, facets.Decoration, whitespace, facets.Leading);
+        }
+
+        // The four axes plus the cross-family marker Parse folds a class array into, bundled so the
+        // per-token step can be shared with IsTextEffectToken. Mirrors StyleFontClass.FontFacets.
+        private struct TextEffectFacets
+        {
+            public TextTransformKind? Transform;
+            public TextDecorationKind? Decoration;
+            public WhitespaceCollapseKind? Whitespace;
+            public LeadingValue? Leading;
+            public bool SawExplicitWhitespaceClass;
+        }
+
+        // Returns true when cls was recognised as a text-effect utility (and folded into facets).
+        private static bool ParseToken(string cls, ref TextEffectFacets facets)
+        {
+            switch (cls)
+            {
+                case null:
+                case "": return false;
+                case "uppercase": facets.Transform = TextTransformKind.Upper; return true;
+                case "lowercase": facets.Transform = TextTransformKind.Lower; return true;
+                case "capitalize": facets.Transform = TextTransformKind.Capitalize; return true;
+                case "normal-case": facets.Transform = TextTransformKind.None; return true;
+                case "underline": facets.Decoration = TextDecorationKind.Underline; return true;
+                case "line-through": facets.Decoration = TextDecorationKind.LineThrough; return true;
+                case "overline": facets.Decoration = TextDecorationKind.Overline; return true;
+                case "no-underline": facets.Decoration = TextDecorationKind.None; return true;
+                case "whitespace-pre-line": facets.Whitespace = WhitespaceCollapseKind.PreLine; return true;
+                case "whitespace-normal":
+                case "whitespace-nowrap":
+                case "whitespace-pre":
+                case "whitespace-pre-wrap":
+                    facets.SawExplicitWhitespaceClass = true;
+                    return true;
+            }
+            if (s_leadingPresets.TryGetValue(cls, out var em))
+            {
+                facets.Leading = new LeadingValue(LeadingUnit.Em, em);
+                return true;
+            }
+            if (TryParseLeadingBracket(cls, out var px))
+            {
+                facets.Leading = new LeadingValue(LeadingUnit.Pixel, px);
+                return true;
+            }
+            return false;
+        }
+
+        // Whether a variant payload spelling cls can change what Parse builds, which is what puts the token
+        // in the class source this family resolves from (StyleVariantPayload.IsVariantGateToken). Shares
+        // ParseToken with Parse itself so the two cannot answer differently about one token.
+        public static bool IsTextEffectToken(string cls)
+        {
+            var facets = default(TextEffectFacets);
+            return ParseToken(cls, ref facets);
         }
 
         // True when cls is the leading-[...] arbitrary bracket form, regardless of whether its value parses.

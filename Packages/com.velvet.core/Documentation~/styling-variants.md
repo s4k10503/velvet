@@ -13,9 +13,9 @@ list; the reconciler routes each one to a **manipulator** that toggles the paylo
 as the matching signal changes.
 
 A payload may also be one of the utilities Velvet realises itself rather than through a USS rule.
-Those need re-deriving when the variant toggles, and nearly all of them get it — see
-[Payloads Velvet realises itself](#payloads-velvet-realises-itself) for the one family that does not
-and for the class channels that are not variants at all.
+Those need re-deriving when the variant toggles — see
+[Payloads Velvet realises itself](#payloads-velvet-realises-itself) for the ones that get it and for
+the class channels that are not variants at all.
 
 A payload occupies one slot per `(priority, token)` pair. Declaring the same token literally and
 behind a variant is therefore safe — in `gap-4 md:gap-4` the `md:` payload turning off leaves the
@@ -234,13 +234,18 @@ payload, since `md:shadow-lg` is a variant token and `shadow-lg` is what it reso
 utilities have to be re-derived when the variant toggles.
 
 **Re-derived, so the variant behaves exactly like a literal class.** The manipulator-backed layout
-utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance` — and the
+utilities — `gap-*` / `space-*`, `grid` / `grid-cols-*`, `divide-*`, `text-balance`; the
 wrapper-less paints — `skew-*`, `shadow-*` / `drop-shadow-*`, gradients (`bg-gradient-*` and its
 `from-` / `via-` / `to-` stops), `animate-*`, `border-dashed` / `border-dotted`, and `ring-*` /
-`outline-*`. Each resolves at mount and on every toggle in both directions, and the order they compose
-in is preserved on a toggle just as on a render — so `className="gap-4 md:grid md:grid-cols-3"` is a
+`outline-*`; the inline font layer — `font-<family>`, `font-<weight>`, `italic` / `not-italic` and the
+`font-[…]` forms; and the axes Velvet writes into the displayed string — `uppercase` / `lowercase` /
+`capitalize` / `normal-case`, `underline` / `line-through` / `overline` / `no-underline`,
+`whitespace-pre-line`, `leading-*`. Each resolves at mount and on every toggle in both directions, and
+the order they compose in is preserved on a toggle just as on a render — so
+`className="gap-4 md:grid md:grid-cols-3"` is a
 gapped flex row below `md` and a three-column grid (spaced by the grid, which owns its gap) from `md`
-up, `className="bg-white shadow-sm md:shadow-lg"` deepens its shadow from `md` up, and
+up, `className="bg-white shadow-sm md:shadow-lg"` deepens its shadow from `md` up,
+`className="font-sans dark:font-mono"` swaps the family with the theme, and
 `className="focus:ring-2"` shows a ring while focused and none otherwise.
 
 **Where `ring-*` deviates from CSS.** UI Toolkit has neither `box-shadow` nor `outline`, so Velvet
@@ -340,6 +345,16 @@ declares a variant-gated payload **of its own** — any one, `hover:gap-4` is en
 recorded at create and `[&>*]:shadow-lg` paints at mount; if it declares none, the same class paints
 only from that child's next render. Do not lean on either outcome. Put the utility on the child, or
 behind a variant the child declares itself.
+
+The font layer and the string axes fail it differently again. A paint that cannot resolve does not
+paint; these two resolve a whole family out of a class array and rewrite the element from it, so they
+would resolve *something*. The only array a container-driven child has of its own is its live class
+list, and a `font-[…]` or `leading-[…]` the child declared is deliberately kept off it — the resolver
+owns those — while the class channels above put utilities on it the child never declared. So both
+stand down there rather than replace what the child's own render got right with nothing left to put
+it back: `[&>*]:uppercase` over a `leading-[24px]` label leaves the label alone. What a later render
+of the child then delivers is not the same for the two, so lean on neither and put these on the
+child.
 
 ## Container queries — `@container`
 

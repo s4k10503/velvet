@@ -276,7 +276,7 @@ namespace Velvet
                 ApplyVariantManipulators(element, newClasses);
                 // Font family / weight / italic are resolved together (so font-bold + italic compose)
                 // and written as inline style that overrides the USS fallback classes.
-                StyleFontResolver.ApplyOnClassChange(element, oldClasses, newClasses);
+                ApplyFontLayer(element, oldClasses, newClasses);
             }
         }
 
@@ -389,7 +389,7 @@ namespace Velvet
             ApplyStructuralVariants(element);
             ApplyHasClassVariants(element);
             ApplyHasVariantManipulators(element);
-            StyleTextEffectResolver.Apply(_ctx, element, newClassNames);
+            ApplyTextEffects(element, newClassNames);
             var resolved = ResolveVariantClasses(element, oldClassNames, newClassNames, paintTail,
                 out var classesChanged);
             // canReleaseFace: a reconcile pass may let the silhouette stashes release, because this same
@@ -2695,7 +2695,21 @@ namespace Velvet
         // Resolves its own class source rather than taking the one the paint passes use: those resolve after
         // the structural / has- passes (see ApplyPostChildrenClassPasses), and gap has to run before them.
         internal void ApplyLayoutManipulators(VisualElement element, string[] classNames)
-            => ApplyResolvedLayoutManipulators(element, ResolveLayoutClasses(element, classNames));
+            => ApplyResolvedLayoutManipulators(element, ResolveGateClasses(element, classNames));
+
+        // The composed source (see ResolveGateClasses) rather than the reconciled array: the bare class
+        // `dark:font-mono` puts on the live list carries no rule of its own, so nothing but this resolver
+        // realises the payload. TypographyHasNoStylesheetRuleTests fails if a sheet ever declares one.
+        internal void ApplyFontLayer(VisualElement element, string[] oldClassNames, string[] newClassNames)
+            => StyleFontResolver.ApplyOnClassChange(element, oldClassNames,
+                ResolveGateClasses(element, newClassNames));
+
+        internal void ApplyFontLayerOnCreate(VisualElement element, string[] classNames)
+            => StyleFontResolver.ApplyIfPresent(element, ResolveGateClasses(element, classNames));
+
+        // Same rule as ApplyFontLayer, over the same guard's other half.
+        internal void ApplyTextEffects(VisualElement element, string[] classNames)
+            => StyleTextEffectResolver.Apply(_ctx, element, ResolveGateClasses(element, classNames));
 
         // Re-runs every class-driven pass a variant payload can change, for an element a variant just
         // toggled a gate token on (wired to ReconcilerContext.VariantGatedReSync). Runs the same bodies the
@@ -2708,23 +2722,41 @@ namespace Velvet
             // The array the element's own reconcile pass last applied, or none when no pass ever recorded
             // one: the trigger was a width payload, which gates nothing and so never earns an entry, or the
             // payload came from a [&>*]: rule on the PARENT, whose children are fully created before it runs.
-            // The live list stands in for the layout gates in both cases — every token those four families
-            // parse is a plain USS class — while the paint sequence stands down, since PaintTail is unknown
-            // and a Motion must not be given a silhouette.
+            // The live list stands in for the layout gates in both cases, while the paint sequence stands
+            // down, since PaintTail is unknown and a Motion must not be given a silhouette.
             // That makes a [&>*]: paint land inconsistently, which is the cost of not guessing: a child that
             // declares ANY gated payload of its own was recorded at create, so the parent's payload finds
             // PaintTail set and paints at mount, while a child that declares none paints only from its next
             // patch. Recording how a child is driven before its parent's rules run would close it.
             var reconciled = state?.Reconciled;
+            var previous = state?.Resolved;
             var resolved = reconciled == null
                 ? LiveClasses(element)
                 : ComposeVariantClasses(reconciled, state!.Tokens, state.Resolved);
-            var classesChanged = !ReferenceEquals(state?.Resolved, resolved);
+            var classesChanged = !ReferenceEquals(previous, resolved);
             if (state != null)
             {
                 state.Resolved = resolved;
             }
+            // Font and text effects run only from a RECORDED array, never from the live-list stand-in the
+            // layout gates accept above. Both resolvers rewrite unconditionally, and the live list is not a
+            // narrower version of their source but a different one: the reconciler keeps a DECLARED font-[…]
+            // / leading-[…] off it, since those two are resolver-owned, and the channels that raise no
+            // signal (whileHoverClass and its siblings) put utilities on it that no reconcile ever saw.
+            // Handing it over would not lose the payload, it would resolve some other answer over the
+            // element's correct one with nothing left to put it back.
+            // Their order is the reconcile path's own (SyncClassDrivenStyling ahead of
+            // ApplyPostChildrenClassPasses), so a re-sync cannot resolve a pass against a different
+            // predecessor than a patch would.
+            if (reconciled != null)
+            {
+                StyleFontResolver.ApplyOnClassChange(element, previous ?? resolved, resolved);
+            }
             ApplyResolvedLayoutManipulators(element, resolved);
+            if (reconciled != null)
+            {
+                StyleTextEffectResolver.Apply(_ctx, element, resolved);
+            }
             var paintTail = state?.PaintTail;
             if (paintTail == null)
             {
@@ -2851,11 +2883,12 @@ namespace Velvet
         internal string[] ResolveVariantClassesOnCreate(VisualElement element, string[] classNames, bool paintTail)
             => ResolveVariantClasses(element, classNames, classNames, paintTail, out _);
 
-        // The same source for the four layout gates, which resolve at their own point in the sequence (see
-        // ApplyLayoutManipulators). It reads the cached array but does not REPLACE it: the paint resolve a few
+        // The same source for the gates that resolve at their own point in the sequence — the four layout
+        // manipulators (ApplyLayoutManipulators), the font layer (ApplyFontLayer) and the text-effect cascade
+        // (ApplyTextEffects). It reads the cached array but does not REPLACE it: the paint resolve a few
         // passes later answers "did the classes change" by comparing against that same record, and advancing it
         // here would swallow a payload one of the has- / attribute passes in between had just toggled.
-        private string[] ResolveLayoutClasses(VisualElement element, string[] classNames)
+        private string[] ResolveGateClasses(VisualElement element, string[] classNames)
             => _ctx.VariantGateClasses.Count == 0
                 || !_ctx.VariantGateClasses.TryGetValue(element, out var state)
                 || state.Tokens.Count == 0
