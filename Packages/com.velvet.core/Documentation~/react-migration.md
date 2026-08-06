@@ -339,6 +339,10 @@ public sealed class SettingsStore : Store<SettingsState>
 
     public void SetVolume(float v)
         => SetState(s => s with { Volume = v });
+
+    // Store<T> declares this abstract: what Reset() puts the state back to.
+    protected override void ResetCore()
+        => SetState(_ => new SettingsState(1.0f, false));
 }
 
 // Component (Presentation layer)
@@ -350,7 +354,7 @@ private static VNode VolumeSliderRender()
     var store = Hooks.UseContext(SettingsStoreContext);
     // Re-render only when Volume changes
     var volume = Hooks.UseStore(store, s => s.Volume);
-    return V.Slider(value: volume, onChange: store.SetVolume);
+    return V.Slider(value: volume, onValueChanged: store.SetVolume);
 }
 
 // Provider site (once at the page root, etc.)

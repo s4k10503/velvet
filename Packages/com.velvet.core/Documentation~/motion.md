@@ -226,6 +226,10 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   modes, not magnitudes; `rounded-full` is a saturating pill sentinel; `shadow-*`, `skew-*` and
   gradients are baked silhouette paints; `filter-*` is driven by its own opt-in
   `transition-filter`; `z-*` is a physical reparent.
+- **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`) **and per-axis `scale-x-` /
+  `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
+  Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands
+  them instantly.
 - **A play suspends the element's own USS transitions when they cover what it drives.** A driver
   writes the exact value the curve or the physics calls for on that frame, so a transition utility
   naming that same property restarts a native transition on every one of those writes and leaves
