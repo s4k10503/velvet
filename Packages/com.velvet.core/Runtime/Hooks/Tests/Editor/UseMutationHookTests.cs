@@ -1,8 +1,10 @@
 using System;
 using System.Collections;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
+using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -48,6 +50,8 @@ namespace Velvet.Tests
             s_onErrorCount = 0;
             s_voidCaptured = null;
             s_noInputCaptured = null;
+            s_onSuccessThrowException = null;
+            s_onErrorThrowException = null;
         }
 
         [Test]
@@ -296,6 +300,155 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_StatusIsError() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onSuccessThrowException = new InvalidOperationException("onSuccess");
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnSuccessRender, key: "onsuccess-status"));
+
+            // Act
+            try { await s_captured!.MutateAsync(21); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_captured!.Status, Is.EqualTo(MutationStatus.Error),
+                "A throwing onSuccess handler transitions the slot to Error");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_ResultErrorIsHandlerException() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onSuccessThrowException = new InvalidOperationException("onSuccess");
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnSuccessRender, key: "onsuccess-error"));
+            Exception? rethrown = null;
+
+            // Act
+            try { await s_captured!.MutateAsync(21); } catch (InvalidOperationException caught) { rethrown = caught; }
+            mounted.FlushStateForTest();
+            Assume.That(rethrown, Is.SameAs(s_onSuccessThrowException),
+                "Precondition: MutateAsync rethrew the onSuccess exception");
+
+            // Assert
+            Assert.That(s_captured!.Error, Is.SameAs(s_onSuccessThrowException),
+                "The handle retains the onSuccess exception as Error");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_OnErrorRuns() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onSuccessThrowException = new InvalidOperationException("onSuccess");
+            s_onErrorCount = 0;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnSuccessRender, key: "onsuccess-onerror"));
+
+            // Act
+            try { await s_captured!.MutateAsync(21); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_onErrorCount, Is.EqualTo(1),
+                "A throwing onSuccess handler routes the exception through onError");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_MutateAsyncRethrowsHandlerException() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onSuccessThrowException = new InvalidOperationException("onSuccess");
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnSuccessRender, key: "onsuccess-rethrow"));
+            Exception? rethrown = null;
+
+            // Act
+            try { await s_captured!.MutateAsync(21); } catch (InvalidOperationException caught) { rethrown = caught; }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(rethrown, Is.SameAs(s_onSuccessThrowException),
+                "MutateAsync rethrows the onSuccess exception instead of returning the mutation data");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrowsOnFireAndForgetMutate_Then_OnErrorRunsWithoutUnobservedException() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onSuccessThrowException = new InvalidOperationException("onSuccess");
+            s_onErrorCount = 0;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnSuccessRender, key: "onsuccess-forget"));
+
+            // Act
+            s_captured!.Mutate(21);
+            await UniTask.Yield();
+            await UniTask.Yield();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured!.Status, s_onErrorCount), Is.EqualTo((MutationStatus.Error, 1)),
+                "Fire-and-forget Mutate routes a throwing onSuccess through onError without an unobserved rethrow");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_FailingMutation_When_OnErrorThrows_Then_StatusRemainsErrorWithMutationException() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var failingException = new InvalidOperationException("mutation");
+            s_onErrorThrowException = new InvalidOperationException("onError");
+            s_mutationFn = (_, _) => throw failingException;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnErrorRender, key: "onerror-status"));
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: onError"));
+
+            // Act
+            try { await s_captured!.MutateAsync(1); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_captured!.Error, Is.SameAs(failingException),
+                "A throwing onError handler does not replace the mutation error stored on the slot");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_FailingMutation_When_OnErrorThrowsOnFireAndForgetMutate_Then_LogsWithoutDisturbingOutcome() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var failingException = new InvalidOperationException("mutation");
+            s_onErrorThrowException = new InvalidOperationException("onError");
+            s_mutationFn = (_, _) => throw failingException;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnErrorRender, key: "onerror-forget"));
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: onError"));
+
+            // Act
+            s_captured!.Mutate(1);
+            await UniTask.Yield();
+            await UniTask.Yield();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured!.Status, ReferenceEquals(s_captured.Error, failingException)),
+                Is.EqualTo((MutationStatus.Error, true)),
+                "A throwing onError handler is logged and does not replace the mutation outcome on the slot");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_FailingMutation_When_OnErrorThrows_Then_MutateAsyncRethrowsMutationException() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var failingException = new InvalidOperationException("mutation");
+            s_onErrorThrowException = new InvalidOperationException("onError");
+            s_mutationFn = (_, _) => throw failingException;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnErrorRender, key: "onerror-rethrow"));
+            LogAssert.Expect(LogType.Exception, new Regex("InvalidOperationException: onError"));
+            Exception? rethrown = null;
+
+            // Act
+            try { await s_captured!.MutateAsync(1); } catch (InvalidOperationException caught) { rethrown = caught; }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(rethrown, Is.SameAs(failingException),
+                "MutateAsync rethrows the mutation exception even when onError throws");
+        });
+
+        [UnityTest]
         public IEnumerator Given_InFlightMutation_When_ComponentUnmounted_Then_DisposedFiberNotSetToSuccess() => UniTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -332,6 +485,29 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode CaptureMutationWithThrowingOnSuccessRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: s_mutationFn,
+                OnSuccess: (_, _) => throw s_onSuccessThrowException!,
+                OnError: (_, _) => s_onErrorCount++));
+            return V.Label(text: "ok");
+        }
+
+        [Component]
+        public static VNode CaptureMutationWithThrowingOnErrorRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: s_mutationFn,
+                OnError: (ex, _) =>
+                {
+                    s_onErrorCount++;
+                    throw s_onErrorThrowException!;
+                }));
+            return V.Label(text: "ok");
+        }
+
+        [Component]
         public static VNode CaptureUnitMutationRender()
         {
             _ = Hooks.UseMutation(new MutationOptions<Unit, Unit>(
@@ -342,5 +518,7 @@ namespace Velvet.Tests
         private static int s_onErrorCount;
         private static MutationResult<int, Unit>? s_voidCaptured;
         private static MutationResult<Unit, Unit>? s_noInputCaptured;
+        private static Exception? s_onSuccessThrowException;
+        private static Exception? s_onErrorThrowException;
     }
 }

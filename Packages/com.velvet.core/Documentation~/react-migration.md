@@ -89,6 +89,21 @@ public static VNode UserCard()
   (separation of responsibilities)
 - `UseService<T>()` cannot be called **from within a Store's async lifecycle methods** (hook discipline). A Store obtains its UseCase via constructor injection
 
+### 1-2a. Async mutations — `Hooks.UseMutation`
+
+TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-and-forget) and `MutateAsync` (awaitable), plus `Status` / `Data` / `Error` / `Variables` snapshots and `Reset`.
+
+| React Query | Velvet |
+|-------------|--------|
+| `useMutation({ mutationFn, onSuccess, onError })` | `Hooks.UseMutation(new MutationOptions<TVariables, TData>(MutationFn: ..., OnSuccess: ..., OnError: ...))` |
+| `mutate(variables)` | `mutation.Mutate(variables)` |
+| `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
+
+**Callback error semantics** (TanStack Query v5 parity):
+
+- A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws.
+- A throwing **`onError`** handler does **not** change the mutation outcome already written to the slot (`Status` / `Error` stay the mutation's). The handler exception is routed to the same unobserved-exception channel as `.Forget()` (logged via `Debug.LogException` when no custom handler is registered). `MutateAsync` still rethrows the **mutation** exception, not the handler's.
+
 ### 1-3. State Management (React + Zustand)
 
 Velvet state is organized into two layers — **"component-local state" and "shared Store"** — each modeled on React and Zustand respectively.
