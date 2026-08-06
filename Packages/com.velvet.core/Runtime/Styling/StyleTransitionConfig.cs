@@ -336,11 +336,8 @@ namespace Velvet
         /// Only <see cref="Velvet.MotionNode"/>'s variant enter/exit (<c>variants</c> + <c>initial</c>/<c>animate</c>/
         /// <c>exit</c>) plays a spring — the classic preset transitions (<see cref="StyleTransition"/>) are always
         /// tweens, since their enter/exit classes are internal to the package.
-        /// Only OPACITY and the transform trio — translate x/y (pixels only; percentage-based translate such as
-        /// <c>translate-x-1/2</c> or <c>translate-x-full</c> is out of scope), uniform scale, and rotate (degrees)
-        /// — are spring-animated; colors, arbitrary lengths (width/height/margin/…), and per-axis
-        /// <c>scale-x-</c>/<c>scale-y-</c> are out of scope and are NOT animated by a spring (they still apply as
-        /// plain classes, just without a tween/spring transition on them).
+        /// Which class pairs the tick interpolates, and which fall through to a plain class swap with no
+        /// animation on them, is owned by <c>Documentation~/motion.md</c>'s "Driven channels".
         /// </summary>
         Spring,
 
@@ -350,10 +347,9 @@ namespace Velvet
         /// <see cref="StyleTransitionConfig.BezierX2"/>, <see cref="StyleTransitionConfig.BezierY2"/><c>)</c> curve
         /// instead of one of UI Toolkit's five <c>EasingMode</c> keywords (which cannot express an arbitrary
         /// cubic-bezier). Like <see cref="Spring"/>, this cannot be expressed by CSS/USS transitions, so it is
-        /// driven by a per-frame tick that writes inline styles directly — and so shares the spring's channel
-        /// scope EXACTLY: only OPACITY and the transform trio (translate x/y in pixels, uniform scale, rotate
-        /// degrees) are animated; everything else applies as a plain class with no tween. One curve drives BOTH
-        /// enter and exit (there is no separate exit curve, mirroring the spring's single stiffness/damping/mass),
+        /// driven by a per-frame tick that writes inline styles directly — off the same resolved channel plan,
+        /// so its channel scope is <see cref="Spring"/>'s exactly. One curve drives BOTH enter and exit
+        /// (there is no separate exit curve, mirroring the spring's single stiffness/damping/mass),
         /// and <see cref="StyleTransitionConfig.PropertyOverrides"/> is not read (no per-property curve). A zero
         /// <see cref="StyleTransitionConfig.DurationSec"/> completes immediately with no animation, exactly like a
         /// zero-duration <see cref="Tween"/>.

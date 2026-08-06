@@ -126,6 +126,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   React does — the success state is dispatched after the handler runs, so a handler that throws never
   reaches it.
 
+- `TransitionType.Spring` and `TransitionType.Bezier` no longer tell you in IntelliSense that colours
+  and lengths are out of scope. Both have been driven channels since 2.0.0 and the tooltip's exclusion
+  list was left behind — a consumer who read it hand-rolled a separate tween for a background colour or
+  a width that the spring config was already animating. Both members now point at
+  `Documentation~/motion.md`'s "Driven channels", which owns the list; the guide gains the two
+  exclusions it was missing (percentage-based translate and per-axis `scale-x-` / `scale-y-`), and both
+  are now pinned by tests.
+
+  Two guide corrections ride along. `Documentation~/react-migration.md`'s Store example did not
+  compile: it passed `onChange:` to `V.Slider`, whose handler parameter is `onValueChanged`, and its
+  `Store<T>` subclass left `ResetCore` unimplemented. `Documentation~/styling-variants.md` claimed a
+  stacked variant sits above either of its parts alone; it layers at the higher of the two, so against
+  that stronger part it ties rather than wins, and the tie is settled the way the same file's *Same
+  family, different values* bullet already describes.
+
 ## [2.0.0] - 2026-08-02
 
 ### Highlights

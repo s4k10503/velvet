@@ -12,7 +12,9 @@ namespace Velvet.Tests
     /// needs), the per-frame physics tick (<see cref="MotionSpringDriver.Step"/>) moves the inline style toward
     /// the target and reports settled once it arrives, an exit-cancel retarget
     /// (<see cref="MotionSpringDriver.Retarget"/>) redirects a channel toward its resting value without resetting
-    /// its integrator; the underlying pure physics of <see cref="SpringIntegrator"/> — it converges to its target
+    /// its integrator; the axis-scope holes <c>Documentation~/motion.md</c>'s "Driven channels" documents
+    /// (percentage-based translate, per-axis <c>scale-x-</c>/<c>scale-y-</c>), which resolve as utilities but
+    /// plan no channel; the underlying pure physics of <see cref="SpringIntegrator"/> — it converges to its target
     /// given enough time, an underdamped configuration overshoots before settling (Framer Motion's spring is
     /// underdamped by default), and retargeting an in-flight spring carries its CURRENT value/velocity forward
     /// instead of resetting them (the continuity an interrupted AnimatePresence exit/enter needs); validation of
@@ -191,6 +193,38 @@ namespace Velvet.Tests
             // Assert — a pair that resolved no rotate channel reads as null here and fails the same
             // comparison a wrong magnitude would.
             Assert.That(plan.Rotate, Is.EqualTo(((float, float)?)(45f, -45f)));
+        }
+
+        [Test]
+        public void Given_APercentTranslateClassPair_When_Resolved_Then_NoTranslateChannelIsPlanned()
+        {
+            // Arrange — the gate carries the fact that these two spellings ARE real translate utilities,
+            // resolving onto TranslateX in percent. Without it the case would pass just as well on a class
+            // nothing recognizes, pinning the scope hole in name only.
+            var resolvesAsPercentTranslate =
+                StyleArbitraryValueResolver.TryParse("translate-x-1/2", out var half)
+                && half.Property == ArbitraryProperty.TranslateX && half.Unit == LengthUnit.Percent;
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "translate-x-1/2" }, new[] { "translate-x-full" });
+
+            // Assert
+            Assert.That((resolvesAsPercentTranslate, plan.TranslateX.HasValue), Is.EqualTo((true, false)));
+        }
+
+        [Test]
+        public void Given_APerAxisScaleClassPair_When_Resolved_Then_NoScaleChannelIsPlanned()
+        {
+            // Arrange — same gate shape as the percent-translate case above.
+            var resolvesAsPerAxisScale =
+                StyleArbitraryValueResolver.TryParse("scale-x-50", out var half)
+                && half.Property == ArbitraryProperty.ScaleX;
+
+            // Act
+            var plan = MotionSpringClassParser.Resolve(new[] { "scale-x-50" }, new[] { "scale-x-110" });
+
+            // Assert
+            Assert.That((resolvesAsPerAxisScale, plan.Scale.HasValue), Is.EqualTo((true, false)));
         }
 
         [Test]
