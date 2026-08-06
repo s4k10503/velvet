@@ -26,6 +26,11 @@ namespace Velvet
         // nav unwinds (NavigationResult.Cancelled) and the latest nav takes over, so concurrent
         // navigations during the blocker window resolve to the most recent one.
         private CancellationTokenSource? _activeNavigationCts;
+        // Claimed by each top-level navigation and inherited by the redirects it spawns. An attempt that has
+        // lost the claim must not put the router state back: cancelling its token does not force it to resume
+        // at that moment, so it can unwind after a newer navigation has already committed, and by then the
+        // state it saved describes a router that no longer exists.
+        private int _navigationSequence;
 
         /// <summary>
         /// The currently active <see cref="Router"/> instance, or null when none is mounted. Set when a
@@ -132,7 +137,7 @@ namespace Velvet
             string path,
             NavigationMode mode = NavigationMode.Push,
             CancellationToken cancellationToken = default) =>
-            NavigateInternalAsync(ResolvePath(path), mode, cancellationToken, redirectCount: 0);
+            NavigateInternalAsync(ResolvePath(path), mode, cancellationToken, redirectCount: 0, initiatorSequence: 0);
 
         /// <summary>
         /// Navigates with relative resolution anchored to a specific matched-route level
@@ -146,7 +151,8 @@ namespace Velvet
             NavigationMode mode,
             int baseRouteIndex,
             CancellationToken cancellationToken = default) =>
-            NavigateInternalAsync(ResolvePath(path, baseRouteIndex), mode, cancellationToken, redirectCount: 0);
+            NavigateInternalAsync(ResolvePath(path, baseRouteIndex), mode, cancellationToken, redirectCount: 0,
+                initiatorSequence: 0);
 
         /// <summary>
         /// Resolves a relative navigation target (<c>.</c>, <c>..</c>, <c>../sibling</c>, or a bare
@@ -259,12 +265,15 @@ namespace Velvet
             string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
-            int redirectCount)
+            int redirectCount,
+            int initiatorSequence)
         {
             // Concurrent-navigation handling. Recursive redirect calls (redirectCount > 0) reuse the
-            // outer navigation's CTS so a redirect doesn't cancel its own initiator.
+            // outer navigation's CTS so a redirect doesn't cancel its own initiator, and inherit its
+            // sequence so a redirect's rollback is judged by whether the INITIATOR is still current.
             CancellationTokenSource? myCts = null;
             CancellationToken navToken = cancellationToken;
+            var sequence = initiatorSequence;
             if (redirectCount == 0)
             {
                 // Cancel any in-flight navigation so it unwinds (Blocker.CheckAsync await observes
@@ -275,11 +284,14 @@ namespace Velvet
                 myCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 _activeNavigationCts = myCts;
                 navToken = myCts.Token;
+                // Claimed after that Cancel, so a prior navigation that does unwind synchronously inside it
+                // still sees itself as current and puts its own state back before this one reads the index.
+                sequence = ++_navigationSequence;
             }
 
             try
             {
-                return await NavigateCore(path, mode, navToken, redirectCount);
+                return await NavigateCore(path, mode, navToken, redirectCount, sequence);
             }
             catch (OperationCanceledException) when (myCts != null && myCts.IsCancellationRequested)
             {
@@ -306,7 +318,8 @@ namespace Velvet
             string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
-            int redirectCount)
+            int redirectCount,
+            int sequence)
         {
             if (redirectCount >= MaxRedirects)
             {
@@ -333,16 +346,17 @@ namespace Velvet
             }
 
             var savedHistoryIndex = ApplyProvisionalHistoryIndex(mode);
+            var provisional = new ProvisionalHistoryState(sequence, savedHistoryIndex);
 
             try
             {
-                var guardResult = await RunGuardChecks(matches, path, mode, savedHistoryIndex, cancellationToken, redirectCount);
+                var guardResult = await RunGuardChecks(matches, path, mode, provisional, cancellationToken, redirectCount);
                 if (guardResult.HasValue)
                 {
                     return guardResult.Value;
                 }
 
-                var blockerResult = await RunBlockerCheck(path, mode, savedHistoryIndex, cancellationToken);
+                var blockerResult = await RunBlockerCheck(path, mode, provisional, cancellationToken);
                 if (blockerResult.HasValue)
                 {
                     return blockerResult.Value;
@@ -360,10 +374,8 @@ namespace Velvet
                 // in-line rollbacks the returned-result paths use. The index moved before both of those
                 // awaits, and Status was set before them, so an aborted attempt would otherwise leave the
                 // history pointing somewhere the user never went and UseNavigation reporting a navigation
-                // that is no longer in flight. The provisional Push entry a redirect appended is undone in
-                // RunGuardChecks, which owns the snapshot it needs.
-                _historyIndex = savedHistoryIndex;
-                Status = RouterStatus.Idle;
+                // that is no longer in flight.
+                RollBackProvisional(provisional);
                 throw;
             }
 
@@ -377,6 +389,38 @@ namespace Velvet
         }
 
         #region Provisional history index for Back/Forward
+
+        // What one navigation attempt provisionally changed and must put back if it unwinds, together with
+        // the sequence that decides whether it still may.
+        private readonly struct ProvisionalHistoryState
+        {
+            internal readonly int Sequence;
+            internal readonly int SavedHistoryIndex;
+
+            internal ProvisionalHistoryState(int sequence, int savedHistoryIndex)
+            {
+                Sequence = sequence;
+                SavedHistoryIndex = savedHistoryIndex;
+            }
+        }
+
+        private bool StillCurrent(ProvisionalHistoryState provisional) =>
+            provisional.Sequence == _navigationSequence;
+
+        // Every index/Status rollback goes through here rather than writing the two fields directly, so no
+        // site can be added that forgets the ownership test: an attempt can resume long after a newer
+        // navigation committed — a blocker is only obliged to observe its token when it next resumes — and
+        // putting this attempt's saved index back then would describe a router that no longer exists.
+        private void RollBackProvisional(ProvisionalHistoryState provisional)
+        {
+            if (!StillCurrent(provisional))
+            {
+                return;
+            }
+
+            _historyIndex = provisional.SavedHistoryIndex;
+            Status = RouterStatus.Idle;
+        }
 
         // The index must move before the Guard/Blocker checks so a Guard redirect (Replace)
         // overwrites the correct entry; rolled back below if the Blocker check rejects the attempt.
@@ -407,10 +451,11 @@ namespace Velvet
             IReadOnlyList<RouteMatch> matches,
             string path,
             NavigationMode mode,
-            int savedHistoryIndex,
+            ProvisionalHistoryState provisional,
             CancellationToken cancellationToken,
             int redirectCount)
         {
+            var savedHistoryIndex = provisional.SavedHistoryIndex;
             foreach (var match in matches)
             {
                 if (match.Route == null) continue;
@@ -455,21 +500,30 @@ namespace Velvet
                     try
                     {
                         redirectResult = await NavigateInternalAsync(
-                            redirectTarget, NavigationMode.Replace, cancellationToken, redirectCount + 1);
+                            redirectTarget, NavigationMode.Replace, cancellationToken, redirectCount + 1,
+                            provisional.Sequence);
                     }
                     catch (OperationCanceledException)
                     {
                         // NavigateCore's unwind handler restores the index and Status, but this snapshot is
-                        // local to the guard check that took it, so the provisional Push is undone here.
-                        _history.Clear();
-                        _history.AddRange(historySnapshot);
+                        // local to the guard check that took it, so the provisional Push is undone here —
+                        // under the same ownership gate, since a snapshot taken before a newer navigation
+                        // pushed its own entries would delete them.
+                        if (StillCurrent(provisional))
+                        {
+                            _history.Clear();
+                            _history.AddRange(historySnapshot);
+                        }
                         throw;
                     }
-                    if (redirectResult != NavigationResult.Success)
+                    if (redirectResult != NavigationResult.Success && StillCurrent(provisional))
                     {
                         // On redirect failure, restore the snapshot: undoes the provisional Push (incl. its forward
                         // truncation) and the provisional Back/Forward index move (savedHistoryIndex is the
-                        // pre-move value).
+                        // pre-move value). Gated like the exceptional path above, and for the same reason: the
+                        // inner redirect can return Cancelled from its own blocker check rather than throwing,
+                        // long enough after the fact that this snapshot predates a newer navigation's entries.
+                        // Status is left as the failed redirect set it, so a NotFound target still reports so.
                         _history.Clear();
                         _history.AddRange(historySnapshot);
                         _historyIndex = savedHistoryIndex;
@@ -489,7 +543,7 @@ namespace Velvet
         private async UniTask<NavigationResult?> RunBlockerCheck(
             string path,
             NavigationMode mode,
-            int savedHistoryIndex,
+            ProvisionalHistoryState provisional,
             CancellationToken cancellationToken)
         {
             var currentPath = CurrentLocation?.Path ?? "";
@@ -505,16 +559,16 @@ namespace Velvet
             // would otherwise fall through and run the loader phase or commit a cached Back/Forward entry
             // (the cached branch below never reaches the loader-phase cancellation check). Roll back the
             // provisional Back/Forward index like the Blocked path so the aborted attempt leaves no trace.
+            // Both rollbacks go through RollBackProvisional: a blocker that awaits without forwarding the
+            // token returns here rather than throwing, and can do so after a newer navigation has committed.
             if (cancellationToken.IsCancellationRequested)
             {
-                _historyIndex = savedHistoryIndex;
-                Status = RouterStatus.Idle;
+                RollBackProvisional(provisional);
                 return NavigationResult.Cancelled;
             }
             if (blocked)
             {
-                _historyIndex = savedHistoryIndex;
-                Status = RouterStatus.Idle;
+                RollBackProvisional(provisional);
                 return NavigationResult.Blocked;
             }
             return null;
@@ -797,6 +851,10 @@ namespace Velvet
             _activeNavigationCts?.Cancel();
             _activeNavigationCts?.Dispose();
             _activeNavigationCts = null;
+            // Retire the outstanding claim after that Cancel, on the same reasoning as a newer navigation
+            // taking one: an await that resumes past this point must not write an index back or raise
+            // OnStatusChanged on a router that is gone.
+            _navigationSequence++;
             _loaderRunner.Dispose();
             if (Current == this)
             {

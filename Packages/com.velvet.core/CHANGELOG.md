@@ -10,18 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A Back or Forward navigation served from the history's loader cache now cancels the loaders still in
-  flight from the round it left. That branch commits without ever reaching the loader runner, so a
-  `LoaderMode.Suspend` loader belonging to the page the user navigated away from still counted as the
-  current round: its result landed in the live loader data of the entry the user had gone *back* to,
-  re-rendered that page showing the other page's data, and was written into the history entry so the
-  wrong data persisted. Two entries matching the same route pattern share a route id, so neither the
-  re-publish check nor the history write-back could separate them — `/users/1` re-rendered with user 2's
-  record and kept it.
+  flight from the round it left. That branch commits without running `RunLoadersSync`, which is where a
+  previous round is superseded, so a `LoaderMode.Suspend` loader belonging to the page the user navigated
+  away from still counted as the current round: its result landed in the live loader data of the entry
+  the user had gone *back* to, re-rendered that page showing the other page's data, and was written into
+  the history entry so the wrong data persisted. Two entries matching the same route pattern share a
+  route id, so neither the re-publish check nor the history write-back could separate them — `/users/1`
+  re-rendered with user 2's record and kept it.
 
-- A navigation cancelled through its `CancellationToken` while a Blocker or a Guard redirect was still
-  awaiting now leaves the router as it found it. A blocker that honors the token raises
-  `OperationCanceledException` out of the await, which jumped over the rollbacks that the blocked and
-  superseded paths run:
+  This narrows a second, still-open defect rather than fixing it: a history entry left before its Suspend
+  loader resolved is cached as an empty-but-complete snapshot, and Back or Forward serves that snapshot
+  without re-running the loader, so the page shows no data. Previously the departing round sometimes
+  resolved into the cache by luck; now it is reliably cancelled, so that entry keeps its pre-resolution
+  snapshot every time. Wrong data is traded for absent data.
+
+- A navigation abandoned while a Blocker or a Guard redirect was still awaiting now leaves the router as
+  it found it. A blocker that honors its token raises `OperationCanceledException` out of the await,
+  which jumped over the rollbacks that the blocked and superseded paths run:
 
   - `GoBack` / `GoForward` left the history index on the entry they had provisionally moved to, so
     `CanGoBack` described a location the user was not on and the next `Push` truncated the entry they
@@ -32,9 +37,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Status` stayed at `Matching`, so every component calling `UseNavigation` rendered its pending
     branch indefinitely with no navigation in flight.
 
-  This is reachable from application code that passes its own token to `Router.NavigateAsync`,
-  `Router.GoBack` or `Router.GoForward`. `UseNavigate` supplies no token, and a cancellation caused by a
-  newer navigation taking over is followed by that navigation driving the state on.
+  Each of those rollbacks now runs only while the attempt is still the current navigation. Cancelling a
+  token does not oblige a blocker to resume at that moment, so an abandoned attempt can reach its rollback
+  after the navigation that superseded it has committed; it would then put back an index, a `Status` and a
+  history snapshot describing a router that no longer exists, destroying entries the newer navigation had
+  pushed. Disposing the router retires the claim the same way, so a blocker resuming after teardown no
+  longer writes to it.
 
 - An exception thrown by a mutation's `onError` handler no longer changes what the mutation reports.
   Through `MutateAsync` it used to replace the mutation's own exception, so the caller awaited a

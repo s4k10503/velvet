@@ -10,16 +10,17 @@ using static Velvet.Tests.RouteTestStubs;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what a cancelled navigation leaves behind when it unwinds by exception rather than by
-    /// return value. A Blocker or a Guard redirect that honors its cancellation token raises
-    /// OperationCanceledException out of an await that sits after the provisional history mutations, so
-    /// each of those mutations needs undoing on the exceptional path as well as the normal one.
+    /// Specifies what an abandoned navigation leaves behind. Its provisional history mutations happen before
+    /// the Guard and Blocker awaits, so every way of leaving those awaits has to undo them — by exception
+    /// when a blocker honors its token, and by return value when one awaits without forwarding it.
     /// <list type="bullet">
     /// <item>The provisional Back/Forward index is restored, so the history keeps describing the entry the
     /// user is still on.</item>
     /// <item>The provisional Push entry a Guard redirect appended is removed again.</item>
     /// <item><see cref="RouterStatus"/> returns to Idle, so <c>UseNavigation</c> stops reporting a pending
     /// navigation that no longer exists.</item>
+    /// <item>None of those restores happens once a newer navigation has taken over, since the state they
+    /// would put back describes a router that navigation has already replaced.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -127,6 +128,107 @@ namespace Velvet.Tests
             // Assert
             Assert.That(router.Status, Is.EqualTo(RouterStatus.Idle),
                 "With no navigation left in flight, UseNavigation must not keep reporting one");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SupersededBackUnwindsLate_When_NewerBackHasCommitted_Then_IndexMatchesTheCommittedLocation()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // The superseded attempt saved an index describing a router that the newer navigation has since
+            // replaced, so putting that index back desyncs it from the location actually on screen.
+            // The asserted location records today's behaviour, not the intended one: both Backs land on
+            // /home because the parked attempt already moved the shared index and nothing resets it while it
+            // waits, so the second Back reads its target from the moved index and /about is skipped. That is
+            // a separate open defect; this case discriminates only the index/location desync.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("/", children: new[] { Route("home"), Route("about"), Route("contact") }));
+            await router.NavigateAsync("/about");
+            await router.NavigateAsync("/contact");
+            var (check, entered, resumeCancelled, _) = MakeDeferredBlocker();
+            using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
+            var superseded = router.GoBack();
+            await entered.Task;
+            await router.GoBack();
+            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/home"),
+                "Precondition: the newer Back committed while the superseded one was still parked");
+
+            // Act
+            resumeCancelled();
+            await superseded;
+
+            // Assert
+            Assert.That($"idx={router.HistoryIndex} at={router.CurrentLocation?.Path}",
+                Is.EqualTo("idx=0 at=/home"),
+                "A late unwind must not move the index away from the entry the newer navigation committed");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SupersededRedirectUnwindsLate_When_NewerNavigationHasPushed_Then_ItsHistorySurvives()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // The guard snapshot was taken before the newer navigation pushed, so replaying it would delete
+            // entries that belong to the location now on screen.
+            // The asserted count records today's behaviour, not the intended one: the third entry is the
+            // provisional /guarded push, a path the user never arrived at, stranded precisely because the
+            // skipped restore is the correct choice here — a Back from /x re-runs its guard and lands on
+            // /target. Reclaiming just that entry is a separate open defect.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("/", children: new[]
+                {
+                    Route("home"),
+                    Route("guarded", guard: _ => "/target"),
+                    Route("target"),
+                    Route("x"),
+                }));
+            var (check, entered, resumeCancelled, _) = MakeDeferredBlocker();
+            using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
+            var superseded = router.NavigateAsync("/guarded");
+            await entered.Task;
+            await router.NavigateAsync("/x");
+            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/x"),
+                "Precondition: the newer navigation committed while the redirect was still parked");
+
+            // Act
+            resumeCancelled();
+            await superseded;
+
+            // Assert
+            Assert.That($"count={HistoryCountOf(router)} idx={router.HistoryIndex}", Is.EqualTo("count=3 idx=2"),
+                "A late unwind must not replay a snapshot that predates the newer navigation's own entries");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SupersededBlockerReturnsLate_When_NewerBackHasCommitted_Then_IndexAndStatusSurvive()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // A blocker that awaits without forwarding the token returns "not blocked" instead of throwing,
+            // so the abandoned attempt reaches the blocker check's own rollback rather than the exception
+            // handlers — a separate pair of writes that needs the same ownership test.
+            // The asserted location records today's behaviour on the same open defect as the case above:
+            // both Backs land on /home because the parked attempt already moved the shared index.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("/", children: new[] { Route("home"), Route("about"), Route("settings") }));
+            await router.NavigateAsync("/about");
+            await router.NavigateAsync("/settings");
+            var (check, entered, _, resumeUnblocked) = MakeDeferredBlocker();
+            using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
+            var superseded = router.GoBack();
+            await entered.Task;
+            await router.GoBack();
+            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/home"),
+                "Precondition: the newer Back committed while the superseded one was still parked");
+
+            // Act
+            resumeUnblocked();
+            await superseded;
+
+            // Assert
+            Assert.That($"idx={router.HistoryIndex} status={router.Status}", Is.EqualTo("idx=0 status=Ready"),
+                "A blocker returning after it was superseded must roll back neither the index nor the Status "
+                + "the newer navigation established");
         });
 
         // The history list has no accessor of its own, and adding one would put a test-only member on a
