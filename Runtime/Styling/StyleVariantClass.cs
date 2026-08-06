@@ -13,6 +13,13 @@ namespace Velvet
     /// (the curated <c>disabled-*</c> utilities). Responsive (<c>sm:</c>/<c>md:</c>), <c>dark:</c>, and
     /// <c>group</c>/<c>peer</c> are tracked separately (they need a breakpoint / theme / structural
     /// signal source).
+    /// <para/>
+    /// Every switch that CLASSIFIES these kinds — which signal source drives one, which layer it occupies —
+    /// is written without a discard arm, so adding a member here raises CS8509 at each site that has to learn
+    /// it. A set of independent <c>is X or Y</c> predicates cannot report a member matching none, and that is
+    /// what left <c>checked:</c>, the two focus-within relationals and <c>peer-checked:</c> unclassified and
+    /// inert as the inner of a stacked variant. Those sites suppress CS8524 instead: it asks for an arm
+    /// covering an out-of-range cast, which no named member can supply.
     /// </remarks>
     public enum StyleVariantKind
     {
@@ -176,39 +183,46 @@ namespace Velvet
         /// checked), shared by the group and peer families.</summary>
         internal enum RelationalState { Hover, Focus, FocusWithin, Active, Checked }
 
-        /// <summary>True for the relational variant kinds (group-* / peer-*), the only ones that accept a name.</summary>
-        internal static bool IsRelational(StyleVariantKind kind)
-            => kind is StyleVariantKind.GroupHover or StyleVariantKind.GroupFocus
-                or StyleVariantKind.GroupFocusWithin or StyleVariantKind.GroupActive
-                or StyleVariantKind.PeerHover or StyleVariantKind.PeerFocus
-                or StyleVariantKind.PeerFocusWithin or StyleVariantKind.PeerActive
-                or StyleVariantKind.PeerChecked;
-
-        /// <summary>True when a relational kind is a peer-* (previous-sibling source); false for group-*.</summary>
-        internal static bool RelationalIsPeer(StyleVariantKind kind)
-            => kind is StyleVariantKind.PeerHover or StyleVariantKind.PeerFocus
-                or StyleVariantKind.PeerFocusWithin or StyleVariantKind.PeerActive
-                or StyleVariantKind.PeerChecked;
-
-        /// <summary>Maps a relational kind to the source state it reacts to.</summary>
-        internal static RelationalState RelationalStateOf(StyleVariantKind kind) => kind switch
+        /// <summary>
+        /// Which source a relational kind reads (a preceding <c>peer</c> sibling when <c>IsPeer</c>, else the
+        /// nearest <c>group</c> ancestor) and which of that source's states it reacts to; null for every
+        /// non-relational kind. One switch answers all three questions so they cannot answer differently, and
+        /// it carries no discard arm — see the remarks on <see cref="StyleVariantKind"/>.
+        /// </summary>
+#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
+        internal static (bool IsPeer, RelationalState State)? RelationalOf(StyleVariantKind kind) => kind switch
         {
-            StyleVariantKind.GroupHover or StyleVariantKind.PeerHover => RelationalState.Hover,
-            StyleVariantKind.GroupFocus or StyleVariantKind.PeerFocus => RelationalState.Focus,
-            StyleVariantKind.GroupFocusWithin or StyleVariantKind.PeerFocusWithin => RelationalState.FocusWithin,
-            StyleVariantKind.GroupActive or StyleVariantKind.PeerActive => RelationalState.Active,
-            _ => RelationalState.Checked, // PeerChecked
+            StyleVariantKind.GroupHover => (false, RelationalState.Hover),
+            StyleVariantKind.GroupFocus => (false, RelationalState.Focus),
+            StyleVariantKind.GroupFocusWithin => (false, RelationalState.FocusWithin),
+            StyleVariantKind.GroupActive => (false, RelationalState.Active),
+            StyleVariantKind.PeerHover => (true, RelationalState.Hover),
+            StyleVariantKind.PeerFocus => (true, RelationalState.Focus),
+            StyleVariantKind.PeerFocusWithin => (true, RelationalState.FocusWithin),
+            StyleVariantKind.PeerActive => (true, RelationalState.Active),
+            StyleVariantKind.PeerChecked => (true, RelationalState.Checked),
+            StyleVariantKind.Hover or StyleVariantKind.Focus or StyleVariantKind.FocusVisible
+                or StyleVariantKind.Active or StyleVariantKind.Checked
+                or StyleVariantKind.Sm or StyleVariantKind.Md or StyleVariantKind.Lg
+                or StyleVariantKind.Xl or StyleVariantKind.Xxl
+                or StyleVariantKind.Dark => null,
         };
+#pragma warning restore CS8524
 
-        /// <summary>True for the responsive min-width variants (<c>sm:</c>…<c>2xl:</c>).</summary>
-        public static bool IsResponsive(StyleVariantKind kind)
-            => kind is StyleVariantKind.Sm or StyleVariantKind.Md or StyleVariantKind.Lg
-                or StyleVariantKind.Xl or StyleVariantKind.Xxl;
+        /// <summary>True for the relational variant kinds (group-* / peer-*), the only ones that accept a name.</summary>
+        internal static bool IsRelational(StyleVariantKind kind) => RelationalOf(kind).HasValue;
+
+        /// <summary>
+        /// True for the responsive min-width variants (<c>sm:</c>…<c>2xl:</c>) — read off
+        /// <see cref="BreakpointPx"/> rather than listing them again, so the two cannot disagree.
+        /// </summary>
+        public static bool IsResponsive(StyleVariantKind kind) => BreakpointPx(kind) > 0f;
 
         /// <summary>
         /// Min-width (px) at which a responsive variant activates. The default breakpoints:
         /// sm 640, md 768, lg 1024, xl 1280, 2xl 1536. Returns 0 for non-responsive kinds.
         /// </summary>
+#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
         public static float BreakpointPx(StyleVariantKind kind) => kind switch
         {
             StyleVariantKind.Sm => 640f,
@@ -216,7 +230,14 @@ namespace Velvet
             StyleVariantKind.Lg => 1024f,
             StyleVariantKind.Xl => 1280f,
             StyleVariantKind.Xxl => 1536f,
-            _ => 0f,
+            StyleVariantKind.Hover or StyleVariantKind.Focus or StyleVariantKind.FocusVisible
+                or StyleVariantKind.Active or StyleVariantKind.Checked or StyleVariantKind.Dark
+                or StyleVariantKind.GroupHover or StyleVariantKind.GroupFocus
+                or StyleVariantKind.GroupFocusWithin or StyleVariantKind.GroupActive
+                or StyleVariantKind.PeerHover or StyleVariantKind.PeerFocus
+                or StyleVariantKind.PeerFocusWithin or StyleVariantKind.PeerActive
+                or StyleVariantKind.PeerChecked => 0f,
         };
+#pragma warning restore CS8524
     }
 }

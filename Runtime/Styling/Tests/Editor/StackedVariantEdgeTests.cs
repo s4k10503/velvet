@@ -11,8 +11,10 @@ namespace Velvet.Tests
     /// inner signal, e.g. <c>dark:active:</c> / <c>dark:hover:</c> / <c>dark:focus-visible:</c>) that the broader
     /// <see cref="StackedVariantBehaviorTests"/> does not exercise: the element-local press/release/cancel and the
     /// worldBound-gated pointer-out for an <c>active</c> inner, the bounds-kept hover for a <c>hover</c> inner, the
-    /// pointer-vs-keyboard split for a <c>focus-visible</c> inner, the inner kinds that are NOT supported as a
-    /// stack (<c>checked:</c> / <c>focus-within:</c> / <c>peer-checked:</c> stay inert rather than crashing), and
+    /// pointer-vs-keyboard split for a <c>focus-visible</c> inner, the four inner kinds driven by something
+    /// other than a pointer edge (<c>checked:</c> and <c>peer-checked:</c> by a change of checked state and
+    /// by the hook-time read of a control mounted already checked, <c>group-focus-within:</c> and
+    /// <c>peer-focus-within:</c> by the source's bubbling focus), and
     /// the detach teardown that clears the leaf and releases the inner subscription. These pin the current
     /// behavior so a refactor of the manipulator preserves it. Element-local / dark-only cases run off panel
     /// (the manipulator registers on the element itself); worldBound, responsive and relational cases mount in a
@@ -22,7 +24,7 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class StackedVariantEdgeTests
     {
-        // --- off-panel: element-local inner (active / focus-visible) AND the dark outer gate ---
+        // --- off-panel: element-local inner (active / focus-visible / checked) AND the dark outer gate ---
 
         [TestFixture]
         internal sealed class ElementLocalInner
@@ -130,9 +132,41 @@ namespace Velvet.Tests
                 // Assert — both dark AND keyboard focus-visible hold, so the leaf applies.
                 Assert.IsTrue(leaf.ClassListContains("ring-kbd"));
             }
+
+            [Test]
+            public void Given_DarkCheckedToggleWithDarkOn_When_TheToggleIsChecked_Then_TheLeafIsApplied()
+            {
+                // Arrange — dark:checked:bg-on on an unchecked Toggle with dark on (outer gate open).
+                _mounted = V.Mount(_root, V.Toggle(name: "leaf", className: "dark:checked:bg-on"));
+                var leaf = _root.Q<Toggle>("leaf");
+                VelvetTheme.IsDark = true;
+                Assume.That(leaf.ClassListContains("bg-on"), Is.False, "Precondition: dark alone does not apply (unchecked)");
+
+                // Act — the toggle is checked (the checked inner gate opens).
+                leaf.SimulateChange(true);
+
+                // Assert — both dark AND checked hold, so the leaf applies.
+                Assert.IsTrue(leaf.ClassListContains("bg-on"));
+            }
+
+            [Test]
+            public void Given_DarkCheckedToggleMountedAlreadyChecked_When_TheDarkGateOpens_Then_TheLeafIsApplied()
+            {
+                // Arrange — dark:checked:bg-on on a Toggle mounted ALREADY checked, in the light theme. No
+                // ChangeEvent will ever fire, so the inner gate can only come from the hook-time read.
+                _mounted = V.Mount(_root, V.Toggle(name: "leaf", className: "dark:checked:bg-on", value: true));
+                var leaf = _root.Q<Toggle>("leaf");
+                Assume.That(leaf.ClassListContains("bg-on"), Is.False, "Precondition: checked alone does not apply (light)");
+
+                // Act — the outer (dark) gate opens, which is what builds and hooks the inner.
+                VelvetTheme.IsDark = true;
+
+                // Assert — the inner is seeded from the control's current value, so the leaf applies.
+                Assert.IsTrue(leaf.ClassListContains("bg-on"));
+            }
         }
 
-        // --- panel: worldBound-gated pointer-out, unsupported inners, and detach teardown ---
+        // --- panel: worldBound-gated pointer-out, relational inners, and detach teardown ---
 
         [TestFixture]
         internal sealed class Panel : PanelTestBase
@@ -218,26 +252,9 @@ namespace Velvet.Tests
             }
 
             [Test]
-            public void Given_DarkCheckedLeafWithDarkOn_When_NoPeerSourceExists_Then_TheLeafIsNotApplied()
+            public void Given_DarkPeerCheckedChildWithDarkOn_When_ThePeerSourceIsChecked_Then_TheLeafIsApplied()
             {
-                // Arrange — dark:checked:bg-on. `checked` is not supported as a stacked inner: it falls through to
-                // the relational branch, which seeks a preceding `peer` source and finds none, so it stays inert.
-                _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "leaf", className: "dark:checked:bg-on"));
-                var leaf = _window.rootVisualElement.Q<VisualElement>("leaf");
-
-                // Act — the outer (dark) gate opens, which is the only signal a stacked dark:checked: can ever receive.
-                VelvetTheme.IsDark = true;
-
-                // Assert — the unsupported checked inner never lights the leaf (and does not crash).
-                Assert.IsFalse(leaf.ClassListContains("bg-on"));
-            }
-
-            [Test]
-            public void Given_DarkPeerCheckedChildWithDarkOn_When_ThePeerSourceIsChecked_Then_TheLeafIsNotApplied()
-            {
-                // Arrange — dark:peer-checked:bg-on preceded by a `peer` Toggle. peer-checked is not supported as a
-                // stacked inner: the relational branch resolves the source but never subscribes to its ChangeEvent
-                // nor seeds the initial checked state, so the inner gate can never open.
+                // Arrange — dark:peer-checked:bg-on preceded by an unchecked `peer` Toggle, dark on.
                 _mounted = V.Mount(_window.rootVisualElement, V.Div(
                     "container",
                     V.Toggle(name: "peer", className: "peer"),
@@ -247,29 +264,69 @@ namespace Velvet.Tests
                 VelvetTheme.IsDark = true;
                 Assume.That(child.ClassListContains("bg-on"), Is.False, "Precondition: payload off before any change");
 
-                // Act — the preceding peer toggle is checked.
+                // Act — the preceding peer toggle is checked (the peer-checked inner gate opens).
                 peer.SimulateChange(true);
 
-                // Assert — the unsupported peer-checked inner ignores the source's checked state, so the leaf stays off.
-                Assert.IsFalse(child.ClassListContains("bg-on"));
+                // Assert — both dark AND the peer's checked state hold, so the leaf applies.
+                Assert.IsTrue(child.ClassListContains("bg-on"));
             }
 
             [Test]
-            public void Given_DarkGroupFocusWithinChildUnderAGroup_When_TheOuterDarkGateOpens_Then_TheLeafIsNotApplied()
+            public void Given_DarkPeerCheckedChildWhosePeerIsAlreadyChecked_When_TheDarkGateOpens_Then_TheLeafIsApplied()
             {
-                // Arrange — dark:group-focus-within:bg-on under a `group` source. focus-within is not supported as a
-                // stacked inner: the relational branch does not treat group-focus-within as a group kind, so it
-                // seeks a `peer` sibling, finds none, and stays inert — no source signal can ever open the inner.
+                // Arrange — dark:peer-checked:bg-on preceded by a `peer` Toggle mounted ALREADY checked, light
+                // theme. No ChangeEvent will fire, so the inner gate can only come from the hook-time read.
+                _mounted = V.Mount(_window.rootVisualElement, V.Div(
+                    "container",
+                    V.Toggle(name: "peer", className: "peer", value: true),
+                    V.Label(name: "child", className: "dark:peer-checked:bg-on")));
+                var child = _window.rootVisualElement.Q<Label>("child");
+                Assume.That(child.ClassListContains("bg-on"), Is.False, "Precondition: the peer's state alone does not apply (light)");
+
+                // Act — the outer (dark) gate opens, which is what resolves and hooks the peer source.
+                VelvetTheme.IsDark = true;
+
+                // Assert — the inner is seeded from the resolved source's current value, so the leaf applies.
+                Assert.IsTrue(child.ClassListContains("bg-on"));
+            }
+
+            [Test]
+            public void Given_DarkGroupFocusWithinChildWithDarkOn_When_TheGroupSourceGainsFocus_Then_TheLeafIsApplied()
+            {
+                // Arrange — dark:group-focus-within:bg-on under a `group` ancestor, dark on.
                 _mounted = V.Mount(_window.rootVisualElement, V.Div(
                     "group",
                     V.Label(name: "child", className: "dark:group-focus-within:bg-on")));
+                var source = _window.rootVisualElement.Q<VisualElement>(className: "group");
                 var child = _window.rootVisualElement.Q<Label>("child");
-
-                // Act — the outer (dark) gate opens, which is the only signal a fully-inert stacked inner can receive.
                 VelvetTheme.IsDark = true;
+                Assume.That(child.ClassListContains("bg-on"), Is.False, "Precondition: dark alone does not apply (unfocused)");
 
-                // Assert — the unsupported focus-within inner never lights the leaf (and does not crash).
-                Assert.IsFalse(child.ClassListContains("bg-on"));
+                // Act — focus reaches the group source (its bubbling FocusIn is the focus-within signal).
+                Fire<FocusInEvent>(source);
+
+                // Assert — both dark AND focus-within hold, so the leaf applies.
+                Assert.IsTrue(child.ClassListContains("bg-on"));
+            }
+
+            [Test]
+            public void Given_DarkPeerFocusWithinChildWithDarkOn_When_ThePrecedingPeerGainsFocus_Then_TheLeafIsApplied()
+            {
+                // Arrange — dark:peer-focus-within:bg-on preceded by a `peer` sibling, dark on.
+                _mounted = V.Mount(_window.rootVisualElement, V.Div(
+                    "container",
+                    V.Label(name: "peer", className: "peer"),
+                    V.Label(name: "child", className: "dark:peer-focus-within:bg-on")));
+                var peer = _window.rootVisualElement.Q<Label>("peer");
+                var child = _window.rootVisualElement.Q<Label>("child");
+                VelvetTheme.IsDark = true;
+                Assume.That(child.ClassListContains("bg-on"), Is.False, "Precondition: dark alone does not apply (unfocused)");
+
+                // Act — focus reaches the preceding peer (its bubbling FocusIn is the focus-within signal).
+                Fire<FocusInEvent>(peer);
+
+                // Assert — both dark AND focus-within hold, so the leaf applies.
+                Assert.IsTrue(child.ClassListContains("bg-on"));
             }
 
             [Test]
