@@ -334,22 +334,37 @@ namespace Velvet
 
             var savedHistoryIndex = ApplyProvisionalHistoryIndex(mode);
 
-            var guardResult = await RunGuardChecks(matches, path, mode, savedHistoryIndex, cancellationToken, redirectCount);
-            if (guardResult.HasValue)
+            try
             {
-                return guardResult.Value;
-            }
+                var guardResult = await RunGuardChecks(matches, path, mode, savedHistoryIndex, cancellationToken, redirectCount);
+                if (guardResult.HasValue)
+                {
+                    return guardResult.Value;
+                }
 
-            var blockerResult = await RunBlockerCheck(path, mode, savedHistoryIndex, cancellationToken);
-            if (blockerResult.HasValue)
-            {
-                return blockerResult.Value;
-            }
+                var blockerResult = await RunBlockerCheck(path, mode, savedHistoryIndex, cancellationToken);
+                if (blockerResult.HasValue)
+                {
+                    return blockerResult.Value;
+                }
 
-            var loaderResult = await RunLoaderPhase(matches, mode, cancellationToken);
-            if (loaderResult.HasValue)
+                var loaderResult = await RunLoaderPhase(matches, mode, cancellationToken);
+                if (loaderResult.HasValue)
+                {
+                    return loaderResult.Value;
+                }
+            }
+            catch (OperationCanceledException)
             {
-                return loaderResult.Value;
+                // A Guard redirect or a Blocker that honors its token unwinds by exception, skipping the
+                // in-line rollbacks the returned-result paths use. The index moved before both of those
+                // awaits, and Status was set before them, so an aborted attempt would otherwise leave the
+                // history pointing somewhere the user never went and UseNavigation reporting a navigation
+                // that is no longer in flight. The provisional Push entry a redirect appended is undone in
+                // RunGuardChecks, which owns the snapshot it needs.
+                _historyIndex = savedHistoryIndex;
+                Status = RouterStatus.Idle;
+                throw;
             }
 
             var location = CommitHistoryEntry(path, matches, mode);
@@ -436,8 +451,20 @@ namespace Velvet
                     {
                         PushHistoryEntry(path, matches);
                     }
-                    var redirectResult = await NavigateInternalAsync(
-                        redirectTarget, NavigationMode.Replace, cancellationToken, redirectCount + 1);
+                    NavigationResult redirectResult;
+                    try
+                    {
+                        redirectResult = await NavigateInternalAsync(
+                            redirectTarget, NavigationMode.Replace, cancellationToken, redirectCount + 1);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // NavigateCore's unwind handler restores the index and Status, but this snapshot is
+                        // local to the guard check that took it, so the provisional Push is undone here.
+                        _history.Clear();
+                        _history.AddRange(historySnapshot);
+                        throw;
+                    }
                     if (redirectResult != NavigationResult.Success)
                     {
                         // On redirect failure, restore the snapshot: undoes the provisional Push (incl. its forward
@@ -511,6 +538,12 @@ namespace Velvet
 
             if (cachedLoaderData != null)
             {
+                // The else branch cancels the previous round by reaching RunLoadersSync; this one commits
+                // without ever reaching it. Leaving that round's CTS installed keeps it current for
+                // RouteLoaderRunner's supersession guard, so the round being navigated away from would write
+                // its late result into the entry restored here. Nothing downstream separates the two: RouteId
+                // is built from the route pattern, which both entries share whenever they match the same one.
+                _loaderRunner.CancelPending();
                 _loaderData = cachedLoaderData;
                 // Restore the cached errors too: a Back/Forward cache hit must re-present a route that errored
                 // on its first load (UseRouteError / ErrorElement), symmetrically with loaderData.

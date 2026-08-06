@@ -27,7 +27,8 @@ namespace Velvet.Tests
     /// <item>A Suspend loader commits navigation immediately and resolves later; on resolution or failure the
     /// router writes the post-resolution value into the current history entry and re-emits the location with a
     /// fresh identity, but a resolution arriving after the user navigated away does not churn the current
-    /// location.</item>
+    /// location — including when the exit was a Back/Forward served from the cache, which commits without
+    /// reaching the loader runner.</item>
     /// <item><c>OnLocationChanged</c> fires once per navigation with the committed location.</item>
     /// <item>An optional <see cref="IRouteScopeFactory"/> is exposed through <c>ScopeFactory</c> and is null
     /// when not supplied.</item>
@@ -839,6 +840,43 @@ namespace Velvet.Tests
                 "A navigated-away Suspend loader's late failure does not record an error under the current location");
         });
 
+        [UnityTest]
+        public IEnumerator Given_InFlightSuspendLoader_When_BackHitsTheCache_Then_ItsLateResultIsDropped()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // Leaving by Back/Forward is the one exit that can serve loader data from the history cache, and
+            // therefore the one that never reaches the loader runner. Both entries here match the same route
+            // pattern, so they share a RouteId and nothing downstream of the runner can tell the late result
+            // apart from the restored one.
+            // Arrange
+            var first = new UniTaskCompletionSource<object>();
+            var second = new UniTaskCompletionSource<object>();
+            var loaderCalls = 0;
+            var router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("users/:id", loaderMode: LoaderMode.Suspend,
+                        loader: (ctx, ct) => Interlocked.Increment(ref loaderCalls) == 1 ? first.Task : second.Task),
+                }),
+            });
+            router.NavigateSync("/users/1");
+            first.TrySetResult("user-1");
+            await UniTask.Yield();
+            router.NavigateSync("/users/2");
+            router.GoBackSync();
+            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/users/1"),
+                "Precondition: the Back committed the earlier entry");
+
+            // Act
+            second.TrySetResult("user-2");
+            await UniTask.Yield();
+
+            // Assert
+            Assert.That(string.Join(",", router.CurrentLoaderData.Values), Is.EqualTo("user-1"),
+                "A Back that hits the cache supersedes the round it left, so that round's late result is dropped");
+        });
+
         #endregion
 
         #region ScopeFactory
@@ -1002,26 +1040,6 @@ namespace Velvet.Tests
             Assert.That(router.CurrentLocation?.Path, Is.EqualTo("/about"),
                 "A cancelled cached Back does not commit the previous entry");
         });
-
-        // Blocker test infra: the first nav parks on UniTask.Never(ct) (raises OCE on cancellation);
-        // subsequent navs pass through without blocking. A per-invocation counter keeps the two navs from
-        // sharing TCS state.
-        private static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check, UniTaskCompletionSource Entered) MakeOneShotBlocker()
-        {
-            var entered = new UniTaskCompletionSource();
-            int invocationCount = 0;
-            UniTask<bool> Check(NavigationAttempt _, CancellationToken ct)
-            {
-                var n = Interlocked.Increment(ref invocationCount);
-                if (n == 1)
-                {
-                    entered.TrySetResult();
-                    return UniTask.Never<bool>(ct);
-                }
-                return UniTask.FromResult(false);
-            }
-            return (Check, entered);
-        }
 
         #endregion
     }

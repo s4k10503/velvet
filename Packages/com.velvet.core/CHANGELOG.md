@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A Back or Forward navigation served from the history's loader cache now cancels the loaders still in
+  flight from the round it left. That branch commits without ever reaching the loader runner, so a
+  `LoaderMode.Suspend` loader belonging to the page the user navigated away from still counted as the
+  current round: its result landed in the live loader data of the entry the user had gone *back* to,
+  re-rendered that page showing the other page's data, and was written into the history entry so the
+  wrong data persisted. Two entries matching the same route pattern share a route id, so neither the
+  re-publish check nor the history write-back could separate them — `/users/1` re-rendered with user 2's
+  record and kept it.
+
+- A navigation cancelled through its `CancellationToken` while a Blocker or a Guard redirect was still
+  awaiting now leaves the router as it found it. A blocker that honors the token raises
+  `OperationCanceledException` out of the await, which jumped over the rollbacks that the blocked and
+  superseded paths run:
+
+  - `GoBack` / `GoForward` left the history index on the entry they had provisionally moved to, so
+    `CanGoBack` described a location the user was not on and the next `Push` truncated the entry they
+    were still looking at. From `/about`, a cancelled `GoBack` followed by `Push("/contact")` and
+    `GoBack()` landed on `/home` rather than `/about`.
+  - A cancelled Guard redirect left on the stack the provisional Push entry it had appended for the
+    redirect target to overwrite.
+  - `Status` stayed at `Matching`, so every component calling `UseNavigation` rendered its pending
+    branch indefinitely with no navigation in flight.
+
+  This is reachable from application code that passes its own token to `Router.NavigateAsync`,
+  `Router.GoBack` or `Router.GoForward`. `UseNavigate` supplies no token, and a cancellation caused by a
+  newer navigation taking over is followed by that navigation driving the state on.
+
 - An exception thrown by a mutation's `onError` handler no longer changes what the mutation reports.
   Through `MutateAsync` it used to replace the mutation's own exception, so the caller awaited a
   failure and received the handler's error instead of the one the mutation function raised, and

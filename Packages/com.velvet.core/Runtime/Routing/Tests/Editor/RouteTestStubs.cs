@@ -96,6 +96,29 @@ namespace Velvet.Tests
         }
 
         /// <summary>
+        /// Creates an async Blocker whose FIRST invocation parks on <c>UniTask.Never(ct)</c> — raising
+        /// OperationCanceledException once the navigation's token is cancelled — and whose later
+        /// invocations pass through without blocking. Await the returned <c>Entered</c> to be sure the
+        /// navigation has reached the blocker await before cancelling it.
+        /// </summary>
+        public static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check, UniTaskCompletionSource Entered) MakeOneShotBlocker()
+        {
+            var entered = new UniTaskCompletionSource();
+            int invocationCount = 0;
+            UniTask<bool> Check(NavigationAttempt _, CancellationToken ct)
+            {
+                var n = Interlocked.Increment(ref invocationCount);
+                if (n == 1)
+                {
+                    entered.TrySetResult();
+                    return UniTask.Never<bool>(ct);
+                }
+                return UniTask.FromResult(false);
+            }
+            return (Check, entered);
+        }
+
+        /// <summary>
         /// Builds a Router from <paramref name="routes"/> and synchronously navigates to
         /// <paramref name="startPath"/>. Use when a test starts from a known location; otherwise
         /// construct the Router directly.
