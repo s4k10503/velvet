@@ -151,9 +151,13 @@ namespace Velvet
         {
             if (_cts != null)
             {
-                _cts.Cancel();
-                _cts.Dispose();
+                // Cleared before the Cancel, not after: a loader continuation that resumes synchronously
+                // inside Cancel() and completes successfully would otherwise still read _cts as its own
+                // and fire its completion event for a round that is being torn down.
+                var cancelling = _cts;
                 _cts = null;
+                cancelling.Cancel();
+                cancelling.Dispose();
             }
 
             // _activeSuspendTaskCount is decremented in the finally block of RunSuspendLoader.

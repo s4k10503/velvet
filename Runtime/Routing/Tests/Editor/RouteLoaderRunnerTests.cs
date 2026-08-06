@@ -20,7 +20,8 @@ namespace Velvet.Tests
     /// is also recorded per-path in <c>Errors</c> symmetrically with the Await path.</item>
     /// <item><see cref="RouteLoaderRunner.ActiveSuspendTaskCount"/> is incremented while a Suspend task is live
     /// and returned to zero in the finally block on success, failure, and honored cancellation alike.</item>
-    /// <item>The loader receives a cancelable token that <c>CancelPending</c> cancels.</item>
+    /// <item>The loader receives a cancelable token that <c>CancelPending</c> cancels, and a loader that
+    /// answers that token by succeeding rather than throwing is still treated as a torn-down round.</item>
     /// <item>An Await loader that throws records the error in <c>Errors</c> and reports <c>allCompleted</c> false.</item>
     /// </list>
     /// </summary>
@@ -235,6 +236,38 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0), "A token-honoring loader unwinds and the counter returns to zero");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SuspendLoaderSucceedsOnCancellation_When_CancelPendingRuns_Then_NoCompletionIsFired()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // A loader may answer its token by resolving a fallback rather than throwing, and that
+            // continuation runs inside CancelPending's own Cancel call. The live-task count is folded into
+            // the assertion because a zero firing count would otherwise also be satisfied by a loader that
+            // never ran at all.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var tcs = new UniTaskCompletionSource<object>();
+            var fired = 0;
+            runner.OnSuspendLoaderCompleted += (_, __) => fired++;
+            var matches = MakeMatch("succeed-on-ct",
+                loader: (ctx, ct) =>
+                {
+                    ct.Register(() => tcs.TrySetResult("fallback"));
+                    return tcs.Task;
+                },
+                loaderMode: LoaderMode.Suspend);
+            runner.RunLoadersSync(matches, CancellationToken.None);
+            var liveBefore = runner.ActiveSuspendTaskCount;
+
+            // Act
+            runner.CancelPending();
+            await UniTask.Yield();
+
+            // Assert
+            Assert.That($"live={liveBefore} fired={fired}", Is.EqualTo("live=1 fired=0"),
+                "The round being torn down must not be read as the current one by its own late success");
         });
 
         #endregion
