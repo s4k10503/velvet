@@ -112,6 +112,10 @@ namespace Velvet
                 throw new InvalidOperationException(
                     "FiberRenderer.RenderInlineForExpansion: fiber must already be mounted.");
             }
+            // Opens the window SettleSubsumedFiber reads to tell the lanes this render requested from the
+            // ones it subsumed. Null-safe on purpose: a fiber with no LaneState has nothing pending, and
+            // EnsureLanes here would allocate one for the lane-less majority of inline re-renders.
+            fiber.Lanes?.LanesRequestedSinceReset.Clear();
             RenderAndReconcile(fiber, deferReconcile: true);
             // Update commit: drain side runs prior cleanup + new setup (deps-comparing) without
             // the Editor-only mount double-invoke. ScheduleRunEffects forwards the same flag so the
@@ -123,25 +127,26 @@ namespace Velvet
         // Settles a fiber that an ancestor's flush just subsumed by re-rendering it inline (via
         // RenderInlineForExpansion) in the same batch pass. Every update pending BEFORE that render coalesces
         // into it: the render ran with the fiber's latest state, so those lanes are satisfied at once. It
-        // un-enrolls exactly those, and when that empties the queue it also clears the dirty flag and the
-        // transition-pending slots and drops the fiber from BOTH batch-scheduler tiers, so a later drain does
-        // not independently re-process it — without which a higher-priority lane queued on the child (e.g.
-        // Transition on the delayed tier) would be stranded and silently dropped by FlushState's not-dirty
-        // early-return.
+        // un-enrolls every lane the render did not itself ask for again, and when that empties the queue it
+        // also clears the dirty flag and the transition-pending slots and drops the fiber from BOTH
+        // batch-scheduler tiers, so a later drain does not independently re-process it — without which a
+        // higher-priority lane queued on the child (e.g. Transition on the delayed tier) would be stranded
+        // and silently dropped by FlushState's not-dirty early-return.
         //
-        // subsumedLanes is captured by the caller BEFORE the render, because a lane the render itself enrols
-        // is not one that render satisfied and must survive: a body may schedule during render
-        // (UseDeferredValue re-queues its Transition lane), and a commit-phase write from the reconcile that
-        // follows it lands on this same fiber past RequestRenderFromHook's render-phase branch. Discarding
-        // those left a deferred value fed from a prop never committing at all.
-        internal static void SettleSubsumedFiber(ComponentFiber fiber, FiberLaneSet subsumedLanes)
+        // A lane the render itself requested is not one that render satisfied, and survives. What it requested
+        // has to be recorded as the render runs rather than derived from a before-image of the queue, because
+        // a request that coalesces onto an already-pending lane leaves no trace in the mask — see
+        // FiberLaneSet.RetainAll. A body scheduling during its own render is the reachable case
+        // (UseDeferredValue re-queues its Transition lane on every render that is not the deferred commit),
+        // and losing it left a deferred value fed from a prop never committing at all.
+        internal static void SettleSubsumedFiber(ComponentFiber fiber)
         {
             // Direct field access through Lanes (not the fiber.LaneQueue read accessor): EnsureLanes would
             // allocate a LaneState for the lane-less majority of subsumed fibers (every non-memoized child
             // re-render lands here), defeating the documented lazy-allocation invariant, and a FiberLaneSet
-            // handed back by a property getter is a copy — RemoveAll() through it would mutate a throwaway
+            // handed back by a property getter is a copy — RetainAll() through it would mutate a throwaway
             // value instead of the backing queue.
-            fiber.Lanes?.Queue.RemoveAll(subsumedLanes);
+            fiber.Lanes?.Queue.RetainAll(fiber.Lanes.LanesRequestedSinceReset);
             // The subsuming render committed the fiber's latest (eagerly-written) state, so any
             // starvation-promoted work is satisfied too — a marker left true on the now-clean fiber
             // would mis-time a LATER transition's settle (its sweep would be skipped while other lanes
@@ -153,10 +158,10 @@ namespace Velvet
 
             if (fiber.LaneQueue.Count > 0)
             {
-                // Re-enrol rather than merely skipping the Remove below. The drain empties its tier's pending
-                // set before flushing any fiber, so an enrolment that pre-dated this pass is already gone,
-                // and whether the render's own enrolment scheduled anything depends on what else was queued.
-                // ScheduleFlush dedups, so asking for it unconditionally is the cheap way to be sure.
+                // The surviving lane usually has no tier at all: the fiber was already dirty when the render
+                // requested it, and ScheduleRerender only schedules when it was not, or when the new lane
+                // outranks what was scheduled — which a Transition lane never does. Re-enrol it here.
+                // ScheduleFlush dedups, so asking unconditionally costs nothing when it is already enrolled.
                 fiber.IsDirty = true;
                 FiberWorkLoop.ScheduleFlush(fiber, fiber.LaneQueue.Min);
                 // Mirrors FlushState's settle rule so a surviving Transition lane keeps isPending lit until

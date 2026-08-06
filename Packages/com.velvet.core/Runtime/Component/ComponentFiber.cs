@@ -84,11 +84,13 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Un-enrolls every lane in <paramref name="lanes"/>, leaving the rest. Distinct from
-        /// <see cref="Clear"/> because a caller that satisfied a captured set of lanes must not also discard
-        /// one enrolled after that capture — see <c>FiberRenderer.SettleSubsumedFiber</c>.
+        /// Un-enrolls everything outside <paramref name="lanes"/>. A caller that satisfied what was pending
+        /// cannot express that as a set difference against a before-image, because <see cref="Add"/> is
+        /// idempotent: a re-enrolment of an already-pending lane leaves the mask identical, so subtracting
+        /// the before-image would discard it. It states the survivors instead — see
+        /// <c>FiberRenderer.SettleSubsumedFiber</c>.
         /// </summary>
-        internal void RemoveAll(FiberLaneSet lanes) => _mask &= (byte)~lanes._mask;
+        internal void RetainAll(FiberLaneSet lanes) => _mask &= lanes._mask;
 
         internal void Clear() => _mask = 0;
     }
@@ -101,6 +103,10 @@ namespace Velvet
     internal sealed class LaneState
     {
         public FiberLaneSet Queue;
+        // Which lanes an enrolment request named since the last reset, as opposed to which the queue gained.
+        // The two differ exactly when a request coalesces onto a lane already pending, and that is the case a
+        // subsuming render's settle has to keep — see FiberRenderer.SettleSubsumedFiber.
+        public FiberLaneSet LanesRequestedSinceReset;
         // Several StartTransition callbacks can be open on one fiber at once — a call on another slot, a call
         // joining an owner — so whichever exits first would clear the others' scope if this were a boolean.
         public int TransitionCallDepth;
@@ -118,6 +124,7 @@ namespace Velvet
         public void Clear()
         {
             Queue.Clear();
+            LanesRequestedSinceReset.Clear();
             TransitionStarvationCounter = 0;
             HasPromotedTransition = false;
         }
@@ -402,11 +409,9 @@ namespace Velvet
             }
         }
 
-        internal int TransitionCallDepth
-        {
-            get => Lanes?.TransitionCallDepth ?? 0;
-            set => EnsureLanes().TransitionCallDepth = value;
-        }
+        // Read-only: the paired increment and decrement go through the LaneState the scope holds, so that a
+        // disposal inside the callback cannot make the exit allocate a replacement to record on.
+        internal int TransitionCallDepth => Lanes?.TransitionCallDepth ?? 0;
 
         /// <summary>
         /// True while any <see cref="Hooks.UseTransition"/> slot on this fiber has an async action between

@@ -286,6 +286,11 @@ namespace Velvet
                     // ancestor's inline re-expansion (RenderInlineForExpansion → SettleSubsumedFiber), which
                     // clears IsDirty and removes the fiber from the pending set. FlushState early-returns on a
                     // non-dirty fiber, so the subsumed entry is skipped rather than re-rendered a second time.
+                    // That holds only when the settle emptied the queue. A lane the subsuming render itself
+                    // requested survives it and leaves the fiber dirty, so this entry does flush — draining a
+                    // delayed-tier lane inside an immediate drain, one frame ahead of its tier. Bounded by the
+                    // lane's own time-slicing, and the alternative that lane had before it was kept was being
+                    // discarded outright.
                     FiberWorkLoop.FlushState(_drainBuffer[i]);
                 }
                 _drainBuffer.Clear();

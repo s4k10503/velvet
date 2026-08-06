@@ -12,7 +12,8 @@ namespace Velvet.Tests
     /// <item>The next transition flush commits the pending value, so the new value is returned.</item>
     /// <item>An unrelated re-render that drains ahead of that transition flush leaves the pending value deferred.</item>
     /// <item>A deferred value fed from a prop still commits: the transition lane its body queues during the
-    /// parent's subsuming render survives that render's settle.</item>
+    /// parent's subsuming render survives that render's settle, including when the request coalesces onto a
+    /// lane the previous parent render already queued.</item>
     /// <item>An urgent re-render whose input is unchanged returns the current value and schedules no transition.</item>
     /// <item>Reverting the input to the committed value clears any pending value, so a later change to the same value defers again instead of committing immediately.</item>
     /// <item>The initialValue overload returns initialValue on the first render and schedules a transition that defers toward the live value; when initialValue already equals the value it commits the value with no transition.</item>
@@ -188,6 +189,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ADeferredProp_When_TwoParentRendersPrecedeTheLaneDraining_Then_ItStillCommitsTheLatestValue()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PropParentRender, key: "prop-parent"));
+            Assume.That(s_propObserved, Is.EqualTo("alpha"), "Precondition: the child committed the mount value");
+
+            // Act — only the parent flushes, so the child's transition lane is still queued when the second
+            // parent render asks for it again and that request coalesces onto it
+            s_propSetQuery.Invoke("beta");
+            FiberWorkLoop.FlushState(s_propParentFiber);
+            s_propSetQuery.Invoke("gamma");
+            FiberWorkLoop.FlushState(s_propParentFiber);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_propObserved, Is.EqualTo("gamma"),
+                "A coalesced re-request survives the settle, so the lane is still there to commit on");
+        }
+
+        [Test]
         public void Given_InitialValueDifferentFromValue_When_FirstRender_Then_ReturnsInitialValue()
         {
             // Arrange
@@ -341,16 +362,19 @@ namespace Velvet.Tests
 
         private static string s_propObserved;
         private static StateUpdater<string> s_propSetQuery;
+        private static ComponentFiber s_propParentFiber;
 
         private static void ResetProp()
         {
             s_propObserved = null;
             s_propSetQuery = default;
+            s_propParentFiber = null;
         }
 
         [Component]
         private static VNode PropParentRender()
         {
+            s_propParentFiber = FiberAmbientStack.Current;
             var (query, setQuery) = Hooks.UseState("alpha");
             s_propSetQuery = setQuery;
             return V.Div(children: new VNode[] { V.Component(PropChildRender, query, key: "prop-child") });

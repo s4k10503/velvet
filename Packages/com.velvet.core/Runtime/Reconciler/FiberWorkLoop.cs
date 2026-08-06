@@ -114,7 +114,11 @@ namespace Velvet
             // Goes through EnsureLanes()/Lanes directly (not the fiber.LaneQueue read accessor): FiberLaneSet
             // is a struct, so a property getter can only hand back a copy — Add must mutate the backing
             // LaneState.Queue field in place to enroll for real.
-            var enrolled = fiber.EnsureLanes().Queue.Add(priority);
+            var lanes = fiber.EnsureLanes();
+            var enrolled = lanes.Queue.Add(priority);
+            // Records the request whether or not it changed the queue. Only a caller that resets this first
+            // reads it (FiberRenderer.RenderInlineForExpansion), so it is otherwise inert history.
+            lanes.LanesRequestedSinceReset.Add(priority);
 
             // A coalesced re-add must NOT restart the starvation clock: it measures how long the lane
             // has been continuously pending, so sustained re-scheduling (e.g. a per-frame
@@ -234,8 +238,9 @@ namespace Velvet
             // The early return is BEFORE the lane-queue bookkeeping below, so the pending lane stays queued and is
             // deliberately NOT removed or rescheduled here. Rescheduling on the same delayed tier would re-flush,
             // find the host still detached, defer again — a busy-loop. The fiber instead waits for the parent
-            // re-render that re-attaches (and re-commits) it, or for disposal, which scrubs the lane queue and dirty
-            // flag (SettleSubsumedFiber / Unmount). A further update on the same delayed tier coalesces onto the
+            // re-render that re-attaches (and re-commits) it, which settles every lane that re-render subsumes
+            // (SettleSubsumedFiber), or for disposal, which scrubs the queue and dirty flag outright (Unmount).
+            // A further update on the same delayed tier coalesces onto the
             // queued lane without rescheduling (IsDirty is already set, and Transition/Deferred do not re-enrol on
             // the immediate tier). A higher-priority Urgent/Normal update DOES re-enrol and re-flush, but that flush
             // hits this same guard and harmlessly re-defers. Either way a detached fiber never flushes independently.

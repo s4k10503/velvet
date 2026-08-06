@@ -20,7 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the component's entire pending-lane queue on the premise that the render had just satisfied all of it,
   which is true only of updates pending before it ran. `UseDeferredValue` is the visible case: fed from a
   prop, it queues its Transition lane during the parent's render, so the deferral had nothing left to
-  commit on.
+  commit on. This holds equally when the request lands on a lane an earlier render already queued — two
+  quick keystrokes into a search box, where the second arrives before the first has drained.
 
 - Two `UseTransition` slots in one component are independent again while one of them is awaiting. A
   second slot started during another slot's async transition took a re-entrancy path meant for a

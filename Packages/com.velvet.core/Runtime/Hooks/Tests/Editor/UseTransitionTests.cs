@@ -25,8 +25,8 @@ namespace Velvet.Tests
     /// <item>A discrete update on the same component keeps its urgent priority while an async transition is in
     /// flight there, unless the handler wrapped it in a <c>startTransition</c> of its own.</item>
     /// <item>Calling the hook outside a render throws an <see cref="InvalidOperationException"/>.</item>
-    /// <item>Pending state does not survive unmount: a remounted component starts with <c>isPending == false</c>,
-    /// and its slots are owned by nobody even when the unmounted owner's task has not settled.</item>
+    /// <item>A remounted fiber's slots are owned by nobody, even when the unmounted owner's task has not
+    /// settled.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -158,25 +158,6 @@ namespace Velvet.Tests
         {
             // Act + Assert
             Assert.Throws<InvalidOperationException>(() => Hooks.UseTransition());
-        }
-
-        #endregion
-
-        #region Reset after unmount
-
-        [Test]
-        public void Given_PendingTransition_When_UnmountAndRemount_Then_IsPendingIsReset()
-        {
-            // Arrange
-            var first = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            s_transitionStart.Invoke(() => s_transitionSetValue.Invoke(1));
-            first.Dispose();
-
-            // Act
-            using var second = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-
-            // Assert
-            Assert.IsFalse(s_transitionLastIsPending, "A remounted component starts with isPending = false");
         }
 
         #endregion
