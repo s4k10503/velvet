@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `Focusable` prop that a later render stops declaring now hands the element back the focusability it
+  was constructed with, instead of making it focusable. Dropping the prop compares unequal to the
+  declared value, and the absent case coalesced to `true`: a `V.Div` that carried `Focusable = true` for
+  one render stayed a Tab stop and a 2D navigation target until some later render declared the prop
+  again, and one that carried `Focusable = false` was *granted* focusability by the render that removed
+  the prop — on a runtime panel, an invisible container catching gamepad navigation. Mounting already left
+  an absent `Focusable` alone, so the two paths disagreed about what "not declared" means. The value the
+  element carries before Velvet writes the flag at all is now recorded and restored — including before a
+  drag session's transient keyboard-focus anchor writes it, which would otherwise be handed back as the
+  element's own — and that answers for a `V.Custom<T>` type whose default no table could know. `TabIndex` and `DelegatesFocus` are
+  unchanged and still coalesce to `0` / `false` when dropped.
+
+- A Suspense primary that suspends after creating a `V.Custom<T>` element now disposes the component
+  fibers mounted inside that element, whatever `T` is. The rollback's fiber sweep skipped any element
+  matching `Label`, `Toggle`, `Slider` or `TextField` as a childless primitive, which `V.Custom<T>`
+  reaches with both a subclass of one of them and one of them itself — and `V.Custom<T>` declares
+  children for any `T`. A `V.Component` declared in such an element's `children` therefore kept its
+  `ComponentRegistry` entry pointing into a subtree dropped for GC, ran its layout effect against that
+  dead element while the boundary was showing its fallback, and left a `UseStore` subscription taken
+  during the speculative render live. The sweep no longer tests the element's type at all: what decides
+  whether an orphan can hold a fiber is whether its node declared children, which the element cannot say.
+
+- A `Hooks.Use` loader cancelled through a token the caller owns now surfaces the cancellation to the
+  nearest error boundary, instead of leaving its Suspense boundary in fallback with no way out. A
+  cancellation that reached the awaiting frame was swallowed without recording an outcome, which is
+  correct only for Velvet's own cancellation; a logout CTS, a linked token in a data layer or a
+  superseded request left the resource `Pending`, and nothing restarts a resource in that state while
+  its key is unchanged. Only a cancellation Velvet itself requested is silent now.
+
 - `font-<family>` and the text-transform / text-decoration / `whitespace-pre-line` / `leading-*`
   utilities now take effect behind a variant. `dark:font-mono`, `md:font-display`,
   `hover:uppercase`, `md:dark:hover:underline` and `md:leading-loose` all changed nothing before:
