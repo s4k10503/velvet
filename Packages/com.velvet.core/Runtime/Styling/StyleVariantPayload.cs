@@ -134,6 +134,16 @@ namespace Velvet
                 return (false, false);
             }
 
+            // font-[…] / leading-[…]: no arbitrary property claims either prefix, so both fall past the
+            // branch above, and their own resolvers read them back out of the composed class source instead.
+            // Tracked but never projected, so the variant path leaves no bracket token on the USS class list
+            // — the same exclusion the reconciled path applies at FiberNodePatcher.IsManipulatorOwnedClass.
+            if (StyleFontClass.IsArbitraryFontClass(core)
+                || StyleTextEffectClass.IsArbitraryLeadingClass(core))
+            {
+                return (TrackVariantGate(ctx, target, core, effectivePriority, declaration, on), false);
+            }
+
             // The off-toggle of a filter-[name:args] payload whose name was unregistered while the layer was
             // active — the shared clear resolves the name syntactically and removes the mirrored class (see
             // TryClearUnregisteredFilterToken).
@@ -199,9 +209,11 @@ namespace Velvet
                 && ctx.TrackVariantGateClass(target, core, priority, declaration, on);
 
         // The utility tokens whose mere PRESENCE in a class array decides what a class-driven pass builds:
-        // the four layout manipulators (FiberNodePatcher.ApplyLayoutManipulators) and the six wrapper-less
-        // paint layers (FiberNodePatcher.ApplyResolvedClassPasses). Each family answers for its own prefix
-        // set so this gate cannot drift from the array scans those passes run.
+        // the four layout manipulators (FiberNodePatcher.ApplyLayoutManipulators), the six wrapper-less
+        // paint layers (FiberNodePatcher.ApplyResolvedClassPasses), the inline font layer
+        // (FiberNodePatcher.ApplyFontLayer) and the text-effect cascade (FiberNodePatcher.ApplyTextEffects).
+        // Each family answers for its own prefix set so this gate cannot drift from the array scans those
+        // passes run.
         //
         // Deliberately NOT the same set as the re-sync trigger: entering this one also routes the element
         // to the composed class source on every later patch, which costs an array per patch, and that is
@@ -217,6 +229,8 @@ namespace Velvet
                 || StyleGradientClass.IsGradientClass(core)
                 || StyleAnimateClass.IsAnimateClass(core)
                 || StyleBorderStyleClass.IsBorderStyleClass(core)
-                || StyleRingClass.IsRingClass(core);
+                || StyleRingClass.IsRingClass(core)
+                || StyleFontClass.IsFontToken(core)
+                || StyleTextEffectClass.IsTextEffectToken(core);
     }
 }

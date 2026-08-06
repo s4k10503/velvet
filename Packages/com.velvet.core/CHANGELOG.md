@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `font-<family>` and the text-transform / text-decoration / `whitespace-pre-line` / `leading-*`
+  utilities now take effect behind a variant. `dark:font-mono`, `md:font-display`,
+  `hover:uppercase`, `md:dark:hover:underline` and `md:leading-loose` all changed nothing before:
+  both families are realised from the class array Velvet last reconciled, and a variant writes its
+  payload onto the element's live class list instead, so the resolver never saw it — and neither
+  family has a USS rule the bare class could fall back on, which made the failure silent. Both are
+  now re-derived on a variant toggle exactly as the layout and paint utilities already were, at
+  mount and in both directions. For a child that a `[&>*]:` container rule reaches, both stand down
+  at mount instead: the only class array available there is the child's live list, which cannot see
+  that child's own `font-[…]` / `leading-[…]`, and both resolvers rewrite unconditionally — so such a
+  rule leaves the child's own font and line height alone rather than resolving over them.
+
+  `font-<weight>` and `italic` behind a variant were only partly working, through the coarse
+  `-unity-font-style` fallback in the bundled stylesheet; they now go through the resolver and get
+  the full weight scale and a weight-specific Font Asset.
+
+  An arbitrary `font-[…]` or `leading-[…]` payload behind a variant also no longer leaves its raw
+  bracket token sitting on the USS class list while the variant is lit — the reconciled path already
+  kept those two families off it.
+
 - A Back or Forward navigation served from the history's loader cache now cancels the loaders still in
   flight from the round it left. That branch commits without running `RunLoadersSync`, which is where a
   previous round is superseded, so a `LoaderMode.Suspend` loader belonging to the page the user navigated
