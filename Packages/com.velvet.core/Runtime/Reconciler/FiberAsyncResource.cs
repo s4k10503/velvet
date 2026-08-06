@@ -1,6 +1,5 @@
 using System;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -31,6 +30,7 @@ namespace Velvet
     internal sealed class FiberAsyncResource<T> : IFiberAsyncResource
     {
         private readonly CancellationTokenSource _cts = new();
+        private readonly CancellationToken _cancellationToken;
         private bool _disposed;
 
         public object ResourceKey { get; }
@@ -43,9 +43,10 @@ namespace Velvet
         public FiberAsyncResource(object resourceKey)
         {
             ResourceKey = resourceKey;
+            _cancellationToken = _cts.Token;
         }
 
-        public void Start(Func<CancellationToken, UniTask<T>> factory)
+        public void Start(Func<CancellationToken, VelvetTask<T>> factory)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             if (Status != FiberAsyncResourceStatus.Pending)
@@ -53,10 +54,10 @@ namespace Velvet
                 return;
             }
 
-            UniTask<T> task;
+            VelvetTask<T> task;
             try
             {
-                task = factory(_cts.Token);
+                task = factory(_cancellationToken);
             }
             catch (Exception ex)
             {
@@ -89,7 +90,7 @@ namespace Velvet
             AwaitAsync(task).Forget();
         }
 
-        private async UniTask AwaitAsync(UniTask<T> task)
+        private async VelvetTask AwaitAsync(VelvetTask<T> task)
         {
             try
             {

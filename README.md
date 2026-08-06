@@ -52,7 +52,6 @@ desync bugs, Velvet is for you:
 
 - **Unity 6000.3 (Unity 6.3 LTS) or newer.** Developed and validated on **Unity 6000.3.11f1**.
   Velvet's bundled USS uses properties added in Unity 6.3 (e.g. `aspect-ratio`), so 6.3 is the floor.
-- [UniTask](https://github.com/Cysharp/UniTask) (`com.cysharp.unitask`) — a **required peer dependency you install yourself** (see [Installation](#installation)).
 - `com.unity.addressables` and `com.unity.nuget.mono-cecil` — resolved automatically by the Unity
   Package Manager from the package's declared dependencies.
 
@@ -62,24 +61,17 @@ desync bugs, Velvet is for you:
 > every merge to `main`. Tagged releases (`vX.Y.Z`) mark stable snapshots on that branch — pin
 > one for reproducible installs, or track the branch head for the latest.
 
-Velvet uses [UniTask](https://github.com/Cysharp/UniTask) and references it by assembly name. UniTask is
-not on the Unity registry, and Velvet intentionally does **not** declare it as a package dependency — so an
-existing UniTask install (UPM git URL, OpenUPM, or `.unitypackage`) is never disturbed. Velvet only needs
-some UniTask present in the project.
-
-**If you already have UniTask, just add Velvet.** Otherwise add both to `Packages/manifest.json`:
+Add Velvet to `Packages/manifest.json`:
 
 ```jsonc
 {
   "dependencies": {
-    "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
     "com.velvet.core": "https://github.com/s4k10503/velvet.git#upm"
   }
 }
 ```
 
-The UniTask git URL above tracks its latest release; pin a version by appending a tag (e.g.
-`...UniTask#2.5.0`), and pin Velvet with `...velvet.git#v1.0.0`. Velvet's remaining dependencies
+Pin Velvet with `...velvet.git#v1.0.0`. Velvet's remaining dependencies
 (`com.unity.addressables`, `com.unity.nuget.mono-cecil`) are on the Unity registry and resolve
 automatically.
 
@@ -293,7 +285,7 @@ branch; the `main` branch you are looking at is the full development project.
 
 The published artifact contains only what a consumer compiles: CI strips the **developer-only**
 sources during the split — every `Tests/` folder, the `TestUtilities/` assembly, and `Generators~/`
-(the source generators ship as prebuilt DLLs under `Runtime/Plugins`). `TestUtilities` is therefore
+(the source generators ship as prebuilt DLLs under `Runtime/Plugins/`). `TestUtilities` is therefore
 **dev-only by design**: it carries Velvet's own reconciler-level test scaffolding (NUnit-bound,
 backed by internal reconciler types) and is not part of the consumer API surface. A consumer tests
 its own app through the public API (`V.Mount`, hooks) and standard Unity Test Framework helpers; the

@@ -2,7 +2,6 @@
 #nullable enable annotations
 using System;
 using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet;
@@ -142,7 +141,7 @@ namespace Velvet.Tests
             {
                 Route("data",
                     element: V.Component(Capture.Render, key: "cap"),
-                    loader: (ctx, ct) => UniTask.FromResult((object)"hello")),
+                    loader: (ctx, ct) => VelvetTask.FromResult((object)"hello")),
             });
             router.NavigateSync("/data");
 
@@ -240,7 +239,7 @@ namespace Velvet.Tests
 
         private static class Capture
         {
-            public static Func<string, UniTask<NavigationResult>>? Navigate;
+            public static Func<string, VelvetTask<NavigationResult>>? Navigate;
             public static RouteMatch? Match;
             public static ISearchParams? SearchParams;
             public static SearchParamsSetter? SetSearchParams;

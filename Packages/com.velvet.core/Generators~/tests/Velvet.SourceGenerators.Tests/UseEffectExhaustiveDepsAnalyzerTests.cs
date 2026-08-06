@@ -613,7 +613,7 @@ namespace MyApp.Pages
             var isDirty = true;
             global::Velvet.Hooks.UseBlocker((attempt, ct) => Build(isDirty), new object[] { });
         }
-        private static global::Cysharp.Threading.Tasks.UniTask<bool> Build(bool flag) => default;
+        private static global::Velvet.VelvetTask<bool> Build(bool flag) => default;
     }
 }";
 

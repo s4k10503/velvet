@@ -1,6 +1,5 @@
 using System;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -38,7 +37,7 @@ namespace Velvet.Tests
     /// consumer is <c>[Component(Memoize = true)]</c> with no props: it re-renders only when the context
     /// notification marks it dirty, so a missed notification is visible as a stale Label in the tree — a plain
     /// consumer would be re-rendered by the parent walk regardless and hide the defect. The suspending child
-    /// is driven by a <see cref="UniTaskCompletionSource{T}"/> that is deliberately left pending.
+    /// is driven by a <see cref="VelvetTaskCompletionSource{T}"/> that is deliberately left pending.
     /// </remarks>
     [TestFixture]
     internal sealed class ProviderPositionPairingTests
@@ -77,7 +76,7 @@ namespace Velvet.Tests
         public void Given_ProviderAfterSuspendedBoundary_When_ItsValueChanges_Then_ConsumerRendersNewValue()
         {
             // Arrange
-            var pending = new UniTaskCompletionSource<string>();
+            var pending = new VelvetTaskCompletionSource<string>();
             s_pendingFactory = _ => pending.Task;
             using var mounted = V.Mount(_root, V.Component(SuspenseThenProviderHostRender, key: "host"));
             Assume.That(_root.Q<Label>("consumer")?.text, Is.EqualTo("initial"),
@@ -96,7 +95,7 @@ namespace Velvet.Tests
         public void Given_ProvidersInBothSuspenseBranches_When_FallbackProviderValueChanges_Then_ConsumerRendersNewValue()
         {
             // Arrange
-            var pending = new UniTaskCompletionSource<string>();
+            var pending = new VelvetTaskCompletionSource<string>();
             s_pendingFactory = _ => pending.Task;
             using var mounted = V.Mount(_root, V.Component(BothBranchesProviderHostRender, key: "host"));
             Assume.That(_root.Q<Label>("consumer")?.text, Is.EqualTo("initial"),
@@ -115,7 +114,7 @@ namespace Velvet.Tests
         public void Given_TwoProvidersInSuspenseFallback_When_LastProviderValueChanges_Then_ConsumerRendersNewValue()
         {
             // Arrange
-            var pending = new UniTaskCompletionSource<string>();
+            var pending = new VelvetTaskCompletionSource<string>();
             s_pendingFactory = _ => pending.Task;
             using var mounted = V.Mount(_root, V.Component(TwoFallbackProvidersHostRender, key: "host"));
             Assume.That(_root.Q<Label>("consumer")?.text, Is.EqualTo("initial"),
@@ -193,7 +192,7 @@ namespace Velvet.Tests
 
         #region Suspending child
 
-        private static Func<CancellationToken, UniTask<string>> s_pendingFactory;
+        private static Func<CancellationToken, VelvetTask<string>> s_pendingFactory;
 
         // The factory lambda captures only a static field, so its delegate identity is stable across renders
         // and the resource is not re-fetched per render.

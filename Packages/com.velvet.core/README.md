@@ -8,23 +8,19 @@ Velvet ports a React-style, utility-first styling development experience onto Un
 
 ## Installation
 
-Velvet requires Unity 6000.3 (Unity 6.3 LTS) or newer (validated on Unity 6000.3.11f1) and
-[UniTask](https://github.com/Cysharp/UniTask) as a **required peer dependency you install yourself**.
-UniTask is not on the Unity registry, so Velvet intentionally does not declare it as a package
-dependency — an existing UniTask install (any method) is left untouched.
+Velvet requires Unity 6000.3 (Unity 6.3 LTS) or newer (validated on Unity 6000.3.11f1).
 
-**If you already have UniTask, just add Velvet.** Otherwise add both to `Packages/manifest.json`:
+Add Velvet to `Packages/manifest.json`:
 
 ```jsonc
 {
   "dependencies": {
-    "com.cysharp.unitask": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
     "com.velvet.core": "https://github.com/s4k10503/velvet.git#upm"
   }
 }
 ```
 
-The UniTask git URL tracks its latest release. `com.unity.addressables` and `com.unity.nuget.mono-cecil`
+`com.unity.addressables` and `com.unity.nuget.mono-cecil`
 are on the Unity registry and resolve automatically. See the repository root README for full details.
 
 Then attach the bundled utility stylesheet to the panel you mount onto — without it every class the

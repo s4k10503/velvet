@@ -19,7 +19,7 @@ namespace Velvet.Tests
     /// of failing silently — for CompilerWeaver when <c>Velvet.Hooks</c> / <c>Velvet.VNode</c> is unresolvable,
     /// and for MetadataRegistrationWeaver when <c>Velvet.ComponentMethodRegistry</c> is unresolvable.</item>
     /// <item>Open-dispatch hook-safety classification: an open virtual / interface dispatch whose declaring type
-    /// is outside the BCL/Unity/UniTask carve-out must be classified as unverifiable / non-SAFE regardless of
+    /// is outside the BCL/Unity carve-out must be classified as unverifiable / non-SAFE regardless of
     /// whether its own declaring assembly references Velvet, because an override reaching a hook can be declared
     /// in a third assembly that does. The two private classifier methods
     /// (<c>ReachesNonSafeHook</c>/<c>CallsHookTransitively</c>) must agree on this classification.</item>
@@ -84,7 +84,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(isNonSafe, Is.True,
-                "An open dispatch outside the BCL/Unity/UniTask carve-out is unverifiable regardless of whether"
+                "An open dispatch outside the BCL/Unity carve-out is unverifiable regardless of whether"
                 + " its declaring assembly references Velvet, because an override composing a hook can live in"
                 + " a third assembly that does");
         }
@@ -165,7 +165,7 @@ namespace Velvet.Tests
 
         // Builds a module with no reference to Velvet, declaring a public, non-sealed class with an
         // overridable (virtual, non-final) method — an open dispatch whose declaring type is outside every
-        // BCL/Unity/UniTask namespace root. Returns the MethodDefinition for that method via handler.
+        // BCL/Unity namespace root. Returns the MethodDefinition for that method via handler.
         private static ModuleDefinition BuildNonVelvetReferencingModuleWithOpenVirtual(out MethodDefinition handler)
         {
             var module = ModuleDefinition.CreateModule("NonVelvetReferencingProbe", ModuleKind.Dll);

@@ -75,7 +75,7 @@ jobs:
 
       # game-ci activates the license (online, re-binding to the runner) and compiles the project on
       # the way to running tests, which populates Library/ScriptAssemblies with the Velvet + package
-      # DLLs (UniTask, Addressables, …) that DocFX needs to resolve types.
+      # DLLs (Addressables, …) that DocFX needs to resolve types.
       - name: Compile via game-ci
         uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
         env:
@@ -126,7 +126,7 @@ jobs:
           # Linux editor image: engine managed assemblies live under <Editor>/Data.
           UnityEditorContents: /opt/unity/Editor/Data
         run: |
-          test -f Library/ScriptAssemblies/UniTask.dll || {
+          test -f Library/ScriptAssemblies/Velvet.dll || {
             echo "::error::Compiled assemblies were not restored — the compile job did not produce Library/ScriptAssemblies."
             exit 1
           }

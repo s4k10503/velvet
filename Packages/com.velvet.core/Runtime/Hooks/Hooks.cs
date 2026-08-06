@@ -4,7 +4,6 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -472,7 +471,7 @@ namespace Velvet
         /// <param name="shouldBlock">Async predicate; returning true blocks the departure. The CancellationToken is cancelled on unmount.</param>
         /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
         /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, UniTask<bool>> shouldBlock, params object?[] deps)
+        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock, params object?[] deps)
         {
             if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
             return UseBlockerCore(
@@ -557,8 +556,8 @@ namespace Velvet
         /// resolve against <see cref="Router.CurrentLocation"/>. Navigation is driven by
         /// <see cref="Router.Current"/>.
         /// </summary>
-        /// <returns>A stable delegate <c>navigate(to)</c>; the returned <see cref="UniTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
-        public static Func<string, UniTask<NavigationResult>> UseNavigate(bool replace = false)
+        /// <returns>A stable delegate <c>navigate(to)</c>; the returned <see cref="VelvetTask{NavigationResult}"/> can be awaited or fire-and-forget.</returns>
+        public static Func<string, VelvetTask<NavigationResult>> UseNavigate(bool replace = false)
         {
             _ = Resolve("UseNavigate");
             var mode = replace ? NavigationMode.Replace : NavigationMode.Push;
@@ -569,13 +568,13 @@ namespace Velvet
             // "leaf" and leaves absolute/no-context navigation unaffected.
             var depth = UseContext(RouterContext.Depth);
             var baseRouteIndex = depth - 1;
-            return UseCallback<Func<string, UniTask<NavigationResult>>>(
+            return UseCallback<Func<string, VelvetTask<NavigationResult>>>(
                 to =>
                 {
                     var router = Router.Current;
                     if (router == null)
                     {
-                        return UniTask.FromResult(NavigationResult.Cancelled);
+                        return VelvetTask.FromResult(NavigationResult.Cancelled);
                     }
                     return router.NavigateAsync(to, mode, baseRouteIndex);
                 },
@@ -1494,31 +1493,31 @@ namespace Velvet
         /// resource is logically the same.
         /// </remarks>
         /// <typeparam name="T">Resolved value type.</typeparam>
-        /// <param name="factory">Factory that returns a UniTask producing the value. Must not be null.</param>
+        /// <param name="factory">Factory that returns a VelvetTask producing the value. Must not be null.</param>
         /// <param name="resourceKey">Identity of the resource. When null, the factory delegate is the key.</param>
         /// <returns>The resolved value once the resource completes successfully.</returns>
-        public static T Use<T>(Func<UniTask<T>> factory, object? resourceKey = null)
+        public static T Use<T>(Func<VelvetTask<T>> factory, object? resourceKey = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             return UseCore<T>(_ => factory(), resourceKey ?? factory, resourceKeyExplicit: resourceKey != null, "Use");
         }
 
         /// <summary>
-        /// CancellationToken-aware variant of <see cref="Use{T}(Func{UniTask{T}}, object)"/>.
+        /// CancellationToken-aware variant of <see cref="Use{T}(Func{VelvetTask{T}}, object)"/>.
         /// The token is cancelled when the resource is superseded (a new key) or the component unmounts;
         /// loader implementations are responsible for honoring it and aborting.
         /// </summary>
         /// <typeparam name="T">Resolved value type.</typeparam>
-        /// <param name="factory">Factory that receives a CancellationToken and returns a UniTask producing the value. Must not be null.</param>
+        /// <param name="factory">Factory that receives a CancellationToken and returns a VelvetTask producing the value. Must not be null.</param>
         /// <param name="resourceKey">Identity of the resource. When null, the factory delegate is the key.</param>
         /// <returns>The resolved value once the resource completes successfully.</returns>
-        public static T Use<T>(Func<CancellationToken, UniTask<T>> factory, object? resourceKey = null)
+        public static T Use<T>(Func<CancellationToken, VelvetTask<T>> factory, object? resourceKey = null)
         {
             if (factory == null) throw new ArgumentNullException(nameof(factory));
             return UseCore<T>(factory, resourceKey ?? factory, resourceKeyExplicit: resourceKey != null, "Use");
         }
 
-        private static T UseCore<T>(Func<CancellationToken, UniTask<T>> factory, object resourceKey, bool resourceKeyExplicit, string hookName)
+        private static T UseCore<T>(Func<CancellationToken, VelvetTask<T>> factory, object resourceKey, bool resourceKeyExplicit, string hookName)
         {
             var fiber = Resolve(hookName);
             var slots = fiber.AsyncSlots;
@@ -1750,7 +1749,7 @@ namespace Velvet
         // awaits, so a failure must reject; mutate (false) is fire-and-forget (dispatched via .Forget()) and
         // reports failures through onError / the Error status only — it must never rethrow, or the forgotten
         // task would surface an unobserved exception with no observer that can act on it.
-        private static async UniTask<TData> RunMutationAsync<TVariables, TData>(
+        private static async VelvetTask<TData> RunMutationAsync<TVariables, TData>(
             ComponentFiber fiber,
             HookMutationSlot<TVariables, TData> slot,
             TVariables variables,
@@ -1785,13 +1784,12 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                // Superseded (a newer call replaced slot.Cts) or the owner was disposed: the result is stale, so
-                // neither deliver onError nor mutate the slot.
                 if (slot.Cts != cts || fiber.IsDisposed)
                 {
                     if (rethrowOnFailure) throw;
                     return default!;
                 }
+
                 slot.Result.Error = ex;
                 slot.Result.Status = MutationStatus.Error;
                 try
@@ -1800,7 +1798,7 @@ namespace Velvet
                 }
                 catch (Exception handlerEx)
                 {
-                    UniTask.FromException(handlerEx).Forget();
+                    VelvetTask.FromException(handlerEx).Forget();
                 }
                 RequestRender(fiber);
                 if (rethrowOnFailure) throw;

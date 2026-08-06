@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -47,7 +46,7 @@ namespace Velvet
             _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
 
             var results = new Dictionary<string?, object>();
-            var awaitTasks = new List<(string? routeId, UniTask<object> task)>();
+            var awaitTasks = new List<(string? routeId, VelvetTask<object> task)>();
             var allCompleted = true;
 
             foreach (var match in matches)
@@ -69,7 +68,7 @@ namespace Velvet
                 // routes (whose MatchedPath is the empty string) do not collide.
                 var key = match.RouteId;
 
-                UniTask<object> task;
+                VelvetTask<object> task;
                 try
                 {
                     task = route.Loader(loaderContext, _cts.Token);
@@ -119,26 +118,30 @@ namespace Velvet
             return (results, allCompleted);
         }
 
-        private async UniTask RunSuspendLoader(string? routeId, UniTask<object> task, CancellationTokenSource ownCts)
+        private async VelvetTask RunSuspendLoader(string? routeId, VelvetTask<object> task, CancellationTokenSource ownCts)
         {
+            _activeSuspendTaskCount++;
             try
             {
-                _activeSuspendTaskCount++;
-                var result = await task;
-                // A loader that ignored its token can resolve after CancelPending replaced (or nulled) _cts.
-                // That makes this a superseded round; drop the stale result rather than firing into the live
-                // state of an unrelated current location.
+                object result;
+                try
+                {
+                    result = await task;
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    if (ownCts != _cts) return;
+                    _errors[routeId] = ex;
+                    OnSuspendLoaderFailed?.Invoke(routeId, ex);
+                    return;
+                }
+
                 if (ownCts != _cts) return;
                 OnSuspendLoaderCompleted?.Invoke(routeId, result);
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                // Same supersession guard as the success path: a stale round's failure must not record an
-                // error nor re-emit under the current location.
-                if (ownCts != _cts) return;
-                _errors[routeId] = ex;
-                OnSuspendLoaderFailed?.Invoke(routeId, ex);
             }
             finally
             {

@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Reflection;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 using Velvet;
@@ -153,7 +152,7 @@ namespace Velvet.Tests
             // Arrange
             var router = new Router(new[]
             {
-                Route("data", loader: (ctx, ct) => UniTask.FromResult((object)"loaded")),
+                Route("data", loader: (ctx, ct) => VelvetTask.FromResult((object)"loaded")),
             });
 
             // Act
@@ -170,7 +169,7 @@ namespace Velvet.Tests
             // Arrange
             var router = new Router(new[]
             {
-                Route("data", loader: (ctx, ct) => UniTask.FromResult((object)"loaded")),
+                Route("data", loader: (ctx, ct) => VelvetTask.FromResult((object)"loaded")),
             });
 
             // Act
@@ -350,7 +349,7 @@ namespace Velvet.Tests
                 Route("/", children: new[]
                 {
                     Route("home"),
-                    Route("data", loader: (ctx, ct) => UniTask.FromResult((object)$"loaded-{++loaderCallCount}")),
+                    Route("data", loader: (ctx, ct) => VelvetTask.FromResult((object)$"loaded-{++loaderCallCount}")),
                 }),
             });
             router.NavigateSync("/home");
@@ -375,7 +374,7 @@ namespace Velvet.Tests
                 Route("/", children: new[]
                 {
                     Route("home"),
-                    Route("data", loader: (ctx, ct) => UniTask.FromResult((object)$"loaded-{++loaderCallCount}")),
+                    Route("data", loader: (ctx, ct) => VelvetTask.FromResult((object)$"loaded-{++loaderCallCount}")),
                 }),
             });
             router.NavigateSync("/home");
@@ -398,7 +397,7 @@ namespace Velvet.Tests
             {
                 Route("/", children: new[]
                 {
-                    Route("page1", loader: (ctx, ct) => UniTask.FromResult((object)$"page1-{++loaderCallCount}")),
+                    Route("page1", loader: (ctx, ct) => VelvetTask.FromResult((object)$"page1-{++loaderCallCount}")),
                     Route("page2"),
                 }),
             });
@@ -420,7 +419,7 @@ namespace Velvet.Tests
             {
                 Route("/", children: new[]
                 {
-                    Route("page1", loader: (ctx, ct) => UniTask.FromResult((object)"page1-data")),
+                    Route("page1", loader: (ctx, ct) => VelvetTask.FromResult((object)"page1-data")),
                     Route("page2"),
                 }),
             });
@@ -511,10 +510,10 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderResolvedAfterCommit_When_GoBackToIt_Then_RestoresPostResolutionData()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange — a Suspend loader commits before resolving, so the history snapshot freezes without the value.
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -526,7 +525,7 @@ namespace Velvet.Tests
             router.NavigateSync("/deferred");
             Assume.That(router.GetLoaderData("/deferred"), Is.Null, "Precondition: unresolved at commit time");
             tcs.TrySetResult("deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
             Assume.That(router.GetLoaderData("/deferred"), Is.EqualTo("deferred-data"), "Precondition: resolved after commit");
             router.NavigateSync("/other");
 
@@ -540,10 +539,10 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderFailedAfterCommit_When_GoBackToIt_Then_RestoresCachedError()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -557,7 +556,7 @@ namespace Velvet.Tests
             // Suspend-mode failures route through OnSuspendLoaderFailed, which logs the exception.
             LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("deferred-failure"));
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
-            await UniTask.Yield();
+            await VelvetTask.Yield();
             Assume.That(router.CurrentLoaderErrors.Count, Is.EqualTo(1), "Precondition: the failure was recorded after commit");
             router.NavigateSync("/other");
 
@@ -590,10 +589,10 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderResolves_When_AfterCommit_Then_ReEmitsLocationOnce()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -608,7 +607,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetResult("deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(emitCount, Is.EqualTo(2), "Suspend completion re-emits OnLocationChanged exactly once more");
@@ -616,12 +615,12 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderResolves_When_AfterCommit_Then_ReEmitsWithFreshIdentity()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The canonical location Provider bails on a referentially-equal value, so reusing the same
             // instance would drop the re-render; the re-emit must carry a fresh RouterLocation identity.
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -637,7 +636,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetResult("deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(lastEmitted, Is.Not.SameAs(navigationLocation),
@@ -646,10 +645,10 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderResolves_When_AfterCommit_Then_PreservesLocationContent()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -663,7 +662,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetResult("deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(lastEmitted.Path, Is.EqualTo("/deferred"), "Location content is preserved across the re-emit");
@@ -671,10 +670,10 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderFails_When_AfterCommit_Then_ReEmitsLocationOnce()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -690,7 +689,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(emitCount, Is.EqualTo(2), "Suspend failure re-emits OnLocationChanged exactly once more");
@@ -698,11 +697,11 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderFails_When_AfterCommit_Then_ReEmitsWithFreshIdentity()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A fresh identity is required so UseRouteError consumers re-render on the deferred failure.
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -718,7 +717,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(lastEmitted, Is.Not.SameAs(navigationLocation));
@@ -726,12 +725,12 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderResolvesAfterNavigateAway_When_Resolving_Then_DoesNotReEmit()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A navigated-away loader's late result belongs to a route that is no longer current, so the router
             // discards it without re-emitting the unrelated current location.
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -748,7 +747,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetResult("stale-deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(emitCount, Is.EqualTo(2), "A navigated-away Suspend loader's late resolution does not re-emit");
@@ -756,10 +755,10 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderResolvesAfterNavigateAway_When_Resolving_Then_CurrentLocationIdentityIsUnchanged()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -774,7 +773,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetResult("stale-deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(router.CurrentLocation, Is.SameAs(otherLocation),
@@ -783,12 +782,12 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderResolvesAfterNavigateAway_When_Resolving_Then_LoaderDataNotPolluted()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A navigated-away Suspend loader's late result belongs to a superseded round; it must not land in
             // the live loader data of the unrelated current location, where UseLoaderData / GetLoaderData read it.
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -803,7 +802,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetResult("stale-deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(router.CurrentLoaderData, Is.Empty,
@@ -812,12 +811,12 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoaderFailsAfterNavigateAway_When_Failing_Then_ErrorNotRecorded()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A navigated-away Suspend loader's late failure belongs to a superseded round; it must not record
             // an error under the unrelated current location nor surface via UseRouteError.
             // Arrange
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var router = new Router(new[]
             {
                 Route("/", children: new[]
@@ -832,7 +831,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetException(new InvalidOperationException("stale-deferred-failure"));
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(router.CurrentLoaderErrors, Is.Empty,
@@ -872,10 +871,10 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_ConcurrentNavigationDuringBlockerAwait_When_SecondTakesOver_Then_FirstReturnsCancelled()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // An async Blocker await is exactly the window where a second navigation can take over. The
-            // first nav's UniTask.Never(ct) raises OperationCanceledException on cancellation, which the OCE
+            // first nav's VelvetTask.Never(ct) raises OperationCanceledException on cancellation, which the OCE
             // catch filter maps to Cancelled.
             // Arrange
             var router = new Router(_routes);
@@ -896,7 +895,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_ConcurrentNavigationDuringBlockerAwait_When_SecondTakesOver_Then_SecondSucceeds()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var router = new Router(_routes);
@@ -917,7 +916,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_ConcurrentNavigationDuringBlockerAwait_When_SecondTakesOver_Then_CommitsLatestLocation()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var router = new Router(_routes);
@@ -939,7 +938,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_CallerCancelsTokenDuringBlockerAwait_When_Cancelled_Then_ReturnsCancelledInsteadOfThrowing()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // The OCE catch filter maps caller-token cancellation during the blocker await to Cancelled,
             // symmetrically with the loader phase, so callers branching on `nav != Success` never see an
@@ -963,7 +962,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_CancelledToken_When_GoBackHitsCachedEntry_Then_ReturnsCancelled()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // A cached Back/Forward navigation commits without reaching the loader-phase cancellation check, so a
             // superseded attempt must unwind at the blocker boundary instead. The blocker phase observes the
@@ -986,7 +985,7 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_CancelledToken_When_GoBackHitsCachedEntry_Then_DoesNotCommitLocation()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var router = new Router(_routes);
@@ -1003,22 +1002,22 @@ namespace Velvet.Tests
                 "A cancelled cached Back does not commit the previous entry");
         });
 
-        // Blocker test infra: the first nav parks on UniTask.Never(ct) (raises OCE on cancellation);
+        // Blocker test infra: the first nav parks on VelvetTask.Never(ct) (raises OCE on cancellation);
         // subsequent navs pass through without blocking. A per-invocation counter keeps the two navs from
         // sharing TCS state.
-        private static (Func<NavigationAttempt, CancellationToken, UniTask<bool>> Check, UniTaskCompletionSource Entered) MakeOneShotBlocker()
+        private static (Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> Check, VelvetTaskCompletionSource Entered) MakeOneShotBlocker()
         {
-            var entered = new UniTaskCompletionSource();
+            var entered = new VelvetTaskCompletionSource();
             int invocationCount = 0;
-            UniTask<bool> Check(NavigationAttempt _, CancellationToken ct)
+            VelvetTask<bool> Check(NavigationAttempt _, CancellationToken ct)
             {
                 var n = Interlocked.Increment(ref invocationCount);
                 if (n == 1)
                 {
                     entered.TrySetResult();
-                    return UniTask.Never<bool>(ct);
+                    return VelvetTask.Never<bool>(ct);
                 }
-                return UniTask.FromResult(false);
+                return VelvetTask.FromResult(false);
             }
             return (Check, entered);
         }

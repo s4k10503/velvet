@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using Velvet.TestUtilities;
 
 namespace Velvet.Tests
@@ -34,7 +33,7 @@ namespace Velvet.Tests
             ComponentNode element = null,
             string redirectTo = null,
             Func<RouteLoaderContext, string> guard = null,
-            Func<RouteLoaderContext, CancellationToken, UniTask<object>> loader = null,
+            Func<RouteLoaderContext, CancellationToken, VelvetTask<object>> loader = null,
             LoaderMode loaderMode = LoaderMode.Await,
             RouteDefinition[] children = null,
             ComponentNode errorElement = null,
@@ -58,7 +57,7 @@ namespace Velvet.Tests
         /// </summary>
         public static List<RouteMatch> MakeMatch(
             string path,
-            Func<RouteLoaderContext, CancellationToken, UniTask<object>> loader = null,
+            Func<RouteLoaderContext, CancellationToken, VelvetTask<object>> loader = null,
             LoaderMode loaderMode = LoaderMode.Await)
             => new List<RouteMatch>
             {

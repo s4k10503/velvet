@@ -1,7 +1,6 @@
 using System;
 using System.Text.RegularExpressions;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -45,7 +44,7 @@ namespace Velvet.Tests
     /// <remarks>
     /// Uses the <c>[Component] static VNode</c> + <c>V.Mount</c> + static-field exposure pattern. Per-region static
     /// fields are reset together in <see cref="SetUp"/>. A suspending child is driven by a
-    /// <see cref="UniTaskCompletionSource{T}"/> whose completion is triggered explicitly so suspend/resume timing
+    /// <see cref="VelvetTaskCompletionSource{T}"/> whose completion is triggered explicitly so suspend/resume timing
     /// is deterministic in EditMode.
     /// </remarks>
     [TestFixture]
@@ -72,7 +71,7 @@ namespace Velvet.Tests
         public void Given_SuspenseBoundary_When_ChildResolvesSynchronously_Then_RendersChildren()
         {
             // Arrange
-            s_asyncChildFactory = _ => UniTask.FromResult("data");
+            s_asyncChildFactory = _ => VelvetTask.FromResult("data");
 
             // Act
             using var mounted = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"));
@@ -86,7 +85,7 @@ namespace Velvet.Tests
         public void Given_SuspenseBoundary_When_ChildSuspends_Then_RendersFallback()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_suspenseHostFallbackText = "loading...";
 
@@ -102,7 +101,7 @@ namespace Velvet.Tests
         public void Given_SuspendedBoundary_When_ResourceResolves_Then_SwapsFallbackForChildren()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_suspenseHostFallbackText = "loading...";
             using var mounted = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"));
@@ -122,7 +121,7 @@ namespace Velvet.Tests
         {
             // Arrange — the visible fallback subtree renders normally, so it can flush its own state update
             s_fallbackTickSetter = null;
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             using var mounted = V.Mount(_root, V.Component(StatefulFallbackHostRender, key: "host"));
             Assume.That(_root.FindFirstLabel()?.text, Is.EqualTo("fallback-0"), "Precondition: the stateful fallback is shown");
@@ -140,7 +139,7 @@ namespace Velvet.Tests
         public void Given_NestedBoundaries_When_InnerSuspends_Then_InnerFallbackIsShown()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
 
             // Act
@@ -155,7 +154,7 @@ namespace Velvet.Tests
         public void Given_NestedBoundaries_When_InnerSuspends_Then_OuterDoesNotOverSuspend()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
 
             // Act
@@ -175,7 +174,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var failure = new InvalidOperationException("boom");
-            s_asyncChildFactory = _ => UniTask.FromException<string>(failure);
+            s_asyncChildFactory = _ => VelvetTask.FromException<string>(failure);
             s_errorBoundaryFallbackText = "error!";
 
             // Act
@@ -190,7 +189,7 @@ namespace Velvet.Tests
         public void Given_ErrorBoundaryAroundSuspense_When_ResourceFaultsAsynchronously_Then_ShowsErrorFallback()
         {
             // Arrange — suspends first (shows the loading fallback), then faults
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_errorBoundarySuspenseFallback = "loading...";
             s_errorBoundaryFallbackText = "error!";
@@ -214,7 +213,7 @@ namespace Velvet.Tests
         public void Given_PendingChild_When_ParentRerendersUnrelated_Then_FallbackIsPreserved()
         {
             // Arrange — the child resource is still pending; an unrelated parent state change triggers a re-render
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_parentRerenderFallbackText = "loading...";
             s_parentRerenderTick = 0;
@@ -234,7 +233,7 @@ namespace Velvet.Tests
         public void Given_PendingChild_When_ResourceResolvesAfterUnrelatedRerender_Then_RevealsChildren()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_parentRerenderFallbackText = "loading...";
             s_parentRerenderTick = 0;
@@ -256,7 +255,7 @@ namespace Velvet.Tests
         public void Given_SuspendThenResume_When_BoundaryResolves_Then_FactoryRunsOncePerDeps()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_suspenseHostFallbackText = "loading...";
             using var mounted = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"));
@@ -279,8 +278,8 @@ namespace Velvet.Tests
         public void Given_TwoSuspendingReads_When_OneResolves_Then_FallbackPersists()
         {
             // Arrange
-            var source1 = new UniTaskCompletionSource<string>();
-            var source2 = new UniTaskCompletionSource<string>();
+            var source1 = new VelvetTaskCompletionSource<string>();
+            var source2 = new VelvetTaskCompletionSource<string>();
             s_twoUsesFactory1 = _ => source1.Task;
             s_twoUsesFactory2 = _ => source2.Task;
             using var mounted = V.Mount(_root, V.Component(TwoUsesHostRender, key: "host"));
@@ -299,8 +298,8 @@ namespace Velvet.Tests
         public void Given_TwoSuspendingReads_When_BothResolve_Then_RevealsCombinedContent()
         {
             // Arrange
-            var source1 = new UniTaskCompletionSource<string>();
-            var source2 = new UniTaskCompletionSource<string>();
+            var source1 = new VelvetTaskCompletionSource<string>();
+            var source2 = new VelvetTaskCompletionSource<string>();
             s_twoUsesFactory1 = _ => source1.Task;
             s_twoUsesFactory2 = _ => source2.Task;
             using var mounted = V.Mount(_root, V.Component(TwoUsesHostRender, key: "host"));
@@ -325,8 +324,8 @@ namespace Velvet.Tests
         public void Given_TwoSiblingBoundaries_When_OneChildResolves_Then_OnlyThatBoundaryReveals()
         {
             // Arrange — two sibling Suspense boundaries, each with its own pending child
-            var sourceA = new UniTaskCompletionSource<string>();
-            var sourceB = new UniTaskCompletionSource<string>();
+            var sourceA = new VelvetTaskCompletionSource<string>();
+            var sourceB = new VelvetTaskCompletionSource<string>();
             s_siblingFactoryA = _ => sourceA.Task;
             s_siblingFactoryB = _ => sourceB.Task;
             using var mounted = V.Mount(_root, V.Component(SiblingBoundariesHostRender, key: "host"));
@@ -350,7 +349,7 @@ namespace Velvet.Tests
         public void Given_NoEnclosingBoundary_When_ChildSuspends_Then_LogsWarning()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_rootlessFactory = _ => source.Task;
             LogAssert.Expect(LogType.Warning, new Regex("Suspense"));
 
@@ -366,7 +365,7 @@ namespace Velvet.Tests
         public void Given_SuspendedBoundary_When_ResourceResolvesBeforeFlush_Then_FallbackPersistsUntilFlush()
         {
             // Arrange — the boundary swap goes through the lane queue, so it has not run before FlushStateForTest
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_suspenseHostFallbackText = "loading...";
             using var mounted = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"));
@@ -384,7 +383,7 @@ namespace Velvet.Tests
         public void Given_SuspendedBoundaryResolved_When_Flushed_Then_FallbackIsRemoved()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_suspenseHostFallbackText = "loading...";
             using var mounted = V.Mount(_root, V.Component(SuspenseHostRender, key: "host"));
@@ -407,7 +406,7 @@ namespace Velvet.Tests
         public void Given_ResolvedBoundary_When_Mounted_Then_AddsNoVisualElementDepthVsBaseline()
         {
             // Arrange — the boundary must add no VisualElement depth vs the same content without a boundary
-            s_asyncChildFactory = _ => UniTask.FromResult("data");
+            s_asyncChildFactory = _ => VelvetTask.FromResult("data");
             var baselineRoot = new VisualElement();
             using var baseline = V.Mount(baselineRoot, V.Component(SuspenseAsyncChildRender, key: "child"));
             var baselineLabel = baselineRoot.FindFirstLabel();
@@ -432,7 +431,7 @@ namespace Velvet.Tests
             var baselineLabel = baselineRoot.FindLabelByText("loading...");
             Assume.That(baselineLabel, Is.Not.Null, "Precondition: the baseline rendered the loading Label");
             var baselineDepth = IntermediateElementCount(baselineRoot, baselineLabel);
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_suspenseHostFallbackText = "loading...";
 
@@ -449,7 +448,7 @@ namespace Velvet.Tests
         public void Given_BoundaryInsideAnimatePresence_When_Suspended_Then_FallbackSitsDirectlyInContainer()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_suspenseHostFallbackText = "loading...";
 
@@ -466,7 +465,7 @@ namespace Velvet.Tests
         public void Given_BoundaryInsideAnimatePresence_When_Resolved_Then_ContentSitsDirectlyInContainer()
         {
             // Arrange
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             s_suspenseHostFallbackText = "loading...";
             using var mounted = V.Mount(_root, V.Component(AnimatePresenceSuspenseHostRender, key: "host"));
@@ -491,7 +490,7 @@ namespace Velvet.Tests
             // Arrange — the primary created a childless poolable Label before the sibling async child suspended;
             // the non-Label fallback (a Button) does not rent it back, so it stays in the pool and is observable.
             VNodePoolTestAccess.ClearLabelPoolForTest();
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
 
             // Act
@@ -507,7 +506,7 @@ namespace Velvet.Tests
         {
             // Arrange
             VNodePoolTestAccess.ClearLabelPoolForTest();
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             using var mounted = V.Mount(_root, V.Component(OrphanLeafSuspenseHostRender, key: "host"));
             Assume.That(_root.FindLabelByText("primary-leaf"), Is.Null, "Precondition: the suspended primary's sibling leaf is not visible while in fallback");
@@ -526,7 +525,7 @@ namespace Velvet.Tests
         {
             // Arrange
             VNodePoolTestAccess.ClearLabelPoolForTest();
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             using var mounted = V.Mount(_root, V.Component(OrphanLeafSuspenseHostRender, key: "host"));
             Assume.That(_root.FindLabelByText("ready"), Is.Null, "Precondition: the async child's resolved content is not yet rendered while pending");
@@ -547,7 +546,7 @@ namespace Velvet.Tests
             // children into the Button, so the orphan may host fibers reused on resolve. Pooling such a container
             // would resurface its stale child subtree on the next rent, so only childless leaves are reclaimed.
             VNodePoolTestAccess.ClearButtonPoolForTest();
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
 
             // Act
@@ -566,7 +565,7 @@ namespace Velvet.Tests
             // never runs against the dead orphan after the boundary has swapped to the fallback.
             s_containerOrphanEffectMountCount = 0;
             s_containerOrphanEffectCleanupCount = 0;
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
 
             // Act
@@ -583,7 +582,7 @@ namespace Velvet.Tests
             // Arrange
             s_containerOrphanEffectMountCount = 0;
             s_containerOrphanEffectCleanupCount = 0;
-            var source = new UniTaskCompletionSource<string>();
+            var source = new VelvetTaskCompletionSource<string>();
             s_asyncChildFactory = _ => source.Task;
             using var mounted = V.Mount(_root, V.Component(ContainerOrphanFiberSuspenseHostRender, key: "host"));
             Assume.That(s_containerOrphanEffectMountCount, Is.EqualTo(0), "Precondition: the suspended primary's effect did not run");
@@ -694,7 +693,7 @@ namespace Velvet.Tests
 
         #region SuspenseAsyncChild component (Hooks.Use + factory call count)
 
-        private static Func<CancellationToken, UniTask<string>> s_asyncChildFactory;
+        private static Func<CancellationToken, VelvetTask<string>> s_asyncChildFactory;
         private static int s_asyncChildFactoryCallCount;
 
         private static void ResetAsyncChild()
@@ -721,8 +720,8 @@ namespace Velvet.Tests
 
         #region TwoUsesAsyncChild component (Hooks.Use x 2)
 
-        private static Func<CancellationToken, UniTask<string>> s_twoUsesFactory1;
-        private static Func<CancellationToken, UniTask<string>> s_twoUsesFactory2;
+        private static Func<CancellationToken, VelvetTask<string>> s_twoUsesFactory1;
+        private static Func<CancellationToken, VelvetTask<string>> s_twoUsesFactory2;
 
         private static void ResetTwoUses()
         {
@@ -742,8 +741,8 @@ namespace Velvet.Tests
 
         #region SiblingBoundaries components (two sibling V.Suspense in one Render)
 
-        private static Func<CancellationToken, UniTask<string>> s_siblingFactoryA;
-        private static Func<CancellationToken, UniTask<string>> s_siblingFactoryB;
+        private static Func<CancellationToken, VelvetTask<string>> s_siblingFactoryA;
+        private static Func<CancellationToken, VelvetTask<string>> s_siblingFactoryB;
 
         private static void ResetSiblingBoundaries()
         {
@@ -838,7 +837,7 @@ namespace Velvet.Tests
 
         #region RootlessSuspenseUse component (Hooks.Use without a boundary)
 
-        private static Func<CancellationToken, UniTask<string>> s_rootlessFactory;
+        private static Func<CancellationToken, VelvetTask<string>> s_rootlessFactory;
 
         private static void ResetRootless()
         {

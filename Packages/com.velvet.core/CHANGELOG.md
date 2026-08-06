@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** Async APIs now return `VelvetTask` / `VelvetTask<T>` instead of UniTask. Velvet ships its own
+  awaitable type under `Velvet`; UniTask is no longer a peer dependency.
+
 ### Fixed
 
 - An exception thrown by a mutation's `onError` handler no longer changes what the mutation reports.

@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 
+[assembly: InternalsVisibleTo("Velvet.Tests.Async.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Async.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.BuildInclusion.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Component.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Component.PlayMode")]
@@ -8,6 +10,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Velvet.Tests.Reconciler.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Reconciler.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Routing.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Routing.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Store.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Store.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Styling.Editor")]

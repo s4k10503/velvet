@@ -6,6 +6,8 @@ using System.Runtime.CompilerServices;
 // name the internal type is exactly the one that would otherwise hand-roll the helper, and a grant missing
 // here surfaces as CS1061 on the helper with nothing pointing at the real cause. TestUtilities is a dev-only
 // assembly (stripped from the published UPM package), so this widening never reaches consumers.
+[assembly: InternalsVisibleTo("Velvet.Tests.Async.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Async.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Component.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Component.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Hooks.Editor")]
@@ -13,6 +15,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Velvet.Tests.Reconciler.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Reconciler.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Routing.Editor")]
+[assembly: InternalsVisibleTo("Velvet.Tests.Routing.PlayMode")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Store.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Styling.Editor")]
 [assembly: InternalsVisibleTo("Velvet.Tests.Styling.PlayMode")]

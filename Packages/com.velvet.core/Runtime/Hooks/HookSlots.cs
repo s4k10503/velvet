@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -149,7 +148,7 @@ namespace Velvet
     internal sealed class HookMutationSlot<TVariables, TData> : HookMutationSlot
     {
         public MutationResult<TVariables, TData> Result { get; init; } = null!;
-        public Func<TVariables, CancellationToken, UniTask<TData>> MutationFn { get; set; } = null!;
+        public Func<TVariables, CancellationToken, VelvetTask<TData>> MutationFn { get; set; } = null!;
         public Action<TData, TVariables>? OnSuccess { get; set; }
         public Action<Exception, TVariables>? OnError { get; set; }
         public CancellationTokenSource? Cts { get; set; }
