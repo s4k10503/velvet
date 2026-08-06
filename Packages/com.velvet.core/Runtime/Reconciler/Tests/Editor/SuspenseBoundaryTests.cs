@@ -39,7 +39,8 @@ namespace Velvet.Tests
     /// <item>A primary that suspends rolls back cleanly: a childless poolable leaf it created is reclaimed into the
     /// pool, a child-bearing container orphan is left for GC (not pooled), and a container orphan's deferred child
     /// layout effect never runs against the dead orphan; on resume the primary subtree is rebuilt and its effect
-    /// runs exactly once.</item>
+    /// runs exactly once. A <c>V.Custom&lt;T&gt;</c> orphan is a container for this purpose whatever <c>T</c> is,
+    /// so its child fiber is disposed too.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -578,6 +579,24 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_SuspendedPrimaryWithCustomLeafSubclassFiber_When_RolledBack_Then_DeferredChildEffectDoesNotRun()
+        {
+            // Arrange — V.Custom<T> declares children for any T, so a subclass of a poolable primitive holds an
+            // inline-expanded child fiber exactly as a Div does, and the rollback owes it the same disposal.
+            s_customLeafOrphanEffectMountCount = 0;
+            s_customLeafOrphanEffectCleanupCount = 0;
+            var source = new UniTaskCompletionSource<string>();
+            s_asyncChildFactory = _ => source.Task;
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(CustomLeafOrphanFiberSuspenseHostRender, key: "host"));
+
+            // Assert
+            Assert.That((s_customLeafOrphanEffectMountCount, s_customLeafOrphanEffectCleanupCount), Is.EqualTo((0, 0)),
+                "A suspended primary's custom-leaf-orphan child layout effect never runs, so no cleanup pairs against it");
+        }
+
+        [Test]
         public void Given_SuspendedPrimaryWithContainerFiber_When_Resolved_Then_FreshChildEffectRunsOnce()
         {
             // Arrange
@@ -672,6 +691,37 @@ namespace Velvet.Tests
                     V.Div(children: new VNode[]
                     {
                         V.Component(LeadingEffectChildRender, key: "leading"),
+                    }),
+                    V.Component(SuspenseAsyncChildRender, key: "child"),
+                });
+
+        private sealed class ProbeLabel : Label
+        {
+        }
+
+        private static int s_customLeafOrphanEffectMountCount;
+        private static int s_customLeafOrphanEffectCleanupCount;
+
+        [Component]
+        private static VNode CustomLeafOrphanEffectChildRender()
+        {
+            Hooks.UseLayoutEffect(() =>
+            {
+                s_customLeafOrphanEffectMountCount++;
+                return () => s_customLeafOrphanEffectCleanupCount++;
+            }, Array.Empty<object>());
+            return V.Label(text: "custom-leaf-effect");
+        }
+
+        [Component]
+        private static VNode CustomLeafOrphanFiberSuspenseHostRender()
+            => V.Suspense(
+                fallback: V.Label(text: "loading"),
+                children: new VNode[]
+                {
+                    V.Custom<ProbeLabel>(children: new VNode[]
+                    {
+                        V.Component(CustomLeafOrphanEffectChildRender, key: "leading"),
                     }),
                     V.Component(SuspenseAsyncChildRender, key: "child"),
                 });

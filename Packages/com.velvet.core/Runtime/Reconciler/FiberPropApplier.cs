@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -48,8 +49,50 @@ namespace Velvet
 
         private static readonly int s_hiddenPriority = StyleLayerPriority.ImportantOf(StyleLayerPriority.Base);
 
+        // Unlike ApplyEnabled / ApplyTabIndex / ApplyDelegatesFocus, a dropped Focusable cannot coalesce to a
+        // constant: what an absent prop has to restore is the element's own constructed value, which differs by
+        // type — FiberElementPoolReset.ResetCommonState writes one answer and every widget helper but the Label
+        // one overwrites it — and which no table can answer for a V.Custom<T> type. The element is asked instead
+        // of a table: the create path never writes an absent Focusable (FiberElementFactory.ApplyProps guards on
+        // HasValue), so the value standing here before the first declared write is that default. Recording it at
+        // the first declared write is what makes that ordering hold; recording later would capture a declared
+        // value as the default. Any other writer of a mounted element's focusable owes RecordFocusableDefault
+        // first, for the same reason.
         public static void ApplyFocusable(VisualElement element, bool? focusable)
-            => element.focusable = focusable ?? true;
+        {
+            if (focusable.HasValue)
+            {
+                RecordFocusableDefault(element);
+                element.focusable = focusable.Value;
+                return;
+            }
+
+            // No record means no declared value was ever written, so the element still carries its own default.
+            if (s_focusableDefaults.TryGetValue(element, out var recorded))
+            {
+                element.focusable = recorded.Value;
+            }
+        }
+
+        // Callers writing focusable outside the prop path must run this before their write, or the value they
+        // are about to install becomes what a Focusable prop first declared afterwards records as the
+        // element's own. Idempotent: the first record for an element is the one that stands.
+        internal static void RecordFocusableDefault(VisualElement element)
+        {
+            if (!s_focusableDefaults.TryGetValue(element, out _))
+            {
+                s_focusableDefaults.Add(element, new FocusableDefault(element.focusable));
+            }
+        }
+
+        private sealed class FocusableDefault
+        {
+            public readonly bool Value;
+
+            public FocusableDefault(bool value) => Value = value;
+        }
+
+        private static readonly ConditionalWeakTable<VisualElement, FocusableDefault> s_focusableDefaults = new();
 
         public static void ApplyTabIndex(VisualElement element, int? tabIndex)
             => element.tabIndex = tabIndex ?? 0;

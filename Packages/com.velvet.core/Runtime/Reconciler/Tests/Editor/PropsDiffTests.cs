@@ -14,6 +14,8 @@ namespace Velvet.Tests
     /// written to the element on patch; a value set to null clears the corresponding property.</item>
     /// <item>A changed choices collection (dropdown, radio group) replaces the element's choices.</item>
     /// <item>A <c>Visible = false</c> prop adds the reserved hidden class to the element.</item>
+    /// <item>A <c>Focusable</c> prop that a later render drops restores the value the element was constructed
+    /// with, from either declared value, rather than coalescing to a constant.</item>
     /// <item>The class list is reconciled by diffing old against new: only the symmetric difference is
     /// applied, removed classes leave and added classes enter while unchanged ones stay. The diff uses
     /// a linear comparison when both sides hold at most eight classes and a HashSet beyond that, with
@@ -181,6 +183,46 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(Root.ElementAt(0).tooltip, Is.EqualTo(string.Empty));
+        }
+
+        [Test]
+        public void Given_FocusableTrue_When_PatchedToUnset_Then_ElementConstructedValueRestored()
+        {
+            // Arrange — the mount render declares the Div focusable; the next render drops the prop entirely,
+            // which must hand the element back to the value it was constructed with rather than strand the
+            // declared one (a Div a later render never asks for stays a Tab stop otherwise).
+            var oldTree = new VNode[] { V.Div(props: new FiberElementProps { Focusable = true }) };
+            var newTree = new VNode[] { V.Div() };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = Root.ElementAt(0);
+            var whileDeclared = element.focusable;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the first term keeps the declaration load-bearing: a mount that never applied it would
+            // leave the drop with nothing to undo.
+            Assert.That((whileDeclared, element.focusable), Is.EqualTo((true, false)),
+                "Dropping Focusable restores the element's constructed value, which a Div does not have set");
+        }
+
+        [Test]
+        public void Given_FocusableFalse_When_PatchedToUnset_Then_ElementNotMadeFocusable()
+        {
+            // Arrange — no render in this sequence ever asks for a focusable Div, so the drop must not be the
+            // render that grants it.
+            var oldTree = new VNode[] { V.Div(props: new FiberElementProps { Focusable = false }) };
+            var newTree = new VNode[] { V.Div() };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = Root.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the first term keeps the patch load-bearing: a drop served by replacing the element
+            // instead of patching it would leave a fresh Div here, which is non-focusable for another reason.
+            Assert.That((ReferenceEquals(Root.ElementAt(0), element), element.focusable), Is.EqualTo((true, false)),
+                "Dropping Focusable never adds focusability the declarations did not ask for");
         }
 
         [Test]
