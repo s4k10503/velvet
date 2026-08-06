@@ -98,8 +98,6 @@ namespace Velvet
         public static int ImportantOf(int priority) => Important + priority;
         #endregion
 
-        // The layer priority a stacked variant's inner kind contributes; a composed arbitrary leaf
-        // (dark:hover:w-[200px]) layers at max(outer, inner) so it sits above either variant alone.
 #pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
         internal static int ForVariant(StyleVariantKind kind) => kind switch
         {
