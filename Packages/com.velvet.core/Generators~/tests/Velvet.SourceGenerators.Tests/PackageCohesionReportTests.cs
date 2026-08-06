@@ -1,22 +1,18 @@
 using System;
 using System.Linq;
+using Velvet.CohesionReport;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace Velvet.SourceGenerators.Tests
 {
     /// <summary>
-    /// Report-only cohesion and coupling metrics over the package's non-test sources. Nothing here fails on a
-    /// measured value — the output is for a reader choosing where to look next.
+    /// Guards the cohesion scanner and its formatters. Rankings are printed by
+    /// <c>scripts/test_quality/cohesion_report.py</c>, not here.
     /// </summary>
     public sealed class PackageCohesionReportTests
     {
         private const int OutlierCount = 15;
         private const int MinimumTypeCount = 400;
-
-        private readonly ITestOutputHelper _output;
-
-        public PackageCohesionReportTests(ITestOutputHelper output) => _output = output;
 
         [Fact]
         public void Given_ThePackageSources_When_TypeMetricsAreMeasured_Then_TheScanFoundTypesToReport()
@@ -32,26 +28,32 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
-        public void Given_ThePackageSources_When_TypeMetricsAreMeasured_Then_OutliersAreReported()
+        public void Given_TypeMetrics_When_OutliersAreFormatted_Then_TheLineNamesTheMetric()
         {
             // Arrange
             var types = PackageTypeMetrics.MeasureTypes().ToList();
 
             // Act
-            _output.WriteLine(
-                "Ca and Ce are syntax-level simple-name matches across files, not semantic references.");
-            _output.WriteLine(PackageTypeMetrics.FormatTypeOutliers(types, "LCOM1", t => t.Lcom1, OutlierCount));
-            _output.WriteLine(PackageTypeMetrics.FormatTypeOutliers(types, "LCOM HS", t => t.LcomHs, OutlierCount));
-            _output.WriteLine(PackageTypeMetrics.FormatTypeOutliers(types, "RFC", t => t.Rfc, OutlierCount));
-            _output.WriteLine(PackageTypeMetrics.FormatTypeOutliers(types, "Ce (syntax)", t => t.Ce, OutlierCount));
-            _output.WriteLine(PackageTypeMetrics.FormatTypeOutliers(types, "Ca (syntax)", t => t.Ca, OutlierCount));
-            _output.WriteLine(PackageTypeMetrics.FormatTypeOutliers(
-                types, "instability", t => t.Instability, OutlierCount));
-            _output.WriteLine(PackageTypeMetrics.FormatTypeOutliers(types, "lines", t => t.Lines, OutlierCount));
-            var reported = true;
+            var formatted = PackageTypeMetrics.FormatTypeOutliers(types, "LCOM HS", t => t.LcomHs, OutlierCount);
 
             // Assert
-            Assert.True(reported);
+            Assert.StartsWith("LCOM HS:", formatted);
+        }
+
+        [Fact]
+        public void Given_EnoughTypes_When_OutliersAreFormatted_Then_TheTopNListHasNEntries()
+        {
+            // Arrange
+            var types = PackageTypeMetrics.MeasureTypes().ToList();
+            Assume.NotEmpty(types, "package types were located");
+
+            // Act
+            var formatted = PackageTypeMetrics.FormatTypeOutliers(types, "lines", t => t.Lines, OutlierCount);
+            var entries = formatted[(formatted.IndexOf(':') + 1)..]
+                .Split("; ", StringSplitOptions.RemoveEmptyEntries);
+
+            // Assert
+            Assert.Equal(OutlierCount, entries.Length);
         }
 
         [Fact]
@@ -68,18 +70,18 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
-        public void Given_ThePackageAsmdefs_When_AssemblyMetricsAreMeasured_Then_CouplingIsReported()
+        public void Given_AssemblyMetrics_When_TheTableIsFormatted_Then_EveryAssemblyHasALine()
         {
             // Arrange
             var assemblies = PackageTypeMetrics.MeasureAssemblies().ToList();
+            Assume.NotEmpty(assemblies, "package assemblies were located");
 
             // Act
-            _output.WriteLine("Assembly Ca/Ce/instability from asmdef reference edges only.");
-            _output.WriteLine(PackageTypeMetrics.FormatAssemblyTable(assemblies));
-            var reported = true;
+            var formatted = PackageTypeMetrics.FormatAssemblyTable(assemblies);
+            var lines = formatted.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
 
             // Assert
-            Assert.True(reported);
+            Assert.Equal(assemblies.Count, lines.Length);
         }
     }
 }

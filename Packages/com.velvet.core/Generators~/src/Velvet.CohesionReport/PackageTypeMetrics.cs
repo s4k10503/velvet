@@ -7,7 +7,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Velvet.SourceGenerators.Tests
+namespace Velvet.CohesionReport
 {
     /// <summary>
     /// Syntax-level cohesion and coupling metrics over the package's non-test sources. Ca and Ce count
@@ -291,7 +291,7 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         private static string PackageRoot() =>
-            Path.GetFullPath(Path.Combine(SolutionPaths.GeneratorsRoot(), ".."));
+            Path.GetFullPath(Path.Combine(GeneratorsPaths.GeneratorsRoot(), ".."));
 
         private static List<string> PackageSourceFiles(string packageRoot) =>
             Directory.EnumerateFiles(packageRoot, "*.cs", SearchOption.AllDirectories)

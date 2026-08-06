@@ -64,6 +64,9 @@ jobs:
         working-directory: Packages/com.velvet.core/Generators~
         run: dotnet test Velvet.SourceGenerators.sln -c Release --nologo
 
+      - name: Cohesion report
+        run: python3 scripts/test_quality/cohesion_report.py
+
       - name: Duplication ratchet
         run: python3 scripts/test_quality/duplication_check.py
 

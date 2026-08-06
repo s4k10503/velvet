@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Velvet.SourceGenerators.Cod
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Velvet.StyleTable", "src\Velvet.StyleTable\Velvet.StyleTable.csproj", "{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000004}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Velvet.CohesionReport", "src\Velvet.CohesionReport\Velvet.CohesionReport.csproj", "{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Velvet.SourceGenerators.Bootstrap", "src\Velvet.SourceGenerators.Bootstrap\Velvet.SourceGenerators.Bootstrap.csproj", "{F4E01174-1DFB-4C41-A7E5-1216190F13FB}"
@@ -71,6 +73,18 @@ Global
 		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000004}.Release|x64.Build.0 = Release|Any CPU
 		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000004}.Release|x86.ActiveCfg = Release|Any CPU
 		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000004}.Release|x86.Build.0 = Release|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Debug|x64.Build.0 = Debug|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Debug|x86.Build.0 = Debug|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Release|x64.ActiveCfg = Release|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Release|x64.Build.0 = Release|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Release|x86.ActiveCfg = Release|Any CPU
+		{4C2B0E5A-1A1A-4D3D-9E0F-AAA000000005}.Release|x86.Build.0 = Release|Any CPU
 		{F4E01174-1DFB-4C41-A7E5-1216190F13FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{F4E01174-1DFB-4C41-A7E5-1216190F13FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F4E01174-1DFB-4C41-A7E5-1216190F13FB}.Debug|x64.ActiveCfg = Debug|Any CPU
