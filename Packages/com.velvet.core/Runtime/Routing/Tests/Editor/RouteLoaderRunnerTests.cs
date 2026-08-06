@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 using Velvet;
@@ -64,7 +63,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var runner = new RouteLoaderRunner();
-            var matches = MakeMatch("test", loader: (ctx, ct) => UniTask.FromResult<object>("loaded-data"));
+            var matches = MakeMatch("test", loader: (ctx, ct) => VelvetTask.FromResult<object>("loaded-data"));
 
             // Act
             var (_, allCompleted) = runner.RunLoadersSync(matches, CancellationToken.None);
@@ -78,7 +77,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var runner = new RouteLoaderRunner();
-            var matches = MakeMatch("test", loader: (ctx, ct) => UniTask.FromResult<object>("loaded-data"));
+            var matches = MakeMatch("test", loader: (ctx, ct) => VelvetTask.FromResult<object>("loaded-data"));
 
             // Act
             var (results, _) = runner.RunLoadersSync(matches, CancellationToken.None);
@@ -96,7 +95,7 @@ namespace Velvet.Tests
         {
             // Arrange
             var runner = new RouteLoaderRunner();
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
 
             // Act
@@ -108,11 +107,11 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoader_When_TaskResolves_Then_FiresOnCompletedWithPathAndResult()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var runner = new RouteLoaderRunner();
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             string completedPath = null;
             object completedResult = null;
             runner.OnSuspendLoaderCompleted += (path, result) =>
@@ -126,7 +125,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetResult("deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That((completedPath, completedResult), Is.EqualTo(("test", (object)"deferred-data")));
@@ -134,17 +133,17 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoader_When_TaskResolves_Then_ActiveTaskCountReturnsToZero()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var runner = new RouteLoaderRunner();
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
             runner.RunLoadersSync(matches, CancellationToken.None);
 
             // Act
             tcs.TrySetResult("deferred-data");
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0), "The finally block decrements the live-task counter");
@@ -152,11 +151,11 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoader_When_TaskFails_Then_FiresOnFailedWithPathAndException()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var runner = new RouteLoaderRunner();
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             string failedPath = null;
             Exception failedException = null;
             runner.OnSuspendLoaderFailed += (path, ex) =>
@@ -170,7 +169,7 @@ namespace Velvet.Tests
 
             // Act
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That((failedPath, failedException?.Message), Is.EqualTo(("fail", "deferred-failure")));
@@ -178,17 +177,17 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoader_When_TaskFails_Then_RecordsErrorKeyedByRouteId()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var runner = new RouteLoaderRunner();
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var matches = MakeMatch("fail", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
             runner.RunLoadersSync(matches, CancellationToken.None);
 
             // Act
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(runner.Errors["fail"].Message, Does.Contain("deferred-failure"));
@@ -196,29 +195,103 @@ namespace Velvet.Tests
 
         [UnityTest]
         public IEnumerator Given_SuspendLoader_When_TaskFails_Then_ActiveTaskCountReturnsToZero()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var runner = new RouteLoaderRunner();
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var matches = MakeMatch("fail", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
             runner.RunLoadersSync(matches, CancellationToken.None);
 
             // Act
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
-            await UniTask.Yield();
+            await VelvetTask.Yield();
 
             // Assert
             Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0), "The finally block decrements the counter even on failure");
         });
 
+        [Test]
+        public void Given_SuspendLoaderCompletingSynchronously_When_CompletionHandlerThrows_Then_ActiveTaskCountReturnsToZero()
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            runner.OnSuspendLoaderCompleted += (_, _) => throw new InvalidOperationException("handler-threw");
+            var matches = MakeMatch("test",
+                loader: (ctx, ct) => VelvetTask.FromResult<object>("sync-data"),
+                loaderMode: LoaderMode.Suspend);
+            LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("handler-threw"));
+
+            // Act
+            try
+            {
+                runner.RunLoadersSync(matches, CancellationToken.None);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert
+            Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_SuspendLoaderCompletingSynchronously_When_CompletionHandlerThrows_Then_DoesNotRecordLoadError()
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            runner.OnSuspendLoaderCompleted += (_, _) => throw new InvalidOperationException("handler-threw");
+            var matches = MakeMatch("test",
+                loader: (ctx, ct) => VelvetTask.FromResult<object>("sync-data"),
+                loaderMode: LoaderMode.Suspend);
+            LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("handler-threw"));
+
+            // Act
+            try
+            {
+                runner.RunLoadersSync(matches, CancellationToken.None);
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert
+            Assert.That(runner.Errors.ContainsKey("test"), Is.False);
+        }
+
+        [UnityTest]
+        public IEnumerator Given_SuspendLoader_When_DeferredCompletionAndHandlerThrows_Then_ActiveTaskCountReturnsToZero()
+            => VelvetTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var tcs = new VelvetTaskCompletionSource<object>();
+            runner.OnSuspendLoaderCompleted += (_, _) => throw new InvalidOperationException("handler-threw");
+            var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
+            runner.RunLoadersSync(matches, CancellationToken.None);
+            Assume.That(runner.ActiveSuspendTaskCount, Is.EqualTo(1), "Precondition: deferred task is live");
+            LogAssert.Expect(UnityEngine.LogType.Exception, new System.Text.RegularExpressions.Regex("handler-threw"));
+
+            // Act
+            try
+            {
+                tcs.TrySetResult("deferred-data");
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Assert
+            Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0));
+        });
+
         [UnityTest]
         public IEnumerator Given_LiveSuspendLoader_When_CancelPendingAndLoaderHonorsToken_Then_ActiveTaskCountReturnsToZero()
-            => UniTask.ToCoroutine(async () =>
+            => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange — the loader honors the token: it cancels its task when the CancellationToken fires.
             var runner = new RouteLoaderRunner();
-            var tcs = new UniTaskCompletionSource<object>();
+            var tcs = new VelvetTaskCompletionSource<object>();
             var matches = MakeMatch("honor-ct",
                 loader: (ctx, ct) =>
                 {
@@ -231,8 +304,6 @@ namespace Velvet.Tests
 
             // Act
             runner.CancelPending();
-            await UniTask.Yield();
-
             // Assert
             Assert.That(runner.ActiveSuspendTaskCount, Is.EqualTo(0), "A token-honoring loader unwinds and the counter returns to zero");
         });
@@ -250,7 +321,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("test", loader: (ctx, ct) =>
             {
                 capturedToken = ct;
-                return UniTask.FromResult<object>("data");
+                return VelvetTask.FromResult<object>("data");
             });
 
             // Act
@@ -269,7 +340,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("test", loader: (ctx, ct) =>
             {
                 capturedToken = ct;
-                return UniTask.FromResult<object>("data");
+                return VelvetTask.FromResult<object>("data");
             });
             runner.RunLoadersSync(matches, CancellationToken.None);
             Assume.That(capturedToken.CanBeCanceled, Is.True, "Precondition: the loader received a cancelable token");

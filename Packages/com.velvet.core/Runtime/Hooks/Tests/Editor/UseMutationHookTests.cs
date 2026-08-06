@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Text.RegularExpressions;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -39,14 +38,14 @@ namespace Velvet.Tests
     {
         private VisualElement _root = null!;
         private static MutationResult<int, int>? s_captured;
-        private static Func<int, CancellationToken, UniTask<int>> s_mutationFn = (v, _) => UniTask.FromResult(v * 2);
+        private static Func<int, CancellationToken, VelvetTask<int>> s_mutationFn = (v, _) => VelvetTask.FromResult(v * 2);
 
         [SetUp]
         public void SetUp()
         {
             _root = new VisualElement();
             s_captured = null;
-            s_mutationFn = (v, _) => UniTask.FromResult(v * 2);
+            s_mutationFn = (v, _) => VelvetTask.FromResult(v * 2);
             s_onErrorCount = 0;
             s_voidCaptured = null;
             s_noInputCaptured = null;
@@ -78,7 +77,7 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_IdleMutation_When_MutateAsyncSucceeds_Then_StatusIsSuccess() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_IdleMutation_When_MutateAsyncSucceeds_Then_StatusIsSuccess() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "success"));
@@ -92,7 +91,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_IdleMutation_When_MutateAsyncSucceeds_Then_ExposesResultAndVariables() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_IdleMutation_When_MutateAsyncSucceeds_Then_ExposesResultAndVariables() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "success-fields"));
@@ -108,7 +107,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_ThrowingMutation_When_MutateAsync_Then_StatusIsError() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_ThrowingMutation_When_MutateAsync_Then_StatusIsError() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var failingException = new InvalidOperationException("simulated");
@@ -124,7 +123,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_ThrowingMutation_When_MutateAsync_Then_RethrowsAndRetainsException() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_ThrowingMutation_When_MutateAsync_Then_RethrowsAndRetainsException() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var failingException = new InvalidOperationException("simulated");
@@ -142,7 +141,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_ThrowingMutation_When_FireAndForgetMutate_Then_DeliversOnErrorWithoutUnobservedException() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_ThrowingMutation_When_FireAndForgetMutate_Then_DeliversOnErrorWithoutUnobservedException() => VelvetTask.ToCoroutine(async () =>
         {
             // Fire-and-forget Mutate reports a failure through onError / the Error status
             // only. Unlike MutateAsync it has no awaiter, so it must NOT rethrow — a rethrow on the .Forget()
@@ -156,8 +155,8 @@ namespace Velvet.Tests
 
             // Act
             s_captured!.Mutate(1);
-            await UniTask.Yield();
-            await UniTask.Yield();
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
             mounted.FlushStateForTest();
 
             // Assert
@@ -166,7 +165,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_SucceededMutation_When_Reset_Then_RestoresIdleState() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_SucceededMutation_When_Reset_Then_RestoresIdleState() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "reset"));
@@ -211,15 +210,15 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_VoidReturnOverload_When_MutateAsync_Then_CompletesWithUnitData() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_VoidReturnOverload_When_MutateAsync_Then_CompletesWithUnitData() => VelvetTask.ToCoroutine(async () =>
         {
-            // Arrange — the void-return overload adapts to a Unit result so the caller's function returns UniTask.
+            // Arrange — the void-return overload adapts to a Unit result so the caller's function returns VelvetTask.
             var observedInput = 0;
             s_voidCaptured = null;
             using var mounted = V.Mount(_root, V.Component(() =>
             {
                 s_voidCaptured = Hooks.UseMutation(new MutationOptions<int>(
-                    MutationFn: (v, _) => { observedInput = v; return UniTask.CompletedTask; }));
+                    MutationFn: (v, _) => { observedInput = v; return VelvetTask.CompletedTask; }));
                 return V.Label(text: "void");
             }, key: "void"));
 
@@ -234,7 +233,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_NoInputVoidOverload_When_MutateAsync_Then_RunsAndSucceeds() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_NoInputVoidOverload_When_MutateAsync_Then_RunsAndSucceeds() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange — the no-input void overload adapts to a Unit/Unit result; MutateAsync() takes no argument.
             var invoked = false;
@@ -242,7 +241,7 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(() =>
             {
                 s_noInputCaptured = Hooks.UseMutation(new MutationOptions(
-                    MutationFn: _ => { invoked = true; return UniTask.CompletedTask; }));
+                    MutationFn: _ => { invoked = true; return VelvetTask.CompletedTask; }));
                 return V.Label(text: "noinput");
             }, key: "noinput"));
 
@@ -256,11 +255,11 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_ConcurrentMutations_When_LatestCompletes_Then_FinalStateComesFromLatestCall() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_ConcurrentMutations_When_LatestCompletes_Then_FinalStateComesFromLatestCall() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange — the first call's token is superseded by the second; the latest call wins.
-            var first = new UniTaskCompletionSource<int>();
-            var second = new UniTaskCompletionSource<int>();
+            var first = new VelvetTaskCompletionSource<int>();
+            var second = new VelvetTaskCompletionSource<int>();
             var callIndex = 0;
             s_mutationFn = (v, ct) => { callIndex++; return callIndex == 1 ? first.Task : second.Task; };
             using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "concurrent"));
@@ -271,7 +270,7 @@ namespace Velvet.Tests
             second.TrySetResult(99);
             var winnerResult = await secondTask;
             mounted.FlushStateForTest();
-            first.TrySetCanceled(); // drain the orphaned first call
+            first.TrySetResult(0); // drain the orphaned first call
             await firstTask;
 
             // Assert
@@ -281,10 +280,10 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_InFlightMutation_When_ComponentUnmounted_Then_CallerObservesResult() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_InFlightMutation_When_ComponentUnmounted_Then_CallerObservesResult() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var gate = new UniTaskCompletionSource<int>();
+            var gate = new VelvetTaskCompletionSource<int>();
             s_mutationFn = (_, _) => gate.Task;
             var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "unmount-observe"));
             var captured = s_captured!;
@@ -300,7 +299,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_StatusIsError() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_StatusIsError() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_onSuccessThrowException = new InvalidOperationException("onSuccess");
@@ -316,7 +315,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_ResultErrorIsHandlerException() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_ResultErrorIsHandlerException() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_onSuccessThrowException = new InvalidOperationException("onSuccess");
@@ -335,7 +334,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_OnErrorRuns() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_OnErrorRuns() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_onSuccessThrowException = new InvalidOperationException("onSuccess");
@@ -352,7 +351,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_MutateAsyncRethrowsHandlerException() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_MutateAsyncRethrowsHandlerException() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_onSuccessThrowException = new InvalidOperationException("onSuccess");
@@ -369,7 +368,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_SucceededMutation_When_OnSuccessThrowsOnFireAndForgetMutate_Then_OnErrorRunsWithoutUnobservedException() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrowsOnFireAndForgetMutate_Then_OnErrorRunsWithoutUnobservedException() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             s_onSuccessThrowException = new InvalidOperationException("onSuccess");
@@ -378,8 +377,8 @@ namespace Velvet.Tests
 
             // Act
             s_captured!.Mutate(21);
-            await UniTask.Yield();
-            await UniTask.Yield();
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
             mounted.FlushStateForTest();
 
             // Assert
@@ -388,7 +387,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_FailingMutation_When_OnErrorThrows_Then_StatusRemainsErrorWithMutationException() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_FailingMutation_When_OnErrorThrows_Then_StatusRemainsErrorWithMutationException() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var failingException = new InvalidOperationException("mutation");
@@ -407,7 +406,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_FailingMutation_When_OnErrorThrowsOnFireAndForgetMutate_Then_LogsWithoutDisturbingOutcome() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_FailingMutation_When_OnErrorThrowsOnFireAndForgetMutate_Then_LogsWithoutDisturbingOutcome() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var failingException = new InvalidOperationException("mutation");
@@ -418,8 +417,8 @@ namespace Velvet.Tests
 
             // Act
             s_captured!.Mutate(1);
-            await UniTask.Yield();
-            await UniTask.Yield();
+            await VelvetTask.Yield();
+            await VelvetTask.Yield();
             mounted.FlushStateForTest();
 
             // Assert
@@ -429,7 +428,7 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_FailingMutation_When_OnErrorThrows_Then_MutateAsyncRethrowsMutationException() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_FailingMutation_When_OnErrorThrows_Then_MutateAsyncRethrowsMutationException() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
             var failingException = new InvalidOperationException("mutation");
@@ -449,10 +448,10 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_InFlightMutation_When_ComponentUnmounted_Then_DisposedFiberNotSetToSuccess() => UniTask.ToCoroutine(async () =>
+        public IEnumerator Given_InFlightMutation_When_ComponentUnmounted_Then_DisposedFiberNotSetToSuccess() => VelvetTask.ToCoroutine(async () =>
         {
             // Arrange
-            var gate = new UniTaskCompletionSource<int>();
+            var gate = new VelvetTaskCompletionSource<int>();
             s_mutationFn = (_, _) => gate.Task;
             var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "unmount-nostate"));
             var captured = s_captured!;
@@ -511,7 +510,7 @@ namespace Velvet.Tests
         public static VNode CaptureUnitMutationRender()
         {
             _ = Hooks.UseMutation(new MutationOptions<Unit, Unit>(
-                MutationFn: (_, _) => UniTask.FromResult(Unit.Default)));
+                MutationFn: (_, _) => VelvetTask.FromResult(Unit.Default)));
             return V.Label(text: "ok");
         }
 

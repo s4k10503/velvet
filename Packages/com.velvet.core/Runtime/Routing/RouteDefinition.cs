@@ -1,6 +1,5 @@
 using System;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -26,7 +25,7 @@ namespace Velvet
         public string? ScopeId { get; init; }
 
         /// <summary>Async data loader run when this route matches; its result is read via <c>UseLoaderData</c>. See <see cref="LoaderMode"/>.</summary>
-        public Func<RouteLoaderContext, CancellationToken, UniTask<object>>? Loader { get; init; }
+        public Func<RouteLoaderContext, CancellationToken, VelvetTask<object>>? Loader { get; init; }
 
         /// <summary>How <see cref="Loader"/> is sequenced relative to the navigation commit. Defaults to <see cref="LoaderMode.Await"/>.</summary>
         public LoaderMode LoaderMode { get; init; } = LoaderMode.Await;

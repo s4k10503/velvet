@@ -72,6 +72,8 @@ namespace Velvet
     public sealed class NavigationAttempt { }
     public sealed class RouteBlockerState { }
 
+    public readonly struct VelvetTask<T> { }
+
     public static partial class V
     {
         public static MemoNode Memoized(global::System.Func<VNode> factory, params object[] deps) =>
@@ -116,7 +118,7 @@ namespace Velvet
             global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock, params object[] deps) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
-                global::Cysharp.Threading.Tasks.UniTask<bool>> shouldBlock, params object[] deps) => null;
+                global::Velvet.VelvetTask<bool>> shouldBlock, params object[] deps) => null;
         public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(T initial) =>
             (initial, default);
         public static (T value, global::Velvet.StateUpdater<T> setValue) UseState<T>(global::System.Func<T> initialFactory) =>
@@ -141,12 +143,6 @@ namespace Velvet
         public static void UseImperativeHandle<THandle>(
             global::Velvet.Ref<THandle> handleRef, global::System.Func<THandle> factory, params object[] deps) where THandle : class { }
     }
-}
-
-namespace Cysharp.Threading.Tasks
-{
-    // Stands in for the real UniTask<T> so UseBlocker's async overload keeps its true arity here.
-    public struct UniTask<T> { }
 }
 ";
 

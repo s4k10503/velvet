@@ -164,8 +164,6 @@ def build_notes(
     highlights, remainder = unwrap_soft_breaks(highlights), unwrap_soft_breaks(remainder)
 
     package_url = f"https://github.com/{repo}.git#{install_tag}"
-    # UniTask is a peer dependency package.json deliberately does not declare, so an install from
-    # this snippet alone does not compile. The README owns the reason and the full manifest.
     install_guide = f"https://github.com/{repo}/blob/{install_tag}/README.md#installation"
     parts = [
         f"## {HIGHLIGHTS_TITLE}",
@@ -180,8 +178,7 @@ def build_notes(
         f'"com.velvet.core": "{package_url}"',
         "```",
         "",
-        f"Requires Unity {unity_version} or newer, and [UniTask](https://github.com/Cysharp/UniTask) "
-        f"already in the project — see [Installation]({install_guide}) for the full manifest.",
+        f"Requires Unity {unity_version} or newer — see [Installation]({install_guide}) for details.",
         "",
         "<details>",
         "<summary><b>Full changelog</b></summary>",

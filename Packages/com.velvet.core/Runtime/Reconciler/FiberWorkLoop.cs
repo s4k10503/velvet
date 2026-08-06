@@ -489,8 +489,8 @@ namespace Velvet
         // fiber: Fiber whose updates are demoted to Transition priority.
         // asyncUpdates: Async action whose state mutations run at Transition priority. Must not be null.
         // A task that completes when asyncUpdates has fully run.
-        public static async Cysharp.Threading.Tasks.UniTask StartTransition(
-            ComponentFiber fiber, HookTransitionSlot slot, Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates)
+        public static async VelvetTask StartTransition(
+            ComponentFiber fiber, HookTransitionSlot slot, Func<VelvetTask> asyncUpdates)
         {
             if (asyncUpdates == null) throw new ArgumentNullException(nameof(asyncUpdates));
 

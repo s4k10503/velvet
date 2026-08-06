@@ -2,8 +2,7 @@
     "name": "Velvet.Samples.StarterApp",
     "rootNamespace": "Velvet.Samples.StarterApp",
     "references": [
-        "Velvet",
-        "UniTask"
+        "Velvet"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

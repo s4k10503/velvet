@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -32,7 +31,7 @@ namespace Velvet
         /// </summary>
         /// <param name="shouldBlock">Async function that receives a navigation attempt and returns true to block.</param>
         /// <param name="state">State object for this blocker. <see cref="RouteBlockerState.Block"/> is invoked when blocking.</param>
-        public IDisposable Register(Func<NavigationAttempt, CancellationToken, UniTask<bool>> shouldBlock, RouteBlockerState state)
+        public IDisposable Register(Func<NavigationAttempt, CancellationToken, VelvetTask<bool>> shouldBlock, RouteBlockerState state)
         {
             var entry = new BlockerEntry { AsyncCheck = shouldBlock, State = state };
             _blockers.Add(entry);
@@ -50,7 +49,7 @@ namespace Velvet
         /// When multiple Blockers are registered, every one of them is evaluated (no short-circuit).
         /// Every Blocker that blocks transitions its State to Blocked.
         /// </remarks>
-        internal async UniTask<bool> CheckAsync(NavigationAttempt attempt, CancellationToken cancellationToken = default)
+        internal async VelvetTask<bool> CheckAsync(NavigationAttempt attempt, CancellationToken cancellationToken = default)
         {
             var anyBlocked = false;
             // ToArray() snapshots the list so a blocker that unregisters during an await does not mutate it.
@@ -122,7 +121,7 @@ namespace Velvet
         private sealed class BlockerEntry
         {
             public Func<NavigationAttempt, bool>? SyncCheck;
-            public Func<NavigationAttempt, CancellationToken, UniTask<bool>>? AsyncCheck;
+            public Func<NavigationAttempt, CancellationToken, VelvetTask<bool>>? AsyncCheck;
             public RouteBlockerState State = null!;
         }
 

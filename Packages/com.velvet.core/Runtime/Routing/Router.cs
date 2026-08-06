@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -128,7 +127,7 @@ namespace Velvet
         /// <see cref="NavigationResult.Cancelled"/> when concurrent navigation or the cancellation token aborts it,
         /// or <see cref="NavigationResult.Error"/> on Loader failure or redirect overflow.
         /// </returns>
-        public UniTask<NavigationResult> NavigateAsync(
+        public VelvetTask<NavigationResult> NavigateAsync(
             string path,
             NavigationMode mode = NavigationMode.Push,
             CancellationToken cancellationToken = default) =>
@@ -141,7 +140,7 @@ namespace Velvet
         /// caller's Outlet depth here so a relative target anchors at the caller's route level;
         /// <c>-1</c> falls back to the leaf route.
         /// </summary>
-        public UniTask<NavigationResult> NavigateAsync(
+        public VelvetTask<NavigationResult> NavigateAsync(
             string path,
             NavigationMode mode,
             int baseRouteIndex,
@@ -255,7 +254,7 @@ namespace Velvet
             return FoldSegments(baseSegments, path.Split('/', StringSplitOptions.RemoveEmptyEntries), 0);
         }
 
-        private async UniTask<NavigationResult> NavigateInternalAsync(
+        private async VelvetTask<NavigationResult> NavigateInternalAsync(
             string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
@@ -302,7 +301,7 @@ namespace Velvet
             }
         }
 
-        private async UniTask<NavigationResult> NavigateCore(
+        private async VelvetTask<NavigationResult> NavigateCore(
             string? path,
             NavigationMode mode,
             CancellationToken cancellationToken,
@@ -388,7 +387,7 @@ namespace Velvet
         // This lets auth redirects bypass Blockers (such as unsaved-changes prompts), satisfying
         // the UX requirement of "do not show a leave-confirmation to unauthenticated users".
         // Returns null when no match redirected, so the caller falls through to the Blocker check.
-        private async UniTask<NavigationResult?> RunGuardChecks(
+        private async VelvetTask<NavigationResult?> RunGuardChecks(
             IReadOnlyList<RouteMatch> matches,
             string path,
             NavigationMode mode,
@@ -459,7 +458,7 @@ namespace Velvet
 
         // Returns null when the attempt is neither cancelled nor blocked, so the caller falls through
         // to the Loader phase.
-        private async UniTask<NavigationResult?> RunBlockerCheck(
+        private async VelvetTask<NavigationResult?> RunBlockerCheck(
             string path,
             NavigationMode mode,
             int savedHistoryIndex,
@@ -500,7 +499,7 @@ namespace Velvet
         // Returns null on a normal completion (cached or fresh), leaving _loaderData/_loaderErrors set
         // for CommitHistoryEntry; returns Cancelled only when a fresh (non-cached) loader run observes
         // cancellation.
-        private async UniTask<NavigationResult?> RunLoaderPhase(
+        private async VelvetTask<NavigationResult?> RunLoaderPhase(
             IReadOnlyList<RouteMatch> matches,
             NavigationMode mode,
             CancellationToken cancellationToken)
@@ -708,11 +707,11 @@ namespace Velvet
         /// </summary>
         /// <param name="cancellationToken">Token observed by Guards, Blockers, and Loaders to abort the navigation.</param>
         /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no previous entry.</returns>
-        public UniTask<NavigationResult> GoBack(CancellationToken cancellationToken = default)
+        public VelvetTask<NavigationResult> GoBack(CancellationToken cancellationToken = default)
         {
             if (!CanGoBack)
             {
-                return UniTask.FromResult(NavigationResult.Cancelled);
+                return VelvetTask.FromResult(NavigationResult.Cancelled);
             }
 
             var (path, _, _, _) = _history[_historyIndex - 1];
@@ -724,11 +723,11 @@ namespace Velvet
         /// </summary>
         /// <param name="cancellationToken">Token observed by Guards, Blockers, and Loaders to abort the navigation.</param>
         /// <returns>The <see cref="NavigationResult"/> from the underlying <see cref="NavigateAsync"/>, or <see cref="NavigationResult.Cancelled"/> when the history has no next entry.</returns>
-        public UniTask<NavigationResult> GoForward(CancellationToken cancellationToken = default)
+        public VelvetTask<NavigationResult> GoForward(CancellationToken cancellationToken = default)
         {
             if (!CanGoForward)
             {
-                return UniTask.FromResult(NavigationResult.Cancelled);
+                return VelvetTask.FromResult(NavigationResult.Cancelled);
             }
 
             var (path, _, _, _) = _history[_historyIndex + 1];

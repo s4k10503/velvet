@@ -48,9 +48,9 @@ ctor Velvet.MemoNode.ctor(): System.Void
 ctor Velvet.MemoizeMethodAttribute.ctor(): System.Void
 ctor Velvet.MotionNode.ctor(): System.Void
 ctor Velvet.MutableRef`1.ctor(T): System.Void
-ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask], System.Action, System.Action`1[System.Exception]): System.Void
-ctor Velvet.MutationOptions`1.ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask], System.Action`1[TVariables], System.Action`2[System.Exception, TVariables]): System.Void
-ctor Velvet.MutationOptions`2.ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[TData]], System.Action`2[TData, TVariables], System.Action`2[System.Exception, TVariables]): System.Void
+ctor Velvet.MutationOptions.ctor(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask], System.Action, System.Action`1[System.Exception]): System.Void
+ctor Velvet.MutationOptions`1.ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask], System.Action`1[TVariables], System.Action`2[System.Exception, TVariables]): System.Void
+ctor Velvet.MutationOptions`2.ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]], System.Action`2[TData, TVariables], System.Action`2[System.Exception, TVariables]): System.Void
 ctor Velvet.MutationResult`2.ctor(): System.Void
 ctor Velvet.Navigate+Props.ctor(System.String, System.Boolean): System.Void
 ctor Velvet.NavigationAttempt.ctor(): System.Void
@@ -102,6 +102,8 @@ ctor Velvet.VelvetPreviewAttribute.ctor(): System.Void
 ctor Velvet.VelvetPreviewHost.ctor(UnityEngine.UIElements.VisualElement): System.Void
 ctor Velvet.VelvetPreviewSetupAttribute.ctor(): System.Void
 ctor Velvet.VelvetRuntimeAssets.ctor(): System.Void
+ctor Velvet.VelvetTaskCompletionSource.ctor(): System.Void
+ctor Velvet.VelvetTaskCompletionSource`1.ctor(): System.Void
 ctor Velvet.VirtualListNode.ctor(System.Collections.Generic.IReadOnlyList`1[System.Object], System.Func`2[System.Object, System.String], System.Single, System.Func`2[System.Object, Velvet.VNode], System.Int32): System.Void
 ctor Velvet.WheelBinding.ctor(): System.Void
 ctor Velvet.WorldSpaceNode.ctor(): System.Void
@@ -236,6 +238,10 @@ field Velvet.VelvetFontWeightEntry.uprightAddress: System.String
 field Velvet.VelvetFontWeightEntry.weight: Velvet.VelvetFontWeight
 field Velvet.VelvetResponsive.ContainerClass: System.String
 field Velvet.VelvetStyleUtilities.DarkThemeClass: System.String
+field Velvet.VelvetTaskStatus.Canceled: Velvet.VelvetTaskStatus
+field Velvet.VelvetTaskStatus.Faulted: Velvet.VelvetTaskStatus
+field Velvet.VelvetTaskStatus.Pending: Velvet.VelvetTaskStatus
+field Velvet.VelvetTaskStatus.Succeeded: Velvet.VelvetTaskStatus
 method Velvet.AnimatePresenceNode.StaggerDelaySec(System.Int32, System.Int32): System.Single
 method Velvet.AnimationSequenceStep.Call(System.Action): Velvet.AnimationSequenceStep
 method Velvet.AnimationSequenceStep.To(System.String, Velvet.StyleTransitionConfig, System.Nullable`1[System.Single]): Velvet.AnimationSequenceStep
@@ -273,7 +279,7 @@ method Velvet.Hooks.StoreMemoizedVNode(System.Int32, System.Object[], Velvet.VNo
 method Velvet.Hooks.TryGetMemoizedVNode(System.Object[], System.Int32&, Velvet.VNode&): System.Boolean
 method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Boolean, System.Boolean, System.Object[]): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
 method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean], System.Object[]): Velvet.RouteBlockerState
-method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]], System.Object[]): Velvet.RouteBlockerState
+method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], System.Object[]): Velvet.RouteBlockerState
 method Velvet.Hooks.UseCallback`1(T): T
 method Velvet.Hooks.UseCallback`1(T, System.Object[]): T
 method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T
@@ -302,7 +308,7 @@ method Velvet.Hooks.UseMutableRef`1(T): Velvet.MutableRef`1[T]
 method Velvet.Hooks.UseMutation(Velvet.MutationOptions): Velvet.MutationResult`2[Velvet.Unit, Velvet.Unit]
 method Velvet.Hooks.UseMutation`1(Velvet.MutationOptions`1[TVariables]): Velvet.MutationResult`2[TVariables, Velvet.Unit]
 method Velvet.Hooks.UseMutation`2(Velvet.MutationOptions`2[TVariables, TData]): Velvet.MutationResult`2[TVariables, TData]
-method Velvet.Hooks.UseNavigate(System.Boolean): System.Func`2[System.String, Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]]
+method Velvet.Hooks.UseNavigate(System.Boolean): System.Func`2[System.String, Velvet.VelvetTask`1[Velvet.NavigationResult]]
 method Velvet.Hooks.UseNavigation(): Velvet.NavigationState
 method Velvet.Hooks.UseOptimistic`2(TState, System.Func`3[TState, TAction, TState]): System.ValueTuple`2[TState, System.Action`1[TAction]]
 method Velvet.Hooks.UseOutletContext`1(): T
@@ -318,8 +324,8 @@ method Velvet.Hooks.UseState`1(System.Func`1[T]): System.ValueTuple`2[T, Velvet.
 method Velvet.Hooks.UseState`1(T): System.ValueTuple`2[T, Velvet.StateUpdater`1[T]]
 method Velvet.Hooks.UseStore`2(Velvet.Store`1[TStore], System.Func`2[TStore, TSel], System.Collections.Generic.IEqualityComparer`1[TSel]): TSel
 method Velvet.Hooks.UseTransition(): System.ValueTuple`2[System.Boolean, Velvet.TransitionStarter]
-method Velvet.Hooks.Use`1(System.Func`1[Cysharp.Threading.Tasks.UniTask`1[T]], System.Object): T
-method Velvet.Hooks.Use`1(System.Func`2[System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[T]], System.Object): T
+method Velvet.Hooks.Use`1(System.Func`1[Velvet.VelvetTask`1[T]], System.Object): T
+method Velvet.Hooks.Use`1(System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask`1[T]], System.Object): T
 method Velvet.IHookServiceResolver.Resolve`1(): T
 method Velvet.IRouteScope.Resolve`1(): T
 method Velvet.IRouteScopeFactory.CreateScope(Velvet.RouteDefinition, Velvet.IRouteScope): Velvet.IRouteScope
@@ -329,10 +335,10 @@ method Velvet.ISearchParams.Has(System.String): System.Boolean
 method Velvet.IStoreWriter`1.Mutate(System.Func`2[TState, TState]): System.Void
 method Velvet.IStoreWriter`1.SetState(System.Func`2[TState, TState]): System.Boolean
 method Velvet.MountedTree.Dispose(): System.Void
-method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData]): Cysharp.Threading.Tasks.UniTask`1[TData]
+method Velvet.MutationResultExtensions.MutateAsync`1(Velvet.MutationResult`2[Velvet.Unit, TData]): Velvet.VelvetTask`1[TData]
 method Velvet.MutationResultExtensions.Mutate`1(Velvet.MutationResult`2[Velvet.Unit, TData]): System.Void
 method Velvet.MutationResult`2.Mutate(TVariables): System.Void
-method Velvet.MutationResult`2.MutateAsync(TVariables): Cysharp.Threading.Tasks.UniTask`1[TData]
+method Velvet.MutationResult`2.MutateAsync(TVariables): Velvet.VelvetTask`1[TData]
 method Velvet.MutationResult`2.Reset(): System.Void
 method Velvet.NullStoreLogger.Log(System.String): System.Void
 method Velvet.NullStoreLogger.LogError(System.String): System.Void
@@ -341,17 +347,17 @@ method Velvet.ParticlesElement.Play(): System.Void
 method Velvet.ParticlesElement.Stop(): System.Void
 method Velvet.Ref`1.Set(T): System.Void
 method Velvet.RouteBlockerManager.Register(System.Func`2[Velvet.NavigationAttempt, System.Boolean], Velvet.RouteBlockerState): System.IDisposable
-method Velvet.RouteBlockerManager.Register(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]], Velvet.RouteBlockerState): System.IDisposable
+method Velvet.RouteBlockerManager.Register(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Boolean]], Velvet.RouteBlockerState): System.IDisposable
 method Velvet.RouteBlockerManager.ResetAllBlocked(): System.Void
 method Velvet.RouteBlockerState.Proceed(): System.Void
 method Velvet.RouteBlockerState.Reset(): System.Void
 method Velvet.RouteTree.Match(System.String): System.Collections.Generic.IReadOnlyList`1[Velvet.RouteMatch]
 method Velvet.Router.Dispose(): System.Void
 method Velvet.Router.GetLoaderData(System.String): System.Object
-method Velvet.Router.GoBack(System.Threading.CancellationToken): Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]
-method Velvet.Router.GoForward(System.Threading.CancellationToken): Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]
-method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Int32, System.Threading.CancellationToken): Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]
-method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Threading.CancellationToken): Cysharp.Threading.Tasks.UniTask`1[Velvet.NavigationResult]
+method Velvet.Router.GoBack(System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+method Velvet.Router.GoForward(System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Int32, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
+method Velvet.Router.NavigateAsync(System.String, Velvet.NavigationMode, System.Threading.CancellationToken): Velvet.VelvetTask`1[Velvet.NavigationResult]
 method Velvet.SearchParams.Append(System.String, System.String): System.Void
 method Velvet.SearchParams.Get(System.String): System.String
 method Velvet.SearchParams.GetAll(System.String): System.Collections.Generic.IReadOnlyList`1[System.String]
@@ -402,7 +408,7 @@ method Velvet.TransitionStarter.Equals(System.Object): System.Boolean
 method Velvet.TransitionStarter.Equals(Velvet.TransitionStarter): System.Boolean
 method Velvet.TransitionStarter.GetHashCode(): System.Int32
 method Velvet.TransitionStarter.Invoke(System.Action): System.Void
-method Velvet.TransitionStarter.Invoke(System.Func`1[Cysharp.Threading.Tasks.UniTask]): System.Void
+method Velvet.TransitionStarter.Invoke(System.Func`1[Velvet.VelvetTask]): System.Void
 method Velvet.Unit.Equals(System.Object): System.Boolean
 method Velvet.Unit.Equals(Velvet.Unit): System.Boolean
 method Velvet.Unit.GetHashCode(): System.Int32
@@ -465,7 +471,7 @@ method Velvet.V.Portal(Velvet.UILayer, Velvet.VNode[], System.String, Velvet.Pan
 method Velvet.V.Provider`1(Velvet.ComponentContext`1[T], T, Velvet.VNode[], System.String): Velvet.ContextProviderNode`1[T]
 method Velvet.V.RadioButton(System.String, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean], System.String, System.String, System.String, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
 method Velvet.V.RadioButtonGroup(System.String, System.Nullable`1[System.Int32], System.Collections.Generic.List`1[System.String], System.Action`1[System.Int32], System.String, System.String, System.String, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
-method Velvet.V.Route(System.String, Velvet.ComponentNode, System.String, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Object]], Velvet.LoaderMode, Velvet.ComponentNode, Velvet.RouteDefinition[], System.String, System.Func`2[Velvet.RouteLoaderContext, System.String], System.Boolean): Velvet.RouteDefinition
+method Velvet.V.Route(System.String, Velvet.ComponentNode, System.String, System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]], Velvet.LoaderMode, Velvet.ComponentNode, Velvet.RouteDefinition[], System.String, System.Func`2[Velvet.RouteLoaderContext, System.String], System.Boolean): Velvet.RouteDefinition
 method Velvet.V.Routes(Velvet.RouteDefinition[]): Velvet.RouteDefinition[]
 method Velvet.V.SceneView(UnityEngine.Camera, System.String, System.String, System.String, System.Single, Velvet.StyleOverrides, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
 method Velvet.V.ScrollView(System.String, System.String, System.String, System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollerVisibility], System.Nullable`1[UnityEngine.UIElements.ScrollView+TouchScrollBehavior], System.Action`1[UnityEngine.UIElements.VisualElement], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action], Velvet.VNode[], System.String, System.String, System.String, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String], System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]): Velvet.ElementNode
@@ -499,6 +505,58 @@ method Velvet.VelvetPreviewStory.Build(System.Object): Velvet.VNode
 method Velvet.VelvetPreviewStory.CreateDefaultArgs(): System.Object
 method Velvet.VelvetStyleUtilities.AttachTo(UnityEngine.UIElements.VisualElement): System.Void
 method Velvet.VelvetStyleUtilities.BindThemeTo(UnityEngine.UIElements.VisualElement): System.Void
+method Velvet.VelvetTask+Awaiter.GetResult(): System.Void
+method Velvet.VelvetTask+Awaiter.OnCompleted(System.Action): System.Void
+method Velvet.VelvetTask.FromException(System.Exception): Velvet.VelvetTask
+method Velvet.VelvetTask.FromException`1(System.Exception): Velvet.VelvetTask`1[T]
+method Velvet.VelvetTask.FromResult(): Velvet.VelvetTask
+method Velvet.VelvetTask.FromResult`1(T): Velvet.VelvetTask`1[T]
+method Velvet.VelvetTask.GetAwaiter(): Velvet.VelvetTask+Awaiter
+method Velvet.VelvetTask.Never(System.Threading.CancellationToken): Velvet.VelvetTask
+method Velvet.VelvetTask.Never`1(System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
+method Velvet.VelvetTask.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
+method Velvet.VelvetTask.Yield(): Velvet.VelvetTask
+method Velvet.VelvetTaskCompletionSource.SetCanceled(System.Threading.CancellationToken): System.Void
+method Velvet.VelvetTaskCompletionSource.SetException(System.Exception): System.Void
+method Velvet.VelvetTaskCompletionSource.SetResult(): System.Void
+method Velvet.VelvetTaskCompletionSource.TrySetCanceled(System.Threading.CancellationToken): System.Boolean
+method Velvet.VelvetTaskCompletionSource.TrySetException(System.Exception): System.Boolean
+method Velvet.VelvetTaskCompletionSource.TrySetResult(): System.Boolean
+method Velvet.VelvetTaskCompletionSource`1.SetCanceled(System.Threading.CancellationToken): System.Void
+method Velvet.VelvetTaskCompletionSource`1.SetException(System.Exception): System.Void
+method Velvet.VelvetTaskCompletionSource`1.SetResult(T): System.Void
+method Velvet.VelvetTaskCompletionSource`1.TrySetCanceled(System.Threading.CancellationToken): System.Boolean
+method Velvet.VelvetTaskCompletionSource`1.TrySetException(System.Exception): System.Boolean
+method Velvet.VelvetTaskCompletionSource`1.TrySetResult(T): System.Boolean
+method Velvet.VelvetTaskExtensions.AttachExternalCancellation(Velvet.VelvetTask, System.Threading.CancellationToken): Velvet.VelvetTask
+method Velvet.VelvetTaskExtensions.AttachExternalCancellation`1(Velvet.VelvetTask`1[T], System.Threading.CancellationToken): Velvet.VelvetTask`1[T]
+method Velvet.VelvetTaskExtensions.Forget(Velvet.VelvetTask): System.Void
+method Velvet.VelvetTaskExtensions.Forget`1(Velvet.VelvetTask`1[T]): System.Void
+method Velvet.VelvetTaskExtensions.ToCoroutine(System.Func`1[Velvet.VelvetTask]): System.Collections.IEnumerator
+method Velvet.VelvetTaskExtensions.ToCoroutine(Velvet.VelvetTask, System.Action`1[System.Exception]): System.Collections.IEnumerator
+method Velvet.VelvetTaskExtensions.ToCoroutine`1(Velvet.VelvetTask`1[T], System.Action`1[T], System.Action`1[System.Exception]): System.Collections.IEnumerator
+method Velvet.VelvetTaskMethodBuilder.AwaitOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+method Velvet.VelvetTaskMethodBuilder.AwaitUnsafeOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+method Velvet.VelvetTaskMethodBuilder.Create(): Velvet.VelvetTaskMethodBuilder
+method Velvet.VelvetTaskMethodBuilder.SetException(System.Exception): System.Void
+method Velvet.VelvetTaskMethodBuilder.SetResult(): System.Void
+method Velvet.VelvetTaskMethodBuilder.SetStateMachine(System.Runtime.CompilerServices.IAsyncStateMachine): System.Void
+method Velvet.VelvetTaskMethodBuilder.Start`1(TStateMachine&): System.Void
+method Velvet.VelvetTaskMethodBuilder`1.AwaitOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+method Velvet.VelvetTaskMethodBuilder`1.AwaitUnsafeOnCompleted`2(TAwaiter&, TStateMachine&): System.Void
+method Velvet.VelvetTaskMethodBuilder`1.Create(): Velvet.VelvetTaskMethodBuilder`1
+method Velvet.VelvetTaskMethodBuilder`1.SetException(System.Exception): System.Void
+method Velvet.VelvetTaskMethodBuilder`1.SetResult(T): System.Void
+method Velvet.VelvetTaskMethodBuilder`1.SetStateMachine(System.Runtime.CompilerServices.IAsyncStateMachine): System.Void
+method Velvet.VelvetTaskMethodBuilder`1.Start`1(TStateMachine&): System.Void
+method Velvet.VelvetTaskStatusExtensions.IsCanceled(Velvet.VelvetTaskStatus): System.Boolean
+method Velvet.VelvetTaskStatusExtensions.IsCompleted(Velvet.VelvetTaskStatus): System.Boolean
+method Velvet.VelvetTaskStatusExtensions.IsCompletedSuccessfully(Velvet.VelvetTaskStatus): System.Boolean
+method Velvet.VelvetTaskStatusExtensions.IsFaulted(Velvet.VelvetTaskStatus): System.Boolean
+method Velvet.VelvetTask`1.FromResult(T): Velvet.VelvetTask`1
+method Velvet.VelvetTask`1.GetAwaiter(): Velvet.VelvetTask`1[T]
+method Velvet.VelvetTask`1.GetResult(): T
+method Velvet.VelvetTask`1.OnCompleted(System.Action): System.Void
 method protected Velvet.Experimental.VBuilder.BuildChildren(): Velvet.VNode[]
 method protected Velvet.Store`1.Mutate(System.Func`2[TState, TState]): System.Void
 method protected Velvet.Store`1.OnDispose(): System.Void
@@ -701,13 +759,13 @@ property Velvet.MotionNode.OnEnterComplete: System.Action
 property Velvet.MotionNode.Transition: Velvet.StyleTransitionConfig
 property Velvet.MotionNode.Variants: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
 property Velvet.MutableRef`1.Current: T
-property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask]
+property Velvet.MutationOptions.MutationFn: System.Func`2[System.Threading.CancellationToken, Velvet.VelvetTask]
 property Velvet.MutationOptions.OnError: System.Action`1[System.Exception]
 property Velvet.MutationOptions.OnSuccess: System.Action
-property Velvet.MutationOptions`1.MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask]
+property Velvet.MutationOptions`1.MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask]
 property Velvet.MutationOptions`1.OnError: System.Action`2[System.Exception, TVariables]
 property Velvet.MutationOptions`1.OnSuccess: System.Action`1[TVariables]
-property Velvet.MutationOptions`2.MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[TData]]
+property Velvet.MutationOptions`2.MutationFn: System.Func`3[TVariables, System.Threading.CancellationToken, Velvet.VelvetTask`1[TData]]
 property Velvet.MutationOptions`2.OnError: System.Action`2[System.Exception, TVariables]
 property Velvet.MutationOptions`2.OnSuccess: System.Action`2[TData, TVariables]
 property Velvet.MutationResult`2.Data: TData
@@ -751,7 +809,7 @@ property Velvet.RouteDefinition.Children: Velvet.RouteDefinition[]
 property Velvet.RouteDefinition.Element: Velvet.ComponentNode
 property Velvet.RouteDefinition.ErrorElement: Velvet.ComponentNode
 property Velvet.RouteDefinition.Guard: System.Func`2[Velvet.RouteLoaderContext, System.String]
-property Velvet.RouteDefinition.Loader: System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Object]]
+property Velvet.RouteDefinition.Loader: System.Func`3[Velvet.RouteLoaderContext, System.Threading.CancellationToken, Velvet.VelvetTask`1[System.Object]]
 property Velvet.RouteDefinition.LoaderMode: Velvet.LoaderMode
 property Velvet.RouteDefinition.Path: System.String
 property Velvet.RouteDefinition.RedirectTo: System.String
@@ -850,6 +908,15 @@ property Velvet.VelvetPreviewStory.Name: System.String
 property Velvet.VelvetPreviewStory.Width: System.Int32
 property Velvet.VelvetStyleHints.PreviewStyleSheet: UnityEngine.UIElements.StyleSheet
 property Velvet.VelvetStyleUtilities.Sheet: UnityEngine.UIElements.StyleSheet
+property Velvet.VelvetTask+Awaiter.IsCompleted: System.Boolean
+property Velvet.VelvetTask.CompletedTask: Velvet.VelvetTask
+property Velvet.VelvetTask.Status: Velvet.VelvetTaskStatus
+property Velvet.VelvetTaskCompletionSource.Task: Velvet.VelvetTask
+property Velvet.VelvetTaskCompletionSource`1.Task: Velvet.VelvetTask`1[T]
+property Velvet.VelvetTaskMethodBuilder.Task: Velvet.VelvetTask
+property Velvet.VelvetTaskMethodBuilder`1.Task: Velvet.VelvetTask`1[T]
+property Velvet.VelvetTask`1.IsCompleted: System.Boolean
+property Velvet.VelvetTask`1.Status: Velvet.VelvetTaskStatus
 property Velvet.VelvetTheme.IsDark: System.Boolean
 property Velvet.VirtualListNode.ClassNames: System.String[]
 property Velvet.VirtualListNode.ItemHeight: System.Single
@@ -1033,6 +1100,17 @@ type Velvet.VelvetResponsive
 type Velvet.VelvetRuntimeAssets
 type Velvet.VelvetStyleHints
 type Velvet.VelvetStyleUtilities
+type Velvet.VelvetTask
+type Velvet.VelvetTask+Awaiter
+type Velvet.VelvetTaskCompletionSource
+type Velvet.VelvetTaskCompletionSource`1
+type Velvet.VelvetTaskExtensions
+type Velvet.VelvetTaskMethodBuilder
+type Velvet.VelvetTaskMethodBuilder`1
+type Velvet.VelvetTaskStatus
+type Velvet.VelvetTaskStatusExtensions
+type Velvet.VelvetTask`1
+type Velvet.VelvetTask`1
 type Velvet.VelvetTheme
 type Velvet.VirtualListNode
 type Velvet.WheelBinding

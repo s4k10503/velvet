@@ -1,6 +1,5 @@
 #nullable enable
 using System;
-using Cysharp.Threading.Tasks;
 
 namespace Velvet
 {
@@ -18,9 +17,9 @@ namespace Velvet
     public readonly struct TransitionStarter : IEquatable<TransitionStarter>
     {
         private readonly Action<Action> _start;
-        private readonly Action<Func<UniTask>> _startAsync;
+        private readonly Action<Func<VelvetTask>> _startAsync;
 
-        internal TransitionStarter(Action<Action> start, Action<Func<UniTask>> startAsync)
+        internal TransitionStarter(Action<Action> start, Action<Func<VelvetTask>> startAsync)
         {
             _start = start;
             _startAsync = startAsync;
@@ -35,7 +34,7 @@ namespace Velvet
         /// across awaits until it completes.
         /// </summary>
         /// <param name="asyncUpdates">Async callback whose state updates run at Transition priority.</param>
-        public void Invoke(Func<UniTask> asyncUpdates) => _startAsync?.Invoke(asyncUpdates);
+        public void Invoke(Func<VelvetTask> asyncUpdates) => _startAsync?.Invoke(asyncUpdates);
 
         /// <summary>
         /// Implicit conversion to <see cref="Action{Action}"/> so the starter can be stored in / passed as an

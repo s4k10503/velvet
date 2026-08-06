@@ -215,8 +215,8 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
                 await gate.Task;
@@ -236,8 +236,8 @@ namespace Velvet.Tests
             // Arrange — the action awaits BEFORE its first setState, so the fiber has no pending lane at
             // all while the transition is in flight.
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 await gate.Task;
                 s_transitionSetValue.Invoke(1);
@@ -260,8 +260,8 @@ namespace Velvet.Tests
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
-            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
-            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            var gate = new VelvetTaskCompletionSource();
+            Func<VelvetTask> asyncUpdates = async () =>
             {
                 s_transitionSetValue.Invoke(1);
                 await gate.Task;
