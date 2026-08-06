@@ -64,6 +64,9 @@ jobs:
         working-directory: Packages/com.velvet.core/Generators~
         run: dotnet test Velvet.SourceGenerators.sln -c Release --nologo
 
+      - name: Duplication ratchet
+        run: python3 scripts/test_quality/duplication_check.py
+
   # ---------------------------------------------------------------------------
   # Repository settings live only in GitHub's own state; nothing in this
   # repository reads them back. contents:read is enough for the rulesets
