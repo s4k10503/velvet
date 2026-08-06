@@ -2038,11 +2038,11 @@ namespace Velvet
             for (var i = 0; i < classNames.Length; i++)
             {
                 if (!StyleVariantClass.TryParse(classNames[i], out var kind, out var name, out var payload)
-                    || !StyleVariantClass.IsRelational(kind))
+                    || StyleVariantClass.RelationalOf(kind) is not { } relational)
                 {
                     continue;
                 }
-                var key = (StyleVariantClass.RelationalIsPeer(kind), name ?? string.Empty);
+                var key = (relational.IsPeer, name ?? string.Empty);
                 map ??= new Dictionary<(bool, string), List<string>[]>();
                 positions ??= new Dictionary<(bool, string), List<int>[]>();
                 if (!map.TryGetValue(key, out var states))
@@ -2051,7 +2051,7 @@ namespace Velvet
                     map[key] = states;
                     positions[key] = new List<int>[5];
                 }
-                var slot = (int)StyleVariantClass.RelationalStateOf(kind);
+                var slot = (int)relational.State;
                 (states[slot] ??= new List<string>()).Add(payload ?? string.Empty);
                 (positions![key][slot] ??= new List<int>()).Add(i);
             }

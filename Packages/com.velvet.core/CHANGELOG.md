@@ -36,6 +36,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   transition-lane updates, as is anything a handler wraps in a `startTransition` of its own — with one
   exception the framework cannot see past: completing the awaited task from inside a discrete handler
   resumes the action within that handler, and its updates take the handler's urgent priority.
+- `checked:`, `peer-checked:`, `group-focus-within:` and `peer-focus-within:` now work as the *inner*
+  half of a stacked variant. `dark:checked:bg-primary` and `dark:group-focus-within:ring-2` applied
+  nothing, while the same pair written the other way round (`checked:dark:bg-primary`) applied — so the
+  documented rule that stacking order does not matter held for every family except these four. The
+  stacked manipulator classified its inner kind with a set of independent bool predicates, and a set of
+  bools has no way to report a kind matching none of them: all four fell past every branch into the
+  relational one, which mapped hover / focus / active only, so their gate had no signal that could open
+  it. A `checked:` inner now reads the target's own `ChangeEvent<bool>` and a `peer-checked:` inner the
+  resolved peer's, both seeded from an already-checked control when the gate is built, the same way the
+  top-level variants are.
+
 - A `Focusable` prop that a later render stops declaring now hands the element back the focusability it
   was constructed with, instead of making it focusable. Dropping the prop compares unequal to the
   declared value, and the absent case coalesced to `true`: a `V.Div` that carried `Focusable = true` for
