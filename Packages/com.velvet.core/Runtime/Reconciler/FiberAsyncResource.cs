@@ -28,6 +28,10 @@ namespace Velvet
     // (the entire slot is discarded and recreated).
     // Cancel / Dispose cancels the token, but if the loader does not honor ct the task may keep running internally.
     // Even in that case, the OnCompleted callback satisfies the contract of "reflecting the Status at completion".
+    // Only this resource's own cancellation leaves the machine non-terminal. A cancellation raised by a token
+    // the consumer owns becomes Error instead: a resource left Pending holds its Suspense boundary in its
+    // fallback, and Hooks.UseCore starts a resource only on the render that allocates its slot, so a slot whose
+    // key is unchanged never gets another attempt.
     internal sealed class FiberAsyncResource<T> : IFiberAsyncResource
     {
         private readonly CancellationTokenSource _cts = new();
@@ -98,7 +102,10 @@ namespace Velvet
                 Result = result;
                 Status = FiberAsyncResourceStatus.Success;
             }
-            catch (OperationCanceledException)
+            // The gate asks who requested the cancellation, not which token carried it out to the awaiting frame,
+            // so a loader that awaits on some token of its own is still judged by whether this resource asked.
+            // Everything else falls through to the generic catch and lands in Error (see the class note above).
+            catch (OperationCanceledException) when (_disposed || _cts.IsCancellationRequested)
             {
                 return;
             }

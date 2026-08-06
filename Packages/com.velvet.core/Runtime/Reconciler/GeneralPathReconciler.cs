@@ -326,6 +326,13 @@ namespace Velvet
         // an INNER ReconcileChildren call and therefore are NOT in the rolling-back scope's `newFibers` set.
         // The caller disposes every inline fiber whose MountPoint sits inside the returned range so its
         // effect cleanup runs and the deferred layout-effect drain short-circuits via IsDisposed.
+        // Every created orphan enters the set, with no attempt to exclude the ones that cannot hold a fiber.
+        // Excluding by element type was wrong twice over — a subclass and the type itself both reach here via
+        // V.Custom<T>, which declares children for any T — and the question is unanswerable from the element
+        // in any case, since what decides it is whether the NODE declared children. The set is a containment
+        // filter, so a surplus member costs a hash entry and changes nothing: a leaf holding no fiber
+        // contributes no fiber to dispose. The exact-type dispatch in FiberElementCleaner.ReturnToPool asks a
+        // different question — may this element enter the shared pool — and stays a type test.
         private static HashSet<VisualElement>? CollectOrphanContainers(GeneralCommitState commit, int preCount)
         {
             HashSet<VisualElement>? orphanContainers = null;
@@ -333,11 +340,6 @@ namespace Velvet
             {
                 var (element, isExisting) = commit.NewElements[i];
                 if (isExisting || element == null) continue;
-                if (element is Label or Toggle or Slider or TextField)
-                {
-                    // Poolable leaves cannot host inline-mounted descendant fibers; skip.
-                    continue;
-                }
                 (orphanContainers ??= new HashSet<VisualElement>()).Add(element);
             }
             return orphanContainers;
