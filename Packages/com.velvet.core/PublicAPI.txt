@@ -381,6 +381,7 @@ method Velvet.StyleClassNames.Class(System.String[]): System.String
 method Velvet.StyleClassNames.When(System.Boolean, System.String): System.String
 method Velvet.StyleFontClass.HasFontClass(System.String[]): System.Boolean
 method Velvet.StyleFontClass.IsArbitraryFontClass(System.String): System.Boolean
+method Velvet.StyleFontClass.IsFontToken(System.String): System.Boolean
 method Velvet.StyleFontClass.TryExtract(System.String[], Velvet.FontIntent&): System.Boolean
 method Velvet.StyleFontResolver.Apply(UnityEngine.UIElements.VisualElement, System.String[]): System.Void
 method Velvet.StyleFontResolver.ApplyIfPresent(UnityEngine.UIElements.VisualElement, System.String[]): System.Void
