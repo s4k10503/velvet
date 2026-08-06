@@ -14,8 +14,9 @@ namespace Velvet.Editor
     /// build, and takes it out again afterwards.
     /// </summary>
     /// <remarks>
-    /// <see cref="BundledShaderBuildInclusion"/> owns the explanation of why the record lives on disk and
-    /// why an entry the consumer already had is left alone.
+    /// Writing the holder permanently was the alternative: it works, and it leaves the consumer a diff in a
+    /// <c>ProjectSettings</c> file the package does not own. The mechanism and its cost are described in
+    /// <c>Documentation~/player-builds.md</c>; <c>BundledStyleSheetInclusionTests</c> pins it.
     /// </remarks>
     internal sealed class BundledStyleSheetBuildInclusion : IPreprocessBuildWithReport, IPostprocessBuildWithReport
     {
