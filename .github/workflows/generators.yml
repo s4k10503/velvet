@@ -83,11 +83,12 @@ jobs:
     if: github.repository == 's4k10503/velvet'
     runs-on: ubuntu-latest
     steps:
-      - name: Assert protect-main ruleset
+      - name: Assert repository settings
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           failed=0
+          unverifiable=0
 
           rulesets=$(gh api "repos/${GITHUB_REPOSITORY}/rulesets")
           protect_count=$(jq '[.[] | select(.name == "protect-main")] | length' <<<"$rulesets")
@@ -138,6 +139,34 @@ jobs:
               echo "::error::protect-main required_status_checks must list exactly Required checks (Unity) and Required checks (generators), got ${contexts} (${context_count} entries): those names are the required-checks aggregates in test.yml and this workflow, and branch protection must require both."
               failed=1
             fi
+          fi
+
+          repo=$(gh api "repos/${GITHUB_REPOSITORY}")
+          if jq -e 'has("delete_branch_on_merge")' <<<"$repo" >/dev/null; then
+            delete_on_merge=$(jq -r '.delete_branch_on_merge' <<<"$repo")
+            if [ "$delete_on_merge" != "true" ]; then
+              echo "::error::delete_branch_on_merge is '${delete_on_merge}', expected true: merged pull request branches accumulate on the remote when this is off — fifty-four of sixty-six remote branches were from merged pull requests before anyone noticed."
+              failed=1
+            fi
+          else
+            echo "::warning::delete_branch_on_merge is absent from the repository API response for GITHUB_TOKEN: merged pull request branches accumulate on the remote when this is off — fifty-four of sixty-six remote branches were from merged pull requests before anyone noticed — and this check cannot verify the setting until the response exposes the field."
+            unverifiable=1
+          fi
+
+          if jq -e 'has("bypass_actors")' <<<"$ruleset" >/dev/null; then
+            bypass_count=$(jq '[.bypass_actors[]?] | length' <<<"$ruleset")
+            if [ "$bypass_count" -ne 0 ]; then
+              bypass=$(jq -c '.bypass_actors' <<<"$ruleset")
+              echo "::error::protect-main bypass_actors must be empty, got ${bypass} (${bypass_count} entries): a non-empty bypass list would let named actors merge without Required checks (Unity) and Required checks (generators)."
+              failed=1
+            fi
+          else
+            echo "::warning::protect-main bypass_actors is absent from the ruleset API response for GITHUB_TOKEN: a non-empty bypass list would let named actors merge without Required checks (Unity) and Required checks (generators) — and this check cannot verify the list is empty until the response exposes the field."
+            unverifiable=1
+          fi
+
+          if [ "$unverifiable" -gt 0 ]; then
+            echo "::warning::${unverifiable} repository setting(s) could not be verified — GITHUB_TOKEN's API response omitted the field; see messages above."
           fi
 
           exit "$failed"
