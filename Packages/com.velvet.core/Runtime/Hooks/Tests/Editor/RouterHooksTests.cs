@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEngine.UIElements;
 
 using Velvet;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -17,6 +18,8 @@ namespace Velvet.Tests
     /// context default: a null location, and therefore an empty parameter dictionary.</item>
     /// <item>When a <see cref="RouterContext.Location"/> Provider supplies a location, a descendant component
     /// observes that exact location and its route parameters.</item>
+    /// <item><see cref="Hooks.UseLocation"/> declares that null return, while <see cref="Hooks.UseParams"/>
+    /// declares the empty dictionary it substitutes instead.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -123,6 +126,33 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(LocationCapture.LastLocation, Is.SameAs(location), "The descendant observes the exact provided location instance");
+        }
+
+        #endregion
+
+        #region Declared nullability
+
+        [Test]
+        public void Given_RouterContextHooks_When_ReturnAnnotationsRead_Then_UseLocationIsNullableAndUseParamsIsNot()
+        {
+            // Arrange
+            var useLocation = typeof(Hooks).GetMethod(nameof(Hooks.UseLocation), Type.EmptyTypes)!;
+            var useParams = typeof(Hooks).GetMethod(nameof(Hooks.UseParams), Type.EmptyTypes)!;
+
+            // Act
+            var annotations = (
+                location: NullableAnnotationProbe.ReturnAnnotation(useLocation),
+                parameters: NullableAnnotationProbe.ReturnAnnotation(useParams));
+
+            // Assert
+            Assert.That(
+                annotations,
+                Is.EqualTo((
+                    NullableAnnotationProbe.Annotation.Nullable,
+                    NullableAnnotationProbe.Annotation.NotNullable)),
+                "UseLocation hands back the context default with no Provider above the caller, so its "
+                + "declaration must admit null; UseParams substitutes an empty dictionary and is the control "
+                + "showing the probe separates the two states");
         }
 
         #endregion

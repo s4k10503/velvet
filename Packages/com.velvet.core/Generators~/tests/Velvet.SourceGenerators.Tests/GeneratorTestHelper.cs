@@ -113,7 +113,12 @@ namespace Velvet
         public static T UseMemo<T>(global::System.Func<T> factory) => factory();
         public static T UseMemo<T>(global::System.Func<T> factory, params object[] deps) => factory();
         public static global::Velvet.RouteBlockerState UseBlocker(
+            global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock) => null;
+        public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, bool> shouldBlock, params object[] deps) => null;
+        public static global::Velvet.RouteBlockerState UseBlocker(
+            global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
+                global::Cysharp.Threading.Tasks.UniTask<bool>> shouldBlock) => null;
         public static global::Velvet.RouteBlockerState UseBlocker(
             global::System.Func<global::Velvet.NavigationAttempt, global::System.Threading.CancellationToken,
                 global::Cysharp.Threading.Tasks.UniTask<bool>> shouldBlock, params object[] deps) => null;
