@@ -150,7 +150,7 @@ jobs:
             fi
           else
             echo "::warning::delete_branch_on_merge is absent from the repository API response for GITHUB_TOKEN: merged pull request branches accumulate on the remote when this is off — fifty-four of sixty-six remote branches were from merged pull requests before anyone noticed — and this check cannot verify the setting until the response exposes the field."
-            unverifiable=1
+            unverifiable=$((unverifiable + 1))
           fi
 
           if jq -e 'has("bypass_actors")' <<<"$ruleset" >/dev/null; then
@@ -162,7 +162,7 @@ jobs:
             fi
           else
             echo "::warning::protect-main bypass_actors is absent from the ruleset API response for GITHUB_TOKEN: a non-empty bypass list would let named actors merge without Required checks (Unity) and Required checks (generators) — and this check cannot verify the list is empty until the response exposes the field."
-            unverifiable=1
+            unverifiable=$((unverifiable + 1))
           fi
 
           if [ "$unverifiable" -gt 0 ]; then
