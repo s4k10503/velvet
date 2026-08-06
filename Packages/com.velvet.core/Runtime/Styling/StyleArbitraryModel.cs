@@ -98,8 +98,10 @@ namespace Velvet
         public static int ImportantOf(int priority) => Important + priority;
         #endregion
 
+#pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
         internal static int ForVariant(StyleVariantKind kind) => kind switch
         {
+            StyleVariantKind.Hover => Hover,
             StyleVariantKind.Sm => ResponsiveSm,
             StyleVariantKind.Md => ResponsiveMd,
             StyleVariantKind.Lg => ResponsiveLg,
@@ -119,8 +121,8 @@ namespace Velvet
             StyleVariantKind.FocusVisible => FocusVisible,
             StyleVariantKind.Active => Active,
             StyleVariantKind.Checked => Checked,
-            _ => Hover,
         };
+#pragma warning restore CS8524
     }
     // The style property an arbitrary-value utility targets (e.g. w-[120px] → Width,
     // bg-[#fff] → background color, rotate-[45deg] → rotation). Shorthand members fan out to
