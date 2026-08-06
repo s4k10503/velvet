@@ -380,6 +380,10 @@ namespace Velvet
             {
                 if (!_source.focusable)
                 {
+                    // Ordering: seed before the write, per FiberPropApplier.RecordFocusableDefault. A Focusable
+                    // prop first declared while this anchor stands would otherwise take the anchor's value as
+                    // the source's own, and dropping that prop later would hand it back.
+                    FiberPropApplier.RecordFocusableDefault(_source);
                     _source.focusable = true;
                     _madeSourceFocusable = true;
                 }
