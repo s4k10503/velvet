@@ -102,12 +102,7 @@ namespace Velvet
             // walks it to climb ComponentFiber.Parent from wherever a pointer/focus event
             // physically landed. Null at the true tree root (nothing on FiberStack yet).
             element.userData = _ctx.FiberStack.Current;
-            // Capture an element's own Text prop (Label / Button) before the text-effect pass below
-            // transforms it, so a re-apply works from the raw value.
-            if (element is TextElement && elementNode.Props != null && elementNode.Props.Text != null)
-            {
-                StyleTextEffectResolver.CaptureRaw(_ctx, element, elementNode.Props.Text);
-            }
+            CaptureOwnRawText(element, elementNode.Props);
             if (elementNode.Children != null)
             {
                 var childContainer = FiberNodePatcher.GetChildContainer(element);
@@ -219,6 +214,17 @@ namespace Velvet
             return outer;
         }
 
+        // Runs before either create path's text-effect pass: that pass rewrites the element's displayed text
+        // from the raw value tracked here, and the element factory has just written the Text prop straight
+        // onto the element. FiberNodePatcher.PatchBaseElement is the same seam on the patch side.
+        private void CaptureOwnRawText(VisualElement element, FiberElementProps? props)
+        {
+            if (element is TextElement && props?.Text != null)
+            {
+                StyleTextEffectResolver.CaptureRaw(_ctx, element, props.Text);
+            }
+        }
+
         private VisualElement CreateForMotionNode(MotionNode motionNode)
         {
             // Resolve the applied classes against the effective label (own Animate, else the nearest
@@ -257,6 +263,7 @@ namespace Velvet
             {
                 _ctx.MotionChildLabel[element] = childLabel;
             }
+            CaptureOwnRawText(element, motionNode.Props);
             if (motionNode.Children != null)
             {
                 var childContainer = FiberNodePatcher.GetChildContainer(element);
@@ -291,6 +298,7 @@ namespace Velvet
             _patcher.ApplyStructuralVariants(element);
             _patcher.ApplyHasClassVariants(element);
             _patcher.ApplyHasVariantManipulators(element);
+            _patcher.ApplyTextEffects(element, appliedClasses);
             // Same composed source as the element path, recorded as a NON-paint-tail element so a
             // later variant re-sync never attaches to a Motion the three silhouette paints its own
             // patch would refuse.
