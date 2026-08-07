@@ -75,6 +75,11 @@ jobs:
       - name: Duplication ratchet tests
         run: python3 scripts/test_quality/test_duplication_check.py
 
+      # The merge gate decides from plain data so its cases run without a network — a gate exercised
+      # only against live pull requests is exercised only in the states those happen to be in.
+      - name: Pull request settle tests
+        run: python3 scripts/pr/test_settle.py
+
   # ---------------------------------------------------------------------------
   # Repository settings live only in GitHub's own state; nothing in this
   # repository reads them back. contents:read is enough for the rulesets
