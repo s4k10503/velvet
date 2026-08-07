@@ -22,6 +22,9 @@ namespace Velvet.Tests
     /// <item>Sibling Memos cache independently — changing one's dependencies never re-runs the other.</item>
     /// <item>A nested unkeyed Memo resolves under its enclosing Memo's position scope, so it never
     /// cache-hits on the outer Memo's cached inner.</item>
+    /// <item>Omitting the dependency list rebuilds the subtree for every newly built node, while an
+    /// explicitly empty one caches for the node's whole life — the two spellings of "no dependencies" mean
+    /// opposite things on purpose.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -285,6 +288,31 @@ namespace Velvet.Tests
             // Assert
             Assert.That((Root.ElementAt(0) as Label)?.text, Is.EqualTo("inner"),
                 "An outer and inner Memo at the same node index resolve under nested position scopes");
+        }
+
+        [Test]
+        public void Given_OmittedAndEmptyDeps_When_ReRendered_Then_OnlyTheEmptyArrayFormIsACacheHit()
+        {
+            // Arrange
+            var omittedBuilds = 0;
+            var emptyBuilds = 0;
+            VNode[] CreateTree() => new VNode[]
+            {
+                V.Memoized(() => { omittedBuilds++; return V.Label(text: "omitted"); }),
+                V.Memoized(() => { emptyBuilds++; return V.Label(text: "empty"); }, Array.Empty<object>()),
+            };
+            var tree1 = CreateTree();
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), tree1);
+            Assume.That((omittedBuilds, emptyBuilds), Is.EqualTo((1, 1)),
+                "Precondition: both factories ran on first mount");
+
+            // Act
+            Reconciler.Reconcile(Root, tree1, CreateTree());
+
+            // Assert
+            Assert.That((omittedBuilds, emptyBuilds), Is.EqualTo((2, 1)),
+                "Omitting the deps list declares no dependency array and rebuilds; an empty array declares an "
+                + "empty dependency set and never invalidates");
         }
 
         private sealed record MemoDepRecord(string Value);

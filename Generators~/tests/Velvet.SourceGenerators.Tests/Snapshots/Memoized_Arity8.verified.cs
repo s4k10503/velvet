@@ -3,7 +3,7 @@
         /// compile-time gate that each dependency type declares value-equality semantics — the comparison itself
         /// runs through the same boxed dependency array as the params object[] overload.
         /// </summary>
-        public static MemoNode Memoized<T1, T2, T3, T4, T5, T6, T7, T8>(Func<VNode> factory, T1 dep1, T2 dep2, T3 dep3, T4 dep4, T5 dep5, T6 dep6, T7 dep7, T8 dep8)
+        public static MemoNode Memoized<T1, T2, T3, T4, T5, T6, T7, T8>(Func<VNode> factory, T1? dep1, T2? dep2, T3? dep3, T4? dep4, T5? dep5, T6? dep6, T7? dep7, T8? dep8)
             where T1 : IEquatable<T1>
             where T2 : IEquatable<T2>
             where T3 : IEquatable<T3>
@@ -16,6 +16,6 @@
             return new MemoNode
             {
                 Factory = factory,
-                Dependencies = new object[] { dep1, dep2, dep3, dep4, dep5, dep6, dep7, dep8 },
+                Dependencies = new object?[] { dep1, dep2, dep3, dep4, dep5, dep6, dep7, dep8 },
             };
         }

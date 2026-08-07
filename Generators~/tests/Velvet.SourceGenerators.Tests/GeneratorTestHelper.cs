@@ -74,8 +74,12 @@ namespace Velvet
 
     public static partial class V
     {
+        public static MemoNode Memoized(global::System.Func<VNode> factory) =>
+            new MemoNode { Factory = factory, Dependencies = null };
         public static MemoNode Memoized(global::System.Func<VNode> factory, params object[] deps) =>
             new MemoNode { Factory = factory, Dependencies = deps };
+        public static MemoNode MemoizedWithKey(string key, global::System.Func<VNode> factory) =>
+            new MemoNode { Key = key, Factory = factory, Dependencies = null };
         public static MemoNode MemoizedWithKey(string key, global::System.Func<VNode> factory, params object[] deps) =>
             new MemoNode { Key = key, Factory = factory, Dependencies = deps };
     }

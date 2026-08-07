@@ -872,6 +872,31 @@ namespace MyApp.Pages
         }
 
         [Fact]
+        public void Given_UseTransitionStarter_When_MissingFromDeps_Then_DoesNotReport()
+        {
+            // Arrange — the starter (tuple position 1) is built once per slot and returned unchanged thereafter,
+            // so React would not ask for it in deps either.
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var (isPending, startTransition) = global::Velvet.Hooks.UseTransition();
+            global::Velvet.Hooks.UseEffect(() => () => System.Console.WriteLine(startTransition), new object[] { });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
+        }
+
+        [Fact]
         public void Reports_When_UseReducer_State_Element_Is_Missing_From_Deps()
         {
             // The state element (tuple position 0) of UseReducer changes between renders and is not exempt; only

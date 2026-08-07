@@ -337,9 +337,10 @@ provide.
 
 `autoplay` (default `true`) starts the sequence on mount; pass `false` and call `controls.Play()` (e.g.
 from an `onClick`) to start it on demand. `loop: true` wraps the cursor back to step 0 once the last
-step's hold elapses instead of latching `AnimationSequenceState.IsComplete`. `deps` follows the same
-convention as every other deps-taking hook, but — unlike `UseEffect` — omitting it resets the walker on
-**mount only**, not on every render: a freshly-built `steps` array literal in the component body (the
+step's hold elapses instead of latching `AnimationSequenceState.IsComplete`. A supplied `deps` array is
+read as [§1-4 of the React migration guide](react-migration.md#1-4-what-a-dependency-list-means)
+describes, but this hook's default is the empty array rather than null, so omitting it (or passing null)
+resets the walker on **mount only**: a freshly-built `steps` array literal in the component body (the
 common case) must not restart an in-flight sequence every render. `controls.Restart()` returns to step 0
 and re-commits its effect (including firing a `Call` step 0's callback again) without implicitly
 resuming a paused sequence.
