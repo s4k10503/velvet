@@ -44,9 +44,9 @@ namespace Velvet.Tests
         // One entry sits outside even that: "VEL" is the ID space written as a shape (VEL###) rather than an
         // ID, which that guard's VEL\d{3} pattern is right not to match.
         //
-        // The sixth group is code this repository owns in a format the corpus does not read. HOOK_SCOPE is
-        // declared by a Python hook, and HookWiringCoverageTests fails when no hook declares it.
-        // VELVET_STORY_CAPTURE_DIR is an environment variable, which C# can hold only as a string literal.
+        // The sixth group is code this repository owns in a format the corpus cannot resolve it from.
+        // VELVET_STORY_CAPTURE_DIR is an environment variable, which C# can hold only as a string literal,
+        // and the corpus strips a string for the reason StripProse gives.
         //
         // The seventh is the CHANGELOG's own headings and entry labels — Unreleased, Highlights, Added,
         // Changed, Breaking — and the date placeholder in its version heading. A document naming one is
@@ -67,7 +67,7 @@ namespace Velvet.Tests
             "NullReferenceException", "BringToFront", "SendToBack", "SetCursor", "AllocatingGCMemory",
             "UpdateForRepaint", "Alloc", "StandaloneOSX", "MacOS", "InitTestScene", "Unity_lic", "UE",
             "SIGTERM",
-            "HOOK_SCOPE", "VELVET_STORY_CAPTURE_DIR",
+            "VELVET_STORY_CAPTURE_DIR",
             "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
         };
 
@@ -75,7 +75,7 @@ namespace Velvet.Tests
         // git-ignored directory.
         private static readonly HashSet<string> PathAllowlist = new() { "Logs/story-captures/" };
 
-        private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef" };
+        private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef", ".py" };
 
         // Non-greedy, so the match closes on the first terminator rather than the last: a greedy one takes
         // every declaration between a file's first and last comment with it.
@@ -175,6 +175,19 @@ namespace Velvet.Tests
             CommentOrStringAlternation + "|" + RegionLabelAlternation,
             RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.Multiline);
 
+        // Python, ordered the same way and for the same reason: a delimiter inside the other form has to be
+        // inert. Triple quotes lead, since a docstring opens with the run an ordinary string would match and
+        // holds the longest prose in these files; a prefix run covers r, b, f and their combinations, so an
+        // f-string'"'"'s message does not survive as identifiers. Strings go with the comments here rather than
+        // staying like YAML'"'"'s, because a hook'"'"'s refusal text is a paragraph of ordinary English — pouring it
+        // in would let a document name almost anything and find it defined.
+        private static readonly Regex PythonCommentOrStringPattern = new(
+            "[rRbBfFuU]{0,2}(\"\"\"|''')(?:[\\s\\S])*?\\1"
+            + "|[rRbBfFuU]{0,2}\"(?:\\\\.|[^\"\\\\\n])*\""
+            + "|[rRbBfFuU]{0,2}'(?:\\\\.|[^'\\\\\n])*'"
+            + "|#[^\n]*",
+            RegexOptions.Compiled | RegexOptions.Singleline);
+
         [Test]
         public void Given_TheRepoSources_When_TheIdentifierCorpusIsBuilt_Then_EachFormatsCommentsAreTaken()
         {
@@ -186,6 +199,9 @@ namespace Velvet.Tests
             {
                 (Extension: ".uss", Comment: UssCommentPattern),
                 (Extension: ".yml", Comment: YamlCommentPattern),
+                // Python's strip takes strings as well, so the "came out of no comment" arm below reads
+                // the same alternation the strip uses rather than a comment-only one.
+                (Extension: ".py", Comment: PythonCommentOrStringPattern),
             };
 
             // Act — per format, so one arm going missing cannot hide behind the other.
@@ -521,6 +537,10 @@ namespace Velvet.Tests
             {
                 return YamlCommentPattern.Replace(text, " ");
             }
+            if (entry.EndsWith(".py", StringComparison.Ordinal))
+            {
+                return PythonCommentOrStringPattern.Replace(text, " ");
+            }
             return text;
         }
 
@@ -576,6 +596,23 @@ namespace Velvet.Tests
                 }
             }
             return unresolved.Distinct().ToList();
+        }
+
+        [Test]
+        public void Given_EveryTopLevelDirectoryHoldingMarkdown_When_TheWalkIsRead_Then_TheWalkReachesIt()
+        {
+            // Arrange — the walk is rooted, so a document under a root nobody added is scanned by nothing
+            // and every drift guard reading this corpus passes over it in silence.
+            var scanned = DocumentationCorpus.Files().ToList();
+
+            // Act
+            var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots();
+
+            // Assert — the scanned count rides along because a walk that collapsed to nothing would leave
+            // this reporting no unwalked root either.
+            Assert.That((scanned.Count > 20, string.Join(", ", unwalked)), Is.EqualTo((true, string.Empty)),
+                "markdown under a root the walk does not reach is checked by nothing; add the root to the "
+                + "walk, or to .gitignore if it is machine-local");
         }
     }
 }
