@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using Velvet;
+using Velvet.TestUtilities;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
@@ -7,15 +8,17 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies how <see cref="Router"/> resolves declarative redirects and route Guards.
     /// <list type="bullet">
-    /// <item>A route's <c>RedirectTo</c> sends navigation to the target in Replace mode, following a chain of
-    /// redirects to its final target; a redirect cycle yields <see cref="NavigationResult.Error"/>.</item>
+    /// <item>A route's <c>RedirectTo</c> sends navigation on to the target, following a chain of redirects
+    /// to its final target and recording only where that chain arrived; a cycle yields
+    /// <see cref="NavigationResult.Error"/>.</item>
     /// <item>A Guard returning null lets navigation pass; returning a path redirects there; the Guard receives
     /// the matched route's params.</item>
     /// <item>A Guard redirect during Back replaces the previous history entry (the index lands on it and
-    /// forward navigation remains available), while a failed Guard redirect rolls the history index back.</item>
+    /// forward navigation remains available), while a failed Guard redirect leaves the history index alone.</item>
     /// <item>A Guard redirect during Forward redirects to the Guard target.</item>
     /// <item>A redirect route reached by Forward replaces its history entry, so the forward target becomes the
     /// redirect destination.</item>
+    /// <item>A pushed redirect records a step even when its target is the path the user is already on.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -169,8 +172,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_GuardRedirectDuringBack_When_LandedOnTarget_Then_ReplacesPreviousEntry()
         {
-            // The Guard redirect runs in Replace mode and overwrites history[0] with /login, so the index lands
-            // on it with no further back step but a forward step still available to the untouched /other entry.
+            // A Back step's redirect overwrites the entry that step resolved to, so /login takes history[0]
+            // and the index lands on it with no further back step but a forward step still available to the
+            // untouched /other entry.
             // Arrange
             var router = new Router(new[]
             {
@@ -212,10 +216,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FailedGuardRedirectDuringBack_When_Rejected_Then_HistoryIndexIsRolledBack()
+        public void Given_FailedGuardRedirectDuringBack_When_Rejected_Then_HistoryIndexIsUnchanged()
         {
-            // The provisional Back index decrement is undone when the guard redirect fails, leaving the router
-            // on /a at index 1.
+            // The Back step commits nothing once its guard redirect fails, leaving the router on /a at index 1.
             // Arrange
             var router = new Router(new[]
             {
@@ -284,15 +287,14 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region Push with failed redirect (history rollback)
+        #region Push with failed redirect
 
         [Test]
         public void Given_PushRedirectFailsWithForwardHistory_When_RolledBack_Then_ForwardEntryIsPreserved()
         {
-            // history = [/home, /page]; GoBack to /home leaves /page available forward. Pushing /admin truncates
-            // the forward /page (Push semantics) and provisionally appends /admin; the guard then redirects to a
-            // missing route and FAILS. The rollback must restore the prior history EXACTLY — including the
-            // truncated forward /page — not leave the ghost /admin in the forward slot.
+            // history = [/home, /page]; GoBack to /home leaves /page available forward. Pushing /admin would
+            // truncate the forward /page (Push semantics), but its guard redirects to a missing route and the
+            // push FAILS. Nothing may be truncated for an entry that never arrives, so /page stays reachable.
             // Arrange
             var router = new Router(new[]
             {
@@ -315,7 +317,54 @@ namespace Velvet.Tests
             // Assert — forward navigation reaches the preserved /page, not the rolled-back ghost /admin.
             router.GoForwardSync();
             Assert.That(router.CurrentLocation.Path, Is.EqualTo("/page"),
-                "A failed push-redirect with forward history must restore the truncated forward entry");
+                "A push that never arrives must not truncate the forward entry it would have replaced");
+        }
+
+        #endregion
+
+        #region Push whose redirect resolves to the current path
+
+        [Test]
+        public void Given_AGuardRedirectingToTheCurrentPath_When_Pushed_Then_TheTargetIsAppendedAsItsOwnEntry()
+        {
+            // A pushed redirect commits its target the way the Push would have committed the originating
+            // path, so a guard that normalises a path to the one the user is already on still records a step
+            // and Back returns to that path — rather than the push resolving to nothing at all.
+            // Arrange
+            var router = BuildRouter("/target", Route("guarded", guard: _ => "/target"), Route("target"));
+            Assume.That(router.CanGoBack, Is.False, "Precondition: the start entry is the only one on the stack");
+
+            // Act
+            router.NavigateSync("/guarded");
+
+            // Assert
+            Assert.That($"{RouterHistoryProbe.PathsOf(router)} idx={router.HistoryIndex}",
+                Is.EqualTo("/target,/target idx=1"));
+        }
+
+        [Test]
+        public void Given_APushedGuardRedirect_When_TheBlockerIsAsked_Then_ItIsToldTheStepIsAPush()
+        {
+            // The Blocker check runs inside the redirect target's own navigation, and what it reports is what
+            // a leave-confirmation tells the user about the step: this one appends an entry, so Push is what
+            // describes it.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("home"), Route("guarded", guard: _ => "/target"), Route("target"));
+            var seen = (NavigationMode?)null;
+            using var registration = router.RouteBlockerManager.Register(
+                attempt =>
+                {
+                    seen ??= attempt.NavigationMode;
+                    return false;
+                },
+                new RouteBlockerState());
+
+            // Act
+            router.NavigateSync("/guarded");
+
+            // Assert
+            Assert.That($"{seen} to {router.CurrentLocation.Path}", Is.EqualTo("Push to /target"));
         }
 
         #endregion
@@ -325,8 +374,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ForwardEntryIsRedirectRoute_When_GoForward_Then_LandsOnRedirectTarget()
         {
-            // Navigating to /old pushes it provisionally, then the redirect's Replace overwrites it with /new,
-            // so a later GoForward from /home resolves to /new.
+            // Navigating to /old records only where the redirect arrived, so the pushed entry is /new and a
+            // later GoForward from /home resolves to it.
             // Arrange
             var router = new Router(new[]
             {

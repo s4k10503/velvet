@@ -23,6 +23,8 @@ namespace Velvet.Tests
     /// <item>The loader receives a cancelable token that <c>CancelPending</c> cancels, and a loader that
     /// answers that token by succeeding rather than throwing is still treated as a torn-down round.</item>
     /// <item>An Await loader that throws records the error in <c>Errors</c> and reports <c>allCompleted</c> false.</item>
+    /// <item>Each round tracks its own outstanding Suspend loaders, so a round asked after a later one has
+    /// started still answers for itself.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -344,6 +346,34 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(runner.Errors["fail"].Message, Does.Contain("loader failed"));
+        }
+
+        #endregion
+
+        #region Round settlement
+
+        [Test]
+        public void Given_ARoundWithAnUnfinishedSuspendLoader_When_ALaterRoundHasNone_Then_EachRoundReportsItsOwn()
+        {
+            // The router asks a round whether it finished at the moment it commits the entry that round's
+            // data went into, which can be after another round has started — a loader delegate that
+            // navigates starts one before the round it belongs to has even finished launching. A round that
+            // answered for whichever round is current would report an unfinished one as finished.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var unresolved = new UniTaskCompletionSource<object>();
+            runner.RunLoadersSync(
+                MakeMatch("slow", loader: (ctx, ct) => unresolved.Task, loaderMode: LoaderMode.Suspend),
+                CancellationToken.None);
+            var firstRound = runner.CurrentRound;
+
+            // Act
+            runner.RunLoadersSync(MakeMatch("plain"), CancellationToken.None);
+
+            // Assert
+            Assert.That($"first={firstRound.Settled} second={runner.CurrentRound.Settled}",
+                Is.EqualTo("first=False second=True"),
+                "A round reports its own outstanding loaders, not those of whichever round is current");
         }
 
         #endregion
