@@ -78,13 +78,15 @@ namespace Velvet
         // side-tables (variant manipulators, the structural/has/data/aria/supports rules,
         // arbitrary-value layers, shadow/clip/gradient bindings) would retain the discarded element
         // for the context's whole lifetime. A genuine poolable leaf is also reclaimed to the pool:
-        // Label / Toggle / Slider / TextField never carry inline-mounted Velvet descendants (their
-        // DSL hardcodes empty children), and a Button is reclaimed only when childless. A container
-        // orphan — including a Button declared with children, whose children CreateElement
-        // inline-expands into the element itself — has its subtree's resources released recursively
-        // via CleanupElementCore, which deliberately does NOT dispose the subtree's fibers / Outlet
-        // scopes (that is CleanupElement's job): those anchor on the fiber tree and may be re-paired
-        // when the suspended primary later resolves. The element was never in the hierarchy, so there
+        // a Button or a Label only when childless, since either can be given children — V.Button's own DSL,
+        // or V.Custom<T> for both — which CreateElement inline-expands into the element itself, while this
+        // branch releases resources for the orphan alone. Toggle / Slider / TextField are reclaimed
+        // unconditionally: each already holds its own constructed sub-element, so a count cannot separate
+        // that from a V.Custom child, and the same gap reaches them through ordinary unmount besides. A
+        // container orphan — including a Button or a Label declared with children — has its subtree's
+        // resources released recursively via CleanupElementCore, which deliberately does NOT dispose the
+        // subtree's fibers / Outlet scopes (that is CleanupElement's job): those anchor on the fiber tree
+        // and may be re-paired when the suspended primary later resolves. The element was never in the hierarchy, so there
         // is no DOM detach.
         public void ReturnRolledBackOrphan(VisualElement? element)
         {
@@ -102,16 +104,15 @@ namespace Velvet
             }
 
             var exactType = element.GetType();
-            if (exactType == typeof(Label) || exactType == typeof(Toggle)
-                || exactType == typeof(Slider) || exactType == typeof(TextField)
-                || (exactType == typeof(Button) && ((Button)element).childCount == 0))
+            if (exactType == typeof(Toggle) || exactType == typeof(Slider) || exactType == typeof(TextField)
+                || ((exactType == typeof(Button) || exactType == typeof(Label)) && element.childCount == 0))
             {
                 CleanupElementResources(element);
                 ReturnToPool(element);
             }
             else
             {
-                // A plain container orphan (Div), a Button declared with children, or a user
+                // A plain container orphan (Div), a Button or Label declared with children, or a user
                 // subclass of a poolable primitive (never pooled — see ReturnToPool). Release the
                 // orphan subtree's element-keyed resources without disposing its fibers and
                 // without pooling the non-poolable container.

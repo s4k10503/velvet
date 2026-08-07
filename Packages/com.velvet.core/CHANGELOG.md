@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.Motion` now applies the text-effect cascade when it mounts, not only when it next patches.
+  `uppercase` / `lowercase` / `capitalize`, `underline` / `line-through` / `overline`,
+  `whitespace-pre-line` and `leading-*` as a plain class on a Motion left its own text and its descendant
+  text leaves untransformed until some later render happened to patch it, so a Motion nothing re-renders
+  showed the wrong text for the element's whole life.
+
+- A `Label` given children through `V.Custom<Label>` no longer carries them into the element pool. The
+  Label reset cleared the text but not the child list, so the next `V.Label` mount rented an element that
+  still showed the previous subtree's content on top of its own. Both the ordinary unmount and the
+  Suspense rollback reclaim now treat a child-bearing Label exactly as they already treat a child-bearing
+  `Button`.
+
 - A navigation waiting on a Blocker no longer takes the history with it. `Router` moved the history index
   before running the Guard and Blocker phases, so a Back parked on a confirm dialog left the router
   pointing at the entry the user had not gone to yet: clicking a link before answering the dialog pushed
