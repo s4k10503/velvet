@@ -8,15 +8,15 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Pins which commands the three smaller guards act on. Each of them accepted a spelling of the
+    /// Pins which commands each of the smaller guards acts on. Each of them accepted a spelling of the
     /// thing it exists to refuse, and a guard that does not recognise a command reports exactly what a
     /// guard with nothing to say reports — so the recognition is asserted rather than assumed.
     /// </summary>
     /// <remarks>
-    /// The fourth guard, <c>.claude/hooks/refuse/shared_git_state.py</c>, is absent from these tables
-    /// rather than covered elsewhere: its answer depends on whether an operand names a file that
-    /// exists, which is the question it replaced a slash-matching pattern with, and a table of
-    /// commands cannot pose it. Nothing poses it — that guard is unasserted.
+    /// <c>.claude/hooks/refuse/shared_git_state.py</c> answers about operands rather than about the
+    /// command alone, so its table is posed against a git repository this fixture builds in a
+    /// temporary directory and names as the working directory. It went uncovered while the other four
+    /// were covered, and it is the one that shipped a parsing defect.
     /// </remarks>
     [TestFixture]
     internal sealed class GuardCommandCoverageTests
@@ -72,6 +72,54 @@ namespace Velvet.Tests
                 ("git status", "-"),
             };
         }
+
+        // Read against the fixture's own repository: `main` and `feat/x` are branches in it, `kept.txt`
+        // and `sub` exist in it, and `gone.txt` names neither — the shape of a path git can restore
+        // that the working tree no longer holds.
+        private static readonly (string Command, string Expected)[] SharedState =
+        {
+            ("git checkout main", "checkout"),
+            ("git checkout feat/x", "checkout"),
+            ("git checkout \"feat/x\"", "checkout"),
+            ("git checkout HEAD", "checkout"),
+            ("git checkout -f main", "checkout"),
+            ("git checkout main kept.txt", "checkout"),
+            ("git checkout -b kept.txt", "checkout"),
+            ("git checkout -B main", "checkout"),
+            ("git checkout --detach HEAD", "checkout"),
+            ("git checkout -", "checkout"),
+            ("git checkout main; git status", "checkout"),
+            ("if true; then git checkout main; fi", "checkout"),
+            ("/usr/bin/git checkout main", "checkout"),
+            ("git -c core.pager=cat checkout main", "checkout"),
+            ("git -C sub checkout main", "checkout"),
+            // A repository git cannot open leaves the question unanswered, and an unanswered question
+            // takes the refusal rather than the pass. So does an operand the shell has yet to expand,
+            // whose literal text resolves to nothing and would otherwise read as a path.
+            ("git -C /velvet-no-such-tree checkout gone.txt", "checkout"),
+            ("git checkout $BRANCH", "checkout"),
+            ("git checkout \"$BRANCH\"", "checkout"),
+            ("git checkout $(cat branch.txt)", "checkout"),
+            ("git checkout `cat branch.txt`", "checkout"),
+
+            ("git checkout kept.txt", "-"),
+            ("git checkout gone.txt", "-"),
+            ("git checkout kept.txt gone.txt", "-"),
+            ("git checkout -- gone.txt", "-"),
+            ("git checkout --ours gone.txt", "-"),
+            ("git -C sub checkout gone.txt", "-"),
+
+            ("git switch main", "switch"),
+            ("git switch -c topic", "switch"),
+            ("git stash", "stash"),
+            ("git stash pop", "stash"),
+            ("git stash list", "-"),
+            ("git stash show", "-"),
+
+            ("git status", "-"),
+            ("git commit -m \"git checkout main\"", "-"),
+            ("echo 'git checkout main'", "-"),
+        };
 
         private static readonly (string Command, string Expected)[] Creations =
         {
@@ -184,6 +232,105 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(disagreements, Is.Empty);
+        }
+
+        [Test]
+        public void Given_TheCheckoutTable_When_TheSharedStateGuardReadsEach_Then_ItRefusesOnlyWhatCanMoveHead()
+        {
+            // Arrange
+            var hook = Path.GetFullPath(".claude/hooks/refuse/shared_git_state.py");
+            Assume.That(File.Exists(hook), Is.True, "Precondition: the guard exists");
+            var root = Path.Combine(Path.GetTempPath(), "velvet-guard-" + Guid.NewGuid().ToString("N"));
+            string disagreements;
+
+            try
+            {
+                Assume.That(BuildRepository(root), Is.True, "Precondition: git built the fixture repository");
+
+                // Act
+                var expression = "lambda g,c: ','.join(g.refusals(c, r'" + root + "')) or '-'";
+                var answers = Ask(hook, expression, SharedState.Select(row => row.Command));
+                Assume.That(answers?.Count, Is.EqualTo(SharedState.Length), "Precondition: one answer per command");
+
+                disagreements = Disagreements(SharedState, answers);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, true);
+                }
+            }
+
+            // Assert
+            Assert.That(disagreements, Is.Empty,
+                "a checkout read wrongly either retargets a branch another worktree is on or refuses a restore");
+        }
+
+        // Built rather than posed against this repository, whose branches and whose absent files a table
+        // cannot predict, and placed outside the working tree so nothing here can reach a repository
+        // another session holds.
+        private static bool BuildRepository(string root)
+        {
+            // --template=: a template directory on the machine running this would seed the fixture with
+            // hooks, and a hook that rejects the commit below would report as git being unavailable.
+            if (Git(null, "init", "-q", "--template=", "-b", "main", root) != 0)
+            {
+                return false;
+            }
+
+            if (Git(root, "-c", "user.email=fixture@example.invalid", "-c", "user.name=fixture",
+                    "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "root") != 0)
+            {
+                return false;
+            }
+
+            if (Git(root, "branch", "feat/x") != 0)
+            {
+                return false;
+            }
+
+            File.WriteAllText(Path.Combine(root, "kept.txt"), string.Empty);
+            Directory.CreateDirectory(Path.Combine(root, "sub"));
+            return true;
+        }
+
+        private static int Git(string directory, params string[] arguments)
+        {
+            var start = new ProcessStartInfo("git")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            if (directory != null)
+            {
+                start.ArgumentList.Add("-C");
+                start.ArgumentList.Add(directory);
+            }
+
+            foreach (var argument in arguments)
+            {
+                start.ArgumentList.Add(argument);
+            }
+
+            try
+            {
+                using var process = Process.Start(start);
+                if (process == null)
+                {
+                    return -1;
+                }
+
+                process.StandardOutput.ReadToEnd();
+                process.StandardError.ReadToEnd();
+                return process.WaitForExit(30000) ? process.ExitCode : -1;
+            }
+            catch (Exception)
+            {
+                return -1;
+            }
         }
 
         private static string Disagreements((string Command, string Expected)[] table, List<string> answers) =>
