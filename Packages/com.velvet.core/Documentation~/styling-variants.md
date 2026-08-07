@@ -52,7 +52,7 @@ worth knowing, both when several variants name one such utility:
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
 | **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` | A marked ancestor's (`group`) state |
-| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` | A marked previous-sibling's (`peer`) state |
+| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` | A marked previous-sibling's (`peer`) state; `peer-checked:` reads its value on the same terms as `checked:` above |
 
 ```csharp
 // State: a hover background and an active scale, layered over the base utilities.

@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `Toggle`, `Slider` or `TextField` given children through `V.Custom<T>` no longer carries them into the
+  element pool. Each of the three builds its own input into the very container those children expand into,
+  so the reset could not simply empty it as the `Button` and `Label` resets do — it now detaches what the
+  control did not construct and leaves the control itself intact. Without that, the next `V.Toggle` mount
+  rented an element still showing the previous subtree's content beside its own.
+
+- `checked:` and `peer-checked:` now apply at mount to a control that reports a bool without being a
+  `Toggle` — `RadioButton` and `Foldout` among the built-in ones. The change registration beside each seed
+  never restricted the type, so such a control styled correctly from the first interaction onward and only
+  started wrong. A `Foldout` reports itself checked from its own constructor, so `checked:` on one now
+  paints at mount without anyone having set a value.
+
+- A variant stacked three deep no longer throws out of the operation that settles its outer gate. Settling
+  a consumer applies its payload, and a payload that is itself a variant registers a further manipulator in
+  the registry the settle was walking, which ends the walk with an `InvalidOperationException`. All three
+  settles could reach it: `dark:active:sm:bg-on` on a drag source or any of its ancestors threw on the drag
+  release, `dark:focus:sm:bg-on` on the focus revert a containment snap-back performs, and
+  `dark:checked:hover:bg-on` on a value written through a controlled prop.
+
 - A `font-*` utility a container imposes on its children with `[&>*]:` now reaches them. The font layer
   was re-derived only when a child's own class list changed content, and a `[&>*]:` payload lands on the
   child's live list without touching that array — so `[&>*]:font-mono` over a child that declares no
@@ -337,8 +356,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written to the control without notification, so the `ChangeEvent<bool>` the variant listens for never
   fired and the payload stayed on whatever the last user interaction had left it at — in the shape a React
   developer reaches for first, a parent holding the state and passing it down. The stacked forms
-  (`dark:checked:` and the rest) get it too. `peer-checked:` is unchanged: it still tracks the change
-  event only, so a peer written through a controlled prop does not restyle its siblings.
+  (`dark:checked:` and the rest) get it too, and so does `peer-checked:` — a peer written through a
+  controlled prop restyles the siblings that consume it, in the plain and the stacked spelling alike.
 
 - A render that drops a `Focusable` prop from a drag source no longer leaves the source unfocusable for
   the rest of the drag. A session anchors keyboard focus on a source that carries no focusability of its
