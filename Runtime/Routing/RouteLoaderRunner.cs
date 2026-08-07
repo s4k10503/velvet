@@ -13,13 +13,13 @@ namespace Velvet
 
         // Notification event fired with (routeId, result) when a Suspend loader of the CURRENT round
         // succeeds. A loader that ignores the CancellationToken and resolves after a newer RunLoadersSync
-        // (or after disposal) belongs to a superseded round; its result is dropped without firing this event,
-        // so a navigated-away route cannot pollute the live state.
+        // (or after disposal) belongs to a superseded round; its result is recorded on that round but not
+        // announced, so a navigated-away route cannot pollute the live state.
         public event Action<string?, object>? OnSuspendLoaderCompleted;
 
         // Notification event fired with (routeId, exception) when a Suspend loader of the current round
-        // fails. The failure is also recorded in the round's Errors. A superseded round's late failure is
-        // dropped (no event, no Errors write) for the same reason as OnSuspendLoaderCompleted.
+        // fails. The failure is recorded in the round's Errors either way; only the announcement is withheld
+        // from a superseded round, as on OnSuspendLoaderCompleted.
         public event Action<string?, Exception>? OnSuspendLoaderFailed;
 
         private int _activeSuspendTaskCount;
@@ -163,8 +163,8 @@ namespace Velvet
                 // event wrote.
                 round.Results[routeId] = result;
                 // A loader that ignored its token can resolve after CancelPending replaced (or nulled) _cts.
-                // That makes this a superseded round; drop the stale result rather than firing into the live
-                // state of an unrelated current location.
+                // That makes this a superseded round: its own record above stands, and what must not happen
+                // is announcing it into the live state of an unrelated current location.
                 if (ownCts != _cts) return;
                 OnSuspendLoaderCompleted?.Invoke(routeId, result);
             }
@@ -175,10 +175,11 @@ namespace Velvet
             catch (Exception ex)
             {
                 round.Pending--;
-                // Same supersession guard as the success path: a stale round's failure must not record an
-                // error nor re-emit under the current location.
-                if (ownCts != _cts) return;
+                // Recorded ahead of the supersession guard, as the success path records its result: Pending is
+                // counted off whatever the round's currency, so a round that recorded nothing for a route it
+                // counted off would report itself settled holding neither a result nor a failure for it.
                 round.Errors[routeId] = ex;
+                if (ownCts != _cts) return;
                 OnSuspendLoaderFailed?.Invoke(routeId, ex);
             }
             finally
