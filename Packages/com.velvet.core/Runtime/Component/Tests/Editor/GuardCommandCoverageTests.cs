@@ -17,6 +17,11 @@ namespace Velvet.Tests
     /// command alone, so its table is posed against a git repository this fixture builds in a
     /// temporary directory and names as the working directory. It went uncovered while the other four
     /// were covered, and it is the one that shipped a parsing defect.
+    /// <para>
+    /// That guard expands a glob operand and resolves the expansion only when it is a single name, so
+    /// two of the cases below put the expansion to git itself instead of to the guard. They are the
+    /// premise the table's glob rows rest on, and git owns it rather than this repository.
+    /// </para>
     /// </remarks>
     [TestFixture]
     internal sealed class GuardCommandCoverageTests
@@ -73,9 +78,10 @@ namespace Velvet.Tests
             };
         }
 
-        // Read against the fixture's own repository: `main` and `feat/x` are branches in it, `kept.txt`
-        // and `sub` exist in it, and `gone.txt` names neither — the shape of a path git can restore
-        // that the working tree no longer holds.
+        // Read against the fixture's own repository: `main`, `feat/x`, `release.txt` and `dup` are
+        // branches in it, `kept.txt` and `sub` exist in it, and `gone.txt` names neither — the shape of
+        // a path git can restore that the working tree no longer holds. It also holds files named after
+        // three of those branches, which is what lets a glob expand onto a ref.
         private static readonly (string Command, string Expected)[] SharedState =
         {
             ("git checkout main", "checkout"),
@@ -102,7 +108,22 @@ namespace Velvet.Tests
             ("git checkout $(cat branch.txt)", "checkout"),
             ("git checkout `cat branch.txt`", "checkout"),
 
+            // A glob the shell rewrites into one name that is also a branch. Neither a slash nor an
+            // extension tells these apart from the restores below: `feat/x` and `release.txt` are
+            // branches here, and both are legal refnames.
+            ("git checkout m*", "checkout"),
+            ("git checkout feat/*", "checkout"),
+            ("git checkout r*", "checkout"),
+
             ("git checkout kept.txt", "-"),
+            // Globs whose expansion cannot reach the branch-switching form: `dup*` and `*.txt` widen to
+            // several names, and `sub/*` to none.
+            ("git checkout *", "-"),
+            ("git checkout dup*", "-"),
+            ("git checkout *.txt", "-"),
+            ("git checkout sub/*", "-"),
+            ("git checkout k*", "-"),
+            ("git checkout -- m*", "-"),
             ("git checkout gone.txt", "-"),
             ("git checkout kept.txt gone.txt", "-"),
             ("git checkout -- gone.txt", "-"),
@@ -267,6 +288,59 @@ namespace Velvet.Tests
                 "a checkout read wrongly either retargets a branch another worktree is on or refuses a restore");
         }
 
+        [Test]
+        public void Given_AGlobExpandingToOneRefName_When_GitReceivesTheExpansion_Then_HeadMoves()
+        {
+            // Arrange
+            var root = Path.Combine(Path.GetTempPath(), "velvet-glob-one-" + Guid.NewGuid().ToString("N"));
+            (string Before, string After) head;
+
+            try
+            {
+                Assume.That(BuildRepository(root), Is.True, "Precondition: git built the fixture repository");
+
+                // Act — `git checkout r*` reaches git as the single name the shell expanded it to
+                var before = Head(root);
+                Git(root, "checkout", "release.txt");
+                head = (before, Head(root));
+            }
+            finally
+            {
+                Delete(root);
+            }
+
+            // Assert
+            Assert.That(head, Is.EqualTo(("main", "release.txt")),
+                "the guard refuses a one-name expansion because git reads that name as a branch");
+        }
+
+        [Test]
+        public void Given_AGlobExpandingToSeveralRefNames_When_GitReceivesTheExpansion_Then_HeadStays()
+        {
+            // Arrange
+            var root = Path.Combine(Path.GetTempPath(), "velvet-glob-many-" + Guid.NewGuid().ToString("N"));
+            (string Before, string After, bool LeadingNameIsARef) observed;
+
+            try
+            {
+                Assume.That(BuildRepository(root), Is.True, "Precondition: git built the fixture repository");
+
+                // Act — `git checkout dup*` reaches git as both names, the first of them a branch
+                var before = Head(root);
+                Git(root, "checkout", "dup", "dup2");
+                observed = (before, Head(root),
+                    Git(root, "rev-parse", "--verify", "--quiet", "--end-of-options", "dup^{commit}") == 0);
+            }
+            finally
+            {
+                Delete(root);
+            }
+
+            // Assert
+            Assert.That(observed, Is.EqualTo(("main", "main", true)),
+                "the guard passes a widened expansion because git declines to read its leading name as a branch");
+        }
+
         // Built rather than posed against this repository, whose branches and whose absent files a table
         // cannot predict, and placed outside the working tree so nothing here can reach a repository
         // another session holds.
@@ -279,23 +353,57 @@ namespace Velvet.Tests
                 return false;
             }
 
-            if (Git(root, "-c", "user.email=fixture@example.invalid", "-c", "user.name=fixture",
-                    "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "root") != 0)
+            // Files named after branches, so a glob operand has something to expand onto. `dup` and
+            // `dup2` are committed, because an untracked first operand is an unmatched pathspec rather
+            // than the ambiguity the widened-expansion cases are posed to observe, and they are
+            // committed before the branches are cut so every branch carries them.
+            File.WriteAllText(Path.Combine(root, "dup"), string.Empty);
+            File.WriteAllText(Path.Combine(root, "dup2"), string.Empty);
+            if (Git(root, "add", "dup", "dup2") != 0)
             {
                 return false;
             }
 
-            if (Git(root, "branch", "feat/x") != 0)
+            if (Git(root, "-c", "user.email=fixture@example.invalid", "-c", "user.name=fixture",
+                    "-c", "commit.gpgsign=false", "commit", "-q", "-m", "root") != 0)
             {
                 return false;
+            }
+
+            foreach (var branch in new[] { "feat/x", "release.txt", "dup" })
+            {
+                if (Git(root, "branch", branch) != 0)
+                {
+                    return false;
+                }
             }
 
             File.WriteAllText(Path.Combine(root, "kept.txt"), string.Empty);
             Directory.CreateDirectory(Path.Combine(root, "sub"));
+            File.WriteAllText(Path.Combine(root, "main"), string.Empty);
+            File.WriteAllText(Path.Combine(root, "release.txt"), string.Empty);
+            Directory.CreateDirectory(Path.Combine(root, "feat"));
+            File.WriteAllText(Path.Combine(root, "feat", "x"), string.Empty);
             return true;
         }
 
-        private static int Git(string directory, params string[] arguments)
+        private static void Delete(string root)
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, true);
+            }
+        }
+
+        private static string Head(string root) => GitOutput(root, "rev-parse", "--abbrev-ref", "HEAD");
+
+        private static int Git(string directory, params string[] arguments) =>
+            Run(directory, arguments, out _);
+
+        private static string GitOutput(string directory, params string[] arguments) =>
+            Run(directory, arguments, out var output) == 0 ? output.Trim() : null;
+
+        private static int Run(string directory, string[] arguments, out string output)
         {
             var start = new ProcessStartInfo("git")
             {
@@ -315,6 +423,7 @@ namespace Velvet.Tests
                 start.ArgumentList.Add(argument);
             }
 
+            output = string.Empty;
             try
             {
                 using var process = Process.Start(start);
@@ -323,7 +432,7 @@ namespace Velvet.Tests
                     return -1;
                 }
 
-                process.StandardOutput.ReadToEnd();
+                output = process.StandardOutput.ReadToEnd();
                 process.StandardError.ReadToEnd();
                 return process.WaitForExit(30000) ? process.ExitCode : -1;
             }
