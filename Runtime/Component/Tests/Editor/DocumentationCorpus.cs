@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace Velvet.Tests
 {
@@ -31,6 +32,55 @@ namespace Velvet.Tests
         // full checkout of this repository and would report its own copy of every path.
         internal static IReadOnlyList<string> RepoEntries(bool includeClaude) =>
             (includeClaude ? ClaudeAwareWalk : DocumentationWalk).Value;
+
+        /// <summary>Top-level directories holding markdown that the walk does not reach.</summary>
+        /// <remarks>
+        /// The walk is rooted, so a document under a directory nobody added to the roots is scanned by
+        /// nothing and no drift guard sees it. Asking the question over every top-level directory cannot be
+        /// done: a developer machine carries untracked ones a runner does not, so such a check would be red
+        /// here and green in CI — which is the asymmetry the rooting exists to avoid, one level up.
+        /// <para>
+        /// The population is therefore the directories that hold markdown, minus what .gitignore already
+        /// excludes. Both halves are read off the repository: the ignore file is where a machine-local
+        /// directory is already declared, so one appearing tomorrow excuses itself, and a root holding a
+        /// document does not.
+        /// </para>
+        /// </remarks>
+        internal static IReadOnlyList<string> UnwalkedMarkdownRoots()
+        {
+            var ignored = IgnoredRoots();
+            var walked = new HashSet<string>(BaseWalkedRoots.Append(".claude"), StringComparer.Ordinal);
+            var found = new List<string>();
+            foreach (var directory in Directory.EnumerateDirectories(Path.GetFullPath(".")))
+            {
+                var name = Path.GetFileName(directory);
+                if (walked.Contains(name) || BaseUnwalkedDirectories.Contains(name) || ignored.Contains(name))
+                {
+                    continue;
+                }
+                if (Directory.EnumerateFiles(directory, "*.md", SearchOption.AllDirectories).Any())
+                {
+                    found.Add(name);
+                }
+            }
+
+            found.Sort(StringComparer.Ordinal);
+            return found;
+        }
+
+        // Unity's own template writes /[Ll]ibrary/, so a root is a character class rather than a name;
+        // one alternative compared case-insensitively covers both spellings.
+        private static readonly Regex CharacterClassPattern = new(@"\[(\w)\w*\]", RegexOptions.Compiled);
+
+        private static HashSet<string> IgnoredRoots() =>
+            File.ReadAllLines(Path.GetFullPath(".gitignore"))
+                .Select(line => line.Trim())
+                .Where(line => line.Length > 0 && !line.StartsWith("#", StringComparison.Ordinal)
+                               && !line.StartsWith("!", StringComparison.Ordinal))
+                .Select(line => line.Trim('/').Split('/')[0])
+                .Where(root => root.Length > 0 && !root.Contains('*'))
+                .Select(root => CharacterClassPattern.Replace(root, match => match.Groups[1].Value))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         private static readonly string[] BaseWalkedRoots =
             { "Packages", "Assets", ".github", "scripts", "ProjectSettings", "docs" };
