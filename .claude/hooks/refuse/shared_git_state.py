@@ -12,6 +12,7 @@ immediately by the subcommand, so `git -C <other worktree> checkout` — the rea
 case the rule exists for — was invisible to it.
 """
 
+import glob
 import json
 import os
 import re
@@ -48,6 +49,11 @@ RESTORE_FLAGS = {
 # answer no, which is the pass — so it takes the refusal without being resolved at all.
 UNEXPANDED = re.compile(r"[$`]")
 
+# A glob is the other operand the shell rewrites, and it cannot take the same refusal: `git checkout
+# '*.cs'` is an ordinary restore, and refusing it is the over-refusal this guard was rewritten to
+# remove. It is expanded instead, so the question is asked about the operand git receives.
+GLOB = re.compile(r"[*?\[]")
+
 SWITCH_REFUSAL = (
     "Refused: `git switch` and `git stash` move state other worktrees share. Work in the worktree "
     "you were given; if you need a different base, say so and stop.\n"
@@ -83,11 +89,31 @@ def names_a_commit(root, token):
     return completed.returncode != 1
 
 
+def sole_expansions(named, cwd):
+    """The single name each glob operand expands to, skipping every glob that matches otherwise.
+
+    A wider expansion is skipped rather than resolved because it cannot reach the branch-switching
+    form of this command, which `GuardCommandCoverageTests` poses to git rather than asserting here.
+    Skipping it is also what keeps the cost flat: `git checkout *.cs` resolves nothing per matched
+    file.
+
+    Expanded against `cwd` — the shell's directory — while the resolution below runs against the
+    repository `-C` names, which is a different directory whenever the command carries one.
+    """
+    for token in named:
+        if not GLOB.search(token):
+            continue
+        matches = glob.glob(os.path.join(cwd, token))
+        if len(matches) == 1:
+            yield os.path.relpath(matches[0], cwd)
+
+
 def restores_paths(directory, operands, cwd):
     """Whether this checkout restores files rather than moving HEAD.
 
     `--` says so outright, and settles it before any operand is resolved, so the escape hatch the
-    refusal text offers stays open even where git is unreachable.
+    refusal text offers stays open even where git is unreachable — and it is the answer for a glob
+    the expansion below reads differently from the caller's intent.
     """
     if any(token.startswith("-") and token not in RESTORE_FLAGS for token in operands):
         return False
@@ -99,7 +125,8 @@ def restores_paths(directory, operands, cwd):
     root = directory or cwd
     if directory and not os.path.isabs(directory):
         root = os.path.join(cwd, directory)
-    return not any(names_a_commit(root, token) for token in named)
+    resolved = named + list(sole_expansions(named, cwd))
+    return not any(names_a_commit(root, token) for token in resolved)
 
 
 def refusals(command, cwd):

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
@@ -22,11 +23,11 @@ namespace Velvet.Editor.DevTools
     {
         #region Constants
         private const string WindowTitle = "Velvet DevTools";
+        private const string UnreadableCount = "unreadable";
         private const string MenuPath = "Window/Velvet/DevTools Inspector";
         // Fixed-ratio splitter. May be replaced with a draggable splitter in the future.
         private const float SplitterRatio = 0.38f;
         private const double AutoRefreshInterval = 0.5;
-        private const BindingFlags PublicInstance = BindingFlags.Instance | BindingFlags.Public;
         private const BindingFlags NonPublicInstance = BindingFlags.Instance | BindingFlags.NonPublic;
         private static readonly Vector2 WindowMinSize = new(480, 300);
         private const float RefreshButtonWidth = 70f;
@@ -39,16 +40,14 @@ namespace Velvet.Editor.DevTools
         private const float RenderCountLabelWidth = 70f;
         #endregion
 
-        #region Reflection cache (for ComponentFiber's internal fields not visible from the Editor asm)
-        // Velvet.Editor does not have InternalsVisibleTo, so internal property/field access goes through reflection.
-        // Each chain is resolved only once.
-        private static PropertyInfo s_previousTreeProp;
-        private static PropertyInfo s_reconcilerProp;
-        private static FieldInfo s_ctxFi;
-        private static PropertyInfo s_memoCacheProp;
-        private static FieldInfo s_cacheFi;
-        private static PropertyInfo s_cacheCountProp;
-        private static bool s_chainResolved;
+        #region Reflection cache
+        // Runtime/AssemblyInfo.cs grants this assembly InternalsVisibleTo, so everything on the way to the
+        // memo cache is reached by name and a rename fails the build. Only the entry count is out of
+        // reach — FiberMemoCache keeps its entries in a private field and publishes no count — and
+        // DevToolsMemoCacheReadoutTests fails if that field stops resolving.
+        private const string MemoEntriesFieldName = "_cache";
+        private static FieldInfo s_memoEntriesField;
+        private static bool s_memoEntriesFieldResolved;
         #endregion
 
         #region UI State
@@ -74,7 +73,7 @@ namespace Velvet.Editor.DevTools
         private int _cachedRenderCount;
         private int _cachedHookCount;
         private int _cachedBlockerCount;
-        private int _cachedMemoCacheCount;
+        private int? _cachedMemoCacheCount;
         private Vector2 _statsScrollPos;
 
         // Toolbar string updated only on RegistryChanged.
@@ -397,7 +396,8 @@ namespace Velvet.Editor.DevTools
             EditorGUILayout.LabelField("Memo / Reconcile Stats", EditorStyles.boldLabel);
 
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            EditorGUILayout.LabelField("Memo Cache Entries", _cachedMemoCacheCount.ToString(), EditorStyles.miniLabel);
+            EditorGUILayout.LabelField("Memo Cache Entries",
+                _cachedMemoCacheCount?.ToString() ?? UnreadableCount, EditorStyles.miniLabel);
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(4);
@@ -442,19 +442,9 @@ namespace Velvet.Editor.DevTools
             _cachedHookCount = fiber.Indices.HookIndex;
             _cachedBlockerCount = fiber.Indices.BlockerHookIndex;
 
-            // PreviousTree is internal and requires reflection.
             try
             {
-                EnsureChainResolved();
-                if (s_previousTreeProp != null)
-                {
-                    var tree = s_previousTreeProp.GetValue(fiber) as VNode[];
-                    _cachedVNodeText = VNodeTreeRenderer.Render(tree);
-                }
-                else
-                {
-                    _cachedVNodeText = "(PreviousTree not accessible — internal property names may have changed)";
-                }
+                _cachedVNodeText = VNodeTreeRenderer.Render(fiber.PreviousTree);
             }
             catch (Exception ex)
             {
@@ -470,7 +460,7 @@ namespace Velvet.Editor.DevTools
             _cachedRenderCount = 0;
             _cachedHookCount = 0;
             _cachedBlockerCount = 0;
-            _cachedMemoCacheCount = 0;
+            _cachedMemoCacheCount = null;
         }
         #endregion
 
@@ -495,50 +485,27 @@ namespace Velvet.Editor.DevTools
         #endregion
 
         #region Reflection Helpers
-        private static void EnsureChainResolved()
-        {
-            if (s_chainResolved) return;
-            var fiberType = typeof(ComponentFiber);
-            s_previousTreeProp = fiberType.GetProperty("PreviousTree", NonPublicInstance);
-            s_reconcilerProp = fiberType.GetProperty("Reconciler", NonPublicInstance);
-            s_ctxFi = s_reconcilerProp?.PropertyType.GetField("_ctx", NonPublicInstance);
-            s_memoCacheProp = s_ctxFi?.FieldType.GetProperty("MemoCache", PublicInstance);
-            s_cacheFi = s_memoCacheProp?.PropertyType.GetField("_cache", NonPublicInstance);
-            s_cacheCountProp = s_cacheFi?.FieldType.GetProperty("Count", PublicInstance);
-            s_chainResolved = true;
-        }
-
         /// <summary>
-        /// Retrieves <c>fiber.Reconciler._ctx.MemoCache._cache.Count</c> via reflection.
-        /// Each FieldInfo/PropertyInfo in the chain is resolved only on first access via a static cache.
+        /// How many entries the fiber's reconciler holds in its memo cache, or null when there is no
+        /// reconciler to ask or the entry field no longer resolves. Null rather than zero: the two
+        /// readings mean opposite things to someone reading the window, and while a count this window
+        /// could not take was reported as zero, nothing distinguished them.
         /// </summary>
-        private static int GetMemoCacheCount(ComponentFiber fiber)
+        private static int? GetMemoCacheCount(ComponentFiber fiber)
         {
-            try
+            var memoCache = fiber.Reconciler?.Context.FiberMemoCache;
+            if (memoCache == null)
             {
-                EnsureChainResolved();
-                if (s_reconcilerProp == null) return 0;
-
-                var reconciler = s_reconcilerProp.GetValue(fiber);
-                if (reconciler == null) return 0;
-
-                var ctx = s_ctxFi?.GetValue(reconciler);
-                if (ctx == null) return 0;
-
-                var memoCache = s_memoCacheProp?.GetValue(ctx);
-                if (memoCache == null) return 0;
-
-                var cache = s_cacheFi?.GetValue(memoCache);
-                if (cache == null) return 0;
-
-                return s_cacheCountProp != null ? (int)s_cacheCountProp.GetValue(cache) : 0;
+                return null;
             }
-            catch (Exception ex)
+
+            if (!s_memoEntriesFieldResolved)
             {
-                Debug.LogWarning($"[VelvetDevTools] GetMemoCacheCount failed: {ex.Message}");
-                s_chainResolved = false;
-                return 0;
+                s_memoEntriesField = typeof(FiberMemoCache).GetField(MemoEntriesFieldName, NonPublicInstance);
+                s_memoEntriesFieldResolved = true;
             }
+
+            return s_memoEntriesField?.GetValue(memoCache) is ICollection entries ? entries.Count : null;
         }
         #endregion
     }
