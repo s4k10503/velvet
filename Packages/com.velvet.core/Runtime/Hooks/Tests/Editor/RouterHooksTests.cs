@@ -11,8 +11,9 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies the contract of the router context hooks (<see cref="Hooks.UseParams"/> and
-    /// <see cref="Hooks.UseLocation"/>) reading from <see cref="RouterContext.Location"/>.
+    /// Specifies the contract of the router context hooks (<see cref="Hooks.UseParams"/>,
+    /// <see cref="Hooks.UseLocation"/> and <c>UseLoaderData</c>) reading from
+    /// <see cref="RouterContext.Location"/> and <see cref="RouterContext.LoaderData"/>.
     /// <list type="bullet">
     /// <item>Reading the router location without any <see cref="RouterContext.Location"/> Provider yields the
     /// context default: a null location, and therefore an empty parameter dictionary.</item>
@@ -20,6 +21,10 @@ namespace Velvet.Tests
     /// observes that exact location and its route parameters.</item>
     /// <item><see cref="Hooks.UseLocation"/> declares that null return, while <see cref="Hooks.UseParams"/>
     /// declares the empty dictionary it substitutes instead.</item>
+    /// <item>Loader data is read for the route matched at the reader's own Outlet depth: at a depth the
+    /// match list does not reach the default comes back even while the map holds entries, and at a nested
+    /// depth the answer is that depth's route rather than the outermost or the innermost. Reading it
+    /// through a real <c>Router</c> and a real Outlet is specified by <c>RoutingHooksTests</c>.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -41,6 +46,7 @@ namespace Velvet.Tests
             _reconciler = new Reconciler();
             ParamsCapture.Reset();
             LocationCapture.Reset();
+            LoaderDataCapture.Reset();
         }
 
         [TearDown]
@@ -157,21 +163,78 @@ namespace Velvet.Tests
 
         #endregion
 
-        #region UseLoaderData (suspense-based; covered by Suspense integration)
+        #region UseLoaderData
 
-        // UseLoaderData<T> either returns T directly or throws FiberSuspendSignal, so its behavior is verified by
-        // Suspense integration tests. These ignored stubs keep the contract trackable in the Test Runner UI.
+        [Test]
+        public void Given_ADepthPastTheMatchedRoutes_When_Rendered_Then_LoaderDataIsDefault()
+        {
+            // Arrange — read at depth 1 from a location that matched nothing, with loader data present so
+            // an entry is there to be wrongly returned. The depth has to be supplied: the hook answers a
+            // depth of 0 before it ever looks at the match list, so a reader outside an Outlet would take
+            // that arm instead of this one whatever the list held.
+            var loaderData = new Dictionary<string, object> { { "route", "loaded" } };
 
-        [Test, Ignore("UseLoaderData uses a FiberSuspendSignal design verified by Suspense integration tests.")]
-        public void Given_LoaderDataAndMatch_When_Rendered_Then_ReturnsData() { }
+            // Act
+            using var mounted = V.Mount(_root, RouterProviders(
+                LocationMatching(),
+                loaderData,
+                depth: 1,
+                V.Component(LoaderDataCapture.Render)));
 
-        [Test, Ignore("UseLoaderData uses a FiberSuspendSignal design verified by Suspense integration tests.")]
-        public void Given_NoMatch_When_Rendered_Then_ReturnsDefault() { }
+            // Assert
+            Assert.That(LoaderDataCapture.LastData, Is.Null,
+                "No route matched at the reader's depth, so there is no key to read loader data by and the "
+                + "default is returned rather than an entry the map happens to hold");
+        }
 
-        [Test, Ignore("UseLoaderData uses a FiberSuspendSignal design verified by Suspense integration tests.")]
-        public void Given_NoProvider_When_Rendered_Then_ReturnsDefault() { }
+        [Test]
+        public void Given_LoaderDataForEveryMatch_When_ReadAtANestedDepth_Then_ReturnsThatDepthsRoute()
+        {
+            // Arrange — three matched routes, each with its own loader entry, read at depth 2. The three
+            // values differ so the answer separates this depth's route from the outermost and the innermost.
+            var loaderData = new Dictionary<string, object>
+            {
+                { "root", "root-data" },
+                { "middle", "middle-data" },
+                { "leaf", "leaf-data" },
+            };
+
+            // Act
+            using var mounted = V.Mount(_root, RouterProviders(
+                LocationMatching("root", "middle", "leaf"),
+                loaderData,
+                depth: 2,
+                V.Component(LoaderDataCapture.Render)));
+
+            // Assert
+            Assert.That(LoaderDataCapture.LastData, Is.EqualTo("middle-data"),
+                "Loader data is read for the route matched at the reader's own Outlet depth, not for the "
+                + "outermost or the innermost match");
+        }
 
         #endregion
+
+        // A location whose match list carries one entry per routeId, parent first.
+        private static RouterLocation LocationMatching(params string[] routeIds)
+            => new()
+            {
+                Path = "/" + string.Join("/", routeIds),
+                Params = new Dictionary<string, string>(),
+                Matches = Array.ConvertAll(routeIds, id => new RouteMatch { RouteId = id }),
+            };
+
+        // The three contexts an Outlet-rendered route reads loader data through. Depth is supplied
+        // directly because V.Outlet is what writes it, and an Outlet renders the route it matched — so a
+        // depth the match list does not reach cannot be arranged by mounting one.
+        private static VNode RouterProviders(
+            RouterLocation location, IReadOnlyDictionary<string, object> loaderData, int depth, VNode child)
+            => V.Provider(RouterContext.Location, location, new VNode[]
+            {
+                V.Provider(RouterContext.LoaderData, loaderData, new VNode[]
+                {
+                    V.Provider(RouterContext.Depth, depth, new[] { child }),
+                }),
+            });
 
         #region Capture components
 
@@ -187,6 +250,24 @@ namespace Velvet.Tests
                 var location = Hooks.UseContext(RouterContext.Location);
                 LastParams = location?.Params ?? new Dictionary<string, string>();
                 return V.Label(text: "params");
+            }
+        }
+
+        private static class LoaderDataCapture
+        {
+            // A non-null starting value, so a mount that never reached the component cannot satisfy an
+            // assertion that the hook returned the default.
+            public static string? LastData = Unrendered;
+
+            private const string Unrendered = "unrendered";
+
+            public static void Reset() => LastData = Unrendered;
+
+            [Component]
+            public static VNode Render()
+            {
+                LastData = Hooks.UseLoaderData<string>();
+                return V.Label(text: "loader-data");
             }
         }
 
