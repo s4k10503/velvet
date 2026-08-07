@@ -320,6 +320,15 @@ namespace Velvet
             fiber.MemoValueSlots?.Clear();
             fiber.ClearImperativeHandleSlots();
             fiber.RefSlots?.Clear();
+            // A remount is a first render, and every hook decides that by finding its index past the end of
+            // its slot list. A surviving deferred-value slot puts the index inside the list, so the
+            // initialValue overload skips the branch that returns initialValue and schedules the transition,
+            // and commits the previous mount's deferred-toward value instead.
+            //
+            // TransitionSlots deliberately survives alongside it: ReleaseTransitionSlotOwnership above
+            // scrubs what an unmount must not carry over, and UseTransitionTests distinguishes an unowned
+            // reused slot from a fresh one by identity — which a clear would make unaskable.
+            fiber.DeferredValueSlots?.Clear();
             // ExternalRef is re-injected by the parent on re-mount, mirroring how an imperative handle
             // is cleared on unmount and re-established on the next mount.
             // The ComponentRegistry path idempotently re-invokes SetExternalRef, so this is safe.
