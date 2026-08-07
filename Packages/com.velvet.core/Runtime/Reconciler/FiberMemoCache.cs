@@ -10,10 +10,7 @@ namespace Velvet
     {
         private readonly Dictionary<string, (object?[]? deps, MemoNode node, VNode cached)> _cache = new();
 
-        // Convenience overload for callers that don't need the cache-hit flags.
-        public VNode GetOrCompute(string cacheKey, MemoNode memo) => GetOrComputeWithHitInfo(cacheKey, memo).result;
-
-        public (VNode result, bool wasHit, VNode? previousCached) GetOrComputeWithHitInfo(string cacheKey, MemoNode memo)
+        public (VNode result, VNode? previousCached) GetOrCompute(string cacheKey, MemoNode memo)
         {
             VNode? previousCached = null;
             if (_cache.TryGetValue(cacheKey, out var entry))
@@ -28,7 +25,7 @@ namespace Velvet
                 if (ReferenceEquals(entry.node, memo)
                     || (memo.Dependencies != null && ObjectIs.AreEqualDeps(entry.deps, memo.Dependencies)))
                 {
-                    return (entry.cached, true, null);
+                    return (entry.cached, null);
                 }
                 previousCached = entry.cached;
             }
@@ -39,7 +36,7 @@ namespace Velvet
                 throw new InvalidOperationException("MemoNode.Factory returned null.");
             }
             _cache[cacheKey] = (memo.Dependencies, memo, result);
-            return (result, false, previousCached);
+            return (result, previousCached);
         }
 
         // Returns the currently cached inner VNode for cacheKey without invoking the
