@@ -248,7 +248,9 @@ namespace Velvet
         /// Dependency array. Compared element-wise with identity-equality semantics
         /// (<see cref="ObjectIs.AreEqualDeps"/>): reference-type elements by identity (a fresh-but-equal record
         /// counts as changed), strings/primitives by value, floats by raw bit pattern. NOT a structural
-        /// <c>SequenceEqual</c> — there is no recursion into element contents.
+        /// <c>SequenceEqual</c> — there is no recursion into element contents. An empty array declares no
+        /// dependencies and caches for the node's whole life; null declares no dependency array, which no
+        /// newly built node's comparison can satisfy.
         /// </summary>
         public object?[]? Dependencies { get; init; }
     }

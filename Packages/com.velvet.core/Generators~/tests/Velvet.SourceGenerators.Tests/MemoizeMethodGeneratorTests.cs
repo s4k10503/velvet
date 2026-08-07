@@ -189,9 +189,9 @@ namespace MyApp
         }
 
         [Fact]
-        public void Memoize_Arity0_PureImpl_GeneratesDepsLessMemoCall()
+        public void Memoize_Arity0_PureImpl_GeneratesEmptyDepsMemoCall()
         {
-            // arity 0 with a Pure _Impl is allowed; the generated wrapper omits the deps argument
+            // arity 0 with a Pure _Impl is allowed; the generated wrapper declares an empty dependency set
             // so V.Memoized caches the VNode forever (factory is deterministic).
             var result = GeneratorTestHelper.Run(@"
 namespace MyApp.Pages
@@ -206,7 +206,9 @@ namespace MyApp.Pages
 }");
             Assert.Empty(result.Diagnostics);
             Assert.Single(result.GeneratedSources);
-            Assert.Contains("V.Memoized(() => BuildBanner_Impl());", result.GeneratedSources[0].Source);
+            Assert.Contains(
+                "V.Memoized(() => BuildBanner_Impl(), global::System.Array.Empty<object>());",
+                result.GeneratedSources[0].Source);
         }
 
         [Fact]
@@ -227,7 +229,9 @@ namespace MyApp.Pages
 }");
             Assert.Contains(result.Diagnostics, d => d.Id == "VEL001");
             Assert.Single(result.GeneratedSources);
-            Assert.Contains("V.Memoized(() => BuildBanner_Impl());", result.GeneratedSources[0].Source);
+            Assert.Contains(
+                "V.Memoized(() => BuildBanner_Impl(), global::System.Array.Empty<object>());",
+                result.GeneratedSources[0].Source);
         }
 
         [Fact]
