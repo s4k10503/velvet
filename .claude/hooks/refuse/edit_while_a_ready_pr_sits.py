@@ -27,6 +27,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from deferrals import DEFERRALS, deferred
 
+# Held on Edit and Write, which carry a file path rather than a shell command, so there is no operand
+# for the shell to expand and nothing here reads one.
+UNEXPANDED_POLICY = "n/a"
+
 READY_STATE = Path.home() / ".velvet-pr-ready"
 HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
 

@@ -48,6 +48,13 @@ def creations(command):
     return found
 
 
+# The verdict is whether the command carries --label and --assignee, which is its own text. The
+# repository is read only to list the labels the refusal offers, so an unexpanded operand costs a
+# less helpful message and never a missed check.
+UNEXPANDED_POLICY = "allow"
+UNEXPANDED_PROBE = 'gh issue create --title $T --label bug --assignee @me'
+
+
 def labels(cwd):
     listing = subprocess.run(
         ["gh", "label", "list", "--json", "name", "--jq", ".[].name"],

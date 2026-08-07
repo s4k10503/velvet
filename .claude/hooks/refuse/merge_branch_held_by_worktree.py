@@ -21,7 +21,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import program_invocations
+from shell_commands import program_invocations, unexpanded
+
+
+# An operand the shell has not expanded yet resolves to nothing readable, and a merge guard errs
+# toward refusing: allowing means --delete-branch half-fails after the merge has already landed.
+UNEXPANDED_POLICY = "refuse"
+UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
 
 
 def held_branches(cwd):
@@ -61,6 +67,11 @@ def blocked(command, cwd):
         return []
     found = []
     for operands in program_invocations(command, "gh", ("pr", "merge")):
+        named = [token for token in operands if not token.startswith("-")]
+        if any(unexpanded(token) for token in named):
+            found.append(("the branch named by an unexpanded operand",
+                          "unreadable — resolve it, or name the pull request"))
+            continue
         branch = branch_of(cwd, operands)
         if branch and branch in held:
             found.append((branch, held[branch]))
