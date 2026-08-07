@@ -56,19 +56,39 @@ namespace Velvet.Tests
             _loaded = true;
             // Settle on the host having mounted something that the panel has laid out, which is a strictly
             // earlier event than any route rendering — so what each case asserts is still its own to prove.
-            yield return WaitUntil(() =>
-            {
-                var root = PanelRoot();
-                return root != null && root.childCount > 0 && root[0].resolvedStyle.width > 0f;
-            });
+            yield return WaitUntil(
+                () =>
+                {
+                    var root = PanelRoot();
+                    return root != null && root.childCount > 0 && root[0].resolvedStyle.width > 0f;
+                },
+                "the UIDocument panel holding a laid-out child");
         }
 
-        private static IEnumerator WaitUntil(Func<bool> condition)
+        /// <summary>
+        /// Waits for <paramref name="condition"/>, and fails naming <paramref name="what"/> if it never holds.
+        /// </summary>
+        /// <remarks>
+        /// A timeout used to fall through to the assertion, which then dereferenced an element the scene had
+        /// not produced — so the run reported a <c>NullReferenceException</c> and a null button rather than
+        /// a scene that mounted nothing. Reading those as a defect in the change under test cost several
+        /// suite runs and a wrong diagnosis before a control checkout cleared it; the failure now says which
+        /// wait ran out, which is true whatever caused it.
+        /// </remarks>
+        private static IEnumerator WaitUntil(Func<bool> condition, string what)
         {
             var deadline = Time.realtimeSinceStartupAsDouble + SettleSeconds;
             while (!condition() && Time.realtimeSinceStartupAsDouble < deadline)
             {
                 yield return null;
+            }
+
+            if (!condition())
+            {
+                Assert.Fail($"{what} did not hold within {SettleSeconds}s of playing {ScenePath}. "
+                            + "Nothing below this point measured anything. If the rest of the suite is "
+                            + "green, suspect this checkout's imported state before the change under test — "
+                            + "a cloned or restored Library reaches the sample's assets in the same way.");
             }
         }
 
@@ -87,7 +107,7 @@ namespace Velvet.Tests
             yield return PlaySampleScene();
 
             // Act
-            yield return WaitUntil(() => Find(RootName) != null);
+            yield return WaitUntil(() => Find(RootName) != null, $"an element named {RootName}");
 
             // Assert
             Assert.That(Find(RootName), Is.Not.Null);
@@ -100,7 +120,8 @@ namespace Velvet.Tests
             yield return PlaySampleScene();
 
             // Act — a laid-out header is what the reading needs; its direction is not part of the wait.
-            yield return WaitUntil(() => Find(HeaderName) is { } header && header.resolvedStyle.width > 0f);
+            yield return WaitUntil(() => Find(HeaderName) is { } header && header.resolvedStyle.width > 0f,
+                $"a laid-out element named {HeaderName}");
 
             // Assert — the header's direction is read rather than an arbitrary-value class, which would
             // land as inline style and so pass against an entirely unstyled panel.
@@ -113,12 +134,14 @@ namespace Velvet.Tests
         {
             // Arrange
             yield return PlaySampleScene();
-            yield return WaitUntil(() => PanelRoot()?.Q<Button>(AboutLinkName) != null);
+            yield return WaitUntil(() => PanelRoot()?.Q<Button>(AboutLinkName) != null,
+                $"a Button named {AboutLinkName}");
             var tasksBefore = Find(DraftFieldName) != null;
 
             // Act
             PanelRoot().Q<Button>(AboutLinkName).SimulateClick();
-            yield return WaitUntil(() => PanelRoot()?.Q<Button>(BackLinkName) != null);
+            yield return WaitUntil(() => PanelRoot()?.Q<Button>(BackLinkName) != null,
+                $"a Button named {BackLinkName}");
 
             // Assert — arrival alone is satisfied by an outlet that appends rather than replaces, and the
             // departure term alone is satisfied by a task route that never rendered. All three in one
