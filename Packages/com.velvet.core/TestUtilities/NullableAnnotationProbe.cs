@@ -7,14 +7,13 @@ using System.Reflection;
 namespace Velvet.TestUtilities
 {
     /// <summary>
-    /// Reads back the nullable reference annotation the compiler emitted for a method's return type, so a
-    /// fixture can pin a shipped signature's nullability the way <c>PublicAPI.txt</c> pins its shape.
+    /// Reads back the nullable reference annotations the compiler emitted for a signature.
     /// </summary>
     /// <remarks>
-    /// <c>PublicAPI.txt</c> renders a return type without its annotation, so nothing else in the repository
-    /// pins one. The compiler catches the disagreement when the member implements an interface (CS8766); it
+    /// The compiler catches a disagreement between a member and the interface it implements (CS8766); it
     /// reported nothing for <see cref="Hooks.UseLocation"/>, whose null arrived through a null-forgiving
-    /// operator one call away.
+    /// operator one call away. <c>PublicAPI.txt</c> is what pins every shipped member's annotations; this
+    /// reads one member's for a fixture that wants to assert it directly, and renders the surface file.
     /// </remarks>
     public static class NullableAnnotationProbe
     {
@@ -44,25 +43,54 @@ namespace Velvet.TestUtilities
         {
             if (method == null) throw new ArgumentNullException(nameof(method));
 
-            // A member agreeing with the enclosing NullableContext carries no attribute of its own, so an
-            // absent attribute is a reading to be resolved outward rather than a missing one.
-            var declared = ReadFlag(method.ReturnParameter.GetCustomAttributesData(), NullableAttributeName);
-            if (declared.HasValue) return (Annotation)declared.Value;
-
-            var onMethod = ReadFlag(method.GetCustomAttributesData(), NullableContextAttributeName);
-            if (onMethod.HasValue) return (Annotation)onMethod.Value;
-
-            for (var type = method.DeclaringType; type != null; type = type.DeclaringType)
-            {
-                var onType = ReadFlag(type.GetCustomAttributesData(), NullableContextAttributeName);
-                if (onType.HasValue) return (Annotation)onType.Value;
-            }
-
-            var onModule = ReadFlag(method.Module.GetCustomAttributesData(), NullableContextAttributeName);
-            return onModule.HasValue ? (Annotation)onModule.Value : Annotation.Oblivious;
+            return Read(method.ReturnParameter.GetCustomAttributesData(), method).Next(method.ReturnType);
         }
 
-        private static byte? ReadFlag(IList<CustomAttributeData> attributes, string attributeFullName)
+        /// <summary>
+        /// Opens a reader over one signature position — a return type, a parameter, a field, a property or an
+        /// event handler type — whose annotations are then drawn off in the order
+        /// <see cref="AnnotationReader.Next"/> documents.
+        /// </summary>
+        /// <param name="site">Attributes declared on that position itself. Must not be null.</param>
+        /// <param name="scope">
+        /// Member the position belongs to, for a property or an event its accessor: a member agreeing with the
+        /// enclosing <c>NullableContext</c> carries no attribute of its own, so an absent attribute is a
+        /// reading to be resolved outward rather than a missing one.
+        /// </param>
+        public static AnnotationReader Read(IList<CustomAttributeData> site, MemberInfo scope)
+        {
+            if (site == null) throw new ArgumentNullException(nameof(site));
+            if (scope == null) throw new ArgumentNullException(nameof(scope));
+
+            var declared = ReadArgument(site, NullableAttributeName);
+            if (declared.Flags != null) return new AnnotationReader(declared.Flags, 0);
+
+            return declared.Uniform.HasValue
+                ? new AnnotationReader(null, declared.Uniform.Value)
+                : new AnnotationReader(null, ContextFor(scope));
+        }
+
+        private static byte ContextFor(MemberInfo scope)
+        {
+            if (scope is MethodBase method)
+            {
+                var onMethod = ReadArgument(method.GetCustomAttributesData(), NullableContextAttributeName);
+                if (onMethod.Uniform.HasValue) return onMethod.Uniform.Value;
+            }
+
+            for (var type = scope as Type ?? scope.DeclaringType; type != null; type = type.DeclaringType)
+            {
+                var onType = ReadArgument(type.GetCustomAttributesData(), NullableContextAttributeName);
+                if (onType.Uniform.HasValue) return onType.Uniform.Value;
+            }
+
+            var onModule = ReadArgument(scope.Module.GetCustomAttributesData(), NullableContextAttributeName);
+            return onModule.Uniform ?? (byte)Annotation.Oblivious;
+        }
+
+        private static (byte? Uniform, IReadOnlyList<byte>? Flags) ReadArgument(
+            IList<CustomAttributeData> attributes,
+            string attributeFullName)
         {
             foreach (var attribute in attributes)
             {
@@ -70,19 +98,94 @@ namespace Velvet.TestUtilities
                 if (attribute.ConstructorArguments.Count != 1) continue;
 
                 var argument = attribute.ConstructorArguments[0];
-                if (argument.Value is byte flag) return flag;
+                if (argument.Value is byte uniform) return (uniform, null);
 
-                // Which element of a constructed return type's flag array belongs to the returned reference
-                // itself is pinned by the Match return-annotation case in RouteTreeTests.
-                if (argument.Value is ReadOnlyCollection<CustomAttributeTypedArgument> flags
-                    && flags.Count > 0
-                    && flags[0].Value is byte outermost)
+                if (argument.Value is ReadOnlyCollection<CustomAttributeTypedArgument> flags)
                 {
-                    return outermost;
+                    var bytes = new byte[flags.Count];
+                    for (var index = 0; index < flags.Count; index++)
+                    {
+                        bytes[index] = flags[index].Value is byte flag ? flag : (byte)Annotation.Oblivious;
+                    }
+
+                    return (null, bytes);
                 }
             }
 
-            return null;
+            return (null, null);
         }
+
+        /// <summary>
+        /// Draws the annotations of one signature position off in order, opened by
+        /// <see cref="NullableAnnotationProbe.Read"/>.
+        /// </summary>
+        public sealed class AnnotationReader
+        {
+            private readonly IReadOnlyList<byte>? flags;
+            private readonly byte uniform;
+            private int index;
+            private int overrun;
+
+            internal AnnotationReader(IReadOnlyList<byte>? flags, byte uniform)
+            {
+                this.flags = flags;
+                this.uniform = uniform;
+            }
+
+            /// <summary>
+            /// Whether the compiler spelled this position out flag by flag, which is the only form in which
+            /// <see cref="Misalignment"/> can report anything: one flag standing for the whole signature
+            /// cannot be read off by one.
+            /// </summary>
+            public bool ReadsFlagArray => flags != null;
+
+            /// <summary>
+            /// Flags the compiler emitted that <see cref="Next"/> was never asked for, and the count by which
+            /// it was asked past the end. Both are zero exactly when <see cref="Next"/> was driven over the
+            /// same positions the compiler wrote, which is what
+            /// <c>Given_ShippedAssemblies_When_EverySignaturePositionIsRead_Then_NoFlagIsMisread</c> asserts
+            /// across the shipped surface.
+            /// </summary>
+            public (int Unread, int Overrun) Misalignment =>
+                (flags == null ? 0 : flags.Count - index, overrun);
+
+            /// <summary>
+            /// Returns the annotation of the next position and advances past it. Call this once per node of a
+            /// type tree, in pre-order — a constructed type before its arguments, an array before its element
+            /// — since that is the order the compiler flattens the flags into.
+            /// </summary>
+            /// <param name="type">Type at that node. Must not be null.</param>
+            public Annotation Next(Type type)
+            {
+                if (type == null) throw new ArgumentNullException(nameof(type));
+                if (!OccupiesPosition(type)) return Annotation.Oblivious;
+                if (flags == null) return (Annotation)uniform;
+
+                if (index >= flags.Count)
+                {
+                    overrun++;
+                    return Annotation.Oblivious;
+                }
+
+                return (Annotation)flags[index++];
+            }
+        }
+
+        /// <summary>
+        /// Whether the compiler wrote a flag for this node. Which shapes take one is Roslyn's to decide, so
+        /// <c>NullableAnnotationRenderingTests</c> carries a case per rule below and fails when one moves.
+        /// </summary>
+        private static bool OccupiesPosition(Type type)
+        {
+            if (type.IsByRef || type.IsPointer) return false;
+            if (type.IsGenericParameter || type.IsArray) return true;
+            if (IsNullableValueType(type)) return false;
+            return type.IsGenericType || !type.IsValueType;
+        }
+
+        private static bool IsNullableValueType(Type type) =>
+            type.IsGenericType
+            && !type.IsGenericTypeDefinition
+            && type.GetGenericTypeDefinition() == typeof(Nullable<>);
     }
 }
