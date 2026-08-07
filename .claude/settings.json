@@ -110,6 +110,16 @@
             "timeout": 10000
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/edit_while_a_ready_pr_sits.py\"",
+            "timeout": 10000
+          }
+        ]
       }
     ]
   }

@@ -39,6 +39,12 @@ import time
 from pathlib import Path
 
 HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
+
+# When each pull request first read as ready, so a guard can ask how long one has sat rather than
+# whether one exists. Several are usually in flight here and one of them is usually green, so the
+# existence of a ready pull request is the ordinary state and only its age is a defect.
+READY_STATE = Path.home() / ".velvet-pr-ready"
+
 POLL_SECONDS = 60
 
 # What the checks API calls a state that will not change again. "skipping" is terminal and passing:
@@ -142,9 +148,25 @@ def blocking_reasons(project, number, base):
                         held_by_worktree=branch in worktree_branches(project))
 
 
+def write_ready_state(ready, since):
+    """Record each ready pull request beside the time it first read that way.
+
+    Rewritten whole every poll, so a merged one leaves and a newly ready one arrives without the file
+    accumulating. `since` carries entries across polls; without it every poll would reset the clock a
+    guard reads and nothing would ever look stale.
+    """
+    for number in list(since):
+        if number not in ready:
+            del since[number]
+    for number in ready:
+        since.setdefault(number, int(time.time()))
+    READY_STATE.write_text("".join(f"{number} {since[number]}\n" for number in sorted(since)))
+
+
 def watch(project, base):
     """Emit each check that reaches a terminal state, once, and hold the heartbeat open meanwhile."""
     seen = set()
+    ready_since = {}
     while True:
         HEARTBEAT.write_text(f"{int(time.time())}\n")
         try:
@@ -154,6 +176,7 @@ def watch(project, base):
             time.sleep(POLL_SECONDS)
             continue
 
+        ready = set()
         for entry in pull_requests:
             number = entry["number"]
             try:
@@ -174,11 +197,13 @@ def watch(project, base):
             if results and all(r["bucket"] in TERMINAL_PASS for r in results):
                 # A pull request that finished green and sits unmerged is what this exists for as much
                 # as a pending one: a watcher reporting only state CHANGES goes silent on it forever.
+                ready.add(number)
                 line = f"PR#{number} {sha[:7]} READY: every check terminal and passing"
                 if line not in seen:
                     seen.add(line)
                     print(line, flush=True)
 
+        write_ready_state(ready, ready_since)
         time.sleep(POLL_SECONDS)
 
 
