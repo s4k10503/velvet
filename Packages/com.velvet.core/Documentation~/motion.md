@@ -225,7 +225,8 @@ the plan are built in one synchronous call, off-panel, before any style resoluti
   (`tracking-wide`) names likewise, per the bullet above; keyword lengths (`w-auto`, `w-full`) are
   modes, not magnitudes; `rounded-full` is a saturating pill sentinel; `shadow-*`, `skew-*` and
   gradients are baked silhouette paints; `filter-*` is driven by its own opt-in
-  `transition-filter`; `z-*` is a physical reparent.
+  `transition-filter`; `z-*` is a physical reparent; `aspect-[…]` is claimed by neither motion
+  parser, so a ratio change snaps.
 - **Percentage-based translate** (`translate-x-1/2`, `translate-x-full`) **and per-axis `scale-x-` /
   `scale-y-` are not channels either,** for all that the quartet above names `translate` and `scale`.
   Both families resolve as ordinary utilities; they just apply as plain classes, so the swap lands
