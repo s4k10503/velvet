@@ -128,9 +128,16 @@ PowerShell copy that nothing compared.
   after the tool has already run, so it writes into the transcript and exits 0 whatever it finds.
 - `lib/` — imported by the rest, wired to no event of its own.
 
+A guard over state that is shared rather than owned by one session — a branch, the stash — belongs
+in `.claude/settings.json`, where it runs for every session. An agent's frontmatter can only narrow
+that: a guard named there and nowhere else is absent from the main session and from every other
+agent type. Such a guard says so with a `HOOK_SCOPE = "session"` line.
+
 Every failure mode here is silence, so the wiring is asserted rather than trusted.
 `HookWiringCoverageTests` pairs each script against the settings and agent frontmatter that run it,
-in both directions, and fails on a script name a hook builds a path from that no file answers to.
+in both directions, fails on a script name a hook builds a path from that no file answers to, and
+fails on a `HOOK_SCOPE = "session"` guard that the settings do not register or that an agent
+registers a second time.
 
 ### Source generators
 

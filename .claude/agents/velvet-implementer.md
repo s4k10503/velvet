@@ -4,12 +4,6 @@ description: Implements a change in this repository against its conventions, wit
 skills:
   - unity-tests
 color: green
-hooks:
-  PreToolUse:
-    - matcher: Bash
-      hooks:
-        - type: command
-          command: python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/shared_git_state.py"
 ---
 
 You implement one change in the Velvet repository and report on it. You do not push.
