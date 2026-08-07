@@ -2,10 +2,14 @@
 """Watch open pull requests, and merge one only when every precondition holds.
 
 Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` printed a watcher for
-the reader to reimplement, and the merge was typed by hand with three refuse hooks as backstops. An
-instruction is re-derived each time and re-derived wrong — the watcher has been written pinned to one
-pull request number, leaving the next one unwatched behind a fresh heartbeat, which is the exact
-failure the hook's own text warns about.
+the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time and
+re-derived wrong — the watcher has been written pinned to one pull request number, leaving the next
+one unwatched behind a fresh heartbeat, which is the exact failure the hook's own text warns about.
+
+**Every precondition below is also a refuse hook**, one apiece, so a merge typed without this script
+is held to the same four. What this adds is reporting them together: one run names everything wrong
+rather than costing a round of CI per reason. If a precondition is worth having here it belongs in a
+hook, because a script nobody is obliged to run guards nothing.
 
 Four preconditions, each from a merge that went wrong rather than from a list of good practice:
 
