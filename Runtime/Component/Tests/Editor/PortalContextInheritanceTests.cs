@@ -32,13 +32,13 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             _portalTarget = new VisualElement();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
             FiberPortalRegistry.Register("ctx-portal-target", _portalTarget);
             s_lastSeen = null;
         }
 
         [TearDown]
-        public void TearDown() => FiberPortalRegistry.Clear();
+        public void TearDown() => RuntimeStateProbe.ClearPortalRegistry();
 
         private static string s_lastSeen;
         private static StateUpdater<int> s_setCount;

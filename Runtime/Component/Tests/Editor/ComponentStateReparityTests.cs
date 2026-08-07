@@ -320,7 +320,7 @@ namespace Velvet.Tests
             }
             finally
             {
-                FiberPortalRegistry.Clear();
+                RuntimeStateProbe.ClearPortalRegistry();
             }
         }
 

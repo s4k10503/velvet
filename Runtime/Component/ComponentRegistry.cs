@@ -352,11 +352,6 @@ namespace Velvet
             DisposeFiberInternal(fiber);
         }
 
-        // Returns the fiber bound to the given wrapper in O(1). Returns null if the wrapper
-        // is not registered (e.g. the parent VE of inline-mounted fibers).
-        internal ComponentFiber? TryGetFiberForWrapper(VisualElement wrapper)
-            => _wrapperIndex.TryGetValue(wrapper, out var fiber) ? fiber : null;
-
         // Inline-mounted lookup by tree-position key (parent fiber, position key, identity). Used by
         // the old-side walk in GeneralPathReconciler to read the previously rendered
         // ComponentFiber.PreviousTree without triggering a re-render.

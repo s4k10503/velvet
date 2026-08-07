@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.TestTools;
 using Velvet;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -42,14 +43,14 @@ namespace Velvet.Tests
         {
             _reconciler = new Reconciler();
             _root = new VisualElement();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
         }
 
         [TearDown]
         public void TearDown()
         {
             _reconciler.Dispose();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
         }
 
         #region Rendering into the target
