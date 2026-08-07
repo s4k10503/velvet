@@ -12,8 +12,16 @@ namespace Velvet.TestUtilities
     /// <remarks>
     /// The compiler catches a disagreement between a member and the interface it implements (CS8766); it
     /// reported nothing for <see cref="Hooks.UseLocation"/>, whose null arrived through a null-forgiving
-    /// operator one call away. <c>PublicAPI.txt</c> is what pins every shipped member's annotations; this
-    /// reads one member's for a fixture that wants to assert it directly, and renders the surface file.
+    /// operator one call away.
+    /// <para>
+    /// Two guards read this, and they are not the same guard, which is worth saying because a reader
+    /// meeting both will otherwise see duplication and remove one. <c>PublicAPI.txt</c> covers every
+    /// shipped member without anyone writing a case, and catches DRIFT — the file changed, so something
+    /// moved. It cannot catch a regression: the file is maintained by regenerating it, so an annotation
+    /// going back to <c>T</c> is recorded as the new expected value the next time somebody does. A probe
+    /// test asserts what one member's annotation OUGHT to be and carries the reason, so it fails on that
+    /// regression rather than absorbing it. The broad one has no opinion; the narrow one does.
+    /// </para>
     /// </remarks>
     public static class NullableAnnotationProbe
     {
