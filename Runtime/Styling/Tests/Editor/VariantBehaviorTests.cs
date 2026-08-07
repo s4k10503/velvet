@@ -209,7 +209,8 @@ namespace Velvet.Tests
     /// Behavioural coverage for the element-local <c>checked:</c> variant, driven by a control's
     /// <c>ChangeEvent&lt;bool&gt;</c> (a <see cref="Toggle"/>). The payload applies while the control is
     /// checked and clears when it is unchecked; a control mounted already-checked lights up on attach
-    /// (the change event only fires on a change). GWT, one assert each.
+    /// (the change event only fires on a change), and a value written through a fully-controlled prop —
+    /// which raises no change event at all — tracks the same way. GWT, one assert each.
     /// </summary>
     [TestFixture]
     internal sealed class CheckedVariantBehaviorTests
@@ -256,6 +257,50 @@ namespace Velvet.Tests
 
             // Assert — the payload clears.
             Assert.IsFalse(leaf.ClassListContains("bg-hot"));
+        }
+
+        [Test]
+        public void Given_ACheckedVariantToggle_When_ItsValueArrivesThroughAControlledProp_Then_ThePayloadApplied()
+        {
+            // Arrange — a Toggle whose checked state is owned by the props (the ordinary controlled shape),
+            // rendered unchecked.
+            using var scope = new ReconcilerScope();
+            var renderedUnchecked = new VNode[] { V.Toggle(name: "leaf", className: "checked:bg-hot", value: false) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), renderedUnchecked);
+            var leaf = scope.Root.Q<Toggle>("leaf");
+            var beforeTheControlledWrite = leaf.ClassListContains("bg-hot");
+
+            // Act — the owner re-renders with the value flipped; no user interaction, so the control is
+            // written without notification.
+            scope.Reconciler.Reconcile(scope.Root, renderedUnchecked,
+                new VNode[] { V.Toggle(name: "leaf", className: "checked:bg-hot", value: true) });
+
+            // Assert — folded rather than assumed: a payload already applied while unchecked would make the
+            // second term true without the write under test having done anything.
+            Assert.That(
+                (beforeTheControlledWrite, leaf.ClassListContains("bg-hot")),
+                Is.EqualTo((false, true)));
+        }
+
+        [Test]
+        public void Given_ACheckedVariantToggleApplied_When_AControlledPropUnchecksIt_Then_ThePayloadRemoved()
+        {
+            // Arrange — a controlled Toggle rendered checked, payload on.
+            using var scope = new ReconcilerScope();
+            var renderedChecked = new VNode[] { V.Toggle(name: "leaf", className: "checked:bg-hot", value: true) };
+            scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), renderedChecked);
+            var leaf = scope.Root.Q<Toggle>("leaf");
+            var beforeTheControlledWrite = leaf.ClassListContains("bg-hot");
+
+            // Act — the owner re-renders with the value flipped back.
+            scope.Reconciler.Reconcile(scope.Root, renderedChecked,
+                new VNode[] { V.Toggle(name: "leaf", className: "checked:bg-hot", value: false) });
+
+            // Assert — folded rather than assumed: a payload that never applied would make the second term
+            // false with the write under test doing nothing.
+            Assert.That(
+                (beforeTheControlledWrite, leaf.ClassListContains("bg-hot")),
+                Is.EqualTo((true, false)));
         }
 
         [Test]
