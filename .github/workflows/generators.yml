@@ -71,6 +71,21 @@ jobs:
         working-directory: Packages/com.velvet.core/Generators~
         run: dotnet test Velvet.SourceGenerators.sln -c Release --nologo
 
+      # The committed DLLs are what a consumer's compile loads, and CLAUDE.md makes redeploying them
+      # part of finishing a generator change. Nothing checked that they correspond to the sources
+      # beside them, and measurement found a pair that does not: the build reproduces byte for byte
+      # across runs and across checkout paths, so a dirty tree here means the tree is stale, not that
+      # the build is noisy.
+      - name: Committed generator DLLs match their sources
+        run: |
+          python3 Packages/com.velvet.core/Generators~/build.py
+          if ! git diff --quiet -- Packages/com.velvet.core/Runtime/Plugins; then
+            echo "::error::the committed generator DLLs do not rebuild from the sources beside them"
+            git diff --stat -- Packages/com.velvet.core/Runtime/Plugins
+            echo "Rebuild and commit them:  python3 Packages/com.velvet.core/Generators~/build.py"
+            exit 1
+          fi
+
       - name: Cohesion report
         run: python3 scripts/test_quality/cohesion_report.py
 
