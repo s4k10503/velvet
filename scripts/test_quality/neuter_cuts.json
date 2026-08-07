@@ -281,11 +281,5 @@
         }
       ]
     }
-  ],
-  "registrationAllowlist": [
-    {
-      "fixture": "Velvet.Tests.PaintOpacityParityPlaybackTests",
-      "reason": "PlayMode GPU readback parity between textured-quad and painter2D opacity; no neuter cut disables what these cases measure."
-    }
   ]
 }
