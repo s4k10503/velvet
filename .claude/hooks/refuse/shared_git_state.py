@@ -20,6 +20,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import git_invocations
 
+# Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
+# run git, which would leave every other session unguarded. `HookWiringCoverageTests` reads this
+# declaration to check that the registration is still there.
+HOOK_SCOPE = "session"
+
 # `git stash list` and `git stash show` read; every other form moves the shared stash.
 STASH_READS = {"list", "show"}
 

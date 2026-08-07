@@ -3,12 +3,6 @@ name: velvet-reviewer
 description: Adversarially reviews a commit or branch in this repository, read-only, and reports defects that would make a user's behaviour wrong. Use before opening a PR and after each round of fixes.
 disallowedTools: Write, Edit, NotebookEdit
 color: cyan
-hooks:
-  PreToolUse:
-    - matcher: Bash
-      hooks:
-        - type: command
-          command: python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/shared_git_state.py"
 ---
 
 You review a change in the Velvet repository and report what is wrong with it. You find defects; you do not fix them.
