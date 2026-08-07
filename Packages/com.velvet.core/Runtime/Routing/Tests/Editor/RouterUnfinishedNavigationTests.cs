@@ -22,6 +22,8 @@ namespace Velvet.Tests
     /// whether it died in a phase or in the commit that follows them.</item>
     /// <item>A history entry committed while a Suspend loader is still running is not served from the
     /// Back/Forward cache, since the snapshot it holds is not the data the route asked for.</item>
+    /// <item>An attempt cancelled by a loader that navigated leaves the loader data and the status of the
+    /// location that navigation committed, rather than clearing state it never owned.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -212,5 +214,57 @@ namespace Velvet.Tests
             Assert.That(loaderCalls, Is.EqualTo(2),
                 "A snapshot taken before the loaders finished is not the data the route asked for, so it is not cached");
         });
+
+        [Test]
+        public void Given_ALoaderThatNavigates_When_TheCancelledAttemptUnwinds_Then_TheCommittedLocationKeepsItsLoaderData()
+        {
+            // The inner navigation runs to completion inside the outer attempt's loader loop, so by the time
+            // the outer attempt sees its own token cancelled the live loader state describes the location the
+            // user has arrived at. Everything here is synchronous: the loader hands back a completed task, and
+            // the nested navigation has no Guard or Blocker to await.
+            // Arrange
+            Router router = null!;
+            router = BuildRouter("/home",
+                Route("home"),
+                Route("trigger", loader: (ctx, ct) =>
+                {
+                    router.NavigateAsync("/target").Forget();
+                    return UniTask.FromResult<object>("trigger-data");
+                }),
+                Route("target", loader: (ctx, ct) => UniTask.FromResult<object>("target-data")));
+
+            // Act
+            var result = router.NavigateAsync("/trigger").GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That(
+                $"result={result} path={router.CurrentLocation?.Path} data={router.GetLoaderData("/target")}",
+                Is.EqualTo("result=Cancelled path=/target data=target-data"),
+                "An attempt that never commits must leave the loader data of the location that did");
+        }
+
+        [Test]
+        public void Given_ALoaderThatNavigates_When_TheCancelledAttemptUnwinds_Then_TheCommittedLocationKeepsItsStatus()
+        {
+            // Same run as the loader-data case, one field over: the cancelled attempt reaches its unwind after
+            // the navigation started from inside it has already published its own Ready.
+            // Arrange
+            Router router = null!;
+            router = BuildRouter("/home",
+                Route("home"),
+                Route("trigger", loader: (ctx, ct) =>
+                {
+                    router.NavigateAsync("/target").Forget();
+                    return UniTask.FromResult<object>("trigger-data");
+                }),
+                Route("target"));
+
+            // Act
+            var result = router.NavigateAsync("/trigger").GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Cancelled status=Ready"),
+                "An attempt that has lost the claim must not report its own outcome as the router's state");
+        }
     }
 }

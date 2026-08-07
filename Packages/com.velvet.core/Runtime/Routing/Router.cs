@@ -140,13 +140,18 @@ namespace Velvet
         /// <see cref="NavigationResult.NotFound"/> when no route matches,
         /// <see cref="NavigationResult.Blocked"/> when a Blocker rejects the attempt,
         /// <see cref="NavigationResult.Cancelled"/> when concurrent navigation or the cancellation token aborts it,
+        /// or when <paramref name="mode"/> is <see cref="NavigationMode.Back"/> / <see cref="NavigationMode.Forward"/>
+        /// and the history has no entry to step onto,
         /// or <see cref="NavigationResult.Error"/> on Loader failure or redirect overflow.
         /// </returns>
         public UniTask<NavigationResult> NavigateAsync(
             string path,
             NavigationMode mode = NavigationMode.Push,
             CancellationToken cancellationToken = default) =>
-            NavigateInternalAsync(ResolvePath(path), mode, cancellationToken, redirectCount: 0, initiator: null);
+            StepHasNoEntryToLandOn(mode)
+                ? UniTask.FromResult(NavigationResult.Cancelled)
+                : NavigateInternalAsync(ResolvePath(path), mode, cancellationToken, redirectCount: 0,
+                    initiator: null);
 
         /// <summary>
         /// Navigates with relative resolution anchored to a specific matched-route level
@@ -160,8 +165,22 @@ namespace Velvet
             NavigationMode mode,
             int baseRouteIndex,
             CancellationToken cancellationToken = default) =>
-            NavigateInternalAsync(ResolvePath(path, baseRouteIndex), mode, cancellationToken, redirectCount: 0,
-                initiator: null);
+            StepHasNoEntryToLandOn(mode)
+                ? UniTask.FromResult(NavigationResult.Cancelled)
+                : NavigateInternalAsync(ResolvePath(path, baseRouteIndex), mode, cancellationToken,
+                    redirectCount: 0, initiator: null);
+
+        // Refusing the step before the navigation starts, rather than partway through it, is what makes
+        // NavigateAsync and GoBack/GoForward agree on everything the refusal skips: no in-flight attempt
+        // cancelled out from under its caller, and no Status transition left to put back. It is also where
+        // the Back/Forward branch of the loader phase, which indexes the history directly, gets its
+        // assurance that the slot it reads existed when the attempt started.
+        private bool StepHasNoEntryToLandOn(NavigationMode mode) => mode switch
+        {
+            NavigationMode.Back => !CanGoBack,
+            NavigationMode.Forward => !CanGoForward,
+            _ => false,
+        };
 
         /// <summary>
         /// Resolves a relative navigation target (<c>.</c>, <c>..</c>, <c>../sibling</c>, or a bare
@@ -359,22 +378,11 @@ namespace Velvet
             }
             else
             {
-                var commitIndex = CommitIndexFor(mode);
-                if ((mode == NavigationMode.Back || mode == NavigationMode.Forward)
-                    && (commitIndex < 0 || commitIndex >= _history.Count))
-                {
-                    // A step with no entry to land on. GoBack/GoForward refuse it before starting; a direct
-                    // NavigateAsync in Back or Forward mode reaches here, and committing would write into a
-                    // slot that does not exist — appending a second entry under an index still pointing at
-                    // the first, when a Guard redirect turns the step into a Replace.
-                    Status = RouterStatus.Idle;
-                    return NavigationResult.Cancelled;
-                }
                 // The claim is taken after the match and not when the navigation started: every return above
                 // this line leaves Status describing its own outcome, so a navigation that matches no route
                 // must not dispossess an attempt parked in a blocker — that attempt is then the only one able
                 // to put Status back.
-                pending = new PendingNavigation(++_navigationSequence, commitIndex);
+                pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode));
             }
 
             RouterLocation location;
@@ -619,15 +627,14 @@ namespace Velvet
             Status = RouterStatus.Loading;
             // allCompleted is unused (errors are detected via the runner's Errors map).
             var (results, _) = _loaderRunner.RunLoadersSync(matches, cancellationToken);
-            // Captured here rather than read back at commit time: this is the round whose data the commit
-            // records, and a loader delegate that navigates starts another one.
             var round = _loaderRunner.CurrentRound;
 
             if (cancellationToken.IsCancellationRequested)
             {
-                _loaderData = new Dictionary<string?, object>();
-                _loaderErrors = new Dictionary<string?, Exception>();
-                Status = RouterStatus.Idle;
+                // This attempt has committed nothing, so neither the live loader state nor the claim on Status
+                // is its to reset: both describe wherever the user actually is, which a loader that cancelled
+                // this attempt by navigating may already have moved.
+                ReleaseClaim(pending, RouterStatus.Idle);
                 return (NavigationResult.Cancelled, round);
             }
 

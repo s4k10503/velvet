@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
@@ -25,6 +26,8 @@ namespace Velvet.Tests
     /// <item>An Await loader that throws records the error in <c>Errors</c> and reports <c>allCompleted</c> false.</item>
     /// <item>Each round tracks its own outstanding Suspend loaders, so a round asked after a later one has
     /// started still answers for itself.</item>
+    /// <item>A round's loaders all launch under that round's own token, so a loader that starts another round
+    /// mid-run does not lend the next round's currency to the leftovers of the one it superseded.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -374,6 +377,35 @@ namespace Velvet.Tests
             Assert.That($"first={firstRound.Settled} second={runner.CurrentRound.Settled}",
                 Is.EqualTo("first=False second=True"),
                 "A round reports its own outstanding loaders, not those of whichever round is current");
+        }
+
+        [Test]
+        public void Given_ALoaderThatStartsAnotherRound_When_TheOuterRoundsNextLoaderLaunches_Then_ItGetsTheOuterRoundsToken()
+        {
+            // The nested round cancels the outer one on its way in, so the token the outer round's remaining
+            // loaders belong to is a cancelled one. Handing them the nested round's live token instead makes
+            // their completions read as current to every check keyed on the round's source.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            bool? nextLoaderSawCancellation = null;
+            var matches = new List<RouteMatch>();
+            matches.AddRange(MakeMatch("nesting", loader: (ctx, ct) =>
+            {
+                runner.RunLoadersSync(MakeMatch("nested"), CancellationToken.None);
+                return UniTask.FromResult<object>("nesting-data");
+            }));
+            matches.AddRange(MakeMatch("next", loader: (ctx, ct) =>
+            {
+                nextLoaderSawCancellation = ct.IsCancellationRequested;
+                return UniTask.FromResult<object>("next-data");
+            }));
+
+            // Act
+            runner.RunLoadersSync(matches, CancellationToken.None);
+
+            // Assert
+            Assert.That(nextLoaderSawCancellation, Is.True,
+                "A round's later loaders must launch under the token of the round they belong to");
         }
 
         #endregion
