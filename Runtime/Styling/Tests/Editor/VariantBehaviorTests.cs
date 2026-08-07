@@ -314,5 +314,19 @@ namespace Velvet.Tests
             // Assert
             Assert.IsTrue(leaf.ClassListContains("bg-hot"));
         }
+
+        [Test]
+        public void Given_RadioButtonMountedAlreadyChecked_When_Mounted_Then_PayloadAppliedOnAttach()
+        {
+            // Arrange / Act — the same attach-time read on a RadioButton, which reports a bool without being
+            // a Toggle. Its change path already drives checked:, so only the mount read was left out.
+            _mounted = V.Mount(_root, V.Custom<RadioButton>(
+                name: "leaf", className: "checked:bg-hot", props: new FiberElementProps { FieldValue = true }));
+            var leaf = _root.Q<RadioButton>("leaf");
+
+            // Assert — folded rather than assumed: a controlled value that never reached the control would
+            // make the payload correctly absent, so the seed has to be read beside the value it seeds from.
+            Assert.That((leaf.value, leaf.ClassListContains("bg-hot")), Is.EqualTo((true, true)));
+        }
     }
 }
