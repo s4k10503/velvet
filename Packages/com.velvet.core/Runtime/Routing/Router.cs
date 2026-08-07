@@ -636,7 +636,10 @@ namespace Velvet
                 return (NavigationResult.Cancelled, round);
             }
 
-            _loaderData = round.Results;
+            // Copied rather than aliased: a Suspend loader of this round that resolves after the commit writes
+            // into round.Results, and CurrentLoaderData publishes whatever this field holds as a read-only
+            // snapshot.
+            _loaderData = new Dictionary<string?, object>(round.Results);
 
             // A loader error does not abort navigation. The location commits and
             // the nearest RouteDefinition.ErrorElement renders in place of the route's Element. Errors

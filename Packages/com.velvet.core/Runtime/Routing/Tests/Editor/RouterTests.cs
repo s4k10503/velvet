@@ -34,6 +34,8 @@ namespace Velvet.Tests
     /// <item>A Suspend loader whose task is already complete resolves before its own navigation commits: its
     /// result still reaches that navigation's loader data, and it is not recorded against the location being
     /// navigated away from.</item>
+    /// <item><c>CurrentLoaderData</c> is a snapshot rather than a live view, so a Suspend loader resolving
+    /// afterwards leaves the dictionary an earlier caller is holding untouched.</item>
     /// <item><c>OnLocationChanged</c> fires once per navigation with the committed location.</item>
     /// <item>An optional <see cref="IRouteScopeFactory"/> is exposed through <c>ScopeFactory</c> and is null
     /// when not supplied.</item>
@@ -629,6 +631,40 @@ namespace Velvet.Tests
             // Assert
             Assert.That(router.CurrentLoaderErrors["/deferred"].Message, Does.Contain("deferred-failure"),
                 "The Back cache hit restores the post-resolution error recorded by the Suspend loader");
+        });
+
+        #endregion
+
+        #region Loader data snapshot
+
+        [UnityTest]
+        public IEnumerator Given_ACallerHoldingCurrentLoaderData_When_ASuspendLoaderResolvesLate_Then_TheHeldDictionaryIsUnchanged()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // The count is read on both sides of the resolution rather than only after it, because a snapshot
+            // that was already populated when it was handed out would satisfy an after-only reading of an
+            // unchanged one.
+            // Arrange
+            var tcs = new UniTaskCompletionSource<object>();
+            var router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("deferred", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend),
+                }),
+            });
+            router.NavigateSync("/deferred");
+            var held = router.CurrentLoaderData;
+            var countWhenHandedOut = held.Count;
+
+            // Act
+            tcs.TrySetResult("deferred-data");
+            await UniTask.Yield();
+
+            // Assert
+            Assert.That($"handedOut={countWhenHandedOut} afterResolution={held.Count}",
+                Is.EqualTo("handedOut=0 afterResolution=0"),
+                "A dictionary published as read-only must not gain entries under whoever is holding it");
         });
 
         #endregion

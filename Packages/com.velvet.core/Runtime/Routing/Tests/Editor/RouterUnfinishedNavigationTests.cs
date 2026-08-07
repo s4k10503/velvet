@@ -16,6 +16,9 @@ namespace Velvet.Tests
     /// <item>An attempt parked in a Blocker leaves the index and the history list describing the entry the
     /// user is still on, so a navigation started meanwhile builds on that entry rather than on the parked
     /// attempt's destination.</item>
+    /// <item>A Back or Forward resolves the slot it will commit into before those phases run, so a Push
+    /// committing meanwhile can take that slot over. Such an attempt commits nothing at all: the Blocker
+    /// check refuses a superseded attempt before the loader phase reads the slot.</item>
     /// <item>A Guard redirect appends nothing before its target commits, so an attempt that never gets there
     /// leaves no entry for a path the user did not arrive at.</item>
     /// <item>A navigation that dies on an exception leaves no in-flight <see cref="RouterStatus"/> behind,
@@ -66,6 +69,41 @@ namespace Velvet.Tests
             // Assert
             Assert.That(RouterHistoryProbe.PathsOf(router), Is.EqualTo("/home,/about,/settings,/contact"),
                 "A navigation that has not committed must not move the position a later Push builds on");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AForwardParkedInABlocker_When_APushTakesOverItsSlot_Then_ItCommitsNothing()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // The Push truncates the forward entries, so the slot the parked Forward resolved onto holds the
+            // pushed entry by the time the blocker releases.
+            // Arrange
+            var router = BuildRouter("/home",
+                Route("/", children: new[]
+                {
+                    Route("home"), Route("about"), Route("settings"), Route("contact"),
+                }));
+            await router.NavigateAsync("/about");
+            await router.NavigateAsync("/settings");
+            await router.GoBack();
+            var (check, entered, _, resumeUnblocked) = MakeDeferredBlocker();
+            using var registration = router.RouteBlockerManager.Register(check, new RouteBlockerState());
+            var parked = router.GoForward();
+            await entered.Task;
+            await router.NavigateAsync("/contact");
+            Assume.That(RouterHistoryProbe.PathsOf(router), Is.EqualTo("/home,/about,/contact"),
+                "Precondition: the Push truncated the entry the parked Forward had resolved onto");
+
+            // Act
+            resumeUnblocked();
+            var result = await parked;
+
+            // Assert
+            Assert.That(
+                $"result={result} at={router.CurrentLocation?.Path} history={RouterHistoryProbe.PathsOf(router)}",
+                Is.EqualTo("result=Cancelled at=/contact history=/home,/about,/contact"),
+                "A step whose destination is gone must land nowhere rather than write itself into the slot "
+                + "that destination used to occupy");
         });
 
         [UnityTest]
