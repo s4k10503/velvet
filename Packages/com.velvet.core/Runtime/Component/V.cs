@@ -1398,11 +1398,12 @@ namespace Velvet
         /// Memoization node. Skips rebuilding the child subtree while the dependency array is unchanged.
         /// When <c>key</c> is omitted, the order of MemoNodes within the same component must remain stable,
         /// since identity is resolved by call order. If the order can change dynamically, use
-        /// <see cref="MemoizedWithKey"/> instead. This is distinct from <see cref="Memo{TProps}"/>, which
+        /// <see cref="MemoizedWithKey(string, Func{VNode}, object[])"/> instead. This is distinct from
+        /// <see cref="Memo{TProps}"/>, which
         /// memoizes a function-style component by props equality.
         /// </summary>
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared via <see cref="ObjectIs.AreEqualDeps"/> — reference-type elements by identity, strings and primitives by value, floats by raw bit pattern), the cached VNode is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared via <see cref="ObjectIs.AreEqualDeps"/> — reference-type elements by identity, strings and primitives by value, floats by raw bit pattern), the cached VNode is reused. Pass an empty array to declare no dependencies and cache the subtree for the node's whole life; null declares no dependency array, which no newly built node's comparison can satisfy.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
         public static MemoNode Memoized(Func<VNode> factory, params object?[]? deps)
         {
@@ -1410,6 +1411,26 @@ namespace Velvet
             {
                 Factory = factory,
                 Dependencies = deps,
+            };
+        }
+
+        /// <summary>
+        /// Declares no dependency array, for a factory whose inputs are not expressible as one: a newly built
+        /// node never reuses the cached subtree, so a call site inside a render body rebuilds every render.
+        /// </summary>
+        /// <remarks>
+        /// The single-argument overload exists so that omitting deps is unambiguous — see
+        /// <see cref="Hooks.UseCallback{T}(T)"/> for the hazard it avoids. To cache the subtree for the node's
+        /// whole life instead, pass an empty array.
+        /// </remarks>
+        /// <param name="factory">Factory invoked on every reconcile to produce the subtree.</param>
+        /// <returns>The created <see cref="MemoNode"/>.</returns>
+        public static MemoNode Memoized(Func<VNode> factory)
+        {
+            return new MemoNode
+            {
+                Factory = factory,
+                Dependencies = null,
             };
         }
 
@@ -1421,7 +1442,7 @@ namespace Velvet
         /// </summary>
         /// <param name="key">Stable cache key independent of sibling order.</param>
         /// <param name="factory">Factory invoked to produce the cached VNode when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency values used to detect changes.</param>
+        /// <param name="deps">Dependency values used to detect changes, with the same empty-array and null meanings as <see cref="Memoized(Func{VNode}, object[])"/>.</param>
         /// <returns>The created <see cref="MemoNode"/>.</returns>
         public static MemoNode MemoizedWithKey(string? key, Func<VNode> factory, params object?[]? deps)
         {
@@ -1430,6 +1451,23 @@ namespace Velvet
                 Key = key,
                 Factory = factory,
                 Dependencies = deps,
+            };
+        }
+
+        /// <summary>
+        /// Keyed variant of <see cref="Memoized(Func{VNode})"/>: declares no dependency array, under an
+        /// explicit cache key.
+        /// </summary>
+        /// <param name="key">Stable cache key independent of sibling order.</param>
+        /// <param name="factory">Factory invoked on every reconcile to produce the subtree.</param>
+        /// <returns>The created <see cref="MemoNode"/>.</returns>
+        public static MemoNode MemoizedWithKey(string? key, Func<VNode> factory)
+        {
+            return new MemoNode
+            {
+                Key = key,
+                Factory = factory,
+                Dependencies = null,
             };
         }
 

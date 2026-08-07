@@ -24,8 +24,8 @@ namespace Velvet.SourceGenerators.AutoDeps
     /// The match is conservative: only <c>new[] { ... }</c> / <c>new T[] { ... }</c> deps initializers and
     /// loose <c>params</c> deps arguments are considered, and only missing captures are flagged (extra deps
     /// are ignored). Method-group factories are skipped because the captured set requires resolving the
-    /// target method body. A captured local is exempt only when it originates from a stable hook return
-    /// (<c>UseState</c> / <c>UseReducer</c> / <c>UseRef</c> / <c>UseMutableRef</c>).
+    /// target method body. A captured local is exempt only when it originates from a hook return listed in
+    /// <see cref="StableHookSlots"/>.
     /// </remarks>
     [DiagnosticAnalyzer(LanguageNames.CSharp)]
     public sealed class UseEffectExhaustiveDepsAnalyzer : DiagnosticAnalyzer
@@ -227,13 +227,11 @@ namespace Velvet.SourceGenerators.AutoDeps
         }
 
         /// <summary>
-        /// Returns true for locals whose value originates from a stable hook return: the setter / updater
-        /// from <c>UseState</c>, the dispatch from <c>UseReducer</c>, or the ref from <c>UseRef</c> /
-        /// <c>UseMutableRef</c>. Those returns are stable references across renders and need not appear in
-        /// deps, so they are exempt. The decision is made by
-        /// tracing the local's initializer back to a <c>Velvet.Hooks</c> call (origin-based), not by the
-        /// local's declared type, so a plain <c>Action</c> field/parameter that happens to share the type is
-        /// still flagged.
+        /// Returns true for locals whose value originates from one of the stable hook returns in
+        /// <see cref="StableHookSlots"/>, which are reference-stable across renders and so need not appear in
+        /// deps. The decision is made by tracing the local's initializer back to a <c>Velvet.Hooks</c> call
+        /// (origin-based), not by the local's declared type, so a plain <c>Action</c> field/parameter that
+        /// happens to share the type is still flagged.
         /// </summary>
         private static bool IsStableHookReturnLocal(
             ILocalSymbol local,
@@ -297,10 +295,7 @@ namespace Velvet.SourceGenerators.AutoDeps
 
         /// <summary>
         /// Returns true when the local bound from <paramref name="invocation"/> at <paramref name="tupleSlot"/>
-        /// is a stable hook return. Tuple positions matter: <c>UseState</c> / <c>UseReducer</c> return
-        /// <c>(value, setter)</c> where only the setter (slot ≥ 1) is stable — the value (slot 0) changes
-        /// between renders and must still be flagged when missing from deps. <c>UseRef</c> / <c>UseMutableRef</c>
-        /// return the stable ref directly (no tuple, <paramref name="tupleSlot"/> = -1).
+        /// is a stable hook return, per <see cref="StableHookSlots"/>.
         /// </summary>
         private static bool BindsToStableHookSlot(
             InvocationExpressionSyntax? invocation,
@@ -318,22 +313,36 @@ namespace Velvet.SourceGenerators.AutoDeps
             return symbol?.ContainingType?.ToDisplayString() == VelvetWellKnownNames.HooksTypeFullName;
         }
 
-        private static bool IsStableSlot(string hookName, int tupleSlot)
-        {
-            // UseState/UseReducer: the setter / dispatch lives at tuple slot 1+; slot 0 (value / state) changes.
-            if (hookName == VelvetWellKnownNames.UseStateMethodName
-                || hookName == VelvetWellKnownNames.UseReducerMethodName)
+        /// <summary>Slot value for a hook whose whole return is stable, rather than one element of a tuple.</summary>
+        internal const int WholeReturn = -1;
+
+        /// <summary>
+        /// Hook name to the first tuple slot whose local is reference-stable, or <see cref="WholeReturn"/> when
+        /// the hook returns the stable value directly. Tuple positions matter: <c>UseState</c> returns
+        /// <c>(value, setter)</c>, and the value at slot 0 changes between renders, so omitting it from deps must
+        /// still be flagged.
+        /// </summary>
+        /// <remarks>
+        /// Which hooks belong here is not a judgement this file gets to make on its own — the runtime declares
+        /// each stable return in its <c>&lt;returns&gt;</c> documentation, and
+        /// <c>StableHookSlotDriftTests</c> fails when the two sets disagree in either direction. The slot
+        /// numbers are this file's alone; nothing derives them.
+        /// </remarks>
+        internal static readonly ImmutableDictionary<string, int> StableHookSlots =
+            ImmutableDictionary.CreateRange(StringComparer.Ordinal, new[]
             {
-                return tupleSlot >= 1;
-            }
-            // UseRef/UseMutableRef return the ref directly; only the whole-value direct assignment is stable.
-            if (hookName == VelvetWellKnownNames.UseRefMethodName
-                || hookName == VelvetWellKnownNames.UseMutableRefMethodName)
-            {
-                return tupleSlot < 0;
-            }
-            return false;
-        }
+                new KeyValuePair<string, int>(VelvetWellKnownNames.UseStateMethodName, 1),
+                new KeyValuePair<string, int>(VelvetWellKnownNames.UseReducerMethodName, 1),
+                new KeyValuePair<string, int>(VelvetWellKnownNames.UseTransitionMethodName, 1),
+                new KeyValuePair<string, int>(VelvetWellKnownNames.UseSearchParamsMethodName, 1),
+                new KeyValuePair<string, int>(VelvetWellKnownNames.UseRefMethodName, WholeReturn),
+                new KeyValuePair<string, int>(VelvetWellKnownNames.UseMutableRefMethodName, WholeReturn),
+                new KeyValuePair<string, int>(VelvetWellKnownNames.UseMutationMethodName, WholeReturn),
+            });
+
+        internal static bool IsStableSlot(string hookName, int tupleSlot) =>
+            StableHookSlots.TryGetValue(hookName, out var stableFrom)
+            && (stableFrom == WholeReturn ? tupleSlot < 0 : tupleSlot >= stableFrom);
 
         private readonly struct CapturedLocal
         {

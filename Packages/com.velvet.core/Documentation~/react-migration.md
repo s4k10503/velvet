@@ -7,7 +7,7 @@ It also explicitly documents the intentional differences imposed by C# language 
 
 ## Table of Contents
 
-1. [Hooks Mapping](#1-hooks-mapping)
+1. [Hooks Mapping](#1-hooks-mapping) — including [what a dependency list means](#1-4-what-a-dependency-list-means)
 2. [DSL Mapping — JSX → V.*](#2-dsl-mapping--jsx--v)
 3. [Lifecycle Mapping](#3-lifecycle-mapping)
 4. [Styling Mapping](#4-styling-mapping)
@@ -154,6 +154,35 @@ If the selector's return value equals the previous one, no re-render occurs. The
 reference (`Object.is`) equality — pass `EqualityComparer<TSel>.Default` as the third argument when a
 value-equality skip is wanted instead (e.g. a record selector with stable content).
 
+### 1-4. What a dependency list means
+
+The Velvet APIs that take a dependency list — the effect hooks, `UseCallback`, `UseMemo`,
+`UseImperativeHandle`, `UseBlocker`, and the node-level `V.Memoized` / `V.MemoizedWithKey` — read it the
+same way:
+
+| Spelling | Meaning | React equivalent |
+|----------|---------|------------------|
+| argument omitted | no dependency list: re-run / recompute / rebuild on every render | `useEffect(fn)` |
+| explicit `null` | identical to omitting it | *(a type error in React)* |
+| `Array.Empty<object>()` | an empty dependency set: run once and never again | `useEffect(fn, [])` |
+| one or more values | re-run when any of them changes, compared with `Object.is` semantics | `useEffect(fn, [a, b])` |
+
+Three consequences worth knowing before writing one:
+
+- `null` never freezes a value. React has no equivalent spelling, so nothing forces the choice — Velvet
+  reads it as the absence of a list, which is the harmless direction: a frozen `UseCallback` captures stale
+  state silently, whereas an unmemoized one only costs an allocation.
+- Where `deps` is a `params` array, an omitted argument would otherwise arrive as an empty array — the
+  opposite meaning — so every such API carries a companion overload declaring no deps parameter at all.
+  Where `deps` is an ordinary optional parameter instead, its default is already `null`.
+- `V.Memoized` / `V.MemoizedWithKey` build a fresh node per call, so a call site in a render body gets a
+  rebuild every render. A node instance hoisted out of the render body and handed back unchanged is the
+  same node, and keeps the subtree it already built.
+
+`Hooks.UseAnimationSequence` defaults its list to empty rather than to null, so that a step array rebuilt
+in the component body does not restart the sequence every render; [motion.md](motion.md) owns that
+deviation.
+
 ---
 
 ## 2. DSL Mapping — JSX → V.*
@@ -194,7 +223,7 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 > **Note — Two memoization axes**  
 > `[Component(Memoize = true)]` is equivalent to **React.memo**, bailing out of parent-driven re-render when props are shallow-equal to the previous ones (opt-in).  
 > **Inner automatic memoization** (equivalent to React Compiler) is **default-on** for all `[Component]`; the ILPP caches VNode construction keyed on hook-derived inputs. No annotation needed. To exclude a specific Component, use `[Component(Compiler = false)]` (equivalent to React's `"use no memo"`).  
-> `Hooks.UseMemo(factory, deps)` is the value-memoization hook (React's `useMemo`). `V.Memoized(factory, deps)` is a node-level escape hatch that explicitly memoizes a **VNode subtree** (callable outside a render, e.g. what `[MemoizeMethod]` expands to); the reconciler reuses the cached subtree while the deps are unchanged.
+> `Hooks.UseMemo(factory, deps)` is the value-memoization hook (React's `useMemo`). `V.Memoized(factory, deps)` is a node-level escape hatch that explicitly memoizes a **VNode subtree** (callable outside a render, e.g. what `[MemoizeMethod]` expands to); the reconciler reuses the cached subtree while the deps are unchanged. Both read `deps` per [§1-4](#1-4-what-a-dependency-list-means).
 
 ### 2-4. Context
 
