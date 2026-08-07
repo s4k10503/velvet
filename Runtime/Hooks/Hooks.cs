@@ -238,14 +238,17 @@ namespace Velvet
         /// </remarks>
         /// <typeparam name="T">Context value type.</typeparam>
         /// <param name="context">Context object to read. Must not be null.</param>
-        /// <returns>Provided value when an ancestor Provider is present, otherwise <c>context.DefaultValue</c>.</returns>
-        public static T UseContext<T>(ComponentContext<T> context)
+        /// <returns>
+        /// Provided value when an ancestor Provider is present, otherwise <c>context.DefaultValue</c>, which
+        /// is null for a context created with a null default.
+        /// </returns>
+        public static T? UseContext<T>(ComponentContext<T> context)
         {
             if (context == null) throw new ArgumentNullException(nameof(context));
             var fiber = Resolve("UseContext");
             fiber.RegisterContextDependency(context);
             var stack = fiber.Reconciler?.Context.ComponentContextStack;
-            return stack != null ? stack.Get(context) : context.DefaultValue!;
+            return stack != null ? stack.Get(context) : context.DefaultValue;
         }
 
         #endregion

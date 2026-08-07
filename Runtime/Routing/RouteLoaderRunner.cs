@@ -11,30 +11,34 @@ namespace Velvet
     {
         private CancellationTokenSource? _cts;
 
-        // Per-route errors (keyed by RouteId) raised by the most recent RunLoadersSync call.
-        public IReadOnlyDictionary<string?, Exception> Errors => _errors;
-        private readonly Dictionary<string?, Exception> _errors = new();
-
         // Notification event fired with (routeId, result) when a Suspend loader of the CURRENT round
         // succeeds. A loader that ignores the CancellationToken and resolves after a newer RunLoadersSync
-        // (or after disposal) belongs to a superseded round; its result is stale and is dropped without
-        // firing this event or touching Errors, so a navigated-away route cannot pollute the live state.
+        // (or after disposal) belongs to a superseded round; its result is dropped without firing this event,
+        // so a navigated-away route cannot pollute the live state.
         public event Action<string?, object>? OnSuspendLoaderCompleted;
 
         // Notification event fired with (routeId, exception) when a Suspend loader of the current round
-        // fails. The failure is also recorded in Errors. A superseded round's late failure is dropped
-        // (no event, no Errors write) for the same reason as OnSuspendLoaderCompleted.
+        // fails. The failure is also recorded in the round's Errors. A superseded round's late failure is
+        // dropped (no event, no Errors write) for the same reason as OnSuspendLoaderCompleted.
         public event Action<string?, Exception>? OnSuspendLoaderFailed;
 
         private int _activeSuspendTaskCount;
 
-        // One RunLoadersSync call's outstanding Suspend loaders. The count lives on the round rather than on
-        // the runner so that a round asked whether it finished answers for itself: a loader delegate is free
-        // to start a navigation, which begins another round from inside the one still launching, and a
-        // runner-wide count would be reset under it.
+        // One RunLoadersSync call's results, errors, outstanding-loader count and completion flag. They live
+        // on the round rather than on the runner so that a round asked anything answers for itself: a loader
+        // delegate is free to start a navigation, which begins another round from inside the one still
+        // launching, and runner-wide state would be cleared and then written under it.
         internal sealed class LoaderRound
         {
+            // Loader results and errors are keyed by RouteId (stable per-route identity) so sibling index
+            // routes, whose MatchedPath is the empty string, do not collide.
+            internal readonly Dictionary<string?, object> Results = new();
+
+            internal readonly Dictionary<string?, Exception> Errors = new();
+
             internal int Pending;
+
+            internal bool AllCompleted = true;
 
             // False while a Suspend loader of this round has not terminated. The router records it on the
             // history entry it commits, which is what separates an unfinished round's data from the data a
@@ -56,14 +60,13 @@ namespace Velvet
         // This counter therefore tracks "all live tasks across rounds", not "tasks of the current round".
         internal int ActiveSuspendTaskCount => _activeSuspendTaskCount;
 
-        // Per-route errors are recorded in Errors rather than the return value; the caller is expected
-        // to inspect Errors after this returns.
-        public (Dictionary<string?, object> results, bool allCompleted) RunLoadersSync(
+        // The round is handed back rather than read off CurrentRound afterwards, because a loader that
+        // navigates has by then made a nested round current.
+        public LoaderRound RunLoadersSync(
             IReadOnlyList<RouteMatch> matches,
             CancellationToken externalToken)
         {
             CancelPending();
-            _errors.Clear();
             var cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
             _cts = cts;
             // A loader delegate is free to navigate, which reaches this method again and replaces _cts. The
@@ -74,9 +77,7 @@ namespace Velvet
             var round = new LoaderRound();
             _currentRound = round;
 
-            var results = new Dictionary<string?, object>();
             var awaitTasks = new List<(string? routeId, UniTask<object> task)>();
-            var allCompleted = true;
 
             foreach (var match in matches)
             {
@@ -93,8 +94,6 @@ namespace Velvet
                     Path = match.MatchedPath,
                 };
 
-                // Loader results / errors are keyed by RouteId (stable per-route identity) so sibling index
-                // routes (whose MatchedPath is the empty string) do not collide.
                 var key = match.RouteId;
 
                 UniTask<object> task;
@@ -104,8 +103,8 @@ namespace Velvet
                 }
                 catch (Exception ex)
                 {
-                    _errors[key] = ex;
-                    allCompleted = false;
+                    round.Errors[key] = ex;
+                    round.AllCompleted = false;
                     continue;
                 }
 
@@ -115,9 +114,9 @@ namespace Velvet
                 }
                 else
                 {
-                    allCompleted = false;
+                    round.AllCompleted = false;
                     round.Pending++;
-                    RunSuspendLoader(key, task, cts, round, results).Forget();
+                    RunSuspendLoader(key, task, cts, round).Forget();
                 }
             }
 
@@ -132,24 +131,24 @@ namespace Velvet
                             "Use LoaderMode.Suspend for async loaders.");
                     }
                     var result = task.GetAwaiter().GetResult();
-                    results[routeId] = result;
+                    round.Results[routeId] = result;
                 }
                 catch (OperationCanceledException)
                 {
-                    allCompleted = false;
+                    round.AllCompleted = false;
                 }
                 catch (Exception ex)
                 {
-                    _errors[routeId] = ex;
-                    allCompleted = false;
+                    round.Errors[routeId] = ex;
+                    round.AllCompleted = false;
                 }
             }
 
-            return (results, allCompleted);
+            return round;
         }
 
         private async UniTask RunSuspendLoader(string? routeId, UniTask<object> task, CancellationTokenSource ownCts,
-            LoaderRound round, Dictionary<string?, object> results)
+            LoaderRound round)
         {
             try
             {
@@ -162,7 +161,7 @@ namespace Velvet
                 // Written into the round's results and not only announced through the event: a loader may hand
                 // back a task that is already complete, and the caller assigns these results over whatever the
                 // event wrote.
-                results[routeId] = result;
+                round.Results[routeId] = result;
                 // A loader that ignored its token can resolve after CancelPending replaced (or nulled) _cts.
                 // That makes this a superseded round; drop the stale result rather than firing into the live
                 // state of an unrelated current location.
@@ -179,7 +178,7 @@ namespace Velvet
                 // Same supersession guard as the success path: a stale round's failure must not record an
                 // error nor re-emit under the current location.
                 if (ownCts != _cts) return;
-                _errors[routeId] = ex;
+                round.Errors[routeId] = ex;
                 OnSuspendLoaderFailed?.Invoke(routeId, ex);
             }
             finally
