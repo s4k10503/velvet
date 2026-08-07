@@ -29,9 +29,16 @@ on:
     paths:
       - 'Packages/com.velvet.core/**'
       - '.github/workflows/generators.yml'
+      # The jobs below run these, and a push editing one used to start only test.yml — whose Unity jobs
+      # are skipped without a licence, so the ratchet that push was about executed nowhere.
+      - 'scripts/**'
       - '!**.md'
       - 'Packages/com.velvet.core/Documentation~/setup.md'
       - 'Packages/com.velvet.core/Generators~/README.md'
+      # AdditionalFiles on the generator projects, so Roslyn's release-tracking analyzer reads them at
+      # compile time. The blanket markdown exclusion above reads them as documentation, and a push
+      # editing either started no run at all.
+      - 'Packages/com.velvet.core/Generators~/src/**/AnalyzerReleases.*.md'
   pull_request:
     branches: [main]
   merge_group:
