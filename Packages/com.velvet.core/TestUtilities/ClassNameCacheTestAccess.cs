@@ -20,6 +20,7 @@ namespace Velvet.TestUtilities
         /// entries below the cache's size bound, or to push content-identical trees off the reference-identity
         /// fast path, and a clear that quietly reached nothing would leave both asserting on the wrong state.
         /// </exception>
+        // Bypasses: nothing — it resets a static cache, which no production path does.
         public static void ClearForTest()
         {
             var field = typeof(V).GetField(CacheFieldName, BindingFlags.Static | BindingFlags.NonPublic);

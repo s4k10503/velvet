@@ -10,6 +10,7 @@ namespace Velvet.TestUtilities
         /// drains a tier (DrainImmediateForTest/DrainDelayedForTest) or inspects pending counts needs this same
         /// accessor path. Test-only.
         /// </summary>
+        // Bypasses: nothing — it reaches internal state a test cannot name, and production reaches the same scheduler the same way.
         internal static FiberBatchScheduler GetSchedulerForTest(this MountedTree mounted)
             => mounted.Root.Reconciler.Context.BatchScheduler;
 
@@ -19,6 +20,7 @@ namespace Velvet.TestUtilities
         /// FiberWorkLoop.FlushState on each fiber.
         /// Test-only. Must not be used from production code.
         /// </summary>
+        // Bypasses: the batch scheduler's tier and drain buffer: production calls FiberWorkLoop.FlushState from inside DrainImmediate, over the buffer that pass built.
         public static void FlushStateForTest(this MountedTree mounted)
         {
             FiberTreeTraversal.Visit(mounted.Root, FiberWorkLoop.FlushState);
@@ -31,6 +33,7 @@ namespace Velvet.TestUtilities
         /// same ordering production observes on the post-paint scheduler tick.
         /// Test-only. Must not be used from production code.
         /// </summary>
+        // Bypasses: the drain's registration and its anchor: production reaches the passive flush through FiberBatchScheduler.FlushPendingPassiveEffects, set by Reconciler as SetPassiveEffectFlush and fired from schedule.Execute.
         public static void FlushEffectsForTest(this MountedTree mounted)
         {
             FiberEffects.FlushPendingPassiveEffects(mounted.Root);
@@ -45,6 +48,7 @@ namespace Velvet.TestUtilities
         /// drain entry point.
         /// Test-only. Must not be used from production code.
         /// </summary>
+        // Bypasses: lane selection: production picks the lane from the surrounding scheduling context rather than being handed one.
         public static void ScheduleRerenderForTest(this ComponentFiber fiber, FiberUpdatePriority priority)
         {
             FiberWorkLoop.ScheduleRerender(fiber, priority);
@@ -63,6 +67,7 @@ namespace Velvet.TestUtilities
         /// tiny budget) and is invisible to every other fiber's flush.
         /// Test-only. Must not be used from production code.
         /// </summary>
+        // Bypasses: the real time-slice budget, which no production caller passes.
         public static void FlushStateWithTinyBudgetForTest(this ComponentFiber fiber)
         {
             FiberWorkLoop.FlushState(fiber, TinyTimeSlicedBudgetMs);
@@ -72,6 +77,7 @@ namespace Velvet.TestUtilities
         /// True while a time-sliced reconcile started by <paramref name="fiber"/> is paused with work still
         /// pending (the fast-path diff exceeded its frame budget and parked). Test-only.
         /// </summary>
+        // Bypasses: nothing — it reads Reconciler.HasPendingWork, which production reads too.
         public static bool HasPendingReconcileWorkForTest(this ComponentFiber fiber)
             => fiber.Reconciler?.HasPendingWork == true;
 
@@ -81,6 +87,7 @@ namespace Velvet.TestUtilities
         /// EditMode). Each call resumes one frame's worth of work at the budget the starting lane chose.
         /// Test-only. Must not be used from production code.
         /// </summary>
+        // Bypasses: the frame boundary: production resumes a parked reconcile from the UIToolkit scheduler, one frame at a time.
         public static void DrainTimeSlicedReconcileForTest(this ComponentFiber fiber, int maxIterations = 1000)
         {
             var iterations = 0;
