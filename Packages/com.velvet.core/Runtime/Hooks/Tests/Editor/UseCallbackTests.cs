@@ -14,6 +14,7 @@ namespace Velvet.Tests
     /// counts as changed and yields a new delegate.</item>
     /// <item>The no-deps overload (<c>UseCallback&lt;T&gt;(T)</c>) is unmemoized: it returns a fresh closure on
     /// every render.</item>
+    /// <item>An explicit null dependency array declares no dependency list at all, so it is unmemoized too.</item>
     /// <item>A null callback raises an <see cref="ArgumentNullException"/>.</item>
     /// <item>Each call owns an independent slot keyed by call order; slots memoize and invalidate independently.</item>
     /// <item>The returned delegate is invocable and captures the latest committed state.</item>
@@ -104,6 +105,23 @@ namespace Velvet.Tests
 
             // Assert
             Assert.AreNotSame(first, s_emptyDepsLastCallback, "The no-deps overload returns a fresh closure every render");
+        }
+
+        [Test]
+        public void Given_ExplicitNullDeps_When_ReRendered_Then_ReturnsFreshClosure()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(NullDepsCallbackRender, key: "null-deps"));
+            var first = s_nullDepsLastCallback;
+            Assume.That(first, Is.Not.Null, "Precondition: the first render produced a callback");
+
+            // Act
+            s_callbackSetState.Invoke(new CallbackState(2, "world"));
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.AreNotSame(first, s_nullDepsLastCallback,
+                "A null deps argument is no dependency array, so the callback is never frozen to an earlier closure");
         }
 
         [Test]
@@ -202,6 +220,7 @@ namespace Velvet.Tests
         private static Action<CallbackState> s_callbackSetState;
         private static Func<string> s_singleLastCallback;
         private static Func<string> s_emptyDepsLastCallback;
+        private static Func<string> s_nullDepsLastCallback;
         private static Func<string> s_dualLastCallbackA;
         private static Func<string> s_dualLastCallbackB;
         private static int s_oscRenderCount;
@@ -216,6 +235,7 @@ namespace Velvet.Tests
             s_callbackSetState = null;
             s_singleLastCallback = null;
             s_emptyDepsLastCallback = null;
+            s_nullDepsLastCallback = null;
             s_dualLastCallbackA = null;
             s_dualLastCallbackB = null;
             s_oscRenderCount = 0;
@@ -242,6 +262,16 @@ namespace Velvet.Tests
             var (state, setState) = Hooks.UseState(s_callbackInitial);
             s_callbackSetState = setState;
             s_emptyDepsLastCallback = Hooks.UseCallback<Func<string>>(() => state.Name);
+            return V.Label(text: state.Name);
+        }
+
+        [Component]
+        private static VNode NullDepsCallbackRender()
+        {
+            var (state, setState) = Hooks.UseState(s_callbackInitial);
+            s_callbackSetState = setState;
+            object[] noDeps = null;
+            s_nullDepsLastCallback = Hooks.UseCallback<Func<string>>(() => state.Name, noDeps);
             return V.Label(text: state.Name);
         }
 

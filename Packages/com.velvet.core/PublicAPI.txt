@@ -295,7 +295,7 @@
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]]): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]], System.Object?[]?): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseCallback`1(T): T
-[Velvet] method Velvet.Hooks.UseCallback`1(T, System.Object?[]): T
+[Velvet] method Velvet.Hooks.UseCallback`1(T, System.Object?[]?): T
 [Velvet] method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T): T
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T, T): T
@@ -457,24 +457,26 @@
 [Velvet] method Velvet.V.List`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Func`2[T, Velvet.VNode]): Velvet.VNode?[]
 [Velvet] method Velvet.V.List`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`3[T, System.Int32, System.String], System.Func`3[T, System.Int32, Velvet.VNode]): Velvet.VNode?[]
 [Velvet] method Velvet.V.Memo`1(System.Func`2[TProps, Velvet.VNode], TProps, System.Func`3[TProps, TProps, System.Boolean], System.String?): Velvet.ComponentNode
+[Velvet] method Velvet.V.Memoized(System.Func`1[Velvet.VNode]): Velvet.MemoNode
 [Velvet] method Velvet.V.Memoized(System.Func`1[Velvet.VNode], System.Object?[]?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey(System.String?, System.Func`1[Velvet.VNode]): Velvet.MemoNode
 [Velvet] method Velvet.V.MemoizedWithKey(System.String?, System.Func`1[Velvet.VNode], System.Object?[]?): Velvet.MemoNode
-[Velvet] method Velvet.V.MemoizedWithKey`1(System.String~, System.Func`1[Velvet.VNode~]~, T1~): Velvet.MemoNode~
-[Velvet] method Velvet.V.MemoizedWithKey`2(System.String~, System.Func`1[Velvet.VNode~]~, T1~, T2~): Velvet.MemoNode~
-[Velvet] method Velvet.V.MemoizedWithKey`3(System.String~, System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~): Velvet.MemoNode~
-[Velvet] method Velvet.V.MemoizedWithKey`4(System.String~, System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~): Velvet.MemoNode~
-[Velvet] method Velvet.V.MemoizedWithKey`5(System.String~, System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~, T5~): Velvet.MemoNode~
-[Velvet] method Velvet.V.MemoizedWithKey`6(System.String~, System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~, T5~, T6~): Velvet.MemoNode~
-[Velvet] method Velvet.V.MemoizedWithKey`7(System.String~, System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~, T5~, T6~, T7~): Velvet.MemoNode~
-[Velvet] method Velvet.V.MemoizedWithKey`8(System.String~, System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~, T5~, T6~, T7~, T8~): Velvet.MemoNode~
-[Velvet] method Velvet.V.Memoized`1(System.Func`1[Velvet.VNode~]~, T1~): Velvet.MemoNode~
-[Velvet] method Velvet.V.Memoized`2(System.Func`1[Velvet.VNode~]~, T1~, T2~): Velvet.MemoNode~
-[Velvet] method Velvet.V.Memoized`3(System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~): Velvet.MemoNode~
-[Velvet] method Velvet.V.Memoized`4(System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~): Velvet.MemoNode~
-[Velvet] method Velvet.V.Memoized`5(System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~, T5~): Velvet.MemoNode~
-[Velvet] method Velvet.V.Memoized`6(System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~, T5~, T6~): Velvet.MemoNode~
-[Velvet] method Velvet.V.Memoized`7(System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~, T5~, T6~, T7~): Velvet.MemoNode~
-[Velvet] method Velvet.V.Memoized`8(System.Func`1[Velvet.VNode~]~, T1~, T2~, T3~, T4~, T5~, T6~, T7~, T8~): Velvet.MemoNode~
+[Velvet] method Velvet.V.MemoizedWithKey`1(System.String?, System.Func`1[Velvet.VNode], T1?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`2(System.String?, System.Func`1[Velvet.VNode], T1?, T2?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`3(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`4(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`5(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`6(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`7(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?): Velvet.MemoNode
+[Velvet] method Velvet.V.MemoizedWithKey`8(System.String?, System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`1(System.Func`1[Velvet.VNode], T1?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`2(System.Func`1[Velvet.VNode], T1?, T2?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`3(System.Func`1[Velvet.VNode], T1?, T2?, T3?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`4(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`5(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`6(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`7(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?): Velvet.MemoNode
+[Velvet] method Velvet.V.Memoized`8(System.Func`1[Velvet.VNode], T1?, T2?, T3?, T4?, T5?, T6?, T7?, T8?): Velvet.MemoNode
 [Velvet] method Velvet.V.Motion(System.String?, System.String?, System.String?, Velvet.StyleTransitionConfig?, System.Nullable`1[System.Single], System.Nullable`1[UnityEngine.UIElements.EasingMode], System.Nullable`1[System.Single], System.Action?, Velvet.VNode?[]?, Velvet.FiberElementProps?, Velvet.FiberEventBinding[]?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Type?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.String?, System.String?, System.String?, System.String?): Velvet.MotionNode
 [Velvet] method Velvet.V.Mount(UnityEngine.UIElements.VisualElement, Velvet.VNode): Velvet.MountedTree
 [Velvet] method Velvet.V.NavLink(System.String, System.String, System.String?, System.String?, System.String?, Velvet.VNode?[]?, System.Boolean, System.Boolean, System.Boolean, System.String?): Velvet.ComponentNode

@@ -262,6 +262,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that stronger part it ties rather than wins, and the tie is settled the way the same file's *Same
   family, different values* bullet already describes.
 
+- A dependency list now means the same thing wherever one is accepted. Passing an explicit `null` froze
+  `Hooks.UseCallback` and `Hooks.UseMemo` — the value was computed once and never recomputed, so a
+  callback written that way captured the state of the render that built it — while the same `null` made
+  `Hooks.UseEffect` and `Hooks.UseBlocker` re-run every render. All of them now read `null` as the absence
+  of a dependency list, which is what omitting the argument already meant, so the freeze is no longer
+  reachable by writing `null` instead of leaving a dependency out. `Documentation~/react-migration.md`
+  §1-4 owns the table of what each spelling means.
+
+- `V.Memoized(factory)` and `V.MemoizedWithKey(key, factory)` with the dependency list left off now
+  rebuild the subtree on every render instead of caching it for the element's whole life. Omission was
+  indistinguishable from an empty array at the call site, and the empty array the compiler supplied could
+  never be perturbed, so a subtree written that way was frozen at its first render — the opposite of what
+  `Hooks.UseMemo(factory)` means with its deps left off. Both now carry a companion overload that takes no
+  deps parameter, and "compute once and keep it" is spelled with an explicit `Array.Empty<object>()`. A
+  `[MemoizeMethod]` method taking no parameters is unaffected: its generated wrapper now passes that empty
+  array, which is the caching it always described.
+
+- The exhaustive-deps analyzer no longer asks for `Hooks.UseTransition`'s starter,
+  `Hooks.UseSearchParams`' setter or a `Hooks.UseMutation` handle in a dependency array. All three are
+  documented as reference-stable across renders, so VEL100 was demanding a dependency React would not; the
+  analyzer's exemption list and the runtime's own `<returns>` documentation are now pinned against each
+  other in both directions.
+
+- The sixteen generated `V.Memoized<T1..T8>` / `V.MemoizedWithKey<T1..T8>` overloads now carry nullable
+  reference annotations, so a consumer with nullable reference types enabled gets the same key and
+  dependency nullability from them as from their hand-written non-generic siblings, which declare
+  `string? key`. The same applies to the wrappers `[MemoizeMethod]` generates into user assemblies, which
+  were nullable-oblivious for the same reason.
+
 ### Changed
 
 - A Blocker registered during a Guard redirect is now told the attempt is a `Push` where it was told

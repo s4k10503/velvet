@@ -55,9 +55,10 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>value</c>: current value
-        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/> — call <c>setValue.Invoke(next)</c> to replace the
-        ///   value, or <c>setValue.Invoke(prev =&gt; next)</c> for the functional updater (reads the latest
-        ///   committed value, safe to invoke from a closure captured by an earlier render).
+        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/>, reference-stable across renders — call
+        ///   <c>setValue.Invoke(next)</c> to replace the value, or <c>setValue.Invoke(prev =&gt; next)</c> for the
+        ///   functional updater (reads the latest committed value, safe to invoke from a closure captured by an
+        ///   earlier render).
         /// </returns>
         public static (T value, StateUpdater<T> setValue) UseState<T>(T initial)
             => UseStateInternalCore(default, initial, "UseState");
@@ -73,7 +74,8 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>value</c>: current value
-        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/> accepting a value or a functional updater.
+        /// - <c>setValue</c>: <see cref="StateUpdater{T}"/> accepting a value or a functional updater,
+        ///   reference-stable across renders.
         /// </returns>
         public static (T value, StateUpdater<T> setValue) UseState<T>(Func<T> initialFactory)
         {
@@ -290,7 +292,7 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// The single-argument overload exists so that omitting deps is unambiguous: the
-        /// <c>params object?[] deps</c> overload would otherwise observe an empty array (not
+        /// <c>params object?[]? deps</c> overload would otherwise observe an empty array (not
         /// <c>null</c>) and incorrectly freeze the callback to the first-render closure.
         /// </remarks>
         public static T UseCallback<T>(T callback) where T : Delegate
@@ -324,9 +326,9 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Delegate type to memoize.</typeparam>
         /// <param name="callback">Callback to memoize. Captured on first render and on dependency changes.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached callback is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached callback is reused. Null means no dependency array at all — the callback is not memoized, exactly as if the deps argument had been left off.</param>
         /// <returns>The cached callback reference (stable across renders while <paramref name="deps"/> are equal).</returns>
-        public static T UseCallback<T>(T callback, params object?[] deps) where T : Delegate
+        public static T UseCallback<T>(T callback, params object?[]? deps) where T : Delegate
         {
             var fiber = Resolve("UseCallback");
             fiber.CallbackSlots ??= new List<HookCallbackSlot>();
@@ -345,7 +347,7 @@ namespace Velvet
             }
 
             var entry = fiber.CallbackSlots[index];
-            if (entry.Callback != null && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
+            if (deps != null && entry.Callback != null && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
             {
                 // Unchanged vs the committed render: return the committed callback so its reference stays stable
                 // across a render-phase re-run. Comparing against the committed deps (never a discarded attempt)
@@ -409,7 +411,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Type of the value to memoize.</typeparam>
         /// <param name="factory">Factory invoked to produce the value on the first render and whenever the deps change.</param>
-        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached value is reused.</param>
+        /// <param name="deps">Dependency values. When equal to the previous render (each dependency compared with <c>Object.is</c>), the cached value is reused. Null means no dependency array at all — the value is recomputed every render, exactly as if the deps argument had been left off.</param>
         /// <returns>The cached value (stable across renders while <paramref name="deps"/> are equal).</returns>
         public static T UseMemo<T>(Func<T> factory, params object?[]? deps)
         {
@@ -428,7 +430,7 @@ namespace Velvet
             }
 
             var entry = (HookMemoValueSlot<T>)fiber.MemoValueSlots[index];
-            if (entry.Committed && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
+            if (deps != null && entry.Committed && ObjectIs.AreEqualDeps(entry.LastDeps, deps))
             {
                 // Unchanged vs the committed render: return the committed value and re-stage the committed
                 // values so a render-phase re-run keeps them. Comparing against the committed deps (never a
@@ -683,7 +685,8 @@ namespace Velvet
         /// to the same path with a new query string.
         /// </summary>
         /// <returns>
-        /// A tuple of (the parsed search parameters, a setter that replaces the query string and navigates).
+        /// A tuple of (the parsed search parameters, a setter that replaces the query string and navigates). The
+        /// setter is reference-stable across renders; the parsed parameters are rebuilt every render.
         /// </returns>
         public static (ISearchParams searchParams, SearchParamsSetter setSearchParams) UseSearchParams()
         {
@@ -692,9 +695,8 @@ namespace Velvet
             var path = location?.Path ?? string.Empty;
             var parsed = RouteQuery.ParseQuery(path);
 
-            // The setter is stateless (it reads Router.Current live), so a single shared, reference-stable
-            // instance is returned — no per-render allocation. It supports a value or functional update, and
-            // defaults to a PUSH navigation so Back returns to the previous query.
+            // The setter is stateless (it reads Router.Current live), so one shared instance serves every
+            // component and every render rather than a per-render allocation.
             return (parsed, SearchParamsSetter.Shared);
         }
 
@@ -1192,7 +1194,7 @@ namespace Velvet
         /// it is assigned externally.
         /// </summary>
         /// <typeparam name="T">Reference target type.</typeparam>
-        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position.</returns>
+        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position, reference-stable across renders.</returns>
         public static Ref<T> UseRef<T>() where T : class => UseRef<T>(initialFactory: null);
 
         /// <summary>
@@ -1202,7 +1204,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Reference target type.</typeparam>
         /// <param name="initialFactory">Factory invoked once on first render to seed <see cref="Ref{T}.Current"/>. Pass null to leave it unset.</param>
-        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position.</returns>
+        /// <returns>The fiber-scoped <see cref="Ref{T}"/> stored at this hook position, reference-stable across renders.</returns>
         public static Ref<T> UseRef<T>(Func<T>? initialFactory) where T : class
         {
             var fiber = Resolve("UseRef");
@@ -1238,7 +1240,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Stored value type. May be a value type or a reference type.</typeparam>
         /// <param name="initial">Initial value applied on the first render only.</param>
-        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position.</returns>
+        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position, reference-stable across renders.</returns>
         public static MutableRef<T> UseMutableRef<T>(T initial) => UseMutableRefInternal<T>(initial, factory: null);
 
         /// <summary>
@@ -1248,7 +1250,7 @@ namespace Velvet
         /// </summary>
         /// <typeparam name="T">Stored value type. May be a value type or a reference type.</typeparam>
         /// <param name="initialFactory">Factory invoked once on first render to produce the initial value.</param>
-        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position.</returns>
+        /// <returns>The fiber-scoped <see cref="MutableRef{T}"/> stored at this hook position, reference-stable across renders.</returns>
         public static MutableRef<T> UseMutableRef<T>(Func<T> initialFactory)
         {
             if (initialFactory == null) throw new ArgumentNullException(nameof(initialFactory));
@@ -1385,7 +1387,7 @@ namespace Velvet
         /// <typeparam name="THandle">The imperative handle type exposed to the parent.</typeparam>
         /// <param name="handleRef">The ref the parent passed via <c>componentRef:</c>.</param>
         /// <param name="factory">Produces the handle; re-invoked when <paramref name="deps"/> change.</param>
-        /// <param name="deps">Dependency array gating recomputation.</param>
+        /// <param name="deps">Dependency array gating recomputation. Null means no dependency array at all — the handle is rebuilt every render.</param>
         public static void UseImperativeHandle<THandle>(
             Ref<THandle> handleRef,
             Func<THandle> factory,
@@ -1435,7 +1437,8 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>state</c>: current state value.
-        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state.
+        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state,
+        ///   reference-stable across renders.
         /// </returns>
         public static (TState state, Action<TAction> dispatch) UseReducer<TState, TAction>(
             Func<TState, TAction, TState> reducer, TState initial)
@@ -1459,7 +1462,8 @@ namespace Velvet
         /// <returns>
         /// 2-tuple:
         /// - <c>state</c>: current state value.
-        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state.
+        /// - <c>dispatch</c>: action dispatcher that schedules a re-render with the next state,
+        ///   reference-stable across renders.
         /// </returns>
         public static (TState state, Action<TAction> dispatch) UseReducer<TArg, TState, TAction>(
             Func<TState, TAction, TState> reducer, TArg initialArg, Func<TArg, TState> init)
@@ -1673,7 +1677,8 @@ namespace Velvet
         /// 2-tuple in the order (<c>isPending</c>, <c>startTransition</c>):
         /// - <c>isPending</c>: true while a Transition update is queued or being committed (and across an async
         ///   transition's awaits).
-        /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>. Call <c>startTransition.Invoke(() =&gt; ...)</c>
+        /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>, reference-stable across renders. Call
+        ///   <c>startTransition.Invoke(() =&gt; ...)</c>
         ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose
         ///   <c>isPending</c> stays true across awaits. A re-entrant call on the same starter joins the
         ///   transition already running on it; a starter from another <c>UseTransition()</c> is a separate
@@ -1689,8 +1694,7 @@ namespace Velvet
             {
                 var slot = new HookTransitionSlot();
                 // The starter captures this slot so each UseTransition() drives only its own pending flag:
-                // two transitions in one component are independent. Built once so the
-                // returned starter is reference-stable across renders (safe to place in a dependency array).
+                // two transitions in one component are independent.
                 slot.Starter = new TransitionStarter(
                     updates => FiberWorkLoop.StartTransition(fiber, slot, updates),
                     asyncUpdates => FiberWorkLoop.StartTransition(fiber, slot, asyncUpdates).Forget());
@@ -1715,7 +1719,7 @@ namespace Velvet
         /// <typeparam name="TVariables">Mutation input variables type. Use <see cref="Unit"/> for "no variables".</typeparam>
         /// <typeparam name="TData">Mutation result type. Use <see cref="Unit"/> for "no return value".</typeparam>
         /// <param name="options">The mutation function plus optional success / error callbacks.</param>
-        /// <returns>A <see cref="MutationResult{TVariables, TData}"/> whose reference is stable across renders.</returns>
+        /// <returns>A <see cref="MutationResult{TVariables, TData}"/>, reference-stable across renders.</returns>
         public static MutationResult<TVariables, TData> UseMutation<TVariables, TData>(
             MutationOptions<TVariables, TData> options)
         {
