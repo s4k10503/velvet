@@ -28,6 +28,16 @@ namespace Velvet
 
         private int _activeSuspendTaskCount;
 
+        // Suspend loaders launched by the current round that have not terminated yet. CancelPending resets
+        // it, and a task whose round has been superseded returns without decrementing, so a late task cannot
+        // count against the round that replaced it.
+        private int _pendingSuspendLoaders;
+
+        // False while a Suspend loader of the current round is still outstanding. The router records this on
+        // the history entry it commits, which is what separates an unfinished round's data from the data a
+        // finished one produced.
+        internal bool CurrentRoundSettled => _pendingSuspendLoaders == 0;
+
         // Number of live Suspend loader tasks. Incremented at the start of RunSuspendLoader and
         // decremented in the finally block at completion (success / failure / cancel alike).
         // Internal accessor used for test verification.
@@ -88,6 +98,7 @@ namespace Velvet
                 else
                 {
                     allCompleted = false;
+                    _pendingSuspendLoaders++;
                     RunSuspendLoader(key, task, _cts).Forget();
                 }
             }
@@ -129,6 +140,10 @@ namespace Velvet
                 // That makes this a superseded round; drop the stale result rather than firing into the live
                 // state of an unrelated current location.
                 if (ownCts != _cts) return;
+                // Decremented before the event and not in the finally below: a subscriber that reads
+                // CurrentRoundSettled from inside the callback — the router's history write-back does — must
+                // see this loader already accounted for.
+                _pendingSuspendLoaders--;
                 OnSuspendLoaderCompleted?.Invoke(routeId, result);
             }
             catch (OperationCanceledException) { }
@@ -137,6 +152,7 @@ namespace Velvet
                 // Same supersession guard as the success path: a stale round's failure must not record an
                 // error nor re-emit under the current location.
                 if (ownCts != _cts) return;
+                _pendingSuspendLoaders--;
                 _errors[routeId] = ex;
                 OnSuspendLoaderFailed?.Invoke(routeId, ex);
             }
@@ -149,6 +165,9 @@ namespace Velvet
         // This also runs automatically at the start of the next RunLoadersSync call.
         public void CancelPending()
         {
+            // A cancelled round has nothing left that will report, so it counts as settled. The tasks it
+            // leaves behind read _cts to find their round gone and return without decrementing this.
+            _pendingSuspendLoaders = 0;
             if (_cts != null)
             {
                 // Cleared before the Cancel, not after: a loader continuation that resumes synchronously

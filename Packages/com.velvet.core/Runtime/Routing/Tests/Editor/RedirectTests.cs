@@ -212,10 +212,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_FailedGuardRedirectDuringBack_When_Rejected_Then_HistoryIndexIsRolledBack()
+        public void Given_FailedGuardRedirectDuringBack_When_Rejected_Then_HistoryIndexIsUnchanged()
         {
-            // The provisional Back index decrement is undone when the guard redirect fails, leaving the router
-            // on /a at index 1.
+            // The Back step commits nothing once its guard redirect fails, leaving the router on /a at index 1.
             // Arrange
             var router = new Router(new[]
             {
@@ -289,10 +288,9 @@ namespace Velvet.Tests
         [Test]
         public void Given_PushRedirectFailsWithForwardHistory_When_RolledBack_Then_ForwardEntryIsPreserved()
         {
-            // history = [/home, /page]; GoBack to /home leaves /page available forward. Pushing /admin truncates
-            // the forward /page (Push semantics) and provisionally appends /admin; the guard then redirects to a
-            // missing route and FAILS. The rollback must restore the prior history EXACTLY — including the
-            // truncated forward /page — not leave the ghost /admin in the forward slot.
+            // history = [/home, /page]; GoBack to /home leaves /page available forward. Pushing /admin would
+            // truncate the forward /page (Push semantics), but its guard redirects to a missing route and the
+            // push FAILS. Nothing may be truncated for an entry that never arrives, so /page stays reachable.
             // Arrange
             var router = new Router(new[]
             {
@@ -325,8 +323,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_ForwardEntryIsRedirectRoute_When_GoForward_Then_LandsOnRedirectTarget()
         {
-            // Navigating to /old pushes it provisionally, then the redirect's Replace overwrites it with /new,
-            // so a later GoForward from /home resolves to /new.
+            // Navigating to /old records only where the redirect arrived, so the pushed entry is /new and a
+            // later GoForward from /home resolves to it.
             // Arrange
             var router = new Router(new[]
             {

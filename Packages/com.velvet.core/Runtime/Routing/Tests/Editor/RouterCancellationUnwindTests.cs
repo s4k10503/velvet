@@ -1,27 +1,25 @@
 using System.Collections;
-using System.Reflection;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
 using UnityEngine.TestTools;
 using Velvet;
+using Velvet.TestUtilities;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what an abandoned navigation leaves behind. Its provisional history mutations happen before
-    /// the Guard and Blocker awaits, so an attempt that abandons them has to undo those mutations whether it
-    /// leaves by exception (a blocker honoring its token) or by return value (one awaiting without
-    /// forwarding it).
+    /// Specifies what an abandoned navigation leaves behind. It sets <see cref="RouterStatus"/> before the
+    /// Guard and Blocker awaits, so an attempt that abandons them has to put it back whether it leaves by
+    /// exception (a blocker honoring its token) or by return value (one awaiting without forwarding it).
     /// <list type="bullet">
-    /// <item>The provisional Back/Forward index is restored, so the history keeps describing the entry the
-    /// user is still on.</item>
-    /// <item>The provisional Push entry a Guard redirect appended is removed again.</item>
+    /// <item>The history keeps describing the entry the user is still on, and holds no entry for a path an
+    /// abandoned Guard redirect started from.</item>
     /// <item><see cref="RouterStatus"/> returns to Idle, so <c>UseNavigation</c> stops reporting a pending
     /// navigation that no longer exists.</item>
-    /// <item>None of those restores happens once a newer navigation has taken over, since the state they
-    /// would put back describes a router that navigation has already replaced.</item>
+    /// <item>That restore does not happen once a newer navigation has taken over, since the status it would
+    /// put back describes a router that navigation has already replaced.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -50,7 +48,7 @@ namespace Velvet.Tests
         }
 
         [UnityTest]
-        public IEnumerator Given_BlockerHonorsToken_When_CancelledDuringBackAwait_Then_HistoryIndexIsRestored()
+        public IEnumerator Given_BlockerHonorsToken_When_CancelledDuringBackAwait_Then_HistoryIndexIsUnchanged()
             => UniTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -75,12 +73,12 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_GuardRedirect_When_CancelledDuringRedirectBlockerAwait_Then_ProvisionalPushIsUndone()
+        public IEnumerator Given_GuardRedirect_When_CancelledDuringRedirectBlockerAwait_Then_NothingIsRecorded()
             => UniTask.ToCoroutine(async () =>
         {
             // The redirect target's own navigation is what parks on the blocker, so the cancellation surfaces
-            // inside the await that RunGuardChecks wraps around it — past the point where the originating Push
-            // entry was appended for the redirect to overwrite.
+            // inside the await that RunGuardChecks wraps around it, with the whole redirect pair still
+            // uncommitted.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[]
@@ -100,8 +98,8 @@ namespace Velvet.Tests
             await nav;
 
             // Assert
-            Assert.That($"{HistoryCountOf(router)}/{router.HistoryIndex}", Is.EqualTo("1/0"),
-                "A cancelled redirect restores the history list and the index together; restoring either alone "
+            Assert.That($"{RouterHistoryProbe.CountOf(router)}/{router.HistoryIndex}", Is.EqualTo("1/0"),
+                "A cancelled redirect leaves neither an entry nor an index move behind; either one alone "
                 + "still leaves the stack describing a navigation that never happened");
         });
 
@@ -132,15 +130,12 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
-        public IEnumerator Given_SupersededBackUnwindsLate_When_NewerBackHasCommitted_Then_IndexMatchesTheCommittedLocation()
+        public IEnumerator Given_SupersededBackUnwindsLate_When_NewerBackHasCommitted_Then_TheCommittedStateSurvives()
             => UniTask.ToCoroutine(async () =>
         {
-            // The superseded attempt saved an index describing a router that the newer navigation has since
-            // replaced, so putting that index back desyncs it from the location actually on screen.
-            // The asserted location records today's behaviour, not the intended one: both Backs land on
-            // /home because the parked attempt already moved the shared index and nothing resets it while it
-            // waits, so the second Back reads its target from the moved index and /about is skipped. That is
-            // a separate open defect; this case discriminates only the index/location desync.
+            // The superseded attempt was parked while the newer Back committed, so the Idle status it would
+            // put back describes a router that no longer exists — one with nothing in flight, where the newer
+            // navigation has just finished one.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[] { Route("home"), Route("about"), Route("contact") }));
@@ -151,7 +146,7 @@ namespace Velvet.Tests
             var superseded = router.GoBack();
             await entered.Task;
             await router.GoBack();
-            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/home"),
+            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/about"),
                 "Precondition: the newer Back committed while the superseded one was still parked");
 
             // Act
@@ -159,21 +154,17 @@ namespace Velvet.Tests
             await superseded;
 
             // Assert
-            Assert.That($"idx={router.HistoryIndex} at={router.CurrentLocation?.Path}",
-                Is.EqualTo("idx=0 at=/home"),
-                "A late unwind must not move the index away from the entry the newer navigation committed");
+            Assert.That($"idx={router.HistoryIndex} at={router.CurrentLocation?.Path} status={router.Status}",
+                Is.EqualTo("idx=1 at=/about status=Ready"),
+                "A late unwind must leave the newer navigation's own position and status standing");
         });
 
         [UnityTest]
         public IEnumerator Given_SupersededRedirectUnwindsLate_When_NewerNavigationHasPushed_Then_ItsHistorySurvives()
             => UniTask.ToCoroutine(async () =>
         {
-            // The guard snapshot was taken before the newer navigation pushed, so replaying it would delete
-            // entries that belong to the location now on screen.
-            // The asserted count records today's behaviour, not the intended one: the count is 3 because the
-            // middle entry is the provisional /guarded push, a path the user never arrived at, stranded
-            // precisely because the skipped restore is the correct choice here — a Back from /x re-runs its
-            // guard and lands on /target. Reclaiming just that entry is a separate open defect.
+            // The abandoned redirect wrote nothing, so the stack holds exactly what the newer navigation put
+            // there: /home and the /x it pushed onto it.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[]
@@ -196,8 +187,10 @@ namespace Velvet.Tests
             await superseded;
 
             // Assert
-            Assert.That($"count={HistoryCountOf(router)} idx={router.HistoryIndex}", Is.EqualTo("count=3 idx=2"),
-                "A late unwind must not replay a snapshot that predates the newer navigation's own entries");
+            Assert.That(
+                $"count={RouterHistoryProbe.CountOf(router)} idx={router.HistoryIndex} status={router.Status}",
+                Is.EqualTo("count=2 idx=1 status=Ready"),
+                "A late unwind must leave the newer navigation's own entries and status exactly as it left them");
         });
 
         [UnityTest]
@@ -206,9 +199,7 @@ namespace Velvet.Tests
         {
             // A blocker that awaits without forwarding the token returns "not blocked" instead of throwing,
             // so the abandoned attempt reaches the blocker check's own rollback rather than the exception
-            // handlers — a separate pair of writes that needs the same ownership test.
-            // The asserted location records today's behaviour on the same open defect as the case above:
-            // both Backs land on /home because the parked attempt already moved the shared index.
+            // handlers — a separate write that needs the same ownership test.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[] { Route("home"), Route("about"), Route("settings") }));
@@ -219,7 +210,7 @@ namespace Velvet.Tests
             var superseded = router.GoBack();
             await entered.Task;
             await router.GoBack();
-            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/home"),
+            Assume.That(router.CurrentLocation?.Path, Is.EqualTo("/about"),
                 "Precondition: the newer Back committed while the superseded one was still parked");
 
             // Act
@@ -227,18 +218,18 @@ namespace Velvet.Tests
             await superseded;
 
             // Assert
-            Assert.That($"idx={router.HistoryIndex} status={router.Status}", Is.EqualTo("idx=0 status=Ready"),
+            Assert.That($"idx={router.HistoryIndex} status={router.Status}", Is.EqualTo("idx=1 status=Ready"),
                 "A blocker returning after it was superseded must roll back neither the index nor the Status "
                 + "the newer navigation established");
         });
 
         [UnityTest]
-        public IEnumerator Given_SupersededByAnUnmatchedPath_When_ItResumes_Then_TheIndexIsStillRestored()
+        public IEnumerator Given_SupersededByAnUnmatchedPath_When_ItResumes_Then_TheStatusIsStillRestored()
             => UniTask.ToCoroutine(async () =>
         {
-            // A navigation that matches no route returns before the index is ever touched, so it takes no
-            // claim on it. The parked attempt is then still the only holder and must put the index back —
-            // leaving it moved would strand it away from the location the user never left.
+            // A navigation that matches no route returns before the claim is taken, so the parked attempt is
+            // still the only holder and must put the status back — leaving it as the unmatched attempt did
+            // would report a navigation nobody is waiting on.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[] { Route("home"), Route("about"), Route("contact") }));
@@ -250,26 +241,24 @@ namespace Velvet.Tests
             await entered.Task;
             var unmatched = await router.NavigateAsync("/no-such-route");
             Assume.That(unmatched, Is.EqualTo(NavigationResult.NotFound),
-                "Precondition: the superseding navigation returned without reaching the history index");
+                "Precondition: the superseding navigation returned without reaching the claim");
 
             // Act
             resumeCancelled();
             await superseded;
 
             // Assert
-            Assert.That($"idx={router.HistoryIndex} at={router.CurrentLocation?.Path}",
-                Is.EqualTo("idx=2 at=/contact"),
-                "Only an attempt that took the index may stop the parked one from restoring it");
+            Assert.That(router.Status, Is.EqualTo(RouterStatus.Idle),
+                "Only an attempt that took the claim may stop the parked one from restoring the status");
         });
 
         [UnityTest]
         public IEnumerator Given_SupersededRedirectReturnsLate_When_NewerNavigationHasPushed_Then_ItsHistorySurvives()
             => UniTask.ToCoroutine(async () =>
         {
-            // The inner redirect returns Cancelled from its own blocker check instead of throwing, so the
-            // outer reaches the returned-result restore rather than the exception one. Same stale snapshot,
-            // a different line has to refuse to replay it.
-            // The asserted count records today's behaviour for the same reason as the case above.
+            // The inner redirect returns Cancelled from its own blocker check instead of throwing, so it
+            // reaches the returned-result exit rather than the exception one. That exit is the one that must
+            // also refuse to commit the redirect target onto the stack the newer navigation now owns.
             // Arrange
             var router = BuildRouter("/home",
                 Route("/", children: new[]
@@ -292,8 +281,8 @@ namespace Velvet.Tests
             await superseded;
 
             // Assert
-            Assert.That($"count={HistoryCountOf(router)} idx={router.HistoryIndex}", Is.EqualTo("count=3 idx=2"),
-                "A redirect that returns Cancelled after being superseded must not replay its stale snapshot");
+            Assert.That($"count={RouterHistoryProbe.CountOf(router)} idx={router.HistoryIndex}", Is.EqualTo("count=2 idx=1"),
+                "A redirect that returns Cancelled after being superseded must commit nothing of its own");
         });
 
         [UnityTest]
@@ -319,16 +308,8 @@ namespace Velvet.Tests
             await parked;
 
             // Assert
-            Assert.That($"statusEvents={statusEvents} idx={router.HistoryIndex}", Is.EqualTo("statusEvents=0 idx=0"),
-                "Teardown leaves nothing for a resuming blocker to restore, so it must write neither field");
+            Assert.That(statusEvents, Is.EqualTo(0),
+                "Teardown leaves nothing for a resuming blocker to restore, so it must raise no transition");
         });
-
-        // The history list has no accessor of its own, and adding one would put a test-only member on a
-        // production type.
-        private static int HistoryCountOf(Router router)
-        {
-            var field = typeof(Router).GetField("_history", BindingFlags.Instance | BindingFlags.NonPublic);
-            return ((ICollection)field.GetValue(router)).Count;
-        }
     }
 }

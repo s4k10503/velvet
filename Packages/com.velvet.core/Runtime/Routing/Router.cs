@@ -14,7 +14,7 @@ namespace Velvet
     {
         private readonly RouteTree _routeTree;
         private readonly RouteLoaderRunner _loaderRunner;
-        private readonly List<(string path, IReadOnlyList<RouteMatch> matches, Dictionary<string?, object>? loaderData, Dictionary<string?, Exception>? loaderErrors)> _history = new();
+        private readonly List<HistoryEntry> _history = new();
         private readonly RouteBlockerManager _blockerManager = new();
         private int _historyIndex = -1;
         private Dictionary<string?, object> _loaderData = new();
@@ -26,10 +26,10 @@ namespace Velvet
         // nav unwinds (NavigationResult.Cancelled) and the latest nav takes over, so concurrent
         // navigations during the blocker window resolve to the most recent one.
         private CancellationTokenSource? _activeNavigationCts;
-        // Identifies whoever currently owns _historyIndex. An attempt that has lost the claim must not put
-        // the index or Status back: cancelling its token does not force it to resume at that moment, so it
-        // can reach its rollback after a newer navigation has moved the index, and by then the value it
-        // saved describes a router that no longer exists.
+        // Identifies whoever currently owns Status. An attempt that has lost the claim must not put Status
+        // back: cancelling its token does not force it to resume at that moment, so it can reach its rollback
+        // after a newer navigation has established its own Status, and by then the value it would write
+        // describes a router that no longer exists.
         private int _navigationSequence;
 
         /// <summary>
@@ -137,7 +137,7 @@ namespace Velvet
             string path,
             NavigationMode mode = NavigationMode.Push,
             CancellationToken cancellationToken = default) =>
-            NavigateInternalAsync(ResolvePath(path), mode, cancellationToken, redirectCount: 0, initiatorSequence: 0);
+            NavigateInternalAsync(ResolvePath(path), mode, cancellationToken, redirectCount: 0, initiator: null);
 
         /// <summary>
         /// Navigates with relative resolution anchored to a specific matched-route level
@@ -152,7 +152,7 @@ namespace Velvet
             int baseRouteIndex,
             CancellationToken cancellationToken = default) =>
             NavigateInternalAsync(ResolvePath(path, baseRouteIndex), mode, cancellationToken, redirectCount: 0,
-                initiatorSequence: 0);
+                initiator: null);
 
         /// <summary>
         /// Resolves a relative navigation target (<c>.</c>, <c>..</c>, <c>../sibling</c>, or a bare
@@ -266,11 +266,11 @@ namespace Velvet
             NavigationMode mode,
             CancellationToken cancellationToken,
             int redirectCount,
-            int initiatorSequence)
+            PendingNavigation? initiator)
         {
             // Concurrent-navigation handling. Recursive redirect calls (redirectCount > 0) reuse the
             // outer navigation's CTS so a redirect doesn't cancel its own initiator, and inherit its
-            // history claim so a redirect's rollback is judged by whether the INITIATOR still holds it.
+            // claim so a redirect's rollback is judged by whether the INITIATOR still holds it.
             CancellationTokenSource? myCts = null;
             CancellationToken navToken = cancellationToken;
             if (redirectCount == 0)
@@ -287,7 +287,7 @@ namespace Velvet
 
             try
             {
-                return await NavigateCore(path, mode, navToken, redirectCount, initiatorSequence);
+                return await NavigateCore(path, mode, navToken, redirectCount, initiator);
             }
             catch (OperationCanceledException) when (myCts != null && myCts.IsCancellationRequested)
             {
@@ -315,7 +315,7 @@ namespace Velvet
             NavigationMode mode,
             CancellationToken cancellationToken,
             int redirectCount,
-            int initiatorSequence)
+            PendingNavigation? initiator)
         {
             if (redirectCount >= MaxRedirects)
             {
@@ -341,30 +341,28 @@ namespace Velvet
                 return NavigationResult.NotFound;
             }
 
-            var savedHistoryIndex = ApplyProvisionalHistoryIndex(mode);
-            // The claim is taken here, where the index is, and not when the navigation started: every return
-            // above this line leaves the index untouched, so a navigation that matches no route must not
-            // dispossess an attempt parked in a blocker — that attempt is then the only one able to put the
-            // index back. A redirect inherits its initiator's claim rather than taking one, so it does not
-            // dispossess the navigation it is part of.
-            var sequence = redirectCount == 0 ? ++_navigationSequence : initiatorSequence;
-            var provisional = new ProvisionalHistoryState(sequence, savedHistoryIndex);
+            // The claim is taken after the match and not when the navigation started: every return above this
+            // line leaves Status describing its own outcome, so a navigation that matches no route must not
+            // dispossess an attempt parked in a blocker — that attempt is then the only one able to put
+            // Status back. A redirect inherits its initiator's claim rather than taking one, so it does not
+            // dispossess the navigation it is part of, and it commits into the slot the initiator resolved.
+            var pending = initiator ?? new PendingNavigation(++_navigationSequence, CommitIndexFor(mode));
 
             try
             {
-                var guardResult = await RunGuardChecks(matches, path, mode, provisional, cancellationToken, redirectCount);
+                var guardResult = await RunGuardChecks(matches, mode, pending, cancellationToken, redirectCount);
                 if (guardResult.HasValue)
                 {
                     return guardResult.Value;
                 }
 
-                var blockerResult = await RunBlockerCheck(path, mode, provisional, cancellationToken);
+                var blockerResult = await RunBlockerCheck(path, mode, pending, cancellationToken);
                 if (blockerResult.HasValue)
                 {
                     return blockerResult.Value;
                 }
 
-                var loaderResult = await RunLoaderPhase(matches, mode, cancellationToken);
+                var loaderResult = await RunLoaderPhase(matches, mode, pending, cancellationToken);
                 if (loaderResult.HasValue)
                 {
                     return loaderResult.Value;
@@ -373,15 +371,23 @@ namespace Velvet
             catch (OperationCanceledException)
             {
                 // A Guard redirect or a Blocker that honors its token unwinds by exception, skipping the
-                // in-line rollbacks the returned-result paths use. The index moved before both of those
-                // awaits, and Status was set before them, so an aborted attempt would otherwise leave the
-                // history pointing somewhere the user never went and UseNavigation reporting a navigation
-                // that is no longer in flight.
-                RollBackProvisional(provisional);
+                // in-line rollback the blocked path uses. Status was set before both of those awaits, so an
+                // aborted attempt would otherwise leave UseNavigation reporting a navigation that is no
+                // longer in flight.
+                ReleaseClaim(pending, RouterStatus.Idle);
+                throw;
+            }
+            catch (Exception)
+            {
+                // A Guard delegate is application code invoked with nothing between it and the caller, and the
+                // guard phase's mutual-exclusion throw reaches here the same way. The exception is left to
+                // the caller, and the router records the failure rather than the phase it died in — Matching
+                // and Loading are what UseNavigation renders a pending branch for.
+                ReleaseClaim(pending, RouterStatus.Error);
                 throw;
             }
 
-            var location = CommitHistoryEntry(path, matches, mode);
+            var location = CommitHistoryEntry(path, matches, mode, pending);
 
             CurrentLocation = location;
             Status = RouterStatus.Ready;
@@ -390,50 +396,44 @@ namespace Velvet
             return NavigationResult.Success;
         }
 
-        #region Provisional history index for Back/Forward
+        #region Per-attempt navigation state
 
-        // What one navigation attempt provisionally changed and must put back if it unwinds, together with
-        // the sequence that decides whether it still may.
-        private readonly struct ProvisionalHistoryState
+        // Where one navigation attempt will land, and the sequence deciding whether it still owns Status.
+        // The destination stays here until the attempt commits, because the Guard and Blocker phases await
+        // application code and a navigation starting in that window resolves its own destination from the
+        // shared index: a parked Back that had already moved it puts a Push's forward truncation one entry
+        // too low, taking the entry the user is looking at with it.
+        private readonly struct PendingNavigation
         {
             internal readonly int Sequence;
-            internal readonly int SavedHistoryIndex;
+            // The history slot this attempt commits into. Unused by a Push, which appends.
+            internal readonly int CommitIndex;
 
-            internal ProvisionalHistoryState(int sequence, int savedHistoryIndex)
+            internal PendingNavigation(int sequence, int commitIndex)
             {
                 Sequence = sequence;
-                SavedHistoryIndex = savedHistoryIndex;
+                CommitIndex = commitIndex;
             }
         }
 
-        private bool StillCurrent(ProvisionalHistoryState provisional) =>
-            provisional.Sequence == _navigationSequence;
-
-        private void RollBackProvisional(ProvisionalHistoryState provisional)
+        private int CommitIndexFor(NavigationMode mode) => mode switch
         {
-            if (!StillCurrent(provisional))
+            NavigationMode.Back => _historyIndex - 1,
+            NavigationMode.Forward => _historyIndex + 1,
+            _ => _historyIndex,
+        };
+
+        private bool StillCurrent(PendingNavigation pending) =>
+            pending.Sequence == _navigationSequence;
+
+        private void ReleaseClaim(PendingNavigation pending, RouterStatus status)
+        {
+            if (!StillCurrent(pending))
             {
                 return;
             }
 
-            _historyIndex = provisional.SavedHistoryIndex;
-            Status = RouterStatus.Idle;
-        }
-
-        // The index must move before the Guard/Blocker checks so a Guard redirect (Replace)
-        // overwrites the correct entry; rolled back below if the Blocker check rejects the attempt.
-        private int ApplyProvisionalHistoryIndex(NavigationMode mode)
-        {
-            var savedHistoryIndex = _historyIndex;
-            if (mode == NavigationMode.Back)
-            {
-                _historyIndex--;
-            }
-            else if (mode == NavigationMode.Forward)
-            {
-                _historyIndex++;
-            }
-            return savedHistoryIndex;
+            Status = status;
         }
 
         #endregion
@@ -447,13 +447,11 @@ namespace Velvet
         // Returns null when no match redirected, so the caller falls through to the Blocker check.
         private async UniTask<NavigationResult?> RunGuardChecks(
             IReadOnlyList<RouteMatch> matches,
-            string path,
             NavigationMode mode,
-            ProvisionalHistoryState provisional,
+            PendingNavigation pending,
             CancellationToken cancellationToken,
             int redirectCount)
         {
-            var savedHistoryIndex = provisional.SavedHistoryIndex;
             foreach (var match in matches)
             {
                 if (match.Route == null) continue;
@@ -481,52 +479,19 @@ namespace Velvet
 
                 if (redirectTarget != null)
                 {
-                    // When a redirect happens during Push, provisionally append the Push entry first.
-                    // The redirect target's Replace overwrites this entry, preserving the previous
-                    // (originating) history.
-                    // Snapshot the FULL history (list + index) before any provisional mutation so a failed
-                    // redirect restores the prior state EXACTLY. A count-based rollback is insufficient: a Push
-                    // with forward history first TRUNCATES the forward entries (PushHistoryEntry → RemoveRange)
-                    // and then appends, so the net count can be ≤ the pre-push count and the truncated forward
-                    // entries would be lost. The snapshot captures them.
-                    var historySnapshot = _history.ToArray();
-                    if (mode == NavigationMode.Push)
-                    {
-                        PushHistoryEntry(path, matches);
-                    }
-                    NavigationResult redirectResult;
-                    try
-                    {
-                        redirectResult = await NavigateInternalAsync(
-                            redirectTarget, NavigationMode.Replace, cancellationToken, redirectCount + 1,
-                            provisional.Sequence);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // NavigateCore's unwind handler restores the index and Status, but this snapshot is
-                        // local to the guard check that took it, so the provisional Push is undone here —
-                        // under the same ownership gate, since a snapshot taken before a newer navigation
-                        // pushed its own entries would delete them.
-                        if (StillCurrent(provisional))
-                        {
-                            _history.Clear();
-                            _history.AddRange(historySnapshot);
-                        }
-                        throw;
-                    }
-                    if (redirectResult != NavigationResult.Success && StillCurrent(provisional))
-                    {
-                        // On redirect failure, restore the snapshot: undoes the provisional Push (incl. its forward
-                        // truncation) and the provisional Back/Forward index move (savedHistoryIndex is the
-                        // pre-move value). Gated like the exceptional path above, and for the same reason: the
-                        // inner redirect can return Cancelled from its own blocker check rather than throwing,
-                        // long enough after the fact that this snapshot predates a newer navigation's entries.
-                        // Status is left as the failed redirect set it, so a NotFound target still reports so.
-                        _history.Clear();
-                        _history.AddRange(historySnapshot);
-                        _historyIndex = savedHistoryIndex;
-                    }
-                    return redirectResult;
+                    // The redirect target is the only entry the pair records, and it records it with the
+                    // originating navigation's own history effect: a Push appends the target where the
+                    // originating path would have gone, and a Back/Forward replaces the entry at the slot
+                    // that navigation resolved. The rejected alternative was to append the originating path
+                    // up front for the target's Replace to overwrite — a redirect abandoned in a Blocker
+                    // then leaves an entry for a path the user never reached, and it cannot be taken back
+                    // once a newer navigation has built on the stack that entry sits in.
+                    return await NavigateInternalAsync(
+                        redirectTarget,
+                        mode == NavigationMode.Push ? NavigationMode.Push : NavigationMode.Replace,
+                        cancellationToken,
+                        redirectCount + 1,
+                        pending);
                 }
             }
             return null;
@@ -541,7 +506,7 @@ namespace Velvet
         private async UniTask<NavigationResult?> RunBlockerCheck(
             string path,
             NavigationMode mode,
-            ProvisionalHistoryState provisional,
+            PendingNavigation pending,
             CancellationToken cancellationToken)
         {
             var currentPath = CurrentLocation?.Path ?? "";
@@ -554,19 +519,19 @@ namespace Velvet
             // A superseded navigation (a newer attempt cancelled our linked token) must unwind at the blocker
             // boundary. CheckAsync forwards the token to each blocker but cannot force one to honor it — a
             // blocker that returns false (or a synchronous blocker) leaves the loop returning false, which
-            // would otherwise fall through and run the loader phase or commit a cached Back/Forward entry
-            // (the cached branch below never reaches the loader-phase cancellation check). Roll back the
-            // provisional Back/Forward index like the Blocked path so the aborted attempt leaves no trace.
-            // Both rollbacks go through RollBackProvisional: a blocker that awaits without forwarding the
-            // token returns here rather than throwing, and can do so after a newer navigation has committed.
+            // would otherwise fall through and commit a location the router has already navigated past. The
+            // loader phase's own cancellation check cannot stand in for this one: a Back/Forward cache hit
+            // commits without ever reaching it. Both exits go through ReleaseClaim, since a blocker that
+            // awaits without forwarding the token returns here rather than throwing, and can do so after a
+            // newer navigation has established its Status.
             if (cancellationToken.IsCancellationRequested)
             {
-                RollBackProvisional(provisional);
+                ReleaseClaim(pending, RouterStatus.Idle);
                 return NavigationResult.Cancelled;
             }
             if (blocked)
             {
-                RollBackProvisional(provisional);
+                ReleaseClaim(pending, RouterStatus.Idle);
                 return NavigationResult.Blocked;
             }
             return null;
@@ -582,13 +547,15 @@ namespace Velvet
         private async UniTask<NavigationResult?> RunLoaderPhase(
             IReadOnlyList<RouteMatch> matches,
             NavigationMode mode,
+            PendingNavigation pending,
             CancellationToken cancellationToken)
         {
-            var cachedLoaderData = (mode == NavigationMode.Back || mode == NavigationMode.Forward)
-                ? _history[_historyIndex].loaderData
-                : null;
+            // Only a settled entry may be served; see HistoryEntry.LoadersSettled for what an unsettled one
+            // holds.
+            var restoring = (mode == NavigationMode.Back || mode == NavigationMode.Forward)
+                && _history[pending.CommitIndex].LoadersSettled;
 
-            if (cachedLoaderData != null)
+            if (restoring)
             {
                 // The else branch cancels the previous round by reaching RunLoadersSync; this one commits
                 // without ever reaching it. Leaving that round's CTS installed keeps it current for
@@ -596,13 +563,11 @@ namespace Velvet
                 // its late result into the entry restored here. Nothing downstream separates the two: RouteId
                 // is built from the route pattern, which both entries share whenever they match the same one.
                 _loaderRunner.CancelPending();
-                _loaderData = cachedLoaderData;
+                var entry = _history[pending.CommitIndex];
+                _loaderData = entry.LoaderData;
                 // Restore the cached errors too: a Back/Forward cache hit must re-present a route that errored
-                // on its first load (UseRouteError / ErrorElement), symmetrically with loaderData.
-                var cachedErrors = _history[_historyIndex].loaderErrors;
-                _loaderErrors = cachedErrors != null
-                    ? new Dictionary<string?, Exception>(cachedErrors)
-                    : new Dictionary<string?, Exception>();
+                // on its first load (UseRouteError / ErrorElement), symmetrically with the loader data.
+                _loaderErrors = new Dictionary<string?, Exception>(entry.LoaderErrors);
                 Status = RouterStatus.Loading; // for status-transition consistency
             }
             else
@@ -633,7 +598,37 @@ namespace Velvet
 
         #region History management
 
-        private RouterLocation CommitHistoryEntry(string path, IReadOnlyList<RouteMatch> matches, NavigationMode mode)
+        private readonly struct HistoryEntry
+        {
+            internal readonly string Path;
+            internal readonly IReadOnlyList<RouteMatch> Matches;
+            internal readonly Dictionary<string?, object> LoaderData;
+            internal readonly Dictionary<string?, Exception> LoaderErrors;
+            // An entry committed while a Suspend loader is still running holds whatever its loader round had
+            // produced by then, and nothing in the contents distinguishes that from what the route's loaders
+            // would finally have returned — so the Back/Forward cache reads this flag rather than the data.
+            internal readonly bool LoadersSettled;
+
+            internal HistoryEntry(string path, IReadOnlyList<RouteMatch> matches,
+                Dictionary<string?, object> loaderData, Dictionary<string?, Exception> loaderErrors,
+                bool loadersSettled)
+            {
+                Path = path;
+                Matches = matches;
+                LoaderData = loaderData;
+                LoaderErrors = loaderErrors;
+                LoadersSettled = loadersSettled;
+            }
+        }
+
+        private HistoryEntry NewEntry(string path, IReadOnlyList<RouteMatch> matches) =>
+            new(path, matches,
+                new Dictionary<string?, object>(_loaderData),
+                new Dictionary<string?, Exception>(_loaderErrors),
+                _loaderRunner.CurrentRoundSettled);
+
+        private RouterLocation CommitHistoryEntry(string path, IReadOnlyList<RouteMatch> matches, NavigationMode mode,
+            PendingNavigation pending)
         {
             var allParams = new Dictionary<string, string>();
             foreach (var match in matches)
@@ -654,28 +649,26 @@ namespace Velvet
             switch (mode)
             {
                 case NavigationMode.Push:
-                    PushHistoryEntry(path, matches, new Dictionary<string?, object>(_loaderData),
-                        new Dictionary<string?, Exception>(_loaderErrors));
+                    PushHistoryEntry(NewEntry(path, matches));
                     break;
                 case NavigationMode.Replace:
-                {
-                    var loaderDataSnapshot = new Dictionary<string?, object>(_loaderData);
-                    var loaderErrorsSnapshot = new Dictionary<string?, Exception>(_loaderErrors);
-                    if (_historyIndex >= 0)
+                    if (pending.CommitIndex >= 0)
                     {
-                        _history[_historyIndex] = (path, matches, loaderDataSnapshot, loaderErrorsSnapshot);
+                        _history[pending.CommitIndex] = NewEntry(path, matches);
+                        _historyIndex = pending.CommitIndex;
                     }
                     else
                     {
-                        _history.Add((path, matches, loaderDataSnapshot, loaderErrorsSnapshot));
+                        _history.Add(NewEntry(path, matches));
                         _historyIndex = 0;
                     }
                     break;
-                }
                 case NavigationMode.Back:
                 case NavigationMode.Forward:
-                    // The index was already provisionally applied before Guard/Blocker checks.
-                    // The loader data has already been restored from the cache.
+                    // The entry is not rewritten here even when its loaders ran again, because a round that
+                    // has not settled has nothing worth recording yet; the write-back that runs when it
+                    // settles is what makes the entry servable.
+                    _historyIndex = pending.CommitIndex;
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(mode), mode, null);
@@ -734,7 +727,8 @@ namespace Velvet
         /// Writes the live loader data/errors back into the current history entry so a later
         /// Back/Forward cache hit restores the post-resolution state. Suspend-mode loaders resolve
         /// asynchronously after the navigation commit, while the history snapshot is frozen at commit
-        /// time; without this write-back the cache would replay the stale pre-resolution snapshot.
+        /// time; without this write-back the cache would replay the stale pre-resolution snapshot — and
+        /// would not replay it at all, since an entry whose round had not finished is not served.
         /// </summary>
         private void SyncCurrentHistorySnapshot()
         {
@@ -749,34 +743,22 @@ namespace Velvet
             // Only sync when the current entry is the location whose loaders just resolved. If the user
             // navigated away before the Suspend loader completed, _historyIndex points at a different
             // entry and the live state belongs to that other location, not this one.
-            if (entry.path != CurrentLocation.Path)
+            if (entry.Path != CurrentLocation.Path)
             {
                 return;
             }
 
-            // A provisional redirect entry (loaderData == null) is overwritten by the redirect target's
-            // Replace; do not seed it here before that commit lands.
-            if (entry.loaderData == null)
-            {
-                return;
-            }
-
-            _history[_historyIndex] = (
-                entry.path,
-                entry.matches,
-                new Dictionary<string?, object>(_loaderData),
-                new Dictionary<string?, Exception>(_loaderErrors));
+            _history[_historyIndex] = NewEntry(entry.Path, entry.Matches);
         }
 
-        private void PushHistoryEntry(string path, IReadOnlyList<RouteMatch> matches,
-            Dictionary<string?, object>? loaderData = null, Dictionary<string?, Exception>? loaderErrors = null)
+        private void PushHistoryEntry(HistoryEntry entry)
         {
             if (CanGoForward)
             {
                 _history.RemoveRange(_historyIndex + 1, _history.Count - (_historyIndex + 1));
             }
 
-            _history.Add((path, matches, loaderData, loaderErrors));
+            _history.Add(entry);
             _historyIndex = _history.Count - 1;
 
             // Evicting the head entry when the cap is exceeded shifts every remaining index down by
@@ -800,8 +782,7 @@ namespace Velvet
                 return UniTask.FromResult(NavigationResult.Cancelled);
             }
 
-            var (path, _, _, _) = _history[_historyIndex - 1];
-            return NavigateAsync(path, NavigationMode.Back, cancellationToken);
+            return NavigateAsync(_history[_historyIndex - 1].Path, NavigationMode.Back, cancellationToken);
         }
 
         /// <summary>
@@ -816,8 +797,7 @@ namespace Velvet
                 return UniTask.FromResult(NavigationResult.Cancelled);
             }
 
-            var (path, _, _, _) = _history[_historyIndex + 1];
-            return NavigateAsync(path, NavigationMode.Forward, cancellationToken);
+            return NavigateAsync(_history[_historyIndex + 1].Path, NavigationMode.Forward, cancellationToken);
         }
 
         /// <summary>
