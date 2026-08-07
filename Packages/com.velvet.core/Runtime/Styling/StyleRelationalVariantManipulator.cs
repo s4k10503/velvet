@@ -39,7 +39,7 @@ namespace Velvet
     // (focus-within semantics) since group/peer sources are commonly containers or inputs. Sources are
     // resolved on AttachToPanelEvent. Lifecycle mirrors the other variant manipulators
     // (ReconcilerContext.RelationalVariantManipulators).
-    internal sealed class StyleRelationalVariantManipulator : Manipulator
+    internal sealed class StyleRelationalVariantManipulator : Manipulator, IRelationalSettleTarget
     {
         internal const string GroupClass = "group";
         internal const string PeerClass = "peer";
@@ -128,6 +128,16 @@ namespace Velvet
             foreach (var b in _bindings)
             {
                 b.Unhook();
+            }
+        }
+
+        // Forwards a controlled write's synthetic checked edge to each binding; a binding that hooked a
+        // different source, or none, drops it (RelationalVariantSignals.SettleChecked).
+        public void SettleCheckedFromSource(VisualElement source, bool value)
+        {
+            foreach (var b in _bindings)
+            {
+                b.SettleChecked(source, value);
             }
         }
 
@@ -273,6 +283,11 @@ namespace Velvet
             public void Unhook()
             {
                 _signals?.Unhook();
+            }
+
+            public void SettleChecked(VisualElement source, bool value)
+            {
+                _signals?.SettleChecked(source, value);
             }
 
             public void ResetApplied()

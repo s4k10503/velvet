@@ -123,6 +123,12 @@ namespace Velvet.Tests
     /// is the element itself), so the same call would delete the control's own structure. This fails if a
     /// UI Toolkit version changes those baselines, which is what makes it safe for
     /// <c>FiberPrimitiveElementPool</c> to treat the five differently.
+    /// <para>
+    /// The second case pins the classification the three composites' reset depends on in place of a count:
+    /// the field's input and label USS classes identify what the constructor left, which is what lets the
+    /// reset keep it while detaching a <c>V.Custom&lt;T&gt;</c> child. Why a count will not do is pinned next
+    /// to the reset itself, in <see cref="CompositeFieldChildPoolReuseTests"/>.
+    /// </para>
     /// </summary>
     [TestFixture]
     internal sealed class PoolableWidgetChildBaselineTests
@@ -141,6 +147,36 @@ namespace Velvet.Tests
 
             // Assert — the two clearable types start empty; the three composites do not.
             Assert.That(counts, Is.EqualTo(new[] { 0, 0, 1, 1, 1 }));
+        }
+
+        [Test]
+        public void Given_LabelledComposites_When_TheirOwnChildrenAreClassified_Then_TheFieldInputAndLabelClassesIdentifyEveryOne()
+        {
+            // Arrange — each composite constructed WITH a label, the shape that holds both sub-elements, paired
+            // with the input / label class its own BaseField specialisation declares.
+            var widgets = new (VisualElement Widget, string Input, string Label)[]
+            {
+                (new Toggle("l"), BaseField<bool>.inputUssClassName, BaseField<bool>.labelUssClassName),
+                (new Slider("l", 0f, 10f), BaseField<float>.inputUssClassName, BaseField<float>.labelUssClassName),
+                (new TextField("l"), BaseField<string>.inputUssClassName, BaseField<string>.labelUssClassName),
+            };
+
+            // Act — count, per widget, how many of the children it holds carry one of those two classes.
+            var summary = Array.ConvertAll(widgets, w =>
+            {
+                var container = FiberNodePatcher.GetChildContainer(w.Widget);
+                var identified = 0;
+                for (var i = 0; i < container.childCount; i++)
+                {
+                    var child = container.ElementAt(i);
+                    if (child.ClassListContains(w.Input) || child.ClassListContains(w.Label)) identified++;
+                }
+                return $"{w.Widget.GetType().Name} {identified}/{container.childCount}";
+            });
+
+            // Assert — the two classes account for every child the constructors leave, which is what lets the
+            // pool reset detach a V.Custom child by exclusion instead of emptying the container.
+            Assert.That(string.Join(",", summary), Is.EqualTo("Toggle 2/2,Slider 2/2,TextField 2/2"));
         }
     }
 }
