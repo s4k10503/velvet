@@ -70,7 +70,6 @@
 [Velvet] ctor Velvet.MutationOptions`1[TVariables].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask], System.Action`1[TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
 [Velvet] ctor Velvet.MutationOptions`2[TVariables, TData].ctor(System.Func`3[TVariables, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[TData]], System.Action`2[TData, TVariables]?, System.Action`2[System.Exception, TVariables]?): System.Void
 [Velvet] ctor Velvet.MutationResult`2[TVariables, TData].ctor(): System.Void
-[Velvet] ctor Velvet.Navigate+Props.ctor(System.String, System.Boolean): System.Void
 [Velvet] ctor Velvet.NavigationAttempt.ctor(): System.Void
 [Velvet] ctor Velvet.NullStoreLogger.ctor(): System.Void
 [Velvet] ctor Velvet.OutletNode.ctor(): System.Void
@@ -88,10 +87,8 @@
 [Velvet] ctor Velvet.RouteBlockerManager.ctor(): System.Void
 [Velvet] ctor Velvet.RouteBlockerState.ctor(): System.Void
 [Velvet] ctor Velvet.RouteDefinition.ctor(): System.Void
-[Velvet] ctor Velvet.RouteLink+Props.ctor(System.String, System.String?, System.String?, System.String?, Velvet.VNode?[]?, System.Boolean): System.Void
 [Velvet] ctor Velvet.RouteLoaderContext.ctor(): System.Void
 [Velvet] ctor Velvet.RouteMatch.ctor(): System.Void
-[Velvet] ctor Velvet.RouteNavLink+Props.ctor(): System.Void
 [Velvet] ctor Velvet.RouteTree.ctor(Velvet.RouteDefinition[]): System.Void
 [Velvet] ctor Velvet.Router.ctor(Velvet.RouteDefinition[], Velvet.IRouteScopeFactory?): System.Void
 [Velvet] ctor Velvet.RouterLocation.ctor(): System.Void
@@ -741,8 +738,6 @@
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].IsSuccess: System.Boolean
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Status: Velvet.MutationStatus
 [Velvet] property Velvet.MutationResult`2[TVariables, TData].Variables: TVariables?
-[Velvet] property Velvet.Navigate+Props.Replace: System.Boolean
-[Velvet] property Velvet.Navigate+Props.To: System.String
 [Velvet] property Velvet.NavigationAttempt.CurrentPath: System.String
 [Velvet] property Velvet.NavigationAttempt.NavigationMode: Velvet.NavigationMode
 [Velvet] property Velvet.NavigationAttempt.NextPath: System.String
@@ -779,12 +774,6 @@
 [Velvet] property Velvet.RouteDefinition.Path: System.String?
 [Velvet] property Velvet.RouteDefinition.RedirectTo: System.String?
 [Velvet] property Velvet.RouteDefinition.ScopeId: System.String?
-[Velvet] property Velvet.RouteLink+Props.Children: Velvet.VNode?[]?
-[Velvet] property Velvet.RouteLink+Props.ClassName: System.String?
-[Velvet] property Velvet.RouteLink+Props.Name: System.String?
-[Velvet] property Velvet.RouteLink+Props.Replace: System.Boolean
-[Velvet] property Velvet.RouteLink+Props.Text: System.String?
-[Velvet] property Velvet.RouteLink+Props.To: System.String
 [Velvet] property Velvet.RouteLoaderContext.Params: System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]
 [Velvet] property Velvet.RouteLoaderContext.Path: System.String?
 [Velvet] property Velvet.RouteMatch.MatchedPath: System.String?
@@ -792,15 +781,6 @@
 [Velvet] property Velvet.RouteMatch.PathnameBase: System.String
 [Velvet] property Velvet.RouteMatch.Route: Velvet.RouteDefinition?
 [Velvet] property Velvet.RouteMatch.RouteId: System.String?
-[Velvet] property Velvet.RouteNavLink+Props.ActiveClass: System.String?
-[Velvet] property Velvet.RouteNavLink+Props.CaseSensitive: System.Boolean
-[Velvet] property Velvet.RouteNavLink+Props.Children: Velvet.VNode?[]?
-[Velvet] property Velvet.RouteNavLink+Props.ClassName: System.String?
-[Velvet] property Velvet.RouteNavLink+Props.End: System.Boolean
-[Velvet] property Velvet.RouteNavLink+Props.Name: System.String?
-[Velvet] property Velvet.RouteNavLink+Props.Replace: System.Boolean
-[Velvet] property Velvet.RouteNavLink+Props.Text: System.String?
-[Velvet] property Velvet.RouteNavLink+Props.To: System.String
 [Velvet] property Velvet.Router.CanGoBack: System.Boolean
 [Velvet] property Velvet.Router.CanGoForward: System.Boolean
 [Velvet] property Velvet.Router.Current: Velvet.Router?
@@ -973,7 +953,6 @@
 [Velvet] type Velvet.MutationResultExtensions
 [Velvet] type Velvet.MutationResult`2[TVariables, TData]
 [Velvet] type Velvet.MutationStatus
-[Velvet] type Velvet.Navigate+Props
 [Velvet] type Velvet.NavigationAttempt
 [Velvet] type Velvet.NavigationLifecycle
 [Velvet] type Velvet.NavigationMode
@@ -998,10 +977,8 @@
 [Velvet] type Velvet.RouteBlockerState
 [Velvet] type Velvet.RouteBlockerStatus
 [Velvet] type Velvet.RouteDefinition
-[Velvet] type Velvet.RouteLink+Props
 [Velvet] type Velvet.RouteLoaderContext
 [Velvet] type Velvet.RouteMatch
-[Velvet] type Velvet.RouteNavLink+Props
 [Velvet] type Velvet.RouteTree
 [Velvet] type Velvet.Router
 [Velvet] type Velvet.RouterContext
