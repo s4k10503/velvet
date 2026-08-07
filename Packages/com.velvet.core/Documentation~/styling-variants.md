@@ -52,7 +52,7 @@ worth knowing, both when several variants name one such utility:
 | **Theme** | `dark:` | `VelvetTheme.IsDark` |
 | **Responsive** | `sm:` · `md:` · `lg:` · `xl:` · `2xl:` | The resolved responsive-scope width (the panel root by default — see below) |
 | **Relational (group)** | `group-hover:` · `group-focus:` · `group-focus-within:` · `group-active:` | A marked ancestor's (`group`) state |
-| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` | A marked previous-sibling's (`peer`) state |
+| **Relational (peer)** | `peer-hover:` · `peer-focus:` · `peer-focus-within:` · `peer-active:` · `peer-checked:` | A marked previous-sibling's (`peer`) state; `peer-checked:` reads its value on the same terms as `checked:` above |
 
 ```csharp
 // State: a hover background and an active scale, layered over the base utilities.
@@ -348,14 +348,18 @@ only from that child's next render. Do not lean on either outcome. Put the utili
 behind a variant the child declares itself.
 
 The font layer and the string axes fail it differently again. A paint that cannot resolve does not
-paint; these two resolve a whole family out of a class array and rewrite the element from it, so they
-would resolve *something*. The only array a container-driven child has of its own is its live class
-list, and a `font-[…]` or `leading-[…]` the child declared is deliberately kept off it — the resolver
-owns those — while the class channels above put utilities on it the child never declared. So both
-stand down there rather than replace what the child's own render got right with nothing left to put
-it back: `[&>*]:uppercase` over a `leading-[24px]` label leaves the label alone. From that child's
-next render on the two agree and both land — `[&>*]:font-mono` and `[&>*]:uppercase` alike. Mount is
-what neither reaches there, so a child that must carry the family or the transform on its first frame
+paint; these two resolve a whole family out of a class array and rewrite the element from it, so
+they would resolve *something*. Until that child's own next render there is no array of its own to
+resolve from: the payload's landing opens its record and that render fills it in. Before that the
+only array there is its live class list, and a `font-[…]` or `leading-[…]` the child declared is
+deliberately kept off it — the resolver owns those — while the class channels above put utilities
+on it the child never declared. So both stand down there rather than replace what the child's own
+render got right with nothing left to put it back: `[&>*]:uppercase` over a `leading-[24px]` label
+leaves the label alone. From that child's next render on the two agree and both land —
+`[&>*]:font-mono` and `[&>*]:uppercase` alike — for a child rendered as an element. A `V.Text`
+child is the exception: the payload reaches its class list and neither resolver ever reads it, at
+any render, so put the utility on a `V.Label` there. Mount is what neither reaches for a child
+that declares none, so a child that must carry the family or the transform on its first frame
 declares it itself, or declares a variant of its own — the same escape the paints take.
 
 ## Container queries — `@container`

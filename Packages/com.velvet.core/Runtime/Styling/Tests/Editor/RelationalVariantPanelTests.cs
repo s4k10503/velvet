@@ -339,6 +339,25 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_APeerCheckedChild_When_ThePrecedingPeerIsARadioButtonMountedAlreadyChecked_Then_ThePayloadIsSeededAtMount()
+        {
+            // Arrange/Act — the same mount-time read with a RadioButton as the peer, which reports a bool
+            // without being a Toggle. Its change path already drives peer-checked:, so only the read was
+            // narrower than the registration beside it.
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(
+                "container",
+                V.Custom<RadioButton>(name: "peer", className: "peer",
+                    props: new FiberElementProps { FieldValue = true }),
+                V.Label(name: "child", className: "peer-checked:bg-on")));
+            var peer = _window.rootVisualElement.Q<RadioButton>("peer");
+            var child = _window.rootVisualElement.Q<Label>("child");
+
+            // Assert — folded rather than assumed: a controlled value that never reached the peer would make
+            // the absent payload correct, so the seed is read beside the value it seeds from.
+            Assert.That((peer.value, child.ClassListContains("bg-on")), Is.EqualTo((true, true)));
+        }
+
+        [Test]
         public void Given_AChildConsumingBothGroupFocusAndFocusWithin_When_TheSourceGainsFocus_Then_TheFocusPayloadIsApplied()
         {
             // Arrange — a child consuming BOTH group-focus and group-focus-within on the same `group` source, so a
