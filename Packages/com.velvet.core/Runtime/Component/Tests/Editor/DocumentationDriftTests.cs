@@ -577,5 +577,22 @@ namespace Velvet.Tests
             }
             return unresolved.Distinct().ToList();
         }
+
+        [Test]
+        public void Given_EveryTopLevelDirectoryHoldingMarkdown_When_TheWalkIsRead_Then_TheWalkReachesIt()
+        {
+            // Arrange — the walk is rooted, so a document under a root nobody added is scanned by nothing
+            // and every drift guard reading this corpus passes over it in silence.
+            var scanned = DocumentationCorpus.Files().ToList();
+
+            // Act
+            var unwalked = DocumentationCorpus.UnwalkedMarkdownRoots();
+
+            // Assert — the scanned count rides along because a walk that collapsed to nothing would leave
+            // this reporting no unwalked root either.
+            Assert.That((scanned.Count > 20, string.Join(", ", unwalked)), Is.EqualTo((true, string.Empty)),
+                "markdown under a root the walk does not reach is checked by nothing; add the root to the "
+                + "walk, or to .gitignore if it is machine-local");
+        }
     }
 }
