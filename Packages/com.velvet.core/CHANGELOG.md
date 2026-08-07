@@ -9,6 +9,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A navigation waiting on a Blocker no longer takes the history with it. `Router` moved the history index
+  before running the Guard and Blocker phases, so a Back parked on a confirm dialog left the router
+  pointing at the entry the user had not gone to yet: clicking a link before answering the dialog pushed
+  onto that position and deleted the page the dialog was covering. The destination is now resolved per
+  attempt and applied when it commits, so a second navigation started meanwhile reads the position the
+  user is actually on. `Router.CanGoBack` / `CanGoForward` describe that position during the wait too.
+
+- A Guard redirect abandoned before it arrives no longer leaves an entry for the path it started from.
+  The originating path was appended up front for the redirect target to overwrite, so a redirect that a
+  Blocker parked and a newer navigation superseded stranded that entry for the rest of the session, with
+  Back onto it re-running the guard and landing on the redirect target. The pair now records only the
+  target, with the originating navigation's own Push/Replace effect.
+
+- Going Back to a route whose `LoaderMode.Suspend` loader had not resolved runs its loaders again instead
+  of restoring an empty snapshot. The history entry recorded the loader data as it stood at commit time
+  with nothing marking it unfinished, so a route left before its loader resolved was cached in that state
+  and rendered empty on every later visit. Entries now record whether their loader round finished, and
+  only a finished one is served from the Back/Forward cache.
+
+- A `RouteDefinition.Guard` that throws, or a redirect target that declares both `RedirectTo` and `Guard`,
+  no longer leaves the router mid-navigation. The exception still reaches the caller, but `Router.Status`
+  now becomes `Error` instead of staying at `Matching` — which every `UseNavigation()` consumer rendered
+  as a pending navigation that would never finish — and the history is left as the throwing attempt found
+  it. This covers an exception from the commit itself, which previously escaped past the unwind and left
+  the status at `Loading`.
+
+- A `LoaderMode.Suspend` loader that answers immediately now delivers its result to the location it was
+  loaded for. Its value arrived while the navigation was still running and was then overwritten by the
+  loader results the commit takes, so `UseLoaderData` read null on the first render and every later visit
+  was served that empty snapshot from the history cache. The same early arrival was also written into the
+  entry the user was navigating away from, which then carried loader data for a location it never was.
+
+- `NavigateAsync` in `NavigationMode.Back` or `NavigationMode.Forward` with no entry to step onto now
+  returns `Cancelled`, as `GoBack` / `GoForward` already did for the same request. It previously ran the
+  navigation against a history slot that does not exist: with a Guard redirect on the route it appended an
+  entry while leaving the index on the previous one, so `CanGoForward` pointed at the page already on
+  screen, and without one it threw out of the commit.
+
 - `Hooks.UseDeferredValue` now hands its new value over only on the render that drains the Transition
   lane. Previously any re-render still carrying the same input promoted it — a sibling `UseState` setter
   firing before that lane drained was enough — so the expensive subtree the deferral exists to keep off
@@ -202,6 +240,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that stronger part it ties rather than wins, and the tie is settled the way the same file's *Same
   family, different values* bullet already describes.
 
+### Changed
+
+- A Blocker registered during a Guard redirect is now told the attempt is a `Push` where it was told
+  `Replace`. The redirect target is committed with the originating navigation's history effect, so a
+  leave-confirmation asked about a pushed redirect now describes the step the history actually takes.
+
 ## [2.0.0] - 2026-08-02
 
 ### Highlights
@@ -310,6 +354,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no width to move.
 
 ### Changed
+
 
 - The semantic colour tokens are two opaque theme sets instead of one translucent one, and a light theme
   now exists. `_tokens.uss` declared 27 of its 31 `--color-*` values with an alpha — twelve as white overlays, twelve
