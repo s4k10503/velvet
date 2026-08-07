@@ -83,6 +83,10 @@ namespace Velvet
             // demoting every discrete write for the window is the wider harm.
             if (fiber.TransitionCallDepth > 0 || (!IsInDiscreteEvent && fiber.HasAsyncTransitionInFlight))
             {
+                // Attributed on this branch rather than inside ScheduleRerender, which would also charge
+                // UseDeferredValue's own Transition-lane request (RequestTransitionRerender) to a
+                // transition slot that did not ask for it.
+                fiber.MarkTransitionWorkQueued();
                 ScheduleRerender(fiber, FiberUpdatePriority.Transition);
                 return;
             }
@@ -530,8 +534,14 @@ namespace Velvet
                 if (slot.OwnerGeneration == ownerGeneration)
                 {
                     slot.HasActiveOwner = false;
-                    if (!fiber.IsDirty)
+                    // A callback that queued nothing has settled the moment it returns, whatever else the
+                    // fiber is busy with — the previous fiber-wide dirty test held isPending up for the
+                    // duration of another slot's work. Once it did queue, the same lane rule the async
+                    // overload's exit uses decides.
+                    if (!slot.HasQueuedWork
+                        || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
                     {
+                        slot.HasQueuedWork = false;
                         slot.IsPending = false;
                     }
                 }
@@ -625,10 +635,14 @@ namespace Velvet
                     // The promoted marker joins the Transition-label check for the same reason the settle
                     // sweep consults it: promotion erases the label while the promoted work may still be
                     // queued, and completing the async action inside that window must not clear isPending
-                    // ahead of the commit that renders the transition's content.
+                    // ahead of the commit that renders the transition's content. An action that queued
+                    // nothing at all has no such commit to wait for — same slot-scoped exit as the sync
+                    // overload.
                     if (fiber.IsDisposed
+                        || !slot.HasQueuedWork
                         || (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition) && !fiber.HasPromotedTransition))
                     {
+                        slot.HasQueuedWork = false;
                         slot.IsPending = false;
                     }
                 }

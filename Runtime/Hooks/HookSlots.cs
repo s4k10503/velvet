@@ -124,6 +124,11 @@ namespace Velvet
         // call is still managing. Scoped to the slot, not the fiber: a call on a different slot is a
         // concurrent transition, not a nested one, and owns its own pending flag.
         public bool HasActiveOwner;
+        // Set when a write scheduled under THIS slot's open scope enrolls the Transition lane, so the
+        // pending flag answers "did my own callback queue anything" rather than "is the fiber busy". A
+        // lane is shared: another slot's transition, or a UseDeferredValue re-queue, puts the same lane in
+        // the same queue, and reading the queue reports both as this slot's work.
+        public bool HasQueuedWork;
         // Bumped whenever ownership changes hands, including the release an unmount forces on a slot whose
         // async action is still awaiting. An owner compares its own value before touching the flags above,
         // so a task settling after that release cannot clear a pending state a later owner is managing.

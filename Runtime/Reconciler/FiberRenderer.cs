@@ -112,10 +112,7 @@ namespace Velvet
                 throw new InvalidOperationException(
                     "FiberRenderer.RenderInlineForExpansion: fiber must already be mounted.");
             }
-            // Opens the window SettleSubsumedFiber reads to tell the lanes this render requested from the
-            // ones it subsumed. Null-safe on purpose: a fiber with no LaneState has nothing pending, and
-            // EnsureLanes here would allocate one for the lane-less majority of inline re-renders.
-            fiber.Lanes?.LanesRequestedSinceReset.Clear();
+            fiber.OpenSubsumedRenderWindow();
             RenderAndReconcile(fiber, deferReconcile: true);
             // Update commit: drain side runs prior cleanup + new setup (deps-comparing) without
             // the Editor-only mount double-invoke. ScheduleRunEffects forwards the same flag so the
@@ -151,7 +148,7 @@ namespace Velvet
                 fiber.Lanes.Queue.RetainAll(fiber.Lanes.LanesRequestedSinceReset);
                 // Consumed here as well as reset by the render, so a settle reached without one reads an
                 // empty set and retains nothing — what this did before the record existed. The reset in
-                // RenderInlineForExpansion is what scopes the window; requests made between windows would
+                // OpenSubsumedRenderWindow is what scopes the window; requests made between windows would
                 // otherwise accumulate into it.
                 fiber.Lanes.LanesRequestedSinceReset.Clear();
                 // The subsuming render committed the fiber's latest (eagerly-written) state, so any
@@ -172,12 +169,10 @@ namespace Velvet
                 // ScheduleFlush dedups, so asking unconditionally costs nothing when the lane has a tier.
                 fiber.IsDirty = true;
                 FiberWorkLoop.ScheduleFlush(fiber, fiber.LaneQueue.Min);
-                // Mirrors FlushState's settle rule so a surviving Transition lane keeps isPending lit until
-                // the flush that renders its content.
-                if (!fiber.LaneQueue.Contains(FiberUpdatePriority.Transition))
-                {
-                    fiber.ClearAllTransitionPending();
-                }
+                // A surviving Transition lane keeps isPending lit only for the slot that queued it. The
+                // lane is what the render asked for again, so it may equally be a UseDeferredValue's, and
+                // reading the lane alone held the flag up until that unrelated deferral drained.
+                fiber.ClearSettledTransitionPending();
                 return;
             }
 

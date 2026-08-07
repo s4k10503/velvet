@@ -22,6 +22,10 @@ namespace Velvet.Tests
     /// new transition and without throwing.</item>
     /// <item>Each <c>UseTransition</c> slot tracks its own pending flag independently of other slots in the same
     /// component, including a slot started while another slot's async transition is still awaiting.</item>
+    /// <item>A transition whose callback queues nothing settles when that callback returns, even while another
+    /// slot's transition work is still queued on the same fiber.</item>
+    /// <item>A transition committed by a subsuming parent render clears its pending flag even when a
+    /// <c>UseDeferredValue</c> in the same component holds the transition lane queued.</item>
     /// <item>A discrete update on the same component keeps its urgent priority while an async transition is in
     /// flight there, unless the handler wrapped it in a <c>startTransition</c> of its own.</item>
     /// <item>Calling the hook outside a render throws an <see cref="InvalidOperationException"/>.</item>
@@ -363,6 +367,86 @@ namespace Velvet.Tests
                 "A slot started while another slot's async transition is in flight reports its own pending");
         }
 
+        [Test]
+        public void Given_OneSlotsTransitionStillQueued_When_AnotherSlotsCallbackQueuesNothing_Then_OnlyTheQueueingSlotStaysPending()
+        {
+            // Arrange — slot A's transition leaves work on the transition lane, so the fiber is dirty
+            using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
+            s_twoStartA.Invoke(() => s_twoSetValue.Invoke(1));
+
+            // Act — slot B's callback schedules nothing at all
+            s_twoStartB.Invoke(() => { });
+
+            // Assert — the lane term is folded in rather than assumed: B clearing means nothing unless
+            // A's work is still queued at that moment, and a precondition would report that as inconclusive
+            Assert.That(
+                (s_twoFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                 s_twoFiber.TransitionSlots[0].IsPending,
+                 s_twoFiber.TransitionSlots[1].IsPending),
+                Is.EqualTo((true, true, false)),
+                "A transition that queued nothing settles when its callback returns, whatever another slot left queued");
+        }
+
+        #endregion
+
+        #region A deferred value holding the same lane
+
+        [Test]
+        public void Given_ATransitionCommittedByASubsumingRender_When_ADeferredValueHoldsTheTransitionLane_Then_IsPendingClears()
+        {
+            // Arrange — the child holds both hooks, and its transition queues work the parent's next render
+            // commits along with the new prop
+            using var mounted = V.Mount(_root,
+                V.Component(DeferredTransitionParentRender, key: "deferred-transition-parent"));
+            s_deferredChildStart.Invoke(() => s_deferredChildSetCount.Invoke(1));
+            var pendingBeforeParentRender = s_deferredChildFiber.TransitionSlots[0].IsPending;
+
+            // Act — the parent's state change re-renders the child inline with the new prop; the child's body
+            // re-queues the transition lane for the deferred value while that render runs
+            s_deferredParentSetQuery.Invoke("beta");
+            FiberWorkLoop.FlushState(s_deferredParentFiber);
+
+            // Assert — four terms, because the pending flag being false proves nothing unless the transition
+            // was pending to begin with, its content is on screen, and the deferred value's lane is still there
+            Assert.That(
+                (pendingBeforeParentRender,
+                 _root.Q<Label>("deferred-transition-out").text,
+                 s_deferredChildFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                 s_deferredChildFiber.TransitionSlots[0].IsPending),
+                Is.EqualTo((true, "alpha:1", true, false)),
+                "isPending belongs to the slot that queued the work, not to whoever holds the transition lane");
+        }
+
+        private static StateUpdater<string> s_deferredParentSetQuery;
+        private static ComponentFiber s_deferredParentFiber;
+        private static ComponentFiber s_deferredChildFiber;
+        private static TransitionStarter s_deferredChildStart;
+        private static StateUpdater<int> s_deferredChildSetCount;
+
+        [Component]
+        private static VNode DeferredTransitionParentRender()
+        {
+            s_deferredParentFiber = FiberAmbientStack.Current;
+            var (query, setQuery) = Hooks.UseState("alpha");
+            s_deferredParentSetQuery = setQuery;
+            return V.Div(children: new VNode[]
+            {
+                V.Component(DeferredTransitionChildRender, query, key: "deferred-transition-child"),
+            });
+        }
+
+        [Component]
+        private static VNode DeferredTransitionChildRender(string query)
+        {
+            s_deferredChildFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(0);
+            var (_, start) = Hooks.UseTransition();
+            s_deferredChildStart = start;
+            s_deferredChildSetCount = setCount;
+            var deferred = Hooks.UseDeferredValue(query);
+            return V.Label(name: "deferred-transition-out", text: $"{deferred}:{count}");
+        }
+
         #endregion
 
         #region Discrete updates during an in-flight async transition
@@ -553,6 +637,11 @@ namespace Velvet.Tests
             s_clickableFiber = null;
             s_clickableSetValue = default;
             s_clickableGate = null;
+            s_deferredParentSetQuery = default;
+            s_deferredParentFiber = null;
+            s_deferredChildFiber = null;
+            s_deferredChildStart = default;
+            s_deferredChildSetCount = default;
         }
 
         [Component]
