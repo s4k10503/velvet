@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `UseTransition` slot's `isPending` now reports its own transition rather than whatever holds the
+  Transition lane. Two cases showed a spinner after the work it described was over: a `startTransition`
+  whose callback scheduled no update stayed pending for as long as anything else on the component was
+  in flight, and a component holding both a `UseTransition` and a `UseDeferredValue` stayed pending
+  after its transition had committed, until the deferred value's own lane drained.
+
 - A `V.Motion` now applies the text-effect cascade when it mounts, not only when it next patches.
   `uppercase` / `lowercase` / `capitalize`, `underline` / `line-through` / `overline`,
   `whitespace-pre-line` and `leading-*` as a plain class on a Motion left its own text and its descendant
