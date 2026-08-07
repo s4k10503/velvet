@@ -296,7 +296,7 @@
 [Velvet] method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]], System.Object?[]?): Velvet.RouteBlockerState
 [Velvet] method Velvet.Hooks.UseCallback`1(T): T
 [Velvet] method Velvet.Hooks.UseCallback`1(T, System.Object?[]?): T
-[Velvet] method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T
+[Velvet] method Velvet.Hooks.UseContext`1(Velvet.ComponentContext`1[T]): T?
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T): T
 [Velvet] method Velvet.Hooks.UseDeferredValue`1(T, T): T
 [Velvet] method Velvet.Hooks.UseEffect(System.Func`1[System.Action?]?, System.Object?[]?): System.Void

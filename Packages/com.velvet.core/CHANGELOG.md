@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.Motion` now applies the text-effect cascade when it mounts, not only when it next patches.
+  `uppercase` / `lowercase` / `capitalize`, `underline` / `line-through` / `overline`,
+  `whitespace-pre-line` and `leading-*` as a plain class on a Motion left its own text and its descendant
+  text leaves untransformed until some later render happened to patch it, so a Motion nothing re-renders
+  showed the wrong text for the element's whole life.
+
+- A `Label` given children through `V.Custom<Label>` no longer carries them into the element pool. The
+  Label reset cleared the text but not the child list, so the next `V.Label` mount rented an element that
+  still showed the previous subtree's content on top of its own. Both the ordinary unmount and the
+  Suspense rollback reclaim now treat a child-bearing Label exactly as they already treat a child-bearing
+  `Button`.
+
 - A navigation waiting on a Blocker no longer takes the history with it. `Router` moved the history index
   before running the Guard and Blocker phases, so a Back parked on a confirm dialog left the router
   pointing at the entry the user had not gone to yet: clicking a link before answering the dialog pushed
@@ -237,11 +249,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Router.CurrentLocation` before the first navigation. The sibling router hooks `UseMatch`,
   `UseOutletContext`, `UseLoaderData` and `UseRouteError` were already annotated nullable.
 
-  The read path underneath is unchanged and still hands a null past a non-null declaration:
-  `Hooks.UseContext<T>` returns `T` while `ComponentContext<T>.DefaultValue` is `T?`, so
-  `Hooks.UseContext(RouterContext.Location).Path` still compiles clean and throws with no router
-  above it.
-
 - `ISearchParams.Get` is declared `string?`, matching the null it documents for an absent key and the
   `SearchParams` implementation that returns it. `Hooks.UseSearchParams()` hands back the interface,
   so the interface declaration is the one a consumer reads: `searchParams.Get("id").Length` compiled
@@ -290,6 +297,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dependency nullability from them as from their hand-written non-generic siblings, which declare
   `string? key`. The same applies to the wrappers `[MemoizeMethod]` generates into user assemblies, which
   were nullable-oblivious for the same reason.
+
+- `Hooks.UseContext<T>` is declared `T?`. It hands back `ComponentContext<T>.DefaultValue` when no
+  Provider is above the caller, and that property is `T?` — `ComponentContext<T>.Create` takes a null
+  default, which is how `RouterContext.Location` and `RouterContext.OutletContext` are both built — so
+  `Hooks.UseContext(RouterContext.Location).Path` compiled without a warning in a nullable-enabled
+  assembly and threw `NullReferenceException` with no router above it. This is the read path underneath
+  `Hooks.UseLocation()`, which was annotated in isolation. Throwing when no Provider is found was
+  rejected for the reason `UseLocation` was not made to throw: a Velvet context is seeded with a
+  default rather than being absent, so a context legitimately created with a null default and a
+  missing Provider are the same read, and `UseOutletContext` documents the first of those as normal.
+  Nothing changes at runtime, and a context of a value type is unaffected either way, since `T?` on an
+  unconstrained type parameter is an annotation rather than `Nullable<T>`.
+
+- Stepping onto a history entry whose `LoaderMode.Suspend` loaders all answer immediately now leaves that
+  entry servable. Such an entry is recorded unfinished and re-runs its loaders when stepped onto, which is
+  correct — but a loader handed an already-complete task resolves inside the run that launched it, before
+  the step has a location to record its result under, so the write-back that marks an entry finished never
+  arrived. The entry stayed unfinished, and a route whose loaders all answer that way could therefore never
+  be served from the Back/Forward cache: its loaders ran again on every step onto it. A Back or Forward
+  whose loader round finished before the step committed now records the entry from that commit.
 
 ### Changed
 

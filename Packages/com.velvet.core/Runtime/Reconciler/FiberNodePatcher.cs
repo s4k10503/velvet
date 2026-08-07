@@ -2047,9 +2047,9 @@ namespace Velvet
                 positions ??= new Dictionary<(bool, string), List<int>[]>();
                 if (!map.TryGetValue(key, out var states))
                 {
-                    states = new List<string>[5];
+                    states = new List<string>[StyleVariantClass.RelationalStateCount];
                     map[key] = states;
-                    positions[key] = new List<int>[5];
+                    positions[key] = new List<int>[StyleVariantClass.RelationalStateCount];
                 }
                 var slot = (int)relational.State;
                 (states[slot] ??= new List<string>()).Add(payload ?? string.Empty);
