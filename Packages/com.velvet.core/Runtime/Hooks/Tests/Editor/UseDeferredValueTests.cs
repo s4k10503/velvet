@@ -223,6 +223,33 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFiberUnmounted_When_ItIsMountedAgain_Then_TheInitialValueOverloadReturnsItsInitialValueAgain()
+        {
+            // Arrange — the Unmount then Mount pair reuses one fiber, so a slot list the unmount leaves
+            // behind is what the remount's first render reads at index 0. The transition is flushed first
+            // so the surviving slot holds the deferred-toward value rather than the initial one: without
+            // that, reusing the slot and taking the first-render branch both answer "seed" and the case
+            // decides nothing.
+            s_initialValueInput = "beta";
+            var fiber = FiberRenderer.CreateRoot(InitialValueDeferredRender);
+            FiberRenderer.Mount(fiber, _root);
+            FiberWorkLoop.FlushState(fiber);
+            Assume.That(s_initialValueObserved, Is.EqualTo("beta"),
+                "Precondition: the transition committed, so the slot no longer holds initialValue");
+            var rendersBefore = s_initialValueRenderCount;
+            FiberRenderer.Unmount(fiber);
+
+            // Act
+            FiberRenderer.Mount(fiber, _root);
+
+            // Assert — the render count rides along because the observed value survives the unmount, so a
+            // remount that rendered nothing at all would report the first mount's answer as its own.
+            Assert.That((s_initialValueRenderCount > rendersBefore, s_initialValueObserved),
+                Is.EqualTo((true, "seed")),
+                "A remount is a first render, so the initialValue overload returns initialValue again");
+        }
+
+        [Test]
         public void Given_InitialValueDifferentFromValue_When_TransitionFlushed_Then_DefersTowardValue()
         {
             // Arrange
