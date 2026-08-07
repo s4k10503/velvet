@@ -153,6 +153,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   React does — the success state is dispatched after the handler runs, so a handler that throws never
   reaches it.
 
+- `Hooks.UseBlocker` now has a single-argument overload, and calling it without a dependency array
+  re-registers the predicate on every render. Because deps were declared `params`, omitting them used
+  to bind an *empty* array rather than the null that means "re-register every render", and an empty
+  array compares equal to itself on every subsequent render. The blocker therefore kept the predicate
+  closure the mount render created, and answered forever with the state that render had captured: the
+  idiomatic `Hooks.UseBlocker(attempt => isDirty)` never fired an unsaved-changes prompt, or, if the
+  first render had `isDirty` true, blocked every departure permanently. Nothing reported it — the VEL100
+  exhaustive-deps analyzer skips a call with no deps argument, correctly for the sibling hooks whose
+  omitted form is already safe. `UseCallback`, `UseMemo` and `UseImperativeHandle` carry the same
+  deps-less overload for the same reason, and `UseEffect`, `UseLayoutEffect` and `UseInsertionEffect`
+  reach the same place through an optional `deps = null` parameter. The deps-taking overloads now also
+  accept a null array without a nullable warning; that is `UseMemo`'s annotation, not its behaviour —
+  `UseBlocker` guards on `deps != null` and re-registers, where `UseMemo` and `UseCallback` compare a
+  null against a null, find them equal and freeze.
+
+- `Hooks.UseLocation()` is declared `RouterLocation?`. Its documentation already said it returns null
+  with no router mounted, and Velvet's own `RouteNavLink` already reads it that way, but the
+  declaration promised non-null, so `Hooks.UseLocation().Path` compiled without a warning in a
+  nullable-enabled assembly and threw `NullReferenceException`. The documentation now also names a
+  second case it had left out: a mounted router returns null until it publishes its first location,
+  which is the state `Samples~/StarterApp` starts in, seeding the location context from
+  `Router.CurrentLocation` before the first navigation. The sibling router hooks `UseMatch`,
+  `UseOutletContext`, `UseLoaderData` and `UseRouteError` were already annotated nullable.
+
+  The read path underneath is unchanged and still hands a null past a non-null declaration:
+  `Hooks.UseContext<T>` returns `T` while `ComponentContext<T>.DefaultValue` is `T?`, so
+  `Hooks.UseContext(RouterContext.Location).Path` still compiles clean and throws with no router
+  above it.
+
+- `ISearchParams.Get` is declared `string?`, matching the null it documents for an absent key and the
+  `SearchParams` implementation that returns it. `Hooks.UseSearchParams()` hands back the interface,
+  so the interface declaration is the one a consumer reads: `searchParams.Get("id").Length` compiled
+  without a warning and threw for any query string lacking the key. The mismatch was also raising
+  CS8766 in the package's own build.
 - `TransitionType.Spring` and `TransitionType.Bezier` no longer tell you in IntelliSense that colours
   and lengths are out of scope. Both have been driven channels since 2.0.0 and the tooltip's exclusion
   list was left behind — a consumer who read it hand-rolled a separate tween for a background colour or

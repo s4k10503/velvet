@@ -1,6 +1,7 @@
 using System;
 using NUnit.Framework;
 using Velvet;
+using Velvet.TestUtilities;
 using static Velvet.Tests.RouteTestStubs;
 
 namespace Velvet.Tests
@@ -12,7 +13,8 @@ namespace Velvet.Tests
     /// <item>A path matches the highest-specificity branch whose pattern consumes it fully; a leading slash on
     /// the queried path is optional and the root path <c>"/"</c> resolves to a declared <c>"/"</c> route.</item>
     /// <item>A null or empty queried path matches nothing.</item>
-    /// <item>A path that no branch consumes returns null.</item>
+    /// <item>A path that no branch consumes returns null, and <see cref="RouteTree.Match"/> declares that
+    /// null where <see cref="RouteMatch.Params"/> is declared non-null.</item>
     /// <item>A dynamic <c>:param</c> segment captures the corresponding path segment under the param name.</item>
     /// <item>Nested routes return the full parent-first chain, and every level shares the one cumulative
     /// parameter set captured across the whole branch.</item>
@@ -122,6 +124,30 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(result, Is.Null);
+        }
+
+        [Test]
+        public void Given_RouteTreeMatch_When_ReturnAnnotationsRead_Then_TheChainIsNullableAndItsParamsAreNot()
+        {
+            // Arrange
+            var match = typeof(RouteTree).GetMethod(nameof(RouteTree.Match))!;
+            var matchParams = typeof(RouteMatch).GetProperty(nameof(RouteMatch.Params))!.GetMethod!;
+
+            // Act
+            var annotations = (
+                chain: NullableAnnotationProbe.ReturnAnnotation(match),
+                parameters: NullableAnnotationProbe.ReturnAnnotation(matchParams));
+
+            // Assert
+            Assert.That(
+                annotations,
+                Is.EqualTo((
+                    NullableAnnotationProbe.Annotation.Nullable,
+                    NullableAnnotationProbe.Annotation.NotNullable)),
+                "Match declares the null it returns for a path no branch consumes, against a sibling "
+                + "declared non-null. Match's constructed nullable return type is what makes the compiler "
+                + "emit the annotation as a flag array, so this case also fixes which element of that "
+                + "array the probe reads");
         }
 
         #endregion
