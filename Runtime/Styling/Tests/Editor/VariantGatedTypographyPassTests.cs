@@ -236,6 +236,40 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AChildCombinatorFontOverAChildDeclaringNoPayload_When_ItRerenders_Then_TheFamilyResolves()
+        {
+            // Arrange — the child declares no gate payload, so it has no recorded array and the re-sync the
+            // landing payload raises stands the font layer down. Its class content never changes afterwards
+            // either, which is the other half: a font layer re-derived only from a class-array diff has
+            // nothing left to run it, and the family the container asked for is lost for the child's life.
+            using var scope = new ReconcilerScope();
+            var first = new VNode[]
+            {
+                V.Div(className: "[&>*]:font-mono", children: new VNode[]
+                {
+                    V.Label(className: "text-sm", text: "1", name: "card"),
+                }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var card = scope.Root.Q<VisualElement>("card");
+            var second = new VNode[]
+            {
+                V.Div(className: "[&>*]:font-mono", children: new VNode[]
+                {
+                    V.Label(className: "text-sm", text: "2", name: "card"),
+                }),
+            };
+
+            // Act
+            scope.Reconciler.Reconcile(scope.Root, first, second);
+
+            // Assert — the payload reaching the child rides along, so a walk that never applied it fails
+            // here rather than reading as a font the resolver declined to write.
+            Assert.That((card.ClassListContains("font-mono"), ResolvesToMono(card)),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
         public void Given_AChildCombinatorPayloadOverABracketLeading_When_ItLands_Then_TheChildKeepsItsTag()
         {
             // Arrange — the same incomplete source on the text side, and it needs no second token: the live

@@ -353,9 +353,10 @@ would resolve *something*. The only array a container-driven child has of its ow
 list, and a `font-[…]` or `leading-[…]` the child declared is deliberately kept off it — the resolver
 owns those — while the class channels above put utilities on it the child never declared. So both
 stand down there rather than replace what the child's own render got right with nothing left to put
-it back: `[&>*]:uppercase` over a `leading-[24px]` label leaves the label alone. What a later render
-of the child then delivers is not the same for the two, so lean on neither and put these on the
-child.
+it back: `[&>*]:uppercase` over a `leading-[24px]` label leaves the label alone. From that child's
+next render on the two agree and both land — `[&>*]:font-mono` and `[&>*]:uppercase` alike. Mount is
+what neither reaches there, so a child that must carry the family or the transform on its first frame
+declares it itself, or declares a variant of its own — the same escape the paints take.
 
 ## Container queries — `@container`
 
