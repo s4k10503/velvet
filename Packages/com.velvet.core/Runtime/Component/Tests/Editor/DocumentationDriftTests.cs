@@ -9,9 +9,8 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Machine-checks the shipped Documentation~ guides (plus both README.md files, CLAUDE.md and the
-    /// contributor README under Generators~) against the actual runtime API surface, so a doc referencing
-    /// a renamed/removed <c>V.*</c> factory or <c>Hooks.*</c> hook,
+    /// Machine-checks every markdown file the repository walk reaches against the actual runtime API
+    /// surface, so a doc referencing a renamed/removed <c>V.*</c> factory or <c>Hooks.*</c> hook,
     /// a path or a type that no longer exists, or an index that has drifted from the files on disk, fails a
     /// test instead of shipping silently wrong. Each check pins a failure mode that has actually shipped: a
     /// guide referencing a never-implemented factory, a hook table drifting from the real hook surface, an
@@ -25,12 +24,15 @@ namespace Velvet.Tests
         // the same role "<X/>" plays in the JSX column of the same row — not a reference to a real V.* factory.
         private static readonly HashSet<string> VReferenceAllowlist = new() { "X" };
 
-        // Names that resolve nowhere in this repo's code for a reason. Five groups, each a different one:
-        // meta-syntactic placeholders standing in for something the reader supplies; API belonging to the
-        // upstream libraries Velvet mirrors, which exists there and deliberately not here; names from
-        // Unity or the BCL — types, enum values, event names, asset labels — that the docs mention but no
-        // source file in this repo uses as code; names an external toolchain owns, which no source file
-        // here spells and which the contributor README quotes when it says how to invoke that toolchain —
+        // Names that resolve nowhere in this repo's code for a reason. Seven groups, each a different one:
+        // meta-syntactic placeholders standing in for something the reader supplies — Foo, SomeFixture,
+        // MyRender, MyStore, ResolveDirection, Save, and ForTest, a suffix written as a shape; API belonging
+        // to the upstream libraries Velvet mirrors, which exists there and deliberately not here; names from
+        // Unity, NUnit, the BCL or the host OS — types, enum values, event names, asset labels, file and
+        // directory names — that the docs mention but no source file in this repo uses as code, which for
+        // UpdateForRepaint, Alloc and UE means the repo holds the name only inside a string: one handed to
+        // reflection, one to the profiler, one a test's case data; names an external toolchain owns, which
+        // no source file here spells and which the contributor README quotes when it says how to invoke it —
         // DOTNET_ROOT, StrykerOutput, MSB4006, ContinuousIntegrationBuild, ProjectReference. What each one
         // does is the toolchain's to state and has been got wrong here more than once; the reason for the
         // entry is only that the name is not code in this repository. And the analyzer identifiers, which
@@ -41,6 +43,16 @@ namespace Velvet.Tests
         // categories it names, against the real descriptors and against the derivation's real code range.
         // One entry sits outside even that: "VEL" is the ID space written as a shape (VEL###) rather than an
         // ID, which that guard's VEL\d{3} pattern is right not to match.
+        //
+        // The sixth group is code this repository owns in a format the corpus does not read. HOOK_SCOPE is
+        // declared by a Python hook, and HookWiringCoverageTests fails when no hook declares it.
+        // VELVET_STORY_CAPTURE_DIR is an environment variable, which C# can hold only as a string literal.
+        //
+        // The seventh is the CHANGELOG's own headings and entry labels — Unreleased, Highlights, Added,
+        // Changed, Breaking — and the date placeholder in its version heading. A document naming one is
+        // telling an author what to type, not referring to code. Highlights is the one the release-note
+        // builder parses, and scripts/release/test_release_notes.py builds a note for every version in the
+        // shipped CHANGELOG, so it fails when that heading stops matching.
         private static readonly HashSet<string> IdentifierAllowlist = new()
         {
             "Foo", "SomeFixture", "MyRender", "MyStore", "Ndeg", "Npx", "ResolveDirection", "Inter", "CS",
@@ -50,8 +62,18 @@ namespace Velvet.Tests
             "UnityUIEFilter", "FocusIn", "KeyDown", "PointerDown", "Move", "Leave", "Up", "Wheel", "Enter",
             "RoslynAdditionalFileImporter", "DOTNET_ROOT", "StrykerOutput", "MSB4006",
             "ContinuousIntegrationBuild", "USS001", "USS011", "VEL", "VEL500", "VEL501", "VEL502",
-            "ProjectReference", "VEL503"
+            "ProjectReference", "VEL503",
+            "Save", "ForTest",
+            "NullReferenceException", "BringToFront", "SendToBack", "SetCursor", "AllocatingGCMemory",
+            "UpdateForRepaint", "Alloc", "StandaloneOSX", "MacOS", "InitTestScene", "Unity_lic", "UE",
+            "SIGTERM",
+            "HOOK_SCOPE", "VELVET_STORY_CAPTURE_DIR",
+            "Unreleased", "Highlights", "Added", "Changed", "Breaking", "YYYY", "MM", "DD"
         };
+
+        // A path the tree is right not to hold: the capture harness creates it at run time, inside a
+        // git-ignored directory.
+        private static readonly HashSet<string> PathAllowlist = new() { "Logs/story-captures/" };
 
         private static readonly string[] SourceExtensions = { ".cs", ".uss", ".yml", ".json", ".asmdef" };
 
@@ -80,10 +102,20 @@ namespace Velvet.Tests
         // A ./ or ../ run ahead of that is admitted because a document living inside the tree it describes
         // names its siblings that way; three dots still fail, since the run allows at most two.
         private static readonly Regex PathReferencePattern = new(
-            @"^(\.{1,2}/)*(\.[A-Za-z0-9_-]+/)?[A-Za-z0-9_~@][A-Za-z0-9_./~*-]*(\.(cs|uss|md|json|yml|py|sh|txt|asmdef|dll)|/)$",
+            @"^(\.{1,2}/)*(\.[A-Za-z0-9_-]+/)?[A-Za-z0-9_~@][A-Za-z0-9_./~*-]*(\.(cs|uss|md|json|yml|py|sh|txt|asmdef|dll|asset|tss)|/)$",
             RegexOptions.Compiled);
 
         private static readonly Regex RelativePrefixPattern = new(@"^(\.{1,2}/)+", RegexOptions.Compiled);
+
+        // A path on the machine reading the document rather than in the repository, in each of the three
+        // spellings the guides use: rooted, home-relative, and a Windows drive. Each needs settling before
+        // the checks below, and for different reasons: a home-relative path matches the path pattern and
+        // would then be looked for in the tree, while a Windows one carries separators that pattern does
+        // not admit and falls through to the identifier check, which asks whether ProgramData is a word.
+        private static readonly Regex MachinePathPattern =
+            new(@"^(/|~/|[A-Za-z]:\\)", RegexOptions.Compiled);
+
+        private static readonly Regex ElisionPattern = new(@"\.{3}|…", RegexOptions.Compiled);
 
         // Every PascalCase word INSIDE a span, not the span as a whole: the test-mechanism names are written
         // with call parens (SimulateClick()), the memoization knobs as attributes ([Component(Compiler = false)])
@@ -172,7 +204,7 @@ namespace Velvet.Tests
                         foreach (Match token in word.Matches(span.Value)) inComments.Add(token.Value);
                     }
                 }
-                var removed = whole.Where(w => !SourceIdentifiers.Value.Contains(w)).ToList();
+                var removed = whole.Where(w => !SourceIdentifiers(includeClaude: false).Contains(w)).ToList();
                 if (removed.Count == 0)
                 {
                     unheld.Add($"{extension}: nothing removed");
@@ -191,7 +223,7 @@ namespace Velvet.Tests
             {
                 unheld.AddRange(selector.Matches(File.ReadAllText(entry))
                     .Select(match => match.Groups[1].Value)
-                    .Where(name => !SourceIdentifiers.Value.Contains(name))
+                    .Where(name => !SourceIdentifiers(includeClaude: false).Contains(name))
                     .Select(name => $".uss: the selector .{name} left the corpus"));
             }
 
@@ -228,7 +260,7 @@ namespace Velvet.Tests
             }
 
             // Act
-            var removed = withRegions.Where(w => !SourceIdentifiers.Value.Contains(w)).ToList();
+            var removed = withRegions.Where(w => !SourceIdentifiers(includeClaude: false).Contains(w)).ToList();
             var notFromALabel = removed
                 .Where(w => !labelWords.Contains(w))
                 .OrderBy(w => w, StringComparer.Ordinal);
@@ -266,13 +298,34 @@ namespace Velvet.Tests
 
             // Act
             var absent = conditions
-                .Where(name => !SourceIdentifiers.Value.Contains(name))
+                .Where(name => !SourceIdentifiers(includeClaude: false).Contains(name))
                 .OrderBy(name => name, StringComparer.Ordinal);
 
             // Assert — the count of conditions found rides along, because a walk that read no directive at
             // all would satisfy an emptiness check on its own.
             Assert.That(
                 (conditions.Count > 0, string.Join(", ", absent)),
+                Is.EqualTo((true, string.Empty)));
+        }
+
+        [Test]
+        public void Given_TheMarkdownTheWalkFinds_When_ComparedAgainstTheScannedSet_Then_EveryFileIsScanned()
+        {
+            // Arrange — the walk that reaches .claude, which is the one the scans above resolve against.
+            var walked = DocumentationCorpus.RepoEntries(includeClaude: true)
+                .Where(entry => entry.EndsWith(".md", StringComparison.Ordinal) && File.Exists(entry))
+                .ToList();
+
+            // Act
+            var scanned = new HashSet<string>(DocumentationCorpus.Files(), StringComparer.Ordinal);
+            var unscanned = walked
+                .Where(entry => !scanned.Contains(entry))
+                .OrderBy(entry => entry, StringComparer.Ordinal);
+
+            // Assert — the count rides along, because a walk that found no markdown leaves none unscanned.
+            // What this refuses is the scanned set going back to a hand-written list.
+            Assert.That(
+                (walked.Count > 0, string.Join(", ", unscanned)),
                 Is.EqualTo((true, string.Empty)));
         }
 
@@ -349,9 +402,10 @@ namespace Velvet.Tests
         public void Given_ProjectMarkdown_When_ScannedForBacktickedPaths_Then_EveryPathExistsInTheRepo()
         {
             // Arrange / Act
-            var unresolved = ScanBacktickSpans((label, reference) =>
-                PathReferencePattern.IsMatch(reference) && !PathReferenceResolves(reference)
-                    ? new[] { $"{label}: {reference}" }
+            var unresolved = ScanBacktickSpans((path, reference) =>
+                PathReferencePattern.IsMatch(reference) && !PathAllowlist.Contains(reference)
+                && !PathReferenceResolves(reference)
+                    ? new[] { $"{path}: {reference}" }
                     : Array.Empty<string>());
 
             // Assert
@@ -363,7 +417,7 @@ namespace Velvet.Tests
         public void Given_ProjectMarkdown_When_ScannedForBacktickedIdentifiers_Then_EveryIdentifierAppearsInASource()
         {
             // Arrange / Act
-            var unresolved = ScanBacktickSpans((label, reference) =>
+            var unresolved = ScanBacktickSpans((path, reference) =>
                 // A file name is claimed by the path check first, which resolves it against the filesystem —
                 // the stronger question. Without this, VNodePool.cs would also be read as two identifiers.
                 PathReferencePattern.IsMatch(reference)
@@ -371,36 +425,37 @@ namespace Velvet.Tests
                     // written as a shape, a signature with its arguments dropped. The V.* and Hooks.* checks
                     // still resolve the head of a dropped-argument call, so what this gives up is a span whose
                     // head is neither — and the alternative is reporting the elision's own fragments.
-                    || reference.Contains("...")
+                    || ElisionPattern.IsMatch(reference)
                         ? Array.Empty<string>()
                         : IdentifierTokenPattern.Matches(JsxElementPattern.Replace(reference, " "))
                             .Select(token => token.Value)
-                            .Where(token => !SourceIdentifiers.Value.Contains(token)
+                            .Where(token => !SourceIdentifiers(includeClaude: true).Contains(token)
                                             && !IdentifierAllowlist.Contains(token))
-                            .Select(token => $"{label}: {token} (in `{reference}`)"));
+                            .Select(token => $"{path}: {token} (in `{reference}`)"));
 
             // Assert
             Assert.That(unresolved, Is.Empty,
                 "Documentation names identifiers that appear in no source file:\n" + string.Join("\n", unresolved));
         }
 
-        // Runs `extract` over every backticked span of every target file. An absolute path is skipped outright:
-        // it names something on the machine running the docs, not in the repo.
+        // Runs `extract` over every backticked span of every target file. A path on the reader's own machine
+        // is skipped outright: it names nothing in the repo, so neither check that reads this has anything
+        // to say about it.
         private static List<string> ScanBacktickSpans(Func<string, string, IEnumerable<string>> extract)
         {
             var unresolved = new List<string>();
-            foreach (var (path, label) in DocumentationCorpus.Files())
+            foreach (var path in DocumentationCorpus.Files())
             {
                 var prose = FencedBlockPattern.Replace(File.ReadAllText(path), "\n");
                 foreach (Match span in BacktickSpanPattern.Matches(prose))
                 {
                     var reference = string.Join(" ", span.Groups[1].Value.Split((char[])null!,
                         StringSplitOptions.RemoveEmptyEntries));
-                    if (reference.Length == 0 || reference[0] == '/')
+                    if (reference.Length == 0 || MachinePathPattern.IsMatch(reference))
                     {
                         continue;
                     }
-                    unresolved.AddRange(extract(label, reference));
+                    unresolved.AddRange(extract(path, reference));
                 }
             }
             return unresolved.Distinct().ToList();
@@ -412,11 +467,25 @@ namespace Velvet.Tests
         // real declarations would need every one of those toolchains loaded into the test. What it does care
         // about is that the word is code — see the stripping patterns for why prose cannot be trusted here.
         // What is stripped per format is StripProse's to say.
-        internal static readonly Lazy<HashSet<string>> SourceIdentifiers = new(() =>
+        //
+        // includeClaude decides whether the files under .claude are part of the answer. The markdown scans
+        // below ask for them, because CONTRIBUTING.md names the hook events .claude/settings.json registers
+        // and nothing else in the tree spells those as code; a caller resolving C# API against this set
+        // wants the narrower reading and says so.
+        internal static HashSet<string> SourceIdentifiers(bool includeClaude) =>
+            (includeClaude ? ClaudeAwareIdentifiers : DocumentationIdentifiers).Value;
+
+        private static readonly Lazy<HashSet<string>> DocumentationIdentifiers =
+            new(() => BuildIdentifiers(includeClaude: false));
+
+        private static readonly Lazy<HashSet<string>> ClaudeAwareIdentifiers =
+            new(() => BuildIdentifiers(includeClaude: true));
+
+        private static HashSet<string> BuildIdentifiers(bool includeClaude)
         {
             var words = new Regex(@"[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled);
             var identifiers = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var entry in DocumentationCorpus.RepoEntries(includeClaude: false))
+            foreach (var entry in DocumentationCorpus.RepoEntries(includeClaude))
             {
                 if (!SourceExtensions.Any(extension => entry.EndsWith(extension, StringComparison.Ordinal))
                     || !File.Exists(entry))
@@ -430,7 +499,7 @@ namespace Velvet.Tests
                 }
             }
             return identifiers;
-        });
+        }
 
         // Comments are prose in every format that has them, so a name surviving only in one is a deleted
         // name as far as any caller is concerned. Strings are not: in C# a string is a label for code, while
@@ -471,12 +540,12 @@ namespace Velvet.Tests
             var leaf = trimmed[(separator + 1)..];
             if (!leaf.Contains('*'))
             {
-                return trimmed.Contains('*') || DocumentationCorpus.RepoEntries(includeClaude: false)
+                return trimmed.Contains('*') || DocumentationCorpus.RepoEntries(includeClaude: true)
                     .Any(entry => IsSuffixPath(entry, trimmed));
             }
             var directory = separator < 0 ? string.Empty : trimmed[..separator];
             var extension = leaf.TrimStart('*');
-            return DocumentationCorpus.RepoEntries(includeClaude: false).Any(entry =>
+            return DocumentationCorpus.RepoEntries(includeClaude: true).Any(entry =>
                 entry.EndsWith(extension, StringComparison.Ordinal)
                 && entry.LastIndexOf('/') >= 0
                 && IsSuffixPath(entry[..entry.LastIndexOf('/')], directory));
@@ -493,7 +562,7 @@ namespace Velvet.Tests
             Regex pattern, Func<string, string> select, Func<string, bool> isKnown, string prefix)
         {
             var unresolved = new List<string>();
-            foreach (var (path, label) in DocumentationCorpus.Files())
+            foreach (var path in DocumentationCorpus.Files())
             {
                 var haystack = select(File.ReadAllText(path));
                 foreach (Match match in pattern.Matches(haystack))
@@ -503,7 +572,7 @@ namespace Velvet.Tests
                     {
                         continue;
                     }
-                    unresolved.Add($"{label}: {prefix}{name}");
+                    unresolved.Add($"{path}: {prefix}{name}");
                 }
             }
             return unresolved.Distinct().ToList();
