@@ -217,6 +217,9 @@ namespace Velvet.Tests
     /// the current location, matching case-insensitively by default and independently of the route table, and
     /// returns null when the pattern does not match.</item>
     /// <item><c>UseSearchParams</c> parses the query string of the current location.</item>
+    /// <item><see cref="ISearchParams"/> — the type the hook hands back — declares the null
+    /// <see cref="ISearchParams.Get"/> returns for an absent key, while
+    /// <see cref="ISearchParams.GetAll"/> declares the empty list it substitutes instead.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -439,6 +442,29 @@ namespace Velvet.Tests
             Assert.That(Capture.SearchParams!.Has("q"), Is.True);
             Assert.That(Capture.SearchParams!.Has("missing"), Is.False);
             Assert.That(Capture.SearchParams!.Keys, Is.EqualTo(new[] { "q", "page" }));
+        }
+
+        [Test]
+        public void Given_SearchParamsInterface_When_ReturnAnnotationsRead_Then_GetIsNullableAndGetAllIsNot()
+        {
+            // Arrange
+            var get = typeof(ISearchParams).GetMethod(nameof(ISearchParams.Get))!;
+            var getAll = typeof(ISearchParams).GetMethod(nameof(ISearchParams.GetAll))!;
+
+            // Act
+            var annotations = (
+                get: NullableAnnotationProbe.ReturnAnnotation(get),
+                getAll: NullableAnnotationProbe.ReturnAnnotation(getAll));
+
+            // Assert
+            Assert.That(
+                annotations,
+                Is.EqualTo((
+                    NullableAnnotationProbe.Annotation.Nullable,
+                    NullableAnnotationProbe.Annotation.NotNullable)),
+                "The hook hands back the interface, so the interface is the declaration a consumer reads: "
+                + "Get answers an absent key with null, while GetAll substitutes an empty list and is the "
+                + "control showing the probe separates the two states");
         }
 
         [Test]

@@ -26,6 +26,9 @@ namespace Velvet.Tests
     /// <item>A re-attempt after being blocked resets the prior block and navigates.</item>
     /// <item><c>UseBlocker</c> registers the committed predicate at settle and survives a render-phase re-run
     /// without registering a discarded attempt's transient predicate.</item>
+    /// <item><c>UseBlocker</c> called without a deps argument re-registers every render, so the predicate
+    /// answers with the state it captured on the render that registered it — on both the synchronous and
+    /// the asynchronous overload.</item>
     /// <item>A blocker's Block() side effect lands only for live registrations on a live attempt: an entry
     /// disposed mid-pass (by its own check, or by an earlier blocker's decision) stays Idle, and a pass whose
     /// attempt token is already cancelled flips no state at all.</item>
@@ -545,6 +548,77 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_blockerObservedDep, Is.EqualTo("settled"));
+        }
+
+        #endregion
+
+        #region UseBlocker with deps omitted
+
+        private static StateUpdater<bool> s_omittedDepsSetDirty;
+
+        [Component]
+        private static VNode OmittedDepsBlockerRender()
+        {
+            var (isDirty, setDirty) = Hooks.UseState(false);
+            s_omittedDepsSetDirty = setDirty;
+            Hooks.UseBlocker(_ => isDirty);
+            return V.Label(text: isDirty ? "dirty" : "clean");
+        }
+
+        [Test]
+        public void Given_UseBlockerWithDepsOmitted_When_TheCapturedStateChanges_Then_TheNewAnswerBlocks()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            s_omittedDepsSetDirty = default;
+            using var mounted = V.Mount(new VisualElement(), V.Component(OmittedDepsBlockerRender, key: "blk"));
+
+            // Act — the first departure reads the mount render's false, the second the re-render's true.
+            var beforeChange = router.NavigateSync("/other");
+            s_omittedDepsSetDirty.Invoke(true);
+            mounted.FlushStateForTest();
+            var afterChange = router.NavigateSync("/home");
+
+            // Assert
+            Assert.That(
+                (beforeChange, afterChange),
+                Is.EqualTo((NavigationResult.Success, NavigationResult.Blocked)),
+                "Omitting deps re-registers the predicate every render, so the blocker answers with the "
+                + "state of the render that registered it rather than the mount render's");
+        }
+
+        private static StateUpdater<bool> s_omittedDepsAsyncSetDirty;
+
+        [Component]
+        private static VNode OmittedDepsAsyncBlockerRender()
+        {
+            var (isDirty, setDirty) = Hooks.UseState(false);
+            s_omittedDepsAsyncSetDirty = setDirty;
+            Hooks.UseBlocker((_, _) => UniTask.FromResult(isDirty));
+            return V.Label(text: isDirty ? "dirty" : "clean");
+        }
+
+        [Test]
+        public void Given_AsyncUseBlockerWithDepsOmitted_When_TheCapturedStateChanges_Then_TheNewAnswerBlocks()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            s_omittedDepsAsyncSetDirty = default;
+            using var mounted = V.Mount(
+                new VisualElement(), V.Component(OmittedDepsAsyncBlockerRender, key: "blk-async"));
+
+            // Act — the first departure reads the mount render's false, the second the re-render's true.
+            var beforeChange = router.NavigateSync("/other");
+            s_omittedDepsAsyncSetDirty.Invoke(true);
+            mounted.FlushStateForTest();
+            var afterChange = router.NavigateSync("/home");
+
+            // Assert
+            Assert.That(
+                (beforeChange, afterChange),
+                Is.EqualTo((NavigationResult.Success, NavigationResult.Blocked)),
+                "The async overload stages the same null deps as the synchronous one, so the two must not "
+                + "drift apart under an edit to either");
         }
 
         #endregion

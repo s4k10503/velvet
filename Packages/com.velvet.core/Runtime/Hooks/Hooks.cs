@@ -451,13 +451,33 @@ namespace Velvet
         #region UseBlocker
 
         /// <summary>
-        /// Conditionally blocks navigation departures (synchronous variant).
+        /// Conditionally blocks navigation departures (synchronous variant), re-registering the predicate on
+        /// every render so it answers with the state the latest render captured.
+        /// Must be used inside Render() only.
+        /// </summary>
+        /// <remarks>
+        /// The single-argument overload exists so that omitting deps is unambiguous — see
+        /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
+        /// </remarks>
+        /// <param name="shouldBlock">Predicate delegate; returning true blocks the departure.</param>
+        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
+        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock)
+        {
+            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
+            return UseBlockerCore(
+                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
+                null);
+        }
+
+        /// <summary>
+        /// Conditionally blocks navigation departures (synchronous variant), re-registering the predicate
+        /// only when a dependency changes.
         /// Must be used inside Render() only.
         /// </summary>
         /// <param name="shouldBlock">Predicate delegate; returning true blocks the departure.</param>
         /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
         /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock, params object?[] deps)
+        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, bool> shouldBlock, params object?[]? deps)
         {
             if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
             return UseBlockerCore(
@@ -466,13 +486,33 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Conditionally blocks navigation departures (asynchronous variant). Use when integrating with
+        /// Conditionally blocks navigation departures (asynchronous variant), re-registering the predicate on
+        /// every render so it answers with the state the latest render captured. Use when integrating with
         /// asynchronous UI such as confirmation dialogs.
+        /// </summary>
+        /// <remarks>
+        /// The single-argument overload exists so that omitting deps is unambiguous — see
+        /// <see cref="UseCallback{T}(T)"/> for the hazard it avoids.
+        /// </remarks>
+        /// <param name="shouldBlock">Async predicate; returning true blocks the departure. The CancellationToken is cancelled on unmount.</param>
+        /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
+        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, UniTask<bool>> shouldBlock)
+        {
+            if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
+            return UseBlockerCore(
+                (router, state) => router.RouteBlockerManager.Register(shouldBlock, state),
+                null);
+        }
+
+        /// <summary>
+        /// Conditionally blocks navigation departures (asynchronous variant), re-registering the predicate
+        /// only when a dependency changes. Use when integrating with asynchronous UI such as confirmation
+        /// dialogs.
         /// </summary>
         /// <param name="shouldBlock">Async predicate; returning true blocks the departure. The CancellationToken is cancelled on unmount.</param>
         /// <param name="deps">Dependency array. When null, re-registers on every render.</param>
         /// <returns>The shared <see cref="RouteBlockerState"/> handle for inspecting / resolving the pending departure.</returns>
-        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, UniTask<bool>> shouldBlock, params object?[] deps)
+        public static RouteBlockerState UseBlocker(Func<NavigationAttempt, CancellationToken, UniTask<bool>> shouldBlock, params object?[]? deps)
         {
             if (shouldBlock == null) throw new ArgumentNullException(nameof(shouldBlock));
             return UseBlockerCore(
@@ -480,7 +520,7 @@ namespace Velvet
                 deps);
         }
 
-        private static RouteBlockerState UseBlockerCore(Func<Router, RouteBlockerState, IDisposable> registerFn, object?[] deps)
+        private static RouteBlockerState UseBlockerCore(Func<Router, RouteBlockerState, IDisposable> registerFn, object?[]? deps)
         {
             var fiber = Resolve("UseBlocker");
 
@@ -530,9 +570,10 @@ namespace Velvet
 
         /// <summary>
         /// Returns the current router location.
-        /// Reads <see cref="RouterContext.Location"/>; returns null when no router is mounted.
+        /// Reads <see cref="RouterContext.Location"/>; returns null when no router is mounted, and until a
+        /// mounted router publishes its first location.
         /// </summary>
-        public static RouterLocation UseLocation()
+        public static RouterLocation? UseLocation()
         {
             _ = Resolve("UseLocation");
             return UseContext(RouterContext.Location);
@@ -1634,7 +1675,9 @@ namespace Velvet
         ///   transition's awaits).
         /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>. Call <c>startTransition.Invoke(() =&gt; ...)</c>
         ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose
-        ///   <c>isPending</c> stays true across awaits. Nested calls join the outer transition.
+        ///   <c>isPending</c> stays true across awaits. A re-entrant call on the same starter joins the
+        ///   transition already running on it; a starter from another <c>UseTransition()</c> is a separate
+        ///   transition with its own <c>isPending</c>, even while the first one is still awaiting.
         /// </returns>
         public static (bool isPending, TransitionStarter startTransition) UseTransition()
         {
@@ -1838,8 +1881,9 @@ namespace Velvet
         /// <returns>
         /// First render: returns <paramref name="value"/> as-is.
         /// Subsequent renders: returns the previously committed value and queues the next value as pending
-        /// on the Transition lane.
-        /// Render after a Transition flush: commits the pending value and returns the new value.
+        /// on the Transition lane. A re-render that is not draining that lane keeps returning the previously
+        /// committed value and re-queues the lane.
+        /// The render that drains the Transition lane: commits the pending value and returns the new value.
         /// </returns>
         public static T UseDeferredValue<T>(T value)
             => UseDeferredValueCore(value, default!, hasInitialValue: false);
@@ -1888,9 +1932,13 @@ namespace Velvet
                     $"HookDeferredValueSlot<{typeof(T).Name}>", index);
             }
 
-            if (typed.HasPending && ObjectIs.AreEqual(typed.Pending, value))
+            if (typed.HasPending && ObjectIs.AreEqual(typed.Pending, value)
+                && FiberWorkLoop.IsRenderingTransitionLane)
             {
-                // Commit phase after a Transition flush: promote pending to current and return the new value.
+                // Only the render draining transition-lane work may promote pending to current. The rest of
+                // the condition tests the input alone, so without the gate any re-render still carrying it
+                // commits — and the subtree the deferral exists to keep off the urgent path renders there.
+                // A render that is not the one falls through to the change branch, which re-queues the lane.
                 typed.Current = value;
                 typed.Pending = default;
                 typed.HasPending = false;
