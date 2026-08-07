@@ -469,7 +469,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   value-type props while preserving `Object.is` member semantics exactly — including members declared
   as `object`/interfaces holding boxed values, and the sign-of-zero distinction for nullable floats.
   IL2CPP (AOT) players keep the reflection implementation.
-- **BREAKING:** The method-level `MemoizeAttribute` (`[Memoize]`) is renamed to `MemoizeMethodAttribute`
+- **BREAKING:** The method-level `[Memoize]` attribute is renamed to `MemoizeMethodAttribute`
   (`[MemoizeMethod]`) so it no longer collides in name with the unrelated `ComponentAttribute.Memoize`
   props-bail flag (`[Component(Memoize = true)]`, which keeps its name and behavior unchanged). Migrate
   by replacing `[Memoize]` with `[MemoizeMethod]` on annotated partial methods.
@@ -878,7 +878,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   later class changes through the exit's leftover timing.
 - A `V.Motion` nested under a transparent wrapper inside an `AnimatePresence` keyed child — a
   z-managed `Div` (the animated top-most modal shape, since `z-*` is a documented no-op on a
-  Motion itself) or a `ContextProvider` — now has its named `variants` enter/exit classes applied,
+  Motion itself) or a `ContextProviderNode` — now has its named `variants` enter/exit classes applied,
   resolved against the Motion's own element, where the resting `variants[animate]` classes live.
   Previously variant resolution required the keyed child itself to be the Motion, so only the
   transition's timing and `onEnterComplete` were honored for the wrapped shape: a wrapped modal

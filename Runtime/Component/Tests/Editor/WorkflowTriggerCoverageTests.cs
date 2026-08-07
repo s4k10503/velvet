@@ -63,9 +63,8 @@ namespace Velvet.Tests
             var uncovered = ParseFailures(filters)
                 .Concat(from filter in filters
                         from file in DocumentationCorpus.Files()
-                        let relative = RepoRelative(file.Path)
-                        where !filter.Includes(relative)
-                        select $"{filter.Label} does not start for {relative}")
+                        where !filter.Includes(file)
+                        select $"{filter.Label} does not start for {file}")
                 .ToList();
 
             // Assert

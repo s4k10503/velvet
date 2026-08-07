@@ -17,21 +17,14 @@ namespace Velvet.Tests
         internal static string DocumentationDirectory =>
             Path.GetFullPath("Packages/com.velvet.core/Documentation~");
 
-        // Yields (path, label) pairs. The label disambiguates the two identically-named README.md files
-        // (repo root vs the package) in failure messages, since Path.GetFileName alone collapses both to
-        // the same string.
-        internal static IEnumerable<(string Path, string Label)> Files()
-        {
-            foreach (var file in Directory.GetFiles(DocumentationDirectory, "*.md"))
-            {
-                yield return (file, "Documentation~/" + Path.GetFileName(file));
-            }
-            yield return (Path.GetFullPath("README.md"), "README.md (repo root)");
-            yield return (Path.GetFullPath("Packages/com.velvet.core/README.md"), "Packages/com.velvet.core/README.md");
-            yield return (Path.GetFullPath("CLAUDE.md"), "CLAUDE.md");
-            yield return (Path.GetFullPath("Packages/com.velvet.core/Generators~/README.md"),
-                "Generators~/README.md");
-        }
+        // Every markdown file under the walked roots, repo-relative and slash-separated — the same
+        // spelling RepoEntries yields, which is what a caller reads and reports. Derived from the walk
+        // rather than listed, so a document added under a walked root is scanned without anyone
+        // remembering to add it: the list this replaced named four files beside a Documentation~ glob and
+        // left fourteen documents unread, one of them naming two types that no longer exist.
+        internal static IEnumerable<string> Files() =>
+            RepoEntries(includeClaude: true)
+                .Where(entry => entry.EndsWith(".md", StringComparison.Ordinal) && File.Exists(entry));
 
         // Every entry under the walked roots, repo-relative and slash-separated. includeClaude adds
         // .claude/skills and agent definitions to the tree; worktrees is skipped there because each is a
