@@ -861,7 +861,7 @@ namespace Velvet
         {
             var innerPosition = FiberKeying.MemoInner(position, nodeIndex);
             var cacheKey = FiberKeying.MemoCacheKey(memo.Key, innerPosition.Scope!);
-            var (inner, _, previousCached) = _ctx.FiberMemoCache.GetOrComputeWithHitInfo(cacheKey, memo);
+            var (inner, previousCached) = _ctx.FiberMemoCache.GetOrCompute(cacheKey, memo);
             if (previousCached != null)
             {
                 // A deps change just replaced the cached inner tree. The memo wrapper is opaque to the

@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
-"""Fail when repeated six-line blocks in the package rise above a checked-in baseline.
+"""Fail when the set of repeated six-line blocks in the package differs from a checked-in baseline.
 
-A block count ceiling would fail today on deliberate sibling pairs kept parallel on purpose. The
-ratchet only asks whether new duplication was added: the total count may stay high, but it must not
-grow without an intentional baseline update.
+A block count ceiling would fail today on deliberate sibling pairs kept parallel on purpose, so what
+is checked is which blocks repeat rather than how many rules are broken. The baseline records the set,
+because a count nets out: deleting five duplicated blocks while introducing five passes, and new
+duplication in a newly written area — the case this exists to catch — is exactly what a total cannot
+see. neuter_holes.txt one directory over is the same shape for the same reason.
+
+An entry is a digest of the block's normalized text beside the files it appears in, so a block that
+moves between two files is a departure and an arrival rather than a silent no-op.
 """
 
 import argparse
+import hashlib
 import re
 import sys
 from collections import defaultdict
@@ -46,7 +52,12 @@ def non_comment_lines(text: str) -> list[str]:
     return lines
 
 
-def count_repeated_blocks(package_root: Path) -> int:
+def repeated_blocks(package_root: Path) -> set[str]:
+    """Every block appearing in more than one file, as `<digest>\tfile,file` lines.
+
+    The digest stands in for the block text, which runs to six lines and would make the baseline
+    unreadable; the files stand beside it so a reviewer can see what pairs up without rerunning this.
+    """
     blocks: dict[str, set[str]] = defaultdict(set)
     for path in package_files(package_root):
         relative = str(path.relative_to(package_root))
@@ -56,14 +67,20 @@ def count_repeated_blocks(package_root: Path) -> int:
             if len(set(chunk)) < MIN_DISTINCT_LINES:
                 continue
             blocks["\n".join(chunk)].add(relative)
-    return sum(1 for locations in blocks.values() if len(locations) > 1)
+
+    entries = set()
+    for text, locations in blocks.items():
+        if len(locations) > 1:
+            digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+            entries.add("{}\t{}".format(digest, ",".join(sorted(locations))))
+    return entries
 
 
-def read_baseline(path: Path) -> int:
-    text = path.read_text().strip()
-    if not text:
+def read_baseline(path: Path) -> set[str]:
+    entries = {line.rstrip("\n") for line in path.read_text().splitlines() if line.strip()}
+    if not entries:
         raise ValueError("baseline file is empty")
-    return int(text.splitlines()[0].strip())
+    return entries
 
 
 def main():
@@ -82,14 +99,14 @@ def main():
         print(f"error: package not found at {package_root}", file=sys.stderr)
         return 1
 
-    count = count_repeated_blocks(package_root)
+    current = repeated_blocks(package_root)
     file_count = len(package_files(package_root))
     print(f"files: {file_count}")
-    print(f"repeated blocks: {count}")
+    print(f"repeated blocks: {len(current)}")
 
     if args.write_baseline:
         target = Path(args.write_baseline).resolve()
-        target.write_text(f"{count}\n")
+        target.write_text("".join(f"{entry}\n" for entry in sorted(current)))
         print(f"baseline written to {target}")
         return 0
 
@@ -101,15 +118,25 @@ def main():
         return BASELINE_DRIFT_EXIT
 
     baseline = read_baseline(baseline_path)
-    if count > baseline:
-        print(f"\nRepeated-block count rose from {baseline} to {count}.", file=sys.stderr)
+    added = sorted(current - baseline)
+    removed = sorted(baseline - current)
+
+    # Both directions are reported before either decides the exit code, because a change that swaps one
+    # block for another is the case a count cannot see and is the reason this reads a set.
+    for entry in added:
+        print(f"  + {entry}", file=sys.stderr)
+    for entry in removed:
+        print(f"  - {entry}", file=sys.stderr)
+
+    if added:
+        print(f"\n{len(added)} block(s) now repeat that did not before.", file=sys.stderr)
         print("Update the baseline only when duplication was added deliberately:", file=sys.stderr)
         print(f"  {sys.executable} scripts/test_quality/duplication_check.py "
               f"--write-baseline {args.baseline}", file=sys.stderr)
         return 1
 
-    if count < baseline:
-        print(f"\nRepeated-block count fell from {baseline} to {count}.", file=sys.stderr)
+    if removed:
+        print(f"\n{len(removed)} block(s) no longer repeat.", file=sys.stderr)
         print("Ratchet the baseline down so the next deliberate addition is visible:", file=sys.stderr)
         print(f"  {sys.executable} scripts/test_quality/duplication_check.py "
               f"--write-baseline {args.baseline}", file=sys.stderr)

@@ -63,6 +63,29 @@ namespace Velvet
             ResetCommonState(element);
         }
 
+        // A composite field builds its own input, and its label, into the very container children are expanded
+        // into, so its pool return cannot empty that container the way the childless primitives do —
+        // FiberButtonPoolHelper states that split. Nor can it count: CompositeFieldChildPoolReuseTests pins
+        // that an expanded child takes the container's FIRST slot, ahead of what the constructor left, so
+        // neither end of a count separates the two. What the control made is identified by the two classes
+        // passed here instead, which PoolableWidgetChildBaselineTests pins as accounting for all of it.
+        // field: Pooled composite to strip. Null is a no-op.
+        public static void DetachForeignChildren(VisualElement field, string inputUssClass, string labelUssClass)
+        {
+            if (field == null) return;
+
+            var container = FiberNodePatcher.GetChildContainer(field);
+            for (var i = container.childCount - 1; i >= 0; i--)
+            {
+                var child = container.ElementAt(i);
+                if (child.ClassListContains(inputUssClass) || child.ClassListContains(labelUssClass))
+                {
+                    continue;
+                }
+                container.RemoveAt(i);
+            }
+        }
+
         // Empties the class list and the per-element style model that decides what may be on it, in one step.
         // Dropping only the classes would leave the model holding a prior consumer's layers and its record of
         // which of them it had suppressed, so the next consumer's first recompute could take a class off the

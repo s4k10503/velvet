@@ -82,7 +82,8 @@ namespace Velvet
         // or V.Custom<T> for both — which CreateElement inline-expands into the element itself, while this
         // branch releases resources for the orphan alone. Toggle / Slider / TextField are reclaimed
         // unconditionally: each already holds its own constructed sub-element, so a count cannot separate
-        // that from a V.Custom child, and the same gap reaches them through ordinary unmount besides. A
+        // that from a V.Custom child — their reset detaches one by exclusion instead
+        // (FiberElementPoolReset.DetachForeignChildren), on this path and on ordinary unmount alike. A
         // container orphan — including a Button or a Label declared with children — has its subtree's
         // resources released recursively via CleanupElementCore, which deliberately does NOT dispose the
         // subtree's fibers / Outlet scopes (that is CleanupElement's job): those anchor on the fiber tree

@@ -70,6 +70,11 @@ jobs:
       - name: Duplication ratchet
         run: python3 scripts/test_quality/duplication_check.py
 
+      # The ratchet reports what its block set says, so the set is what has to be held: a swap that
+      # leaves the total alone is invisible to the step above and is what this asserts.
+      - name: Duplication ratchet tests
+        run: python3 scripts/test_quality/test_duplication_check.py
+
   # ---------------------------------------------------------------------------
   # Repository settings live only in GitHub's own state; nothing in this
   # repository reads them back. contents:read is enough for the rulesets

@@ -1466,10 +1466,13 @@ namespace Velvet
         }
 
         // A controlled value reaches the control through SetValueWithoutNotify, so the ChangeEvent the
-        // checked: variant listens for never arrives — the same suppression RefreshHasVariants compensates
-        // for on the has- side. Reads the control back instead of re-deriving the value from the prop: a
-        // FieldValue cleared to null resets a bool control through ApplyFieldValue's own branch, and the
-        // control is where both branches land.
+        // checked: and peer-checked: variants listen for never arrives — the same suppression
+        // RefreshHasVariants compensates for on the has- side. Reads the control back instead of re-deriving
+        // the value from the prop: a FieldValue cleared to null resets a bool control through
+        // ApplyFieldValue's own branch, and the control is where both branches land.
+        // Two sweeps because the two families are keyed opposite ways (see IRelationalSettleTarget): the
+        // element-local one visits what is registered against this element, the relational one offers the
+        // edge to every consumer so each can recognise its own source.
         private void RaiseCheckedSignal(VisualElement element)
         {
             if (element is not INotifyValueChanged<bool> boolField)
@@ -1479,6 +1482,7 @@ namespace Velvet
 
             var value = boolField.value;
             VariantSettleSweep.ForEach(element, _ctx, consumer => consumer.SettleChecked(value));
+            VariantSettleSweep.SettleCheckedFromSource(element, _ctx, value);
         }
 
         // The props that wire a binding onto the element rather than writing a VisualElement property; the

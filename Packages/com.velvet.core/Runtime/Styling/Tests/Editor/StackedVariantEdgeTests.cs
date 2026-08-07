@@ -14,7 +14,9 @@ namespace Velvet.Tests
     /// pointer-vs-keyboard split for a <c>focus-visible</c> inner, the four inner kinds driven by something
     /// other than a pointer edge (<c>checked:</c> and <c>peer-checked:</c> by a change of checked state and
     /// by the hook-time read of a control mounted already checked, <c>checked:</c> also by a value written
-    /// through a controlled prop, <c>group-focus-within:</c> and
+    /// through a controlled prop — including the three-deep spelling whose leaf peels to a further variant,
+    /// where opening the checked gate registers another manipulator while the settle is still walking the
+    /// registry — <c>group-focus-within:</c> and
     /// <c>peer-focus-within:</c> by the source's bubbling focus), and
     /// the detach teardown that clears the leaf and releases the inner subscription. These pin the current
     /// behavior so a refactor of the manipulator preserves it. Element-local / dark-only cases run off panel
@@ -180,6 +182,36 @@ namespace Velvet.Tests
             }
 
             [Test]
+            public void Given_DarkCheckedToggleWhoseLeafIsItselfAVariant_When_ItsValueArrivesThroughAControlledProp_Then_TheInnermostLeafStillApplies()
+            {
+                // Arrange — dark:checked:hover:bg-on, whose leaf peels to a further variant, on a controlled
+                // Toggle rendered unchecked with dark on.
+                using var scope = new ReconcilerScope();
+                var renderedUnchecked = new VNode[]
+                {
+                    V.Toggle(name: "leaf", className: "dark:checked:hover:bg-on", value: false),
+                };
+                scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), renderedUnchecked);
+                var leaf = scope.Root.Q<Toggle>("leaf");
+                VelvetTheme.IsDark = true;
+                var beforeTheControlledWrite = leaf.ClassListContains("bg-on");
+
+                // Act — the controlled write settles the checked gate, which registers the hover manipulator
+                // its leaf needs while the settle is still walking the registry; then hover opens that one.
+                scope.Reconciler.Reconcile(scope.Root, renderedUnchecked, new VNode[]
+                {
+                    V.Toggle(name: "leaf", className: "dark:checked:hover:bg-on", value: true),
+                });
+                using (var evt = PointerOverEvent.GetPooled()) leaf.SimulateEvent(evt);
+
+                // Assert — folded rather than assumed: a payload already applied before the write would make
+                // the second term true with neither gate having moved.
+                Assert.That(
+                    (beforeTheControlledWrite, leaf.ClassListContains("bg-on")),
+                    Is.EqualTo((false, true)));
+            }
+
+            [Test]
             public void Given_DarkCheckedToggleMountedAlreadyChecked_When_TheDarkGateOpens_Then_TheLeafIsApplied()
             {
                 // Arrange — dark:checked:bg-on on a Toggle mounted ALREADY checked, in the light theme. No
@@ -318,6 +350,29 @@ namespace Velvet.Tests
 
                 // Assert — the inner is seeded from the resolved source's current value, so the leaf applies.
                 Assert.IsTrue(child.ClassListContains("bg-on"));
+            }
+
+            [Test]
+            public void Given_DarkPeerCheckedChildWhosePeerIsARadioButtonAlreadyChecked_When_TheDarkGateOpens_Then_TheLeafIsApplied()
+            {
+                // Arrange — the same hook-time read with a RadioButton as the peer, which reports a bool
+                // without being a Toggle. The stacked inner reaches the same read as the plain binding, so it
+                // was narrower than its own change registration in the same way.
+                _mounted = V.Mount(_window.rootVisualElement, V.Div(
+                    "container",
+                    V.Custom<RadioButton>(name: "peer", className: "peer",
+                        props: new FiberElementProps { FieldValue = true }),
+                    V.Label(name: "child", className: "dark:peer-checked:bg-on")));
+                var peer = _window.rootVisualElement.Q<RadioButton>("peer");
+                var child = _window.rootVisualElement.Q<Label>("child");
+                Assume.That(child.ClassListContains("bg-on"), Is.False, "Precondition: the peer's state alone does not apply (light)");
+
+                // Act — the outer (dark) gate opens, which is what resolves and hooks the peer source.
+                VelvetTheme.IsDark = true;
+
+                // Assert — folded rather than assumed: a controlled value that never reached the peer would
+                // make the absent leaf correct, so the seed is read beside the value it seeds from.
+                Assert.That((peer.value, child.ClassListContains("bg-on")), Is.EqualTo((true, true)));
             }
 
             [Test]
