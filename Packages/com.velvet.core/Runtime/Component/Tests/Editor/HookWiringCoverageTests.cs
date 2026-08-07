@@ -24,6 +24,10 @@ namespace Velvet.Tests
         // Settings and agent frontmatter are where a hook is given an event to fire on. A skill or a guide
         // may name one in prose, and naming it there does not run it, so those are not read here — counting
         // a prose mention as wiring is how an unwired hook would pass.
+        //
+        // An agent definition is both at once, which is why only its frontmatter is read: the body below it
+        // is prose, and a sentence there naming a hook's path used to satisfy this as fully as a
+        // registration did.
         private static IEnumerable<string> WiringFiles() =>
             new[] { SettingsFile }.Concat(AgentDefinitions());
 
@@ -232,8 +236,15 @@ namespace Velvet.Tests
             (from file in WiringFiles()
              let path = Path.GetFullPath(file)
              where File.Exists(path)
-             from Match match in HookReferencePattern.Matches(File.ReadAllText(path))
+             from Match match in HookReferencePattern.Matches(WiringText(path))
              select (match.Groups[1].Value, RepoRelative(path))).ToList();
+
+        /// <summary>The part of a wiring file that can actually run a hook.</summary>
+        private static string WiringText(string path)
+        {
+            var text = File.ReadAllText(path);
+            return path.EndsWith(".md", StringComparison.Ordinal) ? FrontMatter(text) : text;
+        }
 
         private static string RelativeToHookDirectory(string path) =>
             Path.GetRelativePath(Path.GetFullPath(HookDirectory), path).Replace('\\', '/');
