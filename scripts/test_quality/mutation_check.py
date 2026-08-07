@@ -131,6 +131,88 @@ WORD_OPERATORS = [("true", "false", "literal"), ("false", "true", "literal")]
 # exactly one behaviour and leaves the rest of the method intact.
 VOID_CALL = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*(\.[A-Za-z_][A-Za-z0-9_]*)*\s*\([^;]*\)\s*;$")
 
+# Every operator above keeps the clause it lands in participating in the condition, so a clause no test
+# reaches survives all of them: swapping its comparison or its join still leaves some test's own clause
+# deciding the outcome. Removing the clause is the only mutation that asks whether anything depends on
+# that condition existing, and the same holds one level out for a guard statement, whose condition the
+# operators above mutate while none of them deletes the guard.
+LOGIC_JOINS = (" && ", " || ")
+GUARD_STATEMENT = re.compile(r"^if \(.+\)\s*(?:return[^;]*|continue|break);$")
+
+
+def encloses_its_own_groups(line, start, mask, limit):
+    """Whether every parenthesis the line opens it also closes, and it closes none it did not open."""
+    depth = 0
+    for index in range(limit):
+        if not mask[start + index]:
+            continue
+        if line[index] == "(":
+            depth += 1
+        elif line[index] == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
+
+
+def clause_cuts(line, start, mask, limit):
+    """Removable (column, text) spans over one line, each a join plus the clause it introduces.
+
+    A span ends at the next join of its own depth or at the close of the group holding it, so what comes
+    out is parenthesis-balanced and the remainder still parses. A chain's first clause has no preceding
+    join to carry away with it, and where its expression begins cannot be read off the line, so it is
+    left alone: under-reporting one clause beats emitting mutants that only ever come back uncompilable.
+
+    A condition spread over several lines is skipped whole, for the same reason. Its group closes on a
+    later line, so a cut runs to the end of this one and takes an unmatched parenthesis with it — which
+    is what the generation-health guard in test_mutation_check.py caught when this returned cuts for any
+    line at all.
+    """
+    if not encloses_its_own_groups(line, start, mask, limit):
+        return []
+
+    joins = []
+    depth = 0
+    index = 0
+    while index < limit:
+        if not mask[start + index]:
+            index += 1
+            continue
+        character = line[index]
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        else:
+            join = next((candidate for candidate in LOGIC_JOINS
+                         if line.startswith(candidate, index)), None)
+            if join is not None:
+                joins.append((index, depth, join))
+                index += len(join)
+                continue
+        index += 1
+
+    cuts = []
+    for column, depth, join in joins:
+        probe = column + len(join)
+        level = depth
+        while probe < limit:
+            if mask[start + probe]:
+                character = line[probe]
+                if character == "(":
+                    level += 1
+                elif character == ")":
+                    if level == depth:
+                        break
+                    level -= 1
+                elif level == depth and any(line.startswith(c, probe) for c in LOGIC_JOINS):
+                    break
+            probe += 1
+        text = line[column:probe]
+        if text.strip() != join.strip():
+            cuts.append((column, text))
+    return cuts
+
 
 def line_spans(text):
     spans = []
@@ -163,6 +245,11 @@ def mutations_for(path, text, target_lines):
         stripped = line.strip()
         if VOID_CALL.match(stripped) and not stripped.startswith(("return", "throw", "yield")):
             found.append(Mutant(path, number, 0, stripped, ";", "void call removed"))
+        limit = len(line.rstrip())
+        for column, text in clause_cuts(line, start, mask, limit):
+            found.append(Mutant(path, number, column, text, "", "clause removed"))
+        if GUARD_STATEMENT.match(stripped) and all(mask[start:start + limit]):
+            found.append(Mutant(path, number, line.index(stripped), stripped, "", "guard removed"))
     return found
 
 
@@ -170,7 +257,9 @@ def apply_mutation(text, mutant):
     spans = line_spans(text)
     start, end = spans[mutant.line - 1]
     line = text[start:end]
-    if mutant.operator == "void call removed":
+    if mutant.operator in ("clause removed", "guard removed"):
+        mutated = line[:mutant.column] + line[mutant.column + len(mutant.before):]
+    elif mutant.operator == "void call removed":
         mutated = line.replace(mutant.before, ";", 1)
     elif mutant.operator == "literal":
         mutated = (
