@@ -372,6 +372,10 @@ namespace Velvet
         /// scheduled its updates yet, so an empty lane queue does not mean that transition settled — its
         /// own completion path clears the flag once the task finishes.
         /// </summary>
+        /// <remarks>
+        /// The queued-work record is discharged here as well: the caller has established that this fiber's
+        /// transition work drained, which is what that record was tracking.
+        /// </remarks>
         internal void ClearAllTransitionPending()
         {
             if (TransitionSlots == null)
@@ -384,7 +388,73 @@ namespace Velvet
                 {
                     continue;
                 }
+                slot.HasQueuedWork = false;
                 slot.IsPending = false;
+            }
+        }
+
+        /// <summary>
+        /// Clears the pending flag on transition slots with nothing outstanding of their own — no queued
+        /// writes, and no async action still running — leaving the rest lit. Used where the pending
+        /// Transition lane is not evidence either way: see <c>FiberRenderer.SettleSubsumedFiber</c>, whose
+        /// surviving lane may have been requested by a different hook during the render it settles.
+        /// </summary>
+        internal void ClearSettledTransitionPending()
+        {
+            if (TransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in TransitionSlots)
+            {
+                if (slot.IsAsyncInFlight || slot.HasQueuedWork)
+                {
+                    continue;
+                }
+                slot.IsPending = false;
+            }
+        }
+
+        /// <summary>
+        /// Records that a Transition-lane enrolment just made belongs to every transition currently open on
+        /// this fiber. Called from the lane classification rather than from <c>StartTransition</c>, because
+        /// the writes an async action makes after its await arrive with none of that call left on the stack.
+        /// </summary>
+        internal void MarkTransitionWorkQueued()
+        {
+            if (TransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in TransitionSlots)
+            {
+                if (slot.HasActiveOwner)
+                {
+                    slot.HasQueuedWork = true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Opens the window <c>FiberRenderer.SettleSubsumedFiber</c> reads, resetting both records it
+        /// consumes: which lanes the render asks for again, and which transition slots queue writes inside
+        /// it. Everything queued before the window is what that render satisfies.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Lanes"/> is left unallocated on purpose — a fiber with no <see cref="LaneState"/> has
+        /// nothing pending, and <see cref="EnsureLanes"/> here would allocate one for the lane-less majority
+        /// of inline re-renders.
+        /// </remarks>
+        internal void OpenSubsumedRenderWindow()
+        {
+            Lanes?.LanesRequestedSinceReset.Clear();
+            if (TransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in TransitionSlots)
+            {
+                slot.HasQueuedWork = false;
             }
         }
 
@@ -405,6 +475,7 @@ namespace Velvet
                 slot.OwnerGeneration++;
                 slot.HasActiveOwner = false;
                 slot.IsAsyncInFlight = false;
+                slot.HasQueuedWork = false;
                 slot.IsPending = false;
             }
         }
