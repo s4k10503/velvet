@@ -24,18 +24,25 @@ namespace Velvet.TestUtilities
         private const string ClearMethodName = "Clear";
         private const string CountPropertyName = "Count";
 
+        // Bypasses: nothing — it resets a static pool, which no production path does.
         public static void ClearLabelPoolForTest() => Clear(LabelPoolFieldName);
 
+        // Bypasses: nothing — it resets a static pool, which no production path does.
         public static void ClearButtonPoolForTest() => Clear(ButtonPoolFieldName);
 
+        // Bypasses: nothing — it resets a static pool, which no production path does.
         public static void ClearTogglePoolForTest() => Clear(TogglePoolFieldName);
 
+        // Bypasses: nothing — it resets a static pool, which no production path does.
         public static void ClearSliderPoolForTest() => Clear(SliderPoolFieldName);
 
+        // Bypasses: nothing — it resets a static pool, which no production path does.
         public static void ClearTextFieldPoolForTest() => Clear(TextFieldPoolFieldName);
 
+        // Bypasses: nothing — it reads a static pool's depth.
         public static int LabelPoolCountForTest => Count(LabelPoolFieldName);
 
+        // Bypasses: nothing — it reads a static pool's depth.
         public static int ButtonPoolCountForTest => Count(ButtonPoolFieldName);
 
         private static void Clear(string fieldName)
