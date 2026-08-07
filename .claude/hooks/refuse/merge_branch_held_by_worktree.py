@@ -61,10 +61,14 @@ def branch_of(cwd, operands):
 
 
 def blocked(command, cwd):
-    """(branch, worktree path) for each merge whose branch a worktree holds."""
-    held = held_branches(cwd)
-    if not held:
-        return []
+    """(branch, worktree path) for each merge whose branch this cannot clear.
+
+    The unexpanded operand is answered before the worktree list is consulted. Returning early on an
+    empty list put the refusal behind "some worktree exists", so the policy held on a checkout that
+    happened to have one and lapsed on a runner that did not — which is the guard being exercised
+    only in the states its environment happens to be in.
+    """
+    held = None
     found = []
     for operands in program_invocations(command, "gh", ("pr", "merge")):
         named = [token for token in operands if not token.startswith("-")]
@@ -72,6 +76,8 @@ def blocked(command, cwd):
             found.append(("the branch named by an unexpanded operand",
                           "unreadable — resolve it, or name the pull request"))
             continue
+        if held is None:
+            held = held_branches(cwd)
         branch = branch_of(cwd, operands)
         if branch and branch in held:
             found.append((branch, held[branch]))
