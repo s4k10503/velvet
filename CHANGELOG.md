@@ -5,7 +5,46 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.1] - 2026-08-08
+
+### Highlights
+
+- Passive effects no longer stop firing for the whole tree. One removed subtree could take the scheduled
+  drain down with it, and every `UseEffect` in the application went quiet from that point on — the drain
+  now hangs off something a subtree cannot remove.
+
+- History no longer moves while a navigation is still asking permission. A Blocker or a Guard redirect that
+  never arrived could still leave the router pointing somewhere the user never went, and an abandoned
+  attempt could leave an entry behind for the path it started from. The index is written when the
+  navigation commits and not before.
+
+- A variant stacked three deep no longer throws out of the interaction that closes it. Releasing a drag,
+  losing focus, or writing a controlled value on a class like `dark:active:sm:bg-on` ended the operation
+  with an exception rather than a style change.
+
+- Utilities behind a variant reach the properties they name. A font family, a text transform, a decoration
+  or a line height written behind `dark:`, `hover:` or `[&>*]:` resolved to nothing and reported nothing —
+  the class landed and the text did not change.
+
+- A pooled `Label`, `Toggle`, `Slider` or `TextField` no longer hands the next mount the previous one's
+  children. Giving one children through `V.Custom<T>` sent them into the pool, and they reappeared inside
+  an unrelated element later.
+
+- `isPending` follows the transition that set it. A spinner could outlive the work it described, held up by
+  a different slot's action or by a deferred value that had nothing to do with it, and two transitions in
+  one component stopped being independent while either was awaiting.
+
+- Loader data belongs to the location that asked for it. A navigation started from inside a loader wiped
+  the previous location's data, a Suspend loader could deliver to a location that had moved on, and
+  `CurrentLoaderData` handed out a dictionary the runner went on writing into.
+
+- A dependency list means one thing everywhere. An explicit `null` froze a memo and a callback while
+  re-running an effect, so the same spelling did opposite things depending on which hook read it, and
+  omitting the list entirely had no way to say "recompute every render".
+
+- Twelve declarations now say what they return. `UseLocation`, `UseContext`, `ISearchParams.Get` and the
+  sixteen generated `V.Memoized` overloads documented a null they did not admit, so a consumer with
+  nullable reference types enabled got neither the warning nor the guarantee.
 
 ### Fixed
 
