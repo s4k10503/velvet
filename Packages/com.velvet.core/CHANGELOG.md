@@ -15,9 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   control did not construct and leaves the control itself intact. Without that, the next `V.Toggle` mount
   rented an element still showing the previous subtree's content beside its own.
 
-- `checked:` now applies at mount to a control that reports a bool without being a `Toggle` — `RadioButton`
-  and `Foldout` among the built-in ones. Their change events already drove the variant, so such a control
-  mounted already checked styled correctly from the first interaction onward and only started wrong.
+- `checked:` and `peer-checked:` now apply at mount to a control that reports a bool without being a
+  `Toggle` — `RadioButton` and `Foldout` among the built-in ones. The change registration beside each seed
+  never restricted the type, so such a control styled correctly from the first interaction onward and only
+  started wrong. A `Foldout` reports itself checked from its own constructor, so `checked:` on one now
+  paints at mount without anyone having set a value.
+
+- A variant stacked three deep no longer throws out of the operation that settles its outer gate. Settling
+  a consumer applies its payload, and a payload that is itself a variant registers a further manipulator in
+  the registry the settle was walking, which ends the walk with an `InvalidOperationException`. All three
+  settles could reach it: `dark:active:sm:bg-on` on a drag source or any of its ancestors threw on the drag
+  release, `dark:focus:sm:bg-on` on the focus revert a containment snap-back performs, and
+  `dark:checked:hover:bg-on` on a value written through a controlled prop.
 
 - A `font-*` utility a container imposes on its children with `[&>*]:` now reaches them. The font layer
   was re-derived only when a child's own class list changed content, and a `[&>*]:` payload lands on the

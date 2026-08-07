@@ -353,6 +353,29 @@ namespace Velvet.Tests
             }
 
             [Test]
+            public void Given_DarkPeerCheckedChildWhosePeerIsARadioButtonAlreadyChecked_When_TheDarkGateOpens_Then_TheLeafIsApplied()
+            {
+                // Arrange — the same hook-time read with a RadioButton as the peer, which reports a bool
+                // without being a Toggle. The stacked inner reaches the same read as the plain binding, so it
+                // was narrower than its own change registration in the same way.
+                _mounted = V.Mount(_window.rootVisualElement, V.Div(
+                    "container",
+                    V.Custom<RadioButton>(name: "peer", className: "peer",
+                        props: new FiberElementProps { FieldValue = true }),
+                    V.Label(name: "child", className: "dark:peer-checked:bg-on")));
+                var peer = _window.rootVisualElement.Q<RadioButton>("peer");
+                var child = _window.rootVisualElement.Q<Label>("child");
+                Assume.That(child.ClassListContains("bg-on"), Is.False, "Precondition: the peer's state alone does not apply (light)");
+
+                // Act — the outer (dark) gate opens, which is what resolves and hooks the peer source.
+                VelvetTheme.IsDark = true;
+
+                // Assert — folded rather than assumed: a controlled value that never reached the peer would
+                // make the absent leaf correct, so the seed is read beside the value it seeds from.
+                Assert.That((peer.value, child.ClassListContains("bg-on")), Is.EqualTo((true, true)));
+            }
+
+            [Test]
             public void Given_DarkGroupFocusWithinChildWithDarkOn_When_TheGroupSourceGainsFocus_Then_TheLeafIsApplied()
             {
                 // Arrange — dark:group-focus-within:bg-on under a `group` ancestor, dark on.

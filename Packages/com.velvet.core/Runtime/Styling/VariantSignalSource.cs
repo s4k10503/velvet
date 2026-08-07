@@ -356,7 +356,7 @@ namespace Velvet
             if (registerChecked)
             {
                 source.RegisterCallback<ChangeEvent<bool>>(OnChange);
-                if (seedChecked && source is Toggle toggle && toggle.value)
+                if (seedChecked && source is INotifyValueChanged<bool> { value: true })
                 {
                     _emit(RelationalVariantSignal.Checked, true);
                 }

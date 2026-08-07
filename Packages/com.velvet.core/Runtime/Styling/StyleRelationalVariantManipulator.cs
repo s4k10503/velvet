@@ -276,7 +276,7 @@ namespace Velvet
 
                 _signals ??= new RelationalVariantSignals(OnSignal);
                 // registerChecked only for peer (group has no checked state). seedChecked reflects an
-                // already-checked peer Toggle immediately (the slot was cleared above, so no double-apply).
+                // already-checked peer immediately (the slot was cleared above, so no double-apply).
                 _signals.Hook(source, seedChecked: _payloads[checkedSlot].Length > 0, registerChecked: _isPeer);
             }
 
