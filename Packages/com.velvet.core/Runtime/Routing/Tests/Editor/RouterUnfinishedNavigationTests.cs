@@ -18,7 +18,8 @@ namespace Velvet.Tests
     /// attempt's destination.</item>
     /// <item>A Guard redirect appends nothing before its target commits, so an attempt that never gets there
     /// leaves no entry for a path the user did not arrive at.</item>
-    /// <item>A navigation that dies on an exception leaves no in-flight <see cref="RouterStatus"/> behind.</item>
+    /// <item>A navigation that dies on an exception leaves no in-flight <see cref="RouterStatus"/> behind,
+    /// whether it died in a phase or in the commit that follows them.</item>
     /// <item>A history entry committed while a Suspend loader is still running is not served from the
     /// Back/Forward cache, since the snapshot it holds is not the data the route asked for.</item>
     /// </list>
@@ -150,6 +151,32 @@ namespace Velvet.Tests
             // Assert
             Assert.That(RouterHistoryProbe.PathsOf(router), Is.EqualTo("/home"),
                 "A navigation that threw before committing leaves the history as it found it");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ACommitThatThrows_When_TheExceptionReachesTheCaller_Then_TheRouterIsNoLongerInFlight()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // The commit is the last thing a navigation does and the only step after the phases, so an
+            // exception raised there is the one an unwind handler placed around the phases alone would miss.
+            // A mode outside the enum is what reaches it: every defined mode has a commit branch.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            Exception caught = null;
+
+            // Act
+            try
+            {
+                await router.NavigateAsync("/other", (NavigationMode)int.MaxValue);
+            }
+            catch (ArgumentOutOfRangeException ex)
+            {
+                caught = ex;
+            }
+
+            // Assert
+            Assert.That($"threw={caught != null} status={router.Status}", Is.EqualTo("threw=True status=Error"),
+                "A navigation that died in its commit stops reporting itself as in flight, like one that died earlier");
         });
 
         [UnityTest]
