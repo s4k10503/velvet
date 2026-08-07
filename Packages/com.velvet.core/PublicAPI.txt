@@ -120,7 +120,7 @@
 [Velvet] ctor Velvet.VelvetPreviewHost.ctor(UnityEngine.UIElements.VisualElement): System.Void
 [Velvet] ctor Velvet.VelvetPreviewSetupAttribute.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetRuntimeAssets.ctor(): System.Void
-[Velvet] ctor Velvet.VirtualListNode.ctor(System.Collections.Generic.IReadOnlyList`1[System.Object], System.Func`2[System.Object, System.String], System.Single, System.Func`2[System.Object, Velvet.VNode], System.Int32): System.Void
+[Velvet] ctor Velvet.VirtualListNode.ctor(System.Collections.Generic.IReadOnlyList`1[System.Object?], System.Func`2[System.Object?, System.String], System.Single, System.Func`2[System.Object?, Velvet.VNode], System.Int32): System.Void
 [Velvet] ctor Velvet.WheelBinding.ctor(): System.Void
 [Velvet] ctor Velvet.WorldSpaceNode.ctor(): System.Void
 [Velvet] ctor protected Velvet.BaseElementNode.ctor(): System.Void
@@ -876,11 +876,11 @@
 [Velvet] property Velvet.VelvetTheme.IsDark: System.Boolean
 [Velvet] property Velvet.VirtualListNode.ClassNames: System.String[]
 [Velvet] property Velvet.VirtualListNode.ItemHeight: System.Single
-[Velvet] property Velvet.VirtualListNode.Items: System.Collections.Generic.IReadOnlyList`1[System.Object]
-[Velvet] property Velvet.VirtualListNode.KeySelector: System.Func`2[System.Object, System.String]
+[Velvet] property Velvet.VirtualListNode.Items: System.Collections.Generic.IReadOnlyList`1[System.Object?]
+[Velvet] property Velvet.VirtualListNode.KeySelector: System.Func`2[System.Object?, System.String]
 [Velvet] property Velvet.VirtualListNode.Name: System.String?
 [Velvet] property Velvet.VirtualListNode.Overscan: System.Int32
-[Velvet] property Velvet.VirtualListNode.Renderer: System.Func`2[System.Object, Velvet.VNode]
+[Velvet] property Velvet.VirtualListNode.Renderer: System.Func`2[System.Object?, Velvet.VNode]
 [Velvet] property Velvet.WheelBinding.EventId: System.String
 [Velvet] property Velvet.WheelBinding.Handler: UnityEngine.UIElements.EventCallback`1[UnityEngine.UIElements.WheelEvent]?
 [Velvet] property Velvet.WorldSpaceNode.Children: Velvet.VNode?[]

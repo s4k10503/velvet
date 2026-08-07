@@ -17,11 +17,13 @@ namespace Velvet
     }
 
     // The synthetic-settle surface every element-local variant consumer implements, so the reconciler
-    // sweeps (drag release, focus-loss fallback) enumerate ONE shape instead of per-type calls.
+    // sweeps (drag release, focus-loss fallback, controlled value write) enumerate ONE shape instead of
+    // per-type calls.
     internal interface IVariantSettleTarget
     {
         void SettleRelease();
         void SettleFocusLoss();
+        void SettleChecked(bool value);
     }
 
     // Enumerates every registered element-local variant consumer for one element through the shared
@@ -171,6 +173,17 @@ namespace Velvet
             _emit(VariantSignal.Active, false);
         }
 
+        // Observes a synthetic checked change, raised by the writer of a value the control takes without
+        // notification (see FiberNodePatcher.RaiseCheckedSignal). Gated on the registration choice so a
+        // consumer that opted out of the checked path never sees a Checked edge.
+        public void SettleChecked(bool value)
+        {
+            if (_target != null && _registerChecked)
+            {
+                _emit(VariantSignal.Checked, value);
+            }
+        }
+
         // Observes a synthetic focus loss: a containment snap-back reverts a landing whose queued focus
         // events can interleave such that the reverted element never receives a terminating Blur — its
         // focus / focus-visible payloads then stick lit on an unfocused element. Consumers' own
@@ -204,11 +217,8 @@ namespace Velvet
         {
             // Element-local: only the target's OWN checked state drives checked:. A ChangeEvent bubbling up
             // from a descendant control is ignored, mirroring CSS :checked on the input itself.
-            // Limitation: this tracks user-driven changes and the attach-time initial read. A purely
-            // programmatic change via SetValueWithoutNotify (how a fully-controlled FieldValue prop is
-            // applied) dispatches no ChangeEvent, so checked: does not re-sync for that path — UI Toolkit
-            // exposes no signal for it. User clicks DO fire ChangeEvent before the controlled re-render, so
-            // the common controlled-toggle case still works.
+            // This is the user-driven half; a value written by the prop path raises no ChangeEvent and
+            // arrives through SettleChecked instead.
             if (!ReferenceEquals(evt.target, _target))
             {
                 return;

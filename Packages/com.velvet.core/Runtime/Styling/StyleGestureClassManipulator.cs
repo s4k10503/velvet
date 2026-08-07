@@ -80,6 +80,10 @@ namespace Velvet
         // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
         public void SettleFocusLoss() => _signals?.SettleFocusLoss();
 
+        // Required by the settle surface; the signal source drops the edge for a consumer that registered
+        // without the checked path, as RegisterCallbacksOnTarget does.
+        public void SettleChecked(bool value) => _signals?.SettleChecked(value);
+
         protected override void UnregisterCallbacksFromTarget()
         {
             if (_isHovered)

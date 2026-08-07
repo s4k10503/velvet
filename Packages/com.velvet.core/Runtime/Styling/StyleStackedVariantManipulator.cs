@@ -107,6 +107,9 @@ namespace Velvet
         // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
         public void SettleFocusLoss() => _elementSignals?.SettleFocusLoss();
 
+        // Forwards a controlled write's synthetic checked edge (see ElementLocalVariantSignals.SettleChecked).
+        public void SettleChecked(bool value) => _elementSignals?.SettleChecked(value);
+
         protected override void RegisterCallbacksOnTarget()
         {
             if (_source == StackedInnerSource.ElementLocal)

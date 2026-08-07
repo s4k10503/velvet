@@ -178,6 +178,9 @@ namespace Velvet
         // Forwards a snap-back's synthetic focus loss (see ElementLocalVariantSignals.SettleFocusLoss).
         public void SettleFocusLoss() => _signals?.SettleFocusLoss();
 
+        // Forwards a controlled write's synthetic checked edge (see ElementLocalVariantSignals.SettleChecked).
+        public void SettleChecked(bool value) => _signals?.SettleChecked(value);
+
         // Maps a detected element-local signal edge to its payload, deduping on the per-state bookkeeping so
         // a repeated edge (e.g. a bubbling PointerOver, or a no-op checked change) does not churn the payload.
         private void OnSignal(VariantSignal signal, bool on)

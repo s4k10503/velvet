@@ -1405,9 +1405,10 @@ namespace Velvet
             if (oldProps.Focusable != newProps.Focusable)
             {
                 FiberPropApplier.ApplyFocusable(element, newProps.Focusable);
-                // A declared Focusable now owns the flag: the drag session's transient keyboard-focus
-                // anchor must not restore over it on close (the value-diffed prop would never re-apply).
-                _ctx.ActiveDrag?.OnSourceFocusableDeclared(element);
+                // Ownership of the flag moves with the declaration, in both directions — the branch also
+                // fires when the prop goes away, which is the moment the anchor has to take it back.
+                // Ordering: after the applier, whose write is what the session reads.
+                _ctx.ActiveDrag?.OnSourceFocusableDeclarationChanged(element, newProps.Focusable.HasValue);
             }
 
             if (oldProps.TabIndex != newProps.TabIndex)
@@ -1423,6 +1424,7 @@ namespace Velvet
             if (!Equals(oldProps.FieldValue, newProps.FieldValue))
             {
                 FiberPropApplier.ApplyFieldValue(element, newProps.FieldValue);
+                RaiseCheckedSignal(element);
             }
 
             if (oldProps.Slider != newProps.Slider)
@@ -1446,6 +1448,22 @@ namespace Velvet
             }
 
             DiffBindingProps(element, oldProps, newProps);
+        }
+
+        // A controlled value reaches the control through SetValueWithoutNotify, so the ChangeEvent the
+        // checked: variant listens for never arrives — the same suppression RefreshHasVariants compensates
+        // for on the has- side. Reads the control back instead of re-deriving the value from the prop: a
+        // FieldValue cleared to null resets a bool control through ApplyFieldValue's own branch, and the
+        // control is where both branches land.
+        private void RaiseCheckedSignal(VisualElement element)
+        {
+            if (element is not INotifyValueChanged<bool> boolField)
+            {
+                return;
+            }
+
+            var value = boolField.value;
+            VariantSettleSweep.ForEach(element, _ctx, consumer => consumer.SettleChecked(value));
         }
 
         // The props that wire a binding onto the element rather than writing a VisualElement property; the
