@@ -199,16 +199,16 @@ something that is itself on the critical path. Work that is off the critical pat
 "do not idle" while the thing you are actually waiting on goes unwatched.
 
 A pending check stops blocking once a watcher writes {HEARTBEAT} on each
-poll. It must re-enumerate open PRs every cycle — a watcher pinned to one PR number leaves the
-next one unwatched behind a fresh heartbeat:
+poll. Run the committed one rather than writing another — the hand-written ones have been pinned to
+a single PR number, which leaves the next one unwatched behind a fresh heartbeat:
 
-  while true; do
-    date +%s > "$HOME/.velvet-pr-watch.heartbeat"
-    for pr in $(gh pr list --state open --json number --jq '.[].number'); do
-      : # emit each check that has reached a terminal state, once
-    done
-    sleep 60
-  done""", file=sys.stderr)
+  python3 scripts/pr/settle.py watch
+
+And merge through the same script. It reads the head SHA on both sides of the check list, so a
+force-push between them voids the answer instead of merging a SHA nothing tested, and it declines
+while the branch is behind main or held by a worktree:
+
+  python3 scripts/pr/settle.py merge <pr> --dry-run""", file=sys.stderr)
     return 2
 
 

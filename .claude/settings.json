@@ -91,6 +91,16 @@
           },
           {
             "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_unproven_head.py\"",
+            "timeout": 25000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_branch_held_by_worktree.py\"",
+            "timeout": 20000
+          },
+          {
+            "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_without_branch_deletion.py\"",
             "timeout": 10000
           },
