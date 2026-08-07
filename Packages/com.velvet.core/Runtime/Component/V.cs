@@ -2216,11 +2216,13 @@ namespace Velvet
                 throw new ArgumentNullException(nameof(renderer));
             }
 
+            // The erased item is the element the caller's own list held at that index, so the cast hands
+            // their delegate back the T they put in — a null included, where their T admits one.
             var node = new VirtualListNode(
                 items: new CastReadOnlyList<T>(items),
-                keySelector: obj => keySelector((T)obj),
+                keySelector: obj => keySelector((T)obj!),
                 itemHeight: itemHeight,
-                renderer: obj => renderer((T)obj),
+                renderer: obj => renderer((T)obj!),
                 overscan: overscan)
             {
                 ClassNames = ParseClassNames(className),
@@ -2456,10 +2458,16 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Allocation-free wrapper that adapts <see cref="IReadOnlyList{T}"/> to <see cref="IReadOnlyList{Object}"/>.
-        /// Used for type erasure in VirtualListNode; avoids array copies on every Reconcile.
+        /// Allocation-free wrapper that adapts an <see cref="IReadOnlyList{T}"/> to a list of nullable
+        /// <see cref="object"/>. Used for type erasure in VirtualListNode; avoids array copies on every
+        /// Reconcile.
         /// </summary>
-        private sealed class CastReadOnlyList<T> : IReadOnlyList<object>
+        /// <remarks>
+        /// The erased element type is nullable because <typeparamref name="T"/> may itself be, and nothing
+        /// here narrows that: Velvet never dereferences an item — every one goes straight back to the
+        /// caller's own selector and renderer.
+        /// </remarks>
+        private sealed class CastReadOnlyList<T> : IReadOnlyList<object?>
         {
             private readonly IReadOnlyList<T> _inner;
 
@@ -2468,11 +2476,11 @@ namespace Velvet
             public object? this[int index] => _inner[index];
             public int Count => _inner.Count;
 
-            public IEnumerator<object> GetEnumerator()
+            public IEnumerator<object?> GetEnumerator()
             {
                 for (var i = 0; i < _inner.Count; i++)
                 {
-                    yield return _inner[i]!;
+                    yield return _inner[i];
                 }
             }
 
