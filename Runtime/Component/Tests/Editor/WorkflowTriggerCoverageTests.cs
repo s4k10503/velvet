@@ -24,11 +24,19 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class WorkflowTriggerCoverageTests
     {
-        // One workflow for the coverage cases: the one whose job runs this fixture. Pairing the drift guards
-        // in the Generators~ solution with the workflow that runs THEM would take a fixture-to-job mapping
-        // nothing in this assembly can read, and writing that out by hand is the maintained-by-memory list
-        // this fixture exists to replace.
+        // The markdown-corpus case still asks about one workflow — the one whose job runs this fixture —
+        // because pairing a drift guard with the workflow that runs it would take a fixture-to-job mapping
+        // nothing in this assembly can read.
         private const string WorkflowPath = ".github/workflows/test.yml";
+
+        // The names-its-own-files case asks about every one instead. Naming a single workflow left the
+        // other's filter unread, and it was excluding four scripts its own jobs run and the two
+        // AdditionalFiles Roslyn reads at compile time — the exact failure this fixture describes, in the
+        // workflow it did not look at. A workflow added tomorrow is asked the same question for existing.
+        private static IEnumerable<string> Workflows() =>
+            Directory.EnumerateFiles(Path.GetFullPath(".github/workflows"), "*.yml")
+                .Select(RepoRelative)
+                .OrderBy(path => path, StringComparer.Ordinal);
 
         private static readonly string[] RequiredCheckWorkflows =
         {
@@ -53,14 +61,17 @@ namespace Velvet.Tests
         // A negation is a whole pattern, so a ! with anything before it is being used as something else.
         private static readonly Regex UnsupportedGlobPattern = new(@"[?+\[\]{}]|.!", RegexOptions.Compiled);
 
+        // A leading [Ll] in a .gitignore root, reduced to one of its alternatives.
+        private static readonly Regex CharacterClassPattern = new(@"\[(\w)\w*\]", RegexOptions.Compiled);
+
         [Test]
         public void Given_TheMarkdownThisSuiteScans_When_MatchedAgainstTheWorkflowPathFilter_Then_EveryFileStartsTheRun()
         {
             // Arrange
-            var filters = ReadPathFilters();
+            var filters = ReadPathFilters(WorkflowPath);
 
             // Act
-            var uncovered = ParseFailures(filters)
+            var uncovered = ParseFailures(WorkflowPath, filters)
                 .Concat(from filter in filters
                         from file in DocumentationCorpus.Files()
                         where !filter.Includes(file)
@@ -77,35 +88,38 @@ namespace Velvet.Tests
         public void Given_TheRepoFilesTheWorkflowNames_When_MatchedAgainstItsOwnPathFilter_Then_EveryOneStartsTheRun()
         {
             // Arrange
-            var filters = ReadPathFilters();
-            var named = NamedRepoFiles();
+            var workflows = Workflows().ToList();
 
             // Act
-            var uncovered = ParseFailures(filters)
-                .Concat(named.Count == 0
-                    ? new[] { $"{WorkflowPath} names no file that exists in this repo" }
-                    : Array.Empty<string>())
-                .Concat(from filter in filters
-                        from file in named
-                        where !filter.Includes(file)
-                        select $"{filter.Label} does not start for {file}")
-                .ToList();
+            var uncovered = new List<string>();
+            foreach (var workflow in workflows)
+            {
+                var filters = ReadPathFilters(workflow);
+                var named = NamedRepoFiles(workflow);
+                if (named.Count == 0)
+                {
+                    uncovered.Add($"{workflow} names no file that exists in this repo");
+                }
+                uncovered.AddRange(from filter in filters
+                                   from file in named
+                                   where !filter.Includes(file)
+                                   select $"{workflow}: {filter.Label} does not start for {file}");
+            }
 
-            // Assert
-            Assert.That(uncovered, Is.Empty,
-                $"{WorkflowPath} runs these files but does not start when one of them changes:\n"
-                + string.Join("\n", uncovered));
+            // Assert — the workflow count rides along because an empty directory reports nothing uncovered.
+            Assert.That((workflows.Count > 1, string.Join("\n", uncovered)), Is.EqualTo((true, string.Empty)),
+                "a workflow runs these files and does not start when one of them changes");
         }
 
         [Test]
         public void Given_TheWorkflowPathFilter_When_ScannedForGlobSyntax_Then_NoPatternCarriesSyntaxReadLiterally()
         {
-            // Arrange
-            var filters = ReadPathFilters();
+            // Arrange — every workflow, since a pattern GitHub reads literally does the same thing wherever
+            // it sits: the filter silently matches nothing and the workflow stops starting.
+            var filters = Workflows().SelectMany(ReadPathFilters).ToList();
 
             // Act
-            var unsupported = ParseFailures(filters)
-                .Concat(from filter in filters
+            var unsupported = (from filter in filters
                         from pattern in filter.Patterns
                         where UnsupportedGlobPattern.IsMatch(pattern)
                         select $"{filter.Label}: {pattern}")
@@ -123,14 +137,14 @@ namespace Velvet.Tests
             // Arrange — the exclusion pinned here is what keeps a generator-source edit off the Unity matrix,
             // and it is also the only case in this fixture whose answer is "no": a match that included every
             // path would satisfy every other test here.
-            var filters = ReadPathFilters();
+            var filters = ReadPathFilters(WorkflowPath);
             var root = Path.GetFullPath(GeneratorSourceRoot);
             var sources = Directory.Exists(root)
                 ? Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories)
                 : Array.Empty<string>();
 
             // Act
-            var started = ParseFailures(filters)
+            var started = ParseFailures(WorkflowPath, filters)
                 .Concat(sources.Length == 0
                     ? new[] { $"no .cs file under {GeneratorSourceRoot} for the exclusion to be tested against" }
                     : Array.Empty<string>())
@@ -254,21 +268,45 @@ namespace Velvet.Tests
         // "no file is uncovered" and "no pattern is unsupported" both hold for want of anything to compare.
         // Reported as a failure of the check rather than assumed away, so the fixture cannot pass by parsing
         // nothing.
-        private static IEnumerable<string> ParseFailures(IReadOnlyCollection<PathFilter> filters) =>
+        // Only where a filter is expected. A workflow carrying none starts for every path, so it cannot
+        // fail to start for a file it names, and upm.yml deliberately carries none.
+        private static IEnumerable<string> ParseFailures(string workflow, IReadOnlyCollection<PathFilter> filters) =>
             filters.Count == 0
-                ? new[] { $"no paths: filter could be read out of {WorkflowPath}" }
+                ? new[] { $"no paths: filter could be read out of {workflow}" }
                 : Array.Empty<string>();
+
+        /// <summary>Top-level directories the repository ignores, so build output is not read as content.</summary>
+        /// <remarks>
+        /// Derived from .gitignore rather than listed, because the population that must be excluded is
+        /// exactly the one git already excludes — and a hand-written list would make this red on a machine
+        /// carrying an artifact CI does not, which is the asymmetry this whole fixture is about.
+        /// </remarks>
+        private static HashSet<string> IgnoredRoots() =>
+            File.ReadAllLines(Path.GetFullPath(".gitignore"))
+                .Select(line => line.Trim())
+                .Where(line => line.Length > 0 && !line.StartsWith("#", StringComparison.Ordinal)
+                               && !line.StartsWith("!", StringComparison.Ordinal))
+                .Select(line => line.Trim('/').Split('/')[0])
+                .Where(root => root.Length > 0 && !root.Contains('*'))
+                // Unity's own template writes /[Ll]ibrary/, so the first segment is a character class
+                // rather than a name. Taking one alternative and comparing case-insensitively covers both.
+                .Select(root => CharacterClassPattern.Replace(root, match => match.Groups[1].Value))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // The one that matters here is scripts/test_quality/assert_no_inconclusive.py: no other file in the repository
         // invokes it, and its failure mode is passing a run it should have failed, which stays invisible
         // until a test starts skipping.
-        private static List<string> NamedRepoFiles() =>
-            PathTokenPattern.Matches(File.ReadAllText(Path.GetFullPath(WorkflowPath)))
+        private static List<string> NamedRepoFiles(string workflow)
+        {
+            var ignored = IgnoredRoots();
+            return PathTokenPattern.Matches(File.ReadAllText(Path.GetFullPath(workflow)))
                 .Select(match => match.Value)
                 .Distinct(StringComparer.Ordinal)
                 .Where(token => File.Exists(Path.GetFullPath(token)))
+                .Where(token => !ignored.Contains(token.Split('/')[0]))
                 .OrderBy(token => token, StringComparer.Ordinal)
                 .ToList();
+        }
 
         private static string RepoRelative(string path) =>
             Path.GetRelativePath(Path.GetFullPath("."), path).Replace('\\', '/');
@@ -277,9 +315,9 @@ namespace Velvet.Tests
         // appearing under a trigger that should carry none is a failure the case above reports, and reading
         // only the expected one would leave this half comparing against a filter that is no longer the
         // operative one.
-        private static List<PathFilter> ReadPathFilters()
+        private static List<PathFilter> ReadPathFilters(string workflow)
         {
-            var lines = File.ReadAllLines(Path.GetFullPath(WorkflowPath));
+            var lines = File.ReadAllLines(Path.GetFullPath(workflow));
             var filters = new List<PathFilter>();
             for (var index = 0; index < lines.Length; index++)
             {
