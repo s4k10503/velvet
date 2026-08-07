@@ -261,7 +261,7 @@ namespace Velvet
         // so the full set of class-driven mechanisms lives in one place and the two paths cannot drift.
         // Gap is intentionally excluded: it is re-applied separately by the per-node patch methods
         // (PatchElement / PatchMotion) AFTER children reconcile, so it sees the
-        // final child list. The variant/font work is gated on DiffClassList's own verdict of whether the
+        // final child list. The variant work is gated on DiffClassList's own verdict of whether the
         // class list actually changed CONTENT (not merely array identity) — every variant manipulator this
         // derives from (ApplyVariantManipulators and its callees) reads ONLY the classNames array, so a
         // freshly-allocated array with the same tokens carries no new information and re-deriving from it
@@ -274,11 +274,26 @@ namespace Velvet
             if (changed)
             {
                 ApplyVariantManipulators(element, newClasses);
+            }
+            // The font layer reads the COMPOSED source, so the class diff answers only half of whether its
+            // input moved: applying a variant's payload moves the token set without moving either class
+            // array, and a [&>*]: one moves nothing on the child at all. Lit tokens are the other half.
+            // Its place here, ahead of ApplyPostChildrenClassPasses, is the order the variant re-sync
+            // mirrors.
+            if (changed || HasLitVariantGateTokens(element))
+            {
                 // Font family / weight / italic are resolved together (so font-bold + italic compose)
                 // and written as inline style that overrides the USS fallback classes.
                 ApplyFontLayer(element, oldClasses, newClasses);
             }
         }
+
+        // The condition under which ResolveGateClasses hands back something other than the reconciled
+        // array, which is what the class diff cannot answer for.
+        private bool HasLitVariantGateTokens(VisualElement element)
+            => _ctx.VariantGateClasses.Count != 0
+                && _ctx.VariantGateClasses.TryGetValue(element, out var state)
+                && state.Tokens.Count != 0;
 
         private void PatchElement(VisualElement element, ElementNode oldNode, ElementNode newNode)
         {

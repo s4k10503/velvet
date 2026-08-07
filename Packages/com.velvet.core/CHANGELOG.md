@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `font-*` utility a container imposes on its children with `[&>*]:` now reaches them. The font layer
+  was re-derived only when a child's own class list changed content, and a `[&>*]:` payload lands on the
+  child's live list without touching that array — so `[&>*]:font-mono` over a child that declares no
+  variant of its own and whose own classes never change was lost for that element's whole life, while
+  `[&>*]:uppercase` in the same markup appeared on the next render. Both now land from the child's next
+  render. Neither lands at mount for such a child, which is unchanged.
+
 - A `UseTransition` slot's `isPending` now reports its own transition rather than whatever holds the
   Transition lane. Two cases showed a spinner after the work it described was over: a `startTransition`
   whose callback scheduled no update stayed pending for as long as anything else on the component was
