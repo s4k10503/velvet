@@ -19,6 +19,8 @@ namespace Velvet.Tests
     /// <c>caseSensitive: true</c> opts into ordinal comparison so a different-case target is inactive while the
     /// same-case target stays active.</item>
     /// <item>Clicking a <c>V.Link</c> or <c>V.NavLink</c> navigates via the active router.</item>
+    /// <item>With no location available at all, no <c>V.NavLink</c> is active — including one targeting the
+    /// root path, which an empty current path would otherwise match.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -194,6 +196,21 @@ namespace Velvet.Tests
             var button = FindButton(_root);
             Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
             Assert.That(button!.ClassListContains("is-active"), Is.True);
+        }
+
+        [Test]
+        public void Given_RootNavLink_When_ThereIsNoLocation_Then_OmitsActiveClass()
+        {
+            // A tree with no router above it — a preview, a story, a nav bar rendered before the first
+            // navigation — has no current page, so the home link is not the page the user is on.
+            // Arrange + Act
+            using var mounted = V.Mount(_root,
+                V.NavLink(to: "/", activeClass: "is-active", text: "Home", end: true));
+
+            // Assert
+            var button = FindButton(_root);
+            Assume.That(button, Is.Not.Null, "Precondition: the nav link rendered a button");
+            Assert.That(button!.ClassListContains("is-active"), Is.False);
         }
     }
 }

@@ -64,7 +64,13 @@ namespace Velvet
         {
             CancelPending();
             _errors.Clear();
-            _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+            _cts = cts;
+            // A loader delegate is free to navigate, which reaches this method again and replaces _cts. The
+            // source and the token are therefore read once for the round rather than per loader: a round that
+            // the nested one superseded must launch its remaining loaders under its own cancelled token, not
+            // lend them the currency of the round that superseded it.
+            var roundToken = cts.Token;
             var round = new LoaderRound();
             _currentRound = round;
 
@@ -94,7 +100,7 @@ namespace Velvet
                 UniTask<object> task;
                 try
                 {
-                    task = route.Loader(loaderContext, _cts.Token);
+                    task = route.Loader(loaderContext, roundToken);
                 }
                 catch (Exception ex)
                 {
@@ -111,7 +117,7 @@ namespace Velvet
                 {
                     allCompleted = false;
                     round.Pending++;
-                    RunSuspendLoader(key, task, _cts, round, results).Forget();
+                    RunSuspendLoader(key, task, cts, round, results).Forget();
                 }
             }
 
