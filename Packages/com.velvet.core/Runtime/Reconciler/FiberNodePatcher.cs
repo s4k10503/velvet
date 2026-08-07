@@ -2759,6 +2759,8 @@ namespace Velvet
             // The array the element's own reconcile pass last applied, or none when no pass ever recorded
             // one: the trigger was a width payload, which gates nothing and so never earns an entry, or the
             // payload came from a [&>*]: rule on the PARENT, whose children are fully created before it runs.
+            // The second case is temporary for a child rendered as an element — its own next patch runs the
+            // class passes and records the array — and permanent for a V.Text child, whose patch runs none.
             // The live list stands in for the layout gates in both cases, while the paint sequence stands
             // down, since PaintTail is unknown and a Motion must not be given a silhouette.
             // That makes a [&>*]: paint land inconsistently, which is the cost of not guessing: a child that
