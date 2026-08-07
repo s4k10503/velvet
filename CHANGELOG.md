@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Hooks.UseDeferredValue` now hands its new value over only on the render that drains the Transition
+  lane. Previously any re-render still carrying the same input promoted it — a sibling `UseState` setter
+  firing before that lane drained was enough — so the expensive subtree the deferral exists to keep off
+  the urgent path was reconciled there anyway. A re-render that is not that flush now keeps returning the
+  previously committed value and re-queues the lane.
+
+- A re-render request a component makes from inside its own render is no longer discarded when a parent
+  re-render subsumed that component into its own pass. The settle after such a subsuming render dropped
+  the component's entire pending-lane queue on the premise that the render had just satisfied all of it,
+  which is true only of updates pending before it ran. `UseDeferredValue` is the visible case: fed from a
+  prop, it queues its Transition lane during the parent's render, so the deferral had nothing left to
+  commit on. This holds equally when the request lands on a lane an earlier render already queued — two
+  quick keystrokes into a search box, where the second arrives before the first has drained.
+
+- Two `UseTransition` slots in one component are independent again while one of them is awaiting. A
+  second slot started during another slot's async transition took a re-entrancy path meant for a
+  genuinely nested `startTransition`, so its `isPending` was never set and its spinner never appeared;
+  the re-entrancy join is now scoped to the slot whose transition is running rather than to the whole
+  component.
+
+- An ordinary state update made from a click, a value change or another discrete input keeps its urgent
+  priority while an async transition is in flight on the same component. It was routed to the Transition
+  lane for the whole in-flight window, so it missed the discrete event's synchronous commit and landed on
+  the delayed tier roughly 100 ms later. Updates the async action makes after an await are still
+  transition-lane updates, as is anything a handler wraps in a `startTransition` of its own — with one
+  exception the framework cannot see past: completing the awaited task from inside a discrete handler
+  resumes the action within that handler, and its updates take the handler's urgent priority.
 - `checked:`, `peer-checked:`, `group-focus-within:` and `peer-focus-within:` now work as the *inner*
   half of a stacked variant. `dark:checked:bg-primary` and `dark:group-focus-within:ring-2` applied
   nothing, while the same pair written the other way round (`checked:dark:bg-primary`) applied — so the
