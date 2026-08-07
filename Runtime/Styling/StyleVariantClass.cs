@@ -184,6 +184,30 @@ namespace Velvet
         internal enum RelationalState { Hover, Focus, FocusWithin, Active, Checked }
 
         /// <summary>
+        /// The length a per-state array is allocated at. Derived from the enum rather than written down:
+        /// a discard-less switch raises CS8509 for a member added here, but nothing about a switch can size
+        /// an array, and a literal length instead overflows in silence. Callers index such an array with
+        /// <c>(int)</c> of a <see cref="RelationalState"/>, so the length and the index cannot disagree.
+        /// </summary>
+        internal static readonly int RelationalStateCount = System.Enum.GetValues(typeof(RelationalState)).Length;
+
+        /// <summary>
+        /// The state a detected source signal belongs to. The two enumerations name the same relational
+        /// states; this pairing is what says so, rather than a cast that would silently survive either one
+        /// being reordered. No discard arm — see the remarks on <see cref="StyleVariantKind"/>.
+        /// </summary>
+#pragma warning disable CS8524 // no discard arm: an unpaired signal has to warn
+        internal static RelationalState StateOf(RelationalVariantSignal signal) => signal switch
+        {
+            RelationalVariantSignal.Hover => RelationalState.Hover,
+            RelationalVariantSignal.Focus => RelationalState.Focus,
+            RelationalVariantSignal.FocusWithin => RelationalState.FocusWithin,
+            RelationalVariantSignal.Active => RelationalState.Active,
+            RelationalVariantSignal.Checked => RelationalState.Checked,
+        };
+#pragma warning restore CS8524
+
+        /// <summary>
         /// Which source a relational kind reads (a preceding <c>peer</c> sibling when <c>IsPeer</c>, else the
         /// nearest <c>group</c> ancestor) and which of that source's states it reacts to; null for every
         /// non-relational kind. One switch answers all three questions so they cannot answer differently, and

@@ -263,24 +263,11 @@ namespace Velvet
         // Opens/closes the inner gate when the detected relational signal matches this stack's inner kind.
         private void OnRelSignal(RelationalVariantSignal signal, bool on)
         {
-            if (_relational is { } rel && StateOf(signal) == rel.State)
+            if (_relational is { } rel && StyleVariantClass.StateOf(signal) == rel.State)
             {
                 SetInner(on);
             }
         }
-
-        // The two enumerations name the same five relational states; this pairing is what says so, rather
-        // than a cast that would silently survive either one being reordered.
-#pragma warning disable CS8524 // no discard arm: an unpaired signal has to warn
-        private static StyleVariantClass.RelationalState StateOf(RelationalVariantSignal signal) => signal switch
-        {
-            RelationalVariantSignal.Hover => StyleVariantClass.RelationalState.Hover,
-            RelationalVariantSignal.Focus => StyleVariantClass.RelationalState.Focus,
-            RelationalVariantSignal.FocusWithin => StyleVariantClass.RelationalState.FocusWithin,
-            RelationalVariantSignal.Active => StyleVariantClass.RelationalState.Active,
-            RelationalVariantSignal.Checked => StyleVariantClass.RelationalState.Checked,
-        };
-#pragma warning restore CS8524
         #endregion
 
         #region gating

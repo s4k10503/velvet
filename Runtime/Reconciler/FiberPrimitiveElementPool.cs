@@ -16,8 +16,6 @@ namespace Velvet
         {
             if (button == null) return;
 
-            // Button is the ONLY poolable primitive whose DSL allows children (icon + label, e.g.
-            // V.Button(children: ...)). Label / Toggle / Slider / TextField hardcode empty children.
             // CleanupDescendants resource-cleans a removed button's children but, by design, does NOT
             // pool-return or detach them (descendants ride along on the bulk parent.RemoveAt). For a
             // childless container that subtree is just GC'd; but a poolable Button carries its children
@@ -26,6 +24,13 @@ namespace Velvet
             // children on top — the button's contents visibly duplicate on reuse. Detach them here so a
             // recycled button is empty, matching a freshly constructed instance (and the childless-only
             // invariant already enforced on the rollback path in FiberElementCleaner.ReturnRolledBackOrphan).
+            //
+            // Only Button and Label may do this, and the split is not about which DSL factory takes a
+            // `children:` argument — V.Custom<T> takes one for any T. It is about what the child container
+            // already holds: Toggle, Slider and TextField each construct a sub-element into the very
+            // container FiberNodePatcher.GetChildContainer hands children to, so Clear() there would delete
+            // the control's own structure rather than a previous tenant's content.
+            // PoolableWidgetChildBaselineTests pins which types those are.
             if (button.childCount > 0) button.Clear();
 
             FiberElementPoolReset.ResetClassListAndCommon(button, TextElement.ussClassName, Button.ussClassName);
@@ -48,6 +53,11 @@ namespace Velvet
         public static void ResetLabelForReuse(Label label)
         {
             if (label == null) return;
+
+            // Same detach rule, and the same duplicate-on-reuse failure, as FiberButtonPoolHelper. A Label
+            // reaches it through V.Custom<Label>(children: ...), which mounts an exact pooled Label and
+            // expands the children into it.
+            if (label.childCount > 0) label.Clear();
 
             FiberElementPoolReset.ResetClassListAndCommon(label, TextElement.ussClassName, Label.ussClassName);
             label.text = string.Empty;
