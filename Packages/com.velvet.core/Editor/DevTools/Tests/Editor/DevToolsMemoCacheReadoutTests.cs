@@ -84,8 +84,10 @@ namespace Velvet.Tests
     {
         // Two keys rather than one, so the readout is a count rather than a flag.
         [Component]
-        public static VNode Render() => V.Fragment(
+        public static VNode Render() => V.Fragment(new VNode?[]
+        {
             V.MemoizedWithKey("first", () => V.Label(text: "first"), 1),
-            V.MemoizedWithKey("second", () => V.Label(text: "second"), 1));
+            V.MemoizedWithKey("second", () => V.Label(text: "second"), 1),
+        });
     }
 }
