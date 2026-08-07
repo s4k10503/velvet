@@ -5,6 +5,7 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "Velvet",
+        "Velvet.Editor",
         "Velvet.TestUtilities",
         "UniTask",
         "Unity.UI.TestFramework.Runtime",
