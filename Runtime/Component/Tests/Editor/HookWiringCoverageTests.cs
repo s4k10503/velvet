@@ -12,7 +12,9 @@ namespace Velvet.Tests
     /// settings and the agent definitions — in both directions. A hook is wired by path, so a rename
     /// leaves the wiring naming nothing and a hook leaves the tree referenced by nothing, and neither
     /// shows up as a failure: a guard that stops being invoked reports exactly what a guard that passes
-    /// reports.
+    /// reports. Pairing by file name cannot separate the two files that do the running: an agent
+    /// definition runs a hook for one agent type, the settings for every session. A guard over state any
+    /// session can move declares <c>HOOK_SCOPE</c>, and is paired against the settings alone.
     /// </summary>
     [TestFixture]
     internal sealed class HookWiringCoverageTests
@@ -22,17 +24,17 @@ namespace Velvet.Tests
         // Settings and agent frontmatter are where a hook is given an event to fire on. A skill or a guide
         // may name one in prose, and naming it there does not run it, so those are not read here — counting
         // a prose mention as wiring is how an unwired hook would pass.
-        private static IEnumerable<string> WiringFiles()
+        private static IEnumerable<string> WiringFiles() =>
+            new[] { SettingsFile }.Concat(AgentDefinitions());
+
+        private const string SettingsFile = ".claude/settings.json";
+
+        private static IEnumerable<string> AgentDefinitions()
         {
-            yield return ".claude/settings.json";
             var agents = Path.GetFullPath(".claude/agents");
-            if (Directory.Exists(agents))
-            {
-                foreach (var file in Directory.GetFiles(agents, "*.md"))
-                {
-                    yield return file;
-                }
-            }
+            return Directory.Exists(agents)
+                ? Directory.GetFiles(agents, "*.md")
+                : Enumerable.Empty<string>();
         }
 
         private static readonly Regex HookReferencePattern =
@@ -94,6 +96,87 @@ namespace Velvet.Tests
             // Assert
             Assert.That(orphans, Is.Empty,
                 $"nothing runs these, so whatever they guard is unguarded:\n{string.Join("\n", orphans)}");
+        }
+
+        // Which sessions a guard has to cover is a judgement about what it protects, not something
+        // readable off the script, so the author declares it. The declaration is a line in the hook
+        // rather than a table in this fixture: a table is a second place to edit, and the edit that
+        // gets forgotten leaves a new guard passing while nothing runs it for most sessions.
+        private static readonly Regex SessionScopePattern =
+            new(@"^HOOK_SCOPE\s*=\s*""session""\s*$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+        private static List<string> SessionScopedHooks() =>
+            Directory
+                .GetFiles(Path.GetFullPath(HookDirectory), "*.py", SearchOption.AllDirectories)
+                .Where(hook => !hook.Contains("__pycache__", StringComparison.Ordinal))
+                .Where(hook => SessionScopePattern.IsMatch(File.ReadAllText(hook)))
+                .Select(RelativeToHookDirectory)
+                .ToList();
+
+        // Folded into both assertions below rather than left to an `Assume`: deleting the declaration
+        // empties both checks, and an `Assume` would report that as inconclusive, which the runner
+        // does not count as a failure.
+        private static IEnumerable<string> UndeclaredScope(List<string> declared) =>
+            declared.Count == 0
+                ? new[] { "no hook declares HOOK_SCOPE, so neither scope check has a subject left" }
+                : Enumerable.Empty<string>();
+
+        [Test]
+        public void Given_TheHooksDeclaringSessionScope_When_TheSettingsAreRead_Then_EveryOneIsRegisteredThere()
+        {
+            // Arrange
+            var declared = SessionScopedHooks();
+            var settings = Path.GetFullPath(SettingsFile);
+            var registered = new HashSet<string>(
+                from Match match in HookReferencePattern.Matches(
+                    File.Exists(settings) ? File.ReadAllText(settings) : string.Empty)
+                select match.Groups[1].Value,
+                StringComparer.Ordinal);
+
+            // Act
+            var unregistered = UndeclaredScope(declared)
+                .Concat(declared.Where(hook => !registered.Contains(hook)))
+                .ToList();
+
+            // Assert
+            Assert.That(unregistered, Is.Empty,
+                "an agent definition narrows an existing registration instead of making one, so a guard "
+                + $"reachable only from there leaves every session outside it unguarded:\n{string.Join("\n", unregistered)}");
+        }
+
+        [Test]
+        public void Given_TheHooksDeclaringSessionScope_When_TheAgentFrontMatterIsRead_Then_NoneIsNarrowedThere()
+        {
+            // Arrange
+            var declared = SessionScopedHooks();
+            var scoped = new HashSet<string>(declared, StringComparer.Ordinal);
+
+            // Act
+            var narrowed = UndeclaredScope(declared)
+                .Concat(from file in AgentDefinitions()
+                        from Match match in HookReferencePattern.Matches(FrontMatter(File.ReadAllText(file)))
+                        where scoped.Contains(match.Groups[1].Value)
+                        select $"{RepoRelative(file)} also runs {HookDirectory}/{match.Groups[1].Value}")
+                .Distinct()
+                .ToList();
+
+            // Assert
+            Assert.That(narrowed, Is.Empty,
+                "the same guard registered on the event and on an agent fires twice, and a reader has "
+                + $"nothing telling them which of the two was meant:\n{string.Join("\n", narrowed)}");
+        }
+
+        // Read from the front matter alone: the body below it is the agent's prompt, where a guard can
+        // be named without being wired — the distinction WiringFiles draws for skills and guides.
+        private static string FrontMatter(string text)
+        {
+            if (!text.StartsWith("---", StringComparison.Ordinal))
+            {
+                return string.Empty;
+            }
+
+            var end = text.IndexOf("\n---", 3, StringComparison.Ordinal);
+            return end < 0 ? text : text.Substring(0, end);
         }
 
         // A file name a hook builds a path from, rather than one a wiring names. The lookbehind is
