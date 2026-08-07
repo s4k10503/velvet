@@ -96,6 +96,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finishes, stops leaving `Router.Status` at `Idle` over a location that is committed and rendering, and
   stops cancelling whatever navigation was already in flight.
 
+- `Router.CurrentLoaderData` now hands out a snapshot that stays as it was handed out. It returned the
+  loader round's own result dictionary, which the runner goes on writing into when a `LoaderMode.Suspend`
+  loader resolves after the navigation has committed — so a caller that held the returned
+  `IReadOnlyDictionary` across that resolution saw it gain an entry underneath, ahead of the location
+  re-emit that is supposed to deliver it. `UseLoaderData`, which looks its key up on each render rather
+  than holding the dictionary, was unaffected either way.
+
 - A loader that starts a navigation no longer wipes the loader data of the location that navigation
   commits. The inner navigation cancels the attempt whose loader started it, and that attempt cleared
   `Router.CurrentLoaderData` and `CurrentLoaderErrors` as it unwound — by then the data of the page the
