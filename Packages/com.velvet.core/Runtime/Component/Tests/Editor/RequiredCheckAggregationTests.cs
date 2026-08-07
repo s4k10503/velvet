@@ -21,13 +21,15 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class RequiredCheckAggregationTests
     {
-        // The aggregate is found by the name branch protection requires rather than by position, because a
-        // workflow may hold several jobs that depend on others and only this one stands for all of them.
-        private static readonly (string Workflow, string Aggregate)[] RequiredWorkflows =
-        {
-            (".github/workflows/test.yml", "required-checks"),
-            (".github/workflows/generators.yml", "required-checks"),
-        };
+        // Which workflows these are is read out of the workflows, not listed: a workflow is required when
+        // it carries a job whose display name is a required status check, and the repository-settings job
+        // in generators.yml asserts against GitHub's own ruleset that the required contexts are exactly the
+        // names matched here. Listing the pair instead would leave a third one outside every case below
+        // for as long as nobody remembered the list — which is the failure this fixture is about, one
+        // level up.
+        private static readonly Regex RequiredContextPattern =
+            new(@"^\s*name:\s*(?<context>Required checks \([^)]+\))\s*$",
+                RegexOptions.Compiled | RegexOptions.Multiline);
 
         private static readonly Regex JobKeyPattern =
             new(@"^  ([A-Za-z_][A-Za-z0-9_-]*):\s*$", RegexOptions.Compiled);
@@ -51,6 +53,26 @@ namespace Velvet.Tests
 
         private static string ReadWorkflow(string relativePath) =>
             File.ReadAllText(Path.Combine(RepositoryRoot(), relativePath));
+
+        /// <summary>Each workflow holding a required-status-check aggregate, paired with that job's key.</summary>
+        private static IReadOnlyList<(string Workflow, string Aggregate)> RequiredWorkflows()
+        {
+            var found = new List<(string, string)>();
+            var directory = Path.Combine(RepositoryRoot(), ".github", "workflows");
+            foreach (var path in Directory.EnumerateFiles(directory, "*.yml").OrderBy(path => path, StringComparer.Ordinal))
+            {
+                var workflow = File.ReadAllText(path);
+                foreach (var job in JobNames(workflow))
+                {
+                    if (RequiredContextPattern.IsMatch(AggregateBlock(workflow, job)))
+                    {
+                        found.Add((".github/workflows/" + Path.GetFileName(path), job));
+                    }
+                }
+            }
+
+            return found;
+        }
 
         private static IReadOnlyList<string> JobNames(string workflow)
         {
@@ -112,7 +134,7 @@ namespace Velvet.Tests
         public void Given_EveryJobInARequiredWorkflow_When_TheAggregateIsRead_Then_ItDependsOnThatJob()
         {
             // Arrange
-            var aggregates = RequiredWorkflows;
+            var aggregates = RequiredWorkflows();
 
             // Act
             var unwired = aggregates
@@ -123,19 +145,20 @@ namespace Velvet.Tests
                     .Where(job => job.Length > 0)))
                 .ToList();
 
-            // Assume — an aggregate whose block or needs list went unread would report nothing missing.
-            Assume.That(aggregates.Select(entry => JobNames(ReadWorkflow(entry.Workflow)).Count),
-                Is.All.GreaterThan(1));
-
-            // Assert
-            Assert.That(string.Join("\n", unwired), Is.Empty);
+            // Assert — the two counts ride along because no aggregate found, or an aggregate whose block
+            // went unread, reports nothing missing and would pass for having measured nothing. They are
+            // floors rather than exact numbers: an exact one is a hand-maintained mirror, and this fixture
+            // exists because those go stale.
+            var scanned = aggregates.Sum(entry => JobNames(ReadWorkflow(entry.Workflow)).Count);
+            Assert.That((aggregates.Count >= 2, scanned > aggregates.Count, string.Join("\n", unwired)),
+                Is.EqualTo((true, true, string.Empty)));
         }
 
         [Test]
         public void Given_EveryJobARequiredAggregateDependsOn_When_ItsStepIsRead_Then_ThatResultIsInspected()
         {
             // Arrange — depending on a job without reading its result makes the aggregate wait and pass anyway.
-            var aggregates = RequiredWorkflows;
+            var aggregates = RequiredWorkflows();
 
             // Act
             var uninspected = aggregates
@@ -144,12 +167,10 @@ namespace Velvet.Tests
                     .Select(match => match.Groups["job"].Value)))
                 .ToList();
 
-            // Assume
-            Assume.That(aggregates.Select(entry => JobNames(ReadWorkflow(entry.Workflow)).Count),
-                Is.All.GreaterThan(1));
-
-            // Assert
-            Assert.That(string.Join("\n", uninspected), Is.Empty);
+            // Assert — same floors as above, for the same reason.
+            var scanned = aggregates.Sum(entry => JobNames(ReadWorkflow(entry.Workflow)).Count);
+            Assert.That((aggregates.Count >= 2, scanned > aggregates.Count, string.Join("\n", uninspected)),
+                Is.EqualTo((true, true, string.Empty)));
         }
     }
 }
