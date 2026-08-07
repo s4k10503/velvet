@@ -29,7 +29,8 @@ namespace Velvet
             // `children:` argument — V.Custom<T> takes one for any T. It is about what the child container
             // already holds: Toggle, Slider and TextField each construct a sub-element into the very
             // container FiberNodePatcher.GetChildContainer hands children to, so Clear() there would delete
-            // the control's own structure rather than a previous tenant's content.
+            // the control's own structure rather than a previous tenant's content. They reach the same
+            // outcome by exclusion instead (FiberElementPoolReset.DetachForeignChildren).
             // PoolableWidgetChildBaselineTests pins which types those are.
             if (button.childCount > 0) button.Clear();
 
@@ -87,6 +88,8 @@ namespace Velvet
         {
             if (slider == null) return;
 
+            FiberElementPoolReset.DetachForeignChildren(
+                slider, BaseField<float>.inputUssClassName, BaseField<float>.labelUssClassName);
             FiberElementPoolReset.ResetClassListAndCommon(
                 slider,
                 BaseField<float>.ussClassName,
@@ -143,6 +146,8 @@ namespace Velvet
         {
             if (textField == null) return;
 
+            FiberElementPoolReset.DetachForeignChildren(
+                textField, BaseField<string>.inputUssClassName, BaseField<string>.labelUssClassName);
             FiberElementPoolReset.ResetClassListAndCommon(
                 textField,
                 BaseField<string>.ussClassName,
@@ -180,6 +185,8 @@ namespace Velvet
         {
             if (toggle == null) return;
 
+            FiberElementPoolReset.DetachForeignChildren(
+                toggle, BaseField<bool>.inputUssClassName, BaseField<bool>.labelUssClassName);
             FiberElementPoolReset.ResetClassListAndCommon(toggle, BaseField<bool>.ussClassName, Toggle.ussClassName);
             toggle.SetValueWithoutNotify(false);
             toggle.label = string.Empty;
