@@ -13,7 +13,8 @@ namespace Velvet.Tests
     /// worldBound-gated pointer-out for an <c>active</c> inner, the bounds-kept hover for a <c>hover</c> inner, the
     /// pointer-vs-keyboard split for a <c>focus-visible</c> inner, the four inner kinds driven by something
     /// other than a pointer edge (<c>checked:</c> and <c>peer-checked:</c> by a change of checked state and
-    /// by the hook-time read of a control mounted already checked, <c>group-focus-within:</c> and
+    /// by the hook-time read of a control mounted already checked, <c>checked:</c> also by a value written
+    /// through a controlled prop, <c>group-focus-within:</c> and
     /// <c>peer-focus-within:</c> by the source's bubbling focus), and
     /// the detach teardown that clears the leaf and releases the inner subscription. These pin the current
     /// behavior so a refactor of the manipulator preserves it. Element-local / dark-only cases run off panel
@@ -147,6 +148,35 @@ namespace Velvet.Tests
 
                 // Assert — both dark AND checked hold, so the leaf applies.
                 Assert.IsTrue(leaf.ClassListContains("bg-on"));
+            }
+
+            [Test]
+            public void Given_DarkCheckedToggleWithDarkOn_When_ItsValueArrivesThroughAControlledProp_Then_TheLeafIsApplied()
+            {
+                // Arrange — dark:checked:bg-on on a controlled Toggle rendered unchecked, dark on so the
+                // inner is built and hooked.
+                using var scope = new ReconcilerScope();
+                var renderedUnchecked = new VNode[]
+                {
+                    V.Toggle(name: "leaf", className: "dark:checked:bg-on", value: false),
+                };
+                scope.Reconciler.Reconcile(scope.Root, System.Array.Empty<VNode>(), renderedUnchecked);
+                var leaf = scope.Root.Q<Toggle>("leaf");
+                VelvetTheme.IsDark = true;
+                var beforeTheControlledWrite = leaf.ClassListContains("bg-on");
+
+                // Act — the owner re-renders with the value flipped; the control is written without
+                // notification, so no ChangeEvent reaches the inner gate.
+                scope.Reconciler.Reconcile(scope.Root, renderedUnchecked, new VNode[]
+                {
+                    V.Toggle(name: "leaf", className: "dark:checked:bg-on", value: true),
+                });
+
+                // Assert — folded rather than assumed: dark alone applying the leaf would make the second
+                // term true without the write under test having done anything.
+                Assert.That(
+                    (beforeTheControlledWrite, leaf.ClassListContains("bg-on")),
+                    Is.EqualTo((false, true)));
             }
 
             [Test]

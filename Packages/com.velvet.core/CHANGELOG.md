@@ -331,6 +331,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   be served from the Back/Forward cache: its loaders ran again on every step onto it. A Back or Forward
   whose loader round finished before the step committed now records the entry from that commit.
 
+- `checked:` now tracks a control whose value is owned by a fully-controlled `value:` prop. That value is
+  written to the control without notification, so the `ChangeEvent<bool>` the variant listens for never
+  fired and the payload stayed on whatever the last user interaction had left it at — in the shape a React
+  developer reaches for first, a parent holding the state and passing it down. The stacked forms
+  (`dark:checked:` and the rest) get it too. `peer-checked:` is unchanged: it still tracks the change
+  event only, so a peer written through a controlled prop does not restyle its siblings.
+
+- A render that drops a `Focusable` prop from a drag source no longer leaves the source unfocusable for
+  the rest of the drag. A session anchors keyboard focus on a source that carries no focusability of its
+  own, so Escape reaches it; dropping the declaration put the element's own default back over that anchor
+  and told the session the flag had been *declared* in the same breath, so the anchor was neither in force
+  nor owed a restore. The session now takes the flag back when the declaration goes away, and still hands
+  it back at the drop.
+
+- `VirtualListNode`'s type-erased item list, key selector and renderer now admit a null element
+  (`IReadOnlyList<object?>`, `Func<object?, …>`). The source element type of `V.VirtualList<T>` may itself
+  be nullable and each item goes straight back to the caller's own selector and renderer, so the
+  non-nullable erasure claimed something nothing upheld — and was what the compiler reported against the
+  wrapper implementing it. The `V.VirtualList<T>` signature is unchanged; code that hand-builds a
+  `VirtualListNode` from a `Func<object, …>` gets a nullability warning until the delegate is widened.
+
 ### Changed
 
 - A Blocker registered during a Guard redirect is now told the attempt is a `Push` where it was told

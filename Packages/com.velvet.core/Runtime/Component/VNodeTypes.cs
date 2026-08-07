@@ -442,17 +442,17 @@ namespace Velvet
     /// </summary>
     public sealed class VirtualListNode : VNode
     {
-        /// <summary>Item list (type-erased).</summary>
-        public IReadOnlyList<object> Items { get; }
+        /// <summary>Item list (type-erased; an element is nullable because the source element type may be).</summary>
+        public IReadOnlyList<object?> Items { get; }
 
         /// <summary>Function that returns a unique key for each item.</summary>
-        public Func<object, string> KeySelector { get; }
+        public Func<object?, string> KeySelector { get; }
 
         /// <summary>Fixed height (px) of each item.</summary>
         public float ItemHeight { get; }
 
         /// <summary>Function that produces a VNode from each item.</summary>
-        public Func<object, VNode> Renderer { get; }
+        public Func<object?, VNode> Renderer { get; }
 
         /// <summary>Number of extra items to render outside the visible range.</summary>
         public int Overscan { get; }
@@ -470,10 +470,10 @@ namespace Velvet
         /// <exception cref="ArgumentNullException"><paramref name="items"/>, <paramref name="keySelector"/>, or <paramref name="renderer"/> is null.</exception>
         /// <exception cref="ArgumentOutOfRangeException"><paramref name="itemHeight"/> is &lt;= 0, or <paramref name="overscan"/> is &lt; 0.</exception>
         public VirtualListNode(
-            IReadOnlyList<object> items,
-            Func<object, string> keySelector,
+            IReadOnlyList<object?> items,
+            Func<object?, string> keySelector,
             float itemHeight,
-            Func<object, VNode> renderer,
+            Func<object?, VNode> renderer,
             int overscan)
         {
             Items = items ?? throw new ArgumentNullException(nameof(items));

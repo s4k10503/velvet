@@ -470,6 +470,34 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AFocusablePropDroppedWhileTheAnchorStillNeedsIt_When_TheDragThenEnds_Then_TheAnchorReclaimsTheFlagAndStillGivesItUp()
+        {
+            // Arrange — with nothing focused, activation makes the source focusable transiently so the Escape
+            // KeyDownEvent is deliverable, then a render declares the prop and hands it the flag.
+            Mount(DeclaredFocusableMidDragScene);
+            var item = Q("item");
+            SendPointerDown(item, new Vector2(10, 10));
+            SendPointerMove(item, new Vector2(30, 10));
+            var whileAnchored = item.focusable;
+            s_setDeclaringFocusable.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Act — the declaration goes away mid-drag, which restores the element's own default over the
+            // anchor's write, and the drag then ends.
+            s_setDeclaringFocusable.Invoke(false);
+            _mounted.FlushStateForTest();
+            var afterTheDeclarationWent = item.focusable;
+            SendPointerUp(item, new Vector2(30, 10));
+
+            // Assert — the anchor takes the flag back for the rest of the session and hands it back at close.
+            // The first term keeps the anchor load-bearing: with nothing transient written there would be
+            // nothing to reclaim and the case would pin nothing.
+            Assert.That(
+                (whileAnchored, afterTheDeclarationWent, item.focusable),
+                Is.EqualTo((true, true, false)));
+        }
+
+        [Test]
         public void Given_ADraggableInsideNoDndContext_When_APressTravelsPastTheDistance_Then_NothingActivates()
         {
             // Arrange — a draggable with no enclosing scope warns once and stays inert.
