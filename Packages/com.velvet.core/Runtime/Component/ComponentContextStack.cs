@@ -17,7 +17,7 @@ namespace Velvet
 
         public void Pop<T>(ComponentContext<T> context) => PopRaw(context);
 
-        public T Get<T>(ComponentContext<T> context)
+        public T? Get<T>(ComponentContext<T> context)
         {
             object key = context;
             if (_stacks.TryGetValue(key, out var stack) && stack.Count > 0)
@@ -25,7 +25,7 @@ namespace Velvet
                 return (T)stack.Peek();
             }
 
-            return context.DefaultValue!;
+            return context.DefaultValue;
         }
 
         // Captures the current top value of every active context as an untyped snapshot. Used to carry the

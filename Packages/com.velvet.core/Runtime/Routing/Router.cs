@@ -625,9 +625,7 @@ namespace Velvet
             }
 
             Status = RouterStatus.Loading;
-            // allCompleted is unused (errors are detected via the runner's Errors map).
-            var (results, _) = _loaderRunner.RunLoadersSync(matches, cancellationToken);
-            var round = _loaderRunner.CurrentRound;
+            var round = _loaderRunner.RunLoadersSync(matches, cancellationToken);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -638,12 +636,12 @@ namespace Velvet
                 return (NavigationResult.Cancelled, round);
             }
 
-            _loaderData = results;
+            _loaderData = round.Results;
 
             // A loader error does not abort navigation. The location commits and
             // the nearest RouteDefinition.ErrorElement renders in place of the route's Element. Errors
             // are surfaced through RouterContext.Errors (keyed by RouteId) for UseRouteError.
-            _loaderErrors = new Dictionary<string?, Exception>(_loaderRunner.Errors);
+            _loaderErrors = new Dictionary<string?, Exception>(round.Errors);
             return (null, round);
         }
 
@@ -719,10 +717,16 @@ namespace Velvet
                     break;
                 case NavigationMode.Back:
                 case NavigationMode.Forward:
-                    // The entry is not rewritten here even when its loaders ran again, because a round that
-                    // has not settled has nothing worth recording yet; the write-back that runs when it
-                    // settles is what makes the entry servable.
                     _historyIndex = pending.CommitIndex;
+                    // A round still running has nothing worth recording, and the write-back it triggers on
+                    // settling is what makes the entry servable. A round already settled by here has no such
+                    // write-back coming: it settled before this navigation had a location for its results to
+                    // be written under, which is where _committedRound refused them. Without this the entry
+                    // would stay unservable and re-run its loaders on every step onto it.
+                    if (round.Settled)
+                    {
+                        _history[_historyIndex] = NewEntry(path, matches, round);
+                    }
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(mode), mode, null);

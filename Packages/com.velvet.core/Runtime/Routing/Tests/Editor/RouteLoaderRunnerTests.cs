@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using NUnit.Framework;
@@ -18,7 +19,7 @@ namespace Velvet.Tests
     /// <see cref="RouteMatch.RouteId"/>, and <c>allCompleted</c> is true.</item>
     /// <item>A Suspend loader returns immediately with <c>allCompleted</c> false and runs in the background,
     /// firing <c>OnSuspendLoaderCompleted</c> on success or <c>OnSuspendLoaderFailed</c> on failure; a failure
-    /// is also recorded per-path in <c>Errors</c> symmetrically with the Await path.</item>
+    /// is also recorded per-path in the round's errors, symmetrically with the Await path.</item>
     /// <item><see cref="RouteLoaderRunner.ActiveSuspendTaskCount"/> is incremented while a Suspend task is live
     /// and returned to zero in the finally block on success, failure, and honored cancellation alike.</item>
     /// <item>The loader receives a cancelable token that <c>CancelPending</c> cancels, and a loader that
@@ -28,6 +29,8 @@ namespace Velvet.Tests
     /// started still answers for itself.</item>
     /// <item>A round's loaders all launch under that round's own token, so a loader that starts another round
     /// mid-run does not lend the next round's currency to the leftovers of the one it superseded.</item>
+    /// <item>A round's errors are its own, so a nested round neither wipes the errors already recorded by the
+    /// round it started from nor collects the ones that round records afterwards.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -42,7 +45,7 @@ namespace Velvet.Tests
             var runner = new RouteLoaderRunner();
 
             // Act
-            var (_, allCompleted) = runner.RunLoadersSync(MakeMatch("/"), CancellationToken.None);
+            var allCompleted = runner.RunLoadersSync(MakeMatch("/"), CancellationToken.None).AllCompleted;
 
             // Assert
             Assert.That(allCompleted, Is.True);
@@ -55,7 +58,7 @@ namespace Velvet.Tests
             var runner = new RouteLoaderRunner();
 
             // Act
-            var (results, _) = runner.RunLoadersSync(MakeMatch("/"), CancellationToken.None);
+            var results = runner.RunLoadersSync(MakeMatch("/"), CancellationToken.None).Results;
 
             // Assert
             Assert.That(results, Is.Empty);
@@ -73,7 +76,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("test", loader: (ctx, ct) => UniTask.FromResult<object>("loaded-data"));
 
             // Act
-            var (_, allCompleted) = runner.RunLoadersSync(matches, CancellationToken.None);
+            var allCompleted = runner.RunLoadersSync(matches, CancellationToken.None).AllCompleted;
 
             // Assert
             Assert.That(allCompleted, Is.True);
@@ -87,7 +90,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("test", loader: (ctx, ct) => UniTask.FromResult<object>("loaded-data"));
 
             // Act
-            var (results, _) = runner.RunLoadersSync(matches, CancellationToken.None);
+            var results = runner.RunLoadersSync(matches, CancellationToken.None).Results;
 
             // Assert
             Assert.That(results["test"], Is.EqualTo("loaded-data"));
@@ -106,7 +109,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("test", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
 
             // Act
-            var (_, allCompleted) = runner.RunLoadersSync(matches, CancellationToken.None);
+            var allCompleted = runner.RunLoadersSync(matches, CancellationToken.None).AllCompleted;
 
             // Assert
             Assert.That(allCompleted, Is.False);
@@ -190,14 +193,14 @@ namespace Velvet.Tests
             var runner = new RouteLoaderRunner();
             var tcs = new UniTaskCompletionSource<object>();
             var matches = MakeMatch("fail", loader: (ctx, ct) => tcs.Task, loaderMode: LoaderMode.Suspend);
-            runner.RunLoadersSync(matches, CancellationToken.None);
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
 
             // Act
             tcs.TrySetException(new InvalidOperationException("deferred-failure"));
             await UniTask.Yield();
 
             // Assert
-            Assert.That(runner.Errors["fail"].Message, Does.Contain("deferred-failure"));
+            Assert.That(round.Errors["fail"].Message, Does.Contain("deferred-failure"));
         });
 
         [UnityTest]
@@ -331,7 +334,7 @@ namespace Velvet.Tests
             var matches = MakeMatch("fail", loader: (ctx, ct) => throw new InvalidOperationException("loader failed"));
 
             // Act
-            var (_, allCompleted) = runner.RunLoadersSync(matches, CancellationToken.None);
+            var allCompleted = runner.RunLoadersSync(matches, CancellationToken.None).AllCompleted;
 
             // Assert
             Assert.That(allCompleted, Is.False);
@@ -345,10 +348,10 @@ namespace Velvet.Tests
             var matches = MakeMatch("fail", loader: (ctx, ct) => throw new InvalidOperationException("loader failed"));
 
             // Act
-            runner.RunLoadersSync(matches, CancellationToken.None);
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
 
             // Assert
-            Assert.That(runner.Errors["fail"].Message, Does.Contain("loader failed"));
+            Assert.That(round.Errors["fail"].Message, Does.Contain("loader failed"));
         }
 
         #endregion
@@ -406,6 +409,32 @@ namespace Velvet.Tests
             // Assert
             Assert.That(nextLoaderSawCancellation, Is.True,
                 "A round's later loaders must launch under the token of the round they belong to");
+        }
+
+        [Test]
+        public void Given_ALoaderThatStartsAnotherRound_When_TheOuterRoundFailsOnBothSidesOfIt_Then_BothErrorsAreTheOuterRounds()
+        {
+            // The nested round starts from inside the loop that is still launching the outer round's loaders,
+            // so an error map belonging to the runner rather than to the round is cleared between the two
+            // failures and then written by the second one.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var matches = new List<RouteMatch>();
+            matches.AddRange(MakeMatch("early", loader: (ctx, ct) => throw new InvalidOperationException("early")));
+            matches.AddRange(MakeMatch("nesting", loader: (ctx, ct) =>
+            {
+                runner.RunLoadersSync(MakeMatch("nested"), CancellationToken.None);
+                return UniTask.FromResult<object>("nesting-data");
+            }));
+            matches.AddRange(MakeMatch("late", loader: (ctx, ct) => throw new InvalidOperationException("late")));
+
+            // Act
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
+
+            // Assert
+            Assert.That(string.Join(",", round.Errors.Keys.OrderBy(key => key, StringComparer.Ordinal)),
+                Is.EqualTo("early,late"),
+                "A round keeps every error its own loaders raised, on both sides of a nested round");
         }
 
         #endregion
