@@ -21,7 +21,9 @@ namespace Velvet.Tests
     /// <item>A navigation that dies on an exception leaves no in-flight <see cref="RouterStatus"/> behind,
     /// whether it died in a phase or in the commit that follows them.</item>
     /// <item>A history entry committed while a Suspend loader is still running is not served from the
-    /// Back/Forward cache, since the snapshot it holds is not the data the route asked for.</item>
+    /// Back/Forward cache, since the snapshot it holds is not the data the route asked for. Stepping onto it
+    /// runs the loaders again, and once a round of them finishes the entry is servable, including when they
+    /// all finished before that step committed.</item>
     /// <item>An attempt cancelled by a loader that navigated leaves the loader data and the status of the
     /// location that navigation committed, rather than clearing state it never owned.</item>
     /// </list>
@@ -213,6 +215,43 @@ namespace Velvet.Tests
             // Assert
             Assert.That(loaderCalls, Is.EqualTo(2),
                 "A snapshot taken before the loaders finished is not the data the route asked for, so it is not cached");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AStepOntoAnUnsettledEntryWhoseSuspendLoaderAnswersImmediately_When_TheEntryIsSteppedOntoAgain_Then_ItIsServedFromTheCache()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // A loader handed an already-complete task resolves inside the run that launched it, so its
+            // completion reaches the router before this step has a location to write it under and is refused.
+            // The commit is then the only thing left that can mark the entry finished.
+            // Arrange
+            var unresolved = new UniTaskCompletionSource<object>();
+            var loaderCalls = 0;
+            var router = new Router(new[]
+            {
+                Route("/", children: new[]
+                {
+                    Route("users/:id", loaderMode: LoaderMode.Suspend,
+                        loader: (ctx, ct) => Interlocked.Increment(ref loaderCalls) == 1
+                            ? unresolved.Task
+                            : UniTask.FromResult((object)"user-data")),
+                    Route("other"),
+                }),
+            });
+            await router.NavigateAsync("/users/1");
+            await router.NavigateAsync("/other");
+            await router.GoBack();
+
+            // Act
+            await router.NavigateAsync("/other");
+            await router.GoBack();
+
+            // Assert
+            Assert.That(
+                $"calls={loaderCalls} data={string.Join(",", router.CurrentLoaderData.Values)}",
+                Is.EqualTo("calls=2 data=user-data"),
+                "A round that finished before its step committed leaves the entry servable, so the next step "
+                + "onto it reads the cache rather than running the loader again");
         });
 
         [Test]
