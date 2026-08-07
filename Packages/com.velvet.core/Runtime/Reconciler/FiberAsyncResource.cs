@@ -118,19 +118,6 @@ namespace Velvet
             OnCompleted?.Invoke();
         }
 
-        // Test-only API that cancels the CancellationToken. Production code should call only
-        // Dispose (Dispose performs cancel + token source release + OnCompleted clear).
-        // Intentionally excluded from the IFiberAsyncResource interface to prevent production flows
-        // (e.g. UseAsync) from accidentally calling Cancel alone and leaking the token source.
-        internal void Cancel()
-        {
-            if (_disposed) return;
-            if (!_cts.IsCancellationRequested)
-            {
-                _cts.Cancel();
-            }
-        }
-
         public void Dispose()
         {
             if (_disposed) return;

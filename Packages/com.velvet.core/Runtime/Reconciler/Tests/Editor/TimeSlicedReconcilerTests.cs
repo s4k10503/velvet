@@ -792,7 +792,7 @@ namespace Velvet.Tests
         {
             FiberWorkLoop.IsInDiscreteEvent = false;
             _root = new VisualElement();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
             ResetIndexedList();
             ResetKeyedList();
         }
@@ -801,7 +801,7 @@ namespace Velvet.Tests
         public void TearDown()
         {
             FiberWorkLoop.IsInDiscreteEvent = false;
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
         }
 
         [Test]

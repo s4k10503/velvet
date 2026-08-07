@@ -215,7 +215,7 @@ namespace Velvet.Tests
         public void SetUp()
         {
             _root = new VisualElement();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
             s_fallbackShown = false;
             s_listCount = 3;
             s_portalAdded = false;
@@ -228,7 +228,7 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
         }
 
         [Test]
