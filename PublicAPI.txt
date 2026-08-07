@@ -272,7 +272,9 @@ method Velvet.Hooks.ForwardedRef`1(): Velvet.Ref`1[T]
 method Velvet.Hooks.StoreMemoizedVNode(System.Int32, System.Object[], Velvet.VNode): System.Void
 method Velvet.Hooks.TryGetMemoizedVNode(System.Object[], System.Int32&, Velvet.VNode&): System.Boolean
 method Velvet.Hooks.UseAnimationSequence(System.Collections.Generic.IReadOnlyList`1[Velvet.AnimationSequenceStep], System.Boolean, System.Boolean, System.Object[]): System.ValueTuple`2[Velvet.AnimationSequenceState, Velvet.AnimationSequenceControls]
+method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean]): Velvet.RouteBlockerState
 method Velvet.Hooks.UseBlocker(System.Func`2[Velvet.NavigationAttempt, System.Boolean], System.Object[]): Velvet.RouteBlockerState
+method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]]): Velvet.RouteBlockerState
 method Velvet.Hooks.UseBlocker(System.Func`3[Velvet.NavigationAttempt, System.Threading.CancellationToken, Cysharp.Threading.Tasks.UniTask`1[System.Boolean]], System.Object[]): Velvet.RouteBlockerState
 method Velvet.Hooks.UseCallback`1(T): T
 method Velvet.Hooks.UseCallback`1(T, System.Object[]): T
