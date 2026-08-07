@@ -61,7 +61,7 @@ namespace Velvet.Tests
         {
             _root = new VisualElement();
             _portalTarget = new VisualElement();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
             FiberPortalRegistry.Register("props-recycle-probe", _portalTarget);
             s_store = null;
             s_capturedMemoNode = null;
@@ -70,7 +70,7 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown()
         {
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
         }
 
         #region depth: retired bags return from every nesting position

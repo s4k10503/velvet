@@ -72,10 +72,5 @@ namespace Velvet
         /// <param name="id">Identifier to test. Null or empty values always return <c>false</c>.</param>
         /// <returns><c>true</c> when a target is currently registered for <paramref name="id"/>; otherwise <c>false</c>.</returns>
         public static bool IsRegistered(string id) => NameKeyedRegistry.IsRegistered(id, _targets);
-
-        /// <summary>
-        /// Test-only: clears all registrations.
-        /// </summary>
-        internal static void Clear() => _targets.Clear();
     }
 }

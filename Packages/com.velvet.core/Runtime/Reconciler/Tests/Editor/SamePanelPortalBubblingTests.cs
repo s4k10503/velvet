@@ -53,7 +53,7 @@ namespace Velvet.Tests
         {
             base.SetUp();
             _reconciler = new Reconciler();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
 
             _root = new VisualElement();
             _window.rootVisualElement.Add(_root);
@@ -79,7 +79,7 @@ namespace Velvet.Tests
         public override void TearDown()
         {
             _reconciler.Dispose();
-            FiberPortalRegistry.Clear();
+            RuntimeStateProbe.ClearPortalRegistry();
             base.TearDown();
         }
 

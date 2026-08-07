@@ -174,7 +174,7 @@ namespace Velvet.Tests
             resource.Start(ct => { capturedToken = ct; return source.Task; });
 
             // Act
-            resource.Cancel();
+            RuntimeStateProbe.CancelAsyncResource(resource);
 
             // Assert
             Assert.That(capturedToken.IsCancellationRequested, Is.True, "Cancel cancels the factory token");

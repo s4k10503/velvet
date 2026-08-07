@@ -333,14 +333,14 @@ namespace Velvet.Tests
                 "Precondition: Unity's approximate == misreads this near color as the sentinel");
 
             // Act / Assert — the bit-exact test keeps it as a real color.
-            Assert.That(SkewSilhouette.IsSentinel(nearButReal), Is.False);
+            Assert.That(SilhouetteFace.IsSentinel(nearButReal), Is.False);
         }
 
         [Test]
         public void Given_TheExactSentinelColor_When_Tested_Then_ItIsTheSentinel()
         {
             // Arrange/Act/Assert — the real suppression write must still be recognized.
-            Assert.That(SkewSilhouette.IsSentinel(SkewSilhouette.SuppressedColor), Is.True);
+            Assert.That(SilhouetteFace.IsSentinel(SkewSilhouette.SuppressedColor), Is.True);
         }
     }
 }

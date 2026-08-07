@@ -768,30 +768,11 @@ namespace Velvet
                 }
             };
 
-        // Resolves the MotionNode that drives an AnimatePresence keyed entry's
-        // enter / exit lifecycle (Transition + OnEnterComplete). Walks transparent wrappers
-        // (ContextProviderNode, FragmentNode) via
-        // FindFirstMotionDescendant and emits a warning when no Motion is found so
-        // the keyed entry surfaces as a missing animation in logs. AnimatePresence mount and patch
-        // paths read both Transition and OnEnterComplete from the same resolved
-        // Motion, so this helper exists to fold the walk + warning into a single pass — callsites
-        // that read both fields would otherwise traverse the transparent-wrapper chain twice.
-        internal static MotionNode? ResolveAnimatePresenceMotion(VNode node)
-        {
-            var motion = FindFirstMotionDescendant(node);
-            if (motion == null && node != null && node is not TextNode)
-            {
-                FiberLogger.LogWarning("FiberNodeFactory",
-                    $"Non-MotionNode child ({node.GetType().Name}) has no transition. Use V.Motion() to wrap children for enter/exit animations.");
-            }
-            return motion;
-        }
-
         // Walks node and returns the first MotionNode descendant
         // reachable through transparent wrappers — ContextProviderNode, FragmentNode, and a z-managed
         // ElementNode. Returns the node itself when it is already a MotionNode, or
         // null when no MotionNode exists in this transparent-wrapper chain. Used by
-        // ResolveAnimatePresenceMotion and AnimatePresence's else-branch
+        // AnimatePresence's else-branch
         // (Initial=false) where no warning should be emitted — so a Provider-wrapped Motion
         // contributes its transition / OnEnterComplete to the keyed entry: AnimatePresence tracks
         // the outer wrapper element while transitions remain on the inner motion components.
