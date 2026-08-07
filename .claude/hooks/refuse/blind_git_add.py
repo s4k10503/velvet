@@ -28,6 +28,12 @@ from shell_commands import git_invocations
 # path to git all passed as well. Quoting inside an argument is handled by the tokeniser, which is
 # what the anchor was there for: the first version of this guard refused its own first use, on a
 # pull request body that named the command in prose.
+# The sweeping form is recognised from the operand's own text — `-A`, `.` — and an unexpanded one is
+# not that text and cannot become it, since the shell substitutes a value rather than a flag. Nothing
+# is resolved here, so nothing goes unchecked.
+UNEXPANDED_POLICY = "allow"
+UNEXPANDED_PROBE = 'git add $FILES'
+
 SWEEPING = {"-A", "--all", "--no-ignore-removal", ".", ":/", "*"}
 
 

@@ -106,6 +106,13 @@ def creations(command):
     return found
 
 
+# Resolving an unexpanded operand fails, and this already refuses on that failure — the right
+# direction for a guard over branch creation. What it used to print was the failure itself, as a
+# detached HEAD at an empty SHA, so the refusal named a repository state that was never true.
+UNEXPANDED_POLICY = "refuse"
+UNEXPANDED_PROBE = 'git -C "$D" branch feat/x'
+
+
 def git(cwd, *args):
     return subprocess.run(
         ["git", "-C", cwd, *args],

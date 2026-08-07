@@ -27,9 +27,14 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import program_invocations
+from shell_commands import program_invocations, unexpanded
 
 TERMINAL_PASS = frozenset({"pass", "skipping"})
+
+# An operand the shell has not expanded yet resolves to nothing readable, and a merge guard errs
+# toward refusing: allowing means the branch lands with this check never having run.
+UNEXPANDED_POLICY = "refuse"
+UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
 
 
 def gh_json(cwd, args):
@@ -51,6 +56,11 @@ def unproven(command, cwd):
     """(pull request, reason) for each merge whose head is not covered by its own passing checks."""
     found = []
     for operands in program_invocations(command, "gh", ("pr", "merge")):
+        named = [token for token in operands if not token.startswith("-")]
+        if any(unexpanded(token) for token in named):
+            found.append(("the pull request named",
+                          "an operand the shell has not expanded, so its checks cannot be read"))
+            continue
         number = next((token for token in operands if token.isdigit()), None)
         label = "#" + number if number else "the current branch"
 
