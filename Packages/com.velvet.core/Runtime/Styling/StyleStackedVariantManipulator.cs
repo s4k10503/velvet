@@ -20,7 +20,7 @@ namespace Velvet
     // top-level manipulator uses, but applies nothing until the outer gate opens. The leaf itself may STILL be
     // a variant (dark:hover:focus:...): StyleVariantPayload.Apply recurses, spawning a further stacked
     // manipulator gated by THIS one's combined state.
-    internal sealed class StyleStackedVariantManipulator : Manipulator, IVariantSettleTarget
+    internal sealed class StyleStackedVariantManipulator : Manipulator, IVariantSettleTarget, IRelationalSettleTarget
     {
         private readonly ReconcilerContext _ctx;
         private readonly StyleVariantKind _innerKind;
@@ -109,6 +109,12 @@ namespace Velvet
 
         // Forwards a controlled write's synthetic checked edge (see ElementLocalVariantSignals.SettleChecked).
         public void SettleChecked(bool value) => _elementSignals?.SettleChecked(value);
+
+        // The peer-checked inner's half of the same edge, arriving from the written SOURCE rather than from
+        // this manipulator's own target (see RelationalVariantSignals.SettleChecked). A non-relational inner
+        // has no signals instance, so the null-conditional is the whole guard.
+        public void SettleCheckedFromSource(VisualElement source, bool value)
+            => _relSignals?.SettleChecked(source, value);
 
         protected override void RegisterCallbacksOnTarget()
         {
