@@ -21,8 +21,8 @@ namespace Velvet.Tests
     /// <item><c>ResetAllBlocked</c> returns every Blocked state to Idle.</item>
     /// <item><c>CheckAsync</c> evaluates every registered blocker (sync and async entries alike).</item>
     /// <item>A blocking blocker on a router navigation yields <see cref="NavigationResult.Blocked"/> and keeps
-    /// the current location, and on a Back/Forward step the provisional history index is rolled back; an
-    /// allowing blocker yields <see cref="NavigationResult.Success"/>.</item>
+    /// the current location — and, on a Back/Forward step, the history index describing it; an allowing
+    /// blocker yields <see cref="NavigationResult.Success"/>.</item>
     /// <item>A re-attempt after being blocked resets the prior block and navigates.</item>
     /// <item><c>UseBlocker</c> registers the committed predicate at settle and survives a render-phase re-run
     /// without registering a discarded attempt's transient predicate.</item>
@@ -378,9 +378,9 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_BlockerRegisteredAfterArriving_When_GoBackBlocked_Then_HistoryIndexIsRolledBack()
+        public void Given_BlockerRegisteredAfterArriving_When_GoBackBlocked_Then_HistoryIndexIsUnchanged()
         {
-            // The provisional Back index decrement is undone when the blocker rejects the step.
+            // A blocked step never commits, so the history keeps describing the entry the user is on.
             // Arrange
             var router = BuildRouter("/home", Route("home"), Route("other"));
             router.NavigateSync("/other");
