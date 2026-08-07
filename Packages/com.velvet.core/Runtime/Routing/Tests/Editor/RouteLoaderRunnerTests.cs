@@ -31,6 +31,8 @@ namespace Velvet.Tests
     /// mid-run does not lend the next round's currency to the leftovers of the one it superseded.</item>
     /// <item>A round's errors are its own, so a nested round neither wipes the errors already recorded by the
     /// round it started from nor collects the ones that round records afterwards.</item>
+    /// <item>A superseded round still records both a late success and a late failure; supersession withholds
+    /// the announcement, not the record.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -276,6 +278,37 @@ namespace Velvet.Tests
             // Assert
             Assert.That($"live={liveBefore} fired={fired}", Is.EqualTo("live=1 fired=0"),
                 "The round being torn down must not be read as the current one by its own late success");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASupersededRound_When_OneSuspendLoaderSucceedsAndAnotherFails_Then_BothOutcomesAreRecorded()
+            => UniTask.ToCoroutine(async () =>
+        {
+            // Pending is counted off on both paths whatever the round's currency, so a round that records only
+            // one of the two reports itself settled while holding neither a result nor an error for the route
+            // the other path owns.
+            // Arrange
+            var runner = new RouteLoaderRunner();
+            var succeeding = new UniTaskCompletionSource<object>();
+            var failing = new UniTaskCompletionSource<object>();
+            var matches = new List<RouteMatch>();
+            matches.AddRange(MakeMatch("succeeds", loader: (ctx, ct) => succeeding.Task,
+                loaderMode: LoaderMode.Suspend));
+            matches.AddRange(MakeMatch("fails", loader: (ctx, ct) => failing.Task,
+                loaderMode: LoaderMode.Suspend));
+            var round = runner.RunLoadersSync(matches, CancellationToken.None);
+            runner.CancelPending();
+
+            // Act
+            succeeding.TrySetResult("late-data");
+            failing.TrySetException(new InvalidOperationException("late-failure"));
+            await UniTask.Yield();
+
+            // Assert
+            Assert.That(
+                $"results={string.Join(",", round.Results.Keys)} errors={string.Join(",", round.Errors.Keys)}",
+                Is.EqualTo("results=succeeds errors=fails"),
+                "A superseded round records what its loaders did on both paths alike");
         });
 
         #endregion
