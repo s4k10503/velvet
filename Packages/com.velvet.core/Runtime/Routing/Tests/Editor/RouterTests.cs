@@ -20,7 +20,8 @@ namespace Velvet.Tests
     /// <see cref="RouteMatch.RouteId"/>.</item>
     /// <item>Each successful navigation pushes a history entry; GoBack/GoForward restore the previous/next
     /// location, and stepping past either end returns <see cref="NavigationResult.Cancelled"/> — including a
-    /// Back or Forward asked for directly through <c>NavigateAsync</c>, which those two never reach.</item>
+    /// Back or Forward asked for directly through <c>NavigateAsync</c>, which those two never reach, and with
+    /// the same absence of any effect on <see cref="RouterStatus"/>.</item>
     /// <item>The history stack is FIFO-capped: pushing beyond the cap evicts the oldest entry while the
     /// Back/Forward index keeps pointing at the same locations.</item>
     /// <item>GoBack/GoForward serve loader data and loader errors from the history cache without re-running the
@@ -284,11 +285,29 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ABackModeNavigationAtTheFirstEntry_When_Requested_Then_TheRouterStaysOnTheLocationItIsOn()
+        {
+            // GoBack refuses the same step without moving Status off Ready. Reaching the refusal partway
+            // through the navigation instead announced a Matching that nothing would finish and left the
+            // router reporting Idle while a location was committed and rendering.
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("about"));
+            Assume.That(router.CanGoBack, Is.False, "Precondition: the start entry is the only one on the stack");
+
+            // Act
+            var result = router.NavigateAsync("/about", NavigationMode.Back).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Cancelled status=Ready"),
+                "A refused step leaves the router as the convenience wrapper leaves it");
+        }
+
+        [Test]
         public void Given_AForwardModeNavigationAtTheLastEntry_When_Requested_Then_TheRouterIsNotLeftInFlight()
         {
-            // The mirror of the Back case, and the one that used to throw from the commit rather than corrupt:
-            // the commit sits after the phases, so an exception raised there escaped the unwind handlers and
-            // left the status reporting a navigation that had already failed.
+            // The mirror of the Back case, and the one that throws rather than corrupts when the refusal goes
+            // missing: the redirect the Guard produces resolves the same out-of-range slot, and at this end of
+            // the stack the commit writes into it instead of appending past it.
             // Arrange
             var router = BuildRouter("/home",
                 Route("home"), Route("guarded", guard: _ => "/target"), Route("target"));
@@ -298,7 +317,7 @@ namespace Velvet.Tests
             var result = router.NavigateAsync("/guarded", NavigationMode.Forward).GetAwaiter().GetResult();
 
             // Assert
-            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Cancelled status=Idle"));
+            Assert.That($"result={result} status={router.Status}", Is.EqualTo("result=Cancelled status=Ready"));
         }
 
         #endregion

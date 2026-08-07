@@ -45,7 +45,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returns `Cancelled`, as `GoBack` / `GoForward` already did for the same request. It previously ran the
   navigation against a history slot that does not exist: with a Guard redirect on the route it appended an
   entry while leaving the index on the previous one, so `CanGoForward` pointed at the page already on
-  screen, and without one it threw out of the commit.
+  screen, and without one it threw out of the commit. The refusal is now made before the navigation starts,
+  where `GoBack` / `GoForward` make theirs, so the request also stops announcing a `Matching` that nothing
+  finishes, stops leaving `Router.Status` at `Idle` over a location that is committed and rendering, and
+  stops cancelling whatever navigation was already in flight.
+
+- A loader that starts a navigation no longer wipes the loader data of the location that navigation
+  commits. The inner navigation cancels the attempt whose loader started it, and that attempt cleared
+  `Router.CurrentLoaderData` and `CurrentLoaderErrors` as it unwound — by then the data of the page the
+  user had just landed on, leaving `UseLoaderData` and `UseRouteError` empty there. The cancelled attempt
+  now writes neither, and likewise leaves `Router.Status` on the `Ready` the committed navigation
+  published instead of resetting it to `Idle`.
+
+- A loader that starts a navigation no longer hands its round's remaining loaders the new navigation's
+  cancellation token. The runner re-read the field holding the current round's token source once per
+  loader, so every loader after the navigating one launched under the nested round's live token and came
+  back looking current for a round nobody was waiting for. A round now captures its token once, so the
+  loaders left over from a superseded round observe the cancellation that superseded them.
+
+- `V.NavLink` with `to: "/"` no longer renders active when there is no location for it to be active for.
+  The current path stood in as the empty string whenever none was available — before the first navigation,
+  or in a tree with no router above it, such as a preview — and an empty path normalises to the root, so a
+  navigation bar's home link highlighted itself as the page the user was on. No `NavLink` is active until
+  there is a location.
 
 - `Hooks.UseDeferredValue` now hands its new value over only on the render that drains the Transition
   lane. Previously any re-render still carrying the same input promoted it — a sibling `UseState` setter
