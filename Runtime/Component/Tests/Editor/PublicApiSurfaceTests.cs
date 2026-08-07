@@ -174,11 +174,21 @@ namespace Velvet.Tests
             return lines;
         }
 
+        /// <summary>Whether a consumer outside the assembly can name this type.</summary>
+        /// <remarks>
+        /// A nested type's own accessibility is not the whole answer: <c>public</c> nested in
+        /// <c>internal</c> is unnameable from outside, and three such records were being rendered here.
+        /// Nineteen lines describing an API nothing can bind to is not wrong so much as it is noise a real
+        /// change hides in — a diff against them reads as a public-surface change and is not one.
+        /// </remarks>
         public static bool IsSurfaceType(Type type)
         {
-            if (!type.IsPublic && !type.IsNestedPublic)
+            for (var link = type; link != null; link = link.DeclaringType)
             {
-                return false;
+                if (link.IsNested ? !link.IsNestedPublic : !link.IsPublic)
+                {
+                    return false;
+                }
             }
 
             return !IsCompilerGenerated(type);
