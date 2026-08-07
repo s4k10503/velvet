@@ -69,7 +69,7 @@ the CHANGELOG rather than writing prose into the release:
 
 ```bash
 python3 scripts/release/release_notes.py --version X.Y.Z --repo s4k10503/velvet \
-  --compare-tag vX.Y.Z-main --previous-compare-tag vW.V.U-main --output /tmp/notes.md
+  --compare-tag vX.Y.Z-main --previous-compare-tag vA.B.C-main --output /tmp/notes.md
 gh release edit vX.Y.Z --notes-file /tmp/notes.md
 ```
 

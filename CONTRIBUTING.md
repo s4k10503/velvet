@@ -201,7 +201,7 @@ Get the `.ulf` by activating a free Personal license in Unity Hub and copying th
 (`Unity_lic.ulf` — macOS `/Library/Application Support/Unity/`, Windows `C:\ProgramData\Unity\`,
 Linux `~/.local/share/unity3d/Unity/`). CI runs Unity through game-ci, which randomizes the machine
 ID on activation, so a locally-activated `.ulf` works. If activation ever fails with
-`Machine bindings don't match`, generate a CI-clean `.ulf` instead: create an activation file
+"Machine bindings don't match", generate a CI-clean `.ulf` instead: create an activation file
 (`.alf`) and upload it at <https://license.unity3d.com/manual>.
 
 The same secret enables both the Unity EditMode/PlayMode tests (`test.yml`) and the API-docs build

@@ -10,7 +10,11 @@ name: Test
 #
 # Generators~ sources stay out of the push list: the Unity side consumes their committed DLLs under
 # Runtime/Plugins, so a generator change reaches this workflow when the redeployed DLLs are committed.
-# Markdown under it is back in, because a guard here reads the contributor README.
+#
+# Every markdown file is in, in one pattern rather than a file list, because DocumentationDriftTests
+# scans the repository's markdown and a document whose change starts no run drifts without anything
+# reporting it. It sits after the Generators~ exclusion so the markdown under that directory is
+# re-included: the last matching pattern is the one that decides.
 on:
   push:
     branches: [main]
@@ -19,11 +23,9 @@ on:
       - 'Packages/**'
       - 'ProjectSettings/**'
       - 'scripts/**'
-      - 'CLAUDE.md'
-      - 'README.md'
       - '.github/workflows/test.yml'
       - '!Packages/com.velvet.core/Generators~/**'
-      - 'Packages/com.velvet.core/Generators~/*.md'
+      - '**.md'
   pull_request:
     branches: [main]
   merge_group:
