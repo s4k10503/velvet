@@ -1675,7 +1675,9 @@ namespace Velvet
         ///   transition's awaits).
         /// - <c>startTransition</c>: a <see cref="TransitionStarter"/>. Call <c>startTransition.Invoke(() =&gt; ...)</c>
         ///   for synchronous updates or <c>startTransition.Invoke(async () =&gt; ...)</c> for async actions whose
-        ///   <c>isPending</c> stays true across awaits. Nested calls join the outer transition.
+        ///   <c>isPending</c> stays true across awaits. A re-entrant call on the same starter joins the
+        ///   transition already running on it; a starter from another <c>UseTransition()</c> is a separate
+        ///   transition with its own <c>isPending</c>, even while the first one is still awaiting.
         /// </returns>
         public static (bool isPending, TransitionStarter startTransition) UseTransition()
         {
@@ -1879,8 +1881,9 @@ namespace Velvet
         /// <returns>
         /// First render: returns <paramref name="value"/> as-is.
         /// Subsequent renders: returns the previously committed value and queues the next value as pending
-        /// on the Transition lane.
-        /// Render after a Transition flush: commits the pending value and returns the new value.
+        /// on the Transition lane. A re-render that is not draining that lane keeps returning the previously
+        /// committed value and re-queues the lane.
+        /// The render that drains the Transition lane: commits the pending value and returns the new value.
         /// </returns>
         public static T UseDeferredValue<T>(T value)
             => UseDeferredValueCore(value, default!, hasInitialValue: false);
@@ -1929,9 +1932,13 @@ namespace Velvet
                     $"HookDeferredValueSlot<{typeof(T).Name}>", index);
             }
 
-            if (typed.HasPending && ObjectIs.AreEqual(typed.Pending, value))
+            if (typed.HasPending && ObjectIs.AreEqual(typed.Pending, value)
+                && FiberWorkLoop.IsRenderingTransitionLane)
             {
-                // Commit phase after a Transition flush: promote pending to current and return the new value.
+                // Only the render draining transition-lane work may promote pending to current. The rest of
+                // the condition tests the input alone, so without the gate any re-render still carrying it
+                // commits — and the subtree the deferral exists to keep off the urgent path renders there.
+                // A render that is not the one falls through to the change branch, which re-queues the lane.
                 typed.Current = value;
                 typed.Pending = default;
                 typed.HasPending = false;

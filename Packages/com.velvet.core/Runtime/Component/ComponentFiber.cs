@@ -83,6 +83,15 @@ namespace Velvet
             return true;
         }
 
+        /// <summary>
+        /// Un-enrolls everything outside <paramref name="lanes"/>. A caller that satisfied what was pending
+        /// cannot express that as a set difference against a before-image, because <see cref="Add"/> is
+        /// idempotent: a re-enrolment of an already-pending lane leaves the mask identical, so subtracting
+        /// the before-image would discard it. It states the survivors instead — see
+        /// <c>FiberRenderer.SettleSubsumedFiber</c>.
+        /// </summary>
+        internal void RetainAll(FiberLaneSet lanes) => _mask &= lanes._mask;
+
         internal void Clear() => _mask = 0;
     }
 
@@ -94,7 +103,13 @@ namespace Velvet
     internal sealed class LaneState
     {
         public FiberLaneSet Queue;
-        public bool IsInTransition;
+        // Which lanes an enrolment request named since the last reset, as opposed to which the queue gained.
+        // The two differ exactly when a request coalesces onto a lane already pending, and that is the case a
+        // subsuming render's settle has to keep — see FiberRenderer.SettleSubsumedFiber.
+        public FiberLaneSet LanesRequestedSinceReset;
+        // Several StartTransition callbacks can be open on one fiber at once — a call on another slot, a call
+        // joining an owner — so whichever exits first would clear the others' scope if this were a boolean.
+        public int TransitionCallDepth;
         public int TransitionStarvationCounter;
         // The settle sweep keys off the Transition label's presence, which starvation promotion erases
         // (relabelling the lane to Normal) while the promoted work may still be queued — e.g. parked
@@ -102,10 +117,14 @@ namespace Velvet
         // as "settled" and clear isPending before the promoted content commits.
         public bool HasPromotedTransition;
 
+        // TransitionCallDepth is deliberately not reset here. Its increment and decrement are paired inside
+        // one StartTransition call, and an unmount driven from inside that call's updates would zero a depth
+        // the pending decrement then takes negative — leaving a retained fiber unable to reach a positive
+        // depth on its next transition.
         public void Clear()
         {
             Queue.Clear();
-            IsInTransition = false;
+            LanesRequestedSinceReset.Clear();
             TransitionStarvationCounter = 0;
             HasPromotedTransition = false;
         }
@@ -369,10 +388,55 @@ namespace Velvet
             }
         }
 
-        internal bool IsInTransition
+        /// <summary>
+        /// Hands every transition slot back to nobody, called from unmount. The slot list survives an unmount
+        /// so a remount reuses it, and an async action that outlives the unmount cannot run its own release —
+        /// so without this a remounted component's first <c>startTransition</c> would find the slot still
+        /// owned and join a transition that no longer exists.
+        /// </summary>
+        internal void ReleaseTransitionSlotOwnership()
         {
-            get => Lanes?.IsInTransition ?? false;
-            set => EnsureLanes().IsInTransition = value;
+            if (TransitionSlots == null)
+            {
+                return;
+            }
+            foreach (var slot in TransitionSlots)
+            {
+                slot.OwnerGeneration++;
+                slot.HasActiveOwner = false;
+                slot.IsAsyncInFlight = false;
+                slot.IsPending = false;
+            }
+        }
+
+        // Read-only: the paired increment and decrement go through the LaneState the scope holds, so that a
+        // disposal inside the callback cannot make the exit allocate a replacement to record on.
+        internal int TransitionCallDepth => Lanes?.TransitionCallDepth ?? 0;
+
+        /// <summary>
+        /// True while any <see cref="Hooks.UseTransition"/> slot on this fiber has an async action between
+        /// its callback returning and that task completing. Derived from the per-slot
+        /// <c>IsAsyncInFlight</c> flags rather than counted separately, so the settle sweep
+        /// (<see cref="ClearAllTransitionPending"/>) and the lane classification in
+        /// <c>FiberWorkLoop.RequestRenderFromHook</c> cannot disagree about which transitions are live.
+        /// </summary>
+        internal bool HasAsyncTransitionInFlight
+        {
+            get
+            {
+                if (TransitionSlots == null)
+                {
+                    return false;
+                }
+                foreach (var slot in TransitionSlots)
+                {
+                    if (slot.IsAsyncInFlight)
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
         }
 
         internal int TransitionStarvationCounter
@@ -487,6 +551,15 @@ namespace Velvet
         /// a Transition slice time-sliced across frames. 0 for synchronous lanes.
         /// </summary>
         internal double PendingReconcileBudgetMs { get; set; }
+
+        /// <summary>
+        /// Whether the lane that started the in-flight reconcile was carrying transition work, so a resume
+        /// restores <c>FiberWorkLoop.IsRenderingTransitionLane</c> to the same answer. A parked slice can
+        /// still evaluate component bodies: <c>GeneralPathReconciler.NeedsExpansion</c> looks one level
+        /// down, so a container of host children whose own descendants are components takes the
+        /// time-sliced path and expands them on resume.
+        /// </summary>
+        internal bool PendingReconcileDrainsTransitionWork { get; set; }
 
         /// <summary>Sentinel indicating whether the asynchronous effect flush has been scheduled via schedule.Execute.</summary>
         internal bool EffectFlushScheduled { get; set; }

@@ -36,7 +36,7 @@ In C#, methods conventionally use PascalCase, so the names always differ from Re
 | `useOptimistic(state, updateFn)` | `Hooks.UseOptimistic(state, applyOptimistic)` | React parity. Returns `(optimisticState, addOptimistic)`; the optimistic override is discarded once the pass-through state changes |
 | `useCallback(fn, deps)` | `Hooks.UseCallback<T>(fn, deps)` | Nearly equivalent. Type inference can fail, so specify the generic type argument explicitly |
 | `useContext(Context)` | `Hooks.UseContext(context)` | React parity. Propagates Provider value changes live (a masked consumer — shadowed by an inner Provider — is still re-rendered, but it live-reads the same value, so the reconciler diffs it to a no-op) |
-| `useTransition()` | `Hooks.UseTransition()` | React parity. Returns `(isPending, startTransition)` in the same order as React's `[isPending, startTransition]` |
+| `useTransition()` | `Hooks.UseTransition()` | React parity on the returned tuple: `(isPending, startTransition)` in the same order as React's `[isPending, startTransition]`. An `async` action keeps `isPending` true until the task completes, and its own post-`await` updates take the Transition lane unless the awaited task is completed from inside a discrete handler, which resumes the action within that handler and gives its updates the handler's urgent priority. During the window, an update from a discrete input on the same component likewise keeps its urgent priority unless the handler wraps it in a `startTransition` of its own, and a second `UseTransition()` slot started there is an independent transition with its own `isPending` |
 | `useDeferredValue(value)` / `useDeferredValue(value, initialValue)` | `Hooks.UseDeferredValue<T>(value)` / `Hooks.UseDeferredValue<T>(value, initialValue)` | React parity. Defers the commit of `value` changes through the Transition lane, returning the previous committed value during an urgent re-render; the `initialValue` overload returns it on the first render only, then immediately schedules a transition toward `value`. Change detection is reference equality (NaN-aware for float/double), with no comparer argument |
 | `useRef()` | Inside a component: `Hooks.UseRef<T>()` / outside a component (e.g. orchestrator): `new Ref<T>()` | For parent→child ref forwarding, pass the orchestrator-side `new Ref<T>()` to the `V.Component<TRef>(body, componentRef, key)` overload |
 | `useImperativeHandle(ref, createHandle, deps?)` | `Hooks.UseImperativeHandle<THandle>(handleRef, factory)` / `Hooks.UseImperativeHandle<THandle>(handleRef, factory, deps)` | React parity. Builds a handle via `factory` and writes it into the `Ref<THandle>` the parent forwarded through `componentRef:` (read back inside the child with `ForwardedRef<T>()`); omitting `deps` re-invokes `factory` every render, same as passing no deps array in React |
@@ -339,6 +339,10 @@ public sealed class SettingsStore : Store<SettingsState>
 
     public void SetVolume(float v)
         => SetState(s => s with { Volume = v });
+
+    // Store<T> declares this abstract: what Reset() puts the state back to.
+    protected override void ResetCore()
+        => SetState(_ => new SettingsState(1.0f, false));
 }
 
 // Component (Presentation layer)
@@ -350,7 +354,7 @@ private static VNode VolumeSliderRender()
     var store = Hooks.UseContext(SettingsStoreContext);
     // Re-render only when Volume changes
     var volume = Hooks.UseStore(store, s => s.Volume);
-    return V.Slider(value: volume, onChange: store.SetVolume);
+    return V.Slider(value: volume, onValueChanged: store.SetVolume);
 }
 
 // Provider site (once at the page root, etc.)

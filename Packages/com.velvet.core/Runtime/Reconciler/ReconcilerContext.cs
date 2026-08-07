@@ -446,10 +446,9 @@ namespace Velvet
         public Dictionary<(VisualElement target, object owner, int outerPriority, StyleVariantKind inner, string innerName, string? leaf), StyleStackedVariantManipulator> StackedVariantManipulators { get; } = new();
 
         // Looks up/creates the stacked manipulator for this outer owner + inner variant + leaf and toggles its
-        // outer gate. Called by StyleVariantPayload.Apply when a payload is itself a variant. A composed
-        // arbitrary leaf layers at max(outer, inner) priority so it sits above either variant alone. A named
-        // inner relational (group-hover/sidebar:) threads its name through so the nested manipulator resolves
-        // the named source, not the unnamed group/peer.
+        // outer gate. Called by StyleVariantPayload.Apply when a payload is itself a variant. A named inner
+        // relational (group-hover/sidebar:) threads its name through so the nested manipulator resolves the
+        // named source, not the unnamed group/peer.
         internal void GateStackedVariant(VisualElement target, object owner, string variantPayload,
             bool outerOn, int outerPriority, int declaration)
         {
