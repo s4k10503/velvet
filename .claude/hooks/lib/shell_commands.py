@@ -211,3 +211,16 @@ def program_invocations(command, program, words):
             continue
         found.append(tokens[index + len(words):])
     return found
+
+
+# A hook is handed the command before the shell expands it, so an operand spelled with a variable or
+# a substitution is not the text the program will receive. A guard that resolves such an operand
+# answers about the literal, and every resolution of a literal fails — which for most guards is the
+# pass, so the check silently does not happen. Each guard states which way it errs there; this only
+# recognises the case.
+UNEXPANDED = re.compile(r"[$`]")
+
+
+def unexpanded(token):
+    """Whether the shell will rewrite this operand before the program sees it."""
+    return bool(UNEXPANDED.search(token))

@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import git_invocations
+from shell_commands import git_invocations, unexpanded
 
 NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"
 
@@ -30,6 +30,13 @@ COMMIT_VALUE_FLAGS = {
     "-S", "--gpg-sign", "--trailer", "--pathspec-from-file",
 }
 COMMIT_ALL_FLAGS = {"-a", "--all"}
+
+
+# A pathspec the shell has not expanded names no file, so every check runs over nothing and the
+# commit records content none of them saw — the check silently not happening. Refusing errs the cheap
+# way here: a commit is remade in a second, and the alternative is a blob nothing looked at.
+UNEXPANDED_POLICY = "refuse"
+UNEXPANDED_PROBE = 'git commit -m x $PATHS'
 
 
 def git(cwd, *args):
@@ -289,6 +296,17 @@ def main():
 
     cwd = event.get("cwd") or "."
     for directory, commits_all, pathspecs in commits:
+        unresolved = [token for token in list(pathspecs) + ([directory] if directory else [])
+                      if unexpanded(token)]
+        if unresolved:
+            sys.stderr.write(
+                "Refusing `git commit`: it is scoped by an operand the shell has not expanded yet.\n\n"
+                + "\n".join("  " + token for token in unresolved)
+                + "\n\nEvery check below reads the content the commit would record, and a pathspec that "
+                  "is still a variable names no file — so they would all run over nothing and pass, "
+                  "and the commit would record content none of them saw.\n\n"
+                  "Name the paths, or commit the index and let the checks read that.\n")
+            return 2
         code = audit(directory or cwd, commits_all, pathspecs)
         if code:
             return code

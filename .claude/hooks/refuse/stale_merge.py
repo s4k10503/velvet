@@ -17,8 +17,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import program_invocations
+from shell_commands import program_invocations, unexpanded
 from velvet_hooks import BRANCH_BASES
+
+
+# What an operand the shell has not expanded yet resolves to, which is nothing this can read. A merge
+# guard errs toward refusing: allowing means the branch is merged with the check it exists for never
+# having run, and the merge is what cannot be taken back.
+UNEXPANDED_POLICY = "refuse"
+UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
+UNRESOLVED = object()
 
 
 def merge_targets(command):
@@ -30,10 +38,14 @@ def merge_targets(command):
     anchor, so naming the command inside an argument spent a `gh pr view` and a `git fetch` on a
     refusal; that happened while this fix was being tested.
     """
-    return [
-        next((token for token in operands if token.isdigit()), "")
-        for operands in program_invocations(command, "gh", ("pr", "merge"))
-    ]
+    targets = []
+    for operands in program_invocations(command, "gh", ("pr", "merge")):
+        named = [token for token in operands if not token.startswith("-")]
+        if any(unexpanded(token) for token in named):
+            targets.append(UNRESOLVED)
+            continue
+        targets.append(next((token for token in operands if token.isdigit()), ""))
+    return targets
 
 
 def git(*args):
@@ -64,6 +76,14 @@ def main():
     targets = merge_targets(command)
     if not targets:
         return 0
+    if UNRESOLVED in targets:
+        sys.stderr.write(
+            "Refusing `gh pr merge`: the pull request is named by an operand the shell has not "
+            "expanded yet, so whether its branch contains main cannot be read.\n\n"
+            "Resolving the literal would fail and read as a pass, which is the check silently not "
+            "happening. Name the pull request, or see every merge precondition at once:\n"
+            "  python3 scripts/pr/settle.py merge <pr> --dry-run\n")
+        return 2
     pr = targets[0]
 
     try:

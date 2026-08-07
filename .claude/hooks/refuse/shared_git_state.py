@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import git_invocations
+from shell_commands import git_invocations, unexpanded
 
 # Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
 # run git, which would leave every other session unguarded. `HookWiringCoverageTests` reads this
@@ -44,10 +44,11 @@ RESTORE_FLAGS = {
     "--overlay", "--no-overlay",
 }
 
-# A hook is handed the command before the shell expands it, so an operand spelled with a variable or
-# a substitution is not the text git will run. Resolving it below would answer about the literal and
-# answer no, which is the pass — so it takes the refusal without being resolved at all.
-UNEXPANDED = re.compile(r"[$`]")
+# Resolving an operand the shell has not expanded would answer about the literal and answer no, which
+# is the pass — so it takes the refusal without being resolved at all. Recognising the case is shared
+# with every other guard that resolves an operand; which way to err is each guard's own.
+UNEXPANDED_POLICY = "refuse"
+UNEXPANDED_PROBE = 'git checkout $BRANCH'
 
 # A glob is the other operand the shell rewrites, and it cannot take the same refusal: `git checkout
 # '*.cs'` is an ordinary restore, and refusing it is the over-refusal this guard was rewritten to
@@ -120,7 +121,7 @@ def restores_paths(directory, operands, cwd):
     if "--" in operands:
         return True
     named = [token for token in operands if not token.startswith("-")]
-    if not named or any(UNEXPANDED.search(token) for token in named):
+    if not named or any(unexpanded(token) for token in named):
         return False
     root = directory or cwd
     if directory and not os.path.isabs(directory):
