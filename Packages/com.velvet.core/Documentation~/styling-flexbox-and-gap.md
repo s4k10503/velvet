@@ -304,6 +304,21 @@ The common non-wrap row/column layout is **exact**; the remaining gaps are calle
   avoids it. Non-wrap containers never bleed — they write no container margin. Add `gap/2` of padding
   on the parent, or wrap the grid, if the overlap matters.
 
+## Proportional splits: `grow-[N]` / `shrink-[N]`
+
+The USS vocabulary for these two factors is `grow` / `grow-0` / `shrink` / `shrink-0` and the
+`flex-1` / `flex-auto` / `flex-initial` / `flex-none` shorthands — every one of them 0 or 1. Two
+siblings with `flex-1` split leftover space 1:1 and there is no class for any other ratio.
+
+The bracket form takes an arbitrary factor and lands as an inline style: a sidebar carrying `grow-[1]`
+beside a content pane carrying `grow-[3]` divides the leftover space one to three.
+
+The value is a plain number. `grow-[50%]`, `grow-[2rem]` and `-grow-[2]` are not recognized — a factor
+has no unit and no sign, and the percent form especially would otherwise read as a factor of fifty.
+
+`basis-[..]` and `w-[..]` are a different thing and do not substitute: they fix a size, where these
+two divide what is left over after every sibling's basis is taken.
+
 ## Roadmap
 
 A native `gap` depends on a UI Toolkit feature that is not yet available (USS `gap`, and broader

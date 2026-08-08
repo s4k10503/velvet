@@ -2413,6 +2413,102 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_GrowArbitrary_When_Parsed_Then_ResolvesFlexGrow()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grow-[2]", out var s);
+
+            // Assert — the recognition rides in the tuple because a default ArbitraryStyle is a real
+            // property/value pair, so an unrecognized token would otherwise report as an Assume.
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexGrow, 2f)));
+        }
+
+        [Test]
+        public void Given_ShrinkArbitrary_When_Parsed_Then_ResolvesFlexShrink()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("shrink-[3]", out var s);
+
+            // Assert
+            Assert.That((ok, s.Property, s.Value), Is.EqualTo((true, ArbitraryProperty.FlexShrink, 3f)));
+        }
+
+        [Test]
+        public void Given_GrowArbitraryWithAPercent_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act — a ratio has no unit, and the float setters read only the value: accepting this would
+            // make grow-[50%] a factor of fifty.
+            var ok = StyleArbitraryValueResolver.TryParse("grow-[50%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_GrowArbitraryWithALengthUnit_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("grow-[2rem]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_NegatedGrowArbitrary_When_Parsed_Then_DeclinesToParse()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("-grow-[2]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_GrowArbitraryFraction_When_AppliedToElement_Then_SetsInlineFlexGrow()
+        {
+            // Arrange — a fraction, because the whole point is a ratio the 0/1 utilities cannot express.
+            var el = new VisualElement();
+            var ok = StyleArbitraryValueResolver.TryParse("grow-[2.5]", out var style);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in style);
+
+            // Assert
+            Assert.That((ok, el.style.flexGrow.value), Is.EqualTo((true, 2.5f)));
+        }
+
+        [Test]
+        public void Given_ShrinkArbitrary_When_AppliedToElement_Then_SetsInlineFlexShrink()
+        {
+            // Arrange
+            var el = new VisualElement();
+            var ok = StyleArbitraryValueResolver.TryParse("shrink-[3]", out var style);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in style);
+
+            // Assert
+            Assert.That((ok, el.style.flexShrink.value), Is.EqualTo((true, 3f)));
+        }
+
+        [Test]
+        public void Given_GrowArbitrary_When_Cleared_Then_RevertsInlineFlexGrowToNull()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.Apply(el, new ArbitraryStyle(ArbitraryProperty.FlexGrow, 2f, LengthUnit.Pixel));
+            var applied = el.style.flexGrow.value;
+
+            // Act
+            StyleArbitraryValueResolver.Clear(el, ArbitraryProperty.FlexGrow);
+
+            // Assert — the applied value rides along because a fresh element already reads Null, so the
+            // keyword alone cannot tell a revert from a setter that never wrote.
+            Assert.That((applied, el.style.flexGrow.keyword), Is.EqualTo((2f, StyleKeyword.Null)));
+        }
+
+        [Test]
         public void Given_BasisArbitraryPixel_When_Parsed_Then_ResolvesFlexBasis()
         {
             // Act
