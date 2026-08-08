@@ -33,7 +33,9 @@ Run: python3 scripts/pr/settle.py watch
 
 import argparse
 import json
+import shutil
 import subprocess
+import tempfile
 import sys
 import time
 from pathlib import Path
@@ -207,6 +209,64 @@ def watch(project, base):
         time.sleep(POLL_SECONDS)
 
 
+def update_reasons(branch, base, holds_base, held_by_worktree):
+    """Every reason not to bring the base into this branch, decided from plain data.
+
+    A branch already holding the base is refused rather than no-opped: an update that merges nothing
+    still pushes, and a push re-triggers every check for a head that already passed them.
+    """
+    reasons = []
+    if holds_base:
+        reasons.append(f"already contains origin/{base}: there is nothing to bring in")
+    if held_by_worktree:
+        reasons.append(f"a worktree holds {branch}: its own state would decide the merge, "
+                       f"not the pushed head")
+    return reasons
+
+
+def update(project, number, base):
+    """Merges the base into a pull request's branch and pushes it.
+
+    Done in a throwaway worktree off the REMOTE head rather than in the checkout: the branch may be
+    checked out somewhere with work in progress, and a local ref may be behind what the merge has to
+    happen against. Refuses a conflict rather than leaving a half-merged worktree behind — a branch
+    whose files really do conflict needs a person, and the conflicting one this exists for
+    (a long-held branch that re-conflicts on every base move) is exactly the case not to automate.
+    """
+    branch = json.loads(gh("pr", "view", str(number), "--json", "headRefName"))["headRefName"]
+    gh_git(project, "fetch", "origin", "--quiet")
+    reasons = update_reasons(branch, base, contains_base(project, branch, base),
+                             branch in worktree_branches(project))
+    if reasons:
+        print(f"Refusing to update PR#{number}:", file=sys.stderr)
+        for reason in reasons:
+            print(f"  - {reason}", file=sys.stderr)
+        return 1
+
+    scratch = Path(tempfile.mkdtemp(prefix="velvet-settle-"))
+    work = scratch / "worktree"
+    temp_branch = f"settle-update-{number}"
+    try:
+        gh_git(project, "worktree", "add", str(work), "-b", temp_branch,
+               f"origin/{branch}", "--quiet")
+        try:
+            gh_git(work, "merge", f"origin/{base}", "-m",
+                   f"Merge {base} into {branch}")
+        except RuntimeError as exc:
+            print(f"Refusing to update PR#{number}: the merge did not apply cleanly", file=sys.stderr)
+            print(f"  {exc}", file=sys.stderr)
+            return 1
+        gh_git(work, "push", "origin", f"HEAD:{branch}")
+    finally:
+        subprocess.run(["git", "-C", str(project), "worktree", "remove", str(work), "--force"],
+                       capture_output=True, text=True)
+        subprocess.run(["git", "-C", str(project), "branch", "-D", temp_branch],
+                       capture_output=True, text=True)
+        shutil.rmtree(scratch, ignore_errors=True)
+    print(f"PR#{number}: {base} merged into {branch} and pushed; its checks run again")
+    return 0
+
+
 def merge(project, number, base, dry_run):
     reasons = blocking_reasons(project, number, base)
     if reasons:
@@ -234,12 +294,17 @@ def main():
     merge_parser.add_argument("number", type=int)
     merge_parser.add_argument("--dry-run", action="store_true",
                               help="report what blocks it and merge nothing")
+    update_parser = sub.add_parser(
+        "update", help="merge the base into one pull request's branch so its checks run against it")
+    update_parser.add_argument("number", type=int)
     args = parser.parse_args()
 
     project = Path(args.project).resolve()
     if args.command == "watch":
         watch(project, args.base)
         return 0
+    if args.command == "update":
+        return update(project, args.number, args.base)
     return merge(project, args.number, args.base, args.dry_run)
 
 
