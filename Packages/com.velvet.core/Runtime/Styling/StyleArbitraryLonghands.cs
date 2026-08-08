@@ -31,6 +31,8 @@ namespace Velvet
             Set(sets, ArbitraryProperty.MaxHeight, StyleLonghand.MaxHeight);
             Set(sets, ArbitraryProperty.Size, StyleLonghand.Width, StyleLonghand.Height);
             Set(sets, ArbitraryProperty.FlexBasis, StyleLonghand.FlexBasis);
+            Set(sets, ArbitraryProperty.FlexGrow, StyleLonghand.FlexGrow);
+            Set(sets, ArbitraryProperty.FlexShrink, StyleLonghand.FlexShrink);
 
             Set(sets, ArbitraryProperty.Top, StyleLonghand.Top);
             Set(sets, ArbitraryProperty.Right, StyleLonghand.Right);
