@@ -121,7 +121,7 @@ namespace Velvet
             var lanes = fiber.EnsureLanes();
             var enrolled = lanes.Queue.Add(priority);
             // Records the request whether or not it changed the queue. Only a caller that resets this first
-            // reads it (FiberRenderer.RenderInlineForExpansion), so it is otherwise inert history.
+            // reads it (FiberRenderer.SubsumeFiberIntoThisPass), so it is otherwise inert history.
             lanes.LanesRequestedSinceReset.Add(priority);
 
             // A coalesced re-add must NOT restart the starvation clock: it measures how long the lane
@@ -243,7 +243,7 @@ namespace Velvet
             // deliberately NOT removed or rescheduled here. Rescheduling on the same delayed tier would re-flush,
             // find the host still detached, defer again — a busy-loop. The fiber instead waits for the parent
             // re-render that re-attaches (and re-commits) it, which settles every lane that re-render subsumes
-            // (SettleSubsumedFiber), or for disposal, which scrubs the queue and dirty flag outright (Unmount).
+            // (FiberRenderer.SubsumeFiberIntoThisPass), or for disposal, which scrubs the queue and dirty flag outright (Unmount).
             // A further update on the same delayed tier coalesces onto the
             // queued lane without rescheduling (IsDirty is already set, and Transition/Deferred do not re-enrol on
             // the immediate tier). A higher-priority Urgent/Normal update DOES re-enrol and re-flush, but that flush

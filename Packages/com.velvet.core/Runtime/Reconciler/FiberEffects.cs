@@ -149,7 +149,7 @@ namespace Velvet
             while (stack.Count > 0) entries.Add(stack.Pop());
             entries.Reverse();
 
-            // Dedup: the same fiber pushed twice (MountInline + a follow-up RenderInlineForExpansion bundled in
+            // Dedup: the same fiber pushed twice (MountInline + a follow-up SubsumeFiberIntoThisPass bundled in
             // the same reconcile pass) must drain ONCE. Walk in reverse so the last entry wins — Mount is
             // architecturally first, so IsMount=false (the update) prevails.
             var pushedSet = bufferPool.RentFiberSet();
@@ -213,7 +213,7 @@ namespace Velvet
         // mountDoubleInvoke is captured here (rather than at run time) because the async
         // effect runs after this scheduling site has returned: only the mount commit's schedule sets it true.
         // When a Mount-scheduled paint-tick is bundled with a subsequent update commit (parent
-        // re-render reaches the same inline child via RenderInlineForExpansion before
+        // re-render reaches the same inline child via SubsumeFiberIntoThisPass before
         // the paint-tick fires), the early-return path downgrades PendingEffectsAreMount from
         // true to false so the mixed drain does not spuriously double-invoke update-staged entries
         // during the Editor-only double-invoke. The downgrade is one-way (true → false only); upgrading on a later
@@ -230,7 +230,7 @@ namespace Velvet
 #if UNITY_EDITOR
                 // A mount commit and a subsequent update commit can both schedule effects before the
                 // first paint-tick fires (parent re-render reaches the same inline child via
-                // RenderInlineForExpansion before MountInline's scheduled drain runs). The bundled
+                // SubsumeFiberIntoThisPass before MountInline's scheduled drain runs). The bundled
                 // drain mixes Mount-staged and update-staged effects; downgrade the
                 // mount-double-invoke flag so update-staged effects are not spuriously double-invoked.
                 if (!mountDoubleInvoke) fiber.PendingEffectsAreMount = false;
