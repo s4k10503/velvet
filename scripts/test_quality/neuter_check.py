@@ -270,6 +270,21 @@ def read_hole_lines(path):
     return [line for line in path.read_text().splitlines() if line.strip()]
 
 
+def baseline_problem(fixture, baseline):
+    """Why this fixture's baseline cannot support a sweep, and which cases say so.
+
+    Both answers read as full coverage in the output, which is why neither may pass. A filter that named
+    nothing reports no holes because it ran no cases. A case already red is indistinguishable from one
+    the cut killed, and scores as coverage the fixture does not have.
+    """
+    if not baseline:
+        return f"the filter '{fixture}' ran no cases; every cut below would read as covered", []
+    red = sorted(test for test, result in baseline.items() if result != "Passed")
+    if red:
+        return "the baseline is not green; every cut below would read as covered", red
+    return None, []
+
+
 def baseline_arg_problems(args):
     """Arguments that would make --baseline meaningless, checked before the first editor run."""
     problems = []
@@ -334,9 +349,17 @@ def report_pair(entry, name, cut, baseline, cut_results, elapsed, peak):
     for test in holes:
         mark = f" ({inconclusive[test]})" if test in inconclusive else ""
         print(f"      HOLE{mark} {test.rsplit('.', 1)[-1]}", flush=True)
-    for test in missing:
-        print(f"      NOT RUN {test.rsplit('.', 1)[-1]}", flush=True)
-    return holes
+    if missing:
+        # A case the baseline ran and this one did not is not a case the cut killed — it is a case the
+        # run never reached, and a cut that stops the assembly loading produces a whole fixture of them.
+        # Reported as a hole it would read as coverage; dropped from the report it reads as one too, so
+        # it stops the sweep the way a red baseline does.
+        print(f"error: the '{name}' run reached {len(missing)} fewer cases than the baseline; "
+              "every one of them would read as covered", file=sys.stderr)
+        for test in missing:
+            print(f"  {test}", file=sys.stderr)
+        return None
+    return [(test, cut_results[test]) for test in holes]
 
 
 def main():
@@ -345,7 +368,8 @@ def main():
     parser.add_argument("--project", default=".", help="Unity project root (default: cwd)")
     parser.add_argument("--fixtures", nargs="*",
                         help="fixtures to sweep; default is every one in the cut map")
-    parser.add_argument("--platform", default="EditMode", choices=["EditMode", "PlayMode"])
+    parser.add_argument("--platform", default="", choices=["", "EditMode", "PlayMode"],
+                        help="override the platform every fixture declares; default is to use each one's")
     parser.add_argument("--validate", action="store_true",
                         help="check every anchor still matches exactly once, then exit")
     parser.add_argument("--timeout", type=int, default=900, help="seconds per run (default: 900)")
@@ -396,24 +420,24 @@ def main():
     report_lines = []
     for fixture in fixtures:
         short = fixture.rsplit(".", 1)[-1]
-        print(f"\n{fixture}", flush=True)
+        # The platform is a property of where the fixture lives, not of how the sweep was invoked: a
+        # PlayMode fixture asked under EditMode selects no case, and before that was refused it reported
+        # zero holes for every cut it was registered against.
+        platform = args.platform or cuts["fixtures"][fixture].get("platform", "EditMode")
+        print(f"\n{fixture} ({platform})", flush=True)
         if not wait_for_quiet(args.busy_timeout):
             print("error: the machine did not go quiet", file=sys.stderr)
             return 1
         elapsed, killed, peak = run_suite(
-            args.unity, project, args.platform, fixture,
+            args.unity, project, platform, fixture,
             out / f"{short}-baseline.xml", out / f"{short}-baseline.log", args.timeout)
         baseline = outcomes(out / f"{short}-baseline.xml")
         if killed or baseline is None:
             print("error: the baseline run produced no results", file=sys.stderr)
             return 1
-        red = sorted(test for test, result in baseline.items() if result != "Passed")
-        if red:
-            # A test failing on its own accord is indistinguishable from one the cut killed, and it
-            # scores as coverage the fixture does not have. That direction hides holes, so it stops
-            # the sweep rather than being noted in the output.
-            print("error: the baseline is not green; every cut below would read as covered",
-                  file=sys.stderr)
+        problem, red = baseline_problem(fixture, baseline)
+        if problem:
+            print(f"error: {problem}", file=sys.stderr)
             for test in red:
                 print(f"  {test}", file=sys.stderr)
             return 1
@@ -429,7 +453,7 @@ def main():
             originals = apply_cut(project, cut)
             try:
                 elapsed, killed, peak = run_suite(
-                    args.unity, project, args.platform, fixture,
+                    args.unity, project, platform, fixture,
                     out / f"{short}-{name}.xml", out / f"{short}-{name}.log", args.timeout)
             finally:
                 revert(originals)
@@ -440,8 +464,13 @@ def main():
             if holes is None:
                 return 1
             total_holes += len(holes)
-            for test in holes:
-                report_lines.append(f"{fixture}\t{name}\t{test.rsplit('.', 1)[-1]}")
+            for test, result in holes:
+                # The result rides in the line because Inconclusive and Passed are different answers
+                # filed under one word: an Inconclusive case stopped at an Assume the cut falsified, so
+                # it DID notice, while a Passed one did not. Recorded, deleting that Assume and letting
+                # the assertion pass on a default value drifts the baseline; without it the two emit the
+                # same bytes and the set comparison sees nothing.
+                report_lines.append(f"{fixture}\t{name}\t{test.rsplit('.', 1)[-1]}\t{result}")
 
     if args.report:
         Path(args.report).write_text(

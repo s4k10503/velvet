@@ -199,6 +199,164 @@
           "neuter": "return;"
         }
       ]
+    },
+    {
+      "name": "skew-parser",
+      "mechanism": "skew",
+      "summary": "the skew class parser recognises no skew-* token and resolves no angle",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs",
+          "anchor": "public static bool TryExtract(string[]? classNames, out SkewSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleSkewClass.cs",
+          "anchor": "public static bool HasSkewClass(string[]? classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "skew-applier",
+      "mechanism": "skew",
+      "summary": "the reconciler applies no skew transform, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+          "anchor": "internal void ApplySkewOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+          "anchor": "bool canReleaseFace)",
+          "neuter": "return 0f;"
+        }
+      ]
+    },
+    {
+      "name": "gradient-parser",
+      "mechanism": "gradient",
+      "summary": "the gradient class parser recognises no bg-gradient-* token and resolves no stops",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out GradientSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGradientClass.cs",
+          "anchor": "public static bool HasGradientClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "gradient-applier",
+      "mechanism": "gradient",
+      "summary": "the reconciler bakes and assigns no gradient background, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs",
+          "anchor": "internal void ApplyGradientOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberGradientApplier.cs",
+          "anchor": "internal void ApplyGradientOnPatch(VisualElement element, string[] classNames, bool skewable)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberSkewApplier.cs",
+          "anchor": "private static void SyncSkewGradient(VisualElement element, SkewBinding binding, string[] classNames)",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "shadow-parser",
+      "mechanism": "shadow",
+      "summary": "the shadow class parser recognises no shadow-* token and resolves no spec",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out ShadowSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleShadowClass.cs",
+          "anchor": "public static bool HasShadowClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "shadow-applier",
+      "mechanism": "shadow",
+      "summary": "the reconciler attaches and syncs no drop shadow, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberDropShadowApplier.cs",
+          "anchor": "internal void ApplyShadowOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberDropShadowApplier.cs",
+          "anchor": "float skewXDeg, bool canReleaseFace)",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "border-style-parser",
+      "mechanism": "border-style",
+      "summary": "the border-style class parser recognises no border-dashed/dotted token",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleBorderStyleClass.cs",
+          "anchor": "public static bool TryExtract(string[]? classNames, out BorderStyleSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleBorderStyleClass.cs",
+          "anchor": "public static bool HasBorderStyleClass(string[]? classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "border-style-applier",
+      "mechanism": "border-style",
+      "summary": "the reconciler draws no dashed or dotted border, at create or at patch",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs",
+          "anchor": "internal void ApplyBorderStyleOnCreate(VisualElement element, string[] classNames)",
+          "neuter": "return;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberBorderStyleApplier.cs",
+          "anchor": "bool canReleaseFace)",
+          "neuter": "return;"
+        }
+      ]
+    },
+    {
+      "name": "divide-parser",
+      "mechanism": "divide",
+      "summary": "the divide class parser recognises no divide-* token and resolves no spec",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleDivideClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out DivideSpec spec)",
+          "neuter": "spec = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleDivideClass.cs",
+          "anchor": "public static bool HasDivideClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -219,21 +377,24 @@
           "mechanism": "ring",
           "pattern": "Ring|Outline"
         }
-      ]
+      ],
+      "platform": "EditMode"
     },
     {
       "fixture": "Velvet.Tests.StyleRingClassTests",
       "cuts": [
         "ring-parser"
       ],
-      "caseScopes": []
+      "caseScopes": [],
+      "platform": "EditMode"
     },
     {
       "fixture": "Velvet.Tests.TextBalanceParityTests",
       "cuts": [
         "balance-register"
       ],
-      "caseScopes": []
+      "caseScopes": [],
+      "platform": "EditMode"
     },
     {
       "fixture": "Velvet.Tests.TextBalancePlaybackTests",
@@ -241,7 +402,8 @@
         "balance-attach",
         "balance-apply"
       ],
-      "caseScopes": []
+      "caseScopes": [],
+      "platform": "PlayMode"
     },
     {
       "fixture": "Velvet.Tests.BundledStyleSheetInclusionTests",
@@ -260,7 +422,8 @@
           "mechanism": "stylesheet-gate",
           "pattern": "WouldInject"
         }
-      ]
+      ],
+      "platform": "EditMode"
     },
     {
       "fixture": "Velvet.Tests.BundledShaderInclusionTests",
@@ -279,7 +442,108 @@
           "mechanism": "shader-gate",
           "pattern": "WouldInject"
         }
-      ]
+      ],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.SkewClassTests",
+      "cuts": [
+        "skew-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.GradientClassParityTests",
+      "cuts": [
+        "gradient-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.ShadowClassParityTests",
+      "cuts": [
+        "shadow-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.BorderStylePatchTests",
+      "cuts": [
+        "border-style-parser",
+        "border-style-applier"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.DivideClassParityTests",
+      "cuts": [
+        "divide-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.SkewChildTranslateManipulatorTests",
+      "cuts": [
+        "skew-applier"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.PaintBindingPatchTests",
+      "cuts": [
+        "gradient-applier",
+        "shadow-applier",
+        "skew-applier"
+      ],
+      "caseScopes": [
+        {
+          "mechanism": "gradient",
+          "pattern": "Gradient"
+        },
+        {
+          "mechanism": "shadow",
+          "pattern": "Shadow"
+        },
+        {
+          "mechanism": "skew",
+          "pattern": "Skew"
+        }
+      ],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.VariantGatedPaintThemeTests",
+      "cuts": [
+        "border-style-applier",
+        "gradient-applier",
+        "shadow-applier",
+        "skew-applier"
+      ],
+      "caseScopes": [
+        {
+          "mechanism": "gradient",
+          "pattern": "Gradient"
+        },
+        {
+          "mechanism": "shadow",
+          "pattern": "Shadow"
+        },
+        {
+          "mechanism": "skew",
+          "pattern": "Skew"
+        },
+        {
+          "mechanism": "border-style",
+          "pattern": "BorderDashed|ClassSource"
+        }
+      ],
+      "platform": "EditMode"
     }
   ]
 }
