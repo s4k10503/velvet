@@ -139,6 +139,14 @@ namespace Velvet
         public static T UseContext<T>(global::Velvet.ComponentContext<T> context) => default;
         public static (bool isPending, global::Velvet.TransitionStarter startTransition) UseTransition() =>
             (false, default);
+        public static (global::Velvet.ISearchParams searchParams, global::Velvet.SearchParamsSetter setSearchParams) UseSearchParams() =>
+            (null, null);
+        public static global::Velvet.MutationResult<TVariables, TData> UseMutation<TVariables, TData>(
+            global::Velvet.MutationOptions<TVariables, TData> options) => null;
+        public static global::Velvet.MutationResult<TVariables, global::Velvet.Unit> UseMutation<TVariables>(
+            global::Velvet.MutationOptions<TVariables> options) => null;
+        public static global::Velvet.MutationResult<global::Velvet.Unit, global::Velvet.Unit> UseMutation(
+            global::Velvet.MutationOptions options) => null;
         public static global::Velvet.Ref<T> UseRef<T>() where T : class => null;
         public static global::Velvet.Ref<T> UseRef<T>(global::System.Func<T> initialFactory) where T : class => null;
         public static global::Velvet.MutableRef<T> UseMutableRef<T>(T initial) =>
@@ -150,12 +158,40 @@ namespace Velvet
         public static void UseImperativeHandle<THandle>(
             global::Velvet.Ref<THandle> handleRef, global::System.Func<THandle> factory, params object[] deps) where THandle : class { }
     }
+
+    public interface ISearchParams : global::System.Collections.Generic.IEnumerable<string> { }
+    public sealed class SearchParamsSetter { }
+    public readonly struct Unit : global::System.IEquatable<global::Velvet.Unit>
+    {
+        public bool Equals(global::Velvet.Unit other) => true;
+        public override bool Equals(object obj) => true;
+        public override int GetHashCode() => 0;
+    }
+    public sealed class MutationResult<TVariables, TData> { }
+    public sealed record MutationOptions<TVariables, TData>(
+        global::System.Func<TVariables, global::System.Threading.CancellationToken,
+            global::Cysharp.Threading.Tasks.UniTask<TData>> MutationFn,
+        global::System.Action<TData, TVariables>? OnSuccess = null,
+        global::System.Action<global::System.Exception, TVariables>? OnError = null);
+    public sealed record MutationOptions<TVariables>(
+        global::System.Func<TVariables, global::System.Threading.CancellationToken,
+            global::Cysharp.Threading.Tasks.UniTask> MutationFn,
+        global::System.Action<TVariables>? OnSuccess = null,
+        global::System.Action<global::System.Exception, TVariables>? OnError = null);
+    public sealed record MutationOptions(
+        global::System.Func<global::System.Threading.CancellationToken,
+            global::Cysharp.Threading.Tasks.UniTask> MutationFn,
+        global::System.Action? OnSuccess = null,
+        global::System.Action<global::System.Exception>? OnError = null);
 }
 
 namespace Cysharp.Threading.Tasks
 {
     // Stands in for the real UniTask<T> so UseBlocker's async overload keeps its true arity here.
     public struct UniTask<T> { }
+
+    // The void mutations' MutationFn returns the non-generic form.
+    public struct UniTask { }
 }
 ";
 

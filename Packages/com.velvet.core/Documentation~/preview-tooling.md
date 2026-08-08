@@ -17,9 +17,7 @@ Open the window via **Window ▸ Velvet ▸ Preview**.
 Annotate a `static` method that takes no parameters (or a single args object — see
 [Controls](#controls--args)) and returns a `VNode`:
 
-```csharp
-using Velvet;
-
+```csharp compile
 internal static class MyPreviews
 {
     [VelvetPreview(Name = "Primary button", Group = "Buttons", Width = 240, Height = 80)]
