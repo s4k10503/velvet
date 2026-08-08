@@ -19,6 +19,12 @@ namespace Velvet.Tests
     {
         private const string CutsFile = "scripts/test_quality/neuter_cuts.json";
 
+        // Ratchets rather than exact counts, so adding a cut needs no edit here while a map that parsed to
+        // nothing — a renamed JSON key is what produces one — still fails every case that folds one in.
+        private const int EditFloor = 38;
+        private const int FixtureFloor = 14;
+        private const int ScopedFixtureFloor = 4;
+
         [Serializable]
         private sealed class Edit
         {
@@ -87,8 +93,8 @@ namespace Velvet.Tests
 
             // Assert — the edit count is folded in because a map that parsed to nothing satisfies
             // "no anchor is wrong" exactly, and a renamed JSON key is what produces that.
-            Assert.That((map.cuts.Sum(cut => cut.edits.Length), string.Join("\n", wrong)),
-                Is.EqualTo((19, string.Empty)));
+            Assert.That((map.cuts.Sum(cut => cut.edits.Length) >= EditFloor, string.Join("\n", wrong)),
+                Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
@@ -107,8 +113,8 @@ namespace Velvet.Tests
                          select $"{cut.name}: {edit.file}: {edit.anchor}").ToList();
 
             // Assert — the edit count rides along for the same reason it does above.
-            Assert.That((map.cuts.Sum(cut => cut.edits.Length), string.Join("\n", wrong)),
-                Is.EqualTo((19, string.Empty)));
+            Assert.That((map.cuts.Sum(cut => cut.edits.Length) >= EditFloor, string.Join("\n", wrong)),
+                Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
@@ -125,7 +131,8 @@ namespace Velvet.Tests
                             select $"{entry.fixture} names '{name}'").ToList();
 
             // Assert
-            Assert.That((map.fixtures.Length, string.Join("\n", dangling)), Is.EqualTo((6, string.Empty)));
+            Assert.That((map.fixtures.Length >= FixtureFloor, string.Join("\n", dangling)),
+                Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
@@ -144,7 +151,8 @@ namespace Velvet.Tests
                 .ToList();
 
             // Assert — the fixture count is folded in because an empty map has no missing fixture either.
-            Assert.That((map.fixtures.Length, string.Join("\n", missing)), Is.EqualTo((6, string.Empty)));
+            Assert.That((map.fixtures.Length >= FixtureFloor, string.Join("\n", missing)),
+                Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
@@ -167,8 +175,9 @@ namespace Velvet.Tests
             // Assert — the scoped-fixture count is folded in because a map whose fixtures all read as
             // single-mechanism satisfies this by never classifying anything.
             Assert.That(
-                (map.fixtures.Count(entry => Mechanisms(map, entry).Count > 1), string.Join("\n", wrong)),
-                Is.EqualTo((3, string.Empty)));
+                (map.fixtures.Count(entry => Mechanisms(map, entry).Count > 1) >= ScopedFixtureFloor,
+                    string.Join("\n", wrong)),
+                Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
@@ -186,7 +195,8 @@ namespace Velvet.Tests
                 .ToList();
 
             // Assert
-            Assert.That((map.fixtures.Length, string.Join("\n", declaring)), Is.EqualTo((6, string.Empty)));
+            Assert.That((map.fixtures.Length >= FixtureFloor, string.Join("\n", declaring)),
+                Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
@@ -206,8 +216,9 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (map.fixtures.Count(entry => Mechanisms(map, entry).Count > 1), string.Join("\n", unscoped)),
-                Is.EqualTo((3, string.Empty)));
+                (map.fixtures.Count(entry => Mechanisms(map, entry).Count > 1) >= ScopedFixtureFloor,
+                    string.Join("\n", unscoped)),
+                Is.EqualTo((true, string.Empty)));
         }
 
         private static string DeclaringSource(string fixture)
