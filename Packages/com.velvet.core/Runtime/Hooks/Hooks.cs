@@ -1308,7 +1308,10 @@ namespace Velvet
         /// Only the first render reflects this in the generated ID; changes on subsequent renders are
         /// ignored (same convention as the initial value of UseState).
         /// </param>
-        /// <returns>Format is <c>:r{hex}:</c> (no prefix) or <c>{prefix}:r{hex}:</c> (with prefix).</returns>
+        /// <returns>
+        /// Format is <c>:r{hex}:</c> (no prefix) or <c>{prefix}:r{hex}:</c> (with prefix). The value is stable
+        /// across renders, though as a string rather than as a reference.
+        /// </returns>
         public static string UseId(string? prefix = null)
         {
             var fiber = Resolve("UseId");

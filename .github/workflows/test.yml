@@ -177,6 +177,8 @@ jobs:
 
       - run: python3 scripts/test_quality/test_mutation_check.py
 
+      - run: python3 scripts/test_quality/test_neuter_check.py
+
   # ---------------------------------------------------------------------------
   # The one check branch protection requires from this workflow. Naming a real
   # job instead would tie branch protection to that job's name and to its
