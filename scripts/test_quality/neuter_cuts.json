@@ -357,6 +357,69 @@
           "neuter": "return false;"
         }
       ]
+    },
+    {
+      "name": "gap-parser",
+      "mechanism": "gap",
+      "summary": "the gap class parser recognises no gap-* token and resolves no spacing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out float gap, out GapAxis axis)",
+          "neuter": "gap = 0f; axis = default; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGapClass.cs",
+          "anchor": "public static bool HasGapClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "grid-parser",
+      "mechanism": "grid",
+      "summary": "the grid class parser recognises no grid-cols-* token and resolves no column count",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGridClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out int columns)",
+          "neuter": "columns = 0; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleGridClass.cs",
+          "anchor": "public static bool HasGridClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
+    },
+    {
+      "name": "animate-parser",
+      "mechanism": "animate",
+      "summary": "the animate class parser recognises no animate-* token and resolves no spec",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleAnimateClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out AnimateSpec spec)",
+          "neuter": "spec = default; return false;"
+        }
+      ]
+    },
+    {
+      "name": "zindex-parser",
+      "mechanism": "zindex",
+      "summary": "the z-index class parser recognises no z-* token and resolves no depth",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs",
+          "anchor": "public static bool TryExtract(string[] classNames, out int z)",
+          "neuter": "z = 0; return false;"
+        },
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleZIndexClass.cs",
+          "anchor": "public static bool HasZIndexClass(string[] classNames)",
+          "neuter": "return false;"
+        }
+      ]
     }
   ],
   "fixtures": [
@@ -543,6 +606,38 @@
           "pattern": "BorderDashed|ClassSource"
         }
       ],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.GapParityTests",
+      "cuts": [
+        "gap-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.GridParityTests",
+      "cuts": [
+        "grid-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.AnimateMotionPatchTests",
+      "cuts": [
+        "animate-parser"
+      ],
+      "caseScopes": [],
+      "platform": "EditMode"
+    },
+    {
+      "fixture": "Velvet.Tests.ZIndexStackingTests",
+      "cuts": [
+        "zindex-parser"
+      ],
+      "caseScopes": [],
       "platform": "EditMode"
     }
   ]
