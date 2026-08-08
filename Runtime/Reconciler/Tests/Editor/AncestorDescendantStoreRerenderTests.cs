@@ -9,7 +9,7 @@ namespace Velvet.Tests
     /// Regression coverage for a reconciler bug: an
     /// ancestor component and a keyed descendant component both subscribe to the same <see cref="Store{TState}"/>,
     /// so one store update marks both dirty. The ancestor flushes first and re-expands the keyed child via
-    /// <c>RenderInlineForExpansion</c>. That nested render returned the child's OLD VNode tree to the pool
+    /// <c>SubsumeFiberIntoThisPass</c>. That nested render returned the child's OLD VNode tree to the pool
     /// mid-pass, while the ancestor's reconcile still held it as the patch baseline; a later sibling render in
     /// the same pass could rent and mutate those pooled nodes, emptying the baseline's children so
     /// <c>PatchNode</c> re-inserted the child's whole subtree instead of patching it — the subtree visibly

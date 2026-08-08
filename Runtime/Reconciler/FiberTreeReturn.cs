@@ -55,7 +55,7 @@ namespace Velvet
             return new[] { node };
         }
 
-        // Returns the inline old trees queued by RenderInlineForExpansion during a reconcile
+        // Returns the inline old trees queued by SubsumeFiberIntoThisPass during a reconcile
         // pass to the VNode pool. Called once at the top-level reconcile boundary (after the whole pass
         // has finished reading them as patch baselines) so the deferral does not add GC pressure — the
         // nodes are pooled for the next pass, just not mid-pass. See

@@ -283,7 +283,7 @@ namespace Velvet
                 for (var i = 0; i < _drainBuffer.Count; i++)
                 {
                     // A fiber whose ancestor flushed earlier in this same pass may have been subsumed by that
-                    // ancestor's inline re-expansion (RenderInlineForExpansion → SettleSubsumedFiber), which
+                    // ancestor's inline re-expansion (SubsumeFiberIntoThisPass), which
                     // clears IsDirty and removes the fiber from the pending set. FlushState early-returns on a
                     // non-dirty fiber, so the subsumed entry is skipped rather than re-rendered a second time.
                     // That holds only when the settle emptied the queue. A lane the subsuming render itself
@@ -312,7 +312,7 @@ namespace Velvet
         }
 
         // Orders the drain ancestors-before-descendants so a parent's flush (which re-expands its inline
-        // children via ComponentRegistry → RenderInlineForExpansion) subsumes a child into the same pass
+        // children via ComponentRegistry → SubsumeFiberIntoThisPass) subsumes a child into the same pass
         // BEFORE the child's own enqueued entry is reached — matching the single top-down pass where
         // each component renders at most once regardless of setter call order. A child dirtied before its
         // parent in one handler would otherwise re-render its slot in isolation, then a second time when the

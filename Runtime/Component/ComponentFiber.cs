@@ -88,7 +88,7 @@ namespace Velvet
         /// cannot express that as a set difference against a before-image, because <see cref="Add"/> is
         /// idempotent: a re-enrolment of an already-pending lane leaves the mask identical, so subtracting
         /// the before-image would discard it. It states the survivors instead — see
-        /// <c>FiberRenderer.SettleSubsumedFiber</c>.
+        /// <c>FiberRenderer.SubsumeFiberIntoThisPass</c>.
         /// </summary>
         internal void RetainAll(FiberLaneSet lanes) => _mask &= lanes._mask;
 
@@ -105,7 +105,7 @@ namespace Velvet
         public FiberLaneSet Queue;
         // Which lanes an enrolment request named since the last reset, as opposed to which the queue gained.
         // The two differ exactly when a request coalesces onto a lane already pending, and that is the case a
-        // subsuming render's settle has to keep — see FiberRenderer.SettleSubsumedFiber.
+        // subsuming render's settle has to keep — see FiberRenderer.SubsumeFiberIntoThisPass.
         public FiberLaneSet LanesRequestedSinceReset;
         // Several StartTransition callbacks can be open on one fiber at once — a call on another slot, a call
         // joining an owner — so whichever exits first would clear the others' scope if this were a boolean.
@@ -396,7 +396,7 @@ namespace Velvet
         /// <summary>
         /// Clears the pending flag on transition slots with nothing outstanding of their own — no queued
         /// writes, and no async action still running — leaving the rest lit. Used where the pending
-        /// Transition lane is not evidence either way: see <c>FiberRenderer.SettleSubsumedFiber</c>, whose
+        /// Transition lane is not evidence either way: see <c>FiberRenderer.SubsumeFiberIntoThisPass</c>, whose
         /// surviving lane may have been requested by a different hook during the render it settles.
         /// </summary>
         internal void ClearSettledTransitionPending()
@@ -436,7 +436,7 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Opens the window <c>FiberRenderer.SettleSubsumedFiber</c> reads, resetting both records it
+        /// Opens the window <c>FiberRenderer.SubsumeFiberIntoThisPass</c>'s settle reads, resetting both records it
         /// consumes: which lanes the render asks for again, and which transition slots queue writes inside
         /// it. Everything queued before the window is what that render satisfies.
         /// </summary>

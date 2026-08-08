@@ -178,14 +178,12 @@ namespace Velvet
                 existingFiber.MountSlotStart = site.SlotStart;
                 if (propsChanged || existingFiber.IsDirty || refChanged)
                 {
-                    FiberRenderer.RenderInlineForExpansion(existingFiber);
-                    // This re-render subsumes the child into the parent's single batch pass: it ran with
-                    // the child's latest state, satisfying the lanes pending before it at once (lane
-                    // coalescing). Settle those and drop the fiber from the batch scheduler so a later drain
-                    // does not redundantly re-render it or silently drop a stranded higher-priority lane —
-                    // merely clearing IsDirty would leave both behind. The two calls are a pair: the render
-                    // opens the window the settle reads.
-                    FiberRenderer.SettleSubsumedFiber(existingFiber);
+                    // Subsumes the child into the parent's single batch pass: the re-render runs with the
+                    // child's latest state, satisfying the lanes pending before it at once (lane
+                    // coalescing), and the settle un-enrols those and drops the fiber from the batch
+                    // scheduler so a later drain does not redundantly re-render it or silently drop a
+                    // stranded higher-priority lane — merely clearing IsDirty would leave both behind.
+                    FiberRenderer.SubsumeFiberIntoThisPass(existingFiber);
                 }
             }
             else if (propsChanged || refChanged)

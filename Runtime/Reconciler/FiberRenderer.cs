@@ -98,19 +98,24 @@ namespace Velvet
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: true);
         }
 
-        // Synchronously re-renders an already-mounted inline fiber so the caller (parent
-        // expansion) sees the fresh ComponentFiber.PreviousTree. Mirrors
-        // MountInline but skips SetupMount (already initialized). Effects
-        // are pushed onto the shared deferred drain so the top-level reconcile entry runs them
-        // bottom-up with the rest of the subtree: a deps-changed effect must run its
-        // prior cleanup + new setup during the layout-effect commit; staged effects would
-        // otherwise be cleared by the next RenderAndReconcile without running).
-        public static void RenderInlineForExpansion(ComponentFiber fiber)
+        // Synchronously re-renders an already-mounted inline fiber into the caller's batch pass and settles
+        // it there — the caller (parent expansion) sees the fresh ComponentFiber.PreviousTree, and the lanes
+        // that render satisfied are un-enrolled. One entry point rather than two, because the render opens
+        // the window the settle reads and a settle reached without one retains against whatever was
+        // requested since the last window closed.
+        //
+        // Like MountInline it skips nothing but SetupMount (already initialized) on the render side; unlike
+        // MountInline it settles, since a fiber that was already mounted can have lanes pending that this
+        // render just satisfied. Effects are pushed onto the shared deferred drain so the top-level
+        // reconcile entry runs them bottom-up with the rest of the subtree: a deps-changed effect must run
+        // its prior cleanup + new setup during the layout-effect commit; staged effects would otherwise be
+        // cleared by the next RenderAndReconcile without running.
+        internal static void SubsumeFiberIntoThisPass(ComponentFiber fiber)
         {
             if (!fiber.IsMounted)
             {
                 throw new InvalidOperationException(
-                    "FiberRenderer.RenderInlineForExpansion: fiber must already be mounted.");
+                    "FiberRenderer.SubsumeFiberIntoThisPass: fiber must already be mounted.");
             }
             fiber.OpenSubsumedRenderWindow();
             RenderAndReconcile(fiber, deferReconcile: true);
@@ -119,12 +124,13 @@ namespace Velvet
             // passive (UseEffect) cleanup+setup pair fires at the next paint-tick.
             fiber.Reconciler!.Context.DeferredInlineLayoutEffectFibers.Push((fiber, IsMount: false));
             FiberEffects.ScheduleRunEffects(fiber, mountDoubleInvoke: false);
+            SettleSubsumedFiber(fiber);
         }
 
-        // Settles a fiber that an ancestor's flush just subsumed by re-rendering it inline (via
-        // RenderInlineForExpansion) in the same batch pass. Every update pending BEFORE that render coalesces
-        // into it: the render ran with the fiber's latest state, so those lanes are satisfied at once. It
-        // un-enrolls every lane the render did not itself ask for again, and when that empties the queue it
+        // Settles a fiber that the render above just subsumed into the ancestor's batch pass. Every update
+        // pending BEFORE that render coalesces into it: the render ran with the fiber's latest state, so
+        // those lanes are satisfied at once. It un-enrolls every lane the render did not itself ask for
+        // again, and when that empties the queue it
         // also clears the dirty flag and the transition-pending slots and drops the fiber from BOTH
         // batch-scheduler tiers, so a later drain does not independently re-process it — without which a
         // higher-priority lane queued on the child (e.g. Transition on the delayed tier) would be stranded
@@ -136,7 +142,7 @@ namespace Velvet
         // FiberLaneSet.RetainAll. A body scheduling during its own render is the reachable case
         // (UseDeferredValue re-queues its Transition lane on every render that is not the deferred commit),
         // and losing it left a deferred value fed from a prop never committing at all.
-        internal static void SettleSubsumedFiber(ComponentFiber fiber)
+        private static void SettleSubsumedFiber(ComponentFiber fiber)
         {
             // Direct field access through Lanes (not the fiber.LaneQueue read accessor): EnsureLanes would
             // allocate a LaneState for the lane-less majority of subsumed fibers (every non-memoized child
@@ -146,10 +152,6 @@ namespace Velvet
             if (fiber.Lanes != null)
             {
                 fiber.Lanes.Queue.RetainAll(fiber.Lanes.LanesRequestedSinceReset);
-                // Consumed here as well as reset by the render, so a settle reached without one reads an
-                // empty set and retains nothing — what this did before the record existed. The reset in
-                // OpenSubsumedRenderWindow is what scopes the window; requests made between windows would
-                // otherwise accumulate into it.
                 fiber.Lanes.LanesRequestedSinceReset.Clear();
                 // The subsuming render committed the fiber's latest (eagerly-written) state, so any
                 // starvation-promoted work is satisfied too — a marker left true on the now-clean fiber
