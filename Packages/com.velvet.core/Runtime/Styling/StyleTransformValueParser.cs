@@ -39,6 +39,13 @@ namespace Velvet
                 return TryParseOpacity(valueSpan, negate, out result);
             }
 
+            if (prefix == "grow-" || prefix == "shrink-")
+            {
+                return TryParseFlexFactor(
+                    prefix == "grow-" ? ArbitraryProperty.FlexGrow : ArbitraryProperty.FlexShrink,
+                    valueSpan, negate, out result);
+            }
+
             // translate-x-/translate-y- are lengths (px/%) routed here (not through TryGetProperty) so all
             // four transform properties share one parse-and-apply path (the Apply/Clear transform switch).
             if (prefix == "translate-x-" || prefix == "translate-y-")
@@ -87,6 +94,24 @@ namespace Velvet
                 return false;
             }
             result = new ArbitraryStyle(ArbitraryProperty.Opacity, opacityValue, LengthUnit.Pixel);
+            return true;
+        }
+
+        // grow-[..] / shrink-[..] are unitless ratios, so they take the float grammar rather than the
+        // length one every other prefix in s_prefixProperties shares: that grammar accepts a suffix and
+        // converts it, which would turn grow-[2rem] into 32 and — since the float setters read only the
+        // value — grow-[50%] into 50, a ratio fifty times what the author wrote. A negative factor is
+        // rejected for the same reason a negative opacity is: CSS declares it invalid and UITK does not
+        // clamp.
+        private static bool TryParseFlexFactor(ArbitraryProperty property, ReadOnlySpan<char> valueSpan,
+            bool negate, out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate || !StyleArbitraryValueResolver.TryParseFloat(valueSpan, out var factor) || factor < 0f)
+            {
+                return false;
+            }
+            result = new ArbitraryStyle(property, factor, LengthUnit.Pixel);
             return true;
         }
 
