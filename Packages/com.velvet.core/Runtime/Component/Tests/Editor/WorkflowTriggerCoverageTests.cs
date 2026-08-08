@@ -58,6 +58,12 @@ namespace Velvet.Tests
         private static readonly Regex PathTokenPattern =
             new(@"[A-Za-z0-9_.~-]+(?:/[A-Za-z0-9_.~-]+)+", RegexOptions.Compiled);
 
+        // A step that runs a command, as opposed to a path named in a filter, a comment or an input. A
+        // commented-out step is not one: the whole failure being caught is a file nothing executes, and a
+        // plain mention of the path cannot tell an invocation from either.
+        private static readonly Regex RunStepPattern =
+            new(@"^(\s*)(?:-\s*)?run:\s*(\S?)", RegexOptions.Compiled);
+
         // A negation is a whole pattern, so a ! with anything before it is being used as something else.
         private static readonly Regex UnsupportedGlobPattern = new(@"[?+\[\]{}]|.!", RegexOptions.Compiled);
 
@@ -109,6 +115,66 @@ namespace Velvet.Tests
             // Assert — the workflow count rides along because an empty directory reports nothing uncovered.
             Assert.That((workflows.Count > 1, string.Join("\n", uncovered)), Is.EqualTo((true, string.Empty)),
                 "a workflow runs these files and does not start when one of them changes");
+        }
+
+        [Test]
+        public void Given_EveryHarnessUnitTest_When_TheWorkflowsAreScanned_Then_SomeJobRunsIt()
+        {
+            // Arrange — a test-quality harness carries its own unit tests because the Unity half of it needs
+            // a licence and the decisions do not. One that no job invokes is a file that passes locally and
+            // is never asked again, which is the same silence as a workflow that does not start. Derived
+            // from the directory rather than listed, so the next one is wired or red.
+            var harnessTests = Directory
+                .EnumerateFiles(Path.GetFullPath("scripts/test_quality"), "test_*.py")
+                .Select(RepoRelative)
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+            var invoked = Workflows().SelectMany(RunCommandLines).ToList();
+
+            // Act
+            var unrun = harnessTests
+                .Where(path => !invoked.Any(line => line.Contains(path, StringComparison.Ordinal)))
+                .ToList();
+
+            // Assert — the count rides along because a directory that yielded nothing leaves nothing unrun.
+            Assert.That((harnessTests.Count > 1, string.Join("\n", unrun)), Is.EqualTo((true, string.Empty)),
+                "a test-quality harness has unit tests that no workflow job runs");
+        }
+
+        /// <summary>Every line of every command a workflow's <c>run:</c> steps execute.</summary>
+        /// <remarks>
+        /// A block scalar's commands sit on the lines BELOW the key, so reading only the key's own line
+        /// finds a one-line step and misses a multi-line one — a guard that reported a file unrun while a
+        /// job ran it.
+        /// </remarks>
+        private static IEnumerable<string> RunCommandLines(string workflow)
+        {
+            var blockIndent = -1;
+            foreach (var line in File.ReadAllLines(workflow))
+            {
+                var indent = line.Length - line.TrimStart().Length;
+                if (blockIndent >= 0 && line.Trim().Length > 0)
+                {
+                    if (indent > blockIndent)
+                    {
+                        yield return line;
+                        continue;
+                    }
+                    blockIndent = -1;
+                }
+                var match = RunStepPattern.Match(line);
+                if (!match.Success)
+                {
+                    continue;
+                }
+                // A block scalar opener carries only its indicator, so the command is what follows below.
+                if (match.Groups[2].Value is "|" or ">" or "")
+                {
+                    blockIndent = match.Groups[1].Value.Length;
+                    continue;
+                }
+                yield return line;
+            }
         }
 
         [Test]
