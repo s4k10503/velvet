@@ -36,11 +36,10 @@ namespace Velvet.SourceGenerators.Tests
         private const string StabilityWord = "stable";
 
         /// <summary>
-        /// Hooks whose <c>&lt;returns&gt;</c> speaks of stability without guaranteeing it unconditionally, each
-        /// with the condition that makes it unsafe to omit from a dependency array. Recorded so a hook that
-        /// gains a real guarantee cannot pass for one of these.
+        /// Hooks whose <c>&lt;returns&gt;</c> speaks of stability yet earns no exemption, each with the reason
+        /// it does not. Recorded so a hook that gains a real guarantee cannot pass for one of these.
         /// </summary>
-        private static readonly Dictionary<string, string> ReturnsStableOnlyUnderACondition = new(StringComparer.Ordinal)
+        private static readonly Dictionary<string, string> MentionsStabilityWithoutEarningASlot = new(StringComparer.Ordinal)
         {
             ["UseCallback"] =
                 "stable only while its own deps are equal, which is the caller's argument rather than a property " +
@@ -50,6 +49,9 @@ namespace Velvet.SourceGenerators.Tests
             ["UseNavigate"] =
                 "a UseCallback keyed on the replace argument and the enclosing Outlet depth, so a call site " +
                 "varying either gets a fresh delegate",
+            ["UseId"] =
+                "stable by value rather than by reference, so a deps array holding it compares equal every " +
+                "render and asking for it costs nothing — which is what React's own rule does with useId",
         };
 
         [Fact]
@@ -95,7 +97,7 @@ namespace Velvet.SourceGenerators.Tests
         }
 
         [Fact]
-        public void Given_RuntimeReturnsDocsMentioningStability_When_TheyOmitTheMarker_Then_EachIsRecordedAsConditional()
+        public void Given_RuntimeReturnsDocsMentioningStability_When_TheyOmitTheMarker_Then_EachIsRecorded()
         {
             // Arrange
             var mentioning = HooksWhoseReturnsMentions(StabilityWord);
@@ -104,7 +106,7 @@ namespace Velvet.SourceGenerators.Tests
             // Act
             var unaccounted = mentioning
                 .Where(hook => !HooksDeclaringAStableReturn().Contains(hook))
-                .Where(hook => !ReturnsStableOnlyUnderACondition.ContainsKey(hook))
+                .Where(hook => !MentionsStabilityWithoutEarningASlot.ContainsKey(hook))
                 .OrderBy(x => x, StringComparer.Ordinal)
                 .ToList();
 
@@ -112,19 +114,19 @@ namespace Velvet.SourceGenerators.Tests
             Assert.True(unaccounted.Count == 0,
                 "These hooks describe their return as stable in some wording other than the marker " +
                 $"'{StabilityMarker}': [{string.Join(", ", unaccounted)}]. Nothing derives an exemption from a " +
-                $"paraphrase, so either use the marker or record the condition in " +
-                $"{nameof(ReturnsStableOnlyUnderACondition)}.");
+                $"paraphrase, so either use the marker or record why the hook earns none in " +
+                $"{nameof(MentionsStabilityWithoutEarningASlot)}.");
         }
 
         [Fact]
-        public void Given_RecordedConditionalHooks_When_ComparedAgainstRuntimeSource_Then_EachStillMentionsStability()
+        public void Given_TheRecordedHooks_When_ComparedAgainstRuntimeSource_Then_EachStillMentionsStability()
         {
             // Arrange
             var mentioning = HooksWhoseReturnsMentions(StabilityWord);
             Assume.NotEmpty(mentioning, $"no runtime <returns> mentioned '{StabilityWord}' at all");
 
             // Act
-            var stale = ReturnsStableOnlyUnderACondition
+            var stale = MentionsStabilityWithoutEarningASlot
                 .Where(entry => !mentioning.Contains(entry.Key))
                 .Select(entry => $"{entry.Key} (recorded as: {entry.Value})")
                 .OrderBy(x => x, StringComparer.Ordinal)
@@ -132,7 +134,7 @@ namespace Velvet.SourceGenerators.Tests
 
             // Assert
             Assert.True(stale.Count == 0,
-                $"{nameof(ReturnsStableOnlyUnderACondition)} records hooks whose <returns> no longer mentions " +
+                $"{nameof(MentionsStabilityWithoutEarningASlot)} records hooks whose <returns> no longer mentions " +
                 $"stability: [{string.Join("; ", stale)}]. A stale record hides the real question the next time " +
                 "that wording comes back.");
         }
