@@ -886,7 +886,7 @@ namespace Velvet
         // before their parent (bottom-up), so a parent layout effect that reads a child's
         // imperative handle / measured size observes the child's already-applied effect.
         // Both Mount and update commits push onto this stack: MountInline pushes with
-        // IsMount: true, RenderInlineForExpansion (parent re-render reaching an
+        // IsMount: true, SubsumeFiberIntoThisPass (parent re-render reaching an
         // existing inline child) pushes with IsMount: false. The drain forwards the flag
         // to the insertion- and layout-effect passes as mountDoubleInvoke so
         // the Editor-only mount double-invoke fires only on initial Mount, not on the deps-changed
@@ -932,7 +932,7 @@ namespace Velvet
         // do not collide across passes. Cleared at the end of every top-level Reconcile.
         public Dictionary<VNode, string> EffectiveKeys { get; } = new();
 
-        // Old VNode trees of inline children re-rendered via RenderInlineForExpansion during the
+        // Old VNode trees of inline children re-rendered via SubsumeFiberIntoThisPass during the
         // current reconcile pass, queued for pooled-object return at the top-level boundary rather than
         // immediately. A parent re-render reaches an existing inline child, captures that child's old tree
         // as the patch baseline during its old-side expansion, then re-renders the child (overwriting its
