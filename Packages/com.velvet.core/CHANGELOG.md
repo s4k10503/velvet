@@ -5,6 +5,15 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `grow-[N]` and `shrink-[N]` arbitrary values for `flex-grow` / `flex-shrink`. The utility vocabulary
+  stopped at 0 and 1, so a proportional split had to be re-expressed as a fixed or percentage basis —
+  which stops matching once siblings have minimum sizes — or written from a `refCallback`. See
+  `Documentation~/styling-flexbox-and-gap.md`.
+
 ## [2.0.1] - 2026-08-08
 
 ### Highlights

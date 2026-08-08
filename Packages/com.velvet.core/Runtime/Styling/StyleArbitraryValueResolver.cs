@@ -632,6 +632,9 @@ namespace Velvet
             [ArbitraryProperty.BorderLeftWidth] = new Action<IStyle, StyleFloat>[] { (s, v) => s.borderLeftWidth = v },
             // opacity-[..] is a unitless StyleFloat (0..1).
             [ArbitraryProperty.Opacity] = new Action<IStyle, StyleFloat>[] { (s, v) => s.opacity = v },
+            // grow-[..] / shrink-[..] are unitless factors.
+            [ArbitraryProperty.FlexGrow] = new Action<IStyle, StyleFloat>[] { (s, v) => s.flexGrow = v },
+            [ArbitraryProperty.FlexShrink] = new Action<IStyle, StyleFloat>[] { (s, v) => s.flexShrink = v },
         };
 
         #endregion

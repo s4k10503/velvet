@@ -110,6 +110,45 @@ class MergeDecisionTests(unittest.TestCase):
         self.assertEqual(len(decided), 3)
 
 
+class UpdateReasonsTests(unittest.TestCase):
+    """The update side of the same decision: what makes bringing the base in the wrong move."""
+
+    def test_Given_ABranchBehindTheBase_When_Decided_Then_NothingBlocksTheUpdate(self):
+        # Act
+        reasons = settle.update_reasons("feat/x", "main", holds_base=False, held_by_worktree=False)
+
+        # Assert
+        self.assertEqual(reasons, [])
+
+    def test_Given_ABranchAlreadyHoldingTheBase_When_Decided_Then_ItIsRefused(self):
+        # Act — an update that merges nothing still pushes, and a push re-runs every check.
+        reasons = settle.update_reasons("feat/x", "main", holds_base=True, held_by_worktree=False)
+
+        # Assert
+        self.assertEqual(len(reasons), 1)
+
+    def test_Given_ABranchHeldByAWorktree_When_Decided_Then_ItIsRefused(self):
+        # Act
+        reasons = settle.update_reasons("feat/x", "main", holds_base=False, held_by_worktree=True)
+
+        # Assert
+        self.assertEqual(len(reasons), 1)
+
+    def test_Given_BothConditions_When_Decided_Then_EachIsReportedOnce(self):
+        # Act
+        reasons = settle.update_reasons("feat/x", "main", holds_base=True, held_by_worktree=True)
+
+        # Assert
+        self.assertEqual(len(reasons), 2)
+
+    def test_Given_ARefusal_When_ItsTextIsRead_Then_ItNamesTheBranch(self):
+        # Act
+        reasons = settle.update_reasons("feat/x", "main", holds_base=False, held_by_worktree=True)
+
+        # Assert
+        self.assertIn("feat/x", reasons[0])
+
+
 class TerminalStateTests(unittest.TestCase):
     def test_Given_TheTerminalSets_When_Compared_Then_NoBucketIsInBoth(self):
         # Arrange — a bucket in both would make a failing check merge or a passing one block.
