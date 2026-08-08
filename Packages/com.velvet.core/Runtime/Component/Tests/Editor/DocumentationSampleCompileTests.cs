@@ -43,12 +43,30 @@ namespace Velvet.Tests
         /// <remarks>
         /// A test run has an editor by construction, and the editor ships both the host and the compiler it
         /// uses for the project itself. Reaching for <c>dotnet</c> instead would add an environment
-        /// dependency to a job that has none, and one that is unverified on the CI container.
+        /// dependency to a job that has none.
+        /// <para>
+        /// Both are searched for under <c>applicationContentsPath</c> rather than composed from it. A
+        /// composed path was macOS's bundle layout and did not exist on the Linux runner, and replacing one
+        /// composition with another only moves the guess: the subtree under the contents directory differs
+        /// per platform too. Searching asks the installation what it has.
+        /// </para>
         /// </remarks>
-        private static string EditorRoot =>
-            Path.GetFullPath(Path.Combine(
-                Path.GetDirectoryName(UnityEditor.EditorApplication.applicationPath)!,
-                "Unity.app/Contents/Resources/Scripting"));
+        private static string Locate(string leaf, string requiredSegment = "")
+        {
+            var contents = UnityEditor.EditorApplication.applicationContentsPath;
+            // A leaf name is not always unique under the installation — netstandard.dll sits in five places
+            // and only the reference assembly under ref/ is the one to compile against. The caller says
+            // which by naming a path segment, so the choice is stated rather than left to enumeration order.
+            var found = Directory.EnumerateFiles(contents, leaf, SearchOption.AllDirectories)
+                .Where(path => requiredSegment.Length == 0
+                               || path.Replace('\\', '/').Contains("/" + requiredSegment + "/", StringComparison.Ordinal))
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .FirstOrDefault();
+            // Loud rather than silent: a fixture that quietly skips because it could not find its compiler
+            // reports exactly what one that ran and found nothing reports.
+            Assert.That(found, Is.Not.Null, $"the editor at {contents} does not carry {leaf}");
+            return found!;
+        }
 
         private static IEnumerable<(string Path, string Body)> MarkedSamples()
         {
@@ -89,12 +107,11 @@ namespace Velvet.Tests
 
         private static IReadOnlyList<string> References()
         {
-            var managed = Path.Combine(EditorRoot, "Managed/UnityEngine");
             var found = new List<string>
             {
-                Path.Combine(EditorRoot, "NetStandard/ref/2.1.0/netstandard.dll"),
-                Path.Combine(managed, "UnityEngine.CoreModule.dll"),
-                Path.Combine(managed, "UnityEngine.UIElementsModule.dll"),
+                Locate("netstandard.dll", "ref"),
+                Locate("UnityEngine.CoreModule.dll", "UnityEngine"),
+                Locate("UnityEngine.UIElementsModule.dll", "UnityEngine"),
                 Path.GetFullPath("Library/ScriptAssemblies/Velvet.dll"),
             };
             // UniTask is a declared dependency of the package, so a sample awaiting one is not reaching
@@ -116,14 +133,14 @@ namespace Velvet.Tests
             var sourcePath = Path.Combine(directory, "Sample.cs");
             File.WriteAllText(sourcePath, source);
 
-            var start = new ProcessStartInfo(Path.Combine(EditorRoot, "netcorerun/netcorerun"))
+            var start = new ProcessStartInfo(Locate("netcorerun"))
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            start.ArgumentList.Add(Path.Combine(EditorRoot, "DotNetSdkRoslyn/csc.dll"));
+            start.ArgumentList.Add(Locate("csc.dll"));
             start.ArgumentList.Add("-nologo");
             start.ArgumentList.Add("-nostdlib");
             start.ArgumentList.Add("-target:library");
