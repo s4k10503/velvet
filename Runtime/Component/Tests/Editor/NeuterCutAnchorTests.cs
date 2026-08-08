@@ -21,8 +21,8 @@ namespace Velvet.Tests
 
         // Ratchets rather than exact counts, so adding a cut needs no edit here while a map that parsed to
         // nothing — a renamed JSON key is what produces one — still fails every case that folds one in.
-        private const int EditFloor = 38;
-        private const int FixtureFloor = 14;
+        private const int EditFloor = 45;
+        private const int FixtureFloor = 18;
         private const int ScopedFixtureFloor = 4;
 
         [Serializable]
