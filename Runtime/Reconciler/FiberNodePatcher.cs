@@ -2760,18 +2760,24 @@ namespace Velvet
             // one: the trigger was a width payload, which gates nothing and so never earns an entry, or the
             // payload came from a [&>*]: rule on the PARENT, whose children are fully created before it runs.
             // The second case is temporary for a child rendered as an element — its own next patch runs the
-            // class passes and records the array — and permanent for a V.Text child, whose patch runs none.
-            // The live list stands in for the layout gates in both cases, while the paint sequence stands
-            // down, since PaintTail is unknown and a Motion must not be given a silhouette.
+            // class passes and records the array. A V.Text child's patch runs none, ever, which is why the
+            // empty array below is its reconciled array rather than a stand-in; the live list stands in for
+            // the layout gates in the element case only. The paint sequence stands down for both, since
+            // PaintTail is unknown and a Motion must not be given a silhouette.
             // That makes a [&>*]: paint land inconsistently, which is the cost of not guessing: a child that
             // declares ANY gated payload of its own was recorded at create, so the parent's payload finds
             // PaintTail set and paints at mount, while a child that declares none paints only from its next
             // patch. Recording how a child is driven before its parent's rules run would close it.
-            var reconciled = state?.Reconciled;
+            // A TextNode's element applies no class of its own at any render, so an empty array is not a
+            // stand-in for its reconciled one — it IS its reconciled one. Without this the two resolvers
+            // below stand down for such a child forever, and a container's [&>*]:font-mono or
+            // [&>*]:uppercase lands on its class list and changes nothing, at mount and at every patch.
+            var reconciled = state?.Reconciled
+                ?? (_ctx.TextNodeElements.ContainsKey(element) ? System.Array.Empty<string>() : null);
             var previous = state?.Resolved;
-            var resolved = reconciled == null
-                ? LiveClasses(element)
-                : ComposeVariantClasses(reconciled, state!.Tokens, state.Resolved);
+            var resolved = reconciled == null ? LiveClasses(element)
+                : state == null ? reconciled
+                : ComposeVariantClasses(reconciled, state.Tokens, state.Resolved);
             var classesChanged = !ReferenceEquals(previous, resolved);
             if (state != null)
             {

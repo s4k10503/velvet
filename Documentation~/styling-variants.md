@@ -357,10 +357,12 @@ on it the child never declared. So both stand down there rather than replace wha
 render got right with nothing left to put it back: `[&>*]:uppercase` over a `leading-[24px]` label
 leaves the label alone. From that child's next render on the two agree and both land —
 `[&>*]:font-mono` and `[&>*]:uppercase` alike — for a child rendered as an element. A `V.Text`
-child is the exception: the payload reaches its class list and neither resolver ever reads it, at
-any render, so put the utility on a `V.Label` there. Mount is what neither reaches for a child
-that declares none, so a child that must carry the family or the transform on its first frame
-declares it itself, or declares a variant of its own — the same escape the paints take.
+child takes them at mount instead: it declares no class of its own at any render, so there is
+nothing of its own for the payload to resolve over and nothing to wait for. For a child rendered as
+an element that declares none, mount is what neither reaches — one that must carry the family or the
+transform on its first frame declares it itself, or declares a variant of its own, the same escape
+the paints take. The paints reach a `V.Text` child at no render at all: they run behind a verdict
+only an element's own class pass records.
 
 ## Container queries — `@container`
 

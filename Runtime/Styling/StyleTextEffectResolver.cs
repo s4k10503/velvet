@@ -16,7 +16,7 @@ namespace Velvet
     // every axis cascades by walking ancestors (StyleTextEffectClass holds the pure parse + string ops; this
     // owns the reconciler-side cascade and the per-element side-tables).
     //
-    // Three per-element side-tables are pure (on ReconcilerContext): TextEffects = an element's OWN parsed
+    // Four per-element side-tables are pure (on ReconcilerContext): TextEffects = an element's OWN parsed
     // effect (each axis nullable so an explicit reset — normal-case / no-underline / an explicit
     // whitespace-* class — is distinct from "inherit"; Leading has no reset form, see LeadingUnit, but is
     // still nullable the same way for "inherit" vs. "this element sets a real value"); TextRawText = the
@@ -100,6 +100,11 @@ namespace Velvet
         // inherited effect, rather than waiting for the ancestor's next pass. Idempotent (resolves from the raw).
         public static void OnTextSet(ReconcilerContext ctx, VisualElement element, string raw)
         {
+            // The mark belongs here rather than in CaptureRaw below: an element's Text prop calls CaptureRaw
+            // DIRECTLY and never routes through this method, while a TextNode reaches it only through here.
+            // Moving the mark down one call would mark every text-bearing element — see
+            // ReconcilerContext.TextNodeElements.
+            ctx.TextNodeElements[element] = true;
             CaptureRaw(ctx, element, raw);
             ApplyToElement(ctx, element);
         }

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A `[&>*]:` font or text-effect payload now reaches a `V.Text` child. The payload already landed on that
+  child's class list — a plain `[&>*]:bg-red-500` styled it — but the two resolvers stood down for it at
+  every render, so `[&>*]:uppercase` over mixed children transformed the element children and left the text
+  one alone. The paint families (`shadow-*`, `ring-*`, `skew-*`, the gradients, `animate-*`,
+  `border-dashed`) still do not reach such a child at all: they run behind a paint verdict only an
+  element's own class pass records.
+
 ### Added
 
 - `grow-[N]` and `shrink-[N]` arbitrary values for `flex-grow` / `flex-shrink`. The utility vocabulary
