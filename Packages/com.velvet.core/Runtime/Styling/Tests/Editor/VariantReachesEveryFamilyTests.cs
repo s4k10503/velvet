@@ -15,14 +15,14 @@ namespace Velvet.Tests
     /// written bare, over the product of variant categories and payload families.
     /// <para>
     /// The failure this exists for is a family that works bare and is inert behind a variant, with no
-    /// diagnostic. Eleven variant fixtures existed and none caught it, because each drives one variant
-    /// against one payload rather than the product.
+    /// diagnostic. The sibling fixtures each drive a chosen variant against a chosen payload, which leaves
+    /// the product between them.
     /// </para>
     /// <para>
-    /// The families are read out of the payload dispatcher rather than listed here, so one added tomorrow is
-    /// in the matrix for existing. What cannot be derived is a utility that stands for a family — the
-    /// dispatcher answers about a token, not about which token to write — so each is declared, and the
-    /// derived and declared sets are held equal in both directions.
+    /// The families are read out of the payload dispatcher rather than listed here. What cannot be derived
+    /// is a utility that stands for a family — the dispatcher answers about a token, not about which token
+    /// to write — so each is declared, and the derived and declared sets are held equal in both directions,
+    /// which turns a family added tomorrow into a red test demanding one.
     /// </para>
     /// <para>
     /// The assertion compares the variant form against the BARE form rather than an expected value, so it
@@ -71,21 +71,26 @@ namespace Velvet.Tests
         // family's coverage with both tests green.
         private const int FamilyFloor = 17;
 
-        /// <summary>One variant per category, with what opens its gate.</summary>
+        /// <summary>The variants posed, with what opens each one's gate.</summary>
         /// <remarks>
-        /// The categories are what bounds the matrix: a defect in the routing is a property of how a variant
-        /// delivers its payload, not of which of the 23 kinds is spelled, so one per category catches the
-        /// class at a cost that grows with the families rather than with the kinds. State and relational are
-        /// separate entries although one pointer edge opens both, because they reach the dispatcher through
-        /// different manipulators.
+        /// One per manipulator that carries a gate, rather than one per spelling: a defect in the routing is
+        /// a property of how a payload is delivered, so the cost grows with the families rather than with
+        /// the kinds. State and relational are separate entries although one pointer edge opens both,
+        /// because they reach the dispatcher through different manipulators.
+        /// <para>
+        /// What this does NOT reach: the payload forms the reconciler routes from its own side tables —
+        /// child-combinator, structural, attribute, supports and has-. They have no gate to open and their
+        /// payload can land on an element other than the one carrying the class, so the bare form is not
+        /// their comparison; posing them wants a second shape rather than a sixth entry here.
+        /// </para>
         /// </remarks>
         private static readonly (string Prefix, Action<VariantReachesEveryFamilyTests, VisualElement> Open)[]
             Variants =
             {
+                ("md:", (fixture, host) => fixture.ResolveAt(WidePanel, host)),
                 ("dark:", (fixture, host) => VelvetTheme.IsDark = true),
                 ("hover:", (fixture, host) => Hover(host)),
                 ("group-hover:", (fixture, host) => Hover(host)),
-                ("md:", (fixture, host) => fixture.ResolveAt(WidePanel, host)),
                 ("dark:hover:", (fixture, host) =>
                 {
                     VelvetTheme.IsDark = true;
@@ -96,8 +101,8 @@ namespace Velvet.Tests
         private const float NarrowPanel = 500f;
         private const float WidePanel = 1000f;
 
-        // Below the md breakpoint at rest, so the responsive gate is shut until the opener widens the panel:
-        // a gate already open at mount is not a gate this fixture drove.
+        // Below the md breakpoint at rest, so the responsive gate starts shut. That it IS shut is measured
+        // per cell rather than trusted — see the shut render in the matrix.
         protected override Rect WindowSize => new Rect(0, 0, NarrowPanel, 600);
 
         private bool _darkBefore;
@@ -147,7 +152,8 @@ namespace Velvet.Tests
             var undeclared = families.Where(family => !Representatives.ContainsKey(family));
             var orphaned = Representatives.Keys.Where(family => !families.Contains(family));
 
-            // Assert — the ratchet rides along because an unread file declares nothing missing either.
+            // Assert — the ratchet is the paired-deletion guard stated above; the string term alone already
+            // fails on a file that yielded no families, since every declaration is then orphaned.
             Assert.That((Representatives.Count >= FamilyFloor, string.Join("\n", undeclared.Concat(orphaned))),
                 Is.EqualTo((true, string.Empty)),
                 "the families the dispatcher gates and the families this fixture stands a utility for have "
@@ -163,6 +169,7 @@ namespace Velvet.Tests
             // Act
             var divergent = new List<string>();
             var inert = new List<string>();
+            var ungated = new List<string>();
             foreach (var (prefix, open) in Variants)
             {
                 // Every render runs the opener, the bare ones included, so the only difference between the
@@ -174,10 +181,16 @@ namespace Velvet.Tests
                     var utility = Representatives[family];
                     var bare = Observe(utility, open);
                     var gated = Observe(Gated(utility, prefix), open);
+                    var shut = Observe(Gated(utility, prefix), open: null);
 
                     if (StripClasses(bare) == StripClasses(none))
                     {
                         inert.Add($"{prefix} {family}: '{utility}' changes nothing a bare render shows");
+                    }
+                    else if (StripClasses(shut) == StripClasses(gated))
+                    {
+                        ungated.Add($"{prefix} {family}: '{utility}' reads the same whether or not the "
+                            + "opener ran, so this cell measures no gate");
                     }
                     else if (bare != gated)
                     {
@@ -186,10 +199,12 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — inert and divergent are reported together because a representative that measures
-            // nothing and a family that does not resolve are the same failure of this fixture to mean
-            // anything, arrived at from opposite ends.
-            Assert.That((Representatives.Count >= FamilyFloor, string.Join("\n", inert.Concat(divergent))),
+            // Assert — the three buckets are reported together because they are one failure seen from three
+            // sides: a representative that measures nothing, a gate that was open (or shut) either way, and
+            // a payload that did not arrive all leave the cell proving nothing.
+            Assert.That(
+                (Representatives.Count >= FamilyFloor,
+                    string.Join("\n", inert.Concat(ungated).Concat(divergent))),
                 Is.EqualTo((true, string.Empty)),
                 "a utility behind a variant does not reach what the same utility reaches written bare");
         }
@@ -222,13 +237,16 @@ namespace Velvet.Tests
         /// <remarks>
         /// Compared whole rather than per family, so adding a family needs no oracle written for it.
         /// </remarks>
-        private string Observe(string className, Action<VariantReachesEveryFamilyTests, VisualElement> open)
+        private string Observe(string className, Action<VariantReachesEveryFamilyTests, VisualElement>? open)
         {
             VelvetTheme.IsDark = false;
             _clock = 0.0;
             _window.position = new Rect(0, 0, NarrowPanel, 600);
             var host = new VisualElement();
             _window.rootVisualElement.Add(host);
+            // Laid out before anything mounts, because a gate that reads a resolved width would otherwise
+            // attach against the previous render's — and the widest render of the matrix precedes this one.
+            ForcePanelUpdate(host.panel);
             try
             {
                 // Two carriers under a group, because a family's payload can require one shape or the other:
@@ -252,8 +270,10 @@ namespace Velvet.Tests
                 // form differ for want of a layout pass rather than for want of the variant reaching it.
                 ForcePanelUpdate(host.panel);
                 // Opened AFTER the mount, so what the matrix exercises is the re-sync a live gate change
-                // drives rather than the create-time pass, which the reconciled array already covers.
-                open(this, host);
+                // drives rather than the create-time pass, which the reconciled array already covers. A null
+                // opener is the shut reading each cell is also taken at, which is what turns "the gate was
+                // closed at mount" from a claim into a term.
+                open?.Invoke(this, host);
                 ForcePanelUpdate(host.panel);
 
                 var registries = Registries(mounted);
@@ -317,8 +337,14 @@ namespace Velvet.Tests
         {
             _window.position = new Rect(0, 0, width, 600);
             ForcePanelUpdate(host.panel);
-            using var evt = EventBase<GeometryChangedEvent>.GetPooled();
-            host.panel.visualTree.SimulateEvent(evt);
+            var tree = host.panel.visualTree;
+            // Same skip as the pointer edge: nothing registered on the tree means no width source is
+            // listening, and the simulator refuses rather than no-opping.
+            if (CallbackRegistry.GetValue(tree) != null)
+            {
+                using var evt = EventBase<GeometryChangedEvent>.GetPooled();
+                tree.SimulateEvent(evt);
+            }
         }
 
         private static void Tick(IPanel panel)
