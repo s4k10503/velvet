@@ -236,6 +236,36 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AChildCombinatorTextEffectOverATextChild_When_Mounted_Then_TheTransformReachesIt()
+        {
+            // Arrange — a V.Text child gets the payload on its class list like any other child, and its own
+            // reconcile applies no class at any render, so a re-sync that waits for a recorded array waits
+            // forever. An element child in the same markup is the control: it resolves from its first patch.
+            using var scope = new ReconcilerScope();
+            VNode[] Tree(string label) => new VNode[]
+            {
+                V.Div(className: "[&>*]:uppercase", children: new VNode?[]
+                {
+                    V.Label(className: "text-sm", text: label, name: "elem"),
+                    V.Text("text-child"),
+                }),
+            };
+            var first = Tree("label-child");
+
+            // Act — read the text child after ONE render as well, because it is reached at mount and the
+            // element child is not: a fix that only worked from the second render would otherwise pass.
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), first);
+            var text = scope.Root[0].Children().OfType<Label>().Last();
+            var textAtMount = text.text;
+            scope.Reconciler.Reconcile(scope.Root, first, Tree("label-child"));
+
+            // Assert — the element child rides along, so a walk that reached neither fails here rather than
+            // reading as a transform the resolver declined to write.
+            Assert.That((textAtMount, scope.Root.Q<Label>("elem").text, text.text),
+                Is.EqualTo(("TEXT-CHILD", "LABEL-CHILD", "TEXT-CHILD")));
+        }
+
+        [Test]
         public void Given_AChildCombinatorFontOverAChildDeclaringNoPayload_When_ItRerenders_Then_TheFamilyResolves()
         {
             // Arrange — the child declares no gate payload, so it has no recorded array and the re-sync the

@@ -392,10 +392,20 @@ namespace Velvet
         public Dictionary<VisualElement, string> TextRawText { get; } = new();
         public Dictionary<VisualElement, bool> TextWhitespaceOwned { get; } = new();
 
-        // A FOURTH table for the same subsystem, backing the Decoration axis's Overline value specifically:
+        // A FOURTH pure table, set-shaped like TextWhitespaceOwned: presence means the reconciler made this
+        // element for a TextNode, so its own reconcile applies no class of its own — ever, not merely not
+        // yet. That is what lets the variant re-sync resolve a parent's [&>*]: payload for it from the
+        // payload alone: for every other element an absent reconciled array means "its own pass has not run
+        // yet", and resolving without it would overwrite the font or leading that element declares. Written
+        // at the TextNode text-set seam (StyleTextEffectResolver.OnTextSet), which the Text-prop seam
+        // (CaptureRaw) deliberately does not share.
+        public Dictionary<VisualElement, bool> TextNodeElements { get; } = new();
+
+        // The one table for this subsystem that is NOT pure, backing the Decoration axis's Overline value
+        // specifically:
         // UI Toolkit rich text has no overline tag (unlike Underline/LineThrough, which rewrite the string
         // with <u>/<s>), so Overline is realised as a generateVisualContent PAINT binding on the leaf
-        // TextElement instead — see TextOverlineBinding / TextOverlineSilhouette. Unlike the three pure
+        // TextElement instead — see TextOverlineBinding / TextOverlineSilhouette. Unlike the pure
         // tables above, an entry here owns a live delegate subscription (like ShadowBindings / SkewBindings
         // / BorderStyleBindings below), so it is deliberately NOT enrolled in _pureElementSideTables —
         // FiberElementCleaner detaches the callback explicitly before an element is torn down or returned to
@@ -1235,6 +1245,7 @@ namespace Velvet
                 TextEffects,
                 TextRawText,
                 TextWhitespaceOwned,
+                TextNodeElements,
                 VariantGateClasses,
                 ZLayerHosts,
                 ZLayerMembers,
