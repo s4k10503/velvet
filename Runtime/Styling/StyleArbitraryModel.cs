@@ -255,6 +255,12 @@ namespace Velvet
         // Flex basis (StyleLength)
         FlexBasis,    // basis-[120px]    -> flex-basis
 
+        // Flex grow / shrink factors (StyleFloat, unitless). The USS vocabulary stops at 0 and 1, so no
+        // class expresses any other ratio. Parsed by StyleTransformValueParser rather than through the
+        // prefix table, which is the length grammar — see TryParseFlexFactor.
+        FlexGrow,     // grow-[2]         -> flex-grow
+        FlexShrink,   // shrink-[2]       -> flex-shrink
+
         // Transition (StyleList<TimeValue>; handled out-of-band like the filter list)
         TransitionDuration,   // duration-[400ms] -> transition-duration. Value carries SECONDS.
     }
