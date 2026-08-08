@@ -897,6 +897,57 @@ namespace MyApp.Pages
         }
 
         [Fact]
+        public void Given_UseSearchParamsSetter_When_MissingFromDeps_Then_DoesNotReport()
+        {
+            // Arrange — the setter (tuple position 1) is a shared singleton, so React would not ask for it
+            // either. Membership of the stable set is derived from the runtime docs; this is the diagnostic
+            // behaviour that membership causes, which nothing could exercise while the stub omitted the hook.
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var (searchParams, setSearchParams) = global::Velvet.Hooks.UseSearchParams();
+            global::Velvet.Hooks.UseEffect(() => () => System.Console.WriteLine(setSearchParams), new object[] { });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
+        }
+
+        [Fact]
+        public void Given_UseMutationResult_When_MissingFromDeps_Then_DoesNotReport()
+        {
+            // Arrange — the handle is created once per slot and returned unchanged thereafter.
+            const string source = @"
+namespace MyApp.Pages
+{
+    public static class HomePage
+    {
+        public static void Render()
+        {
+            var mutation = global::Velvet.Hooks.UseMutation(new global::Velvet.MutationOptions(
+                _ => default(global::Cysharp.Threading.Tasks.UniTask)));
+            global::Velvet.Hooks.UseEffect(() => () => System.Console.WriteLine(mutation), new object[] { });
+        }
+    }
+}";
+
+            // Act
+            var diagnostics = GeneratorTestHelper.RunAnalyzer(source, new UseEffectExhaustiveDepsAnalyzer());
+
+            // Assert
+            Assert.Empty(diagnostics.Where(d => d.Id == "VEL100"));
+        }
+
+        [Fact]
         public void Reports_When_UseReducer_State_Element_Is_Missing_From_Deps()
         {
             // The state element (tuple position 0) of UseReducer changes between renders and is not exempt; only
