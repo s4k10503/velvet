@@ -110,9 +110,9 @@ namespace Velvet
         private static readonly ConditionalWeakTable<VisualElement, DelegatesFocusDefault> s_delegatesFocusDefaults = new();
 
         // Same shape and same reason as ApplyFocusable: what an absent prop restores is the element's own
-        // constructed value, which differs by type. A TextElement is built at tabIndex -1 and a BaseField
-        // delegates focus, so the 0 / false these coalesced to were another type's answer — reachable with
-        // no pool involved, by rendering the prop once and then not.
+        // constructed value, which differs by type, so the 0 / false these coalesced to were another
+        // type's answer. Which value each type is built with is pinned by ConstructedFocusDefaultTests,
+        // which folds the constructed reading into every assertion rather than trusting a sentence here.
         public static void ApplyTabIndex(VisualElement element, int? tabIndex)
         {
             if (tabIndex.HasValue)

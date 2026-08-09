@@ -53,8 +53,8 @@ Three focus-related element props ride `FiberElementProps` alongside the existin
 stops declaring one: dropping the prop hands the element back the value it was constructed with, so a
 `V.Div` that carried `Focusable = true` for one render stops being a Tab stop again, and a control
 that is focusable by construction keeps its own default. The same holds for the other two, and it has
-to: a `V.Text` is built out of the tab ring, and every field control delegates focus to the input
-beneath it, so a constant would hand one type another type's answer.
+to: a `Label` reached through `V.Custom` is built out of the tab ring, and every field control
+delegates focus to the input beneath it, so a constant would hand one type another type's answer.
 
 ## Focus-visible styling and state
 

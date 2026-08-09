@@ -4,10 +4,9 @@ using UnityEngine.UIElements;
 namespace Velvet.Tests
 {
     // A prop that stops being declared restores what the element was constructed with, not a constant.
-    // Which constant would be wrong depends on the type: a TextElement is built out of the tab ring at
-    // -1, and every BaseField delegates focus to the input beneath it, so coalescing to 0 / false handed
-    // one type another type's answer. No pool is involved — rendering the prop once and then not is
-    // enough.
+    // Which constant would be wrong depends on the type, and the two values are pinned by the tuples
+    // below rather than asserted anywhere in prose. No pool is involved: declaring the prop on one
+    // render and not the next is enough, through V.Custom<Label> or a Motion node over one.
     internal sealed class ConstructedFocusDefaultTests
     {
         [Test]
@@ -42,18 +41,33 @@ namespace Velvet.Tests
             Assert.That((built, declared, field.delegatesFocus), Is.EqualTo((true, false, true)));
         }
 
+        // A Label for the tab index and a field for the delegation, because each is the type whose
+        // constructed value differs from the constant the applier used to write. A TextField is built
+        // at tab index 0, so it cannot tell the two apart.
         [Test]
-        public void Given_an_element_that_never_declared_either_When_the_absent_prop_is_applied_Then_nothing_is_written()
+        public void Given_a_label_that_never_declared_a_tab_index_When_the_absent_prop_is_applied_Then_nothing_is_written()
+        {
+            // Arrange
+            var label = new Label();
+
+            // Act
+            FiberPropApplier.ApplyTabIndex(label, null);
+
+            // Assert
+            Assert.That(label.tabIndex, Is.EqualTo(-1));
+        }
+
+        [Test]
+        public void Given_a_field_that_never_declared_focus_delegation_When_the_absent_prop_is_applied_Then_nothing_is_written()
         {
             // Arrange
             var field = new TextField();
 
             // Act
-            FiberPropApplier.ApplyTabIndex(field, null);
             FiberPropApplier.ApplyDelegatesFocus(field, null);
 
             // Assert
-            Assert.That((field.tabIndex, field.delegatesFocus), Is.EqualTo((0, true)));
+            Assert.That(field.delegatesFocus, Is.True);
         }
 
         [Test]
