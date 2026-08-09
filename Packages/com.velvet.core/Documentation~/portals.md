@@ -32,9 +32,7 @@ Moving is an unmount and a remount, so child state, refs and effects do not surv
 **Keep the container's own children out of Velvet's hands for as long as the portal is mounted**, in
 either form. A portal's range is recorded after whatever the container already held, and a child added
 or removed ahead of that range by an ordinary render moves it out from under the portal: the next patch
-writes over the container's own child and leaves a duplicate of the portal's. An assertion catches
-the arrangement in the editor and is compiled out of a player, so a shipped build takes the
-corruption in silence. A
+writes over the container's own child and leaves a duplicate of the portal's. A
 container Velvet renders is a fine target when it has no children of its own — which is what the
 `refCallback` case usually is, an empty `V.Div` used as a mount point. A portal nested inside another
 portal on the same target is not this case and is supported: a portal's own patch shifts the ranges

@@ -732,11 +732,8 @@ namespace Velvet
             // explicitly here, mirroring PortalState/PendingPortalMounts above.
             _ctx.ZLayerPlaceholders.Clear();
             _ctx.PendingZLayerTeardownChecks.Clear();
-            // A same-panel portal target may outlive this reconciler — a caller's own element does,
-            // and so does one Velvet rendered above the subtree being torn down — unlike the
-            // framework-owned hosts destroyed wholesale below. So each bridge is detached explicitly
-            // rather than left to die with a GameObject; ReconcilerContext.SamePanelPortalBridges owns
-            // the rationale.
+            // Detached explicitly rather than left to die with a GameObject, unlike the framework-owned
+            // hosts destroyed wholesale below — ReconcilerContext.SamePanelPortalBridges owns why.
             foreach (var unbind in _ctx.SamePanelPortalBridges.Values)
             {
                 unbind();
