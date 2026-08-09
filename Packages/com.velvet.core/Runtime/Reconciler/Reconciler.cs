@@ -541,15 +541,13 @@ namespace Velvet
                 BorderStyleSilhouette.Detach(element, binding);
             }
             _ctx.BorderStyleBindings.Clear();
-            // Dashed / dotted divider children hold a paint callback (not a style property, so unscrubbed by
-            // the pool reset): detach each so a still-mounted divider at root disposal leaves no live delegate.
+            // Detach each so a still-mounted divider at root disposal leaves no live delegate.
             foreach (var (element, binding) in _ctx.DivideDashBindings)
             {
                 DivideDashPainter.Detach(element, binding);
             }
             _ctx.DivideDashBindings.Clear();
-            // Overline rules are a generateVisualContent delegate (not a style property, so unscrubbed by the
-            // pool reset): detach each so a still-mounted text leaf at root disposal leaves no live delegate.
+            // Detach each so a still-mounted text leaf at root disposal leaves no live delegate.
             foreach (var (element, binding) in _ctx.TextOverlineBindings)
             {
                 TextOverlineSilhouette.Detach(element, binding);
