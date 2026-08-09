@@ -24,8 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ranks last. A single component is the x alone and leaves the y at 50%, as CSS does. Two deviations from
   Tailwind, which passes the bracket contents through to CSS: a keyword inside the brackets is refused,
   since the nine keyword pivots are their own classes (`origin-top-left`, and `origin-[0%_75%]` for the
-  mixed keyword-and-length case they cannot spell), and there is no negative variant, a minus inside the
-  brackets being the way to write one. The pivot does not move a skewed element's painted silhouette,
+  mixed keyword-and-length case they cannot spell), and a third component is refused, CSS's z being a
+  plain pixel float the pair grammar has no spelling for. Tailwind declares no negative variant either,
+  so `-origin-[…]` is refused there too; a minus inside the brackets is how to write one. The pivot does not move a skewed element's painted silhouette,
   which stays at the box centre.
 
 - `grow-[N]` and `shrink-[N]` arbitrary values for `flex-grow` / `flex-shrink`. The utility vocabulary

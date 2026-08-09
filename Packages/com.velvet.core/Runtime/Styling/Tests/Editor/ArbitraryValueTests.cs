@@ -1604,7 +1604,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_TransformOriginWithThreeComponents_When_Parsed_Then_Declines()
         {
-            // Act — a z component is CSS's third, and UI Toolkit's transform-origin carries two.
+            // Act — CSS's third component is a z, and the engine does carry one; what the pair grammar
+            // cannot spell is its type, a plain pixel float rather than a length-percentage.
             var ok = StyleArbitraryValueResolver.TryParse("origin-[10%_20%_30%]", out _);
 
             // Assert
@@ -1637,11 +1638,11 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_TransformOriginWithMixedUnits_When_Applied_Then_EachComponentKeepsItsOwnUnit()
+        public void Given_TransformOriginWithAPercentY_When_Applied_Then_TheYKeepsItsOwnUnit()
         {
             // Arrange — the one thing a pair adds over every neighbouring transform utility is a second
-            // unit, so a test whose two components share one cannot tell the y's from the x's: with both
-            // percent, writing the x's unit into both reads the same.
+            // unit, and a test whose components share one cannot tell them apart. Pixel is the enum's
+            // default, so only the percent side of a mixed pair is detectable per case: this one pins the y.
             var el = new VisualElement();
             StyleArbitraryValueResolver.TryParse("origin-[12px_80%]", out var s);
 
@@ -1649,8 +1650,22 @@ namespace Velvet.Tests
             StyleArbitraryValueResolver.Apply(el, in s);
 
             // Assert
-            Assert.That((el.style.transformOrigin.value.x.unit, el.style.transformOrigin.value.y.unit),
-                Is.EqualTo((LengthUnit.Pixel, LengthUnit.Percent)));
+            Assert.That(el.style.transformOrigin.value.y.unit, Is.EqualTo(LengthUnit.Percent));
+        }
+
+        [Test]
+        public void Given_TransformOriginWithAPercentX_When_Applied_Then_TheXKeepsItsOwnUnit()
+        {
+            // Arrange — the mirror of the case above, which is what it takes to pin both: dropping the x's
+            // unit yields Pixel, and Pixel is what a percent-y case expects there anyway.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.TryParse("origin-[80%_12px]", out var s);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in s);
+
+            // Assert
+            Assert.That(el.style.transformOrigin.value.x.unit, Is.EqualTo(LengthUnit.Percent));
         }
 
         [Test]
