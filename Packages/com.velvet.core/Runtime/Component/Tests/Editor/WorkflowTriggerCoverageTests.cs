@@ -120,12 +120,14 @@ namespace Velvet.Tests
         [Test]
         public void Given_EveryHarnessUnitTest_When_TheWorkflowsAreScanned_Then_SomeJobRunsIt()
         {
-            // Arrange — a test-quality harness carries its own unit tests because the Unity half of it needs
-            // a licence and the decisions do not. One that no job invokes is a file that passes locally and
-            // is never asked again, which is the same silence as a workflow that does not start. Derived
-            // from the directory rather than listed, so the next one is wired or red.
+            // Arrange — a harness under scripts/ carries its own unit tests because the Unity half of it
+            // needs a licence and the decisions do not. One that no job invokes is a file that passes
+            // locally and is never asked again, which is the same silence as a workflow that does not
+            // start. Read from the whole tree rather than from scripts/test_quality, which left the
+            // release and pull-request harnesses outside the scan: both happen to be run, by nothing
+            // stronger than whoever wired them having remembered to.
             var harnessTests = Directory
-                .EnumerateFiles(Path.GetFullPath("scripts/test_quality"), "test_*.py")
+                .EnumerateFiles(Path.GetFullPath("scripts"), "test_*.py", SearchOption.AllDirectories)
                 .Select(RepoRelative)
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToList();
@@ -136,9 +138,10 @@ namespace Velvet.Tests
                 .Where(path => !invoked.Any(line => line.Contains(path, StringComparison.Ordinal)))
                 .ToList();
 
-            // Assert — the count rides along because a directory that yielded nothing leaves nothing unrun.
-            Assert.That((harnessTests.Count > 1, string.Join("\n", unrun)), Is.EqualTo((true, string.Empty)),
-                "a test-quality harness has unit tests that no workflow job runs");
+            // Assert — a floor rather than the count, because a directory that yielded nothing leaves
+            // nothing unrun. Raise it with the tree, or a deletion answers the same way an empty scan does.
+            Assert.That((harnessTests.Count >= 6, string.Join("\n", unrun)), Is.EqualTo((true, string.Empty)),
+                "a harness under scripts/ has unit tests that no workflow job runs");
         }
 
         /// <summary>Every line of every command a workflow's <c>run:</c> steps execute.</summary>

@@ -15,19 +15,20 @@ An empty check list is refused rather than forgiven. It means no workflow was ev
 that head — what a cancelled run followed by a push leaves behind — and reading it as "still
 running" is how a pull request sat unnoticed for 7h45m.
 
-The other three merge preconditions have their own hooks: `stale_merge.py` for a branch behind its
+The other four merge preconditions have their own hooks: `stale_merge.py` for a branch behind its
 base, `merge_without_branch_deletion.py` for the flag, `merge_branch_held_by_worktree.py` for a
-branch git will refuse to delete. `scripts/pr/settle.py` reports all four together, which is the
+branch git will refuse to delete, `merge_onto_unpublished_release.py` for a base holding a release
+nobody dispatched. `scripts/pr/settle.py` reports all five together, which is the
 convenience; these are what hold when nobody runs it.
 """
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations, unexpanded
+import repository
 
 TERMINAL_PASS = frozenset({"pass", "skipping"})
 
@@ -38,11 +39,11 @@ UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
 
 
 def gh_json(cwd, args):
-    result = subprocess.run(["gh", *args], capture_output=True, text=True, cwd=cwd)
-    if result.returncode != 0 or not result.stdout.strip():
+    out = repository.gh(args, cwd=cwd)
+    if not out or not out.strip():
         return None
     try:
-        return json.loads(result.stdout)
+        return json.loads(out)
     except Exception:
         return None
 
@@ -105,7 +106,7 @@ def main():
         "Branch protection does not catch this. It requires the aggregate contexts without requiring "
         "the head to be up to date, which is deliberate — the alternative serialises every merge "
         "behind the Unity matrix — so a head whose own run never happened can satisfy it.\n\n"
-        "See all four merge preconditions at once:\n"
+        "See all five merge preconditions at once:\n"
         "  python3 scripts/pr/settle.py merge <pr> --dry-run\n"
     )
     return 2

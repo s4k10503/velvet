@@ -22,6 +22,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations, unexpanded
+import repository
 
 
 # An operand the shell has not expanded yet resolves to nothing readable, and a merge guard errs
@@ -48,14 +49,14 @@ def held_branches(cwd):
 def branch_of(cwd, operands):
     """The branch a `gh pr merge` invocation would merge, or None when it cannot be read offline."""
     number = next((token for token in operands if token.isdigit()), None)
-    args = ["gh", "pr", "view", "--json", "headRefName"]
+    args = ["pr", "view", "--json", "headRefName"]
     if number:
-        args.insert(3, number)
-    result = subprocess.run(args, capture_output=True, text=True, cwd=cwd)
-    if result.returncode != 0:
+        args.insert(2, number)
+    out = repository.gh(args, cwd=cwd)
+    if out is None:
         return None
     try:
-        return json.loads(result.stdout)["headRefName"]
+        return json.loads(out)["headRefName"]
     except Exception:
         return None
 

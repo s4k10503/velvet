@@ -458,8 +458,6 @@ namespace Velvet.Tests
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            // -B: importing a guard would otherwise leave a __pycache__ beside it, which the wiring
-            // guard reads as a script nothing runs.
             start.ArgumentList.Add("-B");
             start.ArgumentList.Add("-c");
             start.ArgumentList.Add(Driver);
