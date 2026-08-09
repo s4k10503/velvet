@@ -5,7 +5,29 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.1.0] - 2026-08-09
+
+### Highlights
+
+- A torn-down tree no longer keeps something running. Disposing a reconciler could leave an animation
+  driver ticking or a drop-shadow silhouette attached, on elements the unmount had already finished
+  with — the teardown re-derived their styling into tables it had emptied moments before.
+
+- A child-combinator payload survives a child moving between containers. An element pooled out of one
+  container and re-rented under another sat in two containers' lists at once, and the one it had left
+  stripped what the one it had joined had just written.
+
+- Text behind a child-combinator finally changes. `[&>*]:uppercase` over mixed children transformed the
+  element children and left a `V.Text` one exactly as it was, the class having landed on it while the
+  two resolvers stood down for it at every render.
+
+- A pivot can be any point in the box. `origin-[33%_75%]` writes `transform-origin`, so a needle that
+  turns at 90% of its height or a bubble that scales out of its tail corner no longer needs a
+  `refCallback` — the escape hatch the migration guide ranks last of three.
+
+- A proportional split is a utility again. `grow-[N]` and `shrink-[N]` take an arbitrary factor, where
+  the vocabulary previously stopped at 0 and 1 and forced the split to be re-expressed as a basis that
+  stops matching once siblings have minimum sizes.
 
 ### Fixed
 
