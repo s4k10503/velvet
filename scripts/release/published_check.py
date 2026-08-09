@@ -80,6 +80,10 @@ def consistency_reason(changelog_text, package_json_text):
 def publication_reason(changelog_text, package_json_text, tags):
     """Why nothing may be merged on top of this tree, or None.
 
+    Asked of EVERY closed section rather than only the one package.json names, so a version that was
+    skipped past cannot be forgotten: bumping to the next one would otherwise take the question off
+    the one before it for good.
+
     Answers None for a tree consistency_reason already refuses: the version to ask about is exactly
     what is in doubt there, and that question is posed of the merge result instead.
 
@@ -89,16 +93,20 @@ def publication_reason(changelog_text, package_json_text, tags):
     if consistency_reason(changelog_text, package_json_text):
         return None
 
-    version = declared_version(package_json_text)
     if not any(RELEASE_TAG.match(tag) for tag in tags):
         return None
 
-    if f"v{version}" not in tags:
-        return (f"v{version} is closed in the CHANGELOG and was never published. Dispatch it with "
-                f"`gh workflow run upm.yml -f version={version}` — every commit merged before that "
-                f"happens ships inside {version} with its note describing none of them")
+    unpublished = [version for version, line in version_headings(changelog_text)
+                   if RELEASE_DATE.search(line) and f"v{version}" not in tags]
+    if not unpublished:
+        return None
 
-    return None
+    return (f"{', '.join('v' + version for version in unpublished)} closed in the CHANGELOG and "
+            f"never published. Dispatch from the release commit's own tag rather than from the "
+            f"branch — `git tag release/{unpublished[0]} <the release commit>` then "
+            f"`gh workflow run upm.yml --ref release/{unpublished[0]} -f version={unpublished[0]}` — "
+            f"because anything merged since would otherwise ship inside it with the note describing "
+            f"none of it")
 
 
 def git(project, *args):

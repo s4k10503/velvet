@@ -232,20 +232,25 @@ namespace Velvet.Tests
                 + "failing:\n" + string.Join("\n", dangling));
         }
 
-        // A payload every guard must answer without refusing, so what this poses is whether the script runs
-        // at all. The Read event is filtered out by each hook's own tool-name check; the Bash one carries a
-        // command no guard here claims.
-        private static readonly (string Label, string Payload)[] BenignPayloads =
+        // What each payload reaches. The first two are answered before any guard reads a repository, so
+        // they pose only whether the script loads; the third is a command five of these guards claim, so
+        // it runs the readings and the verdict — the half a benign payload returns above, where a name
+        // that stopped resolving raises and the tool proceeds.
+        //
+        // Its verdict depends on live repository state, so only the exit codes that mean "did not reach
+        // one" fail: refusing and allowing are both a guard that answered.
+        private static readonly (string Label, string Payload, bool MayRefuse)[] Payloads =
         {
-            ("a Read event", "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"README.md\"}}"),
-            ("an unclaimed Bash command", "{\"tool_name\":\"Bash\",\"cwd\":\"CWD\",\"tool_input\":{\"command\":\"ls\"}}"),
+            ("a Read event", "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"README.md\"}}", false),
+            ("an unclaimed Bash command", "{\"tool_name\":\"Bash\",\"cwd\":\"CWD\",\"tool_input\":{\"command\":\"ls\"}}", false),
+            ("a merge", "{\"tool_name\":\"Bash\",\"cwd\":\"CWD\",\"tool_input\":{\"command\":\"gh pr merge 1 --squash --delete-branch\"}}", true),
         };
 
         [Test]
-        public void Given_EveryRefusingGuard_When_APayloadItMustNotRefuseIsPosed_Then_ItRunsToAVerdict()
+        public void Given_EveryRefusingGuard_When_APayloadIsPosed_Then_ItRunsToAVerdict()
         {
             // Arrange — a PreToolUse hook that exits anything but 2 lets the tool through, so a guard whose
-            // module-level imports raise is a guard that has been deleted, reporting what one that ran and
+            // imports or calls raise is a guard that has been deleted, reporting what one that ran and
             // found nothing reports. Every wiring check above passes for it: the path resolves, the file is
             // there, the name it builds is real. Only running it separates the two.
             var guards = Directory.GetFiles(Path.GetFullPath(RefuseDirectory), "*.py")
@@ -254,9 +259,9 @@ namespace Velvet.Tests
 
             // Act
             var broken = (from guard in guards
-                          from payload in BenignPayloads
+                          from payload in Payloads
                           let answer = Answer(guard, payload.Payload)
-                          where answer.Exit != 0
+                          where answer.Exit != 0 && !(payload.MayRefuse && answer.Exit == 2)
                           select $"{Path.GetFileName(guard)} on {payload.Label}: exit {answer.Exit}\n{answer.Error}")
                 .ToList();
 

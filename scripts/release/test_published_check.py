@@ -98,19 +98,20 @@ class PublicationDecisionTests(unittest.TestCase):
         # Act / Assert
         self.assertIsNone(publication_reason(PUBLISHED, package_json(), TAGS))
 
-    def test_Given_TheVersionIsClosedAndUntagged_When_Decided_Then_TheDispatchIsNamed(self):
-        # Arrange — the release commit is on main and the dispatch never ran.
+    def test_Given_TheVersionIsClosedAndUntagged_When_Decided_Then_TheDispatchIsNamedWithARef(self):
+        # Arrange — the release commit is on main and the dispatch never ran. A dispatch without --ref
+        # builds from the branch tip, which is the harm the reason is about.
         reason = publication_reason(PUBLISHED, package_json(), {"v2.0.0", "v2.0.0-main"})
 
         # Assert
-        self.assertIn("gh workflow run upm.yml -f version=2.0.1", reason)
+        self.assertIn("gh workflow run upm.yml --ref release/2.0.1 -f version=2.0.1", reason)
 
     def test_Given_TheTagsCarryANameThatMerelyStartsTheSame_When_Decided_Then_ItIsStillUnpublished(self):
         # Arrange — a prefix match would read v2.0.1-main as the release tag it is not.
         reason = publication_reason(PUBLISHED, package_json(), {"v2.0.10", "v2.0.1-main"})
 
         # Assert
-        self.assertIn("was never published", reason)
+        self.assertIn("v2.0.1 closed in the CHANGELOG and never published", reason)
 
     def test_Given_ATreeConsistencyAlreadyRefuses_When_Decided_Then_TheMergePathStaysOpen(self):
         # Arrange — the three consistency faults are repaired by a commit, so refusing merges for them
@@ -119,6 +120,15 @@ class PublicationDecisionTests(unittest.TestCase):
 
         # Assert
         self.assertIsNone(reason)
+
+    def test_Given_AnEarlierVersionWasSkippedPast_When_Decided_Then_ItIsStillNamed(self):
+        # Arrange — 2.1.0 closed and published above an unpublished 2.0.1. Asking only about the version
+        # package.json names would take the question off 2.0.1 for good.
+        reason = publication_reason(AHEAD, package_json(version="2.1.0"),
+                                    {"v2.0.0", "v2.1.0"})
+
+        # Assert
+        self.assertIn("v2.0.1", reason)
 
     def test_Given_ARemoteWithNoReleaseTagAtAll_When_Decided_Then_ItIsNotCalledUnpublished(self):
         # Arrange — a copy with no release history, where naming a dispatch would be an instruction
@@ -166,7 +176,7 @@ class GitReadingTests(unittest.TestCase):
         reason = unpublished_reason(self.repository(tags=("v2.0.0",)), "HEAD")
 
         # Assert
-        self.assertIn("gh workflow run upm.yml -f version=2.0.1", reason)
+        self.assertIn("--ref release/2.0.1 -f version=2.0.1", reason)
 
     def test_Given_ARevisionThatDoesNotExist_When_Read_Then_ItAnswersCleanRatherThanRaising(self):
         # Arrange — a branch that was never fetched is ordinary on a developer's machine, and refusing

@@ -225,10 +225,16 @@ dispatching from the branch would have shipped all twelve.
 
 So the window is guarded: `settle.py merge` and `gh pr merge` refuse while it is open, and
 `Test ▸ publication` fails for a pull request whose checks run in it.
-`scripts/release/published_check.py` decides it and states the repair in its own message. If the
-dispatch itself is what is broken — a bug in `release_notes.py`, say, whose fix cannot merge past the
-guard — tagging the release commit by hand and dispatching `--ref` that tag is the escape, and it is
-the same manoeuvre v2.0.1 needed.
+`scripts/release/published_check.py` decides it and states the repair in its own message.
+
+Two holes are left open on purpose, and both are worth knowing before deferring step 3. A pull request
+that went green *before* the release landed keeps that result — this repository sets
+`strict_required_status_checks_policy: false` so a 21-minute Unity matrix is not re-run for every base
+move — so the merge button on github.com stays enabled for it. What refuses there is `stale_merge.py`
+and `settle.py`'s contains-base precondition, neither of which github.com consults; turning the strict
+policy on is what would close it server-side, at the cost that buys. And if the dispatch itself is what
+is broken, the fix cannot merge past the guard: tag the release commit by hand and dispatch from the
+tag, which is the manoeuvre v2.0.1 needed and what the guard's own message now spells out.
 
 The release notes are built from that CHANGELOG section by `scripts/release/release_notes.py`, so a release
 is never written twice. Each version therefore needs a `### Highlights` block above its
