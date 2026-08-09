@@ -40,9 +40,10 @@ Branch, pull request, squash merge — `main` and `upm` both refuse a direct pus
 is. Merging to `main` re-runs the split into the `upm` branch on its own; never edit `upm` by hand,
 it is a generated mirror.
 
-From this merge until step 3 runs, `settle.py merge` and `gh pr merge` refuse, and a pull request
-whose checks run in that window goes red. That is deliberate, and CONTRIBUTING.md's release section
-says what it is protecting against.
+From this merge until step 3 runs, `settle.py merge` and `gh pr merge` refuse, a pull request whose
+checks run in that window goes red, and a green pull request left sitting starts refusing every edit.
+That is deliberate; CONTRIBUTING.md's release section says what it is protecting against and what
+each of those costs while the window is open. Do not defer step 3 without reading it.
 
 ## 3. Dispatch
 
