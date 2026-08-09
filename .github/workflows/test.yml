@@ -178,11 +178,12 @@ jobs:
   # (CONTRIBUTING.md). settle.py's contains-base precondition and stale_merge.py are what refuse such
   # a merge until the branch takes main in, and that push is a new head, which lands here.
   #
-  # The base is named from the event rather than derived from the checkout's shape: a merge ref's
-  # first parent is the base only for as long as nothing adds a `ref:` to the checkout above, and the
-  # guard would go on passing after it did. fetch-depth 0 rather than a shallow window, because a
-  # re-run replays the original event's base sha and a window measured from today may not hold it —
-  # and a base that cannot be read raises here rather than answering, which reads as a refusal.
+  # The base is named from the event rather than derived from the checkout's shape: the event states
+  # which commit it is, and nothing about how the checkout is configured has to stay true for that to
+  # keep holding. fetch-depth 0 for the same reason — whatever commit the event names is present,
+  # without a claim about how far back a window has to reach. A base that cannot be read raises here
+  # rather than answering, and a red job is indistinguishable from a refusal, so the depth is not the
+  # place to economise.
   # ---------------------------------------------------------------------------
   publication:
     name: Release publication
