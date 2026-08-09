@@ -73,6 +73,7 @@ namespace Velvet
         // inline opacity it drove.
         public static void Detach(VisualElement element, StyleAnimateBinding binding)
         {
+            MotionNativeTransitionGuard.Release(element, binding);
             binding.Scheduled?.Pause();
             binding.Scheduled = null;
             if (binding.PendingAttach != null)
@@ -164,6 +165,13 @@ namespace Velvet
         // as a stutter at the wrap because the loop restarts at full speed.
         public static float SpinAngleDeg(float t) => 360f * t;
 
+        private static MotionTransitionSlots GuardedSlots(AnimateMode mode) => mode switch
+        {
+            AnimateMode.Spin => MotionTransitionSlots.Rotate,
+            AnimateMode.Pulse => MotionTransitionSlots.Opacity,
+            _ => MotionTransitionSlots.None,
+        };
+
         // The opacity at loop position t: a smooth cosine ease between full (t=0,1) and half (t=0.5), so the
         // pulse fades out and back in once per loop with no hard turn at the extremes. The cosine is a faithful
         // approximation of the conventional cubic-bezier(0.4,0,0.6,1) pulse easing — it shares the (1,0.5,1)
@@ -180,6 +188,11 @@ namespace Velvet
         // runtime scheduler (which the EditMode PlayerLoop does not tick).
         public static void ApplyFrame(VisualElement element, StyleAnimateBinding binding, float t)
         {
+            // A transition covering this slot turns each tick's write into a fresh transition toward the
+            // value, so the paint trails the driver and, on a wrap, travels the long way back. The two
+            // slots the guard already names are suspended here; filter and background-position have no
+            // flag yet, which is what issue #580 is left holding.
+            MotionNativeTransitionGuard.SuspendIfIntercepted(element, binding, GuardedSlots(binding.Spec.Mode));
             switch (binding.Spec.Mode)
             {
                 case AnimateMode.Gradient:

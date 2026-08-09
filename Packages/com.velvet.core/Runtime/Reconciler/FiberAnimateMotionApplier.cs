@@ -81,7 +81,7 @@ namespace Velvet
             RestoreSharedInlineSlot(element, teardownMode, classNames);
         }
 
-        // Hue and Pulse own a shared inline slot while active — style.filter (Hue) / style.opacity (Pulse) —
+        // Hue, Pulse and Spin own a shared inline slot while active — style.filter / style.opacity / style.rotate —
         // that an inline-resolved utility also writes (the arbitrary filter-[..] / opacity-[.x] forms, and the
         // filter presets blur-sm etc.). Detach nulls that slot to return to the no-motion state: a NAMED USS
         // class (opacity-50) then re-resolves on its own, but a surviving inline-resolved value is lost —

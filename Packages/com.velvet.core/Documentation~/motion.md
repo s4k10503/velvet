@@ -334,10 +334,10 @@ Two combinations to avoid, both because something else writes the same slot ever
 
 - a mode's slot driven by a Motion channel on the same element — `animate-spin` under a Motion
   `rotate`, say. The result is whichever wrote last, not a blend.
-- a `transition-*` utility covering that slot. `transition-transform` names `rotate`, so each tick
-  starts a fresh transition toward the new angle instead of writing it: the paint trails the driver
-  and reverses the long way round at the wrap. Motion's own drivers suspend a native transition
-  while they run; the `animate-*` driver does not.
+- a native transition covering that slot. `animate-spin` and `animate-pulse` suspend one while they
+  run, the way Motion's own drivers do, so those two are safe. `animate-hue` and the gradient pair
+  are not: their slots have no flag in the guard yet. Note a transition needs no `transition-*`
+  utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which covers every slot.
 
 ## Timelines (`Hooks.UseAnimationSequence`)
 

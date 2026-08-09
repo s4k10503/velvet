@@ -157,7 +157,7 @@ namespace Velvet.Tests
             var quarter = element.style.rotate.value.angle.ToDegrees();
             StyleAnimateDriver.ApplyFrame(element, binding, 0.5f);
 
-            // Assert — the second frame is what a value the setter refused to store would hold back.
+            // Assert — the second frame is what a driver that froze after the first would hold back.
             Assert.That((quarter, element.style.rotate.value.angle.ToDegrees()), Is.EqualTo((90f, 180f)));
         }
 
@@ -181,6 +181,29 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((whileSpinning, element.style.rotate.value.angle.ToDegrees()), Is.EqualTo((180f, 30f)));
+        }
+
+        [Test]
+        public void Given_ASpinUnderADuration_When_AFrameIsApplied_Then_TheNativeTransitionIsSuspended()
+        {
+            // Arrange — a bare duration leaves UI Toolkit's initial transition-property of `all` standing, so
+            // the rotate slot is transitionable without any transition-* utility present. Unsuspended, each
+            // tick's write starts a fresh transition toward the angle instead of taking it. The pair is what
+            // discriminates: the guard must fire on the duration and stay out of the way without one.
+            var (untimed, untimedBinding) = Mount("w-[40px] h-[40px] bg-red-500 animate-spin");
+            StyleAnimateDriver.ApplyFrame(untimed, untimedBinding, 0.25f);
+            var withoutADuration = untimed.style.transitionProperty.keyword;
+
+            // Act
+            var (timed, timedBinding) = Mount("w-[40px] h-[40px] bg-red-500 duration-300 animate-spin");
+            StyleAnimateDriver.ApplyFrame(timed, timedBinding, 0.25f);
+            var whileSpinning = timed.style.transitionProperty.keyword;
+            StyleAnimateDriver.Detach(timed, timedBinding);
+
+            // Assert
+            Assert.That(
+                (withoutADuration, whileSpinning, timed.style.transitionProperty.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Undefined, StyleKeyword.Null)));
         }
 
         [Test]
@@ -367,7 +390,6 @@ namespace Velvet.Tests
             new TestCaseData("animate-shimmer", AnimateMode.Shimmer).SetName("Given_AnimateShimmer_When_Extracted_Then_ModeIsShimmer"),
             new TestCaseData("animate-hue", AnimateMode.Hue).SetName("Given_AnimateHue_When_Extracted_Then_ModeIsHue"),
             new TestCaseData("animate-pulse", AnimateMode.Pulse).SetName("Given_AnimatePulse_When_Extracted_Then_ModeIsPulse"),
-            new TestCaseData("animate-spin", AnimateMode.Spin).SetName("Given_AnimateSpin_When_Extracted_Then_ModeIsSpin"),
         };
 
         [TestCaseSource(nameof(ModeCases))]
