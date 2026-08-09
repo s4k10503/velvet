@@ -346,7 +346,9 @@ the mode writes — `animate-pulse transition-colors` keeps its colour fade — 
 as a re-render leaves nothing transitioning that slot. Reading the classes means anything that never
 reaches the class list is invisible to it — the bracket duration `duration-[400ms]` lands as an
 inline value, and so does a `V.Motion` variant swap's own transition, which belongs to the swap. A
-swap driving the same slot as the mode falls under the first bullet.
+swap driving the same slot as the mode falls under the first bullet. While such a swap is running the
+slot is the swap's: the suspension is neither taken nor handed back for the swap's length, and the
+swap's own completion puts back whichever of the two the element still needs.
 
 ## Timelines (`Hooks.UseAnimationSequence`)
 

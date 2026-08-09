@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   previously left the pulse's per-frame writes to that transition. The suspension is element-wide
   while it lasts, so such an element's other transitions land instantly for the length of the pulse;
   it is handed back as soon as a re-render leaves nothing transitioning opacity, and an element that
-  transitions nothing over opacity is left alone.
+  transitions nothing over opacity is left alone. A `V.Motion` variant swap on the same element owns
+  the slot for its own length: the suspension stands aside for the swap, which therefore still tweens,
+  and is back once the swap ends.
 
 - A pooled widget carried far more than its reset helper named. Most of the writable surface of
   `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever

@@ -61,7 +61,8 @@ namespace Velvet
         // A property name that resolves to no style property computes to zero transitions, which is exactly
         // "transition-property: none". A shared, never-mutated list: StyleList retains the reference as-is
         // (mirroring StyleAnimationScheduler's own transition-property: all list), and the release frees it.
-        private static readonly List<StylePropertyName> s_none = new() { new StylePropertyName("none") };
+        private static readonly StylePropertyName s_noneName = new("none");
+        private static readonly List<StylePropertyName> s_none = new() { s_noneName };
 
         private sealed class Suspension
         {
@@ -101,8 +102,9 @@ namespace Velvet
         /// Two departures from <see cref="SuspendIfIntercepted"/>, both because this runs on a patch rather than
         /// at a play's start. The inline transition-duration is not read (see
         /// <see cref="DeclaredSlots(VisualElement, bool)"/>), and the suspension is written only on the patch
-        /// that ADDS this owner — a patch is not a new play, so re-asserting would overwrite whatever the
-        /// element's inline transition-property legitimately became since the owner took it.
+        /// that ADDS this owner, and then only over a slot this class still holds (see
+        /// <see cref="HoldsAForeignValue"/>) — a patch is not a new play, so re-asserting would overwrite
+        /// whatever the element's inline transition-property legitimately became since the owner took it.
         /// </remarks>
         public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
         {
@@ -113,10 +115,48 @@ namespace Velvet
                 return;
             }
             var suspension = s_suspensions.GetValue(element, static _ => new Suspension());
-            if (suspension.Owners.Add(owner))
+            if (suspension.Owners.Add(owner) && !HoldsAForeignValue(element))
             {
                 element.style.transitionProperty = s_none;
             }
+        }
+
+        /// <summary>
+        /// Re-decides the inline slot for a layer that has just finished writing it itself: back to the
+        /// suspension while a driver still holds one, back to the cascade otherwise.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="StyleAnimationScheduler"/> clears the slot at the end of EVERY play, while a driver whose
+        /// life spans those plays takes its suspension once — so a play that ends by clearing the slot outright
+        /// leaves a still-running driver unprotected for good, with nothing that would write the suspension
+        /// again.
+        /// </remarks>
+        public static void RestoreAfterForeignWrite(VisualElement element)
+        {
+            if (s_suspensions.TryGetValue(element, out var suspension) && suspension.Owners.Count > 0)
+            {
+                element.style.transitionProperty = s_none;
+                return;
+            }
+            element.style.transitionProperty = StyleKeyword.Null;
+        }
+
+        // Whether the slot holds a value this class did not write. FiberNodePatcher starts a Motion's variant
+        // swap BEFORE the class passes that attach and detach an animate-* driver, so a patch that swaps a
+        // variant while starting or stopping a motion reaches this class with the swap's own
+        // transition-property already in the slot — writing or reverting it there would cancel that swap.
+        // What puts a still-held suspension back afterwards is the swap's own teardown, through
+        // RestoreAfterForeignWrite. Compared by CONTENT rather than by list identity, which the read back out
+        // of the slot does not preserve — MotionNativeTransitionGuardSuspensionTests holds that.
+        private static bool HoldsAForeignValue(VisualElement element)
+        {
+            var current = element.style.transitionProperty;
+            if (current.keyword != StyleKeyword.Null)
+            {
+                var value = current.value;
+                return value == null || value.Count != 1 || value[0] != s_noneName;
+            }
+            return false;
         }
 
         /// <summary>
@@ -256,7 +296,10 @@ namespace Velvet
             if (suspension.Owners.Count == 0)
             {
                 s_suspensions.Remove(element);
-                element.style.transitionProperty = StyleKeyword.Null;
+                if (!HoldsAForeignValue(element))
+                {
+                    element.style.transitionProperty = StyleKeyword.Null;
+                }
             }
         }
 
