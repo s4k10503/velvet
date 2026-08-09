@@ -1604,8 +1604,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_TransformOriginWithThreeComponents_When_Parsed_Then_Declines()
         {
-            // Act — CSS's third component is a z, and the engine does carry one; what the pair grammar
-            // cannot spell is its type, a plain pixel float rather than a length-percentage.
+            // Act — CSS's third component is a z and the engine carries one, so this refusal is a choice
+            // about the value shape rather than something that could not be done.
             var ok = StyleArbitraryValueResolver.TryParse("origin-[10%_20%_30%]", out _);
 
             // Assert

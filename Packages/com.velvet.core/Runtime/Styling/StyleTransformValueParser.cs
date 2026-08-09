@@ -3,9 +3,10 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Transform value parser for the arbitrary-value dispatch (StyleArbitraryValueResolver): the
-    // transform-and-merge bracket prefixes (scale / scale-x / scale-y / rotate / opacity / translate-x /
-    // translate-y). The dispatch calls in; this group calls only the resolver's shared scalar grammar
+    // Transform value parser for the arbitrary-value dispatch (StyleArbitraryValueResolver): the bracket
+    // prefixes whose value is not a plain length, whatever they target — the transform-and-merge ones
+    // (scale / scale-x / scale-y / rotate / translate-x / translate-y / origin), opacity, and the flex
+    // factors. The dispatch calls in; this group calls only the resolver's shared scalar grammar
     // (TryParseFloat / TryParseAngleDegrees / TryParseValue), never back into the dispatch or another parser.
     internal static class StyleTransformValueParser
     {
@@ -155,8 +156,8 @@ namespace Velvet
                 return true;
             }
 
+            // A third component needs no rejection of its own: the value grammar rejects "20%_30%" whole.
             var ySpan = valueSpan[(separator + 1)..];
-            if (ySpan.IndexOf('_') >= 0) return false;
             if (!StyleArbitraryValueResolver.TryParseValue(ySpan, out var y, out var yUnit)) return false;
 
             result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, x, xUnit, y, yUnit);
