@@ -401,6 +401,16 @@ namespace Velvet
         // (CaptureRaw) deliberately does not share.
         public Dictionary<VisualElement, bool> TextNodeElements { get; } = new();
 
+        // Which container's [&>*]: walk last wrote a payload to a child. A child pooled out of one container
+        // and re-rented under another is in both walks' tracked lists, and without this the one it left would
+        // turn the payload off on an element the other had just turned it on for. An arbitrary
+        // payload does not need the two containers to carry the same token: an inline layer is keyed by
+        // property and priority, so [&>*]:w-[8px] takes [&>*]:w-[12px]'s layer away.
+        //
+        // Enrolled below because the value is a claim marker: the manipulator's own lifetime is held by
+        // ChildVariantManipulators, so dropping the entry is the whole of this table's teardown.
+        public Dictionary<VisualElement, StyleChildVariantManipulator> ChildVariantOwners { get; } = new();
+
         // The one table for this subsystem that is NOT pure, backing the Decoration axis's Overline value
         // specifically:
         // UI Toolkit rich text has no overline tag (unlike Underline/LineThrough, which rewrite the string
@@ -1246,6 +1256,7 @@ namespace Velvet
                 TextRawText,
                 TextWhitespaceOwned,
                 TextNodeElements,
+                ChildVariantOwners,
                 VariantGateClasses,
                 ZLayerHosts,
                 ZLayerMembers,

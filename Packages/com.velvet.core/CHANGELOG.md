@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Disposing a reconciler no longer hands a torn-down tree a live paint or animation binding. Releasing
+  a manipulator turns its payloads off, and moving a gated token that way re-derives the element's
+  passes — into the very tables the dispose emptied a few lines earlier, so an element could come out of
+  the teardown with a driver still ticking. What it takes is a plain painted utility beside a variant
+  whose payload is one too: `shadow-lg hover:shadow-sm`, `animate-pulse dark:animate-hue`. Any variant
+  family that turns its payloads off at release reaches it, state and relational ones included, and a
+  variant carrying anything else (`shadow-lg dark:text-white`) does not. It reaches whatever the unmount
+  reconcile did not clean first.
+
+- A `[&>*]:` payload stays on a child that moved between two containers. The walk turning a payload off
+  tracked the children it had written to by reference alone, so a child pooled out of one container and
+  re-rented under another was in both walks' lists at once — and the container it had left turned the
+  payload off on it, on the next event that reached that container, undoing what the one it had joined had
+  just written. Only the walk that last wrote a payload to a child may turn it off now. A class payload
+  needed the two containers to carry the same token for anything to be taken away; an arbitrary one did
+  not, since an inline layer is keyed by property and priority, so `[&>*]:w-[8px]` took `[&>*]:w-[12px]`'s
+  width with it.
+
 - A `[&>*]:` font or text-effect payload now reaches a `V.Text` child. The payload already landed on that
   child's class list — a plain `[&>*]:bg-red-500` styled it — but the two resolvers stood down for it at
   every render, so `[&>*]:uppercase` over mixed children transformed the element children and left the text
