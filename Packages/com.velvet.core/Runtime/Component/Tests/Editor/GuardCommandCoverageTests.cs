@@ -142,16 +142,28 @@ namespace Velvet.Tests
             ("echo 'git checkout main'", "-"),
         };
 
-        // file|inline|head|base|moved. Kept apart because the guard treats each differently — it dates
+        // file|inline|head|base|moved|hidden. Kept apart because the guard treats each differently — it dates
         // the file, and only the file, against the head and the base; it reads either body for an
         // issue; and it recognises a directory move, which decides elsewhere whether a relative path
         // names the file gh opens. Recognition is all these columns hold — the lambda re-derives the
         // ordering rather than calling the guard, so where a move sits relative to the call is not
         // pinned here. A merged column agreed with a version that had the file and inline families
-        // swapped, and with one whose head, base and move recognition were each broken.
+        // swapped, and with one whose head, base and move recognition were each broken. The hidden
+        // column is what four fix layers went without: nothing reached the wrapper check at all, so
+        // every version of it — including one that refused any command mentioning the phrase —
+        // shipped green.
         private static readonly (string Command, string Expected)[] Bodies =
         {
             ("gh pr create --title x --body-file b.md", "b.md||||no"),
+            ("gh -R owner/repo pr create --body-file b.md", "b.md||||no"),
+            ("gh --repo=owner/repo pr create --body-file b.md", "b.md||||no"),
+            ("sudo gh pr create --body-file b.md", "hidden"),
+            ("bash -c \"gh pr create --body-file b.md\"", "hidden"),
+            ("bash -c \"echo run gh pr create next\"", ""),
+            ("sudo gh auth status", ""),
+            ("timeout 5 echo gh pr create", ""),
+            ("gh pr list --search create", ""),
+            ("gh issue create --label pr --title x", ""),
             ("gh pr create --title x -F b.md", "b.md||||no"),
             ("gh pr create --title x --body-file=b.md", "b.md||||no"),
             ("gh pr create --title x --body text", "|text|||no"),
@@ -269,12 +281,13 @@ namespace Velvet.Tests
 
             // Act
             const string expression =
-                "lambda g,c: ','.join([r for s in g.command_segments(c) "
-                + "for o in g.program_invocations(s, 'gh', ('pr', 'create')) "
-                + "for r in ['|'.join([str(g.valued(o, f) or '') "
+                "lambda g,c: ','.join([r for s in g.command_segments(c) for r in "
+                + "(['hidden'] if g.unclaimed_creation(s) else "
+                + "['|'.join([str(g.valued(o, f) or '') "
                 + "for f in (g.BODY_FILE_FLAGS, g.BODY_FLAGS, g.HEAD_FLAGS, g.BASE_FLAGS)]) "
                 + "+ ('|yes' if any(g.moves_directory(p) for p in g.command_segments(c[:c.index(s)])) "
-                + "else '|no')]])";
+                + "else '|no') "
+                + "for o in g.program_invocations(s, 'gh', ('pr', 'create'))])])";
             var answers = Ask(hook, expression, Bodies.Select(row => row.Command));
             Assume.That(answers?.Count, Is.EqualTo(Bodies.Length), "Precondition: one answer per command");
 

@@ -127,44 +127,38 @@ MOVERS = {"cd", "pushd", "popd"}
 # Programs whose whole purpose is to run another one in the caller's place. timeout and xargs were
 # here and are not: they are ordinarily given some other program, and `timeout 5 echo gh pr create`
 # is then indistinguishable from the call itself at token level.
-WRAPPERS = {"env", "sudo", "doas", "bash", "sh", "zsh", "eval", "nice", "stdbuf"}
+WRAPPERS = {"env", "sudo", "doas", "bash", "sh", "zsh", "eval", "nice", "stdbuf", "script", "flock"}
 
 
-def unclaimed_creation(segment):
-    """Whether this segment runs `gh pr create` in a shape program_invocations does not claim.
+def unclaimed_creation(segment, depth=0):
+    """Whether this segment runs `gh pr create` where program_invocations cannot claim it.
 
-    Two shapes reach it. A wrapper takes the command word, so the invocation is invisible — `env -C`
-    is the one that also moves the directory, and `bash -c` hides the whole thing. And gh's own
-    global flags sit before the subcommand, so `gh -R owner/repo pr create` is plain gh that the
-    parser's fixed-word match walks past.
+    gh itself is no longer such a shape: the shared parser steps over gh's own options, so
+    `gh -R owner/repo pr create` is checked like any other spelling rather than refused.
 
-    Both read the command word and then adjacent tokens. Two weaker rules were tried and refused
-    ordinary commands: matching the phrase anywhere in the text blocked writing this branch's own
-    pull-request body, and asking whether `pr` and `create` merely appear blocked `gh pr list
-    --search create` and `gh issue create --label pr`.
+    What is left is a wrapper taking the command word. Two forms, and they need different questions.
+    Unquoted — `sudo gh pr create` — the call is in this segment's own tokens. Quoted — `bash -c "gh
+    pr create …"` — shlex hands the payload back as ONE token whose text is a whole command, so
+    asking the same question of each argument reaches it. Nothing is masked; an earlier version said
+    so and scanned the raw text instead, which refused prose twice.
 
-    Not seen, and left that way: a payload the tokeniser masks, as in `bash -c "gh pr create …"`.
-    Reading the raw text to reach it is the rule that refused prose, and a spelling nobody here uses
-    is worth less than not blocking the ones they do.
+    Recursion does not remove the wrapper list, which is what it looked like it would do: `echo gh pr
+    create` and `sudo gh pr create` are the same tokens, so only a name separates a wrapper from a
+    program being handed words. The list is what decides whose arguments are worth recursing into.
     """
+    if depth > 2:
+        return False
     tokens = tokens_of(segment)
     index = leading_program(tokens)
-    if index >= len(tokens):
+    if index >= len(tokens) or os.path.basename(tokens[index]) not in WRAPPERS:
         return False
-    word = os.path.basename(tokens[index])
     rest = tokens[index + 1:]
-    if word in WRAPPERS:
-        return any(os.path.basename(token) == "gh" for token in rest) and creation_in(rest)
-    return word == "gh" and creation_in(rest)
-
-
-def creation_in(tokens):
-    """Whether `pr create` appears as two adjacent tokens.
-
-    Adjacency, not membership: asking whether both merely appear refused `gh pr list --search
-    create` and `gh issue create --label pr`.
-    """
-    return any(first == "pr" and second == "create" for first, second in zip(tokens, tokens[1:]))
+    if any(first == "pr" and second == "create" for first, second in zip(rest, rest[1:])):
+        return True
+    return any(
+        program_invocations(argument, "gh", ("pr", "create")) or unclaimed_creation(argument, depth + 1)
+        for argument in rest
+    )
 
 
 def moves_directory(segment):

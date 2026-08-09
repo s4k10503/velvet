@@ -39,7 +39,8 @@ It also declines what it cannot answer, which is the part you are most likely to
 - the command changes directory and the body path is relative, so `gh` would open a different file
   than this one stats — give the body an absolute path;
 - the body, `--head` or `--base` is still unexpanded, or the body comes from stdin;
-- `gh` runs behind a wrapper, or behind its own global flags, where the call cannot be read.
+- gh runs behind a wrapper — sudo, env, bash -c — where what it is given cannot be read. gh's own
+  options before the subcommand are read rather than refused; the shared parser steps over them.
 
 ## Local development
 
