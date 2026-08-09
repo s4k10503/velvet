@@ -55,6 +55,14 @@ namespace Velvet
                     valueSpan, negate, out result);
             }
 
+            // origin-[33%_75%] is a pair, and the nine keyword spellings are USS classes rather than bracket
+            // values, so nothing here parses a keyword: origin-[left_top] is rejected and origin-top-left is
+            // the way to say it.
+            if (prefix == "origin-")
+            {
+                return TryParseTransformOrigin(valueSpan, negate, out result);
+            }
+
             return null;
         }
 
@@ -122,6 +130,35 @@ namespace Velvet
             if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var tValue, out var tUnit)) return false;
             if (negate) tValue = -tValue;
             result = new ArbitraryStyle(property, tValue, tUnit);
+            return true;
+        }
+
+        // A pivot: one length, or two separated by the underscore the bracket grammar spells a space with.
+        // The negation prefix is refused rather than applied — `-origin-[..]` has no reading, since a pair
+        // gives it nothing to say which component it negates.
+        private static bool TryParseTransformOrigin(ReadOnlySpan<char> valueSpan, bool negate,
+            out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate) return false;
+
+            var separator = valueSpan.IndexOf('_');
+            var xSpan = separator < 0 ? valueSpan : valueSpan[..separator];
+            if (!StyleArbitraryValueResolver.TryParseValue(xSpan, out var x, out var xUnit)) return false;
+
+            // A single component is the x alone, and CSS leaves the y at 50% — not at the x, which would
+            // make origin-[0px] the top-left corner instead of the left edge's middle.
+            if (separator < 0)
+            {
+                result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, x, xUnit, 50f, LengthUnit.Percent);
+                return true;
+            }
+
+            var ySpan = valueSpan[(separator + 1)..];
+            if (ySpan.IndexOf('_') >= 0) return false;
+            if (!StyleArbitraryValueResolver.TryParseValue(ySpan, out var y, out var yUnit)) return false;
+
+            result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, x, xUnit, y, yUnit);
             return true;
         }
     }

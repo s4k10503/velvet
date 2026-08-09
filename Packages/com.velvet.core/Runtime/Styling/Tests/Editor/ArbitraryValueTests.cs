@@ -1556,6 +1556,101 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TransformOriginPairClass_When_Parsed_Then_BothComponentsSurvive()
+        {
+            // Act — the underscore is how the bracket grammar spells the space CSS puts between them.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[33%_75%]", out var s);
+
+            // Assert
+            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
+            Assert.That((s.Property, s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((ArbitraryProperty.TransformOrigin, 33f, LengthUnit.Percent, 75f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_TransformOriginSingleComponentClass_When_Parsed_Then_TheSecondIsHalfAndNotTheFirst()
+        {
+            // Act — CSS leaves an unstated y at 50%, so origin-[0px] is the left edge's middle rather than
+            // the top-left corner. Copying the x across would make those two the same pivot.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[0px]", out var s);
+
+            // Assert
+            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
+            Assert.That((s.Value, s.Unit, s.Value2, s.Unit2),
+                Is.EqualTo((0f, LengthUnit.Pixel, 50f, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_TransformOriginMixedUnits_When_Parsed_Then_EachComponentKeepsItsOwnUnit()
+        {
+            // Act
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[12px_80%]", out var s);
+
+            // Assert
+            Assume.That(ok, Is.True, "Precondition: the class is recognized as an arbitrary value");
+            Assert.That((s.Unit, s.Unit2), Is.EqualTo((LengthUnit.Pixel, LengthUnit.Percent)));
+        }
+
+        [Test]
+        public void Given_TransformOriginKeywordValue_When_Parsed_Then_Declines()
+        {
+            // Act — the nine keyword pivots are USS classes, so origin-top-left is how they are written.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[left_top]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_TransformOriginWithThreeComponents_When_Parsed_Then_Declines()
+        {
+            // Act — a z component is CSS's third, and UI Toolkit's transform-origin carries two.
+            var ok = StyleArbitraryValueResolver.TryParse("origin-[10%_20%_30%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_NegatedTransformOriginClass_When_Parsed_Then_Declines()
+        {
+            // Act — a pair leaves the negation nothing to say which component it applies to.
+            var ok = StyleArbitraryValueResolver.TryParse("-origin-[10%_20%]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
+        public void Given_TransformOriginArbitraryStyle_When_Applied_Then_SetsInlineTransformOrigin()
+        {
+            // Arrange
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.TryParse("origin-[33%_75%]", out var s);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in s);
+
+            // Assert
+            Assert.That((el.style.transformOrigin.value.x.value, el.style.transformOrigin.value.y.value),
+                Is.EqualTo((33f, 75f)));
+        }
+
+        [Test]
+        public void Given_TransformOriginWithInlineValue_When_Cleared_Then_RevertsToNull()
+        {
+            // Arrange
+            var el = new VisualElement();
+            el.style.transformOrigin = new TransformOrigin(Length.Percent(33f), Length.Percent(75f));
+
+            // Act
+            StyleArbitraryValueResolver.Clear(el, ArbitraryProperty.TransformOrigin);
+
+            // Assert
+            Assert.That(el.style.transformOrigin.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
         public void Given_RotateArbitraryStyle_When_Applied_Then_SetsInlineRotateInDegrees()
         {
             // Arrange

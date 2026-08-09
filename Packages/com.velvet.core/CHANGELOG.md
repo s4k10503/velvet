@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `origin-[x]` and `origin-[x_y]` arbitrary values for `transform-origin`. The pivot a rotation or a scale
+  turns about could only be one of nine keywords, so a gauge needle at 90% of its height, or a bubble
+  scaling out of its tail corner, had to be written from a `refCallback` — the same escape hatch the guide
+  ranks last. A single component is the x alone and leaves the y at 50%, as CSS does; the keyword pivots
+  keep their own spellings, so `origin-[left_top]` is refused and `origin-top-left` is how to say it.
+
 - `grow-[N]` and `shrink-[N]` arbitrary values for `flex-grow` / `flex-shrink`. The utility vocabulary
   stopped at 0 and 1, so a proportional split had to be re-expressed as a fixed or percentage basis —
   which stops matching once siblings have minimum sizes — or written from a `refCallback`. See

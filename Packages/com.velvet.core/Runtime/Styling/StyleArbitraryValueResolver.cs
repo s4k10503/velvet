@@ -1347,6 +1347,10 @@ namespace Velvet
                 case ArbitraryProperty.Rotate:
                     element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
                     return;
+                case ArbitraryProperty.TransformOrigin:
+                    element.style.transformOrigin = new TransformOrigin(
+                        new Length(style.Value, style.Unit), new Length(style.Value2, style.Unit2));
+                    return;
                 case ArbitraryProperty.AspectRatio:
                 {
                     Ratio ratio = style.Value;          // float -> Ratio (implicit)
@@ -1443,6 +1447,9 @@ namespace Velvet
             {
                 case ArbitraryProperty.Rotate:
                     element.style.rotate = StyleKeyword.Null;
+                    return true;
+                case ArbitraryProperty.TransformOrigin:
+                    element.style.transformOrigin = StyleKeyword.Null;
                     return true;
                 case ArbitraryProperty.AspectRatio:
                     element.style.aspectRatio = StyleKeyword.Null;
