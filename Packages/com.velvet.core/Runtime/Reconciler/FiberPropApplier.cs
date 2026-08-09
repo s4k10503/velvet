@@ -49,8 +49,8 @@ namespace Velvet
 
         private static readonly int s_hiddenPriority = StyleLayerPriority.ImportantOf(StyleLayerPriority.Base);
 
-        // Unlike ApplyEnabled / ApplyTabIndex / ApplyDelegatesFocus, a dropped Focusable cannot coalesce to a
-        // constant: what an absent prop has to restore is the element's own constructed value, which differs by
+        // Unlike ApplyEnabled, a dropped Focusable cannot coalesce to a constant: what an absent prop has to
+        // restore is the element's own constructed value, which differs by
         // type — FiberElementPoolReset.ResetCommonState writes one answer and every widget helper but the Label
         // one overwrites it — and which no table can answer for a V.Custom<T> type. The element is asked instead
         // of a table: the create path never writes an absent Focusable (FiberElementFactory.ApplyProps guards on
@@ -92,13 +92,76 @@ namespace Velvet
             public FocusableDefault(bool value) => Value = value;
         }
 
-        private static readonly ConditionalWeakTable<VisualElement, FocusableDefault> s_focusableDefaults = new();
+        private sealed class TabIndexDefault
+        {
+            public readonly int Value;
 
+            public TabIndexDefault(int value) => Value = value;
+        }
+
+        private sealed class DelegatesFocusDefault
+        {
+            public readonly bool Value;
+
+            public DelegatesFocusDefault(bool value) => Value = value;
+        }
+
+        private static readonly ConditionalWeakTable<VisualElement, FocusableDefault> s_focusableDefaults = new();
+        private static readonly ConditionalWeakTable<VisualElement, TabIndexDefault> s_tabIndexDefaults = new();
+        private static readonly ConditionalWeakTable<VisualElement, DelegatesFocusDefault> s_delegatesFocusDefaults = new();
+
+        // Same shape and same reason as ApplyFocusable: what an absent prop restores is the element's own
+        // constructed value, which differs by type, so the 0 / false these coalesced to were another
+        // type's answer. Which value each type is built with is pinned by ConstructedFocusDefaultTests,
+        // and that the drop reaches this branch at all by PropsDiffTests, which reconciles rather than
+        // calling in here.
         public static void ApplyTabIndex(VisualElement element, int? tabIndex)
-            => element.tabIndex = tabIndex ?? 0;
+        {
+            if (tabIndex.HasValue)
+            {
+                RecordTabIndexDefault(element);
+                element.tabIndex = tabIndex.Value;
+                return;
+            }
+
+            if (s_tabIndexDefaults.TryGetValue(element, out var recorded))
+            {
+                element.tabIndex = recorded.Value;
+            }
+        }
 
         public static void ApplyDelegatesFocus(VisualElement element, bool? delegatesFocus)
-            => element.delegatesFocus = delegatesFocus ?? false;
+        {
+            if (delegatesFocus.HasValue)
+            {
+                RecordDelegatesFocusDefault(element);
+                element.delegatesFocus = delegatesFocus.Value;
+                return;
+            }
+
+            if (s_delegatesFocusDefaults.TryGetValue(element, out var recorded))
+            {
+                element.delegatesFocus = recorded.Value;
+            }
+        }
+
+        // Callers writing either outside the prop path owe this before their write, for the reason
+        // RecordFocusableDefault gives. Idempotent: the first record for an element is the one that stands.
+        internal static void RecordTabIndexDefault(VisualElement element)
+        {
+            if (!s_tabIndexDefaults.TryGetValue(element, out _))
+            {
+                s_tabIndexDefaults.Add(element, new TabIndexDefault(element.tabIndex));
+            }
+        }
+
+        internal static void RecordDelegatesFocusDefault(VisualElement element)
+        {
+            if (!s_delegatesFocusDefaults.TryGetValue(element, out _))
+            {
+                s_delegatesFocusDefaults.Add(element, new DelegatesFocusDefault(element.delegatesFocus));
+            }
+        }
 
         public static void ApplyFieldValue(VisualElement element, object? value)
         {
