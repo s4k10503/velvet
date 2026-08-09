@@ -226,6 +226,20 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_AnArbitraryPivotAndAVariantKeywordPivot_When_TheVariantApplies_Then_TheKeywordWins()
+        {
+            // Arrange / Act — the keyword class claims the same longhand the inline pair writes, so the
+            // projection has to retire the inline layer. What decides that is one row in
+            // StyleArbitraryLonghands, and without a case here deleting the row leaves every parse and
+            // apply test green while a variant pivot silently never moves the element.
+            var leaf = MountAt(WideWidth, "origin-[10%_20%] md:origin-top-left");
+
+            // Assert — origin-top-left is `left top`.
+            Assert.AreEqual((0f, 0f),
+                (leaf.resolvedStyle.transformOrigin.x, leaf.resolvedStyle.transformOrigin.y));
+        }
+
+        [Test]
         public void Given_ADisplacedBaseWidth_When_ThePanelShrinksBelowTheBreakpoint_Then_TheBaseWidthReturns()
         {
             // Arrange

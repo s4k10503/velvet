@@ -99,6 +99,7 @@ namespace Velvet
             Set(sets, ArbitraryProperty.TranslateX, StyleLonghand.Translate);
             Set(sets, ArbitraryProperty.TranslateY, StyleLonghand.Translate);
             Set(sets, ArbitraryProperty.Rotate, StyleLonghand.Rotate);
+            Set(sets, ArbitraryProperty.TransformOrigin, StyleLonghand.TransformOrigin);
 
             Set(sets, ArbitraryProperty.Opacity, StyleLonghand.Opacity);
             Set(sets, ArbitraryProperty.AspectRatio, StyleLonghand.AspectRatio);
