@@ -14,9 +14,9 @@ namespace Velvet
     //
     // Lifecycle mirrors StyleGapManipulator / StyleDivideManipulator: the reconciler attaches one per
     // container carrying a [&>*]: token, keeps it in ReconcilerContext.ChildVariantManipulators, and removes
-    // it on cleanup / dispose. UnregisterCallbacksFromTarget clears the payloads it still owns, so removing
-    // the token (or unmounting) leaves no residue on a child no other container has since claimed — see
-    // ReconcilerContext.ChildVariantOwners. Re-application has the same three sources as gap / divide: the
+    // it on cleanup / dispose. UnregisterCallbacksFromTarget clears what it still owns and still tracks —
+    // ReconcilerContext.ChildVariantOwners decides the first, and a child that went out of flow after being
+    // written to leaves the second, so it keeps the payload. Re-application has the same three sources as gap / divide: the
     // reconciler's post-children pass (the panel-independent path that also covers EditMode), a
     // GeometryChangedEvent (a child add / remove / reorder from an unrelated reconcile), and an
     // AttachToPanelEvent. A signature makes a redundant Apply a no-op.

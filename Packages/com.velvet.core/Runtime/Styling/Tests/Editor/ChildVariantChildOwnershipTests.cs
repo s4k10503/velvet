@@ -7,7 +7,7 @@ namespace Velvet.Tests
     /// Specifies who may turn a <c>[&amp;&gt;*]:</c> payload back off on a child.
     /// <see cref="StyleChildVariantManipulator"/> tracks the children it wrote to by reference, and a child
     /// pooled out of one container and re-rented under another is in two containers' lists at once — the old
-    /// one's walk turns it off when it is next re-entered, by which point the payload on that element
+    /// one's walk would turn it off when it is next re-entered, by which point the payload on that element
     /// belongs to somebody else. A class payload needs the two containers to carry the same token for
     /// anything to be taken away; an arbitrary one does not, an inline layer being keyed by property and
     /// priority rather than by the token that wrote it.
@@ -37,16 +37,17 @@ namespace Velvet.Tests
             var child = new VisualElement();
             first.Add(child);
             firstWalk.Apply();
-            Assume.That(child.ClassListContains(Payload), Is.True, "Precondition: the first container applied it");
+            var tracked = child.ClassListContains(Payload);
             first.Remove(child);
             second.Add(child);
             secondWalk.Apply();
 
-            // Act — the geometry event the first container gets for having lost a child.
+            // Act
             firstWalk.Apply();
 
-            // Assert
-            Assert.That(child.ClassListContains(Payload), Is.True);
+            // Assert — the first container's own application rides along: with nothing tracked there, the
+            // release under test never runs and the class the second wrote survives for the wrong reason.
+            Assert.That((tracked, child.ClassListContains(Payload)), Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -59,16 +60,16 @@ namespace Velvet.Tests
             var child = new VisualElement();
             first.Add(child);
             firstWalk.Apply();
+            var tracked = child.ClassListContains(Payload);
             first.Remove(child);
             second.Add(child);
             secondWalk.Apply();
-            Assume.That(child.ClassListContains(Payload), Is.True, "Precondition: the second container applied it");
 
             // Act
             first.RemoveManipulator(firstWalk);
 
-            // Assert
-            Assert.That(child.ClassListContains(Payload), Is.True);
+            // Assert — as above, the first container's own application rides along.
+            Assert.That((tracked, child.ClassListContains(Payload)), Is.EqualTo((true, true)));
         }
 
         [Test]
@@ -104,16 +105,16 @@ namespace Velvet.Tests
             var child = new VisualElement();
             first.Add(child);
             firstWalk.Apply();
+            var tracked = child.style.width.value.value;
             first.Remove(child);
             second.Add(child);
             secondWalk.Apply();
-            Assume.That(child.style.width.value.value, Is.EqualTo(12f), "Precondition: the second container applied its width");
 
             // Act
             firstWalk.Apply();
 
-            // Assert
-            Assert.That(child.style.width.value.value, Is.EqualTo(12f));
+            // Assert — as above, the first container's own application rides along.
+            Assert.That((tracked, child.style.width.value.value), Is.EqualTo((8f, 12f)));
         }
     }
 }

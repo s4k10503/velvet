@@ -402,8 +402,8 @@ namespace Velvet
         public Dictionary<VisualElement, bool> TextNodeElements { get; } = new();
 
         // Which container's [&>*]: walk last wrote a payload to a child. A child pooled out of one container
-        // and re-rented under another is in both walks' tracked lists, and the one it left turns the payload
-        // off when it is next re-entered — on an element the other had just turned it on for. An arbitrary
+        // and re-rented under another is in both walks' tracked lists, and without this the one it left would
+        // turn the payload off on an element the other had just turned it on for. An arbitrary
         // payload does not need the two containers to carry the same token: an inline layer is keyed by
         // property and priority, so [&>*]:w-[8px] takes [&>*]:w-[12px]'s layer away.
         //
