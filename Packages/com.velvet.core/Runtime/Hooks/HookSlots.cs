@@ -175,9 +175,11 @@ namespace Velvet
 
         public override void Dispose()
         {
-            // Snapshot first: a registration-based cancellation runs its continuations inside Cancel(),
-            // so the mutation's own finally reaches back into Live and removes the entry being walked.
-            // Unmount is the caller, and an exception thrown out of here aborts the enclosing reconcile.
+            // Snapshot and clear before cancelling: a registration-based cancellation runs its
+            // continuations inside Cancel(), so a mutation's own finally reaches back into Live while
+            // this walks it. Unmount is the caller, and an exception out of here aborts the enclosing
+            // reconcile. Clearing first is also what makes that finally's Remove return false, which
+            // is how it knows not to dispose a source this loop still has to cancel.
             var live = Live.ToArray();
             Live.Clear();
             foreach (var cts in live)

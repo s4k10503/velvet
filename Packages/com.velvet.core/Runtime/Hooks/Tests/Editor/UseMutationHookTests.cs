@@ -301,7 +301,7 @@ namespace Velvet.Tests
             first.TrySetResult(11);
             await firstTask;
             mounted.FlushStateForTest();
-            Assume.That(s_captured.Data, Is.EqualTo(11), "Precondition: the first call's result is observed");
+            var observedFirst = s_captured.Data;
 
             // Act
             var secondTask = s_captured.MutateAsync(2);
@@ -310,8 +310,8 @@ namespace Velvet.Tests
 
             // Assert — Status alone would not catch it: a stale Data under a Pending status reads as
             // this call's result to anything rendering Data without checking Status first.
-            Assert.That((s_captured.Status, s_captured.Data),
-                Is.EqualTo((MutationStatus.Pending, 0)),
+            Assert.That((observedFirst, s_captured.Status, s_captured.Data),
+                Is.EqualTo((11, MutationStatus.Pending, 0)),
                 "A newly started call shows no data until it has produced its own");
             second.TrySetResult(99);
             await secondTask;
@@ -353,13 +353,17 @@ namespace Velvet.Tests
             var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "unmount-reentrancy"));
             var inFlight = s_captured!.MutateAsync(1).SuppressCancellationThrow();
             await UniTask.Yield();
-            Assume.That(s_captured.Status, Is.EqualTo(MutationStatus.Pending), "Precondition: the call is in flight");
+            var startedPending = s_captured.Status;
 
             // Act
-            var unmount = new TestDelegate(() => mounted.Dispose());
+            Exception? thrown = null;
+            try { mounted.Dispose(); } catch (Exception ex) { thrown = ex; }
 
-            // Assert — an exception out of here aborts the enclosing reconcile, not just this hook.
-            Assert.That(unmount, Throws.Nothing);
+            // Assert — the first term keeps the reading load-bearing: an unmount with nothing in flight
+            // cannot throw, so a call that never started would pass on the second term alone. An
+            // exception out of here aborts the enclosing reconcile, not just this hook.
+            Assert.That((startedPending, thrown),
+                Is.EqualTo((MutationStatus.Pending, (Exception?)null)));
             await inFlight;
         });
 

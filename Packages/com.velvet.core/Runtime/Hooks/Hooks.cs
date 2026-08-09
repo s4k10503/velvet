@@ -1875,8 +1875,10 @@ namespace Velvet
             }
             finally
             {
-                slot.Live.Remove(cts);
-                cts.Dispose();
+                // Only the owner disposes. Unmount clears the list before cancelling, so a call this
+                // one's cancellation settles reaches here with its source already gone — and Cancel()
+                // on a disposed source throws, out of the unmount reconcile.
+                if (slot.Live.Remove(cts)) cts.Dispose();
             }
         }
 
