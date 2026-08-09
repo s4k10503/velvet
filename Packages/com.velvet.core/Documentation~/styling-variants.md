@@ -144,7 +144,10 @@ A few things about `origin-[…]` are worth knowing. `origin-[33%_75%]` is `tran
 `clip-path-[polygon(…)]`; a single component is the **x** alone and
 leaves the y at 50%, as CSS does, so `origin-[0px]` is the left edge's middle rather than the
 top-left corner. A keyword inside the brackets is refused — the nine keyword pivots are their own
-classes, and `origin-[0%_75%]` is how to spell the mixed keyword-and-length case they cannot. And
+classes, and `origin-[0%_75%]` is how to spell the mixed keyword-and-length case they cannot. A third
+component is refused as well: CSS takes a z there and the engine carries one, but not as a
+length-percentage, so `origin-[50%_50%_0]` is not recognised. Both are deviations from Tailwind, which
+passes the bracket contents through to CSS. And
 there is no negative form of the class, as there is none in Tailwind either; a minus goes inside
 the brackets.
 
