@@ -74,8 +74,11 @@ def unusable(key, now=None):
     WRITTEN, and `date +%s` in the guidance is easy to read as the moment it should expire; an
     entry stamped in the future is rejected by the lower bound and says nothing about why.
 
-    Expiry is not reported: that one is the design working, and it already ends with the guard
-    firing and the reason being re-stated.
+    Expiry is not reported, and cannot be: a stamp says when the deferral was written and nothing
+    says when the line was added, so an entry written already stale and one written fresh that has
+    since expired are the same data. Reporting the pair as "stale on arrival" claimed a distinction
+    the file does not carry. Expiry is also the design working — it ends with the guard firing and
+    the reason being re-stated.
     """
     try:
         lines = DEFERRALS.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -90,11 +93,7 @@ def unusable(key, now=None):
     stamp = epoch(fields[-1])
     if stamp is None:
         return f"its last field is {fields[-1]!r}, not the epoch second it was written"
-    age = (time.time() if now is None else now) - stamp
-    if age < 0:
+    if (time.time() if now is None else now) - stamp < 0:
         return ("it is stamped in the future — the stamp is when the deferral was WRITTEN "
                 "(`$(date +%s)`), not when it should expire")
-    if age >= TTL:
-        return (f"it was already {int(age // 60)}m old when it arrived, past the {TTL // 60}m expiry — "
-                "a stamp copied from an earlier message is stale by the time it is pasted")
     return None

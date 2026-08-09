@@ -88,17 +88,17 @@ def checks_of(pr):
 
 
 def unreadable(output, code):
-    # The only key this path can offer, since the pull requests it would key by are what could not be
-    # read. open_backlog.py honours the same one.
-    holding = deferred("backlog")
+    # Its own key, not "backlog": that one holds the backlog guard, and one line silencing both
+    # guards is the unqualified exemption the expiry exists to prevent.
+    holding = deferred("pr-list")
     if holding is not None:
         reason, minutes = holding
-        print(f"The pull requests could not be read, and the backlog is held {minutes}m ago "
+        print(f"The pull requests could not be read, and pr-list is held {minutes}m ago "
               f"because: {reason}", file=sys.stderr)
         return 0
-    broken = unusable("backlog")
+    broken = unusable("pr-list")
     if broken is not None:
-        print(f"A deferral was written for the backlog, and {broken} — so it is being ignored.",
+        print(f"A deferral was written for pr-list, and {broken} — so it is being ignored.",
               file=sys.stderr)
     print(f"""Do not stop: the open pull requests could not be read, so nothing here says they are settled.
 
@@ -108,7 +108,7 @@ def unreadable(output, code):
 If gh is unauthenticated or the network is down, say so and arm the deferral rather than treating
 an unanswered question as a settled one:
 
-  echo "backlog <what clears it> $(date +%s)" >> {DEFERRALS}""", file=sys.stderr)
+  echo "pr-list <what clears it> $(date +%s)" >> {DEFERRALS}""", file=sys.stderr)
     return 2
 
 
