@@ -401,6 +401,12 @@ namespace Velvet
         // (CaptureRaw) deliberately does not share.
         public Dictionary<VisualElement, bool> TextNodeElements { get; } = new();
 
+        // Which container's [&>*]: walk last wrote a payload to a child. A child pooled out of one container
+        // and re-rented under another is in both walks' tracked lists, and the old one turns the payload off
+        // on its next geometry event — on an element the new one had just turned it on for. The value is a
+        // claim marker rather than a subscription, so its teardown is the plain Remove every table below gets.
+        public Dictionary<VisualElement, StyleChildVariantManipulator> ChildVariantOwners { get; } = new();
+
         // The one table for this subsystem that is NOT pure, backing the Decoration axis's Overline value
         // specifically:
         // UI Toolkit rich text has no overline tag (unlike Underline/LineThrough, which rewrite the string
@@ -1246,6 +1252,7 @@ namespace Velvet
                 TextRawText,
                 TextWhitespaceOwned,
                 TextNodeElements,
+                ChildVariantOwners,
                 VariantGateClasses,
                 ZLayerHosts,
                 ZLayerMembers,

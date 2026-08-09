@@ -41,8 +41,8 @@ namespace Velvet
         private string[] _payloads;
 
         // Every child this manipulator has applied the payload to. On each Apply / Clear any tracked element
-        // no longer a current child has its payload turned off, so a child reparented or removed out of the
-        // container keeps no residual class / inline style.
+        // no longer a current child is released, so a child reparented or removed out of the container keeps
+        // no residual class / inline style.
         private readonly List<VisualElement> _applied = new();
 
         // Signature of the last successful Apply: the current in-flow child identity set. Apply() early-returns
@@ -75,7 +75,7 @@ namespace Velvet
             {
                 foreach (var child in _applied)
                 {
-                    ApplyPayloads(child, false);
+                    ReleasePayloads(child);
                 }
             }
             _payloads = payloads;
@@ -143,6 +143,7 @@ namespace Velvet
                     continue;
                 }
                 ApplyPayloads(child, true);
+                _ctx.ChildVariantOwners[child] = this;
                 _applied.Add(child);
             }
 
@@ -155,10 +156,23 @@ namespace Velvet
         {
             foreach (var child in _applied)
             {
-                ApplyPayloads(child, false);
+                ReleasePayloads(child);
             }
             _applied.Clear();
             _hasSignature = false;
+        }
+
+        // Turns the payload off on a child this walk still owns, and drops the claim. Every turn-off goes
+        // through here: a child pooled out of this container and re-rented under another is in both walks'
+        // tracked lists, and this one runs on a geometry event — after the other has claimed it.
+        private void ReleasePayloads(VisualElement child)
+        {
+            if (!_ctx.ChildVariantOwners.TryGetValue(child, out var owner) || !ReferenceEquals(owner, this))
+            {
+                return;
+            }
+            _ctx.ChildVariantOwners.Remove(child);
+            ApplyPayloads(child, false);
         }
 
         // Turns the payload off on any tracked child that has left the container, then prunes it — so a child
@@ -170,7 +184,7 @@ namespace Velvet
                 var child = _applied[i];
                 if (child.parent != container)
                 {
-                    ApplyPayloads(child, false);
+                    ReleasePayloads(child);
                     _applied.RemoveAt(i);
                 }
             }

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `[&>*]:` payload stays on a child that moved between two containers carrying the same one. The walk
+  turning a payload off tracked the children it had written to by reference alone, so a child pooled out of
+  one container and re-rented under another was in both walks' lists at once — and the container it had
+  left turned the payload off on it, on the next event that reached that container, undoing what the one it
+  had joined has just written. Only the walk that last wrote a payload to a child may turn it off now.
+
 - A `[&>*]:` font or text-effect payload now reaches a `V.Text` child. The payload already landed on that
   child's class list — a plain `[&>*]:bg-red-500` styled it — but the two resolvers stood down for it at
   every render, so `[&>*]:uppercase` over mixed children transformed the element children and left the text
