@@ -186,6 +186,43 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TabIndexDeclared_When_PatchedToUnset_Then_ElementConstructedValueRestored()
+        {
+            // Arrange — a Label is the only widget whose constructed tab index is not 0, so it is the only one
+            // where the coalescing this replaced is observable. Reached through V.Custom, since V.Text carries
+            // no props.
+            var oldTree = new VNode[] { V.Custom<Label>(props: new FiberElementProps { TabIndex = 3 }) };
+            var newTree = new VNode[] { V.Custom<Label>() };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = Root.ElementAt(0);
+            var whileDeclared = element.tabIndex;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That((whileDeclared, element.tabIndex), Is.EqualTo((3, -1)));
+        }
+
+        [Test]
+        public void Given_DelegatesFocusDeclared_When_PatchedToUnset_Then_ElementConstructedValueRestored()
+        {
+            // Arrange — a composite field is constructed delegating focus, so switching it off and dropping
+            // the prop is what strands focus on the field's own root.
+            var oldTree = new VNode[] { V.Custom<TextField>(props: new FiberElementProps { DelegatesFocus = false }) };
+            var newTree = new VNode[] { V.Custom<TextField>() };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = Root.ElementAt(0);
+            var whileDeclared = element.delegatesFocus;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That((whileDeclared, element.delegatesFocus), Is.EqualTo((false, true)));
+        }
+
+        [Test]
         public void Given_FocusableTrue_When_PatchedToUnset_Then_ElementConstructedValueRestored()
         {
             // Arrange — the mount render declares the Div focusable; the next render drops the prop entirely,

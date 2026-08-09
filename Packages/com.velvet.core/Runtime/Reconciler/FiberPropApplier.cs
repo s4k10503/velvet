@@ -112,7 +112,8 @@ namespace Velvet
         // Same shape and same reason as ApplyFocusable: what an absent prop restores is the element's own
         // constructed value, which differs by type, so the 0 / false these coalesced to were another
         // type's answer. Which value each type is built with is pinned by ConstructedFocusDefaultTests,
-        // which folds the constructed reading into every assertion rather than trusting a sentence here.
+        // and that the drop reaches this branch at all by PropsDiffTests, which reconciles rather than
+        // calling in here.
         public static void ApplyTabIndex(VisualElement element, int? tabIndex)
         {
             if (tabIndex.HasValue)

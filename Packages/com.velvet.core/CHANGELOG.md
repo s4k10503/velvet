@@ -10,10 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
-  or `false` rather than as the value the element was constructed with. Neither is a constant: a
-  `Label` is built out of the tab ring, and every field control delegates focus to the input beneath
-  it, so dropping the prop put one into a focus order it was never in and took the other's delegation
-  away. `Focusable` already restored; all three do now.
+  or `false` rather than as the value the element was constructed with — neither of which is the
+  right answer for every type. A `Label` is built out of the tab ring at -1, which shows once a
+  consumer declares it focusable; every field control is built delegating focus to the input beneath
+  it, so dropping that prop stranded focus on the field's own root. `Focusable` already restored its
+  constructed value; all three do now.
 
 - A pooled widget carried far more than its reset helper named. Most of the writable surface of
   `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever
