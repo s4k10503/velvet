@@ -166,13 +166,21 @@ namespace Velvet
         public Func<TVariables, CancellationToken, UniTask<TData>> MutationFn { get; set; } = null!;
         public Action<TData, TVariables>? OnSuccess { get; set; }
         public Action<Exception, TVariables>? OnError { get; set; }
-        public CancellationTokenSource? Cts { get; set; }
+        // Every call in flight, not just the newest: two Mutate calls run side by side, so unmounting has
+        // more than one token to cancel. The newest is identified by Generation instead, which is what
+        // decides who may write the observed Status / Data — the callbacks are every call's own.
+        public List<CancellationTokenSource> Live { get; } = new();
+
+        public long Generation { get; set; }
 
         public override void Dispose()
         {
-            Cts?.Cancel();
-            Cts?.Dispose();
-            Cts = null;
+            foreach (var cts in Live)
+            {
+                cts.Cancel();
+                cts.Dispose();
+            }
+            Live.Clear();
         }
     }
 

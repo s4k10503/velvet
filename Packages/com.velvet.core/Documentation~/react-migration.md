@@ -99,6 +99,12 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
 
+**Concurrent calls** (TanStack Query v5 parity): calling `Mutate` twice starts two runs. Neither
+cancels the other and each delivers its own `OnSuccess` / `OnError`, so a double-tapped button does
+not lose the first call's follow-up write. `Status` / `Data` / `Variables` are one snapshot and show
+the most recent call. The `CancellationToken` handed to `MutationFn` is still cancelled when the
+component unmounts, which is what a Unity web request wants.
+
 **Callback error semantics** (TanStack Query v5 parity):
 
 - A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws.

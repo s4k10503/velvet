@@ -23,8 +23,8 @@ namespace Velvet.Tests
     /// <item>The handle reference is stable across re-renders.</item>
     /// <item>Generic positions accept <see cref="Unit"/> for "no variables" / "no return value", with void-return and
     /// no-input overloads that adapt to a <see cref="Unit"/> result.</item>
-    /// <item>Concurrent mutations follow latest-call-wins: the superseded call is cancelled and the final status,
-    /// data, and variables come from the latest call.</item>
+    /// <item>Concurrent mutations both run: neither cancels the other and each fires its own callbacks, while
+    /// the observed status, data and variables come from the latest call.</item>
     /// <item>If the component unmounts while a mutation is in flight, the caller's await still observes the function
     /// result but the disposed fiber does not receive a Success state transition.</item>
     /// </list>
@@ -51,6 +51,7 @@ namespace Velvet.Tests
             s_voidCaptured = null;
             s_noInputCaptured = null;
             s_onSuccessThrowException = null;
+            s_delivered.Clear();
             s_onErrorThrowException = null;
         }
 
@@ -258,7 +259,8 @@ namespace Velvet.Tests
         [UnityTest]
         public IEnumerator Given_ConcurrentMutations_When_LatestCompletes_Then_FinalStateComesFromLatestCall() => UniTask.ToCoroutine(async () =>
         {
-            // Arrange — the first call's token is superseded by the second; the latest call wins.
+            // Arrange — both calls run; the observed result is the latest one's, and the first is not
+            // cancelled out from under its caller.
             var first = new UniTaskCompletionSource<int>();
             var second = new UniTaskCompletionSource<int>();
             var callIndex = 0;
@@ -266,18 +268,45 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "concurrent"));
 
             // Act
-            var firstTask = s_captured!.MutateAsync(1);  // superseded
-            var secondTask = s_captured!.MutateAsync(2); // latest
+            var firstTask = s_captured!.MutateAsync(1);
+            var secondTask = s_captured!.MutateAsync(2);
             second.TrySetResult(99);
             var winnerResult = await secondTask;
             mounted.FlushStateForTest();
-            first.TrySetCanceled(); // drain the orphaned first call
+            first.TrySetResult(11);
+            var firstResult = await firstTask;
+            mounted.FlushStateForTest();
+
+            // Assert — the first term is what separates running to completion from being cancelled; the rest
+            // is the observed state, which stays the latest call's even though the earlier one settled after.
+            Assert.That((firstResult, winnerResult, s_captured.Data, s_captured.Variables, s_captured.Status),
+                Is.EqualTo((11, 99, 99, 2, MutationStatus.Success)),
+                "Both calls complete; the latest determines the observed result, data, variables, and status");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASupersededMutation_When_ItSettles_Then_ItsOwnCallbackStillFires() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange — the failure this replaces: a double-tapped Buy cancelled the first request while the
+            // server had already committed it, and the OnSuccess that writes the purchase never ran.
+            var first = new UniTaskCompletionSource<int>();
+            var second = new UniTaskCompletionSource<int>();
+            var callIndex = 0;
+            s_mutationFn = (v, ct) => { callIndex++; return callIndex == 1 ? first.Task : second.Task; };
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRecordingSuccessesRender, key: "superseded-callback"));
+
+            // Act
+            var firstTask = s_captured!.MutateAsync(1);
+            var secondTask = s_captured!.MutateAsync(2);
+            second.TrySetResult(99);
+            await secondTask;
+            first.TrySetResult(11);
             await firstTask;
+            mounted.FlushStateForTest();
 
             // Assert
-            Assert.That((winnerResult, s_captured.Data, s_captured.Variables, s_captured.Status),
-                Is.EqualTo((99, 99, 2, MutationStatus.Success)),
-                "The latest call determines the final result, data, variables, and status");
+            Assert.That(s_delivered, Is.EquivalentTo(new[] { 99, 11 }),
+                "Every call delivers its own success, whether or not a later one has already settled");
         });
 
         [UnityTest]
@@ -476,6 +505,15 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode CaptureMutationRecordingSuccessesRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: s_mutationFn,
+                OnSuccess: (data, _) => s_delivered.Add(data)));
+            return V.Label(text: "ok");
+        }
+
+        [Component]
         public static VNode CaptureMutationWithOnErrorRender()
         {
             s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
@@ -514,6 +552,8 @@ namespace Velvet.Tests
                 MutationFn: (_, _) => UniTask.FromResult(Unit.Default)));
             return V.Label(text: "ok");
         }
+
+        private static readonly System.Collections.Generic.List<int> s_delivered = new();
 
         private static int s_onErrorCount;
         private static MutationResult<int, Unit>? s_voidCaptured;

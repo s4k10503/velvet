@@ -1811,11 +1811,17 @@ namespace Velvet
         {
             if (fiber.IsDisposed) return default!;
 
-            // Cancel any superseded in-flight mutation. The latest call wins.
-            slot.Cts?.Cancel();
-            slot.Cts?.Dispose();
+            // Two calls run side by side rather than the second aborting the first, which is what TanStack
+            // does — a mutation is not handed a signal there at all. Cancelling on re-entry dropped the first
+            // call's OnSuccess, so a double-tapped Buy charged the card and never ran the write that follows
+            // it. The token stays because a Unity request wants one on unmount; only the re-entry cancel is
+            // gone.
             var cts = new CancellationTokenSource();
-            slot.Cts = cts;
+            slot.Live.Add(cts);
+            // Who may write the OBSERVED result, which is the newest call — TanStack's observer shows the
+            // latest and fires every call's callbacks. Ownership is by generation now, not by holding the
+            // slot's only token.
+            var mine = ++slot.Generation;
 
             slot.Result.Status = MutationStatus.Pending;
             slot.Result.Variables = variables;
@@ -1825,9 +1831,12 @@ namespace Velvet
             try
             {
                 var data = await slot.MutationFn(variables, cts.Token);
-                if (slot.Cts != cts || fiber.IsDisposed) return data;
-                slot.Result.Data = data;
-                slot.Result.Status = MutationStatus.Success;
+                if (fiber.IsDisposed) return data;
+                if (mine == slot.Generation)
+                {
+                    slot.Result.Data = data;
+                    slot.Result.Status = MutationStatus.Success;
+                }
                 slot.OnSuccess?.Invoke(data, variables);
                 RequestRender(fiber);
                 return data;
@@ -1838,15 +1847,17 @@ namespace Velvet
             }
             catch (Exception ex)
             {
-                // Superseded (a newer call replaced slot.Cts) or the owner was disposed: the result is stale, so
-                // neither deliver onError nor mutate the slot.
-                if (slot.Cts != cts || fiber.IsDisposed)
+                // The owner is gone, so there is nobody to deliver to and nothing to render.
+                if (fiber.IsDisposed)
                 {
                     if (rethrowOnFailure) throw;
                     return default!;
                 }
-                slot.Result.Error = ex;
-                slot.Result.Status = MutationStatus.Error;
+                if (mine == slot.Generation)
+                {
+                    slot.Result.Error = ex;
+                    slot.Result.Status = MutationStatus.Error;
+                }
                 try
                 {
                     slot.OnError?.Invoke(ex, variables);
@@ -1858,6 +1869,11 @@ namespace Velvet
                 RequestRender(fiber);
                 if (rethrowOnFailure) throw;
                 return default!;
+            }
+            finally
+            {
+                slot.Live.Remove(cts);
+                cts.Dispose();
             }
         }
 
