@@ -4,9 +4,10 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Transform value parser for the arbitrary-value dispatch (StyleArbitraryValueResolver): the bracket
-    // prefixes the prefix table cannot carry, for either of two reasons — the axes and the pivot compose
-    // onto one engine property and would last-write-wins through it, and the factors and the angle are
-    // not lengths, which is the only value the table knows how to build.
+    // prefixes the prefix table cannot carry. What it builds is one (value, unit) read by the length
+    // grammar and written to one property; a prefix belongs here when it needs something else, and each
+    // helper below states which — a pair, a second axis to merge with, a unit the grammar would convert
+    // rather than reject, or a value that is not a length at all.
     // The dispatch calls in; this group calls only the resolver's shared scalar grammar
     // (TryParseFloat / TryParseAngleDegrees / TryParseValue), never back into the dispatch or another parser.
     internal static class StyleTransformValueParser
@@ -136,6 +137,8 @@ namespace Velvet
         }
 
         // A pivot: one length, or two separated by the underscore the bracket grammar spells a space with.
+        // Here rather than in the prefix table because one class writes both components, and what the
+        // table builds carries one.
         // The negation prefix is refused because Tailwind declares no negative variant of this utility, and
         // nothing is lost by it: a minus inside the brackets reaches the value grammar intact, so
         // origin-[-10px] and origin-[-10px_-20px] both parse.
