@@ -50,6 +50,8 @@ namespace Velvet.Tests
         // swallow every other value the slot could hold, which is the weaker of the two.
         private static readonly Dictionary<string, object> ComparedAgainst = new()
         {
+            // A toggle that has ever had a caption reads empty; a fresh one reads null, and no write gets
+            // back to it — the label the first caption builds is never dropped.
             ["Toggle.text"] = "",
         };
 

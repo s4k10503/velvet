@@ -305,17 +305,17 @@ namespace Velvet
             }
             if (_ctx.SkewBindings.TryGetValue(element, out var skewBinding))
             {
-                // Detach unhooks the paint/stash callbacks and releases the inline color
-                // suppression so a pooled element cannot ghost a sheared face or a sentinel
-                // background onto its next consumer.
+                // Detach unhooks the paint/stash callbacks; nothing else unregisters them. The suppression
+                // it also releases is five inline colors that ResetInlineStyle nulls as well, so that half
+                // is what this branch adds for an element no pool return reaches.
                 SkewSilhouette.Detach(element, skewBinding);
                 _ctx.SkewBindings.Remove(element);
             }
             if (_ctx.BorderStyleBindings.TryGetValue(element, out var borderStyleBinding))
             {
-                // BorderStyleSilhouette.Detach also unregisters the two callbacks the binding put on the
-                // element, which no pool return touches — the limitations block in FiberElementPoolReset
-                // states that a directly registered callback is not tracked there.
+                // BorderStyleSilhouette.Detach also unregisters the two callbacks the binding registered on
+                // the element. Nothing else does: neither pool-return file contains an UnregisterCallback,
+                // and this cleanup runs on every element while a pool return runs on five types.
                 BorderStyleSilhouette.Detach(element, borderStyleBinding);
                 _ctx.BorderStyleBindings.Remove(element);
             }

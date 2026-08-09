@@ -181,8 +181,8 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.BorderStyleBindings.Count, Is.EqualTo(0));
         }
 
-        // Pool reuse: only FiberElementCleaner's teardown unregisters the binding's callbacks. Without it a
-        // recycled element ghosts the prior consumer's binding.
+        // Pool reuse: without FiberElementCleaner's teardown a recycled element ghosts the prior consumer's
+        // binding, which is the entry asserted below.
 
         [Component]
         private static VNode PoolHost()

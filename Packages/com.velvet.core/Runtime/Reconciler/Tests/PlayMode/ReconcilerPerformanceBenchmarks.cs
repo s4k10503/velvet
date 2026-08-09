@@ -304,8 +304,8 @@ namespace Velvet.Tests.Performance
         // when RemoveElement/RemoveElementDirect reclaims an unmounted Label/Button) run
         // FiberLabelPoolHelper/FiberButtonPoolHelper's ResetXForReuse, which calls
         // FiberElementPoolReset.ResetClassListAndCommon on every single recycle — an unintended per-recycle
-        // heap allocation on that path is what this measurement exists to catch. One is intended, and is on
-        // the Button half: FiberButtonPoolHelper states what the fresh Clickable buys and what it costs.
+        // heap allocation on that path is what this measurement exists to catch. The Button half carries an
+        // intended one: FiberButtonPoolHelper states what the fresh Clickable buys and what it costs.
         // Held at 10 of each (well under
         // either pool's own 32-instance cap) so every element genuinely round-trips through
         // Rent/Return across the measured region instead of being dropped uncounted by a full pool.
