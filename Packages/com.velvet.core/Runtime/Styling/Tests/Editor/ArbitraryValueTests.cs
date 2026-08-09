@@ -1615,7 +1615,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_NegatedTransformOriginClass_When_Parsed_Then_Declines()
         {
-            // Act — a pair leaves the negation nothing to say which component it applies to.
+            // Act — Tailwind declares no negative variant of this utility; a minus inside the
+            // brackets is how to write one, and it parses.
             var ok = StyleArbitraryValueResolver.TryParse("-origin-[10%_20%]", out _);
 
             // Assert

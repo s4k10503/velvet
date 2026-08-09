@@ -4,9 +4,11 @@ using UnityEngine.UIElements;
 namespace Velvet
 {
     // Transform value parser for the arbitrary-value dispatch (StyleArbitraryValueResolver): the bracket
-    // prefixes whose value is not a plain length, whatever they target — the transform-and-merge ones
-    // (scale / scale-x / scale-y / rotate / translate-x / translate-y / origin), opacity, and the flex
-    // factors. The dispatch calls in; this group calls only the resolver's shared scalar grammar
+    // prefixes that cannot go through the prefix table, because what they need is not one property per
+    // token — the axes and the pivot compose onto a single engine property, and the factors and the
+    // angle are not lengths at all. Adding one here rather than to s_prefixProperties is what stops a
+    // sibling axis from last-write-wins over it.
+    // The dispatch calls in; this group calls only the resolver's shared scalar grammar
     // (TryParseFloat / TryParseAngleDegrees / TryParseValue), never back into the dispatch or another parser.
     internal static class StyleTransformValueParser
     {

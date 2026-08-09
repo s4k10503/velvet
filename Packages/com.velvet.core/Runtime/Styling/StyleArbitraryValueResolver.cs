@@ -146,8 +146,8 @@ namespace Velvet
                 if (color.HasValue) return color.Value;
             }
 
-            // Transform prefixes (scale / scale-x / scale-y / rotate / opacity / translate-x / translate-y)
-            // need bespoke value parsing routed through the merge path, so they resolve before the length path.
+            // The prefixes StyleTransformValueParser claims need bespoke value parsing routed through the
+            // merge path, so they resolve before the length path. It owns which those are.
             {
                 var transform = StyleTransformValueParser.TryParseTransformValue(prefix, valueSpan, negate, out result);
                 if (transform.HasValue) return transform.Value;
