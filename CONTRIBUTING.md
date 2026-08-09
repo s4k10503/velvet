@@ -38,7 +38,8 @@ It also declines what it cannot answer, which is the part you are most likely to
 - it cannot tell when the branch started — run it from the branch's own directory, or pass `--head`;
 - the command changes directory and the body path is relative, so `gh` would open a different file
   than this one stats — give the body an absolute path;
-- the body, `--head` or `--base` is still unexpanded, or the body comes from stdin.
+- the body, `--head` or `--base` is still unexpanded, or the body comes from stdin;
+- `gh` runs behind a wrapper, or behind its own global flags, where the call cannot be read.
 
 ## Local development
 

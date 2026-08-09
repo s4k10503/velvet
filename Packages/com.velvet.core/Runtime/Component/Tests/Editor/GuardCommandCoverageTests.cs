@@ -144,8 +144,10 @@ namespace Velvet.Tests
 
         // file|inline|head|base|moved. Kept apart because the guard treats each differently — it dates
         // the file, and only the file, against the head and the base; it reads either body for an
-        // issue; and a directory move before the call decides whether a relative path names the file
-        // gh opens. A merged column agreed with a version that had the file and inline families
+        // issue; and it recognises a directory move, which decides elsewhere whether a relative path
+        // names the file gh opens. Recognition is all these columns hold — the lambda re-derives the
+        // ordering rather than calling the guard, so where a move sits relative to the call is not
+        // pinned here. A merged column agreed with a version that had the file and inline families
         // swapped, and with one whose head, base and move recognition were each broken.
         private static readonly (string Command, string Expected)[] Bodies =
         {

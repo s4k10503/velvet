@@ -124,20 +124,34 @@ def branch_start(cwd, head, base):
 
 
 MOVERS = {"cd", "pushd", "popd"}
+# Programs that take the command word and run something else with it.
+WRAPPERS = {"env", "sudo", "xargs", "bash", "sh", "zsh", "eval", "doas", "timeout"}
 
 
 def unclaimed_creation(segment):
-    """Whether a segment runs `gh pr create` in a shape program_invocations does not claim.
+    """Whether this segment runs `gh pr create` in a shape program_invocations does not claim.
 
-    `env -C dir gh pr create` is the reachable one: env is the command word, so the invocation is
-    invisible, and the -C is a directory change on top. Anything wrapping gh this way is a call this
-    cannot read, and a call it cannot read is one it must not pass.
+    Two shapes reach it. A wrapper takes the command word, so the invocation is invisible — `env -C`
+    is the one that also moves the directory, and `bash -c` hides the whole thing. And gh's own
+    global flags sit before the subcommand, so `gh -R owner/repo pr create` is plain gh that the
+    parser's fixed-word match walks past.
+
+    Matched off the command word: a segment merely containing the phrase is prose, and refusing that
+    blocked writing this branch's own pull-request body. Inside a wrapper the text is read as well,
+    because a wrapper's payload is a quoted argument the tokeniser has already masked.
     """
     tokens = tokens_of(segment)
-    for index, token in enumerate(tokens[:-2]):
-        if os.path.basename(token) == "gh" and tokens[index + 1] == "pr" and tokens[index + 2] == "create":
-            return True
-    return False
+    index = leading_program(tokens)
+    if index >= len(tokens):
+        return False
+    word = os.path.basename(tokens[index])
+    rest = tokens[index + 1:]
+    if word in WRAPPERS:
+        # A wrapper's payload is usually one quoted argument, which the tokeniser masks away, so the
+        # raw text is what is left to read. Confined to a wrapper: matching the phrase anywhere is
+        # what refused prose when it was the whole rule.
+        return any(os.path.basename(token) == "gh" for token in rest) or "gh pr create" in segment
+    return word == "gh" and "pr" in rest and "create" in rest
 
 
 def moves_directory(segment):
