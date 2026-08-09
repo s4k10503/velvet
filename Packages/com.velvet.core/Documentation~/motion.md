@@ -308,6 +308,30 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
   `.layout` stays stale until the following layout pass.
 
+## Looping utilities (`animate-*`)
+
+Five class-driven loops, each infinite, each driven from a panel-root tick rather than from USS —
+UI Toolkit has no `@keyframes`:
+
+| class | what moves | default loop |
+|---|---|---|
+| `animate-gradient` | pans a baked gradient back and forth along its axis | 3s |
+| `animate-shimmer` | sweeps the gradient one way across the box | 1.5s |
+| `animate-hue` | rotates the hue-rotate filter angle a full turn | 4s |
+| `animate-pulse` | oscillates opacity between full and half | 2s |
+| `animate-spin` | rotates a full turn, linearly | 1s |
+
+`animate-none` cancels, and the last `animate-*` in the class list wins. A bracketed time overrides
+the loop: `animate-spin-[2500ms]`, `animate-hue-[5s]`.
+
+Each mode owns one style slot while it runs, and a static utility writing that slot is shadowed
+rather than blended: the gradient pair owns background position, `animate-hue` owns the filter,
+`animate-pulse` owns opacity, and `animate-spin` owns rotate. Detaching restores the slot and the
+reconciler re-asserts whatever class was under it.
+
+The one combination to avoid is `animate-spin` on an element whose rotate is also a Motion channel
+— both write the slot every frame, so the result is whichever wrote last rather than a blend.
+
 ## Timelines (`Hooks.UseAnimationSequence`)
 
 Framer Motion's `useAnimate` parity target: `UseAnimationSequence` owns the clock (it is itself built

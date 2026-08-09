@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `animate-spin` — a full turn a second, linear, forever, with `animate-spin-[<time>]` overriding the
+  loop like the other looping utilities. It owns the rotate slot while it runs, on the terms
+  `animate-hue` owns the filter.
+
 ### Fixed
 
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`

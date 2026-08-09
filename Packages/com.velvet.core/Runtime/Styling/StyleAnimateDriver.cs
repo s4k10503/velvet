@@ -97,6 +97,11 @@ namespace Velvet
                 // right after Detach (a NAMED USS filter re-resolves, an inline-resolved one is re-applied).
                 element.style.filter = StyleKeyword.Null;
             }
+            else if (binding.Spec.Mode == AnimateMode.Spin)
+            {
+                // Same ownership rule as the Pulse branch below, over the rotate slot.
+                element.style.rotate = StyleKeyword.Null;
+            }
             else if (binding.Spec.Mode == AnimateMode.Pulse)
             {
                 // Pulse owns the opacity slot while active (a static opacity-* is shadowed — Pulse wins). Null
@@ -155,6 +160,10 @@ namespace Velvet
         // The hue-rotate angle (degrees) at loop position t — a full 0..360 rotation per loop.
         public static float HueAngleDeg(float t) => 360f * t;
 
+        // Linear, one turn per loop. Tailwind's spinner uses a linear timing function, and an eased one reads
+        // as a stutter at the wrap because the loop restarts at full speed.
+        public static float SpinAngleDeg(float t) => 360f * t;
+
         // The opacity at loop position t: a smooth cosine ease between full (t=0,1) and half (t=0.5), so the
         // pulse fades out and back in once per loop with no hard turn at the extremes. The cosine is a faithful
         // approximation of the conventional cubic-bezier(0.4,0,0.6,1) pulse easing — it shares the (1,0.5,1)
@@ -211,6 +220,12 @@ namespace Velvet
                     // Geometry-free: opacity is a value-compared float, so writing it each frame dirties the
                     // element correctly (no reference-list pitfall like the filter slot above).
                     element.style.opacity = PulseOpacity(t);
+                    break;
+                }
+                case AnimateMode.Spin:
+                {
+                    // Geometry-free, and a value-compared struct like opacity rather than a list like filter.
+                    element.style.rotate = new Rotate(Angle.Degrees(SpinAngleDeg(t)));
                     break;
                 }
             }

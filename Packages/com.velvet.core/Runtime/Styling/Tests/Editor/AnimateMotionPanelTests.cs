@@ -391,8 +391,40 @@ namespace Velvet.Tests
         [Test]
         public void Given_UnknownAnimateToken_When_Extracted_Then_NotClaimed()
         {
-            // animate-spin is not a Velvet motion (yet); the namespace stays open, so it is not claimed.
-            Assert.That(StyleAnimateClass.TryExtract(new[] { "animate-spin" }, out _), Is.False);
+            // The namespace stays open: a name this layer does not recognise is not claimed.
+            Assert.That(StyleAnimateClass.TryExtract(new[] { "animate-wobble" }, out _), Is.False);
+        }
+
+        [Test]
+        public void Given_TheSpinToken_When_Extracted_Then_ItIsAFullTurnASecond()
+        {
+            // Arrange / Act
+            var spec = Extract("animate-spin");
+
+            // Assert
+            Assert.That((spec.Mode, spec.DurationSec), Is.EqualTo((AnimateMode.Spin, 1f)));
+        }
+
+        [Test]
+        public void Given_TheSpinTokenWithADuration_When_Extracted_Then_TheOverrideWins()
+        {
+            // Arrange / Act
+            var spec = Extract("animate-spin-[2500ms]");
+
+            // Assert
+            Assert.That((spec.Mode, spec.DurationSec), Is.EqualTo((AnimateMode.Spin, 2.5f)));
+        }
+
+        [Test]
+        public void Given_TheSpinPhase_When_ReadAcrossTheLoop_Then_ItTurnsOnceLinearly()
+        {
+            // Arrange / Act
+            var quarter = StyleAnimateDriver.SpinAngleDeg(0.25f);
+            var half = StyleAnimateDriver.SpinAngleDeg(0.5f);
+            var whole = StyleAnimateDriver.SpinAngleDeg(1f);
+
+            // Assert
+            Assert.That((quarter, half, whole), Is.EqualTo((90f, 180f, 360f)));
         }
 
         [Test]

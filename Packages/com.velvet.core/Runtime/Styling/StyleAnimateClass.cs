@@ -23,6 +23,11 @@ namespace Velvet
         // Oscillates opacity between full and half over the loop (a smooth ease) — the attention / skeleton
         // pulse. Geometry-free, so it works on any element; compose with a colour cycle for a glowing pulse.
         Pulse,
+        // Rotates a full turn over the loop, linearly — the loading spinner. Owns the rotate slot while
+        // active, on the terms Hue owns the filter slot: a static rotate-* is shadowed, and a Motion rotate
+        // channel driving the same element at the same time is an unsupported combination rather than a
+        // blend, since both write the slot every frame.
+        Spin,
     }
 
     // A resolved animate-* utility: the motion mode and its loop duration (seconds). Value-equal (duration
@@ -54,7 +59,7 @@ namespace Velvet
     //
     // The per-frame cost is always a cheap inline-style write (a background-position offset, a hue-rotate
     // filter angle, or an opacity) — the gradient texture is baked once and never re-baked while animating.
-    // Unrecognized animate-* tokens (e.g. a future animate-spin) are not claimed, leaving the namespace open.
+    // Unrecognized animate-* tokens are not claimed, leaving the namespace open.
     internal static class StyleAnimateClass
     {
         private const string Prefix = "animate-";
@@ -64,10 +69,12 @@ namespace Velvet
         private const float DefaultShimmerSec = 1.5f;
         private const float DefaultHueSec = 4f;
         private const float DefaultPulseSec = 2f;
+        // Tailwind's animate-spin: one turn a second, linear, forever.
+        private const float DefaultSpinSec = 1f;
 
-        // True when cls is an animate-* utility this layer owns. Covers the unrecognized names too
-        // (animate-spin, a future mode): the namespace is claimed as a whole so a variant payload naming one
-        // routes here rather than being judged token by token against the recognized set.
+        // True when cls is an animate-* utility this layer owns. Covers the unrecognized names too (a future
+        // mode): the namespace is claimed as a whole so a variant payload naming one routes here rather than
+        // being judged token by token against the recognized set.
         public static bool IsAnimateClass(string cls)
             => !string.IsNullOrEmpty(cls) && cls.StartsWith(Prefix, StringComparison.Ordinal);
 
@@ -140,6 +147,7 @@ namespace Velvet
                 case "shimmer": mode = AnimateMode.Shimmer; durationSec = overrideSec ?? DefaultShimmerSec; return true;
                 case "hue": mode = AnimateMode.Hue; durationSec = overrideSec ?? DefaultHueSec; return true;
                 case "pulse": mode = AnimateMode.Pulse; durationSec = overrideSec ?? DefaultPulseSec; return true;
+                case "spin": mode = AnimateMode.Spin; durationSec = overrideSec ?? DefaultSpinSec; return true;
                 default: return false;
             }
         }
