@@ -139,8 +139,9 @@ comes off. `bg-[#fff] dark:bg-neutral-900` and `bg-white dark:bg-[#171717]` both
 family is the exception — filters compose rather than override, so a `filter` class and a
 `blur-[6px]` layer both apply.
 
-Three things about `origin-[…]` are worth knowing, since it is the one arbitrary value that takes a
-pair. `origin-[33%_75%]` is `transform-origin: 33% 75%`; a single component is the **x** alone and
+Three things about `origin-[…]` are worth knowing. `origin-[33%_75%]` is `transform-origin: 33% 75%`
+— the underscore standing for a space, as it does in `shadow-[0px_2px_8px_#0004]` and
+`clip-path-[polygon(…)]`; a single component is the **x** alone and
 leaves the y at 50%, as CSS does, so `origin-[0px]` is the left edge's middle rather than the
 top-left corner. A keyword inside the brackets is refused — the nine keyword pivots are their own
 classes, and `origin-[0%_75%]` is how to spell the mixed keyword-and-length case they cannot. And
