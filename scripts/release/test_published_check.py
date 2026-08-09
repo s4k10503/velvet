@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import published_check
 from published_check import (
     CHANGELOG_PATH,
     PACKAGE_JSON_PATH,
@@ -114,12 +115,23 @@ class PublicationDecisionTests(unittest.TestCase):
         self.assertIn("v2.0.1 closed in the CHANGELOG and never published", reason)
 
     def test_Given_ATreeConsistencyAlreadyRefuses_When_Decided_Then_TheMergePathStaysOpen(self):
-        # Arrange — the three consistency faults are repaired by a commit, so refusing merges for them
-        # would leave the repair itself unmergeable with no direct push to main to escape through.
-        reason = publication_reason(UNDATED, package_json(), {"v2.0.0"})
+        # Arrange — AHEAD rather than UNDATED: a tree with no dated section at all answers None from the
+        # tag branch too, so it cannot tell the suppression from its absence. Here 2.1.0 is closed above
+        # the 2.0.1 package.json names, and both are untagged — so without the suppression every merge is
+        # refused, including the bump that repairs it, with no direct push to main to escape through.
+        reason = publication_reason(AHEAD, package_json(), {"v2.0.0"})
 
         # Assert
         self.assertIsNone(reason)
+
+    def test_Given_TwoVersionsAreUnpublished_When_Decided_Then_TheOlderIsTheOneToDispatch(self):
+        # Arrange — the CHANGELOG is newest-first, so naming the first would send the maintainer to
+        # publish 2.1.0 before 2.0.1: the split force-push would leave the upm branch on the older
+        # package, and the note's compare range would run backwards.
+        reason = publication_reason(AHEAD, package_json(version="2.1.0"), {"v2.0.0"})
+
+        # Assert
+        self.assertIn("--ref release/2.0.1 -f version=2.0.1", reason)
 
     def test_Given_AnEarlierVersionWasSkippedPast_When_Decided_Then_ItIsStillNamed(self):
         # Arrange — 2.1.0 closed and published above an unpublished 2.0.1. Asking only about the version
@@ -137,6 +149,22 @@ class PublicationDecisionTests(unittest.TestCase):
 
         # Assert
         self.assertIsNone(reason)
+
+
+class TagGrammarTests(unittest.TestCase):
+    """The one mirror this module cannot avoid: what upm.yml names the tag it pushes.
+
+    Nothing else notices if that changes. `RELEASE_TAG` stops matching, every input answers None, and
+    the hook, settle.py and the workflow all go green while nothing is published — permanently, and
+    with the no-release-history case actively encoding that answer as correct.
+    """
+
+    def test_Given_TheDispatchWorkflow_When_ItsTagIsRead_Then_ItIsStillTheSpellingThisModuleLooksFor(self):
+        # Arrange
+        workflow = (Path(published_check.REPO_ROOT) / ".github" / "workflows" / "upm.yml").read_text()
+
+        # Assert
+        self.assertIn('TAG="v${VERSION}"', workflow)
 
 
 def git(directory, *args):

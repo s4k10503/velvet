@@ -284,7 +284,6 @@ namespace Velvet.Tests
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            // -B so a hook that imports a sibling leaves no bytecode in a tree three cases above walk.
             start.ArgumentList.Add("-B");
             start.ArgumentList.Add(hook);
 

@@ -101,7 +101,10 @@ def publication_reason(changelog_text, package_json_text, tags):
     if not unpublished:
         return None
 
-    first = unpublished[0]
+    # The oldest, since version_headings runs newest-first: publishing a later version before an earlier
+    # one leaves the upm branch force-pushed to the older package and the next note's compare range
+    # running backwards.
+    first = unpublished[-1]
     return (f"{', '.join('v' + version for version in unpublished)} closed in the CHANGELOG and "
             f"never published. Dispatch from the release commit's own tag rather than from the branch, "
             f"because anything merged since would otherwise ship inside it with the note describing "
@@ -113,12 +116,13 @@ def publication_reason(changelog_text, package_json_text, tags):
             f"locally answers 422.")
 
 
-def git(project, *args, timeout=10):
+def git(project, *args, timeout=5):
     """Run git, raising on failure and on a read that never returns.
 
-    Two of these reach the network. The bound is under every caller's own — the refuse hook's is the
-    tightest at 25 s — because a caller that kills this instead cannot report anything: a killed hook
-    exits neither 0 nor 2, and the stderr note unpublished_reason promises is never written.
+    Two of these reach the network, and unpublished_reason makes four calls in a row, so the bound is
+    the caller's budget divided by the sequence rather than by one call — the refuse hook's is the
+    tightest at 25 s. A caller that kills this instead cannot report anything: a killed hook exits
+    neither 0 nor 2, and the stderr note unpublished_reason promises is never written.
     """
     result = subprocess.run(["git", "-C", str(project), *args],
                             capture_output=True, text=True, check=True, timeout=timeout)

@@ -231,8 +231,8 @@ Three things about that window are worth knowing before deferring step 3.
 
 **A pull request that went green *before* the release landed keeps that result.** This repository sets
 `strict_required_status_checks_policy: false` so a 21-minute Unity matrix is not re-run for every base
-move, so the merge button on github.com stays enabled for it. What refuses there is `stale_merge.py`
-and `settle.py`'s contains-base precondition, neither of which github.com consults; turning the strict
+move, so the merge button on github.com stays enabled for it. What refuses there is `merge_onto_unpublished_release.py`, `stale_merge.py`
+and `settle.py`'s contains-base precondition, none of which github.com consults; turning the strict
 policy on is what would close it server-side, at the cost that buys.
 
 **A green pull request left sitting starts refusing every edit.**

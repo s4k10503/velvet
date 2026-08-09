@@ -25,8 +25,13 @@ def git(args, cwd, timeout=15):
     return result.stdout if result.returncode == 0 else None
 
 
-def gh(args, cwd=None, timeout=20):
-    """Run gh and return its stdout, or None when it could not answer."""
+def gh(args, cwd=None, timeout=7):
+    """Run gh and return its stdout, or None when it could not answer.
+
+    The bound is a hook's budget divided by the calls it makes, not by one: merge_unproven_head makes
+    three inside 25 s, metadata_less_create one inside 15. A caller killed instead of answering exits
+    neither 0 nor 2, which lets the tool through.
+    """
     try:
         result = subprocess.run(
             ["gh", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
