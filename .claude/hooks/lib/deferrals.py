@@ -64,9 +64,11 @@ def deferred(key, now=None):
 
 
 def unusable(key, now=None):
-    """Return why the newest entry for `key` cannot be honoured, or None — which covers both a live
-    entry and no entry at all. Ask `deferred` which of those it is; this one answers only "written,
-    and rejected".
+    """Return why the newest entry for `key` was rejected outright, or None.
+
+    None is not a state: an entry that is live, one that has expired, and no entry at all all take
+    it, and `deferred` separates only the first from the other two. Nothing distinguishes an expired
+    entry from an absent one, here or anywhere, for the reason below.
 
     A rejected deferral and an absent one both make `deferred` return None, so writing an unusable
     one reads as having written nothing — the guard fires again with the same text and the entry
