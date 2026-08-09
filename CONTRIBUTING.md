@@ -27,7 +27,8 @@ No issue: found while reading the pool reset helpers.
 Either answer is fine; the silence is not, and it is the one that happened: a change that came
 straight out of an issue was merged without linking it, so the issue stayed open with its work
 already shipped. `refuse/pr_body_of_another_branch.py` declines a `gh pr create` whose body carries
-neither.
+neither — except with `--fill` or `--template`, where the body is not text it holds and both of its
+questions go unasked.
 
 The same guard declines a body file older than the branch's first commit, and one that is not there:
 the description belonged to a different pull request, and nothing about it looked wrong — the path
@@ -38,7 +39,8 @@ It also declines what it cannot answer, which is the part you are most likely to
 - it cannot tell when the branch started — run it from the branch's own directory, or pass `--head`;
 - the command changes directory and the body path is relative, so `gh` would open a different file
   than this one stats — give the body an absolute path;
-- the body, `--head` or `--base` is still unexpanded, or the body comes from stdin;
+- the body, `--head` or `--base` is still unexpanded, or the body comes from stdin.
+
 A gh that the parser does not recognise — behind sudo or bash -c, or with gh's own options before the
 subcommand — is not seen at all rather than refused. Four attempts to reach it each refused ordinary
 commands or broke a sibling guard, so the guard stops where it can answer.

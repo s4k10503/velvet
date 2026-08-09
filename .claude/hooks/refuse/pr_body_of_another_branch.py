@@ -74,15 +74,25 @@ DRAFTING_WINDOW = 900
 
 
 def valued(operands, flags):
-    """The value given to one of `flags`, or None. Handles both `--flag v` and `--flag=v`."""
+    """The value given to one of `flags`, or None.
+
+    Three spellings, because gh takes all three: `--flag v`, `--flag=v`, and `-Fv` — a short flag
+    carrying its value attached. The last was missed, so `-F/tmp/pr-body.md` reached none of the
+    checks below: the invocation was claimed, no body was found, and it took the exemption meant for
+    a body this cannot read. That is the accident this guard exists for, one character apart.
+    """
+    short = tuple(flag for flag in flags if len(flag) == 2 and flag.startswith("-") and flag[1] != "-")
     for index, token in enumerate(operands):
         name, sep, inline = token.partition("=")
-        if name not in flags:
-            continue
-        if sep:
-            return inline
-        if index + 1 < len(operands):
-            return operands[index + 1]
+        if name in flags:
+            if sep:
+                return inline
+            if index + 1 < len(operands):
+                return operands[index + 1]
+            return None
+        for flag in short:
+            if len(token) > 2 and token.startswith(flag):
+                return token[2:]
     return None
 
 

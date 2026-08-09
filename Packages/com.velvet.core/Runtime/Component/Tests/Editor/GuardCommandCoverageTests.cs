@@ -155,6 +155,8 @@ namespace Velvet.Tests
             ("gh pr list --search create", ""),
             ("gh issue create --label pr --title x", ""),
             ("gh pr create --title x -F b.md", "b.md||||no"),
+            ("gh pr create --title x -Fb.md", "b.md||||no"),
+            ("gh pr create --title x -bhello", "|hello|||no"),
             ("gh pr create --title x --body-file=b.md", "b.md||||no"),
             ("gh pr create --title x --body text", "|text|||no"),
             ("gh pr create --title x --body-file b.md --head feat/x", "b.md||feat/x||no"),
