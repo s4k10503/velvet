@@ -260,11 +260,14 @@ namespace Velvet.Tests
         public IEnumerator Given_ConcurrentMutations_When_LatestCompletes_Then_FinalStateComesFromLatestCall() => UniTask.ToCoroutine(async () =>
         {
             // Arrange — both calls run; the observed result is the latest one's, and the first is not
-            // cancelled out from under its caller.
+            // cancelled out from under its caller. AttachExternalCancellation is what makes the first
+            // term decisive: a completion source ignores the token, so without it the superseded call
+            // returned 11 under the old cancelling behaviour too and the case could not fail.
             var first = new UniTaskCompletionSource<int>();
             var second = new UniTaskCompletionSource<int>();
             var callIndex = 0;
-            s_mutationFn = (v, ct) => { callIndex++; return callIndex == 1 ? first.Task : second.Task; };
+            s_mutationFn = (v, ct) =>
+                (callIndex++ == 0 ? first.Task : second.Task).AttachExternalCancellation(ct);
             using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "concurrent"));
 
             // Act
@@ -285,6 +288,36 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_ASucceededMutation_When_AnotherStarts_Then_DataIsNotTheOlderResult() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var first = new UniTaskCompletionSource<int>();
+            var second = new UniTaskCompletionSource<int>();
+            var callIndex = 0;
+            s_mutationFn = (v, ct) =>
+                (callIndex++ == 0 ? first.Task : second.Task).AttachExternalCancellation(ct);
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "pending-data"));
+            var firstTask = s_captured!.MutateAsync(1);
+            first.TrySetResult(11);
+            await firstTask;
+            mounted.FlushStateForTest();
+            Assume.That(s_captured.Data, Is.EqualTo(11), "Precondition: the first call's result is observed");
+
+            // Act
+            var secondTask = s_captured.MutateAsync(2);
+            await UniTask.Yield();
+            mounted.FlushStateForTest();
+
+            // Assert — Status alone would not catch it: a stale Data under a Pending status reads as
+            // this call's result to anything rendering Data without checking Status first.
+            Assert.That((s_captured.Status, s_captured.Data),
+                Is.EqualTo((MutationStatus.Pending, 0)),
+                "A newly started call shows no data until it has produced its own");
+            second.TrySetResult(99);
+            await secondTask;
+        });
+
+        [UnityTest]
         public IEnumerator Given_ASupersededMutation_When_ItSettles_Then_ItsOwnCallbackStillFires() => UniTask.ToCoroutine(async () =>
         {
             // Arrange — the failure this replaces: a double-tapped Buy cancelled the first request while the
@@ -292,7 +325,8 @@ namespace Velvet.Tests
             var first = new UniTaskCompletionSource<int>();
             var second = new UniTaskCompletionSource<int>();
             var callIndex = 0;
-            s_mutationFn = (v, ct) => { callIndex++; return callIndex == 1 ? first.Task : second.Task; };
+            s_mutationFn = (v, ct) =>
+                (callIndex++ == 0 ? first.Task : second.Task).AttachExternalCancellation(ct);
             using var mounted = V.Mount(_root, V.Component(CaptureMutationRecordingSuccessesRender, key: "superseded-callback"));
 
             // Act
@@ -307,6 +341,26 @@ namespace Velvet.Tests
             // Assert
             Assert.That(s_delivered, Is.EquivalentTo(new[] { 99, 11 }),
                 "Every call delivers its own success, whether or not a later one has already settled");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AMutationInFlight_When_TheComponentUnmounts_Then_TheUnmountCompletes() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange — a token honoured by the mutation resumes its continuation inside Cancel(), and the
+            // continuation's finally reaches back into the list Dispose is walking.
+            var pending = new UniTaskCompletionSource<int>();
+            s_mutationFn = (v, ct) => pending.Task.AttachExternalCancellation(ct);
+            var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "unmount-reentrancy"));
+            var inFlight = s_captured!.MutateAsync(1).SuppressCancellationThrow();
+            await UniTask.Yield();
+            Assume.That(s_captured.Status, Is.EqualTo(MutationStatus.Pending), "Precondition: the call is in flight");
+
+            // Act
+            var unmount = new TestDelegate(() => mounted.Dispose());
+
+            // Assert — an exception out of here aborts the enclosing reconcile, not just this hook.
+            Assert.That(unmount, Throws.Nothing);
+            await inFlight;
         });
 
         [UnityTest]

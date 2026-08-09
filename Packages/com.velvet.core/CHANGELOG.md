@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which is
   what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to
   abort a request the server may already have committed and then skip the `OnSuccess` that records
-  it. The token survives for unmount, where a request does want cancelling.
+  it. The token survives for unmount, where a request does want cancelling. A starting call also
+  clears `Data` along with `Error`, so a result belonging to the previous call is not read as this
+  one's while it is still pending.
 
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
   or `false` rather than as the value the element was constructed with — neither of which is the

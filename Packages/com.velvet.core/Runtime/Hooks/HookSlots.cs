@@ -175,12 +175,16 @@ namespace Velvet
 
         public override void Dispose()
         {
-            foreach (var cts in Live)
+            // Snapshot first: a registration-based cancellation runs its continuations inside Cancel(),
+            // so the mutation's own finally reaches back into Live and removes the entry being walked.
+            // Unmount is the caller, and an exception thrown out of here aborts the enclosing reconcile.
+            var live = Live.ToArray();
+            Live.Clear();
+            foreach (var cts in live)
             {
                 cts.Cancel();
                 cts.Dispose();
             }
-            Live.Clear();
         }
     }
 

@@ -1826,6 +1826,9 @@ namespace Velvet
             slot.Result.Status = MutationStatus.Pending;
             slot.Result.Variables = variables;
             slot.Result.Error = null;
+            // Data goes with them. The observer shows the newest call, and a `Data` left over from the
+            // previous one reads as this call's result while it is still pending.
+            slot.Result.Data = default!;
             RequestRender(fiber);
 
             try
