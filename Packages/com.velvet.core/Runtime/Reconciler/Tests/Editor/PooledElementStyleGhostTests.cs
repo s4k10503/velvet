@@ -314,9 +314,9 @@ namespace Velvet.Tests
             Assert.That(mismatches, Is.Empty);
         }
 
-        // Structural: a plain VisualElement through ResetCommonState. What this holds that
-        // PooledElementSurfaceResetTests does not is the get-only enabledSelf, and the element type its
-        // walk never reaches — the probes below are a sample of that reset, not an account of it.
+        // Structural: a plain VisualElement through ResetCommonState. Every field probed below is also a
+        // compared slot in PooledElementSurfaceResetTests; what that fixture never builds is this element
+        // type, which is what this one holds.
 
         private static readonly (string Name, Func<VisualElement, object> Read)[] CommonStateProbes =
         {

@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mounted next: a read-only or multiline `TextField`, a placeholder string the next consumer had not
   written, a `Toggle` stuck showing a mixed value, a `Slider` whose direction was inverted, the
   rich-text and emoji-fallback flags on `Button` and `Label`, text-selection colours and behaviour on
-  any of the three that have text, and a data-source binding on all five. A `TextField`'s stale
+  `Button`, `Label` and `TextField`, and a data-source binding on all five. A `TextField`'s stale
   placeholder is the sharp end: the pool's own contract is that the next consumer cannot observe the
   previous one's text.
 
@@ -28,7 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   slider showed a stray input box that its own `showInputField` denied.
 
 - A `Button` or `Label` no longer carries a paint delegate a consumer added onto whatever mounts next.
-  Velvet's own silhouette painters use that delegate, so this was not an exotic case.
 
 - A composite field pooled without a label lost the class its constructor adds for that case, so a
   recycled one no longer matched a fresh one's class list.

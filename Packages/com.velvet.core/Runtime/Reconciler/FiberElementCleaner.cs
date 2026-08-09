@@ -313,9 +313,9 @@ namespace Velvet
             }
             if (_ctx.BorderStyleBindings.TryGetValue(element, out var borderStyleBinding))
             {
-                // The dashed-outline paint is a generateVisualContent delegate, not a style property, so the
-                // pool reset cannot scrub it — detach unhooks the paint/stash callbacks and releases the border
-                // color suppression so a pooled element cannot ghost a dashed outline onto its next consumer.
+                // Detach unhooks the paint/stash callbacks and releases the border color suppression. Not
+                // covered by the pool return: that reaches only the paint delegate, on only the five poolable
+                // types, and leaves the suppression behind on every element that never sees a pool.
                 BorderStyleSilhouette.Detach(element, borderStyleBinding);
                 _ctx.BorderStyleBindings.Remove(element);
             }
@@ -323,15 +323,14 @@ namespace Velvet
             {
                 // Keyed by the divided CHILD, so a keyed-list reorder recycling one child independently of its
                 // divide container is still caught here (the container's own manipulator may never re-run for
-                // it). Detach unhooks the divider paint delegate the pool reset cannot scrub.
+                // it). Same split with the pool return as the border-style branch above.
                 DivideDashPainter.Detach(element, divideDashBinding);
                 _ctx.DivideDashBindings.Remove(element);
             }
             if (_ctx.TextOverlineBindings.TryGetValue(element, out var overlineBinding))
             {
-                // The overline rule is a generateVisualContent delegate, not a style property, so the pool
-                // reset cannot scrub it — detach unhooks the paint callback so a pooled element cannot ghost
-                // a painted rule onto its next consumer.
+                // Detach unhooks the paint callback, on every element rather than the five a pool return
+                // reaches — the same split as the border-style branch above.
                 TextOverlineSilhouette.Detach(element, overlineBinding);
                 _ctx.TextOverlineBindings.Remove(element);
             }

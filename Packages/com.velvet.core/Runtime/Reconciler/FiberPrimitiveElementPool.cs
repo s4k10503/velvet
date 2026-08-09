@@ -215,7 +215,7 @@ namespace Velvet
             textField.textSelection.cursorColor = defaults.textSelection.cursorColor;
             textField.textSelection.selectionColor = defaults.textSelection.selectionColor;
             textField.label = string.Empty;
-            // Same variant, and the same reason, as FiberTogglePoolHelper.
+            // Same variant, and the same reason, as FiberSliderPoolHelper.
             textField.EnableInClassList(BaseField<string>.noLabelVariantUssClassName, true);
             textField.showMixedValue = false;
             textField.emojiFallbackSupport = true;
@@ -275,7 +275,7 @@ namespace Velvet
             FiberElementPoolReset.ResetClassListAndCommon(toggle, BaseField<bool>.ussClassName, Toggle.ussClassName);
             toggle.SetValueWithoutNotify(false);
             toggle.label = string.Empty;
-            // Same variant, and the same reason, as FiberTogglePoolHelper.
+            // Same variant, and the same reason, as FiberSliderPoolHelper.
             toggle.EnableInClassList(BaseField<bool>.noLabelVariantUssClassName, true);
             toggle.text = string.Empty;
             toggle.showMixedValue = false;

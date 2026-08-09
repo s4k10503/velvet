@@ -50,7 +50,7 @@ namespace Velvet.Tests
         private static readonly Dictionary<string, string> NotDescended = new()
         {
             ["style"] = "the inline scrub is enumerated in FiberElementPoolReset.ResetInlineStyle and pinned by PooledElementStyleGhostTests",
-            ["schedule"] = "a handle onto items only their owner holds, which FiberElementPoolReset's limitations state is not reachable",
+            ["schedule"] = "a handle onto items a pool return does not reach, which FiberElementPoolReset's limitations state",
             ["experimental"] = "reaches the same animation and style surfaces from a second direction",
         };
 
@@ -82,8 +82,8 @@ namespace Velvet.Tests
 
         // The floors are the measured slot count of each widget, and they are tight on purpose. Twice now a
         // narrowing went unnoticed because the number below had room in it: once when the walk stopped at
-        // VisualElement, and once when these were left at the counts from before it descended into handles.
-        // A surface that grows still passes here and is then compared like any other slot.
+        // VisualElement, and once when these were left behind after it began descending into handles. A
+        // surface that grows still passes here and is then compared like any other slot.
         [TestCase("Button", 40)]
         [TestCase("Label", 38)]
         [TestCase("Toggle", 28)]
