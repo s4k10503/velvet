@@ -244,8 +244,15 @@ message describes, or publish.
 **If the dispatch itself is what is broken, the guard has no in-band escape.** `upm.yml` runs from the
 workflow file at whatever ref is dispatched, so tagging the release commit and dispatching from the tag
 re-runs the same broken workflow — that manoeuvre solves a different problem, a branch tip that has
-moved on, which is what v2.0.1 needed. The repair for a broken workflow is a branch carrying the fix on
-top of the release commit, accepting that the fix ships inside that release, or an administrator merge.
+moved on, which is what v2.0.1 needed. What works is a branch carrying the fix on top of the release
+commit, pushed and dispatched with `--ref`, accepting that the fix ships inside that release. What does
+not is an administrator merge: `protect-main` lists no bypass actor and reports
+`current_user_can_bypass: never`, so `gh pr merge --admin` is refused like any other. Short of the
+branch, the remaining lever is the ruleset itself — a bypass actor, or `enforcement: disabled` — which
+is a repository-settings change and not a merge.
+
+Note what a dispatch from a tag costs either way: `upm.yml` force-pushes the split to `upm`, so a
+consumer tracking `#upm` unpinned drops back to that commit until the next push to `main`.
 
 The release notes are built from that CHANGELOG section by `scripts/release/release_notes.py`, so a release
 is never written twice. Each version therefore needs a `### Highlights` block above its

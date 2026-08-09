@@ -113,11 +113,12 @@ def publication_reason(changelog_text, package_json_text, tags):
             f"locally answers 422.")
 
 
-def git(project, *args, timeout=30):
+def git(project, *args, timeout=10):
     """Run git, raising on failure and on a read that never returns.
 
-    Two of these reach the network, and a link that stalls rather than refuses would otherwise hang
-    whatever is asking — including an EditMode fixture, which has no timeout of its own.
+    Two of these reach the network. The bound is under every caller's own — the refuse hook's is the
+    tightest at 25 s — because a caller that kills this instead cannot report anything: a killed hook
+    exits neither 0 nor 2, and the stderr note unpublished_reason promises is never written.
     """
     result = subprocess.run(["git", "-C", str(project), *args],
                             capture_output=True, text=True, check=True, timeout=timeout)
@@ -188,7 +189,7 @@ def main():
                publication_reason(read_at(project, args.base, CHANGELOG_PATH),
                                   read_at(project, args.base, PACKAGE_JSON_PATH),
                                   remote_tags(project, args.remote)),
-               "holds an unpublished release", "every version the CHANGELOG has closed is published")
+               "holds an unpublished release", "no unpublished release is in the way")
 
     if args.result:
         report(args.result,

@@ -17,7 +17,6 @@ author, so a self-assignment adds nothing.
 """
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
