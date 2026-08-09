@@ -305,17 +305,19 @@ namespace Velvet
             }
             if (_ctx.SkewBindings.TryGetValue(element, out var skewBinding))
             {
-                // Detach unhooks the paint/stash callbacks and releases the inline color
-                // suppression so a pooled element cannot ghost a sheared face or a sentinel
-                // background onto its next consumer.
+                // Detach unhooks the paint/stash callbacks, destroys the baked gradient texture, drops the
+                // bounds spacer and removes the child-translate manipulator; no pool return does any of
+                // those. The suppression it also releases is the one part a pool return covers on its own,
+                // ResetInlineStyle nulling the same five inline colors.
                 SkewSilhouette.Detach(element, skewBinding);
                 _ctx.SkewBindings.Remove(element);
             }
             if (_ctx.BorderStyleBindings.TryGetValue(element, out var borderStyleBinding))
             {
-                // The dashed-outline paint is a generateVisualContent delegate, not a style property, so the
-                // pool reset cannot scrub it — detach unhooks the paint/stash callbacks and releases the border
-                // color suppression so a pooled element cannot ghost a dashed outline onto its next consumer.
+                // BorderStyleSilhouette.Detach also unregisters the two callbacks the binding registered on
+                // the element. Nothing else does: neither FiberElementPoolReset nor FiberPrimitiveElementPool
+                // contains an UnregisterCallback, and this cleanup runs on every element while a pool return
+                // runs on five types.
                 BorderStyleSilhouette.Detach(element, borderStyleBinding);
                 _ctx.BorderStyleBindings.Remove(element);
             }
@@ -323,15 +325,12 @@ namespace Velvet
             {
                 // Keyed by the divided CHILD, so a keyed-list reorder recycling one child independently of its
                 // divide container is still caught here (the container's own manipulator may never re-run for
-                // it). Detach unhooks the divider paint delegate the pool reset cannot scrub.
+                // it).
                 DivideDashPainter.Detach(element, divideDashBinding);
                 _ctx.DivideDashBindings.Remove(element);
             }
             if (_ctx.TextOverlineBindings.TryGetValue(element, out var overlineBinding))
             {
-                // The overline rule is a generateVisualContent delegate, not a style property, so the pool
-                // reset cannot scrub it — detach unhooks the paint callback so a pooled element cannot ghost
-                // a painted rule onto its next consumer.
                 TextOverlineSilhouette.Detach(element, overlineBinding);
                 _ctx.TextOverlineBindings.Remove(element);
             }

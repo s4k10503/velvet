@@ -314,7 +314,10 @@ namespace Velvet.Tests
             Assert.That(mismatches, Is.Empty);
         }
 
-        // Structural: the non-style common state ResetCommonState restores
+        // Structural: a plain VisualElement through ResetCommonState. Every field probed below is also a
+        // compared slot in PooledElementSurfaceResetTests, which walks widgets; what only this one holds is
+        // that they are reset by the SHARED method, so moving one into all five widget helpers fails here
+        // and nowhere else.
 
         private static readonly (string Name, Func<VisualElement, object> Read)[] CommonStateProbes =
         {
@@ -330,7 +333,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_EveryCommonStateFieldMutated_When_ResetForReuse_Then_ElementMatchesAFreshInstance()
         {
-            // Arrange — mutate every non-style field ResetCommonState claims to restore.
+            // Arrange — mutate the sampled fields.
             var element = new VisualElement
             {
                 userData = new object(),
