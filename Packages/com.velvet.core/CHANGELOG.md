@@ -11,9 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Disposing a reconciler no longer hands a torn-down tree a live paint or animation binding. Releasing
   a manipulator turns its payloads off, and moving a gated token that way re-derives the element's
-  passes — into the very tables the dispose emptied a few lines earlier, so an element carrying a plain
-  `animate-*`, `shadow-*` or `skew-*` beside any `dark:` or `sm:` token could come out of the teardown
-  with a driver still ticking. It reaches whatever the unmount reconcile did not clean first.
+  passes — into the very tables the dispose emptied a few lines earlier, so an element could come out of
+  the teardown with a driver still ticking. What it takes is a plain painted utility beside a variant
+  whose payload is one too: `shadow-lg hover:shadow-sm`, `animate-pulse dark:animate-hue`. Any variant
+  family that turns its payloads off at release reaches it, state and relational ones included, and a
+  variant carrying anything else (`shadow-lg dark:text-white`) does not. It reaches whatever the unmount
+  reconcile did not clean first.
 
 - A `[&>*]:` payload stays on a child that moved between two containers. The walk turning a payload off
   tracked the children it had written to by reference alone, so a child pooled out of one container and
