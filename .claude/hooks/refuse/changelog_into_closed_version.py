@@ -22,12 +22,14 @@ The reading is a released section's BULLET COUNT, before against the proposed te
   paid for by a rewrap. Rewording an entry keeps its bullet.
 - Only versions dated on BOTH sides are compared. Closing `## [Unreleased]` into `## [X.Y.Z] - DATE`
   newly dates a whole section, which under a first-seen-is-growth reading refused every release —
-  including through the advice this hook prints, which left no in-band way to clear it.
+  including through the advice this hook prints, which left no in-band way to clear it. A heading
+  that stops being released is refused separately, since that is the same edit by another route.
 """
 
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -52,13 +54,29 @@ def bullets(text):
     return counts
 
 
-def in_this_repository(path, cwd):
-    root = Path(os.environ.get("CLAUDE_PROJECT_DIR") or cwd or ".").resolve()
+def common_git_dir(start):
+    """The repository a path belongs to, identified by the dir every worktree of it shares."""
     try:
-        Path(path).resolve().relative_to(root)
-    except (ValueError, OSError):
-        return False
-    return True
+        found = subprocess.run(
+            ["git", "-C", str(start), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return found.stdout.strip() or None if found.returncode == 0 else None
+
+
+def in_this_repository(path, cwd):
+    """Whether `path` belongs to the repository the hook is running for.
+
+    Containment under the project root is the wrong test and turned the guard off everywhere the
+    work actually happens: this repository does its branch work in `git worktree` trees outside the
+    project directory, so every CHANGELOG edit in one silently passed. A worktree shares its
+    repository's common git dir, and a genuinely foreign checkout does not.
+    """
+    target = Path(path)
+    here = target.parent if target.parent.exists() else Path(cwd or ".")
+    mine = common_git_dir(os.environ.get("CLAUDE_PROJECT_DIR") or cwd or ".")
+    return mine is not None and common_git_dir(here) == mine
 
 
 # The verdict reads a tool input, never a shell word, so no operand of this guard can arrive
@@ -96,8 +114,17 @@ def main():
 
     before, after = bullets(text), bullets(proposed)
     versions = sorted(v for v, count in after.items() if v in before and count > before[v])
-    if not versions:
+    # A released heading that stops being one carries whatever is under it out of the comparison,
+    # so renaming the version or stripping the date is the same edit by another route.
+    unmade = sorted(v for v in before if v not in after)
+    if not versions and not unmade:
         return 0
+    if unmade and not versions:
+        print(f"Refusing this {CHANGELOG} edit: it stops {', '.join(unmade)} being a released "
+              "section, by renaming its version or removing its date.\n\n"
+              "A released heading is what pins its entries to the version that shipped them.",
+              file=sys.stderr)
+        return 2
 
     print("\n".join([
         f"Refusing this {CHANGELOG} edit: it adds an entry inside {', '.join(versions)}, "
