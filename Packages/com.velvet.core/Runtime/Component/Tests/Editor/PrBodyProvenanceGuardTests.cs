@@ -42,10 +42,20 @@ namespace Velvet.Tests
         // and nothing else, so no case here needs one.
         private static readonly (string Command, string Expected)[] Accepted =
         {
+            // Every spelling of every keyword, because narrowing one of the four to the single form
+            // CONTRIBUTING advertises leaves a table posing only that form green, and each of the
+            // other spellings flips from allow to refuse.
             ("gh pr create --title x --body-file {DIR}/closes.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/close.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/closed.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/fixes.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/fix.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/fixed.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/resolves.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/resolve.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/resolved.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/refs.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/ref.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/url.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/no-issue.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/no-issue-indented.md", "allow"),
@@ -59,7 +69,9 @@ namespace Velvet.Tests
             // A body flag given last has no value to read, which is a different way through the
             // reader than a command with no body flag at all.
             ("gh pr create --title x --body-file", "allow"),
-            ("gh pr create --title x --template {DIR}/closes.md", "allow"),
+            // A body naming nothing behind the flag, so the row answers whether `--template` is read
+            // as a body at all rather than passing on the strength of what the file says.
+            ("gh pr create --title x --template {DIR}/silent.md", "allow"),
             ("gh pr create --title x --editor", "allow"),
             ("gh pr create --title x --dry-run --body-file {DIR}/absent.md", "allow"),
             ("gh pr create --title x -h --body-file {DIR}/silent.md", "allow"),
@@ -101,6 +113,11 @@ namespace Velvet.Tests
             ("gh pr create --title x --body-file silent.md", "no-origin"),
             // A segment carrying only an environment assignment has no command word, and is not a move.
             ("BODY=x && gh pr create --title x --body-file silent.md", "no-origin"),
+            // The other side of the move set, which the rows below pin in one direction only: they
+            // fail when a mover is dropped and pass when one is added, and the repository's own way
+            // of opening a pull request runs `git push` in the segment before the create.
+            ("git push -u origin HEAD && gh pr create --title x --body-file silent.md", "no-origin"),
+            ("echo x && gh pr create --title x --body-file silent.md", "no-origin"),
             ("gh pr create --title x --body-file {DIR}/absent.md", "missing"),
             // A directory exists and does not read, which is the one way to reach that branch without
             // a permission bit — and a run as root would read a file this fixture had made unreadable.
@@ -115,7 +132,6 @@ namespace Velvet.Tests
             // A command word spelled by path is read by its basename, the way the shared parser reads
             // one.
             ("/bin/cd {DIR}/sub && gh pr create --title x --body-file relative.md", "moved"),
-            // A move holds for the rest of the command, not for the segment after it.
             ("cd {DIR}/sub && echo x && gh pr create --title x --body-file relative.md", "moved"),
         };
 
@@ -224,10 +240,20 @@ namespace Velvet.Tests
         private static void WriteBodies(string root)
         {
             Directory.CreateDirectory(Path.Combine(root, "sub"));
+            // The four keywords CONTRIBUTING advertises, and the spellings of each that answer as
+            // well. Only the advertised one used to be written for two of the four, so the form a
+            // reader is told to use was posed by nothing.
             Write(root, "closes.md", "Closes #123.\n\nWhat this changes and why.\n");
+            Write(root, "close.md", "Close #123, the half the pool reset left.\n");
+            Write(root, "closed.md", "Closed #123 with the pooled reset helper.\n");
             Write(root, "fixes.md", "Fixes #12 — the half that was left.\n");
-            Write(root, "resolves.md", "Resolved #12, measured against the pooled reset helper.\n");
+            Write(root, "fix.md", "Fix #12, measured against the pooled reset helper.\n");
+            Write(root, "fixed.md", "Fixed #12 in the pooled reset helper.\n");
+            Write(root, "resolves.md", "Resolves #12, measured against the pooled reset helper.\n");
+            Write(root, "resolve.md", "Resolve #12 in the same pass as the reset helper.\n");
+            Write(root, "resolved.md", "Resolved #12, measured against the pooled reset helper.\n");
             Write(root, "refs.md", "Refs #12 — the other half of that one.\n");
+            Write(root, "ref.md", "Ref #12 — the other half of that one.\n");
             Write(root, "url.md", "From https://github.com/s4k10503/velvet/issues/44, the second half.\n");
             Write(root, "no-issue.md", "No issue: found while reading the pool reset helpers.\n");
             // Four spellings of the same line, each free of the last: indented, ended with a full

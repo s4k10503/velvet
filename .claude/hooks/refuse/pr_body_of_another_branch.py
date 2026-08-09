@@ -62,9 +62,8 @@ from shell_commands import command_segments, leading_program, program_invocation
 # reads this declaration to check that the registration is still there.
 HOOK_SCOPE = "session"
 
-# The tools this acts on, gated on below rather than restated there: the same fixture compares this
-# set against the matcher that routes tools to it, and a gate spelling the name a second time would
-# drift against both.
+# The tools this acts on, gated on below rather than spelled a second time there: two statements of
+# the same set drift.
 HOOK_TOOLS = {"Bash"}
 
 # The body file is opened, so a path the shell has not expanded leaves nothing to open. An inline
