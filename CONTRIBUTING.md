@@ -136,16 +136,21 @@ agent type. Such a guard says so with a `HOOK_SCOPE = "session"` line.
 A `PreToolUse` guard is reached only for the tools its `"matcher"` names, and acts only on the tools
 its own gate admits. It declares the second as a `HOOK_TOOLS = {...}` set and gates on that set
 rather than on a literal, which is what leaves the two halves comparable. Register it under the tool
-names themselves: `"*"` names no set a check can read, so a guard covering several tools spells them
-out in the matcher.
+names themselves: a matcher naming no set a check can read is refused — `"*"`, an empty string, and a
+`PreToolUse` entry carrying no `"matcher"` key at all, which is the shape the `SessionStart`, `Stop`
+and `SubagentStop` entries take. A guard covering several tools spells them out in the matcher.
 
 Every failure mode here is silence, so the wiring is asserted rather than trusted.
 `HookWiringCoverageTests` pairs each script against the settings and agent frontmatter that run it,
 in both directions, fails on a script name a hook builds a path from that no file answers to, fails
 on a `HOOK_SCOPE = "session"` guard that the settings do not register or that an agent registers a
 second time, and fails when a `PreToolUse` guard's `HOOK_TOOLS` and its matcher name different tools,
-when the guard declares a set its gate never reads, or when its gate answers a payload posed under a
-tool nothing routes to it rather than under one that is.
+when the guard declares a set its gate never reads, and when its gate answers none of the payloads it
+is posed under a tool it is routed — which is the shape an inverted gate takes, since such a gate
+returns before its readings for exactly the tools it exists to read. A gate reading no tool name at
+all answers under both, and fails the other way round. That first one also fails for a guard none of
+the payloads happens to pose anything about, and a guard added since the table was last extended
+wants a row added there rather than a change to itself.
 
 ### Source generators
 

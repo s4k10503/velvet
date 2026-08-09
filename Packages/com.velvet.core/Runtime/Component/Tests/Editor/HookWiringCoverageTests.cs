@@ -213,10 +213,9 @@ namespace Velvet.Tests
                 return null;
             }
 
-            // An empty literal names no tool, so it says what a missing declaration says and the gate
-            // reading it admits nothing. Answered as "declares none" so that it cannot compare equal
-            // to a matcher that names nothing either — two sides saying nothing are equal strings,
-            // and reading that as agreement is the whole check going quiet.
+            // An empty literal is a gate that admits no tool at all, which is the silence the
+            // declaration check below reports. Answered as "declares none" rather than as an empty
+            // set, because an empty string is not null and that check would pass the hook.
             var declared = Sorted(from Match name in QuotedName.Matches(declaration.Groups[1].Value)
                                   select name.Groups[1].Value);
             return declared.Length > 0 ? declared : null;
@@ -245,10 +244,11 @@ namespace Velvet.Tests
             new(@"""matcher""\s*:\s*""([^""]*)""", RegexOptions.Compiled);
 
         // A matcher is a regular expression, and the comparison below reads it as an alternation of
-        // plain tool names. `*` — the documented all-tools form — has no answer here that would stay
+        // plain tool names. A matcher naming no tool of its own has no answer here that would stay
         // true: giving one means holding Claude Code's whole tool list in this fixture, where nothing
         // updates it when the product gains a tool. It is refused instead, so a guard acting on
-        // several tools names them; an empty matcher is the same form and refused the same way.
+        // several tools names them — `*`, an empty matcher, and a registration carrying no "matcher"
+        // key, which reaches here as the empty one.
         private static readonly Regex ToolNamePattern = new(@"^[A-Za-z0-9_]+$", RegexOptions.Compiled);
 
         /// <summary>The tools a hook's matcher entries route to it, or null when one names no set.</summary>
@@ -588,6 +588,9 @@ namespace Velvet.Tests
             ("a background command naming a repository path relatively",
              "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":\"python3 scripts/release/release_notes.py\","
              + "\"run_in_background\":true}"),
+            ("a pull request created from a body file that is not there",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":"
+             + "{\"command\":\"gh pr create --title x --body-file velvet-no-such-body.md\"}"),
         };
 
         // No matcher in the settings routes this, so a guard that answers under it has a gate that is
@@ -613,8 +616,11 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(wrong, Is.Empty,
-                "a gate reaching its readings for the tools it is not routed, or returning before them "
-                + $"for the tools it is, admits the opposite of what it declares:\n{string.Join("\n", wrong)}");
+                "answering none of them is a gate returning before its readings for a tool it is routed "
+                + "— what an inverted gate does — or a GatePayloads table holding nothing that guard "
+                + "decides about, which is what a guard added since the table was last extended wants a "
+                + "row for. Answering one posed under a tool nothing routes is a gate reading something "
+                + $"other than the event's tool name:\n{string.Join("\n", wrong)}");
         }
 
         private static IEnumerable<string> GateFaults(string hook, string tool)
@@ -623,7 +629,8 @@ namespace Velvet.Tests
                 payload => Answered(hook, Posed(payload.Body, tool)));
             if (answering.Body == null)
             {
-                yield return $"{RepoRelative(hook)} answers nothing posed as {tool}";
+                yield return $"{RepoRelative(hook)} answers none of the {GatePayloads.Length} "
+                             + $"payloads posed as {tool}";
             }
             else if (Answered(hook, Posed(answering.Body, UnroutedTool)))
             {
@@ -640,10 +647,30 @@ namespace Velvet.Tests
         {
             // Not the exit code alone. blind_git_add.py refuses by printing a deny decision and exiting
             // 0, so a reading that took 0 for silence would score its refusal as a gate that returned.
+            // What a hook writes merely by being loaded is subtracted rather than scored: a warning
+            // raised at import lands before the gate reads the tool name, so it would answer under
+            // every name including the one nothing routes, and the check above would read that as a
+            // gate pointing the wrong way.
             var answer = Answer(hook, payload, ScratchDirectory);
-            return answer.Exit == 2
-                   || (answer.Exit == 0
-                       && (answer.Output.Trim().Length > 0 || answer.Error.Trim().Length > 0));
+            return answer.Exit == 2 || (answer.Exit == 0 && Wrote(answer) != Loading(hook));
+        }
+
+        private static string Wrote((int Exit, string Output, string Error) answer) =>
+            answer.Output.Trim() + "\n" + answer.Error.Trim();
+
+        private static readonly Dictionary<string, string> LoadingOutput =
+            new(StringComparer.Ordinal);
+
+        /// <summary>What a hook writes with no event to read, measured once per hook.</summary>
+        private static string Loading(string hook)
+        {
+            if (!LoadingOutput.TryGetValue(hook, out var written))
+            {
+                written = Wrote(Answer(hook, "this is no event", ScratchDirectory));
+                LoadingOutput[hook] = written;
+            }
+
+            return written;
         }
 
         private const string RefuseDirectory = HookDirectory + "/refuse";
@@ -695,15 +722,17 @@ namespace Velvet.Tests
 
             process.StandardInput.Write(Resolved(payload));
             process.StandardInput.Close();
-            var error = process.StandardError.ReadToEnd();
-            var output = process.StandardOutput.ReadToEnd();
+            // Drained together: reading one to EOF first deadlocks against a guard that fills the
+            // other's pipe buffer, and the wait below never runs to time that out.
+            var output = process.StandardOutput.ReadToEndAsync();
+            var error = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(60000))
             {
                 process.Kill();
                 return (-1, string.Empty, "timed out");
             }
 
-            return (process.ExitCode, output, error);
+            return (process.ExitCode, output.Result, error.Result);
         }
 
         private static List<(string Name, string Source)> ReadWiring() =>
