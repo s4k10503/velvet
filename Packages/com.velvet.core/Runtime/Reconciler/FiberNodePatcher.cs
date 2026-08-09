@@ -793,15 +793,15 @@ namespace Velvet
             }
         }
 
-        // Resolves the target VisualElement a Portal patch reconciles its slot range against, across
-        // the ways a Portal can address one. TargetElement is not among them: a change there is refused
-        // by ReconcileKeying.CanPatch, so it arrives as an unmount and a remount and never as a patch.
-        // An explicit Layer (host table lookup, plus re-chaining
-        // the placeholder when FocusOrder changed), an id already resolved by an earlier patch (the
-        // target its children are already mounted into — re-registering the id only points FUTURE
-        // portals elsewhere), or an id not yet healed (the mount warned and recorded no target; this is
-        // the first patch since registration, so it also attaches the same-panel synthetic-bubbling
-        // bridge the mount-time drain never got to run for this target). Returns a null target when
+        // Resolves the target VisualElement a Portal patch reconciles its slot range against, across the
+        // four ways a Portal can address one: an explicit Layer (host table lookup, plus re-chaining the
+        // placeholder when FocusOrder changed), the element the caller passed (already resolved, and
+        // ReconcileKeying.CanPatch has refused the patch unless it is the one this Portal mounted into),
+        // an id already resolved by an earlier patch (the target its children are already mounted into —
+        // re-registering the id only points FUTURE portals elsewhere), or an id not yet healed (the
+        // mount warned and recorded no target; this is the first patch since registration, so it also
+        // attaches the same-panel synthetic-bubbling bridge the mount-time drain never got to run for
+        // this target). Returns a null target when
         // resolution fails (already warned); the caller bails without patching. IsHeal tells the caller
         // whether this pass took the not-yet-healed case, which needs a declaring-fiber snapshot from
         // before this call for the DetachedMountContext stamp (see PatchPortal).
@@ -832,8 +832,6 @@ namespace Velvet
 
             if (newNode.TargetElement is { } held)
             {
-                // The caller resolved it, and CanPatch has already established it is the same one this
-                // portal mounted into — a different container remounts rather than reaching here.
                 describe = "an element the caller holds";
                 return (held, false);
             }
@@ -856,7 +854,7 @@ namespace Velvet
                 FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
                 return (null, false);
             }
-            // The mount-time attach (ChildReconciler's registry-portal drain branch) never ran
+            // The mount-time attach (ChildReconciler's same-panel drain branch) never ran
             // for this target: CreateElement returned a hidden placeholder without enqueuing a
             // drain entry while the id was still unregistered, so this first healing patch is
             // this Portal's only chance to attach the same-panel synthetic-bubbling bridge.
@@ -977,9 +975,9 @@ namespace Velvet
             }
         }
 
-        // The shared slot-range child patch for every portal flavor (registry, layer, world-space):
-        // reconciles only this placeholder's own slot range against the target and shifts the
-        // downstream ranges on the same target by the growth delta. describe names the target in
+        // The shared slot-range child patch for every portal flavor (registry, held element, layer,
+        // world-space): reconciles only this placeholder's own slot range against the target and shifts
+        // the downstream ranges on the same target by the growth delta. describe names the target in
         // diagnostics only.
         private void PatchPortalChildren(
             VisualElement placeholder, VisualElement target,

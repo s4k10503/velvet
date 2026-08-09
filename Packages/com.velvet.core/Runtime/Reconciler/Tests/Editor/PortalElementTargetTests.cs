@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 
@@ -13,8 +14,10 @@ namespace Velvet.Tests
     /// one receives them, which is what <c>createPortal</c> does and where this differs from a registry
     /// target, whose id resolves once at mount and is then held.</item>
     /// <item>The same container on a later render patches in place rather than remounting.</item>
-    /// <item>Two containers do not share a namespace, so two trees cannot collide the way two
-    /// registrations of one id do.</item>
+    /// <item>Two portals sharing one container each own their own slot range, and an unmount takes only
+    /// that range — the container itself belongs to the caller.</item>
+    /// <item>Unmounting releases the container from the synthetic-bubbling bridge table, which a caller's
+    /// own container needs and a registered id does not: it dies with the row that rendered it.</item>
     /// </list>
     /// </summary>
     internal sealed class PortalElementTargetTests
@@ -91,24 +94,60 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_two_portals_on_two_containers_When_both_mount_Then_neither_sees_the_other()
+        public void Given_two_portals_on_one_container_When_both_mount_Then_each_keeps_its_own_slot_range()
         {
             // Arrange
-            var left = new VisualElement();
-            var right = new VisualElement();
+            var shared = new VisualElement();
             var tree = new VNode[]
             {
-                V.Portal(left, children: new VNode?[] { V.Div(name: "left") }),
-                V.Portal(right, children: new VNode?[] { V.Div(name: "right") }),
+                V.Portal(shared, children: new VNode?[] { V.Div(name: "first") }),
+                V.Portal(shared, children: new VNode?[] { V.Div(name: "second") }),
             };
 
             // Act
             _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
 
+            // Assert — a second portal that appended over the first's range would leave one child, not two.
+            Assert.That(
+                string.Join("|", shared.Children().Select(c => c.name)),
+                Is.EqualTo("first|second"));
+        }
+
+        [Test]
+        public void Given_a_mounted_portal_When_it_unmounts_Then_only_its_own_slot_range_leaves_the_container()
+        {
+            // Arrange — the container belongs to the caller, so what it held before the portal must survive.
+            var container = new VisualElement();
+            container.Add(new VisualElement { name = "caller-owned" });
+            var tree = Tree(container, "hello");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+
+            // Act
+            _reconciler.Reconcile(_root, tree, Array.Empty<VNode>());
+
             // Assert
             Assert.That(
-                (left.ElementAt(0).name, right.ElementAt(0).name),
-                Is.EqualTo(("left", "right")));
+                (container.childCount, container.ElementAt(0).name),
+                Is.EqualTo((1, "caller-owned")));
+        }
+
+        [Test]
+        public void Given_a_mounted_portal_When_it_unmounts_Then_the_container_leaves_the_bridge_table()
+        {
+            // Arrange
+            var container = new VisualElement();
+            var tree = Tree(container, "hello");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            var attachedWhileMounted = _reconciler.Context.SamePanelPortalBridges.Count;
+
+            // Act
+            _reconciler.Reconcile(_root, tree, Array.Empty<VNode>());
+
+            // Assert — the mounted count is folded in, since a bridge that never attached would otherwise
+            // satisfy the release reading on its own.
+            Assert.That(
+                (attachedWhileMounted, _reconciler.Context.SamePanelPortalBridges.Count),
+                Is.EqualTo((1, 0)));
         }
     }
 }

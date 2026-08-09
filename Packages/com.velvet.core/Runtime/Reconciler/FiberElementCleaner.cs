@@ -495,10 +495,6 @@ namespace Velvet
         // have their slotStart shifted by -slotLength so subsequent patches stay
         // correctly addressed. Entry removal happens before target mutation to prevent double
         // processing via CleanupDescendants recursion.
-        // Deliberately does NOT touch ReconcilerContext.SamePanelPortalBridges: a same-panel target's
-        // synthetic-bubbling bridge (if this was a registry portal) stays attached even once this is
-        // the last Portal on that target — see that field's own comment for why leaving it is both
-        // correct (a harmless no-op) and simpler than reference-counting per-target attaches.
         private void CleanupPortal(VisualElement element)
         {
             if (!_ctx.PortalState.TryGetValue(element, out var portalInfo))
@@ -516,6 +512,8 @@ namespace Velvet
             {
                 return;
             }
+
+            ReleaseBridgeIfLastPortalOn(target);
 
             // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
             // already-converted start mixes the two bases, and tears out one element too many the moment an
@@ -540,6 +538,30 @@ namespace Velvet
             // Surviving Portals on the same target whose slot starts after the removed range
             // collapse left by SlotLength so their next patch addresses the right DOM positions.
             PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, portalInfo.SlotStart, -portalInfo.SlotLength);
+        }
+
+        // The synthetic-bubbling bridge is attached once per resolved TARGET while the Portals sharing that
+        // target are many, so it may only be released once the last of them has gone; this Portal's own
+        // PortalState entry is already removed by the time this runs. Counted by scanning PortalState
+        // rather than by a per-target counter, whose increment would have to sit outside the attach-once
+        // guard that skips every Portal after the first.
+        private void ReleaseBridgeIfLastPortalOn(VisualElement target)
+        {
+            if (!_ctx.SamePanelPortalBridges.TryGetValue(target, out var unbind))
+            {
+                return;
+            }
+
+            foreach (var info in _ctx.PortalState.Values)
+            {
+                if (ReferenceEquals(info.Target, target))
+                {
+                    return;
+                }
+            }
+
+            unbind();
+            _ctx.SamePanelPortalBridges.Remove(target);
         }
 
         // Destroys the framework-owned world-space host bound to a departing placeholder. Runs
