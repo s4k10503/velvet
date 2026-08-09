@@ -124,8 +124,10 @@ def branch_start(cwd, head, base):
 
 
 MOVERS = {"cd", "pushd", "popd"}
-# Programs that take the command word and run something else with it.
-WRAPPERS = {"env", "sudo", "xargs", "bash", "sh", "zsh", "eval", "doas", "timeout"}
+# Programs whose whole purpose is to run another one in the caller's place. timeout and xargs were
+# here and are not: they are ordinarily given some other program, and `timeout 5 echo gh pr create`
+# is then indistinguishable from the call itself at token level.
+WRAPPERS = {"env", "sudo", "doas", "bash", "sh", "zsh", "eval", "nice", "stdbuf"}
 
 
 def unclaimed_creation(segment):
@@ -136,9 +138,14 @@ def unclaimed_creation(segment):
     global flags sit before the subcommand, so `gh -R owner/repo pr create` is plain gh that the
     parser's fixed-word match walks past.
 
-    Matched off the command word: a segment merely containing the phrase is prose, and refusing that
-    blocked writing this branch's own pull-request body. Inside a wrapper the text is read as well,
-    because a wrapper's payload is a quoted argument the tokeniser has already masked.
+    Both read the command word and then adjacent tokens. Two weaker rules were tried and refused
+    ordinary commands: matching the phrase anywhere in the text blocked writing this branch's own
+    pull-request body, and asking whether `pr` and `create` merely appear blocked `gh pr list
+    --search create` and `gh issue create --label pr`.
+
+    Not seen, and left that way: a payload the tokeniser masks, as in `bash -c "gh pr create …"`.
+    Reading the raw text to reach it is the rule that refused prose, and a spelling nobody here uses
+    is worth less than not blocking the ones they do.
     """
     tokens = tokens_of(segment)
     index = leading_program(tokens)
@@ -147,11 +154,17 @@ def unclaimed_creation(segment):
     word = os.path.basename(tokens[index])
     rest = tokens[index + 1:]
     if word in WRAPPERS:
-        # A wrapper's payload is usually one quoted argument, which the tokeniser masks away, so the
-        # raw text is what is left to read. Confined to a wrapper: matching the phrase anywhere is
-        # what refused prose when it was the whole rule.
-        return any(os.path.basename(token) == "gh" for token in rest) or "gh pr create" in segment
-    return word == "gh" and "pr" in rest and "create" in rest
+        return any(os.path.basename(token) == "gh" for token in rest) and creation_in(rest)
+    return word == "gh" and creation_in(rest)
+
+
+def creation_in(tokens):
+    """Whether `pr create` appears as two adjacent tokens.
+
+    Adjacency, not membership: asking whether both merely appear refused `gh pr list --search
+    create` and `gh issue create --label pr`.
+    """
+    return any(first == "pr" and second == "create" for first, second in zip(tokens, tokens[1:]))
 
 
 def moves_directory(segment):
