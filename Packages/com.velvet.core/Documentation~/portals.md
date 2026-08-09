@@ -1,14 +1,30 @@
-# Portals: registry targets, layer panels, and world space
+# Portals: element and registry targets, layer panels, and world space
 
-Velvet has three ways to render children somewhere other than their position in the tree. All
-three share one contract: **the children stay part of the logical tree** — context, state and
+Velvet has four ways to render children somewhere other than their position in the tree. All
+share one contract: **the children stay part of the logical tree** — context, state and
 re-renders flow from the call site — while attaching physically elsewhere.
 
 ```csharp
+V.Portal(container, children: …);                    // into an element you hold (same panel)
 V.Portal("modal-root", children: …);                 // into a registered element (same panel)
 V.Portal(UILayer.Topmost, children: …);              // into a framework-managed layer panel
 V.WorldSpace(anchor.position, children: …);          // into a world-space panel at a transform
 ```
+
+## Element or id
+
+`V.Portal(container, …)` takes the container itself, the way `createPortal(children, container)`
+does. Nothing is published and nothing is named, so two mounted trees in one process cannot collide,
+and an element reached through a `refCallback` is a valid container without being registered first.
+
+`V.Portal("modal-root", …)` resolves a name through `FiberPortalRegistry`, whose table is one map for
+the whole process. That is what makes an id convenient across unrelated call sites and what makes two
+registrations of one name overwrite each other.
+
+The two differ in one more way, deliberately. **Passing a different container moves the children** —
+the reconciler cannot patch one container's portal into another's, so the old unmounts and the new
+mounts, which is what `createPortal` does. **A registry id does not move them**: the id resolves once
+at mount and is then held, so re-registering it points only future portals elsewhere.
 
 ## The shared boundary semantics
 

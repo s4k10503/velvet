@@ -828,6 +828,14 @@ namespace Velvet
                 return (target, false);
             }
 
+            if (newNode.TargetElement is { } held)
+            {
+                // The caller resolved it, and CanPatch has already established it is the same one this
+                // portal mounted into — a different container remounts rather than reaching here.
+                describe = "an element the caller holds";
+                return (held, false);
+            }
+
             describe = newNode.TargetId!;
             if (_ctx.PortalState.TryGetValue(placeholder, out var recorded) && recorded.Target != null)
             {

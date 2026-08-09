@@ -92,6 +92,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `V.Portal(container, …)` takes the element itself, the way `createPortal` does — no registration, no
+  shared name, and an element from a `refCallback` is a valid container. Passing a different container
+  on a later render moves the children; a registry id, which resolves once at mount, does not.
+
 - `origin-[x]` and `origin-[x_y]` arbitrary values for `transform-origin`. The pivot a rotation or a scale
   turns about could only be one of nine keywords, so a gauge needle at 90% of its height, or a bubble
   scaling out of its tail corner, had to be written from a `refCallback` — the same escape hatch the guide

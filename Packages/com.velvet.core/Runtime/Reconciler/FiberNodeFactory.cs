@@ -441,19 +441,28 @@ namespace Velvet
             // silently picking a side.
             var hasTargetId = !string.IsNullOrEmpty(portalNode.TargetId);
             var hasLayer = portalNode.Layer != null;
-            if (hasTargetId == hasLayer)
+            var hasElement = portalNode.TargetElement != null;
+            var kinds = (hasTargetId ? 1 : 0) + (hasLayer ? 1 : 0) + (hasElement ? 1 : 0);
+            if (kinds != 1)
             {
                 FiberLogger.LogWarning("Portal",
-                    "A PortalNode must set exactly one of TargetId or Layer (they are a one-of pair). Children will not be rendered.");
+                    "A PortalNode must set exactly one of TargetId, Layer or TargetElement (they are a one-of triple). Children will not be rendered.");
                 return CreateHiddenPlaceholder();
             }
 
             // A layer portal resolves its target at DRAIN time — the framework layer host is
             // created lazily there, once the placeholder is attached and the declaring panel
-            // is therefore known. Only a registry portal resolves here, keeping its
+            // is therefore known. The other two resolve here, keeping the registry portal's
             // not-registered warning a mount-time signal.
             VisualElement? target = null;
-            if (!hasLayer)
+            if (hasElement)
+            {
+                // Already resolved by the caller. Nothing can be missing and nothing heals later:
+                // a container that changes is a different portal, which ReconcileKeying.CanPatch
+                // turns into a remount rather than a patch.
+                target = portalNode.TargetElement;
+            }
+            else if (!hasLayer)
             {
                 target = FiberPortalRegistry.Get(portalNode.TargetId!);
                 if (target == null)
