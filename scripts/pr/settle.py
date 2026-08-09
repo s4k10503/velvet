@@ -7,7 +7,7 @@ re-derived wrong — the watcher has been written pinned to one pull request num
 one unwatched behind a fresh heartbeat, which is the exact failure the hook's own text warns about.
 
 **Every precondition below is also a refuse hook**, one apiece, so a merge typed without this script
-is held to the same four. What this adds is reporting them together: one run names everything wrong
+is held to the same five. What this adds is reporting them together: one run names everything wrong
 rather than costing a round of CI per reason. If a precondition is worth having here it belongs in a
 hook, because a script nobody is obliged to run guards nothing.
 
@@ -27,7 +27,7 @@ Five preconditions, each from a merge that went wrong rather than from a list of
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that
   SHA, which is what a cancelled run followed by a force-push leaves behind.
 - **The base must not hold an unpublished release.** A closed CHANGELOG section reaches main as an
-  ordinary commit, and the dispatch that publishes it is separate; v2.0.1 sat there through five
+  ordinary commit, and the dispatch that publishes it is separate; v2.0.1 sat there through twelve
   merges, each of which the eventual release carried and its note described none of.
   `scripts/release/published_check.py` owns that decision.
 
@@ -130,8 +130,11 @@ def contains_base(project, branch, base):
 
 
 def reasons_from(before, after, results, branch, base, holds_base, held_by_worktree,
-                 unpublished_release=None):
+                 unpublished_release):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
+
+    `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
+    read as a clean base, and the only production caller is held by no test.
 
     A moved head returns with the publication reason and nothing else: with the readings straddling a
     force-push, nothing else read here is known to be about the same commit, so reporting the rest

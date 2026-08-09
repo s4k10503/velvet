@@ -165,14 +165,20 @@ jobs:
       - run: python3 scripts/release/test_release_notes.py
 
   # ---------------------------------------------------------------------------
-  # A release lands on main as an ordinary commit and publishes on a separate dispatch that nothing
-  # forces. Between the two, main names a version that does not exist and anything merged there
-  # ships inside it undescribed — which is what happened to v2.0.1. This is the thing that forces
-  # the dispatch: every pull request stays red until it has run. No Unity license needed.
+  # scripts/release/published_check.py owns why this exists and which question is asked of which
+  # tree. No Unity license needed.
   #
-  # Read of HEAD^1 rather than of the checkout, because the pull request that closes the section is
-  # the one tree the state is allowed to be in. On every trigger this workflow subscribes to, that
-  # parent is the base the merge would land on. fetch-depth 2 is what carries it.
+  # What this job covers is one half of the publication question: a head whose run happens while the
+  # base holds an unpublished release. A pull request that went green BEFORE the release landed keeps
+  # that green result, since main does not require heads to be up to date (CONTRIBUTING.md) and
+  # GitHub re-runs nothing when a base moves. The other half is settle.py's contains-base
+  # precondition and stale_merge.py, which refuse such a merge until the branch takes main in — and
+  # that push is a new head, which lands here.
+  #
+  # The base is named from the event rather than derived from the checkout's shape: a merge ref's
+  # first parent is the base only for as long as nothing adds a `ref:` to the checkout above, and the
+  # guard would go on passing after it did. push and workflow_dispatch have no base, and HEAD is the
+  # tree in question there.
   # ---------------------------------------------------------------------------
   publication:
     name: Release publication
@@ -184,7 +190,9 @@ jobs:
 
       - run: python3 scripts/release/test_published_check.py
 
-      - run: python3 scripts/release/published_check.py --rev HEAD^1
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'HEAD' }}
+        run: python3 scripts/release/published_check.py --base "$BASE" --result HEAD
 
   # ---------------------------------------------------------------------------
   # mutation_check.py needs a licence to kill a mutant, but not to build one, and the building is

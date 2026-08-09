@@ -40,11 +40,12 @@ Branch, pull request, squash merge — `main` and `upm` both refuse a direct pus
 is. Merging to `main` re-runs the split into the `upm` branch on its own; never edit `upm` by hand,
 it is a generated mirror.
 
-From this merge until step 3 runs, every other pull request is red and every merge path refuses:
-`scripts/release/published_check.py` reads a closed-and-untagged version off the base. That is
-deliberate. v2.0.1 was closed, merged and left undispatched while five more pull requests landed on
-top of it, and the release had to be built by tagging the release commit by hand and dispatching
-from the tag, because dispatching from the branch would have shipped five undescribed changes.
+From this merge until step 3 runs, `scripts/release/published_check.py` reads a closed-and-untagged
+version off the base, and every merge path refuses: `settle.py merge`, the `gh pr merge` hook, and
+the `publication` job for any pull request whose checks run in that window. That is deliberate.
+v2.0.1 was closed, merged and left undispatched while twelve more pull requests landed on top of it,
+and the release had to be built by tagging the release commit by hand and dispatching from the tag,
+because dispatching from the branch would have shipped twelve undescribed changes.
 
 ## 3. Dispatch
 

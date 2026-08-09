@@ -1,17 +1,23 @@
 #!/usr/bin/env python3
-"""Refuse a tree that closed a version in the CHANGELOG and never published it.
+"""Hold a repository to two things about the version it names, each asked of a different tree.
 
-A release reaches main as an ordinary commit — the section dated, package.json bumped — and the
-publish is a separate `workflow_dispatch` that nothing forces. In the window between the two, main
-names a version that does not exist, and anything merged there becomes part of whatever that
-version eventually ships: the dispatch builds the note from the CHANGELOG section, which was
-written before those commits and does not describe them. Recovering means tagging the release
-commit by hand and dispatching from the tag.
+A release reaches main as an ordinary commit — the CHANGELOG section dated, package.json bumped — and
+the publish is a separate `workflow_dispatch` that nothing forces. v2.0.1 sat in that gap through
+twelve merges. Each of them was then inside the release the dispatch would build, whose note had been
+written before any of them existed and described none of them; publishing it meant tagging the release
+commit by hand and dispatching from the tag rather than from the branch.
 
-Read of the base rather than of the pull request, so the pull request that closes the section is
-the one tree the state is allowed to be in.
+**Publication**, asked of the BASE: the version package.json names is tagged. Only a dispatch repairs
+this, so refusing merges is the pressure that produces one — and asking it of the base rather than of
+the tree leaves the pull request that closes a section free to merge, which is the one tree the state
+is allowed to be in.
 
-Run: python3 scripts/release/published_check.py --rev origin/main
+**Consistency**, asked of the TREE A MERGE WOULD PRODUCE: package.json names a CHANGELOG section that
+exists, carries a date, and has no dated section above it. These are repaired by a commit, so they
+must fail the pull request that would introduce them rather than the ones that follow. Asking this of
+the base too would leave the repair itself unmergeable, with no direct push to main to escape through.
+
+Run: python3 scripts/release/published_check.py --base origin/main --result HEAD
 """
 
 import argparse
@@ -25,30 +31,32 @@ from release_notes import DEFAULT_CHANGELOG, DEFAULT_PACKAGE_JSON, VERSION_HEADI
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-CHANGELOG_PATH = str(DEFAULT_CHANGELOG.relative_to(REPO_ROOT))
-PACKAGE_JSON_PATH = str(DEFAULT_PACKAGE_JSON.relative_to(REPO_ROOT))
+# as_posix, not str: a git tree path is always /-separated, and the native rendering on Windows makes
+# every `git show` here fail — which unpublished_reason answers as a clean base.
+CHANGELOG_PATH = DEFAULT_CHANGELOG.relative_to(REPO_ROOT).as_posix()
+PACKAGE_JSON_PATH = DEFAULT_PACKAGE_JSON.relative_to(REPO_ROOT).as_posix()
 
 RELEASE_DATE = re.compile(r"\]\s*-\s*\d{4}-\d{2}-\d{2}\s*$")
+RELEASE_TAG = re.compile(r"^v\d")
 
 
 def version_headings(changelog_text):
-    """Every `## [version]` line, newest first, paired with the version it names."""
-    headings = []
-    for line in changelog_text.splitlines():
-        match = VERSION_HEADING.match(line)
-        if match:
-            headings.append((match.group("version"), line))
-    return headings
+    """Every `## [version]` line, in file order, paired with the version it names."""
+    return [(match.group("version"), line)
+            for line in changelog_text.splitlines()
+            if (match := VERSION_HEADING.match(line))]
 
 
-def publication_reason(changelog_text, package_json_text, tags):
-    """Why nothing may be merged on top of this tree, or None.
+def declared_version(package_json_text):
+    return json.loads(package_json_text).get("version")
 
-    Ordered so the reader is told the first thing that is wrong rather than all of them: an absent
-    section and an absent tag have the same repair, and naming the tag first would send someone to
-    dispatch a version the note builder would refuse.
+
+def consistency_reason(changelog_text, package_json_text):
+    """Why this tree could not be released as it stands, or None.
+
+    Ordered so the reader is told the first thing that is wrong rather than all of them.
     """
-    version = json.loads(package_json_text).get("version")
+    version = declared_version(package_json_text)
     if not version:
         return f"{PACKAGE_JSON_PATH} declares no version"
 
@@ -60,15 +68,35 @@ def publication_reason(changelog_text, package_json_text, tags):
 
     if not RELEASE_DATE.search(own):
         return (f"the CHANGELOG section for {version} carries no date: close it as "
-                f"'## [{version}] - YYYY-MM-DD' before anything is merged on top of it")
+                f"'## [{version}] - YYYY-MM-DD', which is the spelling the note builder reads")
 
     # package.json is what upm.yml verifies a dispatch against, so a section closed above the one it
-    # names is a release the dispatch cannot reach and this check would otherwise read past.
+    # names is a release the dispatch cannot reach.
     above = [named for named, line in headings[:headings.index((version, own))]
              if RELEASE_DATE.search(line)]
     if above:
         return (f"the CHANGELOG has closed {', '.join(above)} above the {version} package.json "
                 f"names: bump package.json to {above[0]} so the dispatch can reach it")
+
+    return None
+
+
+def publication_reason(changelog_text, package_json_text, tags):
+    """Why nothing may be merged on top of this tree, or None.
+
+    Answers None for a tree consistency_reason already refuses: the version to ask about is exactly
+    what is in doubt there, and that question is posed of the merge result instead.
+
+    A remote carrying no release tag at all answers None too. That is a fork or a fresh copy — GitHub's
+    fork sync moves branches and not tags — and refusing there would name a dispatch its owner cannot
+    run.
+    """
+    if consistency_reason(changelog_text, package_json_text):
+        return None
+
+    version = declared_version(package_json_text)
+    if not any(RELEASE_TAG.match(tag) for tag in tags):
+        return None
 
     if f"v{version}" not in tags:
         return (f"v{version} is closed in the CHANGELOG and was never published. Dispatch it with "
@@ -102,9 +130,10 @@ def read_at(project, rev, path):
 def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False):
     """publication_reason for one revision of a repository, or None when it reads clean.
 
-    Returns None on any git failure. Every caller but the workflow is a guard on a developer's
-    machine, where a detached checkout or an absent remote is an ordinary state and refusing there
-    would train the reader to work around the guard.
+    A git failure answers None rather than refusing: an absent or unreachable remote is an ordinary
+    state on a developer's machine, and refusing in it would train the reader to work around the
+    guard. It says so on stderr, because that answer is otherwise the same silence a published base
+    gives. The workflow does not come through here — it lets a git error raise and go red.
     """
     try:
         if fetch:
@@ -112,7 +141,9 @@ def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False)
         return publication_reason(read_at(project, rev, CHANGELOG_PATH),
                                   read_at(project, rev, PACKAGE_JSON_PATH),
                                   remote_tags(project, remote))
-    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError):
+    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError) as failure:
+        print(f"could not read {rev} to check it against the published releases: {failure}",
+              file=sys.stderr)
         return None
 
 
@@ -120,21 +151,38 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--project", default=".", help="repository root (default: cwd)")
-    parser.add_argument("--rev", default="origin/main",
-                        help="the revision to read the two files from (default: origin/main)")
+    parser.add_argument("--base", help="revision to ask the publication question of")
+    parser.add_argument("--result", help="revision to ask the consistency question of")
     parser.add_argument("--remote", default="origin", help="remote to read tags from")
     args = parser.parse_args()
+    if not args.base and not args.result:
+        parser.error("name at least one of --base and --result")
 
     project = Path(args.project).resolve()
-    reason = publication_reason(read_at(project, args.rev, CHANGELOG_PATH),
-                                read_at(project, args.rev, PACKAGE_JSON_PATH),
-                                remote_tags(project, args.remote))
-    if reason:
-        print(f"{args.rev} holds an unpublished release: {reason}", file=sys.stderr)
-        return 1
+    failed = False
 
-    print(f"{args.rev}: the version package.json names is published")
-    return 0
+    def report(rev, reason, wrong, right):
+        nonlocal failed
+        if reason:
+            failed = True
+            print(f"{rev} {wrong}: {reason}", file=sys.stderr)
+        else:
+            print(f"{rev}: {right}")
+
+    if args.base:
+        report(args.base,
+               publication_reason(read_at(project, args.base, CHANGELOG_PATH),
+                                  read_at(project, args.base, PACKAGE_JSON_PATH),
+                                  remote_tags(project, args.remote)),
+               "holds an unpublished release", "the version package.json names is published")
+
+    if args.result:
+        report(args.result,
+               consistency_reason(read_at(project, args.result, CHANGELOG_PATH),
+                                  read_at(project, args.result, PACKAGE_JSON_PATH)),
+               "could not be released as it stands", "package.json and the CHANGELOG agree")
+
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

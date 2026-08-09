@@ -51,15 +51,21 @@ class MergeDecisionTests(unittest.TestCase):
         self.assertEqual(len(decided), 1)
 
     def test_Given_TheBaseHoldsAnUnpublishedRelease_When_EverythingElsePasses_Then_ItStillBlocks(self):
-        # Arrange — the state main sat in for an afternoon while five pull requests merged into it.
-        decided = reasons(unpublished_release="v2.0.1 was never published")
+        # Arrange — the state main sat in for a day while twelve pull requests merged into it.
+        unpublished = "v2.0.1 was never published"
+
+        # Act
+        decided = reasons(unpublished_release=unpublished)
 
         # Assert
-        self.assertEqual(decided, ["v2.0.1 was never published"])
+        self.assertEqual(decided, [unpublished])
 
     def test_Given_TheHeadMovedAndTheBaseIsUnpublished_When_Decided_Then_BothAreReported(self):
         # Arrange — the force-push voids the readings about the head, not the one about the base.
-        decided = reasons(after=MOVED, unpublished_release="v2.0.1 was never published")
+        unpublished = "v2.0.1 was never published"
+
+        # Act
+        decided = reasons(after=MOVED, unpublished_release=unpublished)
 
         # Assert
         self.assertEqual(len(decided), 2)

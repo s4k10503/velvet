@@ -232,6 +232,76 @@ namespace Velvet.Tests
                 + "failing:\n" + string.Join("\n", dangling));
         }
 
+        // A payload every guard must answer without refusing, so what this poses is whether the script runs
+        // at all. The Read event is filtered out by each hook's own tool-name check; the Bash one carries a
+        // command no guard here claims.
+        private static readonly (string Label, string Payload)[] BenignPayloads =
+        {
+            ("a Read event", "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"README.md\"}}"),
+            ("an unclaimed Bash command", "{\"tool_name\":\"Bash\",\"cwd\":\"CWD\",\"tool_input\":{\"command\":\"ls\"}}"),
+        };
+
+        [Test]
+        public void Given_EveryRefusingGuard_When_APayloadItMustNotRefuseIsPosed_Then_ItRunsToAVerdict()
+        {
+            // Arrange — a PreToolUse hook that exits anything but 2 lets the tool through, so a guard whose
+            // module-level imports raise is a guard that has been deleted, reporting what one that ran and
+            // found nothing reports. Every wiring check above passes for it: the path resolves, the file is
+            // there, the name it builds is real. Only running it separates the two.
+            var guards = Directory.GetFiles(Path.GetFullPath(RefuseDirectory), "*.py")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+            Assume.That(guards, Is.Not.Empty, "no refusing guard was found to pose anything at");
+
+            // Act
+            var broken = (from guard in guards
+                          from payload in BenignPayloads
+                          let answer = Answer(guard, payload.Payload)
+                          where answer.Exit != 0
+                          select $"{Path.GetFileName(guard)} on {payload.Label}: exit {answer.Exit}\n{answer.Error}")
+                .ToList();
+
+            // Assert — the guard count rides along because an empty directory poses nothing.
+            Assert.That((guards.Count > 5, string.Join("\n", broken)), Is.EqualTo((true, string.Empty)),
+                "these guards did not reach a verdict, and a hook that does not reach one is not consulted");
+        }
+
+        private const string RefuseDirectory = HookDirectory + "/refuse";
+
+        /// <summary>Runs one hook against a payload and returns its exit code with whatever it wrote.</summary>
+        private static (int Exit, string Error) Answer(string hook, string payload)
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("python3")
+            {
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            // -B so no __pycache__ lands beside a hook: the orphan check above reads every file in the tree.
+            start.ArgumentList.Add("-B");
+            start.ArgumentList.Add(hook);
+
+            using var process = System.Diagnostics.Process.Start(start);
+            if (process == null)
+            {
+                return (-1, "python3 did not start");
+            }
+
+            process.StandardInput.Write(payload.Replace("CWD", Path.GetFullPath(".").Replace("\\", "\\\\")));
+            process.StandardInput.Close();
+            var error = process.StandardError.ReadToEnd();
+            process.StandardOutput.ReadToEnd();
+            if (!process.WaitForExit(60000))
+            {
+                process.Kill();
+                return (-1, "timed out");
+            }
+
+            return (process.ExitCode, error);
+        }
+
         private static List<(string Name, string Source)> ReadWiring() =>
             (from file in WiringFiles()
              let path = Path.GetFullPath(file)

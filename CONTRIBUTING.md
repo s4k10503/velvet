@@ -162,6 +162,7 @@ on every platform.
 | `Source generators ▸ Required checks (generators)` | every PR / merge group | not required | **yes** |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
 | `Test ▸ release-notes` | push (filtered) / every PR / merge group | not required | no |
+| `Test ▸ publication` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ Required checks (Unity)` | every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` | not required | no |
 | `UPM ▸ release` | manual (`workflow_dispatch`) | not required | no |
@@ -215,6 +216,11 @@ the license on the same account.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
+
+Step 3 is not optional and not deferrable. Between step 2 and step 3, `main` names a version that does
+not exist, and anything merged there ships inside it with the release note describing none of it — so
+`Test ▸ publication` fails for a pull request whose checks run in that window, and `settle.py merge` and
+`gh pr merge` both refuse. `scripts/release/published_check.py` states the repair in its own message.
 
 The release notes are built from that CHANGELOG section by `scripts/release/release_notes.py`, so a release
 is never written twice. Each version therefore needs a `### Highlights` block above its

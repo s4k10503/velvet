@@ -138,8 +138,8 @@ namespace Velvet.Tests
                 .Where(path => !invoked.Any(line => line.Contains(path, StringComparison.Ordinal)))
                 .ToList();
 
-            // Assert — a floor rather than the count, and one that a deletion trips: a directory that
-            // yielded nothing leaves nothing unrun, and so does one whose last few files were removed.
+            // Assert — a floor rather than the count, because a directory that yielded nothing leaves
+            // nothing unrun. Raise it with the tree, or a deletion answers the same way an empty scan does.
             Assert.That((harnessTests.Count >= 6, string.Join("\n", unrun)), Is.EqualTo((true, string.Empty)),
                 "a harness under scripts/ has unit tests that no workflow job runs");
         }
