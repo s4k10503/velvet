@@ -184,10 +184,9 @@ namespace Velvet
             element.PostProcessTextVertices = null;
 
             var defaults = TextDefaults;
-            // A text element paints itself through the same delegate anything else adds a painter to, and
-            // Velvet's own silhouette painters use it. Assigning the probe's is what drops a consumer's:
-            // the entry a constructor installs takes its subject off the generation context rather than
-            // capturing one, so one instance's is every instance's.
+            // Assigning the probe's painter is what drops a consumer's: the entry a constructor installs
+            // takes its subject off the generation context rather than capturing one, so one instance's is
+            // every instance's.
             element.generateVisualContent = defaults.generateVisualContent;
             // Writes focusable false on its way through, so anything restoring a type's own focusable — the
             // line in FiberButtonPoolHelper — has to come after this call.

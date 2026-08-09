@@ -315,8 +315,9 @@ namespace Velvet.Tests
         }
 
         // Structural: a plain VisualElement through ResetCommonState. Every field probed below is also a
-        // compared slot in PooledElementSurfaceResetTests; what that fixture never builds is this element
-        // type, which is what this one holds.
+        // compared slot in PooledElementSurfaceResetTests, which walks widgets; what only this one holds is
+        // that they are reset by the SHARED method, so moving one into all five widget helpers fails here
+        // and nowhere else.
 
         private static readonly (string Name, Func<VisualElement, object> Read)[] CommonStateProbes =
         {
