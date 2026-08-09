@@ -436,9 +436,9 @@ namespace Velvet
 
         private VisualElement CreateForPortalNode(PortalNode portalNode)
         {
-            // TargetId and Layer are a one-of pair; a hand-built node violating that has no
-            // meaningful routing, so it warns and mounts an inert placeholder rather than
-            // silently picking a side.
+            // TargetId, Layer and TargetElement are a one-of triple; a hand-built node violating
+            // that has no meaningful routing, so it warns and mounts an inert placeholder rather
+            // than silently picking a side.
             var hasTargetId = !string.IsNullOrEmpty(portalNode.TargetId);
             var hasLayer = portalNode.Layer != null;
             var hasElement = portalNode.TargetElement != null;

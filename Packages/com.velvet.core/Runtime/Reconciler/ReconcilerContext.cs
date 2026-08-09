@@ -755,7 +755,7 @@ namespace Velvet
         internal DndActiveDrag? ActiveDrag { get; set; }
 
         // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
-        // range of FiberPortalRegistry.Get(TargetId).Children owned by this Portal — the
+        // range of the resolved target's children owned by this Portal — the
         // invariant that lets multiple Portals coexist on the same target without overwriting each
         // other on patch (each Portal reconciles only its own slot range) and on cleanup (only the
         // range is removed, not the entire target). When a Portal's range grows or shrinks, the

@@ -26,6 +26,8 @@ namespace Velvet.Tests
     /// <item>The committed effect factory is the first pass's closure, not the diagnostic pass's.</item>
     /// <item>The diagnostic pass returns pooled descendant objects, so repeated diagnostic re-renders never drain
     /// the pool or corrupt the committed tree.</item>
+    /// <item>A render body that builds a fresh portal container each pass is impure and is reported, the same as
+    /// any other output that differs between the two passes.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -288,6 +290,24 @@ namespace Velvet.Tests
         private static int s_impureHiddenState;
 
         [Component]
+        [Test]
+        public void Given_GateOn_When_PortalContainerIsRebuiltEachRender_Then_LogsError()
+        {
+            // Arrange
+            FiberStrictMode.Enabled = true;
+            LogAssert.Expect(LogType.Error, new Regex("StrictMode.*impure"));
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(FreshPortalContainerRender, key: "fresh-container"));
+
+            // Assert — a container that is not the same element between passes is what makes the portal
+            // subtree remount on every render, and only the container's identity distinguishes the passes.
+            Assert.That(mounted, Is.Not.Null);
+        }
+
+        private static VNode FreshPortalContainerRender() =>
+            V.Portal(new VisualElement(), children: new VNode?[] { V.Div(name: "in-portal") });
+
         private static VNode ImpureRender()
         {
             // Reading + mutating module state during render makes the output depend on invocation count,

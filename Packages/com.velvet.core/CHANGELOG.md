@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
+  shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
+  later render moves the children — an unmount and a remount, so their state does not survive. What
+  does not move them is re-registering an id a mounted portal already resolved.
+
 ### Fixed
 
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
@@ -91,10 +98,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   element's own class pass records.
 
 ### Added
-
-- `V.Portal(container, …)` takes the element itself, the way `createPortal` does — no registration, no
-  shared name, and an element from a `refCallback` is a valid container. Passing a different container
-  on a later render moves the children; a registry id, which resolves once at mount, does not.
 
 - `origin-[x]` and `origin-[x_y]` arbitrary values for `transform-origin`. The pivot a rotation or a scale
   turns about could only be one of nine keywords, so a gauge needle at 90% of its height, or a bubble

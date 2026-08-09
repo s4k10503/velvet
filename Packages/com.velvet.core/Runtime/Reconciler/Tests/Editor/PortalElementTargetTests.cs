@@ -32,8 +32,11 @@ namespace Velvet.Tests
         [TearDown]
         public void TearDown() => _reconciler.Dispose();
 
-        private static VNode[] Tree(VisualElement target, string text) =>
-            new VNode[] { V.Portal(target, children: new VNode?[] { V.Text(text) }) };
+        // A Div rather than a Text: a Text mounts a pooled Label, and a remount returns it to a LIFO pool
+        // that the very next rent pops, so an identity reading cannot tell a patch from a remount. A Div's
+        // element is never pooled.
+        private static VNode[] Tree(VisualElement target, string name) =>
+            new VNode[] { V.Portal(target, children: new VNode?[] { V.Div(name: name) }) };
 
         [Test]
         public void Given_a_container_the_caller_holds_When_a_portal_targets_it_Then_the_children_mount_there()
@@ -47,7 +50,7 @@ namespace Velvet.Tests
 
             // Assert — the count keeps the reading load-bearing: an unresolved target renders nothing.
             Assert.That(
-                (container.childCount, (container.ElementAt(0) as Label)?.text),
+                (container.childCount, container.ElementAt(0).name),
                 Is.EqualTo((1, "hello")));
         }
 
@@ -65,7 +68,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                (first.childCount, second.childCount, (second.ElementAt(0) as Label)?.text),
+                (first.childCount, second.childCount, second.ElementAt(0).name),
                 Is.EqualTo((0, 1, "hello")));
         }
 
@@ -83,7 +86,7 @@ namespace Velvet.Tests
 
             // Assert — identity separates a patch from the remount the container-change case takes.
             Assert.That(
-                (ReferenceEquals(container.ElementAt(0), mounted), (mounted as Label)?.text),
+                (ReferenceEquals(container.ElementAt(0), mounted), mounted.name),
                 Is.EqualTo((true, "goodbye")));
         }
 
@@ -95,8 +98,8 @@ namespace Velvet.Tests
             var right = new VisualElement();
             var tree = new VNode[]
             {
-                V.Portal(left, children: new VNode?[] { V.Text("left") }),
-                V.Portal(right, children: new VNode?[] { V.Text("right") }),
+                V.Portal(left, children: new VNode?[] { V.Div(name: "left") }),
+                V.Portal(right, children: new VNode?[] { V.Div(name: "right") }),
             };
 
             // Act
@@ -104,7 +107,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(
-                ((left.ElementAt(0) as Label)?.text, (right.ElementAt(0) as Label)?.text),
+                (left.ElementAt(0).name, right.ElementAt(0).name),
                 Is.EqualTo(("left", "right")));
         }
     }

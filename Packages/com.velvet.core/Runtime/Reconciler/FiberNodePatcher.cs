@@ -794,7 +794,9 @@ namespace Velvet
         }
 
         // Resolves the target VisualElement a Portal patch reconciles its slot range against, across
-        // the three ways a Portal can address one: an explicit Layer (host table lookup, plus re-chaining
+        // the ways a Portal can address one. TargetElement is not among them: a change there is refused
+        // by ReconcileKeying.CanPatch, so it arrives as an unmount and a remount and never as a patch.
+        // An explicit Layer (host table lookup, plus re-chaining
         // the placeholder when FocusOrder changed), an id already resolved by an earlier patch (the
         // target its children are already mounted into — re-registering the id only points FUTURE
         // portals elsewhere), or an id not yet healed (the mount warned and recorded no target; this is
@@ -2379,8 +2381,8 @@ namespace Velvet
             {
                 foreach (var info in ctx.PortalState.Values)
                 {
-                    // The resolved target recorded at mount covers every portal flavor (registry,
-                    // layer, world-space); null only for the never-mounted missing-registry path.
+                    // The resolved target recorded at mount covers every portal flavor; null only for
+                    // the never-mounted missing-registry path.
                     if (info.Target != null)
                     {
                         ReevaluateHasOnAncestorChain(ctx, info.Target, hasClass, hasManip);

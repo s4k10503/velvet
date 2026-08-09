@@ -21,10 +21,13 @@ and an element reached through a `refCallback` is a valid container without bein
 the whole process. That is what makes an id convenient across unrelated call sites and what makes two
 registrations of one name overwrite each other.
 
-The two differ in one more way, deliberately. **Passing a different container moves the children** —
-the reconciler cannot patch one container's portal into another's, so the old unmounts and the new
-mounts, which is what `createPortal` does. **A registry id does not move them**: the id resolves once
-at mount and is then held, so re-registering it points only future portals elsewhere.
+The two differ in one more way, deliberately. **Passing a different target moves the children** — the
+reconciler cannot patch one container's portal into another's, so the old unmounts and the new
+mounts, which is what `createPortal` does. Changing a registry id moves them the same way. What does
+not move an already-mounted portal is **re-registering the id it already resolved**: that resolution
+happens once at mount and is then held, so a later `Register` points only future portals elsewhere.
+
+Moving is an unmount and a remount, so child state, refs and effects do not survive it.
 
 ## The shared boundary semantics
 
@@ -32,7 +35,7 @@ The boundary behaves the same in all three forms:
 
 - **Context crosses.** A `V.Provider` above the portal call site is visible to the children.
 - **Stores cross.** `UseStore` subscriptions are independent of panels.
-- **`events:` handlers cross in all three portal forms**, through one synthetic-bubbling
+- **`events:` handlers cross in every portal form**, through one synthetic-bubbling
   mechanism: `PointerDown`/`Up`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDown`/`Up`, and
   `FocusIn`/`Out` bindings on an `events:` prop bubble to the logical ancestor chain outside the
   portal boundary (React's own root-level event delegation, walking the logical parent chain

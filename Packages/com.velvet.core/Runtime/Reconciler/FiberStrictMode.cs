@@ -1,6 +1,8 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace Velvet
@@ -96,9 +98,16 @@ namespace Velvet
                     sb.Append(')');
                     break;
                 case PortalNode portal:
-                    // TargetId and Layer are a one-of pair; whichever is set names the target.
+                    // Whichever of the three is set names the target. The element's identity has to take
+                    // part: a body that evaluates to a fresh container each render is exactly the impurity
+                    // this exists to surface, and it now costs a full remount of the portal subtree, since
+                    // ReconcileKeying refuses to patch across containers.
                     sb.Append("Portal(").Append(node.Key).Append('|')
-                        .Append(portal.TargetId ?? portal.Layer?.ToString()).Append('|');
+                        .Append(portal.TargetId ?? portal.Layer?.ToString()).Append('|')
+                        .Append(portal.TargetElement == null
+                            ? string.Empty
+                            : RuntimeHelpers.GetHashCode(portal.TargetElement).ToString(CultureInfo.InvariantCulture))
+                        .Append('|');
                     AppendTree(sb, portal.Children);
                     sb.Append(')');
                     break;
