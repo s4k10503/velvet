@@ -135,14 +135,17 @@ agent type. Such a guard says so with a `HOOK_SCOPE = "session"` line.
 
 A `PreToolUse` guard is reached only for the tools its `"matcher"` names, and acts only on the tools
 its own gate admits. It declares the second as a `HOOK_TOOLS = {...}` set and gates on that set
-rather than on a literal, so the two halves are one edit apart instead of two.
+rather than on a literal, which is what leaves the two halves comparable. Register it under the tool
+names themselves: `"*"` names no set a check can read, so a guard covering several tools spells them
+out in the matcher.
 
 Every failure mode here is silence, so the wiring is asserted rather than trusted.
 `HookWiringCoverageTests` pairs each script against the settings and agent frontmatter that run it,
 in both directions, fails on a script name a hook builds a path from that no file answers to, fails
 on a `HOOK_SCOPE = "session"` guard that the settings do not register or that an agent registers a
-second time, and fails when a `PreToolUse` guard's `HOOK_TOOLS` and its matcher name different tools
-or when the guard declares a set its gate never reads.
+second time, and fails when a `PreToolUse` guard's `HOOK_TOOLS` and its matcher name different tools,
+when the guard declares a set its gate never reads, or when its gate answers a payload posed under a
+tool nothing routes to it rather than under one that is.
 
 ### Source generators
 
