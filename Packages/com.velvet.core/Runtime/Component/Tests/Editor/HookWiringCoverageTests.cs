@@ -14,7 +14,9 @@ namespace Velvet.Tests
     /// shows up as a failure: a guard that stops being invoked reports exactly what a guard that passes
     /// reports. Pairing by file name cannot separate the two files that do the running: an agent
     /// definition runs a hook for one agent type, the settings for every session. A guard over state any
-    /// session can move declares <c>HOOK_SCOPE</c>, and is paired against the settings alone.
+    /// session can move declares <c>HOOK_SCOPE</c>, and is paired against the settings alone. A
+    /// <c>PreToolUse</c> guard declares the tools it acts on as <c>HOOK_TOOLS</c>, and is paired
+    /// against the matcher that decides which tools reach it.
     /// </summary>
     [TestFixture]
     internal sealed class HookWiringCoverageTests
@@ -117,13 +119,14 @@ namespace Velvet.Tests
                 .Select(RelativeToHookDirectory)
                 .ToList();
 
-        // Folded into both assertions below rather than left to an `Assume`: deleting the declaration
-        // empties both checks, and an `Assume` would report that as inconclusive, which the runner
-        // does not count as a failure.
-        private static IEnumerable<string> UndeclaredScope(List<string> declared) =>
-            declared.Count == 0
-                ? new[] { "no hook declares HOOK_SCOPE, so neither scope check has a subject left" }
-                : Enumerable.Empty<string>();
+        // Folded into the assertions below rather than left to an `Assume`: deleting a declaration
+        // empties every check keyed on it, and an `Assume` would report that as inconclusive, which
+        // the runner does not count as a failure.
+        private static IEnumerable<string> NothingToCheck(int subjects, string reason) =>
+            subjects == 0 ? new[] { reason } : Enumerable.Empty<string>();
+
+        private const string NoScopeDeclared =
+            "no hook declares HOOK_SCOPE, so neither scope check has a subject left";
 
         [Test]
         public void Given_TheHooksDeclaringSessionScope_When_TheSettingsAreRead_Then_EveryOneIsRegisteredThere()
@@ -138,7 +141,7 @@ namespace Velvet.Tests
                 StringComparer.Ordinal);
 
             // Act
-            var unregistered = UndeclaredScope(declared)
+            var unregistered = NothingToCheck(declared.Count, NoScopeDeclared)
                 .Concat(declared.Where(hook => !registered.Contains(hook)))
                 .ToList();
 
@@ -156,7 +159,7 @@ namespace Velvet.Tests
             var scoped = new HashSet<string>(declared, StringComparer.Ordinal);
 
             // Act
-            var narrowed = UndeclaredScope(declared)
+            var narrowed = NothingToCheck(declared.Count, NoScopeDeclared)
                 .Concat(from file in AgentDefinitions()
                         from Match match in HookReferencePattern.Matches(FrontMatter(File.ReadAllText(file)))
                         where scoped.Contains(match.Groups[1].Value)
@@ -168,6 +171,200 @@ namespace Velvet.Tests
             Assert.That(narrowed, Is.Empty,
                 "the same guard registered on the event and on an agent fires twice, and a reader has "
                 + $"nothing telling them which of the two was meant:\n{string.Join("\n", narrowed)}");
+        }
+
+        // Which tools a `PreToolUse` guard acts on is written twice — the settings matcher routes them
+        // to it, and the hook's own gate decides which of what arrives it reads. Same one-place reason
+        // as HOOK_SCOPE above: the declaration is a line in the hook, and this fixture compares it
+        // against the registration rather than holding a table of its own.
+        private static readonly Regex ToolSetPattern =
+            new(@"^HOOK_TOOLS\s*=\s*\{([^}]*)\}\s*$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+        private static readonly Regex QuotedName = new(@"""([^""]*)""", RegexOptions.Compiled);
+
+        // Sorted because each side means a set: the order a matcher's alternation or a Python literal
+        // happens to be written in is not part of what either says.
+        private static string Sorted(IEnumerable<string> names) =>
+            string.Join("|", names.Select(name => name.Trim()).Where(name => name.Length > 0)
+                .OrderBy(name => name, StringComparer.Ordinal));
+
+        /// <summary>The tools a hook declares, or null when it declares none.</summary>
+        private static string DeclaredTools(string hookName)
+        {
+            var path = Path.GetFullPath(HookDirectory + "/" + hookName);
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var declaration = ToolSetPattern.Match(File.ReadAllText(path));
+            return declaration.Success
+                ? Sorted(from Match name in QuotedName.Matches(declaration.Groups[1].Value)
+                         select name.Groups[1].Value)
+                : null;
+        }
+
+        /// <summary>Each PreToolUse hook path in the settings, with the matcher that routes tools to it.</summary>
+        private static List<(string Hook, string Matcher)> PreToolUseRegistrations()
+        {
+            var settings = Path.GetFullPath(SettingsFile);
+            var text = File.Exists(settings) ? File.ReadAllText(settings) : string.Empty;
+            return (from entry in JsonObjects(JsonArrayValue(text, "PreToolUse"))
+                    let matcher = MatcherPattern.Match(entry)
+                    from Match reference in HookReferencePattern.Matches(entry)
+                    select (reference.Groups[1].Value, matcher.Success ? matcher.Groups[1].Value : string.Empty))
+                .Distinct()
+                .ToList();
+        }
+
+        private static readonly Regex MatcherPattern =
+            new(@"""matcher""\s*:\s*""([^""]*)""", RegexOptions.Compiled);
+
+        // A hand-rolled reader because this assembly references no JSON library. It tracks string
+        // state, so a bracket inside a matcher's regex or inside a command does not end a span.
+        private static string JsonArrayValue(string text, string key)
+        {
+            var at = text.IndexOf("\"" + key + "\"", StringComparison.Ordinal);
+            var open = at < 0 ? -1 : text.IndexOf('[', at);
+            if (open < 0)
+            {
+                return string.Empty;
+            }
+
+            var depth = 0;
+            foreach (var (index, character) in OutsideStrings(text, open))
+            {
+                if (character == '[')
+                {
+                    depth++;
+                }
+                else if (character == ']' && --depth == 0)
+                {
+                    return text.Substring(open + 1, index - open - 1);
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static IEnumerable<string> JsonObjects(string text)
+        {
+            var depth = 0;
+            var start = 0;
+            foreach (var (index, character) in OutsideStrings(text, 0))
+            {
+                if (character == '{' && depth++ == 0)
+                {
+                    start = index;
+                }
+                else if (character == '}' && --depth == 0)
+                {
+                    yield return text.Substring(start, index - start + 1);
+                }
+            }
+        }
+
+        private static IEnumerable<(int Index, char Character)> OutsideStrings(string text, int from)
+        {
+            var inString = false;
+            for (var index = from; index < text.Length; index++)
+            {
+                var character = text[index];
+                if (inString)
+                {
+                    if (character == '\\')
+                    {
+                        index++;
+                    }
+                    else if (character == '"')
+                    {
+                        inString = false;
+                    }
+                }
+                else if (character == '"')
+                {
+                    inString = true;
+                }
+                else
+                {
+                    yield return (index, character);
+                }
+            }
+        }
+
+        private const string NoRegistrationRead =
+            "no PreToolUse registration was read out of " + SettingsFile
+            + ", so neither tool-set check has a subject left";
+
+        [Test]
+        public void Given_ThePreToolUseRegistrations_When_EachHookIsRead_Then_EveryOneDeclaresItsToolSet()
+        {
+            // Arrange
+            var registrations = PreToolUseRegistrations();
+
+            // Act
+            var silent = NothingToCheck(registrations.Count, NoRegistrationRead)
+                .Concat(from registration in registrations
+                        where DeclaredTools(registration.Hook) == null
+                        select $"{HookDirectory}/{registration.Hook} is routed {registration.Matcher}")
+                .ToList();
+
+            // Assert
+            Assert.That(silent, Is.Empty,
+                "a hook declaring no tool set leaves the matcher as the only written statement of which "
+                + "tools it acts on, and its gate free to disagree with that in a literal nothing "
+                + $"compares:\n{string.Join("\n", silent)}");
+        }
+
+        [Test]
+        public void Given_ThePreToolUseRegistrations_When_EachMatcherIsComparedWithTheHooksOwnSet_Then_TheyNameTheSameTools()
+        {
+            // Arrange
+            var registrations = PreToolUseRegistrations();
+
+            // Act
+            var apart = NothingToCheck(registrations.Count, NoRegistrationRead)
+                .Concat(from registration in registrations
+                        let routed = Sorted(registration.Matcher.Split('|'))
+                        let declared = DeclaredTools(registration.Hook)
+                        where declared != routed
+                        select $"{HookDirectory}/{registration.Hook}: matcher routes {routed}, "
+                               + $"HOOK_TOOLS admits {declared ?? "nothing"}")
+                .ToList();
+
+            // Assert
+            Assert.That(apart, Is.Empty,
+                "a tool named on one side alone is silent both ways round — dropped from the set it "
+                + "reaches the hook and falls through, dropped from the matcher it never arrives and "
+                + $"the set goes on claiming it:\n{string.Join("\n", apart)}");
+        }
+
+        [Test]
+        public void Given_TheHooksDeclaringAToolSet_When_TheirSourceIsRead_Then_EveryOneComparesToolNameAgainstIt()
+        {
+            // Arrange
+            var declaring = Directory
+                .GetFiles(Path.GetFullPath(HookDirectory), "*.py", SearchOption.AllDirectories)
+                .Where(hook => !hook.Contains("__pycache__", StringComparison.Ordinal))
+                .Where(hook => ToolSetPattern.IsMatch(File.ReadAllText(hook)))
+                .ToList();
+
+            // Act — the gate has to read the declared name, not merely sit beside it. A set the gate
+            // does not consult drifts against a literal spelled out in the comparison, and the two
+            // checks above go on comparing the declaration to the matcher while the hook admits
+            // something else.
+            var unread = NothingToCheck(declaring.Count, "no hook declares HOOK_TOOLS")
+                .Concat(from hook in declaring
+                        where !File.ReadLines(hook).Any(line =>
+                            line.Contains("tool_name", StringComparison.Ordinal)
+                            && line.Contains("HOOK_TOOLS", StringComparison.Ordinal))
+                        select $"{RepoRelative(hook)} declares HOOK_TOOLS and gates on something else")
+                .ToList();
+
+            // Assert
+            Assert.That(unread, Is.Empty,
+                "a declaration nothing reads is the same silence as no declaration:\n"
+                + string.Join("\n", unread));
         }
 
         // Read from the front matter alone: the body below it is the agent's prompt, where a guard can

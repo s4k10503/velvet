@@ -41,7 +41,7 @@ GRACE = 900
 # Two polls plus a margin: one missed poll is a slow API call, two is a watcher that stopped.
 HEARTBEAT_TTL = 180
 
-HELD_TOOLS = {"Edit", "Write", "NotebookEdit"}
+HOOK_TOOLS = {"Edit", "Write", "NotebookEdit"}
 
 
 def watcher_age():
@@ -76,7 +76,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") not in HELD_TOOLS:
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     age = watcher_age()
