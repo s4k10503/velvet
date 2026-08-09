@@ -98,9 +98,11 @@ namespace Velvet
         private static readonly ConditionalWeakTable<VisualElement, Recorded<int>> s_tabIndexDefaults = new();
         private static readonly ConditionalWeakTable<VisualElement, Recorded<bool>> s_delegatesFocusDefaults = new();
 
-        // A record belongs to one tenancy of an element, not to the element: the tree a pooled element serves
-        // next declared none of these props, so a record left over from the previous tenancy would restore
-        // that tenancy's reading over whatever the new one put there. Called from
+        // A record is the applier's claim on a member: while one stands, dropping the prop writes the
+        // recorded value back, and for a TextField so does redeclaring a neighbour, since the bag's presence
+        // is what admits the members this render left undeclared. Recording is idempotent, so the next
+        // tenancy's first declared write leaves a record the previous tenancy took — and the restore then
+        // puts that tenancy's reading over whatever this one wrote. Called from
         // FiberElementCleaner.ReturnToPool, which is the single gate every poolable type passes through.
         internal static void ForgetRecordedDefaults(VisualElement element)
         {

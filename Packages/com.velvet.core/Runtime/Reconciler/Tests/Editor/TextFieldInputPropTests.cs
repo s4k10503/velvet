@@ -64,6 +64,41 @@ namespace Velvet.Tests
             Assert.That(((TextField)Root!.ElementAt(0)).maxLength, Is.EqualTo(12));
         }
 
+        // The limit is written through TextField's own maxLength. Writing textEdition.maxLength instead
+        // was rejected: it clips the displayed text when the limit narrows and leaves it clipped when the
+        // limit widens again, and restoring a dropped limit is a widening whenever the element was built
+        // with a looser one than the render declared — so that spelling strands the field showing a
+        // truncated value. This is the reading that separates the two.
+        [Test]
+        public void Given_AMaxLengthThatClippedTheValue_When_ALaterRenderDropsIt_Then_TheClippedCharactersComeBack()
+        {
+            // Arrange
+            var oldTree = new VNode[]
+            {
+                V.Custom<PrefilledTextField>(props: new FiberElementProps
+                {
+                    FieldValue = "abcdefgh",
+                    TextField = new TextFieldSettings(MaxLength: 3),
+                }),
+            };
+            var newTree = new VNode[]
+            {
+                V.Custom<PrefilledTextField>(props: new FiberElementProps { FieldValue = "abcdefgh" }),
+            };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            var whileClipped = element.Q<TextElement>()!.text;
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the clipped reading is folded in because the restored one alone is what an
+            // implementation that never clipped in the first place would also produce.
+            Assert.That(
+                (whileClipped, element.Q<TextElement>()!.text),
+                Is.EqualTo(("abc", "abcdefgh")));
+        }
+
         [Test]
         public void Given_ADeclaredReadOnlyFlag_When_TheFieldIsReconciled_Then_TheElementCarriesIt()
         {

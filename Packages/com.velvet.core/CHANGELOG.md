@@ -19,8 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A `TextField`'s `isPasswordField` was written back to `false` by any render that declared another
-  text-input prop, so a mask a `refCallback:` had switched on came off as soon as the field's
-  placeholder or label changed. A member no render declares is now nobody's to write.
+  text-input prop, so a mask a `refCallback:` had switched on came off on the next render that changed
+  the field's placeholder, length limit, read-only or delayed flag. A member no render declares is now
+  nobody's to write.
 
 - A pooled widget carried the props a previous consumer had declared on it into its next mount: the
   recorded value a dropped `Focusable`, `TabIndex`, `DelegatesFocus` or text-input prop restores
