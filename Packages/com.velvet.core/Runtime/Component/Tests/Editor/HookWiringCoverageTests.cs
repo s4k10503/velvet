@@ -232,6 +232,80 @@ namespace Velvet.Tests
                 + "failing:\n" + string.Join("\n", dangling));
         }
 
+        // What each payload reaches. The first two are answered before any guard reads a repository, so
+        // they pose only whether the script loads; the third is a command five of these guards claim, so
+        // it runs the readings and the verdict — the half a benign payload returns above, where a name
+        // that stopped resolving raises and the tool proceeds.
+        //
+        // Its verdict depends on live repository state, so only the exit codes that mean "did not reach
+        // one" fail: refusing and allowing are both a guard that answered.
+        private static readonly (string Label, string Payload, bool MayRefuse)[] Payloads =
+        {
+            ("a Read event", "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"README.md\"}}", false),
+            ("an unclaimed Bash command", "{\"tool_name\":\"Bash\",\"cwd\":\"CWD\",\"tool_input\":{\"command\":\"ls\"}}", false),
+            ("a merge", "{\"tool_name\":\"Bash\",\"cwd\":\"CWD\",\"tool_input\":{\"command\":\"gh pr merge 1 --squash --delete-branch\"}}", true),
+        };
+
+        [Test]
+        public void Given_EveryRefusingGuard_When_APayloadIsPosed_Then_ItRunsToAVerdict()
+        {
+            // Arrange — a PreToolUse hook that exits anything but 2 lets the tool through, so a guard whose
+            // imports or calls raise is a guard that has been deleted, reporting what one that ran and
+            // found nothing reports. Every wiring check above passes for it: the path resolves, the file is
+            // there, the name it builds is real. Only running it separates the two.
+            var guards = Directory.GetFiles(Path.GetFullPath(RefuseDirectory), "*.py")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+
+            // Act
+            var broken = (from guard in guards
+                          from payload in Payloads
+                          let answer = Answer(guard, payload.Payload)
+                          where answer.Exit != 0 && !(payload.MayRefuse && answer.Exit == 2)
+                          select $"{Path.GetFileName(guard)} on {payload.Label}: exit {answer.Exit}\n{answer.Error}")
+                .ToList();
+
+            // Assert — a floor rather than the count, because an empty directory poses nothing and
+            // reports nothing broken. Raise it with the tree, the way the harness scan's floor is raised.
+            Assert.That((guards.Count >= 12, string.Join("\n", broken)), Is.EqualTo((true, string.Empty)),
+                "these guards did not reach a verdict, and a hook that does not reach one is not consulted");
+        }
+
+        private const string RefuseDirectory = HookDirectory + "/refuse";
+
+        /// <summary>Runs one hook against a payload and returns its exit code with whatever it wrote.</summary>
+        private static (int Exit, string Error) Answer(string hook, string payload)
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("python3")
+            {
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            start.ArgumentList.Add("-B");
+            start.ArgumentList.Add(hook);
+
+            using var process = System.Diagnostics.Process.Start(start);
+            if (process == null)
+            {
+                return (-1, "python3 did not start");
+            }
+
+            process.StandardInput.Write(payload.Replace("CWD", Path.GetFullPath(".").Replace("\\", "\\\\")));
+            process.StandardInput.Close();
+            var error = process.StandardError.ReadToEnd();
+            process.StandardOutput.ReadToEnd();
+            if (!process.WaitForExit(60000))
+            {
+                process.Kill();
+                return (-1, "timed out");
+            }
+
+            return (process.ExitCode, error);
+        }
+
         private static List<(string Name, string Source)> ReadWiring() =>
             (from file in WiringFiles()
              let path = Path.GetFullPath(file)

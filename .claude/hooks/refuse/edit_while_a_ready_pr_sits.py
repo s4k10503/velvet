@@ -15,7 +15,7 @@ unread file rather than an empty one — and a guard that reads "I cannot tell" 
 goes quiet precisely when its subject is unobserved. A stale or missing file therefore refuses and
 says to start the watcher, which is the one action that can clear it.
 
-Only Edit and Write are held. Every command that moves a pull request toward merging is a Bash call,
+Only the editing tools are held. Every command that moves a pull request toward merging is a Bash call,
 so the way out stays open while the way deeper in does not.
 """
 
@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from deferrals import DEFERRALS, deferred
 
-# Held on Edit and Write, which carry a file path rather than a shell command, so there is no operand
+# Held on the editing tools, which carry a file path rather than a shell command, so there is no operand
 # for the shell to expand and nothing here reads one.
 UNEXPANDED_POLICY = "n/a"
 

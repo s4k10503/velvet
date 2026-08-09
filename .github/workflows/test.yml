@@ -165,6 +165,43 @@ jobs:
       - run: python3 scripts/release/test_release_notes.py
 
   # ---------------------------------------------------------------------------
+  # CONTRIBUTING.md's release section owns why this exists; scripts/release/published_check.py owns
+  # which question is asked of which tree.
+  #
+  # The publication question is posed only where a merge is being decided, so `--base` is empty on
+  # push and workflow_dispatch. Posing it there instead reddens the release commit's own run — that
+  # commit IS the state, and no push run happens again after the dispatch clears it, so main would
+  # keep a red run for the release forever.
+  #
+  # It is also only half a guard where it does run: a pull request that went green BEFORE the release
+  # landed keeps that green result, since main does not require heads to be up to date
+  # (CONTRIBUTING.md). settle.py's contains-base precondition and stale_merge.py are what refuse such
+  # a merge until the branch takes main in, and that push is a new head, which lands here.
+  #
+  # The base is named from the event rather than derived from the checkout's shape: the event states
+  # which commit it is, and nothing about how the checkout is configured has to stay true for that to
+  # keep holding. fetch-depth 0 for the same reason — whatever commit the event names is present,
+  # without a claim about how far back a window has to reach. A base that cannot be read raises here
+  # rather than answering, and a red job is indistinguishable from a refusal, so the depth is not the
+  # place to economise.
+  # ---------------------------------------------------------------------------
+  publication:
+    name: Release publication
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - run: python3 scripts/release/test_published_check.py
+
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          python3 scripts/release/published_check.py --result HEAD \
+            ${BASE:+--base "$BASE"}
+
+  # ---------------------------------------------------------------------------
   # mutation_check.py needs a licence to kill a mutant, but not to build one, and the building is
   # the half everything else rests on: an operator that emits uncompilable C# reports that mutant as
   # noise rather than as a survivor, so a real hole hides behind it. That half runs here.
@@ -193,11 +230,11 @@ jobs:
   required-checks:
     name: Required checks (Unity)
     if: always()
-    needs: [license-check, unity-tests, release-notes, test-quality]
+    needs: [license-check, unity-tests, release-notes, publication, test-quality]
     runs-on: ubuntu-latest
     steps:
       - env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.release-notes.result }} ${{ needs.test-quality.result }}
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }}
         run: |
           failed=0
           for result in $RESULTS; do
