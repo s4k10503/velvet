@@ -644,7 +644,8 @@ namespace Velvet
             // First, and before any manipulator below turns a payload off: while VariantGateClasses holds
             // state, moving a gate token signals the variant re-sync, which re-derives an element's passes
             // into the paint and driver tables — and those were emptied before this method ran, so the
-            // re-derivation hands a disposed tree a live driver or silhouette nothing will sweep again.
+            // re-derivation re-runs the whole pass tail against those tables; the paint and driver ones
+            // are the cost that lasts, nothing sweeping them again.
             // Emptying it here makes every turn-off below inert on that path. A width token still re-derives
             // the layout manipulators through the re-sync's other trigger, which the loops at the end of this
             // method sweep.

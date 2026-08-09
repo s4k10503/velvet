@@ -86,7 +86,7 @@ namespace Velvet.Tests
             // manipulator at dispose then turns dark:shadow-sm off,
             // which moves a gate token and re-derives the element's passes — and shadow-lg is still on the
             // resolved list, so the pass re-attaches into the table ReleasePaintBindings emptied a few
-            // lines earlier. Two orderings in ReleaseManipulators are what stop that.
+            // lines earlier. Emptying the gate table first is what stops it.
             var scope = new ReconcilerScope();
             var context = scope.Reconciler.Context;
             var wasDark = VelvetTheme.IsDark;
