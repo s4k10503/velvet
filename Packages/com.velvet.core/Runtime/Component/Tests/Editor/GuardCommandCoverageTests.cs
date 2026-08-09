@@ -191,6 +191,8 @@ namespace Velvet.Tests
             ("gh pr create --title x --label ci", ""),
             ("gh pr comment 5 --body \"run gh issue create --title x\"", ""),
             ("gh issue list", ""),
+            ("gh pr create --help", ""),
+            ("gh issue create -h", ""),
         };
 
         // Built at runtime for the same reason as the merge table above.
@@ -306,7 +308,7 @@ namespace Velvet.Tests
 
             // Act
             const string expression =
-                "lambda g,c: ','.join([f for k,o in g.creations(c) if '--web' not in o "
+                "lambda g,c: ','.join([f for k,o in g.creations(c) if not g.exempt(o) "
                 + "for f in ((['--label'] if not g.carries(o, g.LABEL_FLAGS) else []) "
                 + "+ (['--assignee'] if k=='issue' and not g.carries(o, g.ASSIGNEE_FLAGS) else []))])";
             var answers = Ask(hook, expression, Creations.Select(row => row.Command));

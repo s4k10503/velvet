@@ -13,7 +13,8 @@ asks; this refuses.
 Assignee is required on an issue and not on a pull request: a pull request already records its
 author, so a self-assignment adds nothing.
 
-`--web` hands the fields to the browser form, where they can be set, so it is left alone.
+`--web` hands the fields to the browser form, where they can be set, so it is left alone, and so is
+`--help`, which opens nothing.
 """
 
 import json
@@ -29,6 +30,17 @@ import repository
 # refusal by naming the command it refuses, which is exactly the text that would.
 LABEL_FLAGS = ("--label", "-l")
 ASSIGNEE_FLAGS = ("--assignee", "-a")
+
+
+# --web hands the fields to the browser form, where they can be set; --help opens nothing. Named
+# once so GuardCommandCoverageTests asks the guard rather than restating the rule — the copy in that
+# table listed only --web, and a row added for --help disagreed with the guard that had exempted it.
+EXEMPT_FLAGS = ("--web", "--help", "-h")
+
+
+def exempt(operands):
+    """Whether this invocation creates nothing a label could go on."""
+    return any(token in EXEMPT_FLAGS for token in operands)
 
 
 def carries(operands, flags):
@@ -74,7 +86,7 @@ def main():
     missing = []
     kind = ""
     for kind, operands in creations(command):
-        if "--web" in operands:
+        if exempt(operands):
             continue
         missing = []
         if not carries(operands, LABEL_FLAGS):
