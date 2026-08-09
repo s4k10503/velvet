@@ -6,7 +6,8 @@ namespace Velvet
 {
     // The shared class-list restoration and UIToolkit-side reset live in
     // FiberElementPoolReset.ResetClassListAndCommon; what is left here is what only a Button has.
-    // PooledElementSurfaceResetTests is what says the pair between them accounts for the whole surface.
+    // PooledElementSurfaceResetTests compares the pair's result against a freshly constructed instance,
+    // property by property; what it cannot see is stated in FiberElementPoolReset's limitations.
     // button.clicked event handlers are registered by FiberEventBindingManager with a
     // closure-based unregister (actions.Add(() => button.clicked -= handler)); these are
     // released by FiberElementCleaner.CleanupElementResources before the Button reaches the pool.
@@ -127,15 +128,16 @@ namespace Velvet
             slider.highValue = DefaultHighValue;
             slider.SetValueWithoutNotify(DefaultLowValue);
             slider.label = string.Empty;
+            // ClearClassList drops the variant a label-less constructor added, and the label write
+            // above cannot put it back: its setter compares against the empty text already there.
+            slider.EnableInClassList(BaseField<float>.noLabelVariantUssClassName, true);
             slider.direction = SliderDirection.Horizontal;
             slider.pageSize = 0f;
             slider.inverted = false;
             slider.fill = false;
             slider.showMixedValue = false;
             slider.generateVisualContent = null;
-            // See FiberTogglePoolHelper for the focus delegation; the picking mode is the same shape — a
-            // composite field's constructor takes its root out of the pick path so the input beneath it
-            // receives the pointer, and the common reset writes the plain-VisualElement default back.
+            // Both are constructor values the common reset writes a plain-VisualElement default over.
             slider.delegatesFocus = true;
             slider.pickingMode = PickingMode.Ignore;
             // See FiberButtonPoolHelper: the common reset's focusable=false is the plain-VisualElement
@@ -176,6 +178,15 @@ namespace Velvet
         private const int DefaultMaxLength = -1;
         private const char DefaultMaskChar = '*';
 
+        // The caret and selection colours behind textSelection are Unity's own initialisers, and restating
+        // them here would be a mirror that drifts silently. They are read off one probe instance instead —
+        // the same freshly constructed instance the pool's contract is stated against, so the two cannot
+        // disagree. Built on first use rather than at type initialisation, which puts it on the reconciler's
+        // thread during a pool return.
+        private static TextField s_freshDefaults;
+
+        private static TextField Defaults => s_freshDefaults ??= new TextField();
+
         public static void ResetTextFieldForReuse(TextField textField)
         {
             if (textField == null) return;
@@ -192,7 +203,19 @@ namespace Velvet
             textField.textEdition.isPassword = false;
             textField.maxLength = DefaultMaxLength;
             textField.textSelection.SelectNone();
+            // Reached through get-only handles, which is why nothing above finds them: a placeholder the
+            // previous consumer set is text the next one shows, and an unselectable field or a recoloured
+            // caret is state the security contract above promises the next consumer cannot observe.
+            var defaults = Defaults;
+            textField.textEdition.placeholder = defaults.textEdition.placeholder;
+            textField.textEdition.hidePlaceholderOnFocus = defaults.textEdition.hidePlaceholderOnFocus;
+            textField.textSelection.isSelectable = defaults.textSelection.isSelectable;
+            textField.textSelection.cursorColor = defaults.textSelection.cursorColor;
+            textField.textSelection.selectionColor = defaults.textSelection.selectionColor;
             textField.label = string.Empty;
+            // ClearClassList drops the variant a label-less constructor added, and the label write
+            // above cannot put it back: its setter compares against the empty text already there.
+            textField.EnableInClassList(BaseField<string>.noLabelVariantUssClassName, true);
             textField.showMixedValue = false;
             textField.emojiFallbackSupport = true;
             textField.isDelayed = false;
@@ -210,9 +233,14 @@ namespace Velvet
             // multiline either way — a consumer that turned it on, set the visibility and turned it off
             // again leaves a stored setting no write can reach. So multiline is turned on for the write and
             // back off after, and neither half is redundant: PooledScrollerVisibilityResetTests fails on
-            // the first being dropped, PooledElementSurfaceResetTests on the last.
-            textField.multiline = true;
-            textField.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+            // the first being dropped, PooledElementSurfaceResetTests on the last. Under the guard because
+            // turning multiline on builds a container and, on a non-default visibility, a whole scroll view
+            // for the line after to tear down again — on every recycle, for a field that stored nothing.
+            if (textField.verticalScrollerVisibility != ScrollerVisibility.Hidden)
+            {
+                textField.multiline = true;
+                textField.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+            }
             textField.multiline = false;
             textField.generateVisualContent = null;
             // Same pair, and the same reason, as FiberSliderPoolHelper.
@@ -246,13 +274,15 @@ namespace Velvet
             FiberElementPoolReset.ResetClassListAndCommon(toggle, BaseField<bool>.ussClassName, Toggle.ussClassName);
             toggle.SetValueWithoutNotify(false);
             toggle.label = string.Empty;
+            // ClearClassList drops the variant a label-less constructor added, and the label write
+            // above cannot put it back: its setter compares against the empty text already there.
+            toggle.EnableInClassList(BaseField<bool>.noLabelVariantUssClassName, true);
             toggle.text = string.Empty;
             toggle.showMixedValue = false;
             toggle.toggleOnLabelClick = true;
             toggle.generateVisualContent = null;
-            // A composite field's constructor hands focus to its input; the common reset writes the
-            // plain-VisualElement false, which would leave a recycled one taking focus on its own root and
-            // dropping the keystrokes the input was meant to receive.
+            // A composite field's constructor delegates focus; the common reset writes the
+            // plain-VisualElement false over it.
             toggle.delegatesFocus = true;
             // See FiberButtonPoolHelper: restore the type's own constructor default after the common
             // reset's focusable=false, or a recycled toggle drops out of Tab/gamepad navigation.

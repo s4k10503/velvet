@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using UnityEngine.UIElements;
+using Velvet.TestUtilities;
 
 namespace Velvet.Tests
 {
@@ -10,6 +11,11 @@ namespace Velvet.Tests
     // everything would silently turn the pool off.
     internal sealed class SliderPoolAdmissionTests
     {
+        // The pool is process-wide, so a fixture that ran earlier can leave it at its cap, where a return
+        // is dropped without ever reaching the check under test.
+        [SetUp]
+        public void ClearPool() => VNodePoolTestAccess.ClearSliderPoolForTest();
+
         [Test]
         public void Given_a_slider_that_built_its_input_field_When_it_is_returned_to_the_pool_Then_only_a_slider_without_one_comes_back()
         {

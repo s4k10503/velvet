@@ -18,9 +18,13 @@ namespace Velvet
     //   structurally safe for Velvet builder API paths. User refCallback code that mutates
     //   sub-element inline style is responsible for restoring it: a callback ref returns a cleanup
     //   delegate that runs when the element detaches, which is where such mutations must be undone.
-    // - Callbacks registered directly via element.RegisterCallback<TEvent> from user
-    //   code are NOT tracked here; user code must unregister such callbacks before the element
-    //   returns to the pool.
+    // - Callbacks a consumer registered directly, whether through element.RegisterCallback<TEvent> or
+    //   through AddManipulator, are NOT tracked here; user code must unregister them before the element
+    //   returns to the pool. The Clickable swap in FiberButtonPoolHelper covers only the manipulator a
+    //   Button holds itself, not one a consumer added alongside it.
+    // - An item a consumer put on element.schedule keeps running across the pool cycle. Nothing here can
+    //   reach it: an element's scheduled items are enumerable only from the handles their owner holds.
+    //   The animation schedules FiberElementCleaner releases are Velvet's own, not these.
     // - A binding registered through element.bindings is not released here.
     internal static class FiberElementPoolReset
     {
@@ -149,8 +153,8 @@ namespace Velvet
             element.dataSourcePath = default;
             element.dataSourceType = null;
 
-            // Two test fixtures reach this with a plain VisualElement; every pooled primitive is a
-            // BindableElement, which is what PooledElementSurfaceResetTests walks.
+            // Every pooled primitive is a BindableElement; test fixtures reach this with plain
+            // VisualElements too, which the cast is what admits.
             if (element is BindableElement bindable)
             {
                 bindable.binding = null;
@@ -158,8 +162,25 @@ namespace Velvet
             }
         }
 
+        // A text element paints itself through the same delegate anything else adds a painter to — Velvet's
+        // own silhouette painters use it — and its own entry cannot be put back once replaced. So the
+        // element is compared against what a freshly constructed one carries, rather than restated: nothing
+        // else can equal that delegate, and a multicast one cannot either. An element that fails this is
+        // refused by the pool. TextElementPoolAdmissionTests pins both directions.
+        public static bool PaintsOnlyItself(TextElement element) =>
+            element != null && Equals(element.generateVisualContent, TextDefaults.generateVisualContent);
+
+        // Read off one probe rather than restated, for the same reason FiberTextFieldPoolHelper keeps one:
+        // a colour or a flag copied out of Unity's constructor into a literal here is a mirror that drifts,
+        // and a freshly constructed instance is the very thing the pool's contract is stated against.
+        // Built on first use, which puts it on the reconciler's thread during a pool return.
+        private static Label s_textDefaults;
+
+        private static Label TextDefaults => s_textDefaults ??= new Label();
+
         // Velvet writes none of these, which is why they ghost — nothing on the mount path takes off what
-        // a consumer holding the element put on.
+        // a consumer holding the element put on. The selection half is reached through a get-only handle,
+        // which is why a walk over the element's own properties finds none of it.
         public static void ResetTextElementState(TextElement element)
         {
             if (element == null) return;
@@ -169,6 +190,15 @@ namespace Velvet
             element.parseEscapeSequences = false;
             element.displayTooltipWhenElided = true;
             element.PostProcessTextVertices = null;
+
+            var defaults = TextDefaults;
+            element.selection.isSelectable = defaults.selection.isSelectable;
+            element.selection.doubleClickSelectsWord = defaults.selection.doubleClickSelectsWord;
+            element.selection.tripleClickSelectsLine = defaults.selection.tripleClickSelectsLine;
+            element.selection.selectAllOnFocus = defaults.selection.selectAllOnFocus;
+            element.selection.selectAllOnMouseUp = defaults.selection.selectAllOnMouseUp;
+            element.selection.cursorColor = defaults.selection.cursorColor;
+            element.selection.selectionColor = defaults.selection.selectionColor;
         }
 
         // Source for the zero transition duration written above. Shared because the inline-style write path

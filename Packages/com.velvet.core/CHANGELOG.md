@@ -11,15 +11,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A pooled widget carried far more than its reset helper named. Most of the writable surface of
   `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever
-  mounted next: a read-only or multiline `TextField`, a `Toggle` stuck showing a mixed value, a
-  `Slider` whose direction was inverted, the rich-text and emoji-fallback flags on `Button` and
-  `Label`, a data-source binding on any of them, and the focus delegation and picking mode that let a
-  composite field receive keystrokes at all. Velvet writes none of these itself, so only a consumer
-  holding the element through `onCreated` or a ref could set them — and nothing took them back off.
+  mounted next: a read-only or multiline `TextField`, a placeholder string the next consumer had not
+  written, a `Toggle` stuck showing a mixed value, a `Slider` whose direction was inverted, the
+  rich-text and emoji-fallback flags on `Button` and `Label`, text-selection colours and behaviour on
+  any of them, and a data-source binding. A `TextField`'s stale placeholder is the sharp end: the
+  pool's own contract is that the next consumer cannot observe the previous one's text.
 
-- A `Slider` that ever built its numeric input field is no longer pooled. That sub-element can only be
-  torn down while the slider is on a panel, and a pool return has already detached it, so a recycled
-  slider showed a stray input box that its own `showInputField` denied.
+- A recycled composite field stopped delegating focus and started taking pointer picks on its own
+  root. The shared reset writes the plain `VisualElement` defaults for both, and only `focusable` was
+  written back afterwards, so a pooled `Toggle`, `Slider` or `TextField` differed from a fresh one on
+  each. A recycled `Label` likewise joined a tab order its constructor keeps it out of.
+
+- A `Slider` that ever built its numeric input field, and a `Button` or `Label` whose paint delegate
+  a consumer had touched, are no longer pooled at all. Neither can be put back the way it was
+  constructed — the slider's sub-element only tears down while it is on a panel, and a text element's
+  own painter cannot be reinstalled — so a recycled one showed a stray input box its own
+  `showInputField` denied, or painted the previous consumer's content over the next one's.
+
+- A composite field pooled without a label lost the class its constructor adds for that case, so a
+  recycled one no longer matched a fresh one's class list.
 
 ## [2.1.0] - 2026-08-09
 
