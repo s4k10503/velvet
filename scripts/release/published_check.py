@@ -64,7 +64,7 @@ def consistency_reason(changelog_text, package_json_text):
 
     if not RELEASE_DATE.search(own):
         return (f"the CHANGELOG section for {version} carries no date: close it as "
-                f"'## [{version}] - YYYY-MM-DD', which is the spelling the note builder reads")
+                f"'## [{version}] - YYYY-MM-DD', which is what marks it released rather than open")
 
     # package.json is what upm.yml verifies a dispatch against, so a section closed above the one it
     # names is a release the dispatch cannot reach.

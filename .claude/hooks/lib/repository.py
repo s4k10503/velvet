@@ -28,9 +28,8 @@ def git(args, cwd, timeout=15):
 def gh(args, cwd=None, timeout=7):
     """Run gh and return its stdout, or None when it could not answer.
 
-    The bound is a hook's budget divided by the calls it makes, not by one: merge_unproven_head makes
-    three inside 25 s, metadata_less_create one inside 15. A caller killed instead of answering exits
-    neither 0 nor 2, which lets the tool through.
+    The bound is a hook's budget divided by the calls one invocation makes, not by one call:
+    merge_unproven_head makes three inside 25 s, metadata_less_create one inside 15.
     """
     try:
         result = subprocess.run(

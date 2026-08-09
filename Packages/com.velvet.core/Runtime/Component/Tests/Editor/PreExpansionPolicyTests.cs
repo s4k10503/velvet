@@ -107,8 +107,7 @@ namespace Velvet.Tests
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            // -B, as the sibling guard fixture does: a __pycache__ beside a hook reads to the wiring
-            // guard as a script nothing runs.
+            // -B: nothing here reads a hook's bytecode, and leaving none keeps it that way.
             start.ArgumentList.Add("-B");
             start.ArgumentList.Add(hook);
 

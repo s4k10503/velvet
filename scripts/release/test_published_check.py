@@ -151,20 +151,31 @@ class PublicationDecisionTests(unittest.TestCase):
         self.assertIsNone(reason)
 
 
-class TagGrammarTests(unittest.TestCase):
-    """The one mirror this module cannot avoid: what upm.yml names the tag it pushes.
+class DispatchMirrorTests(unittest.TestCase):
+    """The two things this module restates from upm.yml: the tag it pushes, and the input it takes.
 
-    Nothing else notices if that changes. `RELEASE_TAG` stops matching, every input answers None, and
-    the hook, settle.py and the workflow all go green while nothing is published — permanently, and
-    with the no-release-history case actively encoding that answer as correct.
+    A rename of either fails in a direction nothing else reports. The tag: the history's earlier `v`
+    tags keep `RELEASE_TAG` matching, so the guard does not fall silent — it jams shut, refusing every
+    merge over a version that was in fact published under the new name. The input: the command the
+    refusal prints is the maintainer's whole instruction, and a dispatch naming an input the workflow
+    no longer declares answers 422.
     """
 
+    def workflow(self):
+        return (Path(published_check.REPO_ROOT) / ".github" / "workflows" / "upm.yml").read_text()
+
     def test_Given_TheDispatchWorkflow_When_ItsTagIsRead_Then_ItIsStillTheSpellingThisModuleLooksFor(self):
-        # Arrange
-        workflow = (Path(published_check.REPO_ROOT) / ".github" / "workflows" / "upm.yml").read_text()
+        # Assert
+        self.assertIn('TAG="v${VERSION}"', self.workflow())
+
+    def test_Given_TheDispatchWorkflow_When_ItsInputsAreRead_Then_TheOneTheRepairNamesIsDeclared(self):
+        # Arrange — the repair prints `-f version=…`, which is this input by name. Matched as a whole
+        # declaration line: a rename to release_version still contains "version:".
+        inputs = self.workflow().split("workflow_dispatch:", 1)[1].split("permissions:", 1)[0]
+        declared = [line.strip() for line in inputs.splitlines() if line.strip().endswith(":")]
 
         # Assert
-        self.assertIn('TAG="v${VERSION}"', workflow)
+        self.assertIn("version:", declared)
 
 
 def git(directory, *args):
