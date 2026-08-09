@@ -43,7 +43,14 @@ namespace Velvet.Tests
         {
             ["Button.clickable"] = "every instance builds its own manipulator, so equality with a fresh one is not a question",
             ["Slider.showInputField"] = "a slider carrying its input field is refused by the pool instead — SliderPoolAdmissionTests",
-            ["Toggle.text"] = "reads empty once the toggle has ever had one, where a fresh instance reads null; neither an empty nor a null write gets back to null",
+        };
+
+        // Compared against the value named here instead of against a fresh instance, for a slot whose fresh
+        // reading is unreachable. An exclusion would do as well for the one value the reset produces and
+        // swallow every other value the slot could hold, which is the weaker of the two.
+        private static readonly Dictionary<string, object> ComparedAgainst = new()
+        {
+            ["Toggle.text"] = "",
         };
 
         // Get-only handles the walk does not descend into. Each is somebody else's subject.
@@ -105,10 +112,13 @@ namespace Velvet.Tests
             var fresh = Construct(widget);
             foreach (var slot in surface.Where(s => moved.Contains(s.Name)))
             {
-                var same = Equals(Read(slot, element), Read(slot, fresh));
+                var expected = ComparedAgainst.TryGetValue(Key(widget, slot), out var value) ? value : Read(slot, fresh);
+                var same = Equals(Read(slot, element), expected);
                 var declared = NotCompared.ContainsKey(Key(widget, slot));
-                if (!same && !declared) problems.Add($"{Key(widget, slot)} is {Read(slot, element)}, fresh is {Read(slot, fresh)}");
-                if (same && declared) problems.Add($"{Key(widget, slot)} now matches a fresh instance and no longer needs its exclusion");
+                if (!same && !declared) problems.Add($"{Key(widget, slot)} is {Read(slot, element)}, expected {expected}");
+                var named = ComparedAgainst.ContainsKey(Key(widget, slot));
+                if ((declared || named) && Equals(Read(slot, element), Read(slot, fresh)))
+                    problems.Add($"{Key(widget, slot)} now matches a fresh instance and needs neither an exclusion nor a named expectation");
             }
             Assert.That(
                 (string.Join(" | ", problems), surface.Count >= floor),
