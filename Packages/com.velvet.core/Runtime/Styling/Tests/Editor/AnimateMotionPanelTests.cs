@@ -147,6 +147,43 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ASpin_When_FramesAreApplied_Then_TheRotationFollowsThePhase()
+        {
+            // Arrange
+            var (element, binding) = Mount("w-[40px] h-[40px] bg-red-500 animate-spin");
+
+            // Act
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.25f);
+            var quarter = element.style.rotate.value.angle.ToDegrees();
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert — the second frame is what a value the setter refused to store would hold back.
+            Assert.That((quarter, element.style.rotate.value.angle.ToDegrees()), Is.EqualTo((90f, 180f)));
+        }
+
+        [Test]
+        public void Given_ARunningSpinOverAnArbitraryRotation_When_TheSpinIsRemoved_Then_TheClassRotationIsBack()
+        {
+            // Arrange — the rotate slot is shared. The spin drives it while it runs; the class under it is
+            // inline-resolved, so the diff does not re-apply a token that did not change, and only the detach
+            // path can put it back.
+            const string spinning = "w-[40px] h-[40px] bg-red-500 rotate-[30deg] animate-spin";
+            const string still = "w-[40px] h-[40px] bg-red-500 rotate-[30deg]";
+            var (element, binding) = Mount(spinning);
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.5f);
+            var whileSpinning = element.style.rotate.value.angle.ToDegrees();
+
+            // Act
+            _mounted!.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(className: spinning, name: "card") },
+                new VNode[] { V.Div(className: still, name: "card") });
+
+            // Assert
+            Assert.That((whileSpinning, element.style.rotate.value.angle.ToDegrees()), Is.EqualTo((180f, 30f)));
+        }
+
+        [Test]
         public void Given_PanModeWithNoGradient_When_Mounted_Then_NoBinding()
         {
             // animate-gradient with nothing to pan is inert (parity with a lone gradient stop).
@@ -330,6 +367,7 @@ namespace Velvet.Tests
             new TestCaseData("animate-shimmer", AnimateMode.Shimmer).SetName("Given_AnimateShimmer_When_Extracted_Then_ModeIsShimmer"),
             new TestCaseData("animate-hue", AnimateMode.Hue).SetName("Given_AnimateHue_When_Extracted_Then_ModeIsHue"),
             new TestCaseData("animate-pulse", AnimateMode.Pulse).SetName("Given_AnimatePulse_When_Extracted_Then_ModeIsPulse"),
+            new TestCaseData("animate-spin", AnimateMode.Spin).SetName("Given_AnimateSpin_When_Extracted_Then_ModeIsSpin"),
         };
 
         [TestCaseSource(nameof(ModeCases))]

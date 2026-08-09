@@ -90,7 +90,7 @@ namespace Velvet
         // own no shared inline slot (they drive background-size/position), so they skip this.
         private void RestoreSharedInlineSlot(VisualElement element, AnimateMode detachedMode, string[] classNames)
         {
-            if (detachedMode == AnimateMode.Hue || detachedMode == AnimateMode.Pulse)
+            if (detachedMode == AnimateMode.Hue || detachedMode == AnimateMode.Pulse || detachedMode == AnimateMode.Spin)
             {
                 FiberNodePatcher.ReapplyArbitraryValues(element, classNames);
             }

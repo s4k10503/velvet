@@ -7,8 +7,8 @@ namespace Velvet
     // The motion an animate-* utility drives. Gradient and Shimmer pan a baked gradient's
     // background-position (no per-frame texture work — the texture is baked once, only its offset moves);
     // Hue continuously rotates the hue-rotate filter angle (color cycling, works on any element, not just a
-    // gradient); Pulse oscillates opacity (the attention/skeleton pulse, works on any element). None is the
-    // explicit cancel (animate-none).
+    // gradient); Pulse oscillates opacity (the attention/skeleton pulse, works on any element); Spin turns
+    // the element (the loading spinner). None is the explicit cancel (animate-none).
     internal enum AnimateMode
     {
         None,
@@ -58,7 +58,7 @@ namespace Velvet
     // recognized animate-* token wins, so animate-gradient animate-none resolves to no animation.
     //
     // The per-frame cost is always a cheap inline-style write (a background-position offset, a hue-rotate
-    // filter angle, or an opacity) — the gradient texture is baked once and never re-baked while animating.
+    // filter angle, an opacity, or a rotation) — the gradient texture is baked once and never re-baked while animating.
     // Unrecognized animate-* tokens are not claimed, leaving the namespace open.
     internal static class StyleAnimateClass
     {

@@ -27,7 +27,7 @@ namespace Velvet
     // Drives the animate-* motions. The texture is baked ONCE (the static gradient path); this only writes a
     // cheap inline style per frame — a background-position offset (Gradient/Shimmer), a hue-rotate filter
     // angle (Hue), or an opacity (Pulse) — so a continuously-animating gradient costs no per-frame texture
-    // work. The phase math is pure (PanOffsetPx / HueAngleDeg / PulseOpacity / Phase) and unit-tested
+    // work. The phase math is pure (PanOffsetPx / HueAngleDeg / PulseOpacity / SpinAngleDeg / Phase) and unit-tested
     // directly; the scheduler wiring is exercised at runtime (the EditMode PlayerLoop does not tick, so tests
     // drive ApplyFrame at explicit phases instead).
     internal static class StyleAnimateDriver

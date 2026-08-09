@@ -321,16 +321,23 @@ UI Toolkit has no `@keyframes`:
 | `animate-pulse` | oscillates opacity between full and half | 2s |
 | `animate-spin` | rotates a full turn, linearly | 1s |
 
-`animate-none` cancels, and the last `animate-*` in the class list wins. A bracketed time overrides
-the loop: `animate-spin-[2500ms]`, `animate-hue-[5s]`.
+`animate-none` cancels, and the last *recognised* `animate-*` in the class list wins — an unclaimed
+name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
+`animate-hue-[5s]`. The two gradient modes are inert without a `bg-gradient-*` to pan.
 
-Each mode owns one style slot while it runs, and a static utility writing that slot is shadowed
-rather than blended: the gradient pair owns background position, `animate-hue` owns the filter,
-`animate-pulse` owns opacity, and `animate-spin` owns rotate. Detaching restores the slot and the
-reconciler re-asserts whatever class was under it.
+Each mode owns its style slot while it runs, and a static utility writing that slot is shadowed
+rather than blended: the gradient pair owns background position, size and repeat, `animate-hue` owns
+the filter, `animate-pulse` owns opacity, and `animate-spin` owns rotate. Detaching restores the slot
+and the reconciler re-asserts whatever class was under it.
 
-The one combination to avoid is `animate-spin` on an element whose rotate is also a Motion channel
-— both write the slot every frame, so the result is whichever wrote last rather than a blend.
+Two combinations to avoid, both because something else writes the same slot every frame:
+
+- a mode's slot driven by a Motion channel on the same element — `animate-spin` under a Motion
+  `rotate`, say. The result is whichever wrote last, not a blend.
+- a `transition-*` utility covering that slot. `transition-transform` names `rotate`, so each tick
+  starts a fresh transition toward the new angle instead of writing it: the paint trails the driver
+  and reverses the long way round at the wrap. Motion's own drivers suspend a native transition
+  while they run; the `animate-*` driver does not.
 
 ## Timelines (`Hooks.UseAnimationSequence`)
 
