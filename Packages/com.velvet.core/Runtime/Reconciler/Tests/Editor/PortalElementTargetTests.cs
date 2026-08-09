@@ -17,7 +17,8 @@ namespace Velvet.Tests
     /// <item>Two portals sharing one container each own their own slot range, and an unmount takes only
     /// that range — the container itself belongs to the caller.</item>
     /// <item>Unmounting releases the container from the synthetic-bubbling bridge table, which a caller's
-    /// own container needs and a registered id does not: it dies with the row that rendered it.</item>
+    /// own container makes visible: it dies with the row that rendered it. Release keys on the target
+    /// alone, so a registered id reaching the same target is released the same way.</item>
     /// </list>
     /// </summary>
     internal sealed class PortalElementTargetTests
