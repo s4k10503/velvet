@@ -339,6 +339,15 @@ Two combinations to avoid, both because something else writes the same slot ever
   are not: their slots have no flag in the guard yet. Note a transition needs no `transition-*`
   utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which covers every slot.
 
+The suspension is element-wide (UI Toolkit's `transition-property` has no "everything except these"
+spelling), so while a suspended `animate-spin` or `animate-pulse` runs, the element's *other*
+transitions land instantly too. It is taken only when the element's own utility CLASSES name the slot
+the mode writes — `animate-pulse transition-colors` keeps its colour fade — and handed back as soon
+as a re-render leaves nothing transitioning that slot. Reading the classes means anything that never
+reaches the class list is invisible to it — the bracket duration `duration-[400ms]` lands as an
+inline value, and so does a `V.Motion` variant swap's own transition, which belongs to the swap. A
+swap driving the same slot as the mode falls under the first bullet.
+
 ## Timelines (`Hooks.UseAnimationSequence`)
 
 Framer Motion's `useAnimate` parity target: `UseAnimationSequence` owns the clock (it is itself built

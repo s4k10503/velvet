@@ -17,7 +17,7 @@ namespace Velvet
         // does not stall the animation. Paused on teardown.
         public IVisualElementScheduledItem? Scheduled;
         // Pan axis for Gradient/Shimmer, derived from the gradient's angle at attach (vertical when the
-        // gradient flows more up/down than left/right). Unused by Hue.
+        // gradient flows more up/down than left/right). Unused by the non-pan modes.
         public bool PanVertical;
         // For an attach that happened off-panel: the deferred-scheduling callback, unregistered on teardown
         // if it never fired (so it does not linger on the element across pool reuse).
@@ -26,10 +26,10 @@ namespace Velvet
 
     // Drives the animate-* motions. The texture is baked ONCE (the static gradient path); this only writes a
     // cheap inline style per frame — a background-position offset (Gradient/Shimmer), a hue-rotate filter
-    // angle (Hue), or an opacity (Pulse) — so a continuously-animating gradient costs no per-frame texture
-    // work. The phase math is pure (PanOffsetPx / HueAngleDeg / PulseOpacity / SpinAngleDeg / Phase) and unit-tested
-    // directly; the scheduler wiring is exercised at runtime (the EditMode PlayerLoop does not tick, so tests
-    // drive ApplyFrame at explicit phases instead).
+    // angle (Hue), an opacity (Pulse), or a rotation (Spin) — so a continuously-animating gradient costs no
+    // per-frame texture work. The phase math is pure (PanOffsetPx / HueAngleDeg / PulseOpacity / SpinAngleDeg /
+    // Phase) and unit-tested directly; the scheduler wiring is exercised at runtime (the EditMode PlayerLoop
+    // does not tick, so tests drive ApplyFrame at explicit phases instead).
     internal static class StyleAnimateDriver
     {
         // Tick interval (~60fps). The phase is time-derived, so the exact cadence only affects smoothness.
@@ -43,9 +43,10 @@ namespace Velvet
         private const float PulseMinOpacity = 0.5f;
         private const float PulseMaxOpacity = 1f;
 
-        // Attaches a motion to an element whose gradient (Gradient/Shimmer) or any background (Hue) is already
-        // applied. Sets the once-per-attach background sizing for pan modes, then schedules the recurring tick
-        // on the panel root (deferred to attach when the element is off-panel). Returns the binding to store.
+        // Attaches a motion to an element whose gradient (the pan modes) is already applied. Sets the
+        // once-per-attach background sizing for pan modes, takes the transition suspension, then schedules the
+        // recurring tick on the panel root (deferred to attach when the element is off-panel). Returns the
+        // binding to store.
         public static StyleAnimateBinding Attach(VisualElement element, AnimateSpec spec, bool panVertical)
         {
             var binding = new StyleAnimateBinding
@@ -63,14 +64,32 @@ namespace Velvet
                 ApplyPanSizing(element, spec.Mode, panVertical);
             }
 
+            SyncTransitionSuspension(element, binding);
             ScheduleOrDefer(element, binding);
             return binding;
         }
 
-        // Tears down a running motion: pauses the tick, removes any deferred-attach callback, and restores the
-        // styles the motion drove. Pan modes restore the gradient's stretch-to-fill (the gradient itself may
-        // still be bound) and clear the panned position; Hue clears the filter it owned; Pulse clears the
-        // inline opacity it drove.
+        /// <summary>
+        /// Suspends (or hands back) the element's native transitions over the slot this mode writes. Called at
+        /// attach and again on each patch that leaves the motion running, because unlike a Motion play this
+        /// binding outlives class-list changes: the transition utilities beside it can come and go while it runs.
+        /// </summary>
+        public static void SyncTransitionSuspension(VisualElement element, StyleAnimateBinding binding)
+            => MotionNativeTransitionGuard.SyncSuspension(element, binding, GuardedSlots(binding.Spec.Mode));
+
+        // Only the two slots named here have a flag in MotionTransitionSlots; the filter and background-position
+        // the other three modes write have none, so those are left to whatever transition covers them.
+        private static MotionTransitionSlots GuardedSlots(AnimateMode mode) => mode switch
+        {
+            AnimateMode.Spin => MotionTransitionSlots.Rotate,
+            AnimateMode.Pulse => MotionTransitionSlots.Opacity,
+            _ => MotionTransitionSlots.None,
+        };
+
+        // Tears down a running motion: hands back any transition suspension, pauses the tick, removes any
+        // deferred-attach callback, and restores the styles the motion drove. Pan modes restore the gradient's
+        // stretch-to-fill (the gradient itself may still be bound) and clear the panned position; each
+        // shared-slot mode clears the slot it owned (filter for Hue, opacity for Pulse, rotate for Spin).
         public static void Detach(VisualElement element, StyleAnimateBinding binding)
         {
             MotionNativeTransitionGuard.Release(element, binding);
@@ -115,7 +134,7 @@ namespace Velvet
         // Re-asserts a pan mode's background sizing. A steady-state patch (the animate spec is unchanged) may
         // follow a gradient re-bake — GradientBackground.Apply resets backgroundSize to 100% stretch-to-fill —
         // which would drag the Gradient pan's clamped edge into the box. Re-applying the oversize (and the
-        // NoRepeat) keeps the pan correct. No-op for Hue (it owns no background sizing).
+        // NoRepeat) keeps the pan correct. No-op for the non-pan modes (they own no background sizing).
         public static void ReapplyPanSizing(VisualElement element, StyleAnimateBinding binding)
         {
             if (binding.Spec.Mode == AnimateMode.Gradient || binding.Spec.Mode == AnimateMode.Shimmer)
@@ -165,13 +184,6 @@ namespace Velvet
         // as a stutter at the wrap because the loop restarts at full speed.
         public static float SpinAngleDeg(float t) => 360f * t;
 
-        private static MotionTransitionSlots GuardedSlots(AnimateMode mode) => mode switch
-        {
-            AnimateMode.Spin => MotionTransitionSlots.Rotate,
-            AnimateMode.Pulse => MotionTransitionSlots.Opacity,
-            _ => MotionTransitionSlots.None,
-        };
-
         // The opacity at loop position t: a smooth cosine ease between full (t=0,1) and half (t=0.5), so the
         // pulse fades out and back in once per loop with no hard turn at the extremes. The cosine is a faithful
         // approximation of the conventional cubic-bezier(0.4,0,0.6,1) pulse easing — it shares the (1,0.5,1)
@@ -188,11 +200,6 @@ namespace Velvet
         // runtime scheduler (which the EditMode PlayerLoop does not tick).
         public static void ApplyFrame(VisualElement element, StyleAnimateBinding binding, float t)
         {
-            // A transition covering this slot turns each tick's write into a fresh transition toward the
-            // value, so the paint trails the driver and, on a wrap, travels the long way back. The two
-            // slots the guard already names are suspended here; filter and background-position have no
-            // flag yet, which is what issue #580 is left holding.
-            MotionNativeTransitionGuard.SuspendIfIntercepted(element, binding, GuardedSlots(binding.Spec.Mode));
             switch (binding.Spec.Mode)
             {
                 case AnimateMode.Gradient:

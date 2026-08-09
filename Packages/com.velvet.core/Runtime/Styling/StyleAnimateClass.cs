@@ -23,10 +23,9 @@ namespace Velvet
         // Oscillates opacity between full and half over the loop (a smooth ease) — the attention / skeleton
         // pulse. Geometry-free, so it works on any element; compose with a colour cycle for a glowing pulse.
         Pulse,
-        // Rotates a full turn over the loop, linearly — the loading spinner. Owns the rotate slot while
-        // active, on the terms Hue owns the filter slot: a static rotate-* is shadowed, and a Motion rotate
-        // channel driving the same element at the same time is an unsupported combination rather than a
-        // blend, since both write the slot every frame.
+        // Rotates a full turn over the loop, linearly — the loading spinner. Owns the rotate slot on the terms
+        // Hue owns the filter slot. The one combination it cannot serve is a Motion rotate channel on the same
+        // element: both write the slot every frame, so the result is whichever wrote last, not a blend.
         Spin,
     }
 
