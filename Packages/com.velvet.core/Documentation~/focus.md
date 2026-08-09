@@ -49,11 +49,12 @@ Three focus-related element props ride `FiberElementProps` alongside the existin
 `DelegatesFocus` (focusing the element forwards to its first focusable child), and `FocusScope`
 (the settings record behind the scope knobs above).
 
-`Focusable` is restored rather than coalesced when a later render stops declaring it: dropping the
-prop hands the element back the focusability it was constructed with, so a `V.Div` that carried
-`Focusable = true` for one render stops being a Tab stop again, and a control that is focusable by
-construction keeps its own default. `TabIndex` and `DelegatesFocus` behave differently: dropping either
-coalesces to `0` / `false`.
+`Focusable`, `TabIndex` and `DelegatesFocus` are restored rather than coalesced when a later render
+stops declaring one: dropping the prop hands the element back the value it was constructed with, so a
+`V.Div` that carried `Focusable = true` for one render stops being a Tab stop again, and a control
+that is focusable by construction keeps its own default. The same holds for the other two, and it has
+to: a `V.Text` is built out of the tab ring, and every field control delegates focus to the input
+beneath it, so a constant would hand one type another type's answer.
 
 ## Focus-visible styling and state
 
