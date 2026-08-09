@@ -5,9 +5,9 @@ namespace Velvet
 {
     // Transform value parser for the arbitrary-value dispatch (StyleArbitraryValueResolver): the bracket
     // prefixes the prefix table cannot carry. What it builds is one (value, unit) read by the length
-    // grammar and written to one property; a prefix belongs here when it needs something else, and each
-    // helper below states which — a pair, a second axis to merge with, a unit the grammar would convert
-    // rather than reject, or a value that is not a length at all.
+    // grammar, written as one layer; a prefix belongs here when it needs something else, and each helper
+    // below states which — a pair, a second axis to merge with, or a unit the grammar would convert
+    // rather than reject.
     // The dispatch calls in; this group calls only the resolver's shared scalar grammar
     // (TryParseFloat / TryParseAngleDegrees / TryParseValue), never back into the dispatch or another parser.
     internal static class StyleTransformValueParser
@@ -86,6 +86,8 @@ namespace Velvet
             return true;
         }
 
+        // An angle, which the length grammar rejects outright rather than converting: deg / rad / grad /
+        // turn all normalise to degrees here.
         private static bool TryParseRotate(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
