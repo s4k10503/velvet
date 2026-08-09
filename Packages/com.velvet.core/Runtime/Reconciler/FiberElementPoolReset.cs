@@ -141,6 +141,28 @@ namespace Velvet
             element.pickingMode = PickingMode.Position;
             element.viewDataKey = null;
             element.SetEnabled(true);
+
+            // Every pooled primitive is a BindableElement, and a legacy binding a consumer attached through
+            // onCreated outlives RemoveFromHierarchy the same way inline style does.
+            if (element is BindableElement bindable)
+            {
+                bindable.binding = null;
+                bindable.bindingPath = null;
+            }
+        }
+
+        // The TextElement surface Button and Label share. Velvet writes none of it, which is exactly why it
+        // ghosts: only a consumer's onCreated / refCallback can set it, and nothing on the mount path takes
+        // it back off.
+        public static void ResetTextElementState(TextElement element)
+        {
+            if (element == null) return;
+
+            element.enableRichText = true;
+            element.emojiFallbackSupport = true;
+            element.parseEscapeSequences = false;
+            element.displayTooltipWhenElided = true;
+            element.PostProcessTextVertices = null;
         }
 
         // Source for the zero transition duration written above. Shared because the inline-style write path

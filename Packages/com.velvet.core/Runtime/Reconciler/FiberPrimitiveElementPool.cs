@@ -1,3 +1,5 @@
+using System;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 namespace Velvet
@@ -9,7 +11,6 @@ namespace Velvet
     // button.clicked event handlers are registered by FiberEventBindingManager with a
     // closure-based unregister (actions.Add(() => button.clicked -= handler)); these are
     // released by FiberElementCleaner.CleanupElementResources before the Button reaches the pool.
-    // The Button.clickable instance itself is retained by Unity and not touched here.
     internal static class FiberButtonPoolHelper
     {
         public static void ResetButtonForReuse(Button button)
@@ -35,8 +36,15 @@ namespace Velvet
             if (button.childCount > 0) button.Clear();
 
             FiberElementPoolReset.ResetClassListAndCommon(button, TextElement.ussClassName, Button.ussClassName);
+            FiberElementPoolReset.ResetTextElementState(button);
             button.text = string.Empty;
             button.iconImage = default;
+            // Replacing the manipulator is the only way to drop handlers a consumer subscribed to the
+            // Clickable itself: `clicked` is an event, so nothing outside can clear it without holding every
+            // delegate that was added. The alternative — leaving the instance in place, as this did — carries
+            // a consumer's own click action into whatever mounts next. Costs one allocation per Button
+            // recycle, which is why it is a fresh manipulator rather than a scrub of the existing one.
+            button.clickable = new Clickable((Action)null);
             // The common reset scrubs focusable to the plain-VisualElement default (false), but a Button's
             // OWN constructor default is focusable — without restoring it, a recycled button silently drops
             // out of Tab/gamepad navigation, diverging from the freshly-constructed instance this reset
@@ -61,6 +69,7 @@ namespace Velvet
             if (label.childCount > 0) label.Clear();
 
             FiberElementPoolReset.ResetClassListAndCommon(label, TextElement.ussClassName, Label.ussClassName);
+            FiberElementPoolReset.ResetTextElementState(label);
             label.text = string.Empty;
         }
     }
@@ -102,6 +111,9 @@ namespace Velvet
             slider.label = string.Empty;
             slider.direction = SliderDirection.Horizontal;
             slider.pageSize = 0f;
+            slider.inverted = false;
+            slider.showInputField = false;
+            slider.fill = false;
             // See FiberButtonPoolHelper: the common reset's focusable=false is the plain-VisualElement
             // default; a Slider's own constructor default is focusable, and dropping it would remove a
             // recycled slider from Tab/gamepad navigation.
@@ -141,6 +153,7 @@ namespace Velvet
     internal static class FiberTextFieldPoolHelper
     {
         private const int DefaultMaxLength = -1;
+        private const char DefaultMaskChar = '*';
 
         public static void ResetTextFieldForReuse(TextField textField)
         {
@@ -159,6 +172,24 @@ namespace Velvet
             textField.maxLength = DefaultMaxLength;
             textField.textSelection.SelectNone();
             textField.label = string.Empty;
+            textField.showMixedValue = false;
+            textField.emojiFallbackSupport = true;
+            textField.isDelayed = false;
+            textField.isReadOnly = false;
+            textField.autoCorrection = false;
+            textField.hideMobileInput = false;
+            textField.hideSoftKeyboard = false;
+            textField.keyboardType = TouchScreenKeyboardType.Default;
+            textField.maskChar = DefaultMaskChar;
+            textField.selectAllOnFocus = true;
+            textField.selectAllOnMouseUp = true;
+            textField.doubleClickSelectsWord = true;
+            textField.tripleClickSelectsLine = true;
+            // Ahead of multiline, which is the constraint: written the other way round the scroller
+            // visibility does not move, and a recycled field carries the previous consumer's setting into
+            // the next one that turns multiline on. PooledElementSurfaceResetTests fails on the swap.
+            textField.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+            textField.multiline = false;
             // See FiberButtonPoolHelper: restore the type's own constructor default after the common
             // reset's focusable=false, or a recycled field cannot be tabbed into.
             textField.focusable = true;
@@ -190,6 +221,9 @@ namespace Velvet
             FiberElementPoolReset.ResetClassListAndCommon(toggle, BaseField<bool>.ussClassName, Toggle.ussClassName);
             toggle.SetValueWithoutNotify(false);
             toggle.label = string.Empty;
+            toggle.text = string.Empty;
+            toggle.showMixedValue = false;
+            toggle.toggleOnLabelClick = true;
             // See FiberButtonPoolHelper: restore the type's own constructor default after the common
             // reset's focusable=false, or a recycled toggle drops out of Tab/gamepad navigation.
             toggle.focusable = true;
