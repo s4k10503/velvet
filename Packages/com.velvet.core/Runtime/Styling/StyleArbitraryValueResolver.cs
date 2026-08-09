@@ -146,8 +146,8 @@ namespace Velvet
                 if (color.HasValue) return color.Value;
             }
 
-            // The prefixes StyleTransformValueParser claims need value parsing the length path cannot do,
-            // so they resolve before it. It owns which those are and why.
+            // StyleTransformValueParser owns which prefixes it claims and why; they resolve before the
+            // length path so it can answer for them.
             {
                 var transform = StyleTransformValueParser.TryParseTransformValue(prefix, valueSpan, negate, out result);
                 if (transform.HasValue) return transform.Value;

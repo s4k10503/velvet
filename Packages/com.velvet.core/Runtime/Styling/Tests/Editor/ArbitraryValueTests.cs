@@ -1556,6 +1556,17 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_ScaleWithALengthSuffix_When_Parsed_Then_Declines()
+        {
+            // Act — the length grammar would convert the suffix and hand back 32, a scale of thirty-two.
+            // The float grammar rejects it, so the class falls through unrecognised instead.
+            var ok = StyleArbitraryValueResolver.TryParse("scale-[2rem]", out _);
+
+            // Assert
+            Assert.That(ok, Is.False);
+        }
+
+        [Test]
         public void Given_TransformOriginPairClass_When_Parsed_Then_BothComponentsSurvive()
         {
             // Act — the underscore is how the bracket grammar spells the space CSS puts between them.

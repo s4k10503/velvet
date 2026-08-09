@@ -3,11 +3,7 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Transform value parser for the arbitrary-value dispatch (StyleArbitraryValueResolver): the bracket
-    // prefixes the prefix table cannot carry. What it builds is one (value, unit) read by the length
-    // grammar, written as one layer; a prefix belongs here when it needs something else, and each helper
-    // below states which — a pair, a second axis to merge with, or a unit the grammar would convert
-    // rather than reject.
+    // Transform value parser for the arbitrary-value dispatch (StyleArbitraryValueResolver).
     // The dispatch calls in; this group calls only the resolver's shared scalar grammar
     // (TryParseFloat / TryParseAngleDegrees / TryParseValue), never back into the dispatch or another parser.
     internal static class StyleTransformValueParser
@@ -69,6 +65,8 @@ namespace Velvet
             return null;
         }
 
+        // A unitless factor, so the float grammar rather than the length one: that grammar converts a
+        // suffix instead of rejecting it, and scale-[2rem] would arrive as a 32x scale.
         private static bool TryParseScale(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
