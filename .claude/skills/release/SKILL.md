@@ -37,7 +37,8 @@ python3 scripts/release/test_release_notes.py && python3 scripts/release/release
 ## 2. Land it on main
 
 Branch, pull request, squash merge — `main` and `upm` both refuse a direct push, whatever the change
-is. Merging to `main` re-runs the split into the `upm` branch on its own; never edit `upm` by hand,
+is. A release closes no issue, so its body opens with the line that says so — `No issue: the 2.1.0
+release.` — which is what CONTRIBUTING asks of every pull request that names none. Merging to `main` re-runs the split into the `upm` branch on its own; never edit `upm` by hand,
 it is a generated mirror.
 
 From this merge until step 3 runs, `settle.py merge` and `gh pr merge` refuse, and a pull request

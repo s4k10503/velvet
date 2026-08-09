@@ -142,6 +142,20 @@ namespace Velvet.Tests
             ("echo 'git checkout main'", "-"),
         };
 
+        // Which body operand the provenance guard resolves. Recognition is the half that goes silent:
+        // a guard that stops finding the operand reports what a guard with nothing to say reports.
+        private static readonly (string Command, string Expected)[] Bodies =
+        {
+            ("gh pr create --title x --body-file b.md", "b.md"),
+            ("gh pr create --title x -F b.md", "b.md"),
+            ("gh pr create --title x --body-file=b.md", "b.md"),
+            ("gh pr create --title x --body text", "text"),
+            ("gh pr create --title x --body-file b.md --head feat/x", "b.md"),
+            ("gh pr create --fill", ""),
+            ("gh pr comment 5 --body \"run gh pr create --body-file b.md\"", ""),
+            ("gh pr list", ""),
+        };
+
         private static readonly (string Command, string Expected)[] Creations =
         {
             ("gh issue create --title x --body y", "--label,--assignee"),
@@ -229,6 +243,27 @@ namespace Velvet.Tests
             Assume.That(answers?.Count, Is.EqualTo(table.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(table, answers);
+
+            // Assert
+            Assert.That(disagreements, Is.Empty);
+        }
+
+        [Test]
+        public void Given_TheBodyTable_When_TheProvenanceGuardReadsEach_Then_ItResolvesOnlyTheBodyItWouldCheck()
+        {
+            // Arrange
+            var hook = Path.GetFullPath(".claude/hooks/refuse/pr_body_of_another_branch.py");
+            Assume.That(File.Exists(hook), Is.True, "Precondition: the guard exists");
+
+            // Act
+            const string expression =
+                "lambda g,c: ','.join([str(g.valued(o, g.BODY_FILE_FLAGS) "
+                + "or g.valued(o, g.BODY_FLAGS) or '') "
+                + "for o in g.program_invocations(c, 'gh', ('pr', 'create'))])";
+            var answers = Ask(hook, expression, Bodies.Select(row => row.Command));
+            Assume.That(answers?.Count, Is.EqualTo(Bodies.Length), "Precondition: one answer per command");
+
+            var disagreements = Disagreements(Bodies, answers);
 
             // Assert
             Assert.That(disagreements, Is.Empty);

@@ -9,6 +9,30 @@ they may be slow or sparse, and not every change can be merged.
 If you need Velvet to move on your own timeline, **forking is encouraged**. The MIT license
 lets you build on it and maintain your own line freely — no need to wait on upstream.
 
+### What a pull request says it came from
+
+A pull request opens by naming its origin. If it closes an issue, the first line closes it on merge:
+
+```
+Closes #123.
+```
+
+If it closes nothing — a tooling change, a release, something noticed while reading — say so with a
+reason, on a line of its own:
+
+```
+No issue: found while reading the pool reset helpers.
+```
+
+Either answer is fine; the silence is not, and it is the one that happened: a change that came
+straight out of an issue was merged without linking it, so the issue stayed open with its work
+already shipped. `refuse/pr_body_of_another_branch.py` declines a `gh pr create` whose body carries
+neither.
+
+The same guard declines a body file older than the branch's first commit, or one that is not there.
+Both are the same accident from opposite ends: the description belonged to a different pull request,
+and nothing about it looked wrong — the path existed and `gh` read it.
+
 ## Local development
 
 1. Install **Unity 6000.3.11f1** (see `ProjectSettings/ProjectVersion.txt`).
