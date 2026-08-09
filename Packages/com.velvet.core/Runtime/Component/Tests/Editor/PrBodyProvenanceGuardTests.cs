@@ -9,10 +9,11 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Poses <c>.claude/hooks/refuse/pr_body_of_another_branch.py</c> a body of each shape it decides
-    /// about, and reads the verdict it returns. <see cref="GuardCommandCoverageTests"/> asks what that
-    /// guard recognises in a command and <see cref="PreExpansionPolicyTests"/> asks the single verdict
-    /// its own probe poses; what it decides about a body was asked by neither. Of ten one-line changes
-    /// to it, nine left both of those green — including one that accepted every body.
+    /// about and an event varying what those commands hold fixed, and reads the verdict it returns.
+    /// <see cref="GuardCommandCoverageTests"/> asks what that guard recognises in a command
+    /// and <see cref="PreExpansionPolicyTests"/> asks the single verdict its own probe poses; what it
+    /// decides about a body was asked by neither. Of ten one-line changes to it, nine left both of
+    /// those green — including one that accepted every body.
     /// </summary>
     /// <remarks>
     /// A refusal is matched on a phrase only its own message carries, not on the exit code alone: a
@@ -42,17 +43,30 @@ namespace Velvet.Tests
         private static readonly (string Command, string Expected)[] Accepted =
         {
             ("gh pr create --title x --body-file {DIR}/closes.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/fixes.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/resolves.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/refs.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/url.md", "allow"),
             ("gh pr create --title x --body-file {DIR}/no-issue.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/no-issue-indented.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/no-issue-stop.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/no-issue-later.md", "allow"),
+            ("gh pr create --title x --body-file {DIR}/no-issue-lower.md", "allow"),
             ("gh pr create --title x -F{DIR}/closes.md", "allow"),
             // Backticks and a `$` in an inline body are the description rather than a name for it.
             ("gh pr create --title x --body 'Closes #7. `Foo.Bar` now reads $HOME.'", "allow"),
             ("gh pr create --fill", "allow"),
+            // A body flag given last has no value to read, which is a different way through the
+            // reader than a command with no body flag at all.
+            ("gh pr create --title x --body-file", "allow"),
             ("gh pr create --title x --template {DIR}/closes.md", "allow"),
             ("gh pr create --title x --editor", "allow"),
             ("gh pr create --title x --dry-run --body-file {DIR}/absent.md", "allow"),
             ("gh pr create --title x -h --body-file {DIR}/silent.md", "allow"),
+            ("gh pr create --title x --help --body-file {DIR}/silent.md", "allow"),
+            // Only `create` posts a new description. Editing one is how a body gets its answer added
+            // after the fact, so a guard that claimed it would refuse the remedy it hands out.
+            ("gh pr edit 1 --body-file {DIR}/silent.md", "allow"),
             // A head is not read at all now. One naming a fork used to be refused, with the remedy
             // being to pass the head the command had already passed.
             ("gh pr create --title x --body-file {DIR}/closes.md --head someone:feat/x", "allow"),
@@ -62,16 +76,31 @@ namespace Velvet.Tests
         };
 
         // {DIR}/relative.md is absent and {DIR}/sub/relative.md is not, so a move the guard fails to
-        // see answers "missing" instead, which is what keeps the last two rows from passing on the
+        // see answers "missing" instead, which is what keeps the move rows from passing on the
         // strength of the file being in the other directory.
         private static readonly (string Command, string Expected)[] Refused =
         {
             ("gh pr create --title x --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create --title x --body-file {DIR}/colour.md", "no-origin"),
             ("gh pr create --title x --body-file {DIR}/mention.md", "no-origin"),
+            ("gh pr create --title x --body-file {DIR}/distant.md", "no-origin"),
+            ("gh pr create --title x --body-file {DIR}/bare-no-issue.md", "no-origin"),
+            ("gh pr create --title x --body-file {DIR}/mid-line.md", "no-origin"),
             ("gh pr create --title x --body 'A change to the pooled reset helper.'", "no-origin"),
+            ("gh pr create --title x -b 'A change to the pooled reset helper.'", "no-origin"),
             ("gh pr create --title x --web --body-file {DIR}/silent.md", "no-origin"),
             ("gh pr create --title x --body 'Closes #7.' --body-file {DIR}/silent.md", "no-origin"),
+            // Each spelling of a value gh takes, on the side where missing one lets the body through
+            // unread: the accepted rows above pass whether or not the value was found. `-Fs` is the
+            // shortest token that carries one attached.
+            ("gh pr create --title x -F{DIR}/silent.md", "no-origin"),
+            ("gh pr create --title x --body-file={DIR}/silent.md", "no-origin"),
+            ("gh pr create --title x -Fs", "no-origin"),
+            // A relative path with nothing having moved is opened against the directory the command
+            // runs in, not the one this guard runs in.
+            ("gh pr create --title x --body-file silent.md", "no-origin"),
+            // A segment carrying only an environment assignment has no command word, and is not a move.
+            ("BODY=x && gh pr create --title x --body-file silent.md", "no-origin"),
             ("gh pr create --title x --body-file {DIR}/absent.md", "missing"),
             // A directory exists and does not read, which is the one way to reach that branch without
             // a permission bit — and a run as root would read a file this fixture had made unreadable.
@@ -81,6 +110,13 @@ namespace Velvet.Tests
             ("gh pr create --title x --body \"$(cat {DIR}/closes.md)\"", "assembled"),
             ("cd {DIR}/sub && gh pr create --title x --body-file relative.md", "moved"),
             ("builtin cd {DIR}/sub && gh pr create --title x --body-file relative.md", "moved"),
+            ("pushd {DIR}/sub && gh pr create --title x --body-file relative.md", "moved"),
+            ("popd && gh pr create --title x --body-file relative.md", "moved"),
+            // A command word spelled by path is read by its basename, the way the shared parser reads
+            // one.
+            ("/bin/cd {DIR}/sub && gh pr create --title x --body-file relative.md", "moved"),
+            // A move holds for the rest of the command, not for the segment after it.
+            ("cd {DIR}/sub && echo x && gh pr create --title x --body-file relative.md", "moved"),
         };
 
         [Test]
@@ -131,29 +167,87 @@ namespace Velvet.Tests
                 "a refusal that fires for another reason gives another remedy, and exits 2 either way");
         }
 
-        [Test]
-        public void Given_AnEventTheGuardCannotRead_When_ItAnswers_Then_ItRefusesRatherThanFallingThrough()
+        // Posed as whole events rather than as commands, because each row varies something the tables
+        // above hold fixed: the tool, the working directory, the type of the command, or the payload
+        // being no event at all. What the guard cannot read it refuses; what is no `gh pr create` of
+        // its it allows.
+        private static readonly (string Payload, string Expected)[] Events =
         {
-            // Arrange — a working directory that is not a string, which no check below is written for
-            const string payload =
-                "{\"tool_name\":\"Bash\",\"cwd\":12345,"
-                + "\"tool_input\":{\"command\":\"gh pr create --title x --body-file b.md\"}}";
+            // A working directory that is not a string reaches the code that opens the body.
+            ("{\"tool_name\":\"Bash\",\"cwd\":12345,"
+             + "\"tool_input\":{\"command\":\"gh pr create --title x --body-file b.md\"}}", "crashed"),
+            // Stdin that is no event at all: refusing here would refuse every tool call in the session.
+            ("this is not an event", "allow"),
+            // JSON that parses but is no object, which reads nothing back and answers nothing either.
+            ("[1, 2]", "allow"),
+            // A command that is not text is no `gh pr create`, and Bash will reject it on its own.
+            ("{\"tool_name\":\"Bash\",\"cwd\":\".\",\"tool_input\":{\"command\":12345}}", "allow"),
+            // A tool outside the declared set, carrying a command that would be refused under Bash, so
+            // the tool name is the only thing between this row and a refusal.
+            ("{\"tool_name\":\"Edit\",\"cwd\":\".\",\"tool_input\":"
+             + "{\"command\":\"gh pr create --title x --body-file velvet-no-such-body.md\"}}", "allow"),
+            // No working directory at all: a relative body path is opened against the one this runs in,
+            // which is what keeps the missing key from reaching the opener as a null.
+            ("{\"tool_name\":\"Bash\",\"tool_input\":"
+             + "{\"command\":\"gh pr create --title x --body-file velvet-no-such-body.md\"}}", "missing"),
+        };
+
+        [Test]
+        public void Given_AnEventRatherThanACommand_When_TheGuardAnswers_Then_ItRefusesOnlyWhatItCannotRead()
+        {
+            // Arrange
+            var hook = Path.GetFullPath(HookPath);
+            var answered = new List<string>();
+            var disagreements = new List<string>();
 
             // Act
-            var answer = Ask(Path.GetFullPath(HookPath), payload);
+            foreach (var (payload, expected) in Events)
+            {
+                var answer = Ask(hook, payload);
+                if (answer == null)
+                {
+                    continue;
+                }
 
-            // Assert — exit 1 is not a refusal, so an unforeseen shape here runs the command anyway
-            Assert.That(answer, Is.EqualTo("crashed"));
+                answered.Add(answer);
+                if (answer != expected)
+                {
+                    disagreements.Add($"{payload}\n    expected [{expected}] got [{answer}]");
+                }
+            }
+
+            // Assert — exit 1 is not a refusal, so a shape that falls through runs the command anyway
+            Assert.That((answered.Count, string.Join("\n", disagreements)),
+                Is.EqualTo((Events.Length, string.Empty)));
         }
 
         private static void WriteBodies(string root)
         {
             Directory.CreateDirectory(Path.Combine(root, "sub"));
             Write(root, "closes.md", "Closes #123.\n\nWhat this changes and why.\n");
+            Write(root, "fixes.md", "Fixes #12 — the half that was left.\n");
+            Write(root, "resolves.md", "Resolved #12, measured against the pooled reset helper.\n");
             Write(root, "refs.md", "Refs #12 — the other half of that one.\n");
             Write(root, "url.md", "From https://github.com/s4k10503/velvet/issues/44, the second half.\n");
             Write(root, "no-issue.md", "No issue: found while reading the pool reset helpers.\n");
+            // Four spellings of the same line, each free of the last: indented, ended with a full
+            // stop, below the first line, and lower-case.
+            Write(root, "no-issue-indented.md", "  No issue: contributor tooling only.\n");
+            Write(root, "no-issue-stop.md", "No issue. Contributor tooling only.\n");
+            Write(root, "no-issue-later.md", "A change to the release script.\n\nNo issue: it closes nothing.\n");
+            Write(root, "no-issue-lower.md", "no issue: contributor tooling only.\n");
+            // The phrase without a reason after it is the silence this asks about, in a form that
+            // would satisfy a check that only looked for the phrase.
+            Write(root, "bare-no-issue.md", "No issue:\n\nWhat this changes and why.\n");
+            // The phrase inside a sentence says the opposite of the line, and reads the same to a
+            // pattern that is not anchored at a line.
+            Write(root, "mid-line.md", "There is no issue: this came out of a review round.\n");
+            // A keyword and a number that are not one statement: nothing here closes #123 on merge.
+            Write(root, "distant.md", "Closes the gap the pooled reset left; see #123 for the measurements.\n");
             Write(root, "silent.md", "A description that says nothing about where it came from.\n");
+            // A one-character name, because an attached short value is read off the token being
+            // longer than the flag and `-Fs` is the shortest token that carries one.
+            Write(root, "s", "A description that says nothing about where it came from.\n");
             // Six digits behind a `#` is a colour here, and the rule that read one as an issue would
             // have taken this body as an answer.
             Write(root, "colour.md", "The swatch this restores is #123456, measured off the panel.\n");
@@ -231,11 +325,19 @@ namespace Velvet.Tests
                     return "allow";
                 }
 
+                // Only exit 2 stops the command — PreToolUse runs the tool on every other non-zero
+                // code — so the reason is read off the message only once the code says it refused.
+                // Reading the message alone called a guard that exits 1 a refusal.
+                if (process.ExitCode != 2)
+                {
+                    return $"exit {process.ExitCode}";
+                }
+
                 var matched = Reasons
                     .Where(reason => stderr.Contains(reason.Phrase, StringComparison.Ordinal))
                     .Select(reason => reason.Tag)
                     .ToList();
-                return matched.Count == 1 ? matched[0] : $"exit {process.ExitCode}: {string.Join("+", matched)}";
+                return matched.Count == 1 ? matched[0] : $"exit 2: {string.Join("+", matched)}";
             }
             catch (Exception)
             {

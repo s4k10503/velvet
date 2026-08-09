@@ -216,7 +216,6 @@ namespace Velvet.Tests
             const string expression =
                 "lambda g,c: ','.join(t or '<current>' for t in g.merges_without_deletion(c)) or '-'";
             var answers = Ask(hook, expression, table.Select(row => row.Command));
-            Assume.That(answers?.Count, Is.EqualTo(table.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(table, answers);
 
@@ -234,7 +233,6 @@ namespace Velvet.Tests
 
             // Act
             var answers = Ask(hook, "lambda g,c: str(g.sweeps(c))", Sweeping.Select(row => row.Command));
-            Assume.That(answers?.Count, Is.EqualTo(Sweeping.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(Sweeping, answers);
 
@@ -256,7 +254,6 @@ namespace Velvet.Tests
             const string expression =
                 "lambda g,c: ','.join(t or '<current>' for t in g.merge_targets(c)) or '-'";
             var answers = Ask(hook, expression, table.Select(row => row.Command));
-            Assume.That(answers?.Count, Is.EqualTo(table.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(table, answers);
 
@@ -280,7 +277,6 @@ namespace Velvet.Tests
                 + "+ ('|yes' if any(g.moves_directory(p) for p in g.command_segments(c[:c.index(s)])) "
                 + "else '|no')]])";
             var answers = Ask(hook, expression, Bodies.Select(row => row.Command));
-            Assume.That(answers?.Count, Is.EqualTo(Bodies.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(Bodies, answers);
 
@@ -301,7 +297,6 @@ namespace Velvet.Tests
                 + "for f in ((['--label'] if not g.carries(o, g.LABEL_FLAGS) else []) "
                 + "+ (['--assignee'] if k=='issue' and not g.carries(o, g.ASSIGNEE_FLAGS) else []))])";
             var answers = Ask(hook, expression, Creations.Select(row => row.Command));
-            Assume.That(answers?.Count, Is.EqualTo(Creations.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(Creations, answers);
 
@@ -325,7 +320,6 @@ namespace Velvet.Tests
                 // Act
                 var expression = "lambda g,c: ','.join(g.refusals(c, r'" + root + "')) or '-'";
                 var answers = Ask(hook, expression, SharedState.Select(row => row.Command));
-                Assume.That(answers?.Count, Is.EqualTo(SharedState.Length), "Precondition: one answer per command");
 
                 disagreements = Disagreements(SharedState, answers);
             }
@@ -496,11 +490,16 @@ namespace Velvet.Tests
             }
         }
 
+        // How many answers came back is folded in here rather than left to an `Assume` beside each
+        // call: a guard that raises on one command answers none of them, and an `Assume` would report
+        // the run that proves it broken as inconclusive, which the runner does not count as a failure.
         private static string Disagreements((string Command, string Expected)[] table, List<string> answers) =>
-            string.Join("\n", table
-                .Select((row, index) => (row, actual: answers[index]))
-                .Where(pair => pair.actual != pair.row.Expected)
-                .Select(pair => $"{pair.row.Command}\n    expected [{pair.row.Expected}] got [{pair.actual}]"));
+            answers?.Count == table.Length
+                ? string.Join("\n", table
+                    .Select((row, index) => (row, actual: answers[index]))
+                    .Where(pair => pair.actual != pair.row.Expected)
+                    .Select(pair => $"{pair.row.Command}\n    expected [{pair.row.Expected}] got [{pair.actual}]"))
+                : $"the guard answered {answers?.Count.ToString() ?? "nothing"} of {table.Length} commands";
 
         private static List<string> Ask(string hook, string expression, IEnumerable<string> commands)
         {

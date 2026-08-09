@@ -62,6 +62,11 @@ from shell_commands import command_segments, leading_program, program_invocation
 # reads this declaration to check that the registration is still there.
 HOOK_SCOPE = "session"
 
+# The tools this acts on, gated on below rather than restated there: the same fixture compares this
+# set against the matcher that routes tools to it, and a gate spelling the name a second time would
+# drift against both.
+HOOK_TOOLS = {"Bash"}
+
 # The body file is opened, so a path the shell has not expanded leaves nothing to open. An inline
 # body is searched rather than resolved, and is refused only where the search comes back empty.
 UNEXPANDED_POLICY = "refuse"
@@ -222,7 +227,7 @@ def main():
     except Exception:
         return 0
     try:
-        if not isinstance(event, dict) or event.get("tool_name") != "Bash":
+        if not isinstance(event, dict) or event.get("tool_name") not in HOOK_TOOLS:
             return 0
         command = event.get("tool_input", {}).get("command") or ""
         cwd = event.get("cwd") or "."
