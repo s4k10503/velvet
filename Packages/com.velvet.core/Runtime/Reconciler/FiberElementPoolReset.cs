@@ -22,9 +22,9 @@ namespace Velvet
     //   through AddManipulator, are NOT tracked here; user code must unregister them before the element
     //   returns to the pool. The Clickable swap in FiberButtonPoolHelper covers only the manipulator a
     //   Button holds itself, not one a consumer added alongside it.
-    // - An item a consumer put on element.schedule keeps running across the pool cycle. Nothing here can
-    //   reach it: an element's scheduled items are enumerable only from the handles their owner holds.
-    //   The animation schedules FiberElementCleaner releases are Velvet's own, not these.
+    // - An item a consumer put on element.schedule survives the pool cycle and resumes when the next
+    //   consumer attaches the element. The animation schedules FiberElementCleaner releases are Velvet's
+    //   own, not these.
     // - A binding registered through element.bindings is not released here.
     internal static class FiberElementPoolReset
     {
@@ -162,14 +162,6 @@ namespace Velvet
             }
         }
 
-        // A text element paints itself through the same delegate anything else adds a painter to — Velvet's
-        // own silhouette painters use it — and its own entry cannot be put back once replaced. So the
-        // element is compared against what a freshly constructed one carries, rather than restated: nothing
-        // else can equal that delegate, and a multicast one cannot either. An element that fails this is
-        // refused by the pool. TextElementPoolAdmissionTests pins both directions.
-        public static bool PaintsOnlyItself(TextElement element) =>
-            element != null && Equals(element.generateVisualContent, TextDefaults.generateVisualContent);
-
         // Read off one probe rather than restated, for the same reason FiberTextFieldPoolHelper keeps one:
         // a colour or a flag copied out of Unity's constructor into a literal here is a mirror that drifts,
         // and a freshly constructed instance is the very thing the pool's contract is stated against.
@@ -192,6 +184,13 @@ namespace Velvet
             element.PostProcessTextVertices = null;
 
             var defaults = TextDefaults;
+            // A text element paints itself through the same delegate anything else adds a painter to, and
+            // Velvet's own silhouette painters use it. Assigning the probe's is what drops a consumer's:
+            // the entry a constructor installs takes its subject off the generation context rather than
+            // capturing one, so one instance's is every instance's.
+            element.generateVisualContent = defaults.generateVisualContent;
+            // Writes focusable false on its way through, so anything restoring a type's own focusable — the
+            // line in FiberButtonPoolHelper — has to come after this call.
             element.selection.isSelectable = defaults.selection.isSelectable;
             element.selection.doubleClickSelectsWord = defaults.selection.doubleClickSelectsWord;
             element.selection.tripleClickSelectsLine = defaults.selection.tripleClickSelectsLine;

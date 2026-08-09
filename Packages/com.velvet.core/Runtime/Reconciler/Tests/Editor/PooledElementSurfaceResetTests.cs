@@ -26,13 +26,14 @@ namespace Velvet.Tests
     // FiberElementPoolReset's limitations block is where that is stated.
     internal sealed class PooledElementSurfaceResetTests
     {
-        // A Label's counterparts do move, and the scrub they exercise is the one a Button runs, so what is
-        // lost here is a second exercise of the same line rather than coverage of it.
+        // All three read through focusable, which the dirty pass leaves false on a Button — its constructed
+        // value is true, and the base-chain walk reaches Focusable last. A Label's counterparts do move, and
+        // the scrub they exercise is the same line, so what is lost here is a second exercise of it.
         private static readonly Dictionary<string, string> Immovable = new()
         {
-            ["Button.selection.isSelectable"] = "no write here moves it off what a fresh instance reads",
-            ["Button.selection.cursorIndex"] = "no write here moves it off what a fresh instance reads",
-            ["Button.selection.selectIndex"] = "no write here moves it off what a fresh instance reads",
+            ["Button.selection.isSelectable"] = "reads through a focusable the dirty pass leaves false",
+            ["Button.selection.cursorIndex"] = "reads through a focusable the dirty pass leaves false",
+            ["Button.selection.selectIndex"] = "reads through a focusable the dirty pass leaves false",
         };
 
         // Moved by the dirty pass and then left out of the comparison, each for a reason that holds
@@ -41,8 +42,6 @@ namespace Velvet.Tests
         private static readonly Dictionary<string, string> NotCompared = new()
         {
             ["Button.clickable"] = "every instance builds its own manipulator, so equality with a fresh one is not a question",
-            ["Button.generateVisualContent"] = "a text element's painter is bound to the instance that installed it; the pool refuses one painting anything else — TextElementPoolAdmissionTests",
-            ["Label.generateVisualContent"] = "a text element's painter is bound to the instance that installed it; the pool refuses one painting anything else — TextElementPoolAdmissionTests",
             ["Slider.showInputField"] = "a slider carrying its input field is refused by the pool instead — SliderPoolAdmissionTests",
             ["Toggle.text"] = "reads empty once the toggle has ever had one, where a fresh instance reads null; neither an empty nor a null write gets back to null",
         };

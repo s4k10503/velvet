@@ -273,11 +273,7 @@ namespace Velvet
 
         // Called by FiberElementCleaner after the label has been removed from the DOM
         // hierarchy and Velvet-managed resources have been released.
-        public static void ReturnLabel(Label label)
-        {
-            if (!FiberElementPoolReset.PaintsOnlyItself(label)) return;
-            s_labelPool.Return(label);
-        }
+        public static void ReturnLabel(Label label) => s_labelPool.Return(label);
 
         #endregion
 
@@ -291,11 +287,7 @@ namespace Velvet
 
         // Called by FiberElementCleaner after the button has been removed from the DOM
         // hierarchy and Velvet-managed resources (event bindings, gesture manipulators) have been released.
-        public static void ReturnButton(Button button)
-        {
-            if (!FiberElementPoolReset.PaintsOnlyItself(button)) return;
-            s_buttonPool.Return(button);
-        }
+        public static void ReturnButton(Button button) => s_buttonPool.Return(button);
 
         #endregion
 

@@ -43,8 +43,9 @@ namespace Velvet
             // Clickable itself: `clicked` is an event, so nothing outside can clear it without holding every
             // delegate that was added. Leaving the instance in place, as this did, carries a consumer's own
             // click action into whatever mounts next. This is the one place the pool return buys correctness
-            // with allocation — a fresh manipulator, and the callback re-registration the swap performs —
-            // against the stance the class-list overloads in FiberElementPoolReset are shaped by.
+            // with allocation unconditionally — a fresh manipulator, and the callback re-registration the
+            // swap performs — against the stance the class-list overloads in FiberElementPoolReset are
+            // shaped by. The other such trade, in FiberTextFieldPoolHelper, is guarded; this one cannot be.
             button.clickable = new Clickable((Action)null);
             // The common reset scrubs focusable to the plain-VisualElement default (false), but a Button's
             // OWN constructor default is focusable — without restoring it, a recycled button silently drops
@@ -69,8 +70,9 @@ namespace Velvet
             FiberElementPoolReset.ResetClassListAndCommon(label, TextElement.ussClassName, Label.ussClassName);
             FiberElementPoolReset.ResetTextElementState(label);
             label.text = string.Empty;
-            // The common reset writes the plain-VisualElement 0; a Label's own constructor leaves it out of
-            // the tab ring, and a recycled one that keeps 0 joins a focus order it was never in.
+            // The common reset writes the plain-VisualElement 0 over the -1 a Label's own constructor sets.
+            // It shows once a consumer declares the label focusable, which is what puts tabIndex in front of
+            // the focus ring at all.
             label.tabIndex = -1;
         }
     }
@@ -213,8 +215,7 @@ namespace Velvet
             textField.textSelection.cursorColor = defaults.textSelection.cursorColor;
             textField.textSelection.selectionColor = defaults.textSelection.selectionColor;
             textField.label = string.Empty;
-            // ClearClassList drops the variant a label-less constructor added, and the label write
-            // above cannot put it back: its setter compares against the empty text already there.
+            // Same variant, and the same reason, as FiberTogglePoolHelper.
             textField.EnableInClassList(BaseField<string>.noLabelVariantUssClassName, true);
             textField.showMixedValue = false;
             textField.emojiFallbackSupport = true;
@@ -274,8 +275,7 @@ namespace Velvet
             FiberElementPoolReset.ResetClassListAndCommon(toggle, BaseField<bool>.ussClassName, Toggle.ussClassName);
             toggle.SetValueWithoutNotify(false);
             toggle.label = string.Empty;
-            // ClearClassList drops the variant a label-less constructor added, and the label write
-            // above cannot put it back: its setter compares against the empty text already there.
+            // Same variant, and the same reason, as FiberTogglePoolHelper.
             toggle.EnableInClassList(BaseField<bool>.noLabelVariantUssClassName, true);
             toggle.text = string.Empty;
             toggle.showMixedValue = false;

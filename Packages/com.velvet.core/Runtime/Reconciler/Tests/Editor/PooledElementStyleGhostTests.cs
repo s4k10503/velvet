@@ -314,7 +314,9 @@ namespace Velvet.Tests
             Assert.That(mismatches, Is.Empty);
         }
 
-        // Structural: the non-style common state ResetCommonState restores
+        // Structural: a plain VisualElement through ResetCommonState. What this holds that
+        // PooledElementSurfaceResetTests does not is the get-only enabledSelf, and the element type its
+        // walk never reaches — the probes below are a sample of that reset, not an account of it.
 
         private static readonly (string Name, Func<VisualElement, object> Read)[] CommonStateProbes =
         {
@@ -330,7 +332,7 @@ namespace Velvet.Tests
         [Test]
         public void Given_EveryCommonStateFieldMutated_When_ResetForReuse_Then_ElementMatchesAFreshInstance()
         {
-            // Arrange — mutate every non-style field ResetCommonState claims to restore.
+            // Arrange — mutate the sampled fields.
             var element = new VisualElement
             {
                 userData = new object(),
