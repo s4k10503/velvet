@@ -13,10 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus the
   commit-on-Enter-or-blur behaviour. Reaching them previously meant writing the UI Toolkit properties
   by hand from `refCallback:`, which left them outside the diff and so unable to change with state.
-  Each is undeclared when null and restores what the element was constructed with once a later render
-  stops declaring it.
+  Each is undeclared when null: a member no render has declared is left alone, and one a render
+  declared and a later one dropped restores what the element was constructed with.
 
 ### Fixed
+
+- A `TextField`'s `isPasswordField` was written back to `false` by any render that declared another
+  text-input prop, so a mask a `refCallback:` had switched on came off as soon as the field's
+  placeholder or label changed. A member no render declares is now nobody's to write.
+
+- A pooled widget carried the props a previous consumer had declared on it into its next mount: the
+  recorded value a dropped `Focusable`, `TabIndex`, `DelegatesFocus` or text-input prop restores
+  belongs to the tree that declared it, and survived into the tree that recycled the element. The
+  next consumer's own assignment to the same property was then overwritten on the first re-render
+  that dropped a prop or changed a neighbouring one.
 
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
   or `false` rather than as the value the element was constructed with — neither of which is the

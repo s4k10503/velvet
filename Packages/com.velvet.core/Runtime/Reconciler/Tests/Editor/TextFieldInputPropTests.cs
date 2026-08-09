@@ -14,6 +14,9 @@ namespace Velvet.Tests
     /// <item>Each, once dropped by a later render, restores what the element was constructed with. The
     /// drops are measured on a subclass built away from every default, so an implementation coalescing
     /// to UI Toolkit's own constants fails them.</item>
+    /// <item>A member no render has declared — including the password flag, which predates the other
+    /// four — is left where a <c>refCallback:</c> put it when a later render redeclares its
+    /// neighbours.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -36,7 +39,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_declared_placeholder_When_the_field_is_reconciled_Then_the_element_shows_it()
+        public void Given_ADeclaredPlaceholder_When_TheFieldIsReconciled_Then_TheElementCarriesIt()
         {
             // Arrange
             var tree = new VNode[] { V.TextField(placeholder: "Search") };
@@ -49,7 +52,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_declared_max_length_When_the_field_is_reconciled_Then_the_element_carries_it()
+        public void Given_ADeclaredMaxLength_When_TheFieldIsReconciled_Then_TheElementCarriesIt()
         {
             // Arrange
             var tree = new VNode[] { V.TextField(maxLength: 12) };
@@ -62,7 +65,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_declared_read_only_flag_When_the_field_is_reconciled_Then_the_element_refuses_edits()
+        public void Given_ADeclaredReadOnlyFlag_When_TheFieldIsReconciled_Then_TheElementCarriesIt()
         {
             // Arrange
             var tree = new VNode[] { V.TextField(isReadOnly: true) };
@@ -75,7 +78,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_declared_delayed_flag_When_the_field_is_reconciled_Then_the_element_commits_on_blur()
+        public void Given_ADeclaredDelayedFlag_When_TheFieldIsReconciled_Then_TheElementCarriesIt()
         {
             // Arrange
             var tree = new VNode[] { V.TextField(isDelayed: true) };
@@ -88,7 +91,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_placeholder_declared_empty_When_the_field_is_reconciled_Then_the_element_shows_no_hint()
+        public void Given_APlaceholderDeclaredEmpty_When_TheFieldIsReconciled_Then_TheElementCarriesAnEmptyOne()
         {
             // Arrange — an empty string is a declared empty hint, not an absent one, so it has to reach a
             // field built with a hint of its own and clear it.
@@ -108,7 +111,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_declared_placeholder_When_a_later_render_drops_it_Then_the_element_reads_the_one_it_was_built_with()
+        public void Given_ADeclaredPlaceholder_When_ALaterRenderDropsIt_Then_TheElementReadsTheOneItWasBuiltWith()
         {
             // Arrange
             var oldTree = new VNode[]
@@ -134,7 +137,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_declared_max_length_When_a_later_render_drops_it_Then_the_element_reads_the_one_it_was_built_with()
+        public void Given_ADeclaredMaxLength_When_ALaterRenderDropsIt_Then_TheElementReadsTheOneItWasBuiltWith()
         {
             // Arrange
             var oldTree = new VNode[]
@@ -159,7 +162,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_declared_read_only_flag_When_a_later_render_drops_it_Then_the_element_reads_the_one_it_was_built_with()
+        public void Given_ADeclaredReadOnlyFlag_When_ALaterRenderDropsIt_Then_TheElementReadsTheOneItWasBuiltWith()
         {
             // Arrange
             var oldTree = new VNode[]
@@ -184,7 +187,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_declared_delayed_flag_When_a_later_render_drops_it_Then_the_element_reads_the_one_it_was_built_with()
+        public void Given_ADeclaredDelayedFlag_When_ALaterRenderDropsIt_Then_TheElementReadsTheOneItWasBuiltWith()
         {
             // Arrange
             var oldTree = new VNode[]
@@ -209,7 +212,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_field_that_never_declared_any_of_them_When_absent_settings_are_applied_Then_nothing_is_written()
+        public void Given_AFieldThatNeverDeclaredAnyOfThem_When_AbsentSettingsAreApplied_Then_NothingIsWritten()
         {
             // Arrange
             var field = new PrefilledTextField();
@@ -221,6 +224,157 @@ namespace Velvet.Tests
             Assert.That(
                 (field.textEdition.placeholder, field.maxLength, field.isReadOnly, field.isDelayed),
                 Is.EqualTo((PrefilledTextField.BuiltPlaceholder, PrefilledTextField.BuiltMaxLength, true, true)));
+        }
+
+        // The five below share one sequence: a render declares one member, the refCallback — which the
+        // create path invokes after applying props, so the record is taken before it — assigns another, and
+        // a second render redeclares only the first. The undeclared member is nobody's to write, so it has
+        // to survive. One callback instance stands in both trees, so the patch does not re-run it
+        // (ReconcilerContext.InvokeRefCallback's identity skip) and a second assignment cannot stand in for
+        // a survival.
+        [Test]
+        public void Given_APasswordFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
+        {
+            // Arrange
+            Func<VisualElement, Action> setFlag = el =>
+            {
+                ((TextField)el).isPasswordField = true;
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(placeholder: "Search", refCallback: setFlag) };
+            var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setFlag) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the identity term separates a survival from a remount, whose fresh element would
+            // run the callback again and read true however the applier behaved.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), element), element.isPasswordField),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_APlaceholderWrittenFromARefCallback_When_ALaterRenderRedeclaresTheMaxLength_Then_TheHintSurvives()
+        {
+            // Arrange
+            Func<VisualElement, Action> setHint = el =>
+            {
+                ((TextField)el).textEdition.placeholder = "from ref";
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(maxLength: 12, refCallback: setHint) };
+            var newTree = new VNode[] { V.TextField(maxLength: 13, refCallback: setHint) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — same identity term, and for the same reason.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), element), element.textEdition.placeholder),
+                Is.EqualTo((true, "from ref")));
+        }
+
+        [Test]
+        public void Given_AMaxLengthWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheLimitSurvives()
+        {
+            // Arrange
+            Func<VisualElement, Action> setLimit = el =>
+            {
+                ((TextField)el).maxLength = 4;
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(placeholder: "Search", refCallback: setLimit) };
+            var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setLimit) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — same identity term, and for the same reason.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), element), element.maxLength),
+                Is.EqualTo((true, 4)));
+        }
+
+        [Test]
+        public void Given_AReadOnlyFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
+        {
+            // Arrange
+            Func<VisualElement, Action> setFlag = el =>
+            {
+                ((TextField)el).isReadOnly = true;
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(placeholder: "Search", refCallback: setFlag) };
+            var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setFlag) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — same identity term, and for the same reason.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), element), element.isReadOnly),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_ADelayedFlagWrittenFromARefCallback_When_ALaterRenderRedeclaresThePlaceholder_Then_TheFlagSurvives()
+        {
+            // Arrange
+            Func<VisualElement, Action> setFlag = el =>
+            {
+                ((TextField)el).isDelayed = true;
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(placeholder: "Search", refCallback: setFlag) };
+            var newTree = new VNode[] { V.TextField(placeholder: "Find", refCallback: setFlag) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — same identity term, and for the same reason.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), element), element.isDelayed),
+                Is.EqualTo((true, true)));
+        }
+
+        [Test]
+        public void Given_APooledFieldWhoseLastTenantDeclaredAPlaceholder_When_ItsNextTenantWritesOneFromARefCallback_Then_TheHintSurvives()
+        {
+            // Arrange — the first tenancy records a placeholder default and then unmounts, which is what
+            // hands the element to the shared pool; the second declares only the length limit.
+            var declaring = new VNode[] { V.TextField(placeholder: "previous tenant") };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), declaring);
+            var pooled = (TextField)Root!.ElementAt(0);
+            Reconciler.Reconcile(Root, declaring, Array.Empty<VNode>());
+            Func<VisualElement, Action> setHint = el =>
+            {
+                ((TextField)el).textEdition.placeholder = "from ref";
+                return () => { };
+            };
+            var oldTree = new VNode[] { V.TextField(maxLength: 12, refCallback: setHint) };
+            var newTree = new VNode[] { V.TextField(maxLength: 13, refCallback: setHint) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert — the identity term is what makes this a reading of the recycled element; a fresh one
+            // would carry no record from either tenancy and satisfy the hint on its own.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), pooled),
+                    ((TextField)Root!.ElementAt(0)).textEdition.placeholder),
+                Is.EqualTo((true, "from ref")));
         }
     }
 }

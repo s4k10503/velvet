@@ -152,8 +152,9 @@ namespace Velvet
 
     /// <summary>
     /// TextField.isPasswordField, textEdition.placeholder, maxLength, isReadOnly and isDelayed.
-    /// A null member is undeclared, and <see cref="FiberPropApplier.ApplyTextField"/> restores what the
-    /// element was constructed with; an empty <see cref="Placeholder"/> is a declared empty placeholder.
+    /// A null member is undeclared: <see cref="FiberPropApplier.ApplyTextField"/> leaves a member no render
+    /// has declared untouched, and restores what the element was constructed with once a render that did
+    /// declare one drops it. An empty <see cref="Placeholder"/> is a declared empty placeholder.
     /// </summary>
     public sealed record TextFieldSettings(
         bool? IsPassword = null,
