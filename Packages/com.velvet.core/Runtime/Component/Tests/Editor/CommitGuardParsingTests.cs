@@ -86,7 +86,6 @@ namespace Velvet.Tests
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            // -B: nothing here reads a hook's bytecode, and leaving none keeps it that way.
             start.ArgumentList.Add("-B");
             start.ArgumentList.Add("-c");
             start.ArgumentList.Add(Driver);
