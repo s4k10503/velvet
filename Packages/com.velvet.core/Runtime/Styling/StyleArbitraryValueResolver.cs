@@ -1337,13 +1337,13 @@ namespace Velvet
         // unregistering a layer on every tick would only churn the layer map.
         internal static void ApplyInline(VisualElement element, in ArbitraryStyle style)
         {
-            // Transform properties (scale / translate / rotate) are not StyleLength and
+            // Transform properties (scale / translate / rotate / transform-origin) are not StyleLength and
             // are written through their dedicated UITK style properties.
             switch (style.Property)
             {
                 // Among transform properties, scale (uniform + per-axis) and both translate axes are composed
-                // by ResolveAndApply's combined appliers and never reach here; the only transform cases that
-                // land are rotate and aspect-ratio.
+                // by ResolveAndApply's combined appliers and never reach here; what lands is every transform
+                // property written in one go — rotate, transform-origin — plus aspect-ratio.
                 case ArbitraryProperty.Rotate:
                     element.style.rotate = new Rotate(new Angle(style.Value, AngleUnit.Degree));
                     return;

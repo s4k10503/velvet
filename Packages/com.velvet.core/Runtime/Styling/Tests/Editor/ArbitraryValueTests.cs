@@ -1637,6 +1637,23 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TransformOriginWithMixedUnits_When_Applied_Then_EachComponentKeepsItsOwnUnit()
+        {
+            // Arrange — the one thing a pair adds over every neighbouring transform utility is a second
+            // unit, so a test whose two components share one cannot tell the y's from the x's: with both
+            // percent, writing the x's unit into both reads the same.
+            var el = new VisualElement();
+            StyleArbitraryValueResolver.TryParse("origin-[12px_80%]", out var s);
+
+            // Act
+            StyleArbitraryValueResolver.Apply(el, in s);
+
+            // Assert
+            Assert.That((el.style.transformOrigin.value.x.unit, el.style.transformOrigin.value.y.unit),
+                Is.EqualTo((LengthUnit.Pixel, LengthUnit.Percent)));
+        }
+
+        [Test]
         public void Given_TransformOriginWithInlineValue_When_Cleared_Then_RevertsToNull()
         {
             // Arrange

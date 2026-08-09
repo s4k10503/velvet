@@ -134,8 +134,9 @@ namespace Velvet
         }
 
         // A pivot: one length, or two separated by the underscore the bracket grammar spells a space with.
-        // The negation prefix is refused rather than applied — `-origin-[..]` has no reading, since a pair
-        // gives it nothing to say which component it negates.
+        // The negation prefix is refused because Tailwind declares no negative variant of this utility, and
+        // nothing is lost by it: a minus inside the brackets reaches the value grammar intact, so
+        // origin-[-10px] and origin-[-10px_-20px] both parse.
         private static bool TryParseTransformOrigin(ReadOnlySpan<char> valueSpan, bool negate,
             out ArbitraryStyle result)
         {
