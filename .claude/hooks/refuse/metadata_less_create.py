@@ -13,8 +13,8 @@ asks; this refuses.
 Assignee is required on an issue and not on a pull request: a pull request already records its
 author, so a self-assignment adds nothing.
 
-`--web` hands the fields to the browser form, where they can be set, so it is left alone, and so is
-`--help`, which opens nothing.
+`--web` hands the fields to the browser form, where they can be set, so it is left alone, and so are
+`--help` and its short `-h`, which open nothing.
 """
 
 import json

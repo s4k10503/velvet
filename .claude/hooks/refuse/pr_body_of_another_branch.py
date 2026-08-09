@@ -1,27 +1,44 @@
 #!/usr/bin/env python3
-"""Refuse a pull-request body that was not written for this branch.
+"""Refuse a pull-request body that names neither an issue nor a reason for having none.
 
-A pull request was opened here whose whole description belonged to a different one, and it stayed
-that way until a person read it. The body file was named `pr-body.md`, a previous pull request had
-left a file of that name in the same scratch directory, and the write meant to replace it never ran:
-it sat in the same `&&` chain as a `gh pr create` that a hook refused, and a refusal stops the whole
-chain. Nothing about the retry looked wrong — the path existed, `gh` read it, the pull request opened
-and went green.
+A change that came straight out of an issue was merged without linking it, so the issue stayed open
+with its work already shipped. The body is the one artefact nothing else here checks: CI reads the
+diff and so does review, and the description is whatever the file held.
 
-The body is the one artefact nothing else here checks. CI reads the diff and so does review; the
-description is whatever the file held.
+CONTRIBUTING.md owns the rule; this refuses, it does not define. An answer is a closing or referring
+keyword against a number, or a full issue URL, or a `No issue: <where this came from>` line — a
+decision rather than a silence. A bare `#` and digits is not one: a six-digit colour satisfies it,
+and a number mentioned in prose closes nothing on merge, which is the half of the accident that hurt.
 
-Two questions, because "is this body about this branch" has exactly two a machine can answer:
+## The staleness check is gone, and nothing replaced it
 
-- **The file predates the branch.** A body last written before the branch's first commit cannot
-  describe what that branch does, whatever left it there. A missing file is refused too: that is the
-  same accident before the leftover is found, and it is what the chain above would have produced in
-  a directory the previous pull request had not written to.
-- **It names no issue.** A pull request that closes one says so and the issue closes itself on merge;
-  one that closes nothing says `No issue: <where this came from>`, which is a decision rather than a
-  silence. CONTRIBUTING.md owns that rule — this refuses, it does not define.
+Earlier rounds of this also dated the body file against the branch's first commit, to catch the
+leftover of a previous pull request being reused by the next. It was posed the case it exists for,
+built from two pull requests opened one after another here: a body file stamped at the moment the
+first was opened, against the branch of the second, whose first commit lands sixteen seconds later.
+The check allowed fifteen minutes, and allowed it. The comparison was one-sided besides, so a
+leftover stamped after the branch's first commit was allowed with no bound at all.
 
-It does not judge what the body is about: nothing can read a description and tell whose branch it is.
+No window fixes that, wider or narrower, because of when a PreToolUse hook runs. Where the body is
+written by the very command that posts it — a heredoc into the path, then `gh pr create` reading it
+— this runs before the write. The mtime it reads then belongs to whatever was already at that path,
+which is the leftover itself, and the file it would date is the one the command is about to
+overwrite. A narrower window refuses correct bodies; a wider one admits more leftovers; neither is
+reading the description that will be posted.
+
+So it does not judge what the body is about at all — only whether it says where the change came from.
+
+## What it reads, and what it refuses for being unreadable
+
+It reads the description that will be posted, so the body has to be there before the command runs.
+What it cannot read it refuses rather than skips, because a guard that skips reports what a guard
+that passed reports: an absent file, a path the shell has yet to expand, a body on stdin, a relative
+path in a command that also changes directory, a file the filesystem will not hand over. Each
+refusal carries its own remedy.
+
+An inline `--body` is the description rather than a name for it, so it is searched as it stands and
+its backticks and `$` cost nothing. Only when the search finds no answer does an expansion in it
+matter, and then it is the same refusal for the same reason: the text posted is not the text here.
 
 Nor does it see a `gh pr create` the shared parser does not claim — behind `sudo`, inside `bash -c`,
 or with gh's own options before the subcommand. Four attempts at that reached in both wrong
@@ -29,18 +46,11 @@ directions: enumerating wrapper names refused `sudo gh auth status` and a `timeo
 wait, matching the phrase refused prose including the message of the commit that added it, and
 teaching the shared parser gh's options made every value-taking option it did not name walk off the
 subcommand and match nothing — in six guards, not one. What is left is what has never been in doubt.
-
-**What it can answer, it fails closed on.** The first version resolved the branch from the session's directory,
-which is the primary checkout while the branch under review sits in a worktree — the configuration
-this is used from. `origin/main..HEAD` was then empty, the start came back unknown, and the check
-that could not be made was skipped rather than refused. What a guard cannot determine is what it must
-refuse; the alternative is silence exactly where the input is unusual.
 """
 
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 
@@ -52,25 +62,36 @@ from shell_commands import command_segments, leading_program, program_invocation
 # reads this declaration to check that the registration is still there.
 HOOK_SCOPE = "session"
 
-# The operands this resolves — the body, and the refs it dates the body against. A rewritten --title
-# or --label is not read here and costs nothing, and refusing over one is how the first version
-# blocked bodies it could read perfectly well.
+# The body file is opened, so a path the shell has not expanded leaves nothing to open. An inline
+# body is searched rather than resolved, and is refused only where the search comes back empty.
 UNEXPANDED_POLICY = "refuse"
-UNEXPANDED_PROBE = 'gh pr create --title t --body-file $BODY --label bug'
+UNEXPANDED_PROBE = 'gh pr create --title t --body-file $BODY'
 
 BODY_FILE_FLAGS = ("--body-file", "-F")
 BODY_FLAGS = ("--body", "-b")
-HEAD_FLAGS = ("--head", "-H")
-BASE_FLAGS = ("--base", "-B")
-ISSUE_REFERENCE = re.compile(r"#\d+")
+# Neither opens a pull request, so neither posts a description.
+EXEMPT_FLAGS = ("--dry-run", "--help", "-h")
+
+# A keyword against a number, or the issue's own URL. The keyword is what distinguishes a statement
+# of origin from a number that happens to appear: the bare form was satisfied by a six-digit colour,
+# and it counted a cross-reference in prose, which leaves the issue open exactly as before.
+ISSUE_REFERENCE = re.compile(
+    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?|refs?)\b[^\S\n]*:?[^\S\n]*#\d+"
+    r"|github\.com/[\w.-]+/[\w.-]+/issues/\d+",
+    re.IGNORECASE)
 # A line rather than a flag, so the answer lands in the published body where a reader looking for
 # where a change came from finds it. It has to carry a reason: the bare token would be a way of
 # saying nothing in a form that satisfies the check, which is the silence this asks about.
 NO_ISSUE_LINE = re.compile(r"^[^\S\n]*No issue[:.][^\S\n]*\S", re.MULTILINE | re.IGNORECASE)
 
-# A body is often written before the commit it describes. This is how much of that ordering is
-# allowed — our decision, not a measurement of anything.
-DRAFTING_WINDOW = 900
+NO_ANSWER = (
+    "Refusing `gh pr create`: the body names no issue.\n\n"
+    "CONTRIBUTING.md asks every pull request to say where it came from. If it closes an\n"
+    "issue, the first line closes it on merge:\n\n"
+    "  Closes #<n>.\n\n"
+    "If it closes nothing — a tooling change, a release — say that instead, so a reader\n"
+    "who wonders where it came from finds an answer rather than a silence:\n\n"
+    "  No issue: <where this came from>")
 
 
 def valued(operands, flags):
@@ -80,6 +101,10 @@ def valued(operands, flags):
     carrying its value attached. The last was missed, so `-F/tmp/pr-body.md` reached none of the
     checks below: the invocation was claimed, no body was found, and it took the exemption meant for
     a body this cannot read. That is the accident this guard exists for, one character apart.
+
+    A name is read off any token, including one that is another option's value, so `-t -Fx` gives a
+    body file of `x` and the file asked about is not the one gh will post. Separating the two needs a
+    mirror of which of gh's options take a value, and an unpinned mirror drifts.
     """
     short = tuple(flag for flag in flags if len(flag) == 2 and flag.startswith("-") and flag[1] != "-")
     for index, token in enumerate(operands):
@@ -96,59 +121,15 @@ def valued(operands, flags):
     return None
 
 
-def git(cwd, *args):
-    """stdout of a git command, or None when it cannot be run or fails."""
-    try:
-        done = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return done.stdout.strip() if done.returncode == 0 else None
-
-
-def first_commit_after(cwd, start, ref):
-    """When the oldest commit in start..ref was authored, or None when that cannot be read.
-
-    Author date, not committer date: a rebase — which two sibling guards prescribe by name —
-    rewrites the committer date to now, which would refuse a body written before that rebase.
-    """
-    stamps = git(cwd, "log", "--format=%at", f"{start}..{ref}")
-    if stamps is None:
-        return None
-    authored = [line for line in stamps.split() if line.isdigit()]
-    return int(authored[-1]) if authored else None
-
-
-def branch_start(cwd, head, base):
-    """When the branch's own first commit was authored, or None when that cannot be determined.
-
-    One source, and a stated limit. The base a sibling records in ~/.velvet-branch-bases was tried
-    here twice and answers wrongly in both directions: after the rebase that sibling prescribes its
-    sha is no longer an ancestor and the walk widens, and an entry pointing part-way along a branch
-    — the file is machine-global, append-only and never pruned — makes the branch look YOUNGER than
-    it is and refuses a correct body. Both were built and run.
-
-    What is left over: a stacked branch that targets main and has not been rebased yet gets the
-    window measured from its PARENT's first commit rather than its own, because that is where
-    merge-base against main lands. Passing --base <parent> measures it correctly. A body older than
-    the parent is still caught; one written between the two is not.
-
-    The head is taken from the command when it names one, because the directory the command runs in
-    is routinely not the branch's: a session coordinating worktrees runs from the primary checkout.
-    """
-    ref = head or "HEAD"
-    start = git(cwd, "merge-base", base, ref)
-    return first_commit_after(cwd, start, ref) if start else None
-
-
 MOVERS = {"cd", "pushd", "popd"}
 
 
 def moves_directory(segment):
     """Whether this segment changes the directory a later segment runs in.
 
-    The command word is read the way shell_commands reads one, past `then`/`do` and an environment
-    assignment: reading tokens[0] instead missed `if true; then cd /tmp; fi`, which is the lib's own
-    documented reason for having leading_program at all.
+    The command word is read the way shell_commands reads one, past `then`/`do`, `builtin` and an
+    environment assignment: reading tokens[0] instead missed `if true; then cd /tmp; fi`, which is
+    the lib's own documented reason for having leading_program at all.
     """
     tokens = tokens_of(segment)
     index = leading_program(tokens)
@@ -163,75 +144,75 @@ def refuse(message):
     return 2
 
 
-def check(operands, cwd, after_a_move):
-    """0, or 2 with the reason written to stderr."""
-    path = valued(operands, BODY_FILE_FLAGS)
-    text = valued(operands, BODY_FLAGS)
-    if path is None and text is None:
-        # --fill, --fill-first, --template: the body is commits, or a file committed to be reused by
-        # every branch. Dating either against this branch answers nothing, and neither is text held
-        # here to search — so the issue question goes unasked too, which CONTRIBUTING states without
-        # this exception.
-        return 0
-    head = valued(operands, HEAD_FLAGS)
-    base = valued(operands, BASE_FLAGS) or "origin/main"
-    resolved_operands = [operand for operand in (path, text, head, base) if operand is not None]
-    if any(unexpanded(operand) for operand in resolved_operands):
-        return refuse(
-            "Refusing `gh pr create`: an operand this reads is still unexpanded — the body, or the\n"
-            "branch it dates the body against.\n\n"
-            "Run it with those spelled out.")
+def answered(text):
+    """Whether the body says where the change came from, either way round."""
+    return bool(ISSUE_REFERENCE.search(text) or NO_ISSUE_LINE.search(text))
 
+
+def judge_inline(text):
+    """0, or 2 with the reason written to stderr."""
+    if answered(text):
+        return 0
+    if unexpanded(text):
+        return refuse(
+            "Refusing `gh pr create`: the body is assembled by the shell, so the description this\n"
+            "can read is not the one that will be posted.\n\n"
+            "Write it to a file in a step of its own and pass `--body-file <path>`.")
+    return refuse(NO_ANSWER)
+
+
+def judge_file(path, cwd, after_a_move):
+    """0, or 2 with the reason written to stderr."""
+    if unexpanded(path):
+        return refuse(
+            "Refusing `gh pr create`: the body file's path is still unexpanded, so this cannot open\n"
+            "the description that will be posted.\n\n"
+            "Run it with the path spelled out.")
     if path == "-":
         return refuse(
             "Refusing `gh pr create`: the body comes from stdin, which this cannot read.\n\n"
-            "Write it to a file and pass that, so the question of whose branch it describes has\n"
-            "an answer.")
-    if path is not None:
-        if after_a_move and not os.path.isabs(path):
-            return refuse(
-                "Refusing `gh pr create`: the command changes directory, so a relative body path\n"
-                "names one file here and another one to `gh`.\n\n"
-                "Give the body an absolute path.")
-        resolved = Path(path) if os.path.isabs(path) else Path(cwd) / path
-        if not resolved.exists():
-            return refuse(
-                f"Refusing `gh pr create`: {path} does not exist.\n\n"
-                "A body file that is not there is usually one whose write did not run — a refused\n"
-                "hook stops the whole `&&` chain it was in, including the write.")
-
-        started = branch_start(cwd, head, base)
-        if started is None:
-            return refuse(
-                "Refusing `gh pr create`: this cannot tell when the branch started, so it cannot\n"
-                f"tell whether {path} was written for it.\n\n"
-                f"Run it from the branch's own directory, or pass `--head <branch>`.")
-        try:
-            written = resolved.stat().st_mtime
-        except OSError:
-            return refuse(f"Refusing `gh pr create`: {path} cannot be read.")
-        if written < started - DRAFTING_WINDOW:
-            older = int((started - written) // 60)
-            return refuse(
-                f"Refusing `gh pr create`: {path} was last written {older} minutes before this\n"
-                "branch's first commit, so it was written for something else.\n\n"
-                "A pull request opened this way carries whatever that path held. On the occasion\n"
-                "this guard was written for, that was another branch's description, from creation\n"
-                "until a person read it.")
-        try:
-            text = resolved.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return refuse(f"Refusing `gh pr create`: {path} cannot be read.")
-
-    if text is not None and not ISSUE_REFERENCE.search(text) and not NO_ISSUE_LINE.search(text):
+            "Write it to a file and pass that, so the description that will be posted is one this\n"
+            "can read too.")
+    if after_a_move and not os.path.isabs(path):
         return refuse(
-            "Refusing `gh pr create`: the body names no issue.\n\n"
-            "CONTRIBUTING.md asks every pull request to say where it came from. If it closes an\n"
-            "issue, the first line closes it on merge:\n\n"
-            "  Closes #<n>.\n\n"
-            "If it closes nothing — a tooling change, a release — say that instead, so a reader\n"
-            "who wonders where it came from finds an answer rather than a silence:\n\n"
-            "  No issue: <where this came from>")
+            "Refusing `gh pr create`: the command changes directory, so a relative body path\n"
+            "names one file here and another one to `gh`.\n\n"
+            "Give the body an absolute path.")
+    resolved = Path(path) if os.path.isabs(path) else Path(cwd) / path
+    if not resolved.exists():
+        return refuse(
+            f"Refusing `gh pr create`: {path} does not exist.\n\n"
+            "The body has to be there before this command runs, so a body written by this same\n"
+            "command is too late — write it in a step of its own and create the pull request in\n"
+            "the next. A path that is missing for any other reason is usually one whose write did\n"
+            "not run: a refused hook stops the whole `&&` chain it was in, including the write.")
+    try:
+        text = resolved.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return refuse(f"Refusing `gh pr create`: {path} cannot be read.")
+    return 0 if answered(text) else refuse(NO_ANSWER)
+
+
+def check(operands, cwd, after_a_move):
+    """0, or 2 with the reason written to stderr."""
+    if any(token in EXEMPT_FLAGS for token in operands):
+        return 0
+    path = valued(operands, BODY_FILE_FLAGS)
+    text = valued(operands, BODY_FLAGS)
+    if path is None and text is None:
+        # No body operand at all: --fill and its relatives, --template, --recover, --editor, and the
+        # interactive form. The description comes from commits, from a file every branch reuses, or
+        # from a prompt after this has run, and none of those is text held here to search — so the
+        # question goes unasked, which CONTRIBUTING states without this exception.
+        return 0
+    # Both are judged when both are given: which one gh posts is not something this holds, so an
+    # answer carried only by the one it does not post would be an answer nobody reads.
+    if text is not None:
+        verdict = judge_inline(text)
+        if verdict:
+            return verdict
+    if path is not None:
+        return judge_file(path, cwd, after_a_move)
     return 0
 
 

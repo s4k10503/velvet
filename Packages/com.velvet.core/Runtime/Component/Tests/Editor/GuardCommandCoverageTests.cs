@@ -142,32 +142,30 @@ namespace Velvet.Tests
             ("echo 'git checkout main'", "-"),
         };
 
-        // file|inline|head|base|moved. Kept apart because the guard treats each differently — it dates
-        // the file, and only the file, against the head and the base; it reads either body for an
-        // issue; and it recognises a directory move, which decides elsewhere whether a relative path
-        // names the file gh opens. Recognition is all these columns hold — the lambda re-derives the
-        // ordering rather than calling the guard, so where a move sits relative to the call is not
-        // pinned here. A merged column agreed with a version that had the file and inline families
-        // swapped, and with one whose head, base and move recognition were each broken.
+        // file|inline|moved. Kept apart because the guard treats each differently — it opens the file
+        // and searches its text, it searches an inline body as it stands, and it recognises a
+        // directory move, which decides elsewhere whether a relative path names the file gh opens.
+        // Recognition is all these columns hold — the lambda re-derives the ordering rather than
+        // calling the guard, so where a move sits relative to the call is not pinned here. A merged
+        // column agreed with a version that had the file and inline families swapped, and with one
+        // whose move recognition was broken.
         private static readonly (string Command, string Expected)[] Bodies =
         {
-            ("gh pr create --title x --body-file b.md", "b.md||||no"),
+            ("gh pr create --title x --body-file b.md", "b.md||no"),
             ("gh pr list --search create", ""),
             ("gh issue create --label pr --title x", ""),
-            ("gh pr create --title x -F b.md", "b.md||||no"),
-            ("gh pr create --title x -Fb.md", "b.md||||no"),
-            ("gh pr create --title x -bhello", "|hello|||no"),
-            ("gh pr create --title x --body-file=b.md", "b.md||||no"),
-            ("gh pr create --title x --body text", "|text|||no"),
-            ("gh pr create --title x --body-file b.md --head feat/x", "b.md||feat/x||no"),
-            ("gh pr create --title x --body-file b.md -H feat/x", "b.md||feat/x||no"),
-            ("gh pr create --title x --body-file b.md --head=feat/x", "b.md||feat/x||no"),
-            ("gh pr create --title x --body-file b.md --base main", "b.md|||main|no"),
-            ("gh pr create --title x --body-file b.md -B main", "b.md|||main|no"),
-            ("cd d && gh pr create --title x --body-file b.md", "b.md||||yes"),
-            ("if true; then cd d; fi && gh pr create --title x --body-file b.md", "b.md||||yes"),
-            ("gh pr create --title x --body-file b.md && cd d", "b.md||||no"),
-            ("gh pr create --fill", "||||no"),
+            ("gh pr create --title x -F b.md", "b.md||no"),
+            ("gh pr create --title x -Fb.md", "b.md||no"),
+            ("gh pr create --title x -bhello", "|hello|no"),
+            ("gh pr create --title x --body-file=b.md", "b.md||no"),
+            ("gh pr create --title x --body text", "|text|no"),
+            // A head naming a fork is not read at all, so it neither answers nor disturbs the body.
+            ("gh pr create --title x --body-file b.md --head someone:feat/x", "b.md||no"),
+            ("cd d && gh pr create --title x --body-file b.md", "b.md||yes"),
+            ("builtin cd d && gh pr create --title x --body-file b.md", "b.md||yes"),
+            ("if true; then cd d; fi && gh pr create --title x --body-file b.md", "b.md||yes"),
+            ("gh pr create --title x --body-file b.md && cd d", "b.md||no"),
+            ("gh pr create --fill", "||no"),
             ("gh pr comment 5 --body \"run gh pr create --body-file b.md\"", ""),
             ("gh pr list", ""),
         };
@@ -278,7 +276,7 @@ namespace Velvet.Tests
                 "lambda g,c: ','.join([r for s in g.command_segments(c) "
                 + "for o in g.program_invocations(s, 'gh', ('pr', 'create')) "
                 + "for r in ['|'.join([str(g.valued(o, f) or '') "
-                + "for f in (g.BODY_FILE_FLAGS, g.BODY_FLAGS, g.HEAD_FLAGS, g.BASE_FLAGS)]) "
+                + "for f in (g.BODY_FILE_FLAGS, g.BODY_FLAGS)]) "
                 + "+ ('|yes' if any(g.moves_directory(p) for p in g.command_segments(c[:c.index(s)])) "
                 + "else '|no')]])";
             var answers = Ask(hook, expression, Bodies.Select(row => row.Command));
