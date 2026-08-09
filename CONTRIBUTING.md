@@ -227,14 +227,25 @@ So the window is guarded: `settle.py merge` and `gh pr merge` refuse while it is
 `Test ▸ publication` fails for a pull request whose checks run in it.
 `scripts/release/published_check.py` decides it and states the repair in its own message.
 
-Two holes are left open on purpose, and both are worth knowing before deferring step 3. A pull request
-that went green *before* the release landed keeps that result — this repository sets
+Three things about that window are worth knowing before deferring step 3.
+
+**A pull request that went green *before* the release landed keeps that result.** This repository sets
 `strict_required_status_checks_policy: false` so a 21-minute Unity matrix is not re-run for every base
-move — so the merge button on github.com stays enabled for it. What refuses there is `stale_merge.py`
+move, so the merge button on github.com stays enabled for it. What refuses there is `stale_merge.py`
 and `settle.py`'s contains-base precondition, neither of which github.com consults; turning the strict
-policy on is what would close it server-side, at the cost that buys. And if the dispatch itself is what
-is broken, the fix cannot merge past the guard: tag the release commit by hand and dispatch from the
-tag, which is the manoeuvre v2.0.1 needed and what the guard's own message now spells out.
+policy on is what would close it server-side, at the cost that buys.
+
+**A green pull request left sitting starts refusing every edit.**
+`.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses `Edit` and `Write` once one has been ready
+for fifteen minutes, and the instruction it prints is `settle.py merge`, which the publication guard now
+declines. Both are behaving correctly and the combination is a stall: record the deferral the hook's own
+message describes, or publish.
+
+**If the dispatch itself is what is broken, the guard has no in-band escape.** `upm.yml` runs from the
+workflow file at whatever ref is dispatched, so tagging the release commit and dispatching from the tag
+re-runs the same broken workflow — that manoeuvre solves a different problem, a branch tip that has
+moved on, which is what v2.0.1 needed. The repair for a broken workflow is a branch carrying the fix on
+top of the release commit, accepting that the fix ships inside that release, or an administrator merge.
 
 The release notes are built from that CHANGELOG section by `scripts/release/release_notes.py`, so a release
 is never written twice. Each version therefore needs a `### Highlights` block above its

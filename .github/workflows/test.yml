@@ -180,9 +180,10 @@ jobs:
   #
   # The base is named from the event rather than derived from the checkout's shape: a merge ref's
   # first parent is the base only for as long as nothing adds a `ref:` to the checkout above, and the
-  # guard would go on passing after it did. fetch-depth 0 rather than a shallow window, because a
-  # re-run replays the original event's base sha and a window measured from today may not hold it —
-  # and a base that cannot be read raises here rather than answering, which reads as a refusal.
+  # guard would go on passing after it did. fetch-depth 0 rather than a shallow window, because the
+  # base commit is not an ancestor of the merge ref this checks out and a depth around it carries no
+  # tree to read — and a base that cannot be read raises here rather than answering, which reads as a
+  # refusal.
   # ---------------------------------------------------------------------------
   publication:
     name: Release publication

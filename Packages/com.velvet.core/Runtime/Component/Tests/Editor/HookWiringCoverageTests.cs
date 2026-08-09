@@ -284,7 +284,7 @@ namespace Velvet.Tests
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
-            // -B so no __pycache__ lands beside a hook: the orphan check above reads every file in the tree.
+            // -B for the reason PreExpansionPolicyTests states, one fixture over.
             start.ArgumentList.Add("-B");
             start.ArgumentList.Add(hook);
 

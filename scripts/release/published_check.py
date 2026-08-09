@@ -4,9 +4,9 @@
 CONTRIBUTING.md's release section owns what goes wrong when nothing asks. What is decided here is
 which question is posed of which tree, and both answers follow from what repairs the state.
 
-**Publication**, asked of the BASE: the version package.json names is tagged. A dispatch repairs it,
-so refusing merges is pressure toward one, and reading the base leaves the pull request that closes a
-section free to merge — the one tree the state is allowed to be in.
+**Publication**, asked of the BASE: every version the CHANGELOG has closed is tagged. A dispatch
+repairs it, so refusing merges is pressure toward one, and reading the base leaves the pull request
+that closes a section free to merge — the one tree the state is allowed to be in.
 
 **Consistency**, asked of the TREE A MERGE WOULD PRODUCE: package.json names a CHANGELOG section that
 exists, carries a date, and has no dated section above it. A commit repairs each of these, so they
@@ -101,17 +101,26 @@ def publication_reason(changelog_text, package_json_text, tags):
     if not unpublished:
         return None
 
+    first = unpublished[0]
     return (f"{', '.join('v' + version for version in unpublished)} closed in the CHANGELOG and "
-            f"never published. Dispatch from the release commit's own tag rather than from the "
-            f"branch — `git tag release/{unpublished[0]} <the release commit>` then "
-            f"`gh workflow run upm.yml --ref release/{unpublished[0]} -f version={unpublished[0]}` — "
+            f"never published. Dispatch from the release commit's own tag rather than from the branch, "
             f"because anything merged since would otherwise ship inside it with the note describing "
-            f"none of it")
+            f"none of it:\n"
+            f"  git tag release/{first} <the release commit>\n"
+            f"  git push origin release/{first}\n"
+            f"  gh workflow run upm.yml --ref release/{first} -f version={first}\n"
+            f"The push is not optional: --ref is resolved on the server, and a tag that exists only "
+            f"locally answers 422.")
 
 
-def git(project, *args):
+def git(project, *args, timeout=30):
+    """Run git, raising on failure and on a read that never returns.
+
+    Two of these reach the network, and a link that stalls rather than refuses would otherwise hang
+    whatever is asking — including an EditMode fixture, which has no timeout of its own.
+    """
     result = subprocess.run(["git", "-C", str(project), *args],
-                            capture_output=True, text=True, check=True)
+                            capture_output=True, text=True, check=True, timeout=timeout)
     return result.stdout
 
 
@@ -145,7 +154,8 @@ def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False)
         return publication_reason(read_at(project, rev, CHANGELOG_PATH),
                                   read_at(project, rev, PACKAGE_JSON_PATH),
                                   remote_tags(project, remote))
-    except (subprocess.CalledProcessError, json.JSONDecodeError, OSError) as failure:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
+            json.JSONDecodeError, OSError) as failure:
         print(f"could not read {rev} to check it against the published releases: {failure}",
               file=sys.stderr)
         return None
@@ -178,7 +188,7 @@ def main():
                publication_reason(read_at(project, args.base, CHANGELOG_PATH),
                                   read_at(project, args.base, PACKAGE_JSON_PATH),
                                   remote_tags(project, args.remote)),
-               "holds an unpublished release", "the version package.json names is published")
+               "holds an unpublished release", "every version the CHANGELOG has closed is published")
 
     if args.result:
         report(args.result,
