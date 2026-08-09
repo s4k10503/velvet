@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using Unity.Properties;
 using UnityEngine.UIElements;
 
 namespace Velvet.Tests
@@ -11,19 +12,30 @@ namespace Velvet.Tests
     // A reset helper is a hand-written mirror of the widget's writable surface, and an unpinned mirror
     // drifts silently — the same reason the utility-to-longhand table is derived from the stylesheets
     // rather than restated. So the surface is reflected rather than listed: every public settable
-    // instance property the widget or its field/text base chain declares is set away from its value,
-    // the helper runs, and nothing may still read what was written. VisualElement's own properties are
-    // out of scope because FiberElementPoolReset.ResetCommonState owns them.
+    // instance property the widget's whole base chain declares is moved away from what a fresh instance
+    // reads, the helper runs, and the element must read back exactly what that fresh instance does.
     //
-    // A property that refuses the write would make its case vacuous, so the refusals are declared and
-    // compared both ways: one that starts accepting a write fails here rather than quietly leaving a
-    // hole, and so does a new one that refuses.
+    // Comparing against a fresh instance rather than against the value written is what makes the wrong
+    // default a failure too. It also means a property the dirty pass cannot move is a case that proves
+    // nothing, so those are declared and compared both ways: one that starts moving fails here rather
+    // than quietly leaving a hole, and so does a new one that stops.
     internal sealed class PooledElementSurfaceResetTests
     {
-        private static readonly Dictionary<string, string> UnsettableOffPanel = new()
+        private static readonly Dictionary<string, string> Immovable = new()
         {
-            ["TextField.cursorIndex"] = "a caret index does not move off a panel",
-            ["TextField.selectIndex"] = "a selection index does not move off a panel",
+            ["TextField.cursorIndex"] = "no write here moves it off what a fresh instance reads",
+            ["TextField.selectIndex"] = "no write here moves it off what a fresh instance reads",
+        };
+
+        // Moved by the dirty pass and then left out of the comparison, each for a reason that holds
+        // somewhere else. Nothing may be added here without one.
+        private static readonly Dictionary<string, string> NotCompared = new()
+        {
+            ["Button.clickable"] = "every instance builds its own manipulator, so equality with a fresh one is not a question",
+            ["Button.generateVisualContent"] = "TextElement installs its own painter and offers no way to read it back",
+            ["Label.generateVisualContent"] = "TextElement installs its own painter and offers no way to read it back",
+            ["Slider.showInputField"] = "a slider carrying its input field is refused by the pool instead — SliderPoolAdmissionTests",
+            ["Toggle.text"] = "reads empty once the toggle has ever had one, where a fresh instance reads null; neither an empty nor a null write gets back to null",
         };
 
         private Texture2D _texture;
@@ -51,71 +63,75 @@ namespace Velvet.Tests
         [TestCase("Toggle", 7)]
         [TestCase("Slider", 12)]
         [TestCase("TextField", 23)]
-        public void Given_a_pooled_widget_dirtied_across_its_writable_surface_When_its_reset_helper_runs_Then_no_property_keeps_what_was_written(
+        public void Given_a_pooled_widget_moved_off_its_fresh_state_When_its_reset_helper_runs_Then_it_reads_back_what_a_fresh_instance_does(
             string widget, int floor)
         {
             // Arrange
             var element = Construct(widget);
             var surface = Surface(element.GetType()).ToList();
             var problems = new List<string>();
-            var written = Dirty(element, widget, surface, problems);
+            var moved = Dirty(element, widget, surface, problems);
 
             // Act
             Reset(widget, element);
 
             // Assert
+            var fresh = Construct(widget);
             problems.AddRange(surface
-                .Where(p => written.TryGetValue(p.Name, out var value) && Equals(Read(p, element), value))
-                .Select(p => $"{widget}.{p.Name} kept {Read(p, element)}"));
+                .Where(p => moved.Contains(p.Name) && !NotCompared.ContainsKey(Key(widget, p))
+                            && !Equals(Read(p, element), Read(p, fresh)))
+                .Select(p => $"{Key(widget, p)} is {Read(p, element)}, fresh is {Read(p, fresh)}"));
             Assert.That(
                 (string.Join(" | ", problems), surface.Count >= floor),
                 Is.EqualTo((string.Empty, true)));
         }
 
-        private Dictionary<string, object> Dirty(
+        private static string Key(string widget, PropertyInfo property) => widget + "." + property.Name;
+
+        // Returns the properties the dirty pass actually moved away from a fresh instance. One it could
+        // not move would make its case below vacuous, so it is either declared immovable or a problem.
+        private HashSet<string> Dirty(
             VisualElement element, string widget, List<PropertyInfo> surface, List<string> problems)
         {
+            var pristine = Construct(widget);
             var written = new Dictionary<string, object>();
             foreach (var property in surface)
             {
-                // Chosen off the pristine instance and reused below. Deriving it a second time from an
+                // Chosen off a pristine instance and reused below. Deriving it a second time from an
                 // already-dirtied element walks every bool straight back to its default, which then reads
                 // as a reset that worked.
-                var value = DirtyValue(property, Read(property, element));
-                if (value == null) problems.Add($"{widget}.{property.Name} has no dirty value for {property.PropertyType.Name}");
+                var value = DirtyValue(property, Read(property, pristine));
+                if (value == null) problems.Add($"{Key(widget, property)} has no dirty value for {property.PropertyType.Name}");
                 else written[property.Name] = value;
             }
 
-            // Written twice: a clamped property (Slider.value against lowValue/highValue) only takes once
-            // its bounds have moved.
-            Write(element, surface, written, problems, widget, report: false);
-            Write(element, surface, written, problems, widget, report: true);
+            // Written twice because Type.GetProperties does not promise an order, and one property's write
+            // is refused until another has been made: the scroller visibility does not store until
+            // multiline is on. A single pass would land those only when the metadata happened to favour it.
+            Write(element, surface, written);
+            Write(element, surface, written);
 
-            var refused = surface
-                .Where(p => written.TryGetValue(p.Name, out var value) && !Equals(Read(p, element), value))
-                .Select(p => $"{widget}.{p.Name}")
-                .ToList();
-            problems.AddRange(refused
-                .Where(name => !UnsettableOffPanel.ContainsKey(name))
-                .Select(name => $"{name} refused the write, so its case proves nothing"));
-            problems.AddRange(UnsettableOffPanel.Keys
-                .Where(name => name.StartsWith(widget + ".", StringComparison.Ordinal) && !refused.Contains(name))
-                .Select(name => $"{name} now accepts a write and must be scrubbed rather than declared unsettable"));
-            return written;
+            var moved = surface
+                .Where(p => written.ContainsKey(p.Name) && !Equals(Read(p, element), Read(p, pristine)))
+                .Select(p => p.Name)
+                .ToHashSet();
+            problems.AddRange(surface
+                .Where(p => written.ContainsKey(p.Name) && !moved.Contains(p.Name) && !Immovable.ContainsKey(Key(widget, p)))
+                .Select(p => $"{Key(widget, p)} did not move off its fresh value, so its case proves nothing"));
+            problems.AddRange(Immovable.Keys
+                .Where(name => name.StartsWith(widget + ".", StringComparison.Ordinal)
+                               && moved.Contains(name[(widget.Length + 1)..]))
+                .Select(name => $"{name} now moves and must be scrubbed rather than declared immovable"));
+            return moved;
         }
 
-        private static void Write(
-            VisualElement element, List<PropertyInfo> surface, Dictionary<string, object> written,
-            List<string> problems, string widget, bool report)
+        private static void Write(VisualElement element, List<PropertyInfo> surface, Dictionary<string, object> written)
         {
             foreach (var property in surface)
             {
                 if (!written.TryGetValue(property.Name, out var value)) continue;
                 try { property.SetValue(element, value); }
-                catch (Exception e)
-                {
-                    if (report) problems.Add($"{widget}.{property.Name} threw {e.InnerException?.GetType().Name ?? e.GetType().Name}");
-                }
+                catch (Exception) { /* a refusal shows up as a property that did not move */ }
             }
         }
 
@@ -146,7 +162,7 @@ namespace Velvet.Tests
         {
             var seen = new HashSet<string>();
             var found = new List<PropertyInfo>();
-            for (var current = type; current != null && current != typeof(VisualElement); current = current.BaseType)
+            for (var current = type; current != null && current != typeof(object); current = current.BaseType)
             {
                 found.AddRange(current
                     .GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -174,6 +190,9 @@ namespace Velvet.Tests
             if (type == typeof(int)) return (int)current + 7;
             if (type == typeof(float)) return (float)current + 3.5f;
             if (type == typeof(char)) return (char)((char)current + 1);
+            if (type == typeof(object)) return new object();
+            if (type == typeof(Type)) return typeof(string);
+            if (type == typeof(PropertyPath)) return new PropertyPath("velvet-dirty");
             if (type.IsEnum) return Enum.GetValues(type).Cast<object>().FirstOrDefault(v => !Equals(v, current));
             if (type == typeof(Background)) return Background.FromTexture2D(_texture);
             if (type == typeof(IBinding)) return new StubBinding();

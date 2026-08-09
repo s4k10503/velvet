@@ -21,7 +21,7 @@ namespace Velvet
     // - Callbacks registered directly via element.RegisterCallback<TEvent> from user
     //   code are NOT tracked here; user code must unregister such callbacks before the element
     //   returns to the pool.
-    // - Modern Bindings (element.bindings, dataSourcePath) are not reset.
+    // - A binding registered through element.bindings is not released here.
     internal static class FiberElementPoolReset
     {
         // Restores the base USS classes (stripped by ClearClassList) and resets the shared
@@ -141,9 +141,16 @@ namespace Velvet
             element.pickingMode = PickingMode.Position;
             element.viewDataKey = null;
             element.SetEnabled(true);
+            element.usageHints = UsageHints.None;
+            element.languageDirection = LanguageDirection.Inherit;
+            element.disablePlayModeTint = false;
+            element.cacheAsBitmap = false;
+            element.dataSource = null;
+            element.dataSourcePath = default;
+            element.dataSourceType = null;
 
-            // Every pooled primitive is a BindableElement, and a legacy binding a consumer attached through
-            // onCreated outlives RemoveFromHierarchy the same way inline style does.
+            // Two test fixtures reach this with a plain VisualElement; every pooled primitive is a
+            // BindableElement, which is what PooledElementSurfaceResetTests walks.
             if (element is BindableElement bindable)
             {
                 bindable.binding = null;
@@ -151,9 +158,8 @@ namespace Velvet
             }
         }
 
-        // The TextElement surface Button and Label share. Velvet writes none of it, which is exactly why it
-        // ghosts: only a consumer's onCreated / refCallback can set it, and nothing on the mount path takes
-        // it back off.
+        // Velvet writes none of these, which is why they ghost — nothing on the mount path takes off what
+        // a consumer holding the element put on.
         public static void ResetTextElementState(TextElement element)
         {
             if (element == null) return;

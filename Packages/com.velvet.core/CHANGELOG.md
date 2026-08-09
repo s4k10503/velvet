@@ -5,6 +5,22 @@ All notable changes to this package are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A pooled widget carried far more than its reset helper named. Most of the writable surface of
+  `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever
+  mounted next: a read-only or multiline `TextField`, a `Toggle` stuck showing a mixed value, a
+  `Slider` whose direction was inverted, the rich-text and emoji-fallback flags on `Button` and
+  `Label`, a data-source binding on any of them, and the focus delegation and picking mode that let a
+  composite field receive keystrokes at all. Velvet writes none of these itself, so only a consumer
+  holding the element through `onCreated` or a ref could set them — and nothing took them back off.
+
+- A `Slider` that ever built its numeric input field is no longer pooled. That sub-element can only be
+  torn down while the slider is on a panel, and a pool return has already detached it, so a recycled
+  slider showed a stray input box that its own `showInputField` denied.
+
 ## [2.1.0] - 2026-08-09
 
 ### Highlights
