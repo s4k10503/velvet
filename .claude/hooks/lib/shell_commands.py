@@ -194,28 +194,11 @@ def leading_program(tokens):
     return index
 
 
-# gh's own options, before the subcommand. Only the value-taking ones need naming: a boolean flag is
-# one token and is stepped over either way. `gh -R owner/repo pr create` is the spelling that made
-# this necessary — every guard reading a gh subcommand walked straight past it.
-GH_GLOBAL_VALUE_FLAGS = {"-R", "--repo"}
-
-
-def past_global_flags(tokens, index, value_flags):
-    """The index of the subcommand, stepping over a program's own options and their values."""
-    while index < len(tokens) and tokens[index].startswith("-"):
-        flag, sep, _ = tokens[index].partition("=")
-        index += 1 if sep or flag not in value_flags else 2
-    return index
-
-
 def program_invocations(command, program, words):
     """Operands after `program` followed by `words`, once per segment that runs it.
 
     For programs whose subcommand is a fixed word sequence — `gh issue create`, `gh pr merge`.
     A pattern over the whole command answered yes to the words appearing inside an argument.
-
-    A program's own options come before the subcommand and are stepped over. Matching from the token
-    straight after the program name is what let `gh -R owner/repo pr create` past every guard here.
     """
     found = []
     for segment in command_segments(command):
@@ -223,7 +206,7 @@ def program_invocations(command, program, words):
         index = leading_program(tokens)
         if index >= len(tokens) or os.path.basename(tokens[index]) != program:
             continue
-        index = past_global_flags(tokens, index + 1, GH_GLOBAL_VALUE_FLAGS)
+        index += 1
         if tokens[index:index + len(words)] != list(words):
             continue
         found.append(tokens[index + len(words):])

@@ -23,6 +23,13 @@ Two questions, because "is this body about this branch" has exactly two a machin
 
 It does not judge what the body is about: nothing can read a description and tell whose branch it is.
 
+Nor does it see a `gh pr create` the shared parser does not claim — behind `sudo`, inside `bash -c`,
+or with gh's own options before the subcommand. Four attempts at that reached in both wrong
+directions: enumerating wrapper names refused `sudo gh auth status` and a `timeout gh run watch` CI
+wait, matching the phrase refused prose including the message of the commit that added it, and
+teaching the shared parser gh's options made every value-taking option it did not name walk off the
+subcommand and match nothing — in six guards, not one. What is left is what has never been in doubt.
+
 **What it can answer, it fails closed on.** The first version resolved the branch from the session's directory,
 which is the primary checkout while the branch under review sits in a worktree — the configuration
 this is used from. `origin/main..HEAD` was then empty, the start came back unknown, and the check
@@ -124,41 +131,6 @@ def branch_start(cwd, head, base):
 
 
 MOVERS = {"cd", "pushd", "popd"}
-# Programs whose whole purpose is to run another one in the caller's place. timeout and xargs were
-# here and are not: they are ordinarily given some other program, and `timeout 5 echo gh pr create`
-# is then indistinguishable from the call itself at token level.
-WRAPPERS = {"env", "sudo", "doas", "bash", "sh", "zsh", "eval", "nice", "stdbuf", "script", "flock"}
-
-
-def unclaimed_creation(segment, depth=0):
-    """Whether this segment runs `gh pr create` where program_invocations cannot claim it.
-
-    gh itself is no longer such a shape: the shared parser steps over gh's own options, so
-    `gh -R owner/repo pr create` is checked like any other spelling rather than refused.
-
-    What is left is a wrapper taking the command word. Two forms, and they need different questions.
-    Unquoted — `sudo gh pr create` — the call is in this segment's own tokens. Quoted — `bash -c "gh
-    pr create …"` — shlex hands the payload back as ONE token whose text is a whole command, so
-    asking the same question of each argument reaches it. Nothing is masked; an earlier version said
-    so and scanned the raw text instead, which refused prose twice.
-
-    Recursion does not remove the wrapper list, which is what it looked like it would do: `echo gh pr
-    create` and `sudo gh pr create` are the same tokens, so only a name separates a wrapper from a
-    program being handed words. The list is what decides whose arguments are worth recursing into.
-    """
-    if depth > 2:
-        return False
-    tokens = tokens_of(segment)
-    index = leading_program(tokens)
-    if index >= len(tokens) or os.path.basename(tokens[index]) not in WRAPPERS:
-        return False
-    rest = tokens[index + 1:]
-    if any(first == "pr" and second == "create" for first, second in zip(rest, rest[1:])):
-        return True
-    return any(
-        program_invocations(argument, "gh", ("pr", "create")) or unclaimed_creation(argument, depth + 1)
-        for argument in rest
-    )
 
 
 def moves_directory(segment):
@@ -267,13 +239,7 @@ def main():
             return 0
         moved = False
         for segment in command_segments(command):
-            claimed = program_invocations(segment, "gh", ("pr", "create"))
-            if not claimed and unclaimed_creation(segment):
-                return refuse(
-                    "Refusing `gh pr create`: it is wrapped in something this cannot read past, so\n"
-                    "neither the body's provenance nor the directory it resolves in can be told.\n\n"
-                    "Run gh directly.")
-            for operands in claimed:
+            for operands in program_invocations(segment, "gh", ("pr", "create")):
                 verdict = check(operands, cwd, moved)
                 if verdict:
                     return verdict

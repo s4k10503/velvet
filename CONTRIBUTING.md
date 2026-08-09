@@ -39,8 +39,9 @@ It also declines what it cannot answer, which is the part you are most likely to
 - the command changes directory and the body path is relative, so `gh` would open a different file
   than this one stats — give the body an absolute path;
 - the body, `--head` or `--base` is still unexpanded, or the body comes from stdin;
-- gh runs behind a wrapper — sudo, env, bash -c — where what it is given cannot be read. gh's own
-  options before the subcommand are read rather than refused; the shared parser steps over them.
+A gh that the parser does not recognise — behind sudo or bash -c, or with gh's own options before the
+subcommand — is not seen at all rather than refused. Four attempts to reach it each refused ordinary
+commands or broke a sibling guard, so the guard stops where it can answer.
 
 ## Local development
 
