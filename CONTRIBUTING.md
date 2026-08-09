@@ -162,6 +162,7 @@ on every platform.
 | `Source generators ▸ Required checks (generators)` | every PR / merge group | not required | **yes** |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
 | `Test ▸ release-notes` | push (filtered) / every PR / merge group | not required | no |
+| `Test ▸ publication` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ Required checks (Unity)` | every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` | not required | no |
 | `UPM ▸ release` | manual (`workflow_dispatch`) | not required | no |
@@ -215,6 +216,44 @@ the license on the same account.
 2. Merge to `main` (the `upm` branch is updated automatically).
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
+
+Between step 2 and step 3, `main` names a version that does not exist. The dispatch builds the note
+from the CHANGELOG section, which was written before anything merged in that window and describes none
+of it — so those commits ship inside the release, undescribed. v2.0.1 spent a day there and took twelve
+merges, and publishing it meant tagging the release commit by hand and dispatching from the tag, since
+dispatching from the branch would have shipped all twelve.
+
+So the window is guarded: `settle.py merge` and `gh pr merge` refuse while it is open, and
+`Test ▸ publication` fails for a pull request whose checks run in it.
+`scripts/release/published_check.py` decides it and states the repair in its own message.
+
+**A pull request that went green *before* the release landed keeps that result.** This repository sets
+`strict_required_status_checks_policy: false` so a 21-minute Unity matrix is not re-run for every base
+move, so the merge button on github.com stays enabled for it. What refuses there is `merge_onto_unpublished_release.py`, `stale_merge.py`
+and `settle.py`'s contains-base precondition, none of which github.com consults; turning the strict
+policy on is what would close it server-side, at the cost that buys.
+
+**A green pull request left sitting starts refusing every edit.**
+`.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready
+for fifteen minutes, and the instruction it prints is `settle.py merge`, which the publication guard now
+declines. Both are behaving correctly and the combination is a stall: record the deferral the hook's own
+message describes, or publish.
+
+**If the dispatch itself is what is broken, the guard has no in-band escape.** `upm.yml` runs from the
+workflow file at whatever ref is dispatched, so tagging the release commit and dispatching from the tag
+re-runs the same broken workflow — that manoeuvre solves a different problem, a branch tip that has
+moved on, which is what v2.0.1 needed. What works is a branch carrying the fix on top of the release
+commit, pushed and dispatched with `--ref`, accepting that the fix ships inside that release. What does
+not is an administrator merge: `protect-main` lists no bypass actor and reports
+`current_user_can_bypass: never`, so `gh pr merge --admin` is refused like any other. Short of the
+branch, the remaining lever is the ruleset itself — a bypass actor, or `enforcement: disabled` — which
+is a repository-settings change and not a merge.
+
+Note what a dispatch from a tag costs either way: `upm.yml` force-pushes the split to `upm`, so a
+consumer tracking `#upm` unpinned drops back to that commit until the next push to `main`.
+
+**Afterwards, a red left over from the window does not clear itself.** The tag list is read live, so any
+fresh run of the check passes once the release exists — re-run the failed jobs, or push.
 
 The release notes are built from that CHANGELOG section by `scripts/release/release_notes.py`, so a release
 is never written twice. Each version therefore needs a `### Highlights` block above its

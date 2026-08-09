@@ -108,6 +108,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/shared_git_state.py\"",
             "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_onto_unpublished_release.py\"",
+            "timeout": 25000
           }
         ]
       },

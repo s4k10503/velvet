@@ -7,11 +7,11 @@ re-derived wrong — the watcher has been written pinned to one pull request num
 one unwatched behind a fresh heartbeat, which is the exact failure the hook's own text warns about.
 
 **Every precondition below is also a refuse hook**, one apiece, so a merge typed without this script
-is held to the same four. What this adds is reporting them together: one run names everything wrong
+is held to the same five. What this adds is reporting them together: one run names everything wrong
 rather than costing a round of CI per reason. If a precondition is worth having here it belongs in a
 hook, because a script nobody is obliged to run guards nothing.
 
-Four preconditions, each from a merge that went wrong rather than from a list of good practice:
+Five preconditions, each from a merge that went wrong rather than from a list of good practice:
 
 - **Checks are bound to the head SHA they were read at.** `gh pr checks` answers about whatever the
   API last recorded, which after a force-push is the previous commit's run. A green read was once
@@ -26,12 +26,15 @@ Four preconditions, each from a merge that went wrong rather than from a list of
   already happened. Nothing is left to retry and the leftover looks like an unmerged branch.
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that
   SHA, which is what a cancelled run followed by a force-push leaves behind.
+- **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
+  decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 
 Run: python3 scripts/pr/settle.py watch
      python3 scripts/pr/settle.py merge <number>
 """
 
 import argparse
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -39,6 +42,23 @@ import tempfile
 import sys
 import time
 from pathlib import Path
+
+
+def load_published_check():
+    """Imports the release guard by path, since scripts/ holds no packages.
+
+    Its own directory goes on the path first: the module reads the CHANGELOG heading grammar out of
+    release_notes.py rather than restating it, and a by-path import gives a module no siblings.
+    """
+    release = Path(__file__).resolve().parent.parent / "release"
+    sys.path.insert(0, str(release))
+    spec = importlib.util.spec_from_file_location("published_check", release / "published_check.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+published_check = load_published_check()
 
 HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
 
@@ -107,16 +127,22 @@ def contains_base(project, branch, base):
     return merge_base == base_head
 
 
-def reasons_from(before, after, results, branch, base, holds_base, held_by_worktree):
+def reasons_from(before, after, results, branch, base, holds_base, held_by_worktree,
+                 unpublished_release):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
-    A moved head returns alone: with the readings straddling a force-push, nothing else read here is
-    known to be about the same commit, so reporting the rest would be reporting about two SHAs at once.
-    """
-    if before != after:
-        return [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
+    `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
+    read as a clean base, and the only production caller is held by no test.
 
-    reasons = []
+    A moved head returns with the publication reason and nothing else: with the readings straddling a
+    force-push, nothing else read here is known to be about the same commit, so reporting the rest
+    would be reporting about two SHAs at once. The publication reason is about the base, which the
+    force-push did not touch.
+    """
+    reasons = [unpublished_release] if unpublished_release else []
+    if before != after:
+        return reasons + [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
+
     if not results:
         reasons.append(f"no check has run for {after[:7]}: a workflow was never triggered for this head")
 
@@ -147,7 +173,9 @@ def blocking_reasons(project, number, base):
     branch = json.loads(gh("pr", "view", str(number), "--json", "headRefName"))["headRefName"]
     return reasons_from(before, after, results, branch, base,
                         holds_base=contains_base(project, branch, base),
-                        held_by_worktree=branch in worktree_branches(project))
+                        held_by_worktree=branch in worktree_branches(project),
+                        unpublished_release=published_check.unpublished_reason(
+                            project, f"origin/{base}", fetch=True))
 
 
 def write_ready_state(ready, since):
