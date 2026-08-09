@@ -142,16 +142,19 @@ namespace Velvet.Tests
             ("echo 'git checkout main'", "-"),
         };
 
-        // Which body operand the provenance guard resolves. Recognition is the half that goes silent:
-        // a guard that stops finding the operand reports what a guard with nothing to say reports.
+        // file|inline|head, kept apart because the guard treats them differently and a single column
+        // hid that: it stats the file, reads either for an issue, and dates both against the head. A
+        // version with the file and inline families swapped agreed with a merged column on every row.
         private static readonly (string Command, string Expected)[] Bodies =
         {
-            ("gh pr create --title x --body-file b.md", "b.md"),
-            ("gh pr create --title x -F b.md", "b.md"),
-            ("gh pr create --title x --body-file=b.md", "b.md"),
-            ("gh pr create --title x --body text", "text"),
-            ("gh pr create --title x --body-file b.md --head feat/x", "b.md"),
-            ("gh pr create --fill", ""),
+            ("gh pr create --title x --body-file b.md", "b.md||"),
+            ("gh pr create --title x -F b.md", "b.md||"),
+            ("gh pr create --title x --body-file=b.md", "b.md||"),
+            ("gh pr create --title x --body text", "|text|"),
+            ("gh pr create --title x --body-file b.md --head feat/x", "b.md||feat/x"),
+            ("gh pr create --title x --body-file b.md -H feat/x", "b.md||feat/x"),
+            ("gh pr create --title x --body-file b.md --head=feat/x", "b.md||feat/x"),
+            ("gh pr create --fill", "||"),
             ("gh pr comment 5 --body \"run gh pr create --body-file b.md\"", ""),
             ("gh pr list", ""),
         };
@@ -257,8 +260,8 @@ namespace Velvet.Tests
 
             // Act
             const string expression =
-                "lambda g,c: ','.join([str(g.valued(o, g.BODY_FILE_FLAGS) "
-                + "or g.valued(o, g.BODY_FLAGS) or '') "
+                "lambda g,c: ','.join(['|'.join([str(g.valued(o, f) or '') "
+                + "for f in (g.BODY_FILE_FLAGS, g.BODY_FLAGS, g.HEAD_FLAGS)]) "
                 + "for o in g.program_invocations(c, 'gh', ('pr', 'create'))])";
             var answers = Ask(hook, expression, Bodies.Select(row => row.Command));
             Assume.That(answers?.Count, Is.EqualTo(Bodies.Length), "Precondition: one answer per command");

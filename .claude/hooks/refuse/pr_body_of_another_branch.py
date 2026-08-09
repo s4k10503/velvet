@@ -14,13 +14,14 @@ description is whatever the file held.
 Two questions, because "is this body about this branch" has exactly two a machine can answer:
 
 - **The file predates the branch.** A body last written before the branch's first commit cannot
-  describe what that branch does, whatever left it there. A missing file is the same failure one
-  step earlier, which is the shape the incident took.
+  describe what that branch does, whatever left it there. A missing file is refused too: that is the
+  same accident before the leftover is found, and it is what the chain above would have produced in
+  a directory the previous pull request had not written to.
 - **It names no issue.** A pull request that closes one says so and the issue closes itself on merge;
   one that closes nothing says `No issue: <where this came from>`, which is a decision rather than a
   silence. CONTRIBUTING.md owns that rule — this refuses, it does not define.
 
-It does not read the prose: nothing can look at a description and tell whose branch it is.
+It does not judge what the body is about: nothing can read a description and tell whose branch it is.
 
 **Both halves fail closed.** The first version resolved the branch from the session's directory,
 which is the primary checkout while the branch under review sits in a worktree — the configuration
@@ -37,17 +38,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import program_invocations, unexpanded
-from velvet_hooks import BRANCH_BASES
+from shell_commands import command_segments, program_invocations, tokens_of, unexpanded
 
 # Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
 # open pull requests, which would leave every other session unguarded. `HookWiringCoverageTests`
 # reads this declaration to check that the registration is still there.
 HOOK_SCOPE = "session"
 
-# Only the body operand is resolved, so only that one going unexpanded leaves the question
-# unanswered. A rewritten --title or --label costs nothing here, and refusing over one is how the
-# first version blocked bodies it could read perfectly well.
+# The operands this resolves — the body, and the refs it dates the body against. A rewritten --title
+# or --label is not read here and costs nothing, and refusing over one is how the first version
+# blocked bodies it could read perfectly well.
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'gh pr create --title t --body-file $BODY --label bug'
 
@@ -55,8 +55,6 @@ BODY_FILE_FLAGS = ("--body-file", "-F")
 BODY_FLAGS = ("--body", "-b")
 HEAD_FLAGS = ("--head", "-H")
 BASE_FLAGS = ("--base", "-B")
-WEB_FLAGS = {"--web", "-w"}
-
 ISSUE_REFERENCE = re.compile(r"#\d+")
 # A line rather than a flag, so the answer lands in the published body where a reader looking for
 # where a change came from finds it. It has to carry a reason: the bare token would be a way of
@@ -90,32 +88,23 @@ def git(cwd, *args):
     return done.stdout.strip() if done.returncode == 0 else None
 
 
-def recorded_base(name):
-    """The start point `branch_from_unmerged.py` recorded for this branch, or None."""
-    try:
-        with open(BRANCH_BASES, encoding="utf-8") as bases:
-            matches = [line for line in bases if line.startswith(f"{name} ")]
-    except OSError:
-        return None
-    if not matches:
-        return None
-    parts = matches[-1].split(None, 1)
-    return parts[1].strip() if len(parts) == 2 else None
-
-
 def branch_start(cwd, head, base):
     """When the branch's own first commit was authored, or None when that cannot be determined.
 
-    Author date, not committer date: a rebase — which the sibling guards here prescribe by name —
-    rewrites the committer date to now and would turn every correct body into a refusal.
+    Author date, not committer date: a rebase — which two sibling guards prescribe by name — rewrites
+    the committer date to now, which would refuse any body written before that rebase ran.
 
     The head is taken from the command when it names one, because the directory the command runs in
     is routinely not the branch's: a session coordinating worktrees runs from the primary checkout.
+
+    The base a sibling guard records in ~/.velvet-branch-bases was consulted here and is not any more.
+    It is one file for every repository on the machine, never pruned, and a stacked branch's entry
+    stops being an ancestor the moment the rebase that same guard prescribes runs — after which the
+    window widens by however long the parent sat unmerged. merge-base answered correctly in every
+    case that was built to separate them.
     """
     ref = head or "HEAD"
-    start = recorded_base(head) if head else None
-    if start is None:
-        start = git(cwd, "merge-base", base, ref)
+    start = git(cwd, "merge-base", base, ref)
     if start is None:
         return None
     stamps = git(cwd, "log", "--format=%at", f"{start}..{ref}")
@@ -125,27 +114,37 @@ def branch_start(cwd, head, base):
     return int(authored[-1]) if authored else None
 
 
+def moves_directory(command):
+    """Whether any segment of the command is a `cd`, which this cannot follow."""
+    for segment in command_segments(command):
+        tokens = tokens_of(segment)
+        if tokens and os.path.basename(tokens[0]) in ("cd", "pushd"):
+            return True
+    return False
+
+
 def refuse(message):
     print(message, file=sys.stderr)
     return 2
 
 
-def check(operands, cwd):
+def check(operands, cwd, moves_directory):
     """0, or 2 with the reason written to stderr."""
-    if WEB_FLAGS & set(operands):
-        return 0
-
     path = valued(operands, BODY_FILE_FLAGS)
     text = valued(operands, BODY_FLAGS)
     if path is None and text is None:
-        # --fill, --fill-first, --template: the body comes from commits or a template, which are not
-        # a file this can date, and which the author did not write here to be checked.
+        # --fill, --fill-first, --template: the body comes from commits or a template. Neither is a
+        # file this can date, and neither is text it holds, so both questions go unasked — including
+        # the issue one, which CONTRIBUTING states without that exception.
         return 0
-    if any(unexpanded(operand) for operand in (path, text) if operand is not None):
+    head = valued(operands, HEAD_FLAGS)
+    base = valued(operands, BASE_FLAGS) or "origin/main"
+    resolved_operands = [operand for operand in (path, text, head, base) if operand is not None]
+    if any(unexpanded(operand) for operand in resolved_operands):
         return refuse(
-            "Refusing `gh pr create`: the body operand is still unexpanded, so neither the file's\n"
-            "provenance nor the issue it names can be read.\n\n"
-            "Run it with the body spelled out.")
+            "Refusing `gh pr create`: an operand this reads is still unexpanded — the body, or the\n"
+            "branch it dates the body against.\n\n"
+            "Run it with those spelled out.")
 
     if path == "-":
         return refuse(
@@ -153,6 +152,11 @@ def check(operands, cwd):
             "Write it to a file and pass that, so the question of whose branch it describes has\n"
             "an answer.")
     if path is not None:
+        if moves_directory and not os.path.isabs(path):
+            return refuse(
+                "Refusing `gh pr create`: the command changes directory, so a relative body path\n"
+                "names one file here and another one to `gh`.\n\n"
+                "Give the body an absolute path.")
         resolved = Path(path) if os.path.isabs(path) else Path(cwd) / path
         if not resolved.exists():
             return refuse(
@@ -160,8 +164,6 @@ def check(operands, cwd):
                 "A body file that is not there is usually one whose write did not run — a refused\n"
                 "hook stops the whole `&&` chain it was in, including the write.")
 
-        head = valued(operands, HEAD_FLAGS)
-        base = valued(operands, BASE_FLAGS) or "origin/main"
         started = branch_start(cwd, head, base)
         if started is None:
             return refuse(
@@ -209,8 +211,9 @@ def main():
         cwd = event.get("cwd") or "."
         if not isinstance(command, str):
             return 0
+        moved = moves_directory(command)
         for operands in program_invocations(command, "gh", ("pr", "create")):
-            verdict = check(operands, cwd)
+            verdict = check(operands, cwd, moved)
             if verdict:
                 return verdict
         return 0

@@ -29,9 +29,16 @@ straight out of an issue was merged without linking it, so the issue stayed open
 already shipped. `refuse/pr_body_of_another_branch.py` declines a `gh pr create` whose body carries
 neither.
 
-The same guard declines a body file older than the branch's first commit, or one that is not there.
-Both are the same accident from opposite ends: the description belonged to a different pull request,
-and nothing about it looked wrong — the path existed and `gh` read it.
+The same guard declines a body file older than the branch's first commit, and one that is not there:
+the description belonged to a different pull request, and nothing about it looked wrong — the path
+existed and `gh` read it.
+
+It also declines what it cannot answer, which is the part you are most likely to meet:
+
+- it cannot tell when the branch started — run it from the branch's own directory, or pass `--head`;
+- the command changes directory and the body path is relative, so `gh` would open a different file
+  than this one stats — give the body an absolute path;
+- the body, `--head` or `--base` is still unexpanded, or the body comes from stdin.
 
 ## Local development
 
