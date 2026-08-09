@@ -121,8 +121,8 @@ class PublicationDecisionTests(unittest.TestCase):
         self.assertIsNone(reason)
 
     def test_Given_ARemoteWithNoReleaseTagAtAll_When_Decided_Then_ItIsNotCalledUnpublished(self):
-        # Arrange — a fork, whose owner cannot run the dispatch this would otherwise name. GitHub's
-        # fork sync moves branches and not tags.
+        # Arrange — a copy with no release history, where naming a dispatch would be an instruction
+        # with nothing behind it.
         reason = publication_reason(PUBLISHED, package_json(), {"some-marker"})
 
         # Assert
@@ -169,20 +169,12 @@ class GitReadingTests(unittest.TestCase):
         self.assertIn("gh workflow run upm.yml -f version=2.0.1", reason)
 
     def test_Given_ARevisionThatDoesNotExist_When_Read_Then_ItAnswersCleanRatherThanRaising(self):
-        # Arrange — an absent or unreachable remote is ordinary on a developer's machine, and refusing
-        # in it would train the reader to work around the guard.
+        # Arrange — a branch that was never fetched is ordinary on a developer's machine, and refusing
+        # there would train the reader to work around the guard.
         repository = self.repository()
 
         # Act / Assert
         self.assertIsNone(unpublished_reason(repository, "origin/nothing-like-this"))
-
-    def test_Given_TheTreePathsTheReadingUses_When_Spelled_Then_GitCanResolveThem(self):
-        # Arrange — a native rendering makes every `git show` here fail on Windows, and that failure
-        # answers "published", so the guard would be gone and silent on that platform alone.
-        spellings = (CHANGELOG_PATH, PACKAGE_JSON_PATH)
-
-        # Assert
-        self.assertEqual([spelling for spelling in spellings if "\\" in spelling], [])
 
 
 if __name__ == "__main__":

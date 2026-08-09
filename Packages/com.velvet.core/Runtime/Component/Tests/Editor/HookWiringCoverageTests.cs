@@ -251,7 +251,6 @@ namespace Velvet.Tests
             var guards = Directory.GetFiles(Path.GetFullPath(RefuseDirectory), "*.py")
                 .OrderBy(path => path, StringComparer.Ordinal)
                 .ToList();
-            Assume.That(guards, Is.Not.Empty, "no refusing guard was found to pose anything at");
 
             // Act
             var broken = (from guard in guards
@@ -261,8 +260,9 @@ namespace Velvet.Tests
                           select $"{Path.GetFileName(guard)} on {payload.Label}: exit {answer.Exit}\n{answer.Error}")
                 .ToList();
 
-            // Assert — the guard count rides along because an empty directory poses nothing.
-            Assert.That((guards.Count > 5, string.Join("\n", broken)), Is.EqualTo((true, string.Empty)),
+            // Assert — a floor rather than the count, because an empty directory poses nothing and
+            // reports nothing broken. Raise it with the tree, the way the harness scan's floor is raised.
+            Assert.That((guards.Count >= 12, string.Join("\n", broken)), Is.EqualTo((true, string.Empty)),
                 "these guards did not reach a verdict, and a hook that does not reach one is not consulted");
         }
 

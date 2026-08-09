@@ -217,10 +217,18 @@ the license on the same account.
 3. Run the **UPM** workflow via *Actions ▸ UPM ▸ Run workflow*, entering the same version.
    This tags `vX.Y.Z` on the `upm` (package-at-root) commit and publishes a GitHub release.
 
-Step 3 is not optional and not deferrable. Between step 2 and step 3, `main` names a version that does
-not exist, and anything merged there ships inside it with the release note describing none of it — so
-`Test ▸ publication` fails for a pull request whose checks run in that window, and `settle.py merge` and
-`gh pr merge` both refuse. `scripts/release/published_check.py` states the repair in its own message.
+Between step 2 and step 3, `main` names a version that does not exist. The dispatch builds the note
+from the CHANGELOG section, which was written before anything merged in that window and describes none
+of it — so those commits ship inside the release, undescribed. v2.0.1 spent a day there and took twelve
+merges, and publishing it meant tagging the release commit by hand and dispatching from the tag, since
+dispatching from the branch would have shipped all twelve.
+
+So the window is guarded: `settle.py merge` and `gh pr merge` refuse while it is open, and
+`Test ▸ publication` fails for a pull request whose checks run in it.
+`scripts/release/published_check.py` decides it and states the repair in its own message. If the
+dispatch itself is what is broken — a bug in `release_notes.py`, say, whose fix cannot merge past the
+guard — tagging the release commit by hand and dispatching `--ref` that tag is the escape, and it is
+the same manoeuvre v2.0.1 needed.
 
 The release notes are built from that CHANGELOG section by `scripts/release/release_notes.py`, so a release
 is never written twice. Each version therefore needs a `### Highlights` block above its

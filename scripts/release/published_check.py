@@ -1,21 +1,17 @@
 #!/usr/bin/env python3
 """Hold a repository to two things about the version it names, each asked of a different tree.
 
-A release reaches main as an ordinary commit — the CHANGELOG section dated, package.json bumped — and
-the publish is a separate `workflow_dispatch` that nothing forces. v2.0.1 sat in that gap through
-twelve merges. Each of them was then inside the release the dispatch would build, whose note had been
-written before any of them existed and described none of them; publishing it meant tagging the release
-commit by hand and dispatching from the tag rather than from the branch.
+CONTRIBUTING.md's release section owns what goes wrong when nothing asks. What is decided here is
+which question is posed of which tree, and both answers follow from what repairs the state.
 
-**Publication**, asked of the BASE: the version package.json names is tagged. Only a dispatch repairs
-this, so refusing merges is the pressure that produces one — and asking it of the base rather than of
-the tree leaves the pull request that closes a section free to merge, which is the one tree the state
-is allowed to be in.
+**Publication**, asked of the BASE: the version package.json names is tagged. A dispatch repairs it,
+so refusing merges is pressure toward one, and reading the base leaves the pull request that closes a
+section free to merge — the one tree the state is allowed to be in.
 
 **Consistency**, asked of the TREE A MERGE WOULD PRODUCE: package.json names a CHANGELOG section that
-exists, carries a date, and has no dated section above it. These are repaired by a commit, so they
-must fail the pull request that would introduce them rather than the ones that follow. Asking this of
-the base too would leave the repair itself unmergeable, with no direct push to main to escape through.
+exists, carries a date, and has no dated section above it. A commit repairs each of these, so they
+must fail whoever would introduce them. Read of the base too, they would leave the repair itself
+unmergeable, with no direct push to main to escape through.
 
 Run: python3 scripts/release/published_check.py --base origin/main --result HEAD
 """
@@ -31,8 +27,8 @@ from release_notes import DEFAULT_CHANGELOG, DEFAULT_PACKAGE_JSON, VERSION_HEADI
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
-# as_posix, not str: a git tree path is always /-separated, and the native rendering on Windows makes
-# every `git show` here fail — which unpublished_reason answers as a clean base.
+# Spelled for a git tree, which is not the filesystem: these are arguments to `git show`, not paths to
+# open, so they take the separator git uses rather than the one this platform does.
 CHANGELOG_PATH = DEFAULT_CHANGELOG.relative_to(REPO_ROOT).as_posix()
 PACKAGE_JSON_PATH = DEFAULT_PACKAGE_JSON.relative_to(REPO_ROOT).as_posix()
 
@@ -87,9 +83,8 @@ def publication_reason(changelog_text, package_json_text, tags):
     Answers None for a tree consistency_reason already refuses: the version to ask about is exactly
     what is in doubt there, and that question is posed of the merge result instead.
 
-    A remote carrying no release tag at all answers None too. That is a fork or a fresh copy — GitHub's
-    fork sync moves branches and not tags — and refusing there would name a dispatch its owner cannot
-    run.
+    A remote carrying no release tag at all answers None too: there is no release history to have
+    left a version out of, and naming a dispatch would be an instruction with nothing behind it.
     """
     if consistency_reason(changelog_text, package_json_text):
         return None
@@ -130,10 +125,11 @@ def read_at(project, rev, path):
 def unpublished_reason(project, rev="origin/main", remote="origin", fetch=False):
     """publication_reason for one revision of a repository, or None when it reads clean.
 
-    A git failure answers None rather than refusing: an absent or unreachable remote is an ordinary
-    state on a developer's machine, and refusing in it would train the reader to work around the
-    guard. It says so on stderr, because that answer is otherwise the same silence a published base
-    gives. The workflow does not come through here — it lets a git error raise and go red.
+    A git failure answers None rather than refusing: an absent revision, an absent remote and an
+    unreachable network are ordinary states on a developer's machine, and refusing in them would
+    train the reader to work around the guard. It says so on stderr, because that answer is otherwise
+    the same silence a published base gives. The workflow does not come through here — it lets a git
+    error raise and go red.
     """
     try:
         if fetch:

@@ -26,10 +26,8 @@ Five preconditions, each from a merge that went wrong rather than from a list of
   already happened. Nothing is left to retry and the leftover looks like an unmerged branch.
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that
   SHA, which is what a cancelled run followed by a force-push leaves behind.
-- **The base must not hold an unpublished release.** A closed CHANGELOG section reaches main as an
-  ordinary commit, and the dispatch that publishes it is separate; v2.0.1 sat there through twelve
-  merges, each of which the eventual release carried and its note described none of.
-  `scripts/release/published_check.py` owns that decision.
+- **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
+  decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 
 Run: python3 scripts/pr/settle.py watch
      python3 scripts/pr/settle.py merge <number>

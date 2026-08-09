@@ -165,20 +165,24 @@ jobs:
       - run: python3 scripts/release/test_release_notes.py
 
   # ---------------------------------------------------------------------------
-  # scripts/release/published_check.py owns why this exists and which question is asked of which
-  # tree. No Unity license needed.
+  # CONTRIBUTING.md's release section owns why this exists; scripts/release/published_check.py owns
+  # which question is asked of which tree.
   #
-  # What this job covers is one half of the publication question: a head whose run happens while the
-  # base holds an unpublished release. A pull request that went green BEFORE the release landed keeps
-  # that green result, since main does not require heads to be up to date (CONTRIBUTING.md) and
-  # GitHub re-runs nothing when a base moves. The other half is settle.py's contains-base
-  # precondition and stale_merge.py, which refuse such a merge until the branch takes main in — and
-  # that push is a new head, which lands here.
+  # The publication question is posed only where a merge is being decided, so `--base` is empty on
+  # push and workflow_dispatch. Posing it there instead reddens the release commit's own run — that
+  # commit IS the state, and no push run happens again after the dispatch clears it, so main would
+  # keep a red run for the release forever.
+  #
+  # It is also only half a guard where it does run: a pull request that went green BEFORE the release
+  # landed keeps that green result, since main does not require heads to be up to date
+  # (CONTRIBUTING.md). settle.py's contains-base precondition and stale_merge.py are what refuse such
+  # a merge until the branch takes main in, and that push is a new head, which lands here.
   #
   # The base is named from the event rather than derived from the checkout's shape: a merge ref's
   # first parent is the base only for as long as nothing adds a `ref:` to the checkout above, and the
-  # guard would go on passing after it did. push and workflow_dispatch have no base, and HEAD is the
-  # tree in question there.
+  # guard would go on passing after it did. fetch-depth 0 rather than a shallow window, because a
+  # re-run replays the original event's base sha and a window measured from today may not hold it —
+  # and a base that cannot be read raises here rather than answering, which reads as a refusal.
   # ---------------------------------------------------------------------------
   publication:
     name: Release publication
@@ -186,13 +190,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - run: python3 scripts/release/test_published_check.py
 
       - env:
-          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || 'HEAD' }}
-        run: python3 scripts/release/published_check.py --base "$BASE" --result HEAD
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          python3 scripts/release/published_check.py --result HEAD \
+            ${BASE:+--base "$BASE"}
 
   # ---------------------------------------------------------------------------
   # mutation_check.py needs a licence to kill a mutant, but not to build one, and the building is
