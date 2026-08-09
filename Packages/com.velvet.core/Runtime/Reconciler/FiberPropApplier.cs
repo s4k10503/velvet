@@ -49,7 +49,8 @@ namespace Velvet
 
         private static readonly int s_hiddenPriority = StyleLayerPriority.ImportantOf(StyleLayerPriority.Base);
 
-        // Unlike ApplyEnabled, a dropped Focusable cannot coalesce to a constant: what an absent prop has to restore is the element's own constructed value, which differs by
+        // Unlike ApplyEnabled, a dropped Focusable cannot coalesce to a constant: what an absent prop has to
+        // restore is the element's own constructed value, which differs by
         // type — FiberElementPoolReset.ResetCommonState writes one answer and every widget helper but the Label
         // one overwrites it — and which no table can answer for a V.Custom<T> type. The element is asked instead
         // of a table: the create path never writes an absent Focusable (FiberElementFactory.ApplyProps guards on

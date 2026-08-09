@@ -41,9 +41,6 @@ namespace Velvet.Tests
             Assert.That((built, declared, field.delegatesFocus), Is.EqualTo((true, false, true)));
         }
 
-        // A Label for the tab index and a field for the delegation: each is the type whose constructed
-        // value differs from the constant the applier used to write, and the other cannot tell the
-        // constant from the constructed value. The two readings are the tuples in the tests above.
         [Test]
         public void Given_a_label_that_never_declared_a_tab_index_When_the_absent_prop_is_applied_Then_nothing_is_written()
         {

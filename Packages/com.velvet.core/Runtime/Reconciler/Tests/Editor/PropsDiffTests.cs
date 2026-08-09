@@ -188,9 +188,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_TabIndexDeclared_When_PatchedToUnset_Then_ElementConstructedValueRestored()
         {
-            // Arrange — a Label is the only widget whose constructed tab index is not 0, so it is the only one
-            // where the coalescing this replaced is observable. Reached through V.Custom, since V.Text carries
-            // no props.
+            // Arrange — a Label inherits TextElement's -1 rather than the 0 the coalescing wrote, which is
+            // what makes the difference observable. Reached through V.Custom, since V.Text carries no props.
             var oldTree = new VNode[] { V.Custom<Label>(props: new FiberElementProps { TabIndex = 3 }) };
             var newTree = new VNode[] { V.Custom<Label>() };
             Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
@@ -200,8 +199,12 @@ namespace Velvet.Tests
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
-            // Assert
-            Assert.That((whileDeclared, element.tabIndex), Is.EqualTo((3, -1)));
+            // Assert — the identity term is what separates a restore from a remount: a Label handed back to
+            // the pool is reset to -1, so an implementation that discarded this element would satisfy the
+            // reading while the tree holds a different one.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), element), whileDeclared, element.tabIndex),
+                Is.EqualTo((true, 3, -1)));
         }
 
         [Test]
@@ -218,8 +221,10 @@ namespace Velvet.Tests
             // Act
             Reconciler.Reconcile(Root, oldTree, newTree);
 
-            // Assert
-            Assert.That((whileDeclared, element.delegatesFocus), Is.EqualTo((false, true)));
+            // Assert — same identity term, and for the same reason: the pool restores this reading too.
+            Assert.That(
+                (ReferenceEquals(Root!.ElementAt(0), element), whileDeclared, element.delegatesFocus),
+                Is.EqualTo((true, false, true)));
         }
 
         [Test]
