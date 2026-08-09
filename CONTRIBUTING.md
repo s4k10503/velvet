@@ -236,10 +236,14 @@ and `settle.py`'s contains-base precondition, none of which github.com consults;
 policy on is what would close it server-side, at the cost that buys.
 
 **A green pull request left sitting starts refusing every edit.**
-`.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses `Edit` and `Write` once one has been ready
+`.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready
 for fifteen minutes, and the instruction it prints is `settle.py merge`, which the publication guard now
 declines. Both are behaving correctly and the combination is a stall: record the deferral the hook's own
 message describes, or publish.
+
+A fourth thing, after the fact: a pull request `Test ▸ publication` reddened during the window keeps that
+result until its run is re-run. The dispatch clears the state, not the recorded answer — so re-run the
+job, or push, once the release is out.
 
 **If the dispatch itself is what is broken, the guard has no in-band escape.** `upm.yml` runs from the
 workflow file at whatever ref is dispatched, so tagging the release commit and dispatching from the tag
