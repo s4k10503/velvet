@@ -1811,16 +1811,17 @@ namespace Velvet
         {
             if (fiber.IsDisposed) return default!;
 
-            // Two calls run side by side rather than the second aborting the first, which is what TanStack
-            // does — a mutation is not handed a signal there at all. Cancelling on re-entry dropped the first
-            // call's OnSuccess, so a double-tapped Buy charged the card and never ran the write that follows
-            // it. The token stays because a Unity request wants one on unmount; only the re-entry cancel is
-            // gone.
+            // Two calls run side by side rather than the second aborting the first, as in TanStack, which
+            // hands a mutation no signal at all. Cancelling on re-entry dropped the first call's OnSuccess,
+            // so a double-tapped Buy charged the card and never ran the write that follows it. The token
+            // stays because a Unity request wants one on unmount; only the re-entry cancel is gone.
             var cts = new CancellationTokenSource();
             slot.Live.Add(cts);
-            // Who may write the OBSERVED result, which is the newest call — TanStack's observer shows the
-            // latest and fires every call's callbacks. Ownership is by generation now, not by holding the
-            // slot's only token.
+            // Who may write the OBSERVED result, which is the newest call, as TanStack's observer shows.
+            // Ownership is by generation now, not by holding the slot's only token. Firing the superseded
+            // call's callbacks is a DEVIATION: TanStack detaches the observer from the old mutation, so
+            // neither its own nor the hook's handlers run. Here the caller asked for that call's outcome
+            // and a later call says nothing about whether it happened.
             var mine = ++slot.Generation;
 
             slot.Result.Status = MutationStatus.Pending;

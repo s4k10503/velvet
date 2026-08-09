@@ -10,8 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A second `Mutate` call no longer cancels the first or drops its callbacks. Both run, each delivers
-  its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which is
-  what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to
+  its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent. Not
+  cancelling and showing the newest is what TanStack Query does, and it hands `mutationFn` no signal
+  at all; delivering the superseded call's callbacks is a deliberate deviation, since TanStack
+  detaches the observer and runs neither its handlers nor the hook's. A double-tapped Buy used to
   abort a request the server may already have committed and then skip the `OnSuccess` that records
   it. The token survives for unmount, where a request does want cancelling. A starting call also
   clears `Data` along with `Error`, so a result belonging to the previous call is not read as this

@@ -99,9 +99,12 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
 
-**Concurrent calls** (TanStack Query v5 parity): calling `Mutate` twice starts two runs. Neither
-cancels the other and each delivers its own `OnSuccess` / `OnError`, so a double-tapped button does
-not lose the first call's follow-up write. `Status` / `Data` / `Error` / `Variables` are one
+**Concurrent calls** (TanStack Query v5 parity, with one deliberate deviation): calling `Mutate`
+twice starts two runs, neither cancels the other, and the snapshot follows the newest — all as in
+v5. The deviation is that **each call still delivers its own `OnSuccess` / `OnError`**. v5 detaches
+the observer from the superseded mutation, so neither its handlers nor the hook's run; here a
+double-tapped button does not lose the first call's follow-up write, which is the failure this
+exists to prevent. `Status` / `Data` / `Error` / `Variables` are one
 snapshot describing the most recent call, and starting a call resets all four to that call's own —
 `Data` included, so a pending call never shows the previous one's result. The `CancellationToken` handed to `MutationFn` is still cancelled when the
 component unmounts, which is what a Unity web request wants.

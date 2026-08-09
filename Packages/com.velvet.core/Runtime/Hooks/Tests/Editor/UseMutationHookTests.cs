@@ -344,6 +344,39 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_TwoMutationsInFlight_When_TheComponentUnmounts_Then_TheUnmountCompletes() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange — two live sources, where cancelling the first settles the second. Unmount clears the
+            // list before cancelling, so the second's own finally finds nothing to remove; disposing there
+            // anyway would leave the loop cancelling a source it had already disposed. One call cannot
+            // reach that, since disposing an already-disposed source returns without complaint.
+            var first = new UniTaskCompletionSource<int>();
+            var second = new UniTaskCompletionSource<int>();
+            var callIndex = 0;
+            s_mutationFn = (v, ct) =>
+            {
+                var mine = callIndex++ == 0 ? first.Task : second.Task;
+                ct.Register(() => second.TrySetResult(0));
+                return mine.AttachExternalCancellation(ct);
+            };
+            var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "two-in-flight"));
+            var firstCall = s_captured!.MutateAsync(1).SuppressCancellationThrow();
+            var secondCall = s_captured.MutateAsync(2).SuppressCancellationThrow();
+            await UniTask.Yield();
+            var bothStarted = callIndex;
+
+            // Act
+            Exception? thrown = null;
+            try { mounted.Dispose(); } catch (Exception ex) { thrown = ex; }
+
+            // Assert — the first term keeps the reading load-bearing: with fewer than two calls in flight
+            // the disposal order this pins is never exercised.
+            Assert.That((bothStarted, thrown), Is.EqualTo((2, (Exception?)null)));
+            await firstCall;
+            await secondCall;
+        });
+
+        [UnityTest]
         public IEnumerator Given_AMutationInFlight_When_TheComponentUnmounts_Then_TheUnmountCompletes() => UniTask.ToCoroutine(async () =>
         {
             // Arrange — a token honoured by the mutation resumes its continuation inside Cancel(), and the
