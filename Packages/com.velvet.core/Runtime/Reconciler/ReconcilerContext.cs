@@ -572,9 +572,9 @@ namespace Velvet
 
         // Per-divided-child dashed / dotted divider paint (divide-dashed / divide-dotted), keyed by the CHILD
         // element (not the container) — the divider is painted on the child's own generateVisualContent, since
-        // a container paints BEHIND its children. Attached / updated by StyleDivideManipulator; the callback is
-        // not a style property, so the pool reset cannot scrub it: FiberElementCleaner detaches it per child
-        // (so a keyed-list reorder recycling one child is still caught) and Reconciler.Dispose sweeps the rest.
+        // a container paints BEHIND its children. Attached / updated by StyleDivideManipulator;
+        // FiberElementCleaner detaches it per child (so a keyed-list reorder recycling one child is still
+        // caught) and Reconciler.Dispose sweeps the rest.
         public Dictionary<VisualElement, DivideDashChildBinding> DivideDashBindings { get; } = new();
         // [&>*]:<utility> child-combinator variant — a manipulator on the CONTAINER that applies the wrapped
         // payload to each direct child. Mirrors GapManipulators / DivideManipulators; removed on cleanup /

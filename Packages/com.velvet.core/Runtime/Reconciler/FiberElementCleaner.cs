@@ -313,8 +313,9 @@ namespace Velvet
             }
             if (_ctx.BorderStyleBindings.TryGetValue(element, out var borderStyleBinding))
             {
-                // Runs on every element; a pool return runs on five types. That is the whole reason this
-                // has to stay, and two attempts to give it a second one were both wrong.
+                // BorderStyleSilhouette.Detach also unregisters the two callbacks the binding put on the
+                // element, which no pool return touches — the limitations block in FiberElementPoolReset
+                // states that a directly registered callback is not tracked there.
                 BorderStyleSilhouette.Detach(element, borderStyleBinding);
                 _ctx.BorderStyleBindings.Remove(element);
             }
@@ -322,13 +323,12 @@ namespace Velvet
             {
                 // Keyed by the divided CHILD, so a keyed-list reorder recycling one child independently of its
                 // divide container is still caught here (the container's own manipulator may never re-run for
-                // it). Kept for the same reason as the border-style branch above.
+                // it).
                 DivideDashPainter.Detach(element, divideDashBinding);
                 _ctx.DivideDashBindings.Remove(element);
             }
             if (_ctx.TextOverlineBindings.TryGetValue(element, out var overlineBinding))
             {
-                // Kept for the same reason as the border-style branch above.
                 TextOverlineSilhouette.Detach(element, overlineBinding);
                 _ctx.TextOverlineBindings.Remove(element);
             }

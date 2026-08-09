@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   defaults for both, and only `focusable` was written back afterwards. A recycled `Label` carried
   tab index 0 where its constructor sets -1, which shows once a consumer declares it focusable.
 
-- A `Slider` that ever built its numeric input field is no longer pooled at all. That sub-element only
+- A `Slider` still carrying its numeric input field is no longer pooled at all. That sub-element only
   tears down while the slider is on a panel, and a pool return has already detached it, so a recycled
   slider showed a stray input box that its own `showInputField` denied.
 

@@ -181,9 +181,8 @@ namespace Velvet.Tests
             Assert.That(scope.Reconciler.Context.BorderStyleBindings.Count, Is.EqualTo(0));
         }
 
-        // Pool reuse: the dashed-outline paint is a generateVisualContent delegate, not a style property, so the
-        // pool reset cannot scrub it — only FiberElementCleaner's teardown detaches it. Without that teardown a
-        // recycled element ghosts the prior consumer's binding (and its paint callback).
+        // Pool reuse: only FiberElementCleaner's teardown unregisters the binding's callbacks. Without it a
+        // recycled element ghosts the prior consumer's binding.
 
         [Component]
         private static VNode PoolHost()
