@@ -39,7 +39,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import command_segments, leading_program, program_invocations, tokens_of, unexpanded
-from velvet_hooks import BRANCH_BASES
 
 # Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
 # open pull requests, which would leave every other session unguarded. `HookWiringCoverageTests`
@@ -89,21 +88,6 @@ def git(cwd, *args):
     return done.stdout.strip() if done.returncode == 0 else None
 
 
-def recorded_base(name):
-    """The start point `branch_from_unmerged.py` recorded for this branch, or None."""
-    if not name:
-        return None
-    try:
-        with open(BRANCH_BASES, encoding="utf-8") as bases:
-            matches = [line for line in bases if line.startswith(f"{name} ")]
-    except OSError:
-        return None
-    if not matches:
-        return None
-    parts = matches[-1].split(None, 1)
-    return parts[1].strip() if len(parts) == 2 else None
-
-
 def first_commit_after(cwd, start, ref):
     """When the oldest commit in start..ref was authored, or None when that cannot be read.
 
@@ -120,21 +104,23 @@ def first_commit_after(cwd, start, ref):
 def branch_start(cwd, head, base):
     """When the branch's own first commit was authored, or None when that cannot be determined.
 
-    Two sources, and the LATEST answer wins, because each is wrong in the same direction and only
-    one of them at a time. For a stacked branch before the rebase a sibling prescribes, merge-base
-    against the target reaches back past the parent and returns the PARENT's first commit; after that
-    rebase, the base that sibling recorded is no longer an ancestor and the walk widens the same way.
-    Both errors make the branch look older than it is, which widens the window a stale body has to
-    beat — so the younger of the two is the one that cannot be fooled by either.
+    One source, and a stated limit. The base a sibling records in ~/.velvet-branch-bases was tried
+    here twice and answers wrongly in both directions: after the rebase that sibling prescribes its
+    sha is no longer an ancestor and the walk widens, and an entry pointing part-way along a branch
+    — the file is machine-global, append-only and never pruned — makes the branch look YOUNGER than
+    it is and refuses a correct body. Both were built and run.
+
+    What is left over: a stacked branch that targets main and has not been rebased yet gets the
+    window measured from its PARENT's first commit rather than its own, because that is where
+    merge-base against main lands. Passing --base <parent> measures it correctly. A body older than
+    the parent is still caught; one written between the two is not.
 
     The head is taken from the command when it names one, because the directory the command runs in
     is routinely not the branch's: a session coordinating worktrees runs from the primary checkout.
     """
     ref = head or "HEAD"
-    starts = [recorded_base(head), git(cwd, "merge-base", base, ref)]
-    authored = [first_commit_after(cwd, start, ref) for start in starts if start]
-    answers = [when for when in authored if when is not None]
-    return max(answers) if answers else None
+    start = git(cwd, "merge-base", base, ref)
+    return first_commit_after(cwd, start, ref) if start else None
 
 
 MOVERS = {"cd", "pushd", "popd"}
