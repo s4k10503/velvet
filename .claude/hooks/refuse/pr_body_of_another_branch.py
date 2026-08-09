@@ -23,7 +23,7 @@ Two questions, because "is this body about this branch" has exactly two a machin
 
 It does not judge what the body is about: nothing can read a description and tell whose branch it is.
 
-**Both halves fail closed.** The first version resolved the branch from the session's directory,
+**What it can answer, it fails closed on.** The first version resolved the branch from the session's directory,
 which is the primary checkout while the branch under review sits in a worktree — the configuration
 this is used from. `origin/main..HEAD` was then empty, the start came back unknown, and the check
 that could not be made was skipped rather than refused. What a guard cannot determine is what it must
@@ -38,7 +38,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import command_segments, program_invocations, tokens_of, unexpanded
+from shell_commands import command_segments, leading_program, program_invocations, tokens_of, unexpanded
+from velvet_hooks import BRANCH_BASES
 
 # Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
 # open pull requests, which would leave every other session unguarded. `HookWiringCoverageTests`
@@ -88,25 +89,27 @@ def git(cwd, *args):
     return done.stdout.strip() if done.returncode == 0 else None
 
 
-def branch_start(cwd, head, base):
-    """When the branch's own first commit was authored, or None when that cannot be determined.
-
-    Author date, not committer date: a rebase — which two sibling guards prescribe by name — rewrites
-    the committer date to now, which would refuse any body written before that rebase ran.
-
-    The head is taken from the command when it names one, because the directory the command runs in
-    is routinely not the branch's: a session coordinating worktrees runs from the primary checkout.
-
-    The base a sibling guard records in ~/.velvet-branch-bases was consulted here and is not any more.
-    It is one file for every repository on the machine, never pruned, and a stacked branch's entry
-    stops being an ancestor the moment the rebase that same guard prescribes runs — after which the
-    window widens by however long the parent sat unmerged. merge-base answered correctly in every
-    case that was built to separate them.
-    """
-    ref = head or "HEAD"
-    start = git(cwd, "merge-base", base, ref)
-    if start is None:
+def recorded_base(name):
+    """The start point `branch_from_unmerged.py` recorded for this branch, or None."""
+    if not name:
         return None
+    try:
+        with open(BRANCH_BASES, encoding="utf-8") as bases:
+            matches = [line for line in bases if line.startswith(f"{name} ")]
+    except OSError:
+        return None
+    if not matches:
+        return None
+    parts = matches[-1].split(None, 1)
+    return parts[1].strip() if len(parts) == 2 else None
+
+
+def first_commit_after(cwd, start, ref):
+    """When the oldest commit in start..ref was authored, or None when that cannot be read.
+
+    Author date, not committer date: a rebase — which two sibling guards prescribe by name —
+    rewrites the committer date to now, which would refuse a body written before that rebase.
+    """
     stamps = git(cwd, "log", "--format=%at", f"{start}..{ref}")
     if stamps is None:
         return None
@@ -114,13 +117,56 @@ def branch_start(cwd, head, base):
     return int(authored[-1]) if authored else None
 
 
-def moves_directory(command):
-    """Whether any segment of the command is a `cd`, which this cannot follow."""
-    for segment in command_segments(command):
-        tokens = tokens_of(segment)
-        if tokens and os.path.basename(tokens[0]) in ("cd", "pushd"):
+def branch_start(cwd, head, base):
+    """When the branch's own first commit was authored, or None when that cannot be determined.
+
+    Two sources, and the LATEST answer wins, because each is wrong in the same direction and only
+    one of them at a time. For a stacked branch before the rebase a sibling prescribes, merge-base
+    against the target reaches back past the parent and returns the PARENT's first commit; after that
+    rebase, the base that sibling recorded is no longer an ancestor and the walk widens the same way.
+    Both errors make the branch look older than it is, which widens the window a stale body has to
+    beat — so the younger of the two is the one that cannot be fooled by either.
+
+    The head is taken from the command when it names one, because the directory the command runs in
+    is routinely not the branch's: a session coordinating worktrees runs from the primary checkout.
+    """
+    ref = head or "HEAD"
+    starts = [recorded_base(head), git(cwd, "merge-base", base, ref)]
+    authored = [first_commit_after(cwd, start, ref) for start in starts if start]
+    answers = [when for when in authored if when is not None]
+    return max(answers) if answers else None
+
+
+MOVERS = {"cd", "pushd", "popd"}
+
+
+def unclaimed_creation(segment):
+    """Whether a segment runs `gh pr create` in a shape program_invocations does not claim.
+
+    `env -C dir gh pr create` is the reachable one: env is the command word, so the invocation is
+    invisible, and the -C is a directory change on top. Anything wrapping gh this way is a call this
+    cannot read, and a call it cannot read is one it must not pass.
+    """
+    tokens = tokens_of(segment)
+    for index, token in enumerate(tokens[:-2]):
+        if os.path.basename(token) == "gh" and tokens[index + 1] == "pr" and tokens[index + 2] == "create":
             return True
     return False
+
+
+def moves_directory(segment):
+    """Whether this segment changes the directory a later segment runs in.
+
+    The command word is read the way shell_commands reads one, past `then`/`do` and an environment
+    assignment: reading tokens[0] instead missed `if true; then cd /tmp; fi`, which is the lib's own
+    documented reason for having leading_program at all.
+    """
+    tokens = tokens_of(segment)
+    index = leading_program(tokens)
+    if index >= len(tokens):
+        return False
+    word = os.path.basename(tokens[index])
+    return word in MOVERS
 
 
 def refuse(message):
@@ -128,14 +174,15 @@ def refuse(message):
     return 2
 
 
-def check(operands, cwd, moves_directory):
+def check(operands, cwd, after_a_move):
     """0, or 2 with the reason written to stderr."""
     path = valued(operands, BODY_FILE_FLAGS)
     text = valued(operands, BODY_FLAGS)
     if path is None and text is None:
-        # --fill, --fill-first, --template: the body comes from commits or a template. Neither is a
-        # file this can date, and neither is text it holds, so both questions go unasked — including
-        # the issue one, which CONTRIBUTING states without that exception.
+        # --fill, --fill-first, --template: the body is commits, or a file committed to be reused by
+        # every branch. Dating either against this branch answers nothing, and neither is text held
+        # here to search — so the issue question goes unasked too, which CONTRIBUTING states without
+        # this exception.
         return 0
     head = valued(operands, HEAD_FLAGS)
     base = valued(operands, BASE_FLAGS) or "origin/main"
@@ -152,7 +199,7 @@ def check(operands, cwd, moves_directory):
             "Write it to a file and pass that, so the question of whose branch it describes has\n"
             "an answer.")
     if path is not None:
-        if moves_directory and not os.path.isabs(path):
+        if after_a_move and not os.path.isabs(path):
             return refuse(
                 "Refusing `gh pr create`: the command changes directory, so a relative body path\n"
                 "names one file here and another one to `gh`.\n\n"
@@ -211,11 +258,19 @@ def main():
         cwd = event.get("cwd") or "."
         if not isinstance(command, str):
             return 0
-        moved = moves_directory(command)
-        for operands in program_invocations(command, "gh", ("pr", "create")):
-            verdict = check(operands, cwd, moved)
-            if verdict:
-                return verdict
+        moved = False
+        for segment in command_segments(command):
+            claimed = program_invocations(segment, "gh", ("pr", "create"))
+            if not claimed and unclaimed_creation(segment):
+                return refuse(
+                    "Refusing `gh pr create`: it is wrapped in something this cannot read past, so\n"
+                    "neither the body's provenance nor the directory it resolves in can be told.\n\n"
+                    "Run gh directly.")
+            for operands in claimed:
+                verdict = check(operands, cwd, moved)
+                if verdict:
+                    return verdict
+            moved = moved or moves_directory(segment)
         return 0
     except Exception as err:
         # Exit 1 is not a refusal — PreToolUse runs the tool anyway — so an unforeseen shape here
