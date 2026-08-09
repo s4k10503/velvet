@@ -80,14 +80,15 @@ namespace Velvet.Tests
             public Action<VisualElement, object> Write;
         }
 
-        // The floors are the measured surface of each widget. Exact rather than slack, because the defect
-        // this guard shipped with was a walk that stopped one base class short: it dropped eighteen
-        // properties per widget and a floor with room in it would have said nothing.
-        [TestCase("Button", 28)]
-        [TestCase("Label", 26)]
-        [TestCase("Toggle", 25)]
-        [TestCase("Slider", 30)]
-        [TestCase("TextField", 46)]
+        // The floors are the measured slot count of each widget, and they are tight on purpose. Twice now a
+        // narrowing went unnoticed because the number below had room in it: once when the walk stopped at
+        // VisualElement, and once when these were left at the counts from before it descended into handles.
+        // A surface that grows still passes here and is then compared like any other slot.
+        [TestCase("Button", 40)]
+        [TestCase("Label", 38)]
+        [TestCase("Toggle", 28)]
+        [TestCase("Slider", 33)]
+        [TestCase("TextField", 64)]
         public void Given_a_pooled_widget_moved_off_its_fresh_state_When_its_reset_helper_runs_Then_it_reads_back_what_a_fresh_instance_does(
             string widget, int floor)
         {
