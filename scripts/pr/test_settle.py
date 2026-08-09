@@ -28,10 +28,11 @@ settle = load_module()
 
 
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
-            holds_base=True, held_by_worktree=False):
+            holds_base=True, held_by_worktree=False, unpublished_release=None):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
-    return settle.reasons_from(before, after, results, branch, base, holds_base, held_by_worktree)
+    return settle.reasons_from(before, after, results, branch, base, holds_base, held_by_worktree,
+                               unpublished_release)
 
 
 class MergeDecisionTests(unittest.TestCase):
@@ -48,6 +49,20 @@ class MergeDecisionTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(len(decided), 1)
+
+    def test_Given_TheBaseHoldsAnUnpublishedRelease_When_EverythingElsePasses_Then_ItStillBlocks(self):
+        # Arrange — the state main sat in for an afternoon while five pull requests merged into it.
+        decided = reasons(unpublished_release="v2.0.1 was never published")
+
+        # Assert
+        self.assertEqual(decided, ["v2.0.1 was never published"])
+
+    def test_Given_TheHeadMovedAndTheBaseIsUnpublished_When_Decided_Then_BothAreReported(self):
+        # Arrange — the force-push voids the readings about the head, not the one about the base.
+        decided = reasons(after=MOVED, unpublished_release="v2.0.1 was never published")
+
+        # Assert
+        self.assertEqual(len(decided), 2)
 
     def test_Given_NoCheckEverRan_When_Decided_Then_ThatIsNotReadAsPending(self):
         # Arrange — an empty list is a workflow never triggered, which a force-push after a cancel leaves.

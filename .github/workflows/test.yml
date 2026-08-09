@@ -165,6 +165,28 @@ jobs:
       - run: python3 scripts/release/test_release_notes.py
 
   # ---------------------------------------------------------------------------
+  # A release lands on main as an ordinary commit and publishes on a separate dispatch that nothing
+  # forces. Between the two, main names a version that does not exist and anything merged there
+  # ships inside it undescribed — which is what happened to v2.0.1. This is the thing that forces
+  # the dispatch: every pull request stays red until it has run. No Unity license needed.
+  #
+  # Read of HEAD^1 rather than of the checkout, because the pull request that closes the section is
+  # the one tree the state is allowed to be in. On every trigger this workflow subscribes to, that
+  # parent is the base the merge would land on. fetch-depth 2 is what carries it.
+  # ---------------------------------------------------------------------------
+  publication:
+    name: Release publication
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+
+      - run: python3 scripts/release/test_published_check.py
+
+      - run: python3 scripts/release/published_check.py --rev HEAD^1
+
+  # ---------------------------------------------------------------------------
   # mutation_check.py needs a licence to kill a mutant, but not to build one, and the building is
   # the half everything else rests on: an operator that emits uncompilable C# reports that mutant as
   # noise rather than as a survivor, so a real hole hides behind it. That half runs here.
@@ -193,11 +215,11 @@ jobs:
   required-checks:
     name: Required checks (Unity)
     if: always()
-    needs: [license-check, unity-tests, release-notes, test-quality]
+    needs: [license-check, unity-tests, release-notes, publication, test-quality]
     runs-on: ubuntu-latest
     steps:
       - env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.release-notes.result }} ${{ needs.test-quality.result }}
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }}
         run: |
           failed=0
           for result in $RESULTS; do
