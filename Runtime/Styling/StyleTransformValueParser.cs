@@ -3,9 +3,8 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Transform value parser for the arbitrary-value dispatch (StyleArbitraryValueResolver): the
-    // transform-and-merge bracket prefixes (scale / scale-x / scale-y / rotate / opacity / translate-x /
-    // translate-y). The dispatch calls in; this group calls only the resolver's shared scalar grammar
+    // Transform value parser for the arbitrary-value dispatch (StyleArbitraryValueResolver).
+    // The dispatch calls in; this group calls only the resolver's shared scalar grammar
     // (TryParseFloat / TryParseAngleDegrees / TryParseValue), never back into the dispatch or another parser.
     internal static class StyleTransformValueParser
     {
@@ -55,9 +54,19 @@ namespace Velvet
                     valueSpan, negate, out result);
             }
 
+            // origin-[33%_75%] is a pair, and the nine keyword spellings are USS classes rather than bracket
+            // values, so nothing here parses a keyword: origin-[left_top] is rejected and origin-top-left is
+            // the way to say it.
+            if (prefix == "origin-")
+            {
+                return TryParseTransformOrigin(valueSpan, negate, out result);
+            }
+
             return null;
         }
 
+        // A unitless factor, so the float grammar rather than the length one: that grammar converts a
+        // suffix instead of rejecting it, and scale-[2rem] would arrive as a 32x scale.
         private static bool TryParseScale(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
@@ -75,6 +84,8 @@ namespace Velvet
             return true;
         }
 
+        // An angle, which the length grammar rejects outright rather than converting: deg / rad / grad /
+        // turn all normalise to degrees here.
         private static bool TryParseRotate(ReadOnlySpan<char> valueSpan, bool negate, out ArbitraryStyle result)
         {
             result = default;
@@ -122,6 +133,38 @@ namespace Velvet
             if (!StyleArbitraryValueResolver.TryParseValue(valueSpan, out var tValue, out var tUnit)) return false;
             if (negate) tValue = -tValue;
             result = new ArbitraryStyle(property, tValue, tUnit);
+            return true;
+        }
+
+        // A pivot: one length, or two separated by the underscore the bracket grammar spells a space with.
+        // Here rather than in the prefix table because one class writes both components, and what the
+        // table builds carries one.
+        // The negation prefix is refused because Tailwind declares no negative variant of this utility, and
+        // nothing is lost by it: a minus inside the brackets reaches the value grammar intact, so
+        // origin-[-10px] and origin-[-10px_-20px] both parse.
+        private static bool TryParseTransformOrigin(ReadOnlySpan<char> valueSpan, bool negate,
+            out ArbitraryStyle result)
+        {
+            result = default;
+            if (negate) return false;
+
+            var separator = valueSpan.IndexOf('_');
+            var xSpan = separator < 0 ? valueSpan : valueSpan[..separator];
+            if (!StyleArbitraryValueResolver.TryParseValue(xSpan, out var x, out var xUnit)) return false;
+
+            // A single component is the x alone, and CSS leaves the y at 50% — not at the x, which would
+            // make origin-[0px] the top-left corner instead of the left edge's middle.
+            if (separator < 0)
+            {
+                result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, x, xUnit, 50f, LengthUnit.Percent);
+                return true;
+            }
+
+            // A third component needs no rejection of its own: the value grammar rejects "20%_30%" whole.
+            var ySpan = valueSpan[(separator + 1)..];
+            if (!StyleArbitraryValueResolver.TryParseValue(ySpan, out var y, out var yUnit)) return false;
+
+            result = new ArbitraryStyle(ArbitraryProperty.TransformOrigin, x, xUnit, y, yUnit);
             return true;
         }
     }

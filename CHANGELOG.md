@@ -36,6 +36,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `origin-[x]` and `origin-[x_y]` arbitrary values for `transform-origin`. The pivot a rotation or a scale
+  turns about could only be one of nine keywords, so a gauge needle at 90% of its height, or a bubble
+  scaling out of its tail corner, had to be written from a `refCallback` — the same escape hatch the guide
+  ranks last. A single component is the x alone and leaves the y at 50%, as CSS does. Two deviations from
+  Tailwind, which passes the bracket contents through to CSS: a keyword inside the brackets is refused,
+  since the nine keyword pivots are their own classes (`origin-top-left`, and `origin-[0%_75%]` for the
+  mixed keyword-and-length case they cannot spell), and a third component is refused: the
+  engine's transform-origin does carry a z, so this is a decision about the value shape rather than a
+  limit. Tailwind declares no negative variant either, so `-origin-[…]` is refused there too; a minus
+  inside the brackets is how to write one. The pivot does not move a skewed element's painted silhouette,
+  which stays at the box centre.
+
 - `grow-[N]` and `shrink-[N]` arbitrary values for `flex-grow` / `flex-shrink`. The utility vocabulary
   stopped at 0 and 1, so a proportional split had to be re-expressed as a fixed or percentage basis —
   which stops matching once siblings have minimum sizes — or written from a `refCallback`. See
