@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `V.TextField` declares four more of the text-input surface: `placeholder:`, `maxLength:`,
+  `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus the
+  commit-on-Enter-or-blur behaviour. Reaching them previously meant writing the UI Toolkit properties
+  by hand from `refCallback:`, which left them outside the diff and so unable to change with state.
+  Each is undeclared when null and restores what the element was constructed with once a later render
+  stops declaring it.
+
 ### Fixed
 
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`

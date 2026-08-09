@@ -249,6 +249,18 @@ namespace Velvet.Experimental
         /// <summary>When true, masks the input as a password field.</summary>
         public bool? IsPasswordField { get; set; }
 
+        /// <summary>A short hint shown in the empty field.</summary>
+        public string? Placeholder { get; set; }
+
+        /// <summary>Maximum number of characters the field accepts, -1 for no limit.</summary>
+        public int? MaxLength { get; set; }
+
+        /// <summary>When true, the field cannot be edited.</summary>
+        public bool? IsReadOnly { get; set; }
+
+        /// <summary>When true, the value is not updated until the user presses Enter or the field loses focus.</summary>
+        public bool? IsDelayed { get; set; }
+
         /// <summary>When false, disables user input.</summary>
         public bool? Enabled { get; set; }
 
@@ -258,7 +270,8 @@ namespace Velvet.Experimental
         /// <inheritdoc/>
         public override VNode Build() =>
             V.TextField(className: Class, value: Value, onValueChanged: OnChange, key: Key, name: Name,
-                label: Label, isPasswordField: IsPasswordField, enabled: Enabled);
+                label: Label, isPasswordField: IsPasswordField, placeholder: Placeholder, maxLength: MaxLength,
+                isReadOnly: IsReadOnly, isDelayed: IsDelayed, enabled: Enabled);
     }
 
     /// <summary>

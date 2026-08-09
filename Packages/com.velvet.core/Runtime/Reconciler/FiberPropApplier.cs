@@ -201,6 +201,11 @@ namespace Velvet
             svEl.touchScrollBehavior = Resolve(settings?.TouchScrollBehavior, ScrollView.TouchScrollBehavior.Clamped);
         }
 
+        // Same recorded-default shape, and the same reason, as ApplyFocusable: a dropped member restores what
+        // this element was constructed with. The type guard below does not narrow that to one answer — it
+        // admits any subclass of TextField, which V.Custom<T> can name, and such a subclass may be built with
+        // a placeholder or a length limit no constant here could name. TextFieldInputPropTests measures the
+        // difference on one.
         public static void ApplyTextField(VisualElement element, TextFieldSettings? settings)
         {
             if (element is not TextField tfEl)
@@ -208,8 +213,63 @@ namespace Velvet
                 return;
             }
 
-            tfEl.isPasswordField = settings?.IsPassword ?? false;
+            if (Declares(settings))
+            {
+                RecordTextFieldDefaults(tfEl);
+            }
+
+            // No record means no member was ever declared, so the field still carries its own defaults.
+            if (!s_textFieldDefaults.TryGetValue(tfEl, out var built))
+            {
+                return;
+            }
+
+            tfEl.isPasswordField = settings?.IsPassword ?? built.IsPassword;
+            tfEl.textEdition.placeholder = settings?.Placeholder ?? built.Placeholder;
+            tfEl.maxLength = settings?.MaxLength ?? built.MaxLength;
+            tfEl.isReadOnly = settings?.IsReadOnly ?? built.IsReadOnly;
+            tfEl.isDelayed = settings?.IsDelayed ?? built.IsDelayed;
         }
+
+        private static bool Declares(TextFieldSettings? settings)
+            => settings != null
+               && (settings.IsPassword.HasValue
+                   || settings.Placeholder != null
+                   || settings.MaxLength.HasValue
+                   || settings.IsReadOnly.HasValue
+                   || settings.IsDelayed.HasValue);
+
+        // One snapshot covers all five because it is taken before the prop path writes any of them. A writer
+        // outside that path owes this first, under the rule RecordFocusableDefault states; the pool's reset
+        // is the standing exception, writing back the constructed values PooledElementSurfaceResetTests
+        // compares it against, so a record taken before or after it reads the same.
+        internal static void RecordTextFieldDefaults(TextField textField)
+        {
+            if (!s_textFieldDefaults.TryGetValue(textField, out _))
+            {
+                s_textFieldDefaults.Add(textField, new TextFieldDefaults(textField));
+            }
+        }
+
+        private sealed class TextFieldDefaults
+        {
+            public readonly bool IsPassword;
+            public readonly string Placeholder;
+            public readonly int MaxLength;
+            public readonly bool IsReadOnly;
+            public readonly bool IsDelayed;
+
+            public TextFieldDefaults(TextField textField)
+            {
+                IsPassword = textField.isPasswordField;
+                Placeholder = textField.textEdition.placeholder;
+                MaxLength = textField.maxLength;
+                IsReadOnly = textField.isReadOnly;
+                IsDelayed = textField.isDelayed;
+            }
+        }
+
+        private static readonly ConditionalWeakTable<TextField, TextFieldDefaults> s_textFieldDefaults = new();
 
         // Applies choices to DropdownField / RadioButtonGroup. A null Choices prop (or no settings at
         // all) resets the widget to an empty choice list instead of stranding a prior render's options,

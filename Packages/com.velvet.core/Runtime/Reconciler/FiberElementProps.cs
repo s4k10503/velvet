@@ -150,9 +150,17 @@ namespace Velvet
         ScrollerVisibility? HorizontalScrollerVisibility = null,
         ScrollView.TouchScrollBehavior? TouchScrollBehavior = null);
 
-    /// <summary>TextField.isPasswordField.</summary>
+    /// <summary>
+    /// TextField.isPasswordField, textEdition.placeholder, maxLength, isReadOnly and isDelayed.
+    /// A null member is undeclared, and <see cref="FiberPropApplier.ApplyTextField"/> restores what the
+    /// element was constructed with; an empty <see cref="Placeholder"/> is a declared empty placeholder.
+    /// </summary>
     public sealed record TextFieldSettings(
-        bool? IsPassword = null);
+        bool? IsPassword = null,
+        string? Placeholder = null,
+        int? MaxLength = null,
+        bool? IsReadOnly = null,
+        bool? IsDelayed = null);
 
     /// <summary>List of choices for DropdownField / RadioButtonGroup.</summary>
     public sealed record ChoicesSettings(
