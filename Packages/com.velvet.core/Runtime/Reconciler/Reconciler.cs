@@ -671,6 +671,15 @@ namespace Velvet
             }
 
             _ctx.HasVariantManipulators.Clear();
+            // Before ClearAllSideTables: a child-variant walk turns its payload off only on a child whose
+            // claim in ChildVariantOwners is still its own, and emptying that table first would make every
+            // release here a no-op.
+            foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
+            {
+                element.RemoveManipulator(manipulator);
+            }
+
+            _ctx.ChildVariantManipulators.Clear();
             // Empty every pure side-table (structural / has-[.class]: / data-/aria- rules + store / supports-)
             // in one call, mirroring the per-element ClearElementSideTables used on cleanup.
             _ctx.ClearAllSideTables();
@@ -704,12 +713,6 @@ namespace Velvet
             }
 
             _ctx.TextBalanceManipulators.Clear();
-            foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
-            {
-                element.RemoveManipulator(manipulator);
-            }
-
-            _ctx.ChildVariantManipulators.Clear();
         }
 
         private void ReleaseHostsAndScopes()
