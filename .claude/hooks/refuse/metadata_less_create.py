@@ -23,6 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations
+import repository
 
 # Anchored at a command position — start of input, or after a separator or newline — so the same
 # text quoted inside an argument or named in a body does not trip it. This file argues for a
@@ -56,10 +57,8 @@ UNEXPANDED_PROBE = 'gh issue create --title $T --label bug --assignee @me'
 
 
 def labels(cwd):
-    listing = subprocess.run(
-        ["gh", "label", "list", "--json", "name", "--jq", ".[].name"],
-        capture_output=True, text=True, cwd=cwd)
-    return [name for name in listing.stdout.splitlines() if name.strip()]
+    listing = repository.gh(["label", "list", "--json", "name", "--jq", ".[].name"], cwd=cwd)
+    return [name for name in (listing or "").splitlines() if name.strip()]
 
 
 def main():

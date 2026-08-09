@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations, unexpanded
+import repository
 
 TERMINAL_PASS = frozenset({"pass", "skipping"})
 
@@ -38,11 +39,11 @@ UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
 
 
 def gh_json(cwd, args):
-    result = subprocess.run(["gh", *args], capture_output=True, text=True, cwd=cwd)
-    if result.returncode != 0 or not result.stdout.strip():
+    out = repository.gh(args, cwd=cwd)
+    if not out or not out.strip():
         return None
     try:
-        return json.loads(result.stdout)
+        return json.loads(out)
     except Exception:
         return None
 
