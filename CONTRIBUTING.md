@@ -227,8 +227,6 @@ So the window is guarded: `settle.py merge` and `gh pr merge` refuse while it is
 `Test ▸ publication` fails for a pull request whose checks run in it.
 `scripts/release/published_check.py` decides it and states the repair in its own message.
 
-What the window costs, and what it leaves behind.
-
 **A pull request that went green *before* the release landed keeps that result.** This repository sets
 `strict_required_status_checks_policy: false` so a 21-minute Unity matrix is not re-run for every base
 move, so the merge button on github.com stays enabled for it. What refuses there is `merge_onto_unpublished_release.py`, `stale_merge.py`
@@ -251,12 +249,11 @@ not is an administrator merge: `protect-main` lists no bypass actor and reports
 branch, the remaining lever is the ruleset itself — a bypass actor, or `enforcement: disabled` — which
 is a repository-settings change and not a merge.
 
-**Afterwards, a red left over from the window does not clear itself.** The tag list is read live, so any
-fresh run of the check passes once the release exists — re-run the failed jobs, or push. Nothing about the
-pull request itself needs to change.
-
 Note what a dispatch from a tag costs either way: `upm.yml` force-pushes the split to `upm`, so a
 consumer tracking `#upm` unpinned drops back to that commit until the next push to `main`.
+
+**Afterwards, a red left over from the window does not clear itself.** The tag list is read live, so any
+fresh run of the check passes once the release exists — re-run the failed jobs, or push.
 
 The release notes are built from that CHANGELOG section by `scripts/release/release_notes.py`, so a release
 is never written twice. Each version therefore needs a `### Highlights` block above its
