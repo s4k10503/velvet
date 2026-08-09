@@ -641,6 +641,14 @@ namespace Velvet
 
         private void ReleaseManipulators()
         {
+            // First, and before any manipulator below turns a payload off: while VariantGateClasses holds
+            // state, moving a gate token signals the variant re-sync, which re-derives an element's passes
+            // into the paint and driver tables — and those were emptied before this method ran, so the
+            // re-derivation hands a disposed tree a live driver or silhouette nothing will sweep again.
+            // Emptying it here makes every turn-off below inert on that path. A width token still re-derives
+            // the layout manipulators through the re-sync's other trigger, which the loops at the end of this
+            // method sweep.
+            _ctx.VariantGateClasses.Clear();
             foreach (var (element, manipulator) in _ctx.GestureManipulators)
             {
                 element.RemoveManipulator(manipulator);
@@ -671,17 +679,9 @@ namespace Velvet
             }
 
             _ctx.HasVariantManipulators.Clear();
-            // Two ordering constraints meet here, in opposite directions.
-            //
-            // After VariantGateClasses is emptied: turning a gate token off while that table still holds
-            // state signals the variant re-sync, which re-derives an element's passes — and the paint and
-            // driver bindings those passes write into were released above, so the re-derivation attaches a
-            // live driver to a disposed tree. Nothing is re-derived while tearing down.
-            //
-            // Before ClearAllSideTables: a walk turns its payload off only on a child whose claim in
-            // ChildVariantOwners is still its own, and emptying that table first makes every release a
-            // no-op.
-            _ctx.VariantGateClasses.Clear();
+            // Before ClearAllSideTables, and after the gate table above: a walk turns its payload off only
+            // on a child whose claim in ChildVariantOwners is still its own, and emptying that table first
+            // makes every release a no-op.
             foreach (var (element, manipulator) in _ctx.ChildVariantManipulators)
             {
                 element.RemoveManipulator(manipulator);
