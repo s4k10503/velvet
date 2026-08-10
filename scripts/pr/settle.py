@@ -36,6 +36,7 @@ Run: python3 scripts/pr/settle.py watch
 import argparse
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -82,21 +83,68 @@ def gh(*args, check=True):
     return result.stdout
 
 
+# REST rather than `gh pr view` / `gh pr list`, which go through GraphQL. The two quotas are
+# separate, and a session long enough to need this script is a session long enough to exhaust the
+# GraphQL one — which left the merge path unusable at exactly the moment the most pull requests
+# were waiting on it. Nothing here needs a field REST does not carry.
+def repository():
+    """owner/name, read off the origin remote.
+
+    Not `gh repo view`: that goes through GraphQL, which is the quota this whole change exists to
+    stop depending on. Not a hardcoded constant either — this script runs from worktrees and forks.
+    """
+    global _REPOSITORY
+    if _REPOSITORY is None:
+        url = subprocess.run(["git", "config", "--get", "remote.origin.url"],
+                             capture_output=True, text=True).stdout.strip()
+        if not url:
+            raise RuntimeError("no origin remote, so there is no repository to ask about")
+        slug = re.sub(r"\.git$", "", url.split(":")[-1] if url.startswith("git@") else
+                      "/".join(url.rsplit("/", 2)[-2:]))
+        _REPOSITORY = slug.strip("/")
+    return _REPOSITORY
+
+
+_REPOSITORY = None
+
+
+def rest(path, jq):
+    return gh("api", path, "--jq", jq).strip()
+
+
 def open_pull_requests():
-    return json.loads(gh("pr", "list", "--state", "open", "--json", "number,headRefName") or "[]")
+    listing = rest("repos/{}/pulls?state=open&per_page=100".format(repository()),
+                   '.[] | "\(.number) \(.head.ref)"')
+    return [{"number": int(n), "headRefName": ref}
+            for n, _, ref in (line.partition(" ") for line in listing.splitlines() if line)]
 
 
 def head_sha(number):
-    return json.loads(gh("pr", "view", str(number), "--json", "headRefOid"))["headRefOid"]
+    return rest("repos/{}/pulls/{}".format(repository(), number), ".head.sha")
+
+
+# `gh pr checks`'s buckets, rebuilt from what REST reports. Same reason as head_sha: that command
+# goes through GraphQL, and under an exhausted quota it returns nothing — which this script then read
+# as "no workflow ever ran for this head" and refused with a reason that was not true.
+_BUCKET = {"success": "pass", "neutral": "skipping", "skipped": "skipping",
+           "failure": "fail", "timed_out": "fail", "action_required": "fail",
+           "cancelled": "cancel", "stale": "cancel"}
 
 
 def checks(number):
     """Check results, or an empty list when no workflow ever ran for this head."""
-    result = subprocess.run(["gh", "pr", "checks", str(number), "--json", "name,bucket"],
-                            capture_output=True, text=True)
-    # A pull request with no checks at all exits non-zero with nothing on stdout, which is a state
-    # this reports rather than an error it raises.
-    return json.loads(result.stdout) if result.stdout.strip() else []
+    listing = rest("repos/{}/commits/{}/check-runs?per_page=100".format(repository(), head_sha(number)),
+                   '.check_runs[] | "\(.name)\t\(.status)\t\(.conclusion // "")"')
+    results = []
+    for line in listing.splitlines():
+        if not line.strip():
+            continue
+        name, _, rest_of = line.partition("\t")
+        status, _, conclusion = rest_of.partition("\t")
+        results.append({"name": name,
+                        "bucket": "pending" if status != "completed"
+                        else _BUCKET.get(conclusion, "fail")})
+    return results
 
 
 def worktree_branches(project):
@@ -170,7 +218,7 @@ def blocking_reasons(project, number, base):
     before = head_sha(number)
     results = checks(number)
     after = head_sha(number)
-    branch = json.loads(gh("pr", "view", str(number), "--json", "headRefName"))["headRefName"]
+    branch = rest("repos/{}/pulls/{}".format(repository(), number), ".head.ref")
     return reasons_from(before, after, results, branch, base,
                         holds_base=contains_base(project, branch, base),
                         held_by_worktree=branch in worktree_branches(project),
@@ -261,7 +309,7 @@ def update(project, number, base):
     whose files really do conflict needs a person, and the conflicting one this exists for
     (a long-held branch that re-conflicts on every base move) is exactly the case not to automate.
     """
-    branch = json.loads(gh("pr", "view", str(number), "--json", "headRefName"))["headRefName"]
+    branch = rest("repos/{}/pulls/{}".format(repository(), number), ".head.ref")
     gh_git(project, "fetch", "origin", "--quiet")
     reasons = update_reasons(branch, base, contains_base(project, branch, base),
                              branch in worktree_branches(project))
@@ -307,8 +355,26 @@ def merge(project, number, base, dry_run):
         print(f"PR#{number} would merge: no blocking reason")
         return 0
 
-    subprocess.run(["gh", "pr", "merge", str(number), "--squash", "--delete-branch"], check=True)
+    # REST, for the same reason as every other read here — `gh pr merge` is GraphQL, so under an
+    # exhausted quota the whole merge path stopped working while the reads still could have answered.
+    # The squash title and body are passed explicitly: left out, GitHub composes them from the branch
+    # commits, which is not the pull request's own description that CONTRIBUTING requires.
+    title, body = pull_request_text(number)
+    gh("api", "-X", "PUT", "repos/{}/pulls/{}/merge".format(repository(), number),
+       "-f", "merge_method=squash", "-f", "commit_title={} (#{})".format(title, number),
+       "-f", "commit_message={}".format(body))
+    # Separate from the merge, and after it: the branch delete is not part of the merge's atomicity,
+    # and a failure here leaves a merged pull request with a leftover branch rather than an unmerged
+    # one, which is the direction that is safe to report and retry.
+    branch = rest("repos/{}/pulls/{}".format(repository(), number), ".head.ref")
+    gh("api", "-X", "DELETE", "repos/{}/git/refs/heads/{}".format(repository(), branch), check=False)
     return 0
+
+
+def pull_request_text(number):
+    """The pull request's own title and body, which is what the squash commit must carry."""
+    payload = json.loads(gh("api", "repos/{}/pulls/{}".format(repository(), number)))
+    return payload["title"], payload.get("body") or ""
 
 
 def main():
