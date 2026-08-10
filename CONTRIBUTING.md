@@ -149,8 +149,9 @@ when the guard declares a set its gate never reads, and when its gate answers no
 is posed under a tool it is routed — which is the shape an inverted gate takes, since such a gate
 returns before its readings for exactly the tools it exists to read. A gate reading no tool name at
 all answers under both, and fails the other way round. That first one also fails for a guard none of
-the payloads happens to pose anything about, and a guard added since the table was last extended
-wants a row added there rather than a change to itself.
+the fixture's `GatePayloads` happens to pose anything about — a guard added since that table was last
+extended wants a row added to it rather than a change to itself — and for a guard that exits neither
+0 nor 2 under any of them, which is one raising rather than deciding.
 
 ### Source generators
 

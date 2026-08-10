@@ -617,9 +617,10 @@ namespace Velvet.Tests
             // Assert
             Assert.That(wrong, Is.Empty,
                 "answering none of them is a gate returning before its readings for a tool it is routed "
-                + "— what an inverted gate does — or a GatePayloads table holding nothing that guard "
+                + "— what an inverted gate does — a GatePayloads table holding nothing that guard "
                 + "decides about, which is what a guard added since the table was last extended wants a "
-                + "row for. Answering one posed under a tool nothing routes is a gate reading something "
+                + "row for, or a guard exiting neither 0 nor 2 under any of them, which is one raising "
+                + "rather than deciding. Answering one posed under a tool nothing routes is a gate reading something "
                 + $"other than the event's tool name:\n{string.Join("\n", wrong)}");
         }
 
@@ -661,12 +662,17 @@ namespace Velvet.Tests
         private static readonly Dictionary<string, string> LoadingOutput =
             new(StringComparer.Ordinal);
 
-        /// <summary>What a hook writes with no event to read, measured once per hook.</summary>
+        /// <summary>What a hook writes for an event naming no tool, measured once per hook.</summary>
         private static string Loading(string hook)
         {
             if (!LoadingOutput.TryGetValue(hook, out var written))
             {
-                written = Wrote(Answer(hook, "this is no event", ScratchDirectory));
+                // The payload has to parse. One that does not measures what a hook writes when it
+                // cannot read the event, and a hook letting that error raise then has a traceback
+                // subtracted from the silence it keeps for every payload it can read — so each of
+                // those scores as an answer, including under the name nothing routes, which the check
+                // above reads as a gate not reading the tool name at all.
+                written = Wrote(Answer(hook, "{}", ScratchDirectory));
                 LoadingOutput[hook] = written;
             }
 
@@ -681,9 +687,14 @@ namespace Velvet.Tests
         private static string ScratchDirectory;
 
         [OneTimeSetUp]
-        public void MakeScratchDirectory() =>
+        public void MakeScratchDirectory()
+        {
             ScratchDirectory = Directory.CreateDirectory(Path.Combine(
                 Path.GetTempPath(), "velvet-hook-gate-" + Guid.NewGuid().ToString("N"))).FullName;
+            // Each baseline was measured with HOME pointing at the directory being replaced here, and
+            // a hook reading its state out of HOME writes something else under the new one.
+            LoadingOutput.Clear();
+        }
 
         [OneTimeTearDown]
         public void RemoveScratchDirectory() => Directory.Delete(ScratchDirectory, true);
