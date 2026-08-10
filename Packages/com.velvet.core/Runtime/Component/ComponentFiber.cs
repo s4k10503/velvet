@@ -616,9 +616,8 @@ namespace Velvet
         /// TARGET as its <see cref="MountPoint"/>, so it is a sibling of the elements a portal teardown
         /// removes rather than a descendant of any of them; this is what tells the teardown which of the
         /// several Portals sharing that target the fiber belongs to.
-        /// <see cref="MountSlotStart"/> cannot answer that: nothing rewrites it when a NEIGHBOURING
-        /// Portal's range on the same target moves, so it can name a position that is no longer this
-        /// fiber's.
+        /// <see cref="MountSlotStart"/> cannot answer that: a NEIGHBOURING Portal's own children changing
+        /// on the same target moves this fiber's output along it without rewriting it.
         /// </summary>
         internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder { get; set; }
 

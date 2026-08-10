@@ -263,10 +263,10 @@ namespace Velvet
                 var key = (parentFiber, positionKey, identity);
                 _inlineInstances[key] = fiber;
                 _inlineFiberToKey[fiber] = key;
-                // Stamped at registration rather than on every GetOrCreate. The key above carries the parent
-                // fiber and the position, so a component that moved out of a Portal's children misses the
-                // lookup and registers as a new fiber — leaving nothing for a re-stamp to correct, while a
-                // re-stamp taken outside the Portal reconcile that mounted the fiber would clear it.
+                // Stamped once, here, rather than on every GetOrCreate: a component that leaves a Portal's
+                // children is disposed with them rather than carried to the position it now renders at, so
+                // the stamp cannot outlive the Portal that set it. PortalRegistryRetargetTests' re-homed
+                // component is what fails if that stops holding.
                 fiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 // Top-level inline fibers (root components mounted with no enclosing component fiber)
                 // have parentFiber == null. They are disposed via the reconcile orphan sweep and the
@@ -441,14 +441,11 @@ namespace Velvet
             DisposeFibersUnder(new HashSet<VisualElement> { root });
         }
 
-        // Disposes the inline fibers a Portal's own children reconcile mounted. The containment form above
-        // cannot express this selection: a Portal's TOP-LEVEL Component child mounts inline with the portal
-        // TARGET as its MountPoint, so it is a sibling of the elements a portal teardown removes rather
-        // than a descendant of any of them, and the parent-walk steps straight past it. Selecting by
-        // MountPoint alone would be wrong in the other direction — one target carries the ranges of several
-        // Portals plus whatever rendered the target itself — and a slot range separates those only while
-        // every fiber's MountSlotStart still says where its output is, which a neighbouring Portal's range
-        // moving on the same target breaks (ComponentFiber.OwningPortalPlaceholder owns why).
+        // The containment form above cannot express this selection: the fiber is a sibling of the elements
+        // a portal teardown removes rather than a descendant of any of them, so the parent-walk steps
+        // straight past it (ComponentFiber.OwningPortalPlaceholder owns why the fiber is stamped rather
+        // than located). Selecting by MountPoint alone would be wrong in the other direction — one target
+        // carries the ranges of several Portals plus whatever rendered the target itself.
         // FiberElementCleaner.CleanupPortal owns the call.
         internal void DisposeInlineFibersOwnedByPortal(VisualElement placeholder)
         {

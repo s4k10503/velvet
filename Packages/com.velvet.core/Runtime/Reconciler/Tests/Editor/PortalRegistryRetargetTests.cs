@@ -31,7 +31,11 @@ namespace Velvet.Tests
     /// <item>That disposal follows the portal the component was written under: on a container two
     /// portals share, whichever closes takes its own component and leaves the other's alone, in both
     /// orders and after either range has moved the other. A component rendering nothing at all is
-    /// disposed on the same terms.</item>
+    /// disposed on the same terms — as the portal's only child, and as a trailing one adding no slot
+    /// to a range its siblings gave.</item>
+    /// <item>A component that leaves the portal's children for a position outside it is disposed with
+    /// them there and then, and the portal closing later takes nothing further — the limit that makes
+    /// the placeholder stamp safe to write once.</item>
     /// </list>
     /// Re-registering the SAME element, and unregistering the id outright, both leave a live portal alone —
     /// <see cref="PortalTests"/> owns the unregistration case.
@@ -515,6 +519,96 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(s_childCleanups, Is.EqualTo(1));
+        }
+
+        private static StateUpdater<bool> s_setTrailingDropped;
+
+        [Component]
+        private static VNode TrailingEmptyChildPortalHost()
+        {
+            var (dropped, setDropped) = Hooks.UseState(false);
+            s_setTrailingDropped = setDropped;
+            return V.Div(children: new VNode?[]
+            {
+                dropped
+                    ? null
+                    : V.Portal("notify-target", children: new VNode?[]
+                    {
+                        V.Div(name: "content"),
+                        V.Component(PortalChildRenderingNothing, key: "c"),
+                    }),
+            });
+        }
+
+        [Test]
+        public void Given_APortalWhoseTrailingChildRendersNothing_When_ItUnmounts_Then_ThatChildIsStillDisposed()
+        {
+            // Arrange — the sibling ahead of it gives the portal a range, and the trailing component adds no
+            // slot of its own, so it sits on that range's exclusive end while the same component written
+            // first in the list sits inside it.
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("notify-target", target);
+            _mounted = V.Mount(new VisualElement(), V.Component(TrailingEmptyChildPortalHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_childCleanups = 0;
+
+            // Act
+            s_setTrailingDropped.Invoke(true);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_childCleanups, Is.EqualTo(1));
+        }
+
+        private static StateUpdater<int> s_setRehomePhase;
+
+        // The component is written into the portal's children by a PATCH rather than by the mount, which is
+        // what gives it the same registry key its position outside the portal takes: both register under the
+        // fiber declaring the portal, and an explicit key makes the position within that fiber irrelevant.
+        [Component]
+        private static VNode ReHomingPortalHost()
+        {
+            var (phase, setPhase) = Hooks.UseState(0);
+            s_setRehomePhase = setPhase;
+            return V.Div(children: new VNode?[]
+            {
+                phase < 3
+                    ? V.Portal("notify-target", children: phase == 1
+                        ? new VNode?[] { V.Component(PortalChildWithEffect, key: "c") }
+                        : Array.Empty<VNode?>())
+                    : null,
+                phase >= 2 ? V.Component(PortalChildWithEffect, key: "c") : null,
+            });
+        }
+
+        [Test]
+        public void Given_AComponentReHomedOutOfAPortalsChildren_When_ThatPortalCloses_Then_TheCloseTakesNothingFurther()
+        {
+            // Arrange — leaving the portal's children already disposed the fiber that was written under it
+            // (the cleanup this counts), so what the close must not do is reach the component now rendering
+            // outside it.
+            var container = new VisualElement();
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("notify-target", target);
+            _mounted = V.Mount(container, V.Component(ReHomingPortalHost, key: "host"));
+            s_setRehomePhase.Invoke(1);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+            s_setRehomePhase.Invoke(2);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+            var cleanupsAfterReHome = s_childCleanups;
+
+            // Act
+            s_setRehomePhase.Invoke(3);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert — the element reading is folded in because a component that never reached its new
+            // position would satisfy the count on its own.
+            Assert.That((s_childCleanups - cleanupsAfterReHome, container.Query<VisualElement>("content").ToList().Count),
+                Is.EqualTo((0, 1)));
         }
 
         private static StateUpdater<bool> s_setToastGrown;
