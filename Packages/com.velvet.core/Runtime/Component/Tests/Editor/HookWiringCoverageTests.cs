@@ -620,8 +620,8 @@ namespace Velvet.Tests
                 + "— what an inverted gate does — a GatePayloads table holding nothing that guard "
                 + "decides about, which is what a guard added since the table was last extended wants a "
                 + "row for, or a guard exiting neither 0 nor 2 under any of them, which is one raising "
-                + "rather than deciding. Answering one posed under a tool nothing routes is a gate reading something "
-                + $"other than the event's tool name:\n{string.Join("\n", wrong)}");
+                + "rather than deciding. Answering one posed under a tool nothing routes is a gate "
+                + $"reading something other than the event's tool name:\n{string.Join("\n", wrong)}");
         }
 
         private static IEnumerable<string> GateFaults(string hook, string tool)
@@ -691,8 +691,8 @@ namespace Velvet.Tests
         {
             ScratchDirectory = Directory.CreateDirectory(Path.Combine(
                 Path.GetTempPath(), "velvet-hook-gate-" + Guid.NewGuid().ToString("N"))).FullName;
-            // Each baseline was measured with HOME pointing at the directory being replaced here, and
-            // a hook reading its state out of HOME writes something else under the new one.
+            // A baseline is comparable only with answers measured under the same HOME, and the
+            // directory HOME is pointed at is replaced here.
             LoadingOutput.Clear();
         }
 
