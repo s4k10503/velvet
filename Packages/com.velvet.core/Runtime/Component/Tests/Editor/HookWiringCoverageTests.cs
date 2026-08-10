@@ -273,13 +273,25 @@ namespace Velvet.Tests
 
         private const string RefuseDirectory = HookDirectory + "/refuse";
 
-        // A released section, and an edit that files one more entry into it.
+        private const string ClosedVersionGuard = RefuseDirectory + "/changelog_into_closed_version.py";
+
+        // A released section, and the edits that reach each of the closed-version guard's readings.
+        private const string ReleasedHeading = "## [1.0.0] - 2026-01-01";
+        private const string ReleasedSection = ReleasedHeading + "\n\n### Fixed\n\n- As shipped.\n";
         private const string ReleasedChangelog =
-            "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- Not yet released.\n\n"
-            + "## [1.0.0] - 2026-01-01\n\n### Fixed\n\n- As shipped.\n";
+            "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- Not yet released.\n\n" + ReleasedSection;
 
         private const string ShippedEntry = "- As shipped.\n";
         private const string ShippedEntryPlusOne = "- As shipped.\n\n- Smuggled in.\n";
+        private const string ShippedEntryReworded = "- As shipped, reworded.\n";
+
+        // A second heading for the released version, carrying nothing. It goes above the real one
+        // because the first heading matching a version is the half a note is rebuilt from — the
+        // guard's own docstring owns why that makes it the whole note. Carrying nothing is what
+        // makes this the case only the duplicate-heading reading answers: a fabricated bullet is an
+        // entry the section did not carry, which the item reading refuses on its own.
+        private const string ReleasedHeadingBelowAnEmptyOne =
+            ReleasedHeading + "\n\n### Fixed\n\n" + ReleasedHeading;
 
         [Test]
         public void Given_ACheckoutAndAWorktreeOfIt_When_TheClosedVersionGuardIsPosedAnEditInTheWorktree_Then_ItRefuses()
@@ -300,16 +312,10 @@ namespace Velvet.Tests
                     "commit", "-q", "--allow-empty", "-m", "root");
                 Git(checkout, "worktree", "add", "-q", worktree, "--detach");
 
-                var changelog = Path.Combine(worktree, "CHANGELOG.md");
-                File.WriteAllText(changelog, ReleasedChangelog);
-                var payload = "{\"tool_name\":\"Edit\",\"cwd\":" + Quoted(worktree)
-                    + ",\"tool_input\":{\"file_path\":" + Quoted(changelog)
-                    + ",\"old_string\":" + Quoted(ShippedEntry)
-                    + ",\"new_string\":" + Quoted(ShippedEntryPlusOne) + "}}";
+                var changelog = WriteReleasedChangelog(worktree);
 
                 // Act
-                var answer = Answer(Path.GetFullPath(RefuseDirectory + "/changelog_into_closed_version.py"),
-                    payload, checkout);
+                var answer = PoseEdit(checkout, changelog, ShippedEntry, ShippedEntryPlusOne);
 
                 // Assert — the arrangement rides in the comparison because both halves of it are what
                 // make the exit code mean anything: a worktree git did not link is an ordinary directory,
@@ -329,7 +335,169 @@ namespace Velvet.Tests
             }
         }
 
-        private static void Git(string cwd, params string[] arguments)
+        [Test]
+        public void Given_AnEditWritingASecondHeadingForAReleasedVersion_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
+        {
+            // Arrange
+            var home = Scratch("-repository");
+            try
+            {
+                Repository(home);
+                var changelog = WriteReleasedChangelog(home);
+
+                // Act
+                var answer = PoseEdit(home, changelog, ReleasedHeading, ReleasedHeadingBelowAnEmptyOne);
+
+                // Assert
+                Assert.That(answer.Exit, Is.EqualTo(2),
+                    "a second heading for a released version is the whole published note for that "
+                    + $"version, and nothing under the real one has to move to make it so:\n{answer.Error}");
+            }
+            finally
+            {
+                Remove(home);
+            }
+        }
+
+        [Test]
+        public void Given_AnEditSubstitutingTheOnlyEntryOfAReleasedSection_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
+        {
+            // Arrange — one entry out and one in, so the section's bullet count is what it was. The
+            // substituted text is not what shipped, which is the whole difference between this edit
+            // and a rewrap.
+            var home = Scratch("-repository");
+            try
+            {
+                Repository(home);
+                var changelog = WriteReleasedChangelog(home);
+
+                // Act
+                var answer = PoseEdit(home, changelog, ShippedEntry, ShippedEntryReworded);
+
+                // Assert
+                Assert.That(answer.Exit, Is.EqualTo(2),
+                    $"a published note now says something it did not say when it shipped:\n{answer.Error}");
+            }
+            finally
+            {
+                Remove(home);
+            }
+        }
+
+        [Test]
+        public void Given_AProjectDirectoryGitCannotPlace_When_TheClosedVersionGuardIsPosedAGrowthEdit_Then_ItRefuses()
+        {
+            // Arrange — a scoping question with no answer, where standing down is indistinguishable
+            // from having looked and found nothing. Whether git placed the directory rides in the
+            // comparison rather than gating it: a temporary directory that turned out to sit inside
+            // some repository reaches the same exit code by the ordinary scoping path, so without
+            // that term the case would pass while pinning nothing.
+            var home = Scratch("-no-repository");
+            try
+            {
+                Directory.CreateDirectory(home);
+                var changelog = WriteReleasedChangelog(home);
+
+                // Act
+                var answer = PoseEdit(home, changelog, ShippedEntry, ShippedEntryPlusOne);
+
+                // Assert
+                Assert.That(
+                    (Placed: Git(home, "rev-parse", "--git-common-dir") == 0, answer.Exit),
+                    Is.EqualTo((false, 2)),
+                    $"an unreadable project directory drops a real refusal:\n{answer.Error}");
+            }
+            finally
+            {
+                Remove(home);
+            }
+        }
+
+        [Test]
+        public void Given_AChangelogInNoRepository_When_TheClosedVersionGuardIsPosedAGrowthEditFromAPlacedProject_Then_ItStandsDown()
+        {
+            // Arrange — git placing the project dir and not the target is the ordinary reading of a
+            // file outside any repository, not a failure to read one, and this is what says the two
+            // halves of the scoping are deliberately asymmetric. Making the target half fail closed
+            // too would leave `in_scope` with no way to answer no except git naming another
+            // repository, and every CHANGELOG.md outside one would be policed by this guard.
+            var project = Scratch("-project");
+            var home = Scratch("-no-repository");
+            try
+            {
+                Repository(project);
+                Directory.CreateDirectory(home);
+                var changelog = WriteReleasedChangelog(home);
+
+                // Act
+                var answer = PoseEdit(project, changelog, ShippedEntry, ShippedEntryPlusOne);
+
+                // Assert
+                Assert.That(answer.Exit, Is.EqualTo(0),
+                    $"another tree's CHANGELOG is not this guard's to refuse:\n{answer.Error}");
+            }
+            finally
+            {
+                Remove(home);
+                Remove(project);
+            }
+        }
+
+        [Test]
+        public void Given_AnEditDeletingAReleasedSectionOutright_When_TheClosedVersionGuardRefusesIt_Then_ItDoesNotNameARename()
+        {
+            // Arrange — the refusal is the only thing a reader acts on, so a mechanism it names that
+            // the edit did not perform sends them looking for a rename they never wrote. Three edits
+            // reach this refusal and deletion is the one no rename describes.
+            var home = Scratch("-repository");
+            try
+            {
+                Repository(home);
+                var changelog = WriteReleasedChangelog(home);
+
+                // Act
+                var answer = PoseEdit(home, changelog, ReleasedSection, string.Empty);
+
+                // Assert
+                Assert.That(
+                    (answer.Exit, Renames: answer.Error.Contains("renaming", StringComparison.Ordinal)),
+                    Is.EqualTo((2, false)),
+                    $"the refusal describes an edit that was not made:\n{answer.Error}");
+            }
+            finally
+            {
+                Remove(home);
+            }
+        }
+
+        private static string Scratch(string role) =>
+            Path.Combine(Path.GetTempPath(), "velvet-hook-" + Guid.NewGuid().ToString("N") + role);
+
+        private static void Repository(string path)
+        {
+            Directory.CreateDirectory(path);
+            Git(path, "init", "-q", ".");
+        }
+
+        private static string WriteReleasedChangelog(string directory)
+        {
+            var changelog = Path.Combine(directory, "CHANGELOG.md");
+            File.WriteAllText(changelog, ReleasedChangelog);
+            return changelog;
+        }
+
+        private static (int Exit, string Error) PoseEdit(
+            string projectDirectory, string changelog, string oldString, string newString)
+        {
+            var payload = "{\"tool_name\":\"Edit\",\"cwd\":" + Quoted(Path.GetDirectoryName(changelog))
+                + ",\"tool_input\":{\"file_path\":" + Quoted(changelog)
+                + ",\"old_string\":" + Quoted(oldString)
+                + ",\"new_string\":" + Quoted(newString) + "}}";
+            return Answer(Path.GetFullPath(ClosedVersionGuard), payload, projectDirectory);
+        }
+
+        /// <summary>Runs git in a directory and returns its exit code, or -1 if it never answered.</summary>
+        private static int Git(string cwd, params string[] arguments)
         {
             var start = new System.Diagnostics.ProcessStartInfo("git")
             {
@@ -345,9 +513,20 @@ namespace Velvet.Tests
             }
 
             using var process = System.Diagnostics.Process.Start(start);
-            process?.StandardOutput.ReadToEnd();
-            process?.StandardError.ReadToEnd();
-            process?.WaitForExit(60000);
+            if (process == null)
+            {
+                return -1;
+            }
+
+            process.StandardOutput.ReadToEnd();
+            process.StandardError.ReadToEnd();
+            if (!process.WaitForExit(60000))
+            {
+                process.Kill();
+                return -1;
+            }
+
+            return process.ExitCode;
         }
 
         private static void Remove(string directory)

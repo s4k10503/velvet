@@ -110,6 +110,11 @@ def in_scope(path, cwd):
     `lib/repository` returns None for a git that is absent, one that timed out and one that failed,
     and for the stake it names there the check runs on its own reading rather than standing down: a
     guard that says nothing is indistinguishable from one that looked.
+
+    Only that half. An unreadable TARGET stands down, because None is also git's ordinary answer for
+    a path in no repository — the same value for a real "somewhere else" and for a reading that
+    failed. Failing closed on it too would leave nothing out of scope but a path git positively
+    names another repository for, and every CHANGELOG.md outside one would be this guard's to refuse.
     """
     mine = common_git_dir(os.environ.get("CLAUDE_PROJECT_DIR") or cwd or ".")
     if mine is None:
