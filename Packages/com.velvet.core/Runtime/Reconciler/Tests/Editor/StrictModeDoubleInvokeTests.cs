@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEngine;
@@ -26,6 +27,9 @@ namespace Velvet.Tests
     /// <item>The committed effect factory is the first pass's closure, not the diagnostic pass's.</item>
     /// <item>The diagnostic pass returns pooled descendant objects, so repeated diagnostic re-renders never drain
     /// the pool or corrupt the committed tree.</item>
+    /// <item>A render body that builds a fresh portal container each pass is impure and is reported, the same as
+    /// any other output that differs between the two passes — and only the committed pass's container keeps
+    /// the portal's children.</item>
     /// </list>
     /// </summary>
     /// <remarks>
@@ -112,6 +116,25 @@ namespace Velvet.Tests
             using var mounted = V.Mount(_root, V.Component(ImpureDataValueRender, key: "impure-data"));
 
             // Assert — LogAssert.Expect verifies the diverging data value is caught as impure.
+        }
+
+        [Test]
+        public void Given_GateOn_When_PortalContainerIsRebuiltEachRender_Then_OnlyTheCommittedPassMountsIt()
+        {
+            // Arrange — the only divergence between the two passes is the portal container's identity, which
+            // is what a fresh element per render costs: a full remount of the portal subtree, since
+            // ReconcileKeying refuses to patch across containers.
+            FiberStrictMode.Enabled = true;
+            LogAssert.Expect(LogType.Error, new Regex("StrictMode.*impure"));
+
+            // Act
+            using var mounted = V.Mount(_root, V.Component(FreshPortalContainerRender, key: "fresh-container"));
+
+            // Assert — the pass count is folded in, because one child across one container reads the same as
+            // one child across two, and only the second is the diagnostic pass leaving its own mount behind.
+            Assert.That(
+                (s_freshPortalContainers.Count, s_freshPortalContainers.Sum(c => c.childCount)),
+                Is.EqualTo((2, 1)));
         }
 
         #endregion
@@ -267,6 +290,7 @@ namespace Velvet.Tests
             s_closureRenderOrdinal = 0;
             s_effectCapturedOrdinal = 0;
             s_nestedBump = null;
+            s_freshPortalContainers.Clear();
         }
 
         #region Pure component
@@ -401,6 +425,20 @@ namespace Velvet.Tests
                     V.Label(text: $"a-{value}", key: "a"),
                     V.Label(text: $"b-{value}", key: "b"),
                 });
+        }
+
+        #endregion
+
+        #region Fresh-portal-container component (impurity carried by the container's identity)
+
+        private static readonly List<VisualElement> s_freshPortalContainers = new();
+
+        [Component]
+        private static VNode FreshPortalContainerRender()
+        {
+            var container = new VisualElement();
+            s_freshPortalContainers.Add(container);
+            return V.Portal(container, children: new VNode?[] { V.Div(name: "in-portal") });
         }
 
         #endregion

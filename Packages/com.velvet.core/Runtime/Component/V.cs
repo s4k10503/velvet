@@ -1560,6 +1560,35 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Renders <paramref name="children"/> into <paramref name="target"/> — a container the caller
+        /// already holds, rather than one published under a name. The React form:
+        /// <c>createPortal(children, container)</c> takes the node itself, so two trees in one process
+        /// cannot collide the way two registrations of one id do, and an element reached through a
+        /// <c>refCallback</c> is a valid container without being named first.
+        /// </summary>
+        /// <remarks>
+        /// Passing a different container on a later render moves the children: the reconciler cannot
+        /// patch one container's portal into another's, so the old unmounts and the new mounts. A
+        /// registry target behaves differently — its id resolves once at mount and is then held, so
+        /// re-registering the id points only future portals elsewhere. The portals documentation
+        /// states that difference; the rest of the contract (context inheritance, event bubbling) is
+        /// the same as the <see cref="Portal(string, VNode?[], string)"/> form.
+        /// </remarks>
+        /// <param name="target">Container the children attach to. Null renders nothing and warns.</param>
+        /// <param name="children">Nodes to render at the target.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="PortalNode"/>.</returns>
+        public static PortalNode Portal(VisualElement target, VNode?[]? children = null, string? key = null)
+        {
+            return new PortalNode
+            {
+                Key = key,
+                TargetElement = target,
+                Children = children ?? EmptyChildren,
+            };
+        }
+
+        /// <summary>
         /// Renders <paramref name="children"/> into a framework-managed screen-space layer panel
         /// sorted around the app's main panel — one host panel per layer per reconciler, created
         /// lazily and destroyed with the reconciler. Like every portal, the children stay part of the
