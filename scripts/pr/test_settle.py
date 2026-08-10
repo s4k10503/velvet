@@ -55,7 +55,7 @@ class MergeDecisionTests(unittest.TestCase):
         self.assertEqual(len(decided), 1)
 
     def test_Given_TheBaseHoldsAnUnpublishedRelease_When_EverythingElsePasses_Then_ItStillBlocks(self):
-        # Arrange — the state main sat in for a day while twelve pull requests merged into it.
+        # Arrange — a non-empty reason from the release guard, with every other input clean.
         unpublished = "v2.0.1 was never published"
 
         # Act
@@ -75,7 +75,8 @@ class MergeDecisionTests(unittest.TestCase):
         self.assertEqual(len(decided), 2)
 
     def test_Given_NoCheckEverRan_When_Decided_Then_ThatIsNotReadAsPending(self):
-        # Arrange — an empty list is a workflow never triggered, which a force-push after a cancel leaves.
+        # Arrange — no bucket at all, which the module docstring's fourth precondition reads as a
+        # workflow never triggered rather than as one still to come.
         decided = reasons(results=[])
 
         # Act / Assert
@@ -315,6 +316,15 @@ class CheckResultTests(unittest.TestCase):
         # Act / Assert
         self.assertRaises(RuntimeError, settle.check_results,
                           runs(("Unity", "completed", "success")), truncated)
+
+    def test_Given_APageThatCarriedNoRunAtAll_When_Bucketed_Then_ItRaisesRatherThanDeciding(self):
+        # Arrange — a page that dropped every entry it claims, which is the one truncation whose
+        # buckets are also what a head with no workflow leaves. `whole_page` is what separates them,
+        # so an empty list must not be short-circuited past it.
+        truncated = {"total_count": 3, "check_runs": []}
+
+        # Act / Assert
+        self.assertRaises(RuntimeError, settle.check_results, truncated, NO_STATUSES)
 
 
 class CheckReadTests(unittest.TestCase):

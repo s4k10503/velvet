@@ -2,9 +2,8 @@
 """Watch open pull requests, and merge one only when every precondition holds.
 
 Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` printed a watcher for
-the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time and
-re-derived wrong — the watcher has been written pinned to one pull request number, leaving the next
-one unwatched behind a fresh heartbeat, which is the exact failure the hook's own text warns about.
+the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time,
+and that hook's own text owns what a re-derived watcher gets wrong.
 
 **Every precondition below has a refuse hook behind it**, so a `gh pr merge` typed by hand is held
 to them as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks match on
@@ -13,12 +12,11 @@ shape is its own change. What this adds is reporting them together: one run name
 rather than costing a round of CI per reason. If a precondition is worth having here it belongs in a
 hook, because a script nobody is obliged to run guards nothing.
 
-Five preconditions, each from a merge that went wrong rather than from a list of good practice:
+Five preconditions:
 
 - **Checks are bound to the head SHA they were read at.** `gh pr checks` answers about whatever the
-  API last recorded, which after a force-push is the previous commit's run. A green read was once
-  carried into a merge decision for a SHA that had never been tested. So the head is read, then the
-  checks, then the head again, and a change between the two readings voids the answer. The merge
+  API last recorded, which after a force-push is the previous commit's run. So the head is read, then
+  the checks, then the head again, and a change between the two readings voids the answer. The merge
   request carries that SHA as well, so a push landing after the last reading is refused by GitHub
   rather than by whoever reads the history next.
 - **The branch must contain the current base.** `mergeStateStatus` reports CLEAN for a branch whose
@@ -29,8 +27,7 @@ Five preconditions, each from a merge that went wrong rather than from a list of
   holding it makes that delete fail once the merge has already happened — so the branch outlives the
   pull request and has to be swept by hand later, when nothing in the checkout can still tell a
   merged branch from an abandoned one.
-- **An empty check list is not "still running".** It means no workflow was ever triggered for that
-  SHA, which is what a cancelled run followed by a force-push leaves behind.
+- **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 
@@ -178,10 +175,9 @@ def whole_page(payload, listed, kind):
 
     An entry that fell off the page produces no reason at all, rather than a wrong one: the buckets
     handed to `reasons_from` are the only thing it decides from, and the entries that did arrive can
-    all be passing. The merge then lands green with nothing said about the one nobody read. Its
-    empty-check-list precondition does not reach that case — it runs only when the page carried
-    nothing, and a page that dropped entries carried something. Both payloads go through here,
-    because a merge decided from a partial read of either is a merge over a check nobody saw.
+    all be passing. The merge then lands green with nothing said about the one nobody read. Both
+    payloads go through here, because a merge decided from a partial read of either is a merge over a
+    check nobody saw.
     """
     total = payload.get("total_count", len(listed))
     if total > len(listed):
