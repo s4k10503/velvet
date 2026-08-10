@@ -348,8 +348,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_SuspendedBoundaryFollowedByResolvedSibling_When_OffscreenDescendantUpdates_Then_FallbackSurvives()
         {
-            // Arrange — the suspended Suspense is expanded BEFORE the resolved one, so the resolved one's
-            // expansion is the last to write the per-boundary suspended mark that guards the offscreen flush
+            // Arrange — the suspended Suspense is expanded BEFORE the resolved one. That order is what used
+            // to lose the boundary's suspended mark to the resolved sibling's expansion.
             var source = new UniTaskCompletionSource<string>();
             s_offscreenFactory = _ => source.Task;
             using var mounted = V.Mount(_root, V.Component(OffscreenSiblingHostRender, key: "host"));
