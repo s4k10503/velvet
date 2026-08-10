@@ -142,6 +142,34 @@ namespace Velvet.Tests
             ("echo 'git checkout main'", "-"),
         };
 
+        // file|inline|moved. Kept apart because the guard treats each differently — it opens the file
+        // and searches its text, it searches an inline body as it stands, and it recognises a
+        // directory move, which decides elsewhere whether a relative path names the file gh opens.
+        // Recognition is all these columns hold — the lambda re-derives the ordering rather than
+        // calling the guard, so where a move sits relative to the call is not pinned here. A merged
+        // column agreed with a version that had the file and inline families swapped, and with one
+        // whose move recognition was broken.
+        private static readonly (string Command, string Expected)[] Bodies =
+        {
+            ("gh pr create --title x --body-file b.md", "b.md||no"),
+            ("gh pr list --search create", ""),
+            ("gh issue create --label pr --title x", ""),
+            ("gh pr create --title x -F b.md", "b.md||no"),
+            ("gh pr create --title x -Fb.md", "b.md||no"),
+            ("gh pr create --title x -bhello", "|hello|no"),
+            ("gh pr create --title x --body-file=b.md", "b.md||no"),
+            ("gh pr create --title x --body text", "|text|no"),
+            // A head naming a fork is not read at all, so it neither answers nor disturbs the body.
+            ("gh pr create --title x --body-file b.md --head someone:feat/x", "b.md||no"),
+            ("cd d && gh pr create --title x --body-file b.md", "b.md||yes"),
+            ("builtin cd d && gh pr create --title x --body-file b.md", "b.md||yes"),
+            ("if true; then cd d; fi && gh pr create --title x --body-file b.md", "b.md||yes"),
+            ("gh pr create --title x --body-file b.md && cd d", "b.md||no"),
+            ("gh pr create --fill", "||no"),
+            ("gh pr comment 5 --body \"run gh pr create --body-file b.md\"", ""),
+            ("gh pr list", ""),
+        };
+
         private static readonly (string Command, string Expected)[] Creations =
         {
             ("gh issue create --title x --body y", "--label,--assignee"),
@@ -153,6 +181,8 @@ namespace Velvet.Tests
             ("gh pr create --title x --label ci", ""),
             ("gh pr comment 5 --body \"run gh issue create --title x\"", ""),
             ("gh issue list", ""),
+            ("gh pr create --help", ""),
+            ("gh issue create -h", ""),
         };
 
         // Built at runtime for the same reason as the merge table above.
@@ -186,7 +216,6 @@ namespace Velvet.Tests
             const string expression =
                 "lambda g,c: ','.join(t or '<current>' for t in g.merges_without_deletion(c)) or '-'";
             var answers = Ask(hook, expression, table.Select(row => row.Command));
-            Assume.That(answers?.Count, Is.EqualTo(table.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(table, answers);
 
@@ -204,7 +233,6 @@ namespace Velvet.Tests
 
             // Act
             var answers = Ask(hook, "lambda g,c: str(g.sweeps(c))", Sweeping.Select(row => row.Command));
-            Assume.That(answers?.Count, Is.EqualTo(Sweeping.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(Sweeping, answers);
 
@@ -226,9 +254,31 @@ namespace Velvet.Tests
             const string expression =
                 "lambda g,c: ','.join(t or '<current>' for t in g.merge_targets(c)) or '-'";
             var answers = Ask(hook, expression, table.Select(row => row.Command));
-            Assume.That(answers?.Count, Is.EqualTo(table.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(table, answers);
+
+            // Assert
+            Assert.That(disagreements, Is.Empty);
+        }
+
+        [Test]
+        public void Given_TheBodyTable_When_TheProvenanceGuardReadsEach_Then_ItResolvesOnlyWhatItWouldAct()
+        {
+            // Arrange
+            var hook = Path.GetFullPath(".claude/hooks/refuse/pr_body_of_another_branch.py");
+            Assume.That(File.Exists(hook), Is.True, "Precondition: the guard exists");
+
+            // Act
+            const string expression =
+                "lambda g,c: ','.join([r for s in g.command_segments(c) "
+                + "for o in g.program_invocations(s, 'gh', ('pr', 'create')) "
+                + "for r in ['|'.join([str(g.valued(o, f) or '') "
+                + "for f in (g.BODY_FILE_FLAGS, g.BODY_FLAGS)]) "
+                + "+ ('|yes' if any(g.moves_directory(p) for p in g.command_segments(c[:c.index(s)])) "
+                + "else '|no')]])";
+            var answers = Ask(hook, expression, Bodies.Select(row => row.Command));
+
+            var disagreements = Disagreements(Bodies, answers);
 
             // Assert
             Assert.That(disagreements, Is.Empty);
@@ -243,11 +293,10 @@ namespace Velvet.Tests
 
             // Act
             const string expression =
-                "lambda g,c: ','.join([f for k,o in g.creations(c) if '--web' not in o "
+                "lambda g,c: ','.join([f for k,o in g.creations(c) if not g.exempt(o) "
                 + "for f in ((['--label'] if not g.carries(o, g.LABEL_FLAGS) else []) "
                 + "+ (['--assignee'] if k=='issue' and not g.carries(o, g.ASSIGNEE_FLAGS) else []))])";
             var answers = Ask(hook, expression, Creations.Select(row => row.Command));
-            Assume.That(answers?.Count, Is.EqualTo(Creations.Length), "Precondition: one answer per command");
 
             var disagreements = Disagreements(Creations, answers);
 
@@ -271,7 +320,6 @@ namespace Velvet.Tests
                 // Act
                 var expression = "lambda g,c: ','.join(g.refusals(c, r'" + root + "')) or '-'";
                 var answers = Ask(hook, expression, SharedState.Select(row => row.Command));
-                Assume.That(answers?.Count, Is.EqualTo(SharedState.Length), "Precondition: one answer per command");
 
                 disagreements = Disagreements(SharedState, answers);
             }
@@ -442,11 +490,16 @@ namespace Velvet.Tests
             }
         }
 
+        // How many answers came back is folded in here rather than left to an `Assume` beside each
+        // call: a guard that raises on one command answers none of them, and an `Assume` would report
+        // the run that proves it broken as inconclusive, which the runner does not count as a failure.
         private static string Disagreements((string Command, string Expected)[] table, List<string> answers) =>
-            string.Join("\n", table
-                .Select((row, index) => (row, actual: answers[index]))
-                .Where(pair => pair.actual != pair.row.Expected)
-                .Select(pair => $"{pair.row.Command}\n    expected [{pair.row.Expected}] got [{pair.actual}]"));
+            answers?.Count == table.Length
+                ? string.Join("\n", table
+                    .Select((row, index) => (row, actual: answers[index]))
+                    .Where(pair => pair.actual != pair.row.Expected)
+                    .Select(pair => $"{pair.row.Command}\n    expected [{pair.row.Expected}] got [{pair.actual}]"))
+                : $"the guard answered {answers?.Count.ToString() ?? "nothing"} of {table.Length} commands";
 
         private static List<string> Ask(string hook, string expression, IEnumerable<string> commands)
         {

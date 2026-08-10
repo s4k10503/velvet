@@ -21,6 +21,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import git_invocations, unexpanded
 
+
+HOOK_TOOLS = {"Bash"}
+
 NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"
 
 # `git commit` options that take a value, so their argument is not mistaken for a pathspec.
@@ -287,7 +290,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     commits = commit_invocations(event.get("tool_input", {}).get("command", ""))
