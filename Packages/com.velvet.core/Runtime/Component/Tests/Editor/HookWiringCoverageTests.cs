@@ -730,11 +730,23 @@ namespace Velvet.Tests
         private const string ShippedEntryPlusOne = "- As shipped.\n\n- Smuggled in.\n";
         private const string ShippedEntryReworded = "- As shipped, reworded.\n";
 
+        // The released section's subsection, and the same one with a smuggled entry indented above its
+        // first column-0 bullet. `release_notes.py` emits that entry with the rest of the block.
+        private const string ShippedSubsection = "### Fixed\n\n" + ShippedEntry;
+        private const string ShippedSubsectionUnderANestedEntry =
+            "### Fixed\n\n  - Smuggled in.\n\n" + ShippedEntry;
+
+        // An entry below a version heading written in a form `release_notes.py`'s heading pattern does
+        // not match, which leaves that entry inside the released section that module publishes. The
+        // guard reads with the same pattern, so it has to see the entry in the same place.
+        private const string ShippedEntryAboveAHeadingSplitAcrossLines =
+            ShippedEntry + "\n##\n[9.9.9]\n\n- Smuggled in.\n";
+
         // A second heading for the released version, carrying nothing. It goes above the real one
         // because the first heading matching a version is the half a note is rebuilt from — the
         // guard's own docstring owns why that makes it the whole note. Carrying nothing is what
-        // makes this the case only the duplicate-heading reading answers: a fabricated bullet is an
-        // entry the section did not carry, which the item reading refuses on its own.
+        // makes this the case only the duplicate-heading reading answers: a fabricated bullet is a
+        // line the section did not carry, which the published-lines reading refuses on its own.
         private const string ReleasedHeadingBelowAnEmptyOne =
             ReleasedHeading + "\n\n### Fixed\n\n" + ReleasedHeading;
 
@@ -821,6 +833,58 @@ namespace Velvet.Tests
                 // Assert
                 Assert.That(answer.Exit, Is.EqualTo(2),
                     $"a published note now says something it did not say when it shipped:\n{answer.Error}");
+            }
+            finally
+            {
+                Remove(home);
+            }
+        }
+
+        [Test]
+        public void Given_AnEntryNestedAboveAReleasedSectionsFirstColumnZeroBullet_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
+        {
+            // Arrange — the indent is the whole case. A reading that counts a section's top-level list
+            // items covers none of the text above the first of them, so an entry placed there is in the
+            // published note and outside the comparison.
+            var home = Scratch("-repository");
+            try
+            {
+                Repository(home);
+                var changelog = WriteReleasedChangelog(home);
+
+                // Act
+                var answer = PoseEdit(home, changelog, ShippedSubsection, ShippedSubsectionUnderANestedEntry);
+
+                // Assert
+                Assert.That(answer.Exit, Is.EqualTo(2),
+                    "an indented entry is published from a released section like any other, and this "
+                    + $"one arrived after the release:\n{answer.Error}");
+            }
+            finally
+            {
+                Remove(home);
+            }
+        }
+
+        [Test]
+        public void Given_AnEntryBelowAHeadingTheReleaseNotesDoNotRead_When_TheClosedVersionGuardReadsIt_Then_ItRefuses()
+        {
+            // Arrange — a heading form that ends the released section for a second grammar and not for
+            // the one that publishes, which is how text ends up read by nobody and published anyway.
+            // The guard has no grammar of its own for such a pair to disagree with.
+            var home = Scratch("-repository");
+            try
+            {
+                Repository(home);
+                var changelog = WriteReleasedChangelog(home);
+
+                // Act
+                var answer = PoseEdit(home, changelog, ShippedEntry, ShippedEntryAboveAHeadingSplitAcrossLines);
+
+                // Assert
+                Assert.That(answer.Exit, Is.EqualTo(2),
+                    "a version heading nothing publishes takes an entry out of the released section it "
+                    + $"is published in:\n{answer.Error}");
             }
             finally
             {

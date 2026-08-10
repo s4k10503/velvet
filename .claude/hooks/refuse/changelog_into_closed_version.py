@@ -14,14 +14,18 @@ truth.
 The insertion point is what decides, so the check is here rather than in CI — by the time a branch
 is pushed the entry has been written, reviewed and cited as evidence.
 
-The reading is a released section's LIST ITEMS, before against the proposed text:
+The reading is a released section's PUBLISHED LINES, before against the proposed text:
 
-- An item the section did not carry before is refused, whether it arrived beside the existing ones
+- Every non-blank line of the section belongs to a unit — its own, or the one it is a soft wrap of
+  — so the units cover the whole of what would be published. Counting only the top-level list items
+  left the rest uncovered, and an indented bullet, or a whole `### …` block of them, filed into a
+  released section was allowed. Whatever the reading does not cover, the guard allows, and nothing
+  in a diff says which part that is.
+- A line the section did not carry before is refused, whether it arrived beside the existing ones
   or in place of one. A count could not separate a 1-for-1 substitution from the reword it looks
-  like, and allowed the substitution; comparing the items themselves refuses the reword with it,
-  which is the accepted cost — the refusal says what a genuine reword should do instead. Items
-  rather than lines, each collapsed to a single line so a rewrap matches itself: the shape
-  `test_release_notes.py` compares two spellings of a note with.
+  like, and allowed the substitution; comparing the text itself refuses the reword with it, which
+  is the accepted cost — the refusal says what a genuine reword should do instead. A reflowed line
+  matches itself, because the join that unwraps it is the publisher's own.
 - Removal is not refused, so deleting an entry from a released section and moving one out of it
   both still run. Deleting the whole SECTION does not, because the heading goes with it — see
   below.
@@ -45,39 +49,46 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import repository
 
+# The section this guard compares is the one `release_notes.py` publishes, so it is delimited and
+# unwrapped by that module rather than parsed a second time here. A heading only one of two grammars
+# recognises moves text across a version boundary for that one and not the other, and a disagreement
+# in either direction can leave a released section's text uncompared and still published. Soundness
+# would need the two to agree exactly, and nothing would hold them to it.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "release"))
+import release_notes
+
 HOOK_TOOLS = {"Edit", "Write"}
 
 CHANGELOG = "CHANGELOG.md"
-# Keep A Changelog's heading form, tolerating the run of spaces a hand edit leaves behind. The
-# grammar is `scripts/release/release_notes.py`'s; this is the loosest form that still finds every
-# heading that one accepts, so a heading it would parse cannot slip past unmatched.
-HEADING = re.compile(r"^##\s+\[(?P<version>[^\]]+)\](?P<tail>.*)$", re.MULTILINE)
 DATED = re.compile(r"^\s*-\s*\d{4}-\d{2}-\d{2}")
-ITEM_BREAK = re.compile(r"\n(?=[-*+] )")
-ITEM_START = re.compile(r"^[-*+]\s+\S")
 
 
 def sections(text):
-    """Each version heading in order, with whether it is dated and the list items under it."""
-    marks = [(m.start(), m.group("version"), bool(DATED.match(m.group("tail"))))
-             for m in HEADING.finditer(text)]
-    for index, (start, version, dated) in enumerate(marks):
-        end = marks[index + 1][0] if index + 1 < len(marks) else len(text)
-        yield version, dated, items(text[start:end])
+    """Each version heading in order, with whether it is dated and the lines published under it."""
+    lines = text.splitlines()
+    marks = []
+    for index, line in enumerate(lines):
+        match = release_notes.VERSION_HEADING.match(line)
+        if match:
+            marks.append((index, match))
+    for order, (index, match) in enumerate(marks):
+        end = marks[order + 1][0] if order + 1 < len(marks) else len(lines)
+        yield (match.group("version"),
+               bool(DATED.match(lines[index][match.end():])),
+               published_lines(lines[index + 1:end]))
 
 
-def items(block):
-    """Top-level list items of one section, each collapsed to a line so a rewrap matches itself.
+def published_lines(lines):
+    """Every non-blank line of one section body, in the shape the note carries it.
 
-    A nested item stays inside its parent rather than counting on its own, so adding one changes
-    the parent it was added under.
+    Indentation survives the collapse because it is what nests a line under another.
     """
-    return [" ".join(item.split())
-            for item in ITEM_BREAK.split(block) if ITEM_START.match(item)]
+    return [line[:len(line) - len(line.lstrip())] + " ".join(line.split())
+            for line in release_notes.unwrap_soft_breaks(lines) if line.strip()]
 
 
 def released(text):
-    """Items of each released version, counted by their collapsed text."""
+    """Published lines of each released version, counted by their collapsed text."""
     counted = {}
     for version, dated, listed in sections(text):
         if dated:
@@ -188,7 +199,7 @@ def main():
         return 0
 
     print("\n".join([
-        f"Refusing this {CHANGELOG} edit: {', '.join(versions)} comes out of it carrying an entry "
+        f"Refusing this {CHANGELOG} edit: {', '.join(versions)} comes out of it carrying a line "
         "it does not carry now, and a release date has closed that section.",
         "",
         "That section is the published release note. An entry there claims a version that shipped",
