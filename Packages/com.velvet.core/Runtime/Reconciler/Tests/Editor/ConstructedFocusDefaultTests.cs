@@ -6,11 +6,12 @@ namespace Velvet.Tests
     // A prop that stops being declared restores what the element was constructed with, not a constant.
     // Which constant would be wrong depends on the type, and the two values are pinned by the tuples
     // below rather than asserted anywhere in prose. No pool is involved: declaring the prop on one
-    // render and not the next is enough, through V.Custom<Label> or a Motion node over one.
+    // render and not the next is enough, through V.Custom<Label> or a Motion node over one. What a pool
+    // return does to the same records is the last three cases.
     internal sealed class ConstructedFocusDefaultTests
     {
         [Test]
-        public void Given_a_label_whose_declared_tab_index_is_dropped_When_the_prop_is_applied_Then_it_reads_the_one_it_was_built_with()
+        public void Given_ALabelWhoseDeclaredTabIndexIsDropped_When_ThePropIsApplied_Then_ItReadsTheOneItWasBuiltWith()
         {
             // Arrange
             var label = new Label();
@@ -26,7 +27,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_field_whose_declared_focus_delegation_is_dropped_When_the_prop_is_applied_Then_it_reads_the_one_it_was_built_with()
+        public void Given_AFieldWhoseDeclaredFocusDelegationIsDropped_When_ThePropIsApplied_Then_ItReadsTheOneItWasBuiltWith()
         {
             // Arrange
             var field = new TextField();
@@ -42,7 +43,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_label_that_never_declared_a_tab_index_When_the_absent_prop_is_applied_Then_nothing_is_written()
+        public void Given_ALabelThatNeverDeclaredATabIndex_When_TheAbsentPropIsApplied_Then_NothingIsWritten()
         {
             // Arrange
             var label = new Label();
@@ -55,7 +56,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_field_that_never_declared_focus_delegation_When_the_absent_prop_is_applied_Then_nothing_is_written()
+        public void Given_AFieldThatNeverDeclaredFocusDelegation_When_TheAbsentPropIsApplied_Then_NothingIsWritten()
         {
             // Arrange
             var field = new TextField();
@@ -68,7 +69,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_a_declared_value_written_twice_When_it_is_dropped_Then_the_record_is_the_first_reading_not_the_second()
+        public void Given_ADeclaredValueWrittenTwice_When_ItIsDropped_Then_TheRecordIsTheFirstReadingNotTheSecond()
         {
             // Arrange
             var label = new Label();
@@ -80,6 +81,54 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(label.tabIndex, Is.EqualTo(-1));
+        }
+
+        // The three below stand in for the pool cycle a record must not cross: the return drops the record,
+        // so what stands on the element afterwards is what an absent prop leaves alone. Each table is asked
+        // separately because dropping it is a line per table.
+        [Test]
+        public void Given_AFocusableRecordForgottenAsAtAPoolReturn_When_TheAbsentPropIsApplied_Then_TheStandingValueIsLeftAlone()
+        {
+            // Arrange
+            var element = new VisualElement { focusable = false };
+            FiberPropApplier.ApplyFocusable(element, true);
+            FiberPropApplier.ForgetRecordedDefaults(element);
+
+            // Act
+            FiberPropApplier.ApplyFocusable(element, null);
+
+            // Assert
+            Assert.That(element.focusable, Is.True);
+        }
+
+        [Test]
+        public void Given_ATabIndexRecordForgottenAsAtAPoolReturn_When_TheAbsentPropIsApplied_Then_TheStandingValueIsLeftAlone()
+        {
+            // Arrange
+            var label = new Label();
+            FiberPropApplier.ApplyTabIndex(label, 3);
+            FiberPropApplier.ForgetRecordedDefaults(label);
+
+            // Act
+            FiberPropApplier.ApplyTabIndex(label, null);
+
+            // Assert
+            Assert.That(label.tabIndex, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void Given_AFocusDelegationRecordForgottenAsAtAPoolReturn_When_TheAbsentPropIsApplied_Then_TheStandingValueIsLeftAlone()
+        {
+            // Arrange
+            var field = new TextField();
+            FiberPropApplier.ApplyDelegatesFocus(field, false);
+            FiberPropApplier.ForgetRecordedDefaults(field);
+
+            // Act
+            FiberPropApplier.ApplyDelegatesFocus(field, null);
+
+            // Assert
+            Assert.That(field.delegatesFocus, Is.False);
         }
     }
 }
