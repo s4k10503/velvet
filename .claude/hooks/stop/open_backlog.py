@@ -39,7 +39,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from deferrals import DEFERRALS, deferred  # noqa: E402
+from deferrals import DEFERRALS, deferred, unusable  # noqa: E402
 
 EXCLUDING_LABELS = {"blocked", "needs-decision"}
 
@@ -80,6 +80,10 @@ def main():
     # Printed rather than exited on quietly: this is the one key that suppresses the whole guard,
     # and lib/deferrals.py states the invariant that suppression names what was claimed and how
     # long ago.
+    broken = unusable("backlog")
+    if broken is not None:
+        print("A deferral was written for the backlog, and "
+              f"{broken} — so it is being ignored.", file=sys.stderr)
     holding = deferred("backlog")
     if holding is not None:
         reason, minutes = holding
@@ -109,13 +113,16 @@ def main():
     except ValueError:
         issues = []
 
-    open_work, held = [], []
+    open_work, held, ignored = [], [], []
     for issue in issues:
         if {label.get("name") for label in issue.get("labels", [])} & EXCLUDING_LABELS:
             continue
         number = str(issue.get("number", ""))
         if not number:
             continue
+        broken = unusable(number)
+        if broken is not None:
+            ignored.append(f"  #{number} — a deferral was written for it, and {broken}.")
         holding = deferred(number)
         if holding is not None:
             reason, minutes = holding
@@ -127,13 +134,18 @@ def main():
         if held:
             print("Held, not settled — check each reason is still true:", file=sys.stderr)
             print("\n" + "\n".join(held), file=sys.stderr)
+        if ignored:
+            print("\nDeferrals that were ignored:", file=sys.stderr)
+            print("\n".join(ignored), file=sys.stderr)
         return 0
 
     held_block = ("\nHeld on purpose, and worth re-reading:\n" + "\n".join(held)) if held else ""
+    ignored_block = ("\nDeferrals that were ignored:\n" + "\n".join(ignored)) if ignored else ""
     print(f"""Do not stop: assigned work is open and no pull request is carrying any of it.
 
 {chr(10).join(open_work)}
 {held_block}
+{ignored_block}
 
 Pick one and start it. If the next action is already named above this message, that naming is
 what the stall looks like from inside — do the thing instead of announcing it again.
