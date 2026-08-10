@@ -37,6 +37,9 @@ HOOK_TOOLS = {"Bash"}
 UNEXPANDED_POLICY = "allow"
 UNEXPANDED_PROBE = 'git add $FILES'
 
+UNREADABLE_POLICY = "refuse"
+UNREADABLE_PROBE = {"command": "git add -A"}
+
 SWEEPING = {"-A", "--all", "--no-ignore-removal", ".", ":/", "*"}
 
 

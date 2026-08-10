@@ -238,6 +238,21 @@ the fixture's `GatePayloads` happens to pose anything about — a guard added si
 extended wants a row added to it rather than a change to itself — and for a guard that exits neither
 0 nor 2 under any of them, which is one raising rather than deciding.
 
+A guard's readings are the other way it goes quiet. Exiting 0 lets the tool through, so a `gh` that
+could not answer and a repository with nothing to report reach the caller as the same event — which
+is how an exhausted GitHub GraphQL quota emptied `gh pr view --json headRefName` while the separate
+REST quota stayed healthy, leaving `gh` working everywhere else and two merge guards alone silent.
+Each guard therefore declares an `UNREADABLE_POLICY` of `"refuse"`, `"allow"` or `"none"`, and an
+`UNREADABLE_PROBE` holding a tool input to pose it. `scripts/hooks/test_unreadable_state_check.py`
+runs every guard with `git` or `gh` unable to answer and compares the verdict against the
+declaration, rather than reading the source for the shape: which direction a `return 0` means is a
+property of the call site, and `shared_git_state.py`'s refusal is the answer it gives when git cannot
+be asked. `"none"` claims the probe reaches neither program, and fails if either is invoked.
+`"allow"` needs a comment above it saying what holds instead, and fails unless another guard in the
+directory refuses the same probe — otherwise the tool call is guarded by nothing at all. It runs in
+the licence-free `source-generators` job rather than beside the fixtures above, which are skipped
+entirely on a checkout with no `UNITY_LICENSE` secret.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a

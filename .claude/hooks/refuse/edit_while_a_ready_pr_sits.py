@@ -31,6 +31,9 @@ from deferrals import DEFERRALS, deferred, unusable
 # for the shell to expand and nothing here reads one.
 UNEXPANDED_POLICY = "n/a"
 
+UNREADABLE_POLICY = "none"
+UNREADABLE_PROBE = {"file_path": "CHANGELOG.md", "old_string": "a", "new_string": "b"}
+
 READY_STATE = Path.home() / ".velvet-pr-ready"
 HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
 

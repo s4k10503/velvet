@@ -132,6 +132,16 @@
         ]
       },
       {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/changelog_into_closed_version.py\"",
+            "timeout": 10000
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {

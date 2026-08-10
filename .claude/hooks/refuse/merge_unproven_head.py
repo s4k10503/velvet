@@ -40,6 +40,12 @@ TERMINAL_PASS = frozenset({"pass", "skipping"})
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
 
+# gh answers None both for a check list it could not read and for a number that is not a pull
+# request, and nothing here separates them. The merge is still refused — same backing rule as
+# merge_onto_unpublished_release.py states.
+UNREADABLE_POLICY = "allow"
+UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
+
 
 def gh_json(cwd, args):
     out = repository.gh(args, cwd=cwd)
