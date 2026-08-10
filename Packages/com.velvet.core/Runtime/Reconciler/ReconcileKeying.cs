@@ -100,10 +100,15 @@ namespace Velvet
                     return oldElem.ElementType == newElem.ElementType
                         && (oldElem.WrapElement != null) == (newElem.WrapElement != null);
                 case PortalNode oldPortal when newNode is PortalNode newPortal:
-                    // (TargetId, Layer) is a one-of pair: a registry portal and a layer portal must
-                    // never patch into each other, and two layer portals patch only on the same
-                    // layer — a mismatch remounts, releasing the old slot range on the old target.
-                    return oldPortal.TargetId == newPortal.TargetId && oldPortal.Layer == newPortal.Layer;
+                    // (TargetId, Layer, TargetElement) is a one-of triple: portals with different kinds
+                    // of target must never patch into each other, and two of a kind patch only on the
+                    // same target — a mismatch remounts, releasing the old slot range on the old one.
+                    // The element term is what moves an element-valued portal when its container
+                    // changes: there is no patch that could, since the children are already parented
+                    // under the old one.
+                    return oldPortal.TargetId == newPortal.TargetId
+                           && oldPortal.Layer == newPortal.Layer
+                           && ReferenceEquals(oldPortal.TargetElement, newPortal.TargetElement);
                 case MotionNode oldMotion when newNode is MotionNode newMotion:
                     return oldMotion.ElementType == newMotion.ElementType;
                 case ContextProviderNode oldProvider when newNode is ContextProviderNode newProvider:
