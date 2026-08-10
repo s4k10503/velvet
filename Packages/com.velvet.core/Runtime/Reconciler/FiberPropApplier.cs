@@ -81,34 +81,39 @@ namespace Velvet
         {
             if (!s_focusableDefaults.TryGetValue(element, out _))
             {
-                s_focusableDefaults.Add(element, new FocusableDefault(element.focusable));
+                s_focusableDefaults.Add(element, new Recorded<bool>(element.focusable));
             }
         }
 
-        private sealed class FocusableDefault
+        // A box rather than a nullable field: "never recorded" has to stay distinguishable from the
+        // recorded value itself, and for a reference-typed member a nullable field cannot separate them.
+        private sealed class Recorded<T>
         {
-            public readonly bool Value;
+            public readonly T Value;
 
-            public FocusableDefault(bool value) => Value = value;
+            public Recorded(T value) => Value = value;
         }
 
-        private sealed class TabIndexDefault
+        private static readonly ConditionalWeakTable<VisualElement, Recorded<bool>> s_focusableDefaults = new();
+        private static readonly ConditionalWeakTable<VisualElement, Recorded<int>> s_tabIndexDefaults = new();
+        private static readonly ConditionalWeakTable<VisualElement, Recorded<bool>> s_delegatesFocusDefaults = new();
+
+        // A record is the applier's claim on a member: while one stands, dropping the prop writes the
+        // recorded value back, and for a TextField so does redeclaring a neighbour, since the bag's presence
+        // is what admits the members this render left undeclared. Recording is idempotent, so the next
+        // tenancy's first declared write leaves a record the previous tenancy took — and the restore then
+        // puts that tenancy's reading over whatever this one wrote. Called from
+        // FiberElementCleaner.ReturnToPool, which is the single gate every poolable type passes through.
+        internal static void ForgetRecordedDefaults(VisualElement element)
         {
-            public readonly int Value;
-
-            public TabIndexDefault(int value) => Value = value;
+            s_focusableDefaults.Remove(element);
+            s_tabIndexDefaults.Remove(element);
+            s_delegatesFocusDefaults.Remove(element);
+            if (element is TextField textField)
+            {
+                s_textFieldDefaults.Remove(textField);
+            }
         }
-
-        private sealed class DelegatesFocusDefault
-        {
-            public readonly bool Value;
-
-            public DelegatesFocusDefault(bool value) => Value = value;
-        }
-
-        private static readonly ConditionalWeakTable<VisualElement, FocusableDefault> s_focusableDefaults = new();
-        private static readonly ConditionalWeakTable<VisualElement, TabIndexDefault> s_tabIndexDefaults = new();
-        private static readonly ConditionalWeakTable<VisualElement, DelegatesFocusDefault> s_delegatesFocusDefaults = new();
 
         // Same shape and same reason as ApplyFocusable: what an absent prop restores is the element's own
         // constructed value, which differs by type, so the 0 / false these coalesced to were another
@@ -151,7 +156,7 @@ namespace Velvet
         {
             if (!s_tabIndexDefaults.TryGetValue(element, out _))
             {
-                s_tabIndexDefaults.Add(element, new TabIndexDefault(element.tabIndex));
+                s_tabIndexDefaults.Add(element, new Recorded<int>(element.tabIndex));
             }
         }
 
@@ -159,7 +164,7 @@ namespace Velvet
         {
             if (!s_delegatesFocusDefaults.TryGetValue(element, out _))
             {
-                s_delegatesFocusDefaults.Add(element, new DelegatesFocusDefault(element.delegatesFocus));
+                s_delegatesFocusDefaults.Add(element, new Recorded<bool>(element.delegatesFocus));
             }
         }
 
@@ -201,6 +206,13 @@ namespace Velvet
             svEl.touchScrollBehavior = Resolve(settings?.TouchScrollBehavior, ScrollView.TouchScrollBehavior.Clamped);
         }
 
+        // Same recorded-default shape, and the same reason, as ApplyFocusable, with one record per member
+        // rather than one per element: a member no render has ever declared carries no record and is not
+        // written at all, so a value a refCallback assigned survives a re-render that redeclares only its
+        // neighbours. A member a render did declare and a later one dropped restores what this element was
+        // constructed with. The type guard below does not narrow that to one answer — it admits any subclass
+        // of TextField, which V.Custom<T> can name, and such a subclass may be built with a placeholder or a
+        // length limit no constant here could name. TextFieldInputPropTests measures both.
         public static void ApplyTextField(VisualElement element, TextFieldSettings? settings)
         {
             if (element is not TextField tfEl)
@@ -208,8 +220,127 @@ namespace Velvet
                 return;
             }
 
-            tfEl.isPasswordField = settings?.IsPassword ?? false;
+            if (!s_textFieldDefaults.TryGetValue(tfEl, out var built))
+            {
+                if (!Declares(settings))
+                {
+                    return;
+                }
+
+                built = new TextFieldDefaults();
+                s_textFieldDefaults.Add(tfEl, built);
+            }
+
+            ApplyPasswordFlag(tfEl, settings?.IsPassword, built);
+            ApplyPlaceholder(tfEl, settings?.Placeholder, built);
+            ApplyMaxLength(tfEl, settings?.MaxLength, built);
+            ApplyReadOnlyFlag(tfEl, settings?.IsReadOnly, built);
+            ApplyDelayedFlag(tfEl, settings?.IsDelayed, built);
         }
+
+        private static void ApplyPasswordFlag(TextField field, bool? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.IsPassword ??= new Recorded<bool>(field.isPasswordField);
+                field.isPasswordField = value;
+            }
+            else if (built.IsPassword != null)
+            {
+                field.isPasswordField = built.IsPassword.Value;
+            }
+        }
+
+        private static void ApplyPlaceholder(TextField field, string? declared, TextFieldDefaults built)
+        {
+            if (declared != null)
+            {
+                built.Placeholder ??= new Recorded<string>(field.textEdition.placeholder);
+                field.textEdition.placeholder = declared;
+            }
+            else if (built.Placeholder != null)
+            {
+                field.textEdition.placeholder = built.Placeholder.Value;
+            }
+        }
+
+        private static void ApplyMaxLength(TextField field, int? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.MaxLength ??= new Recorded<int>(field.maxLength);
+                field.maxLength = value;
+            }
+            else if (built.MaxLength != null)
+            {
+                field.maxLength = built.MaxLength.Value;
+            }
+        }
+
+        private static void ApplyReadOnlyFlag(TextField field, bool? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.IsReadOnly ??= new Recorded<bool>(field.isReadOnly);
+                field.isReadOnly = value;
+            }
+            else if (built.IsReadOnly != null)
+            {
+                field.isReadOnly = built.IsReadOnly.Value;
+            }
+        }
+
+        private static void ApplyDelayedFlag(TextField field, bool? declared, TextFieldDefaults built)
+        {
+            if (declared is { } value)
+            {
+                built.IsDelayed ??= new Recorded<bool>(field.isDelayed);
+                WriteDelayed(field, value);
+            }
+            else if (built.IsDelayed != null)
+            {
+                WriteDelayed(field, built.IsDelayed.Value);
+            }
+        }
+
+        // Ordering: an edit the field is still holding is committed before the flag comes off. The flag's
+        // contract is that the value lags the typed text until Enter or blur, so clearing it first strands
+        // that edit — displayed, never reported, and with nothing later to re-sync it, since a render
+        // repeating the same FieldValue does not reach ApplyFieldValue at all.
+        // The notifying setter is the point of the write, not an incidental way of making it: reporting
+        // the commit is the half that "never reported" names, and SetValueWithoutNotify would leave it.
+        // Every other prop-path write to a field is the silent one — FiberNodePatcher.RaiseCheckedSignal
+        // names that policy and what it costs — so this is the exception, and nothing else here fails if
+        // it stops notifying. DelayedFlagCommitReportTests measures the report on a real panel;
+        // TextFieldInputPropTests measures the commit itself on both routes off the flag.
+        private static void WriteDelayed(TextField field, bool value)
+        {
+            if (!value && field.isDelayed)
+            {
+                field.value = field.text;
+            }
+
+            field.isDelayed = value;
+        }
+
+        private static bool Declares(TextFieldSettings? settings)
+            => settings != null
+               && (settings.IsPassword.HasValue
+                   || settings.Placeholder != null
+                   || settings.MaxLength.HasValue
+                   || settings.IsReadOnly.HasValue
+                   || settings.IsDelayed.HasValue);
+
+        private sealed class TextFieldDefaults
+        {
+            public Recorded<bool>? IsPassword;
+            public Recorded<string>? Placeholder;
+            public Recorded<int>? MaxLength;
+            public Recorded<bool>? IsReadOnly;
+            public Recorded<bool>? IsDelayed;
+        }
+
+        private static readonly ConditionalWeakTable<TextField, TextFieldDefaults> s_textFieldDefaults = new();
 
         // Applies choices to DropdownField / RadioButtonGroup. A null Choices prop (or no settings at
         // all) resets the widget to an empty choice list instead of stranding a prior render's options,
