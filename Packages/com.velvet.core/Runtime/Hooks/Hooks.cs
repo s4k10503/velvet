@@ -1819,10 +1819,9 @@ namespace Velvet
             slot.Live.Add(cts);
             // Who may write the OBSERVED result, which is the newest call, as TanStack's observer shows.
             // Ownership is by generation now, not by holding the slot's only token: a superseded call still
-            // runs its callbacks, which is what TanStack's Mutation.execute does — it awaits the handlers
-            // from the options the mutation was built with and consults no observer list. What detaching an
-            // observer suppresses there is the per-call form, mutate(vars, { onSuccess }), which has no
-            // equivalent here.
+            // runs its callbacks, which is what TanStack's Mutation.execute does — it awaits them itself and
+            // consults no observer list. What detaching an observer suppresses there is the per-call form,
+            // mutate(vars, { onSuccess }), which has no equivalent here.
             var mine = ++slot.Generation;
 
             slot.Result.Status = MutationStatus.Pending;
