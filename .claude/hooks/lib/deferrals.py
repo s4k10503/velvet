@@ -20,6 +20,16 @@ DEFERRALS = Path.home() / ".velvet-pr-deferrals"
 TTL = 2700
 
 
+def epoch(field):
+    """The field as an epoch second, or None. `str.isdigit` is true of characters `int` rejects, and
+    the caller that reads a malformed entry runs before the one that would have raised — an exception
+    out of a Stop guard exits 1, which the harness treats as non-blocking, so the guard turns off."""
+    try:
+        return int(field)
+    except ValueError:
+        return None
+
+
 def deferred(key, now=None):
     """Return (reason, minutes) when a live deferral covers the key, else None.
 
@@ -40,14 +50,52 @@ def deferred(key, now=None):
         return None
 
     fields = matching[-1].split()
-    stamp = fields[-1]
-    if not stamp.isdigit():
+    stamp = epoch(fields[-1])
+    if stamp is None:
         return None
 
     # Bounded below as well as above. A stamp in the future — a millisecond epoch, a typo, a backward
     # clock step — was live indefinitely, which is the permanent silence the expiry exists to prevent.
-    age = (time.time() if now is None else now) - int(stamp)
+    age = (time.time() if now is None else now) - stamp
     if age < 0 or age >= TTL:
         return None
 
     return " ".join(fields[1:-1]), int(age // 60)
+
+
+def unusable(key, now=None):
+    """Return why the newest entry for `key` was rejected outright, or None.
+
+    None is not a state: an entry that is live, one that has expired, and no entry at all all take
+    it, and `deferred` separates only the first from the other two. Nothing distinguishes an expired
+    entry from an absent one, here or anywhere, for the reason below.
+
+    A rejected deferral and an absent one both make `deferred` return None, so writing an unusable
+    one reads as having written nothing — the guard fires again with the same text and the entry
+    that was supposed to answer it is never mentioned. The stamp is the moment the deferral was
+    WRITTEN, and `date +%s` in the guidance is easy to read as the moment it should expire; an
+    entry stamped in the future is rejected by the lower bound and says nothing about why.
+
+    Expiry is not reported, and cannot be: a stamp says when the deferral was written and nothing
+    says when the line was added, so an entry written already stale and one written fresh that has
+    since expired are the same data. Reporting the pair as "stale on arrival" claimed a distinction
+    the file does not carry. Expiry is also the design working — it ends with the guard firing and
+    the reason being re-stated.
+    """
+    try:
+        lines = DEFERRALS.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+
+    matching = [line for line in lines if line.startswith(f"{key} ")]
+    if not matching:
+        return None
+
+    fields = matching[-1].split()
+    stamp = epoch(fields[-1])
+    if stamp is None:
+        return f"its last field is {fields[-1]!r}, not the epoch second it was written"
+    if (time.time() if now is None else now) - stamp < 0:
+        return ("it is stamped in the future — the stamp is when the deferral was WRITTEN "
+                "(`$(date +%s)`), not when it should expire")
+    return None

@@ -30,6 +30,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations, unexpanded
 import repository
 
+
+HOOK_TOOLS = {"Bash"}
+
 TERMINAL_PASS = frozenset({"pass", "skipping"})
 
 # An operand the shell has not expanded yet resolves to nothing readable, and a merge guard errs
@@ -91,7 +94,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     cwd = event.get("cwd") or "."
