@@ -365,6 +365,11 @@ namespace Velvet.Tests
                 "An offscreen primary descendant's flush is deferred, so the committed fallback stays in its slot");
         }
 
+        // GREEN_ON_BASE(characterization): the base reaches this outcome by never deferring at all —
+        // the boundary-wide mark this branch replaces had already been cleared by this sibling's own
+        // expansion, which is the defect the case above pins. The replacement does report a fallback up
+        // for this boundary, so these children now reach the offscreen walk and what keeps them flushing
+        // is its per-fiber check: widen that marking to the boundary and this case goes red.
         [Test]
         public void Given_SuspendedBoundaryFollowedByResolvedSibling_When_ResolvedSiblingsDescendantUpdates_Then_ItRerenders()
         {
