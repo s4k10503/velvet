@@ -267,9 +267,9 @@ namespace Velvet
         internal static string MemoCacheKey(string? memoKey, string memoScope)
             => memoKey ?? memoScope;
 
-        // The boundary key for a SuspenseNode (also the ReconcilerContext.SuspenseFallbackShown
-        // state key suffix): the parent scope extended by the Suspense's own key (or its positional
-        // index when unkeyed).
+        // The boundary key for a SuspenseNode (also the position key its
+        // ReconcilerContext.SetSuspenseFallbackShown entry is stored under): the parent scope extended
+        // by the Suspense's own key (or its positional index when unkeyed).
         internal static string SuspenseKey(string? parentScope, string? suspenseKey, int nodeIndex)
             => ComposeFragmentScope(parentScope, suspenseKey ?? Index(nodeIndex));
 
