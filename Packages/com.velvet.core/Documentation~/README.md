@@ -16,7 +16,7 @@ The guides below go deeper on one subject each; [setup.md](setup.md) is the one 
 | File | Contents |
 |------|----------|
 | [setup.md](setup.md) | Getting the bundled utility stylesheet onto a panel — `VelvetStyleUtilities.AttachTo`, which utilities stop working without it and which are unaffected because Velvet resolves them itself (with the command that answers it per class), and the scene-reference alternative |
-| [react-migration.md](react-migration.md) | Naming alignment and API mapping for developers coming from React |
+| [react-migration.md](react-migration.md) | Naming alignment and API mapping for developers coming from React, including which `V.TextField` parameters are undeclared rather than reset when null |
 | [memoization.md](memoization.md) | The `[MemoizeMethod]` attribute — usage, constraints, and diagnostic IDs (Source Generator-driven partial-method memoization) |
 | [styling-flexbox-and-gap.md](styling-flexbox-and-gap.md) | Flexbox direction (the engine's raw flex default is a column; the `.flex` utility corrects it to row), what still ties once a variant outranks the base direction (the bare `flex`, two utilities at one priority), and `gap-*` / `divide-*` gotchas vs Tailwind — the inter-child margin and border polyfills, their edge flip on `flex-row-reverse` / `flex-col-reverse` (and the `space-*-reverse` / `divide-*-reverse` markers), the wrap half-margin hybrid, and the `grow-[N]` / `shrink-[N]` arbitrary factors a proportional split needs |
 | [styling-z-index.md](styling-z-index.md) | `z-*` stacking for `absolute` descendants — the layer-container + placeholder mechanism, sibling-scope-only comparison, and the in-flow/negative-z/`peer-` deviations from CSS |
