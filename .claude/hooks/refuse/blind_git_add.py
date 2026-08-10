@@ -19,6 +19,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import git_invocations
 
+
+HOOK_TOOLS = {"Bash"}
+
 # The sweeping forms. `-u` is not among them: it stages tracked modifications and cannot pick up a
 # file that arrived by accident, which is what both incidents were.
 #
@@ -53,7 +56,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
     command = event.get("tool_input", {}).get("command", "")
     if not sweeps(command):
