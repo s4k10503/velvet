@@ -53,6 +53,9 @@ RESTORE_FLAGS = {
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'git checkout $BRANCH'
 
+UNREADABLE_POLICY = "refuse"
+UNREADABLE_PROBE = {"command": "git checkout main"}
+
 # A glob is the other operand the shell rewrites, and it cannot take the same refusal: `git checkout
 # '*.cs'` is an ordinary restore, and refusing it is the over-refusal this guard was rewritten to
 # remove. It is expanded instead, so the question is asked about the operand git receives.

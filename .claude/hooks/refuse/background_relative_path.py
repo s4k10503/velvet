@@ -34,6 +34,9 @@ HOOK_TOOLS = {"Bash"}
 UNEXPANDED_POLICY = "allow"
 UNEXPANDED_PROBE = 'python3 $DIR/scripts/pr/settle.py watch'
 
+UNREADABLE_POLICY = "none"
+UNREADABLE_PROBE = {"command": "python3 scripts/pr/settle.py watch", "run_in_background": True}
+
 # The repository's own top-level directories, which a command reaching one of them relatively is
 # reaching through the session's directory rather than through a stated one. Derived from the
 # checkout so a directory added later is covered by existing.

@@ -69,6 +69,9 @@ def creations(command):
 UNEXPANDED_POLICY = "allow"
 UNEXPANDED_PROBE = 'gh issue create --title $T --label bug --assignee @me'
 
+UNREADABLE_POLICY = "refuse"
+UNREADABLE_PROBE = {"command": "gh issue create --title probe"}
+
 
 def labels(cwd):
     listing = repository.gh(["label", "list", "--json", "name", "--jq", ".[].name"], cwd=cwd)

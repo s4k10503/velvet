@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `animate-spin` — a full turn a second, linear, forever, with `animate-spin-[<time>]` overriding the
+  loop like the other looping utilities. It owns the rotate slot while it runs, on the terms
+  `animate-hue` owns the filter.
 - `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
   shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
   later render moves the children — an unmount and a remount, so their state does not survive. The
@@ -77,6 +80,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   consumer declares it focusable; a `TextField`, `Toggle` or `Slider` is built delegating focus to
   the input beneath it, so dropping that prop stranded focus on the field's own root. `Focusable` already restored its
   constructed value; all three do now.
+- `animate-pulse` now suspends the element's native transitions while it runs, on the same terms
+  `V.Motion`'s own per-frame drivers already do. An element whose own utilities declare a transition
+  covering opacity — including the bare `duration-*` that leaves UI Toolkit's initial `all` standing —
+  previously left the pulse's per-frame writes to that transition. The suspension is element-wide
+  while it lasts, so such an element's other transitions land instantly for the length of the pulse;
+  it is handed back as soon as a re-render leaves nothing transitioning opacity, and an element that
+  transitions nothing over opacity is left alone. A `V.Motion` variant swap on the same element owns
+  the slot for its own length: the suspension stands aside for the swap, which therefore still tweens,
+  and is back once the swap ends.
 
 - A pooled widget carried far more than its reset helper named. Most of the writable surface of
   `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever
