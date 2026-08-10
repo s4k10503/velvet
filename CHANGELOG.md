@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
+  shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
+  later render moves the children — an unmount and a remount, so their state does not survive. What
+  does not move them is re-registering an id a mounted portal already resolved. The portals guide
+  states which containers a portal of either form may target.
 - `V.TextField` declares four more of the text-input surface: `placeholder:`, `maxLength:`,
   `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus a value that
   catches up with the typed text on Enter, on the field losing focus, and on a render taking
