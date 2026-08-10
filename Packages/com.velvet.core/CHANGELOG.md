@@ -18,16 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A `TextField`'s `isPasswordField` was written back to `false` by any render that declared another
-  text-input prop, so a mask a `refCallback:` had switched on came off on the next render that changed
-  the field's placeholder, length limit, read-only or delayed flag. A member no render declares is now
-  nobody's to write.
-
-- A pooled widget carried the props a previous consumer had declared on it into its next mount: the
-  recorded value a dropped `Focusable`, `TabIndex`, `DelegatesFocus` or text-input prop restores
-  belongs to the tree that declared it, and survived into the tree that recycled the element. The
-  next consumer's own assignment to the same property was then overwritten on the first re-render
-  that dropped a prop or changed a neighbouring one.
+- A pooled widget carried the `Focusable` default recorded under a previous consumer into its next
+  mount, so a render that dropped a declared `Focusable` prop handed the element that consumer's
+  focusability rather than the one it carried when this consumer first declared the prop. The record
+  is forgotten on the pool return every poolable type passes through.
 
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
   or `false` rather than as the value the element was constructed with — neither of which is the
