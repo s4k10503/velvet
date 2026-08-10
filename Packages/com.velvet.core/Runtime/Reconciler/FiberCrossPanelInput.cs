@@ -36,13 +36,13 @@ namespace Velvet
     //     further bubbling can happen at all. The unbind Action is discarded here: the host root is
     //     destroyed wholesale with its GameObject (PanelHostFactory.Destroy), taking the callbacks
     //     with it.
-    //   - ChildReconciler's registry-portal drain branch, ONCE per resolved V.Portal(targetId:) target
-    //     element (see ReconcilerContext.SamePanelPortalBridges). A same-panel target DOES have a
-    //     physical parent chain that keeps bubbling on its own, but that chain reflects the target's
-    //     OWN position, not the Portal's LOGICAL one, so this bridge still needs to run to reach the
-    //     latter. The unbind Action is retained and invoked at Reconciler.Dispose: a registry target
-    //     is an ordinary, already-live user element that normally outlives this reconciler, unlike a
-    //     framework-owned host root.
+    //   - ChildReconciler's same-panel drain branch, ONCE per resolved target of a V.Portal(targetId:)
+    //     or V.Portal(target:) (see ReconcilerContext.SamePanelPortalBridges). A same-panel target DOES
+    //     have a physical parent chain that keeps bubbling on its own, but that chain reflects the
+    //     target's OWN position, not the Portal's LOGICAL one, so this bridge still needs to run to
+    //     reach the latter. The unbind Action is retained and invoked when the last Portal on that
+    //     target unmounts, or at Reconciler.Dispose: a same-panel target is an ordinary element the
+    //     app or the tree owns, not a framework-owned host root destroyed wholesale.
     //
     // Uses a single root-level listener per event type that walks the physical parent chain,
     // redirecting through a fiber's logical parent only at a nested portal / world-space boundary
@@ -70,8 +70,8 @@ namespace Velvet
     {
         // Registers one BubbleUp listener per synthetic-bubbling-eligible event type on bridgeAnchor —
         // either a newly created host panel's root (called once, from PanelHostFactory) or a resolved
-        // V.Portal(targetId:) target element (called once per target, from ChildReconciler's registry-
-        // portal drain branch — see ReconcilerContext.SamePanelPortalBridges for the attach-once guard).
+        // same-panel target element (called once per target, from ChildReconciler's same-panel drain
+        // branch — see ReconcilerContext.SamePanelPortalBridges for the attach-once guard).
         // Each listener fires only after UI Toolkit's own native dispatch has already bubbled the event
         // through every element AT OR BELOW bridgeAnchor (BubbleUp is the last phase to run on a given
         // element), so nothing here duplicates a handler UI Toolkit's own dispatcher already invoked at
