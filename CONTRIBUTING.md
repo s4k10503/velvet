@@ -9,6 +9,54 @@ they may be slow or sparse, and not every change can be merged.
 If you need Velvet to move on your own timeline, **forking is encouraged**. The MIT license
 lets you build on it and maintain your own line freely — no need to wait on upstream.
 
+### What a pull request says it came from
+
+A pull request opens by naming its origin. If it closes an issue, the first line closes it on merge:
+
+```
+Closes #123.
+```
+
+If it closes nothing — a tooling change, a release, something noticed while reading — say so with a
+reason, on a line of its own:
+
+```
+No issue: found while reading the pool reset helpers.
+```
+
+Either answer is fine; the silence is not, and it is the one that happened: a change that came
+straight out of an issue was merged without linking it, so the issue stayed open with its work
+already shipped. `refuse/pr_body_of_another_branch.py` declines a `gh pr create` whose body carries
+neither. An answer is a closing or referring keyword — Closes, Fixes, Resolves, Refs — against the
+number right after it, or the issue's own URL. A number on its own is not one: a colour is six digits
+behind a `#`, and a number mentioned in passing closes nothing on merge.
+
+The guard reads the description that will be posted, so the body has to exist before the command
+runs. What it cannot read it declines rather than skips, and that is the part you are most likely to
+meet:
+
+- the file is not there — write the body in a step of its own and open the pull request in the next,
+  because a heredoc in the same command has not run yet when the guard looks;
+- the path is still unexpanded, or the body comes from stdin;
+- the command changes directory and the body path is relative, so `gh` would open a different file
+  than this one reads — give the body an absolute path.
+
+A command carrying no body operand at all — `--fill` and its relatives, `--template`, `--editor`, the
+interactive form — holds no text here, so the question goes unasked, and `--dry-run` or `--help`
+opens nothing to ask about. Only `gh pr create` is asked: `gh pr edit --body-file` is how an answer
+gets added after the fact.
+
+It does not judge what the body is about, and no longer tries to. An earlier version dated the body
+file against the branch's first commit. Posed the leftover it existed for — a body stamped when one
+pull request here was opened, against the branch of the next, whose first commit lands sixteen
+seconds later — it allowed it, the window being fifteen minutes wide. Widening or narrowing that
+window does not help: a `PreToolUse` hook runs first, so the file it would date is whatever was
+already at the path rather than the description that will be posted.
+
+A gh that the parser does not recognise — behind sudo or bash -c, or with gh's own options before the
+subcommand — is not seen at all rather than refused. Four attempts to reach it each refused ordinary
+commands or broke a sibling guard, so the guard stops where it can answer.
+
 ## Local development
 
 1. Install **Unity 6000.3.11f1** (see `ProjectSettings/ProjectVersion.txt`).
