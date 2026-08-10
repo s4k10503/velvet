@@ -534,6 +534,11 @@ namespace Velvet
         /// <summary>
         /// Creates a TextField.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/> and
+        /// <paramref name="isDelayed"/> are undeclared when null rather than reset to a default;
+        /// <c>Documentation~/react-migration.md</c> owns what a null and a dropped one each do.
+        /// </remarks>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="value">Current text value (controlled).</param>
         /// <param name="onValueChanged">Handler invoked when the input text changes.</param>
@@ -541,6 +546,10 @@ namespace Velvet
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="label">Label text shown next to the field.</param>
         /// <param name="isPasswordField">When true, masks the input as a password field.</param>
+        /// <param name="placeholder">A short hint shown in the empty field (HTML <c>placeholder</c>). An empty string declares an empty hint.</param>
+        /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
+        /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
+        /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
         /// <param name="enabled">When false, disables user input.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
@@ -557,6 +566,10 @@ namespace Velvet
             string? name = null,
             string? label = null,
             bool? isPasswordField = null,
+            string? placeholder = null,
+            int? maxLength = null,
+            bool? isReadOnly = null,
+            bool? isDelayed = null,
             bool? enabled = null,
             Func<VisualElement, Action>? refCallback = null,
             string? whileHoverClass = null,
@@ -567,15 +580,18 @@ namespace Velvet
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
+            var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
+                                    || isReadOnly.HasValue || isDelayed.HasValue;
+
             FiberElementProps? props = null;
-            if (value != null || label != null || isPasswordField.HasValue || enabled.HasValue)
+            if (value != null || label != null || declaresTextField || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
                 props.FieldValue = value;
                 props.Text = label;
                 props.Enabled = enabled;
-                props.TextField = isPasswordField.HasValue
-                    ? new TextFieldSettings(isPasswordField)
+                props.TextField = declaresTextField
+                    ? new TextFieldSettings(isPasswordField, placeholder, maxLength, isReadOnly, isDelayed)
                     : null;
             }
             props = WithAttributes(props, data, aria);

@@ -130,6 +130,7 @@ namespace Velvet
         // unrelated mount.
         private static void ReturnToPool(VisualElement element)
         {
+            FiberPropApplier.ForgetRecordedDefaults(element);
             var type = element.GetType();
             if (type == typeof(TextField))
             {
