@@ -113,6 +113,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_onto_unpublished_release.py\"",
             "timeout": 25000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/pr_body_of_another_branch.py\"",
+            "timeout": 15000
           }
         ]
       },

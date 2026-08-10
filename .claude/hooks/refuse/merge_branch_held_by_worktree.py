@@ -25,6 +25,9 @@ from shell_commands import program_invocations, unexpanded
 import repository
 
 
+HOOK_TOOLS = {"Bash"}
+
+
 # An operand the shell has not expanded yet resolves to nothing readable, and a merge guard errs
 # toward refusing: allowing means --delete-branch half-fails after the merge has already landed.
 UNEXPANDED_POLICY = "refuse"
@@ -90,7 +93,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     cwd = event.get("cwd") or "."

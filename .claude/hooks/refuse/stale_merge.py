@@ -21,6 +21,8 @@ from shell_commands import program_invocations, unexpanded
 from velvet_hooks import BRANCH_BASES
 
 
+HOOK_TOOLS = {"Bash"}
+
 # What an operand the shell has not expanded yet resolves to, which is nothing this can read. A merge
 # guard errs toward refusing: allowing means the branch is merged with the check it exists for never
 # having run, and the merge is what cannot be taken back.
@@ -70,6 +72,8 @@ def main():
     try:
         payload = json.load(sys.stdin)
     except ValueError:
+        return 0
+    if payload.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     command = (payload.get("tool_input") or {}).get("command") or ""
