@@ -852,7 +852,7 @@ namespace Velvet
                 // Patching the existing children into the replacement is what is not available: this
                 // portal's slot range addresses positions in the element it mounted into, and reusing it
                 // against another element's children would diff one portal's range against another's.
-                _host.ReleasePortalRangeForRetarget(placeholder, registered);
+                _host.ReleasePortalRangeForRetarget(placeholder);
             }
 
             // Mounted before the id was registered (the mount warned and recorded no
@@ -863,6 +863,19 @@ namespace Velvet
             {
                 FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
                 return (null, false);
+            }
+            // Both entrances reach here holding a range that addresses nothing on this target — the
+            // unregistered mount recorded slot 0 against no element at all, the retarget emptied the range
+            // it held on a different one — so the range is rebased to the end of whatever this target
+            // already holds, the slot ChildReconciler's deferred-mount pass would have taken. Patching from
+            // an unrebased slot 0 instead diffs this Portal's first child against the container's own.
+            if (_ctx.PortalState.TryGetValue(placeholder, out var released))
+            {
+                _ctx.PortalState[placeholder] = released with
+                {
+                    SlotStart = LogicalChildSlots.Count(resolvedTarget),
+                    SlotLength = 0,
+                };
             }
             // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
             // target — a mount while the id was unregistered enqueued no drain entry at all, and a

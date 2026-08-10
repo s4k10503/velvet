@@ -436,6 +436,37 @@ namespace Velvet
             DisposeFibersUnder(new HashSet<VisualElement> { root });
         }
 
+        // Disposes the inline fibers whose output occupies [slotStart, slotStart + slotLength) of
+        // mountPoint. The containment form above cannot express this selection: a Portal's TOP-LEVEL
+        // Component child mounts inline with the portal TARGET as its MountPoint, so it is a sibling of
+        // the elements a portal teardown removes rather than a descendant of any of them, and the
+        // parent-walk steps straight past it. Selecting by MountPoint alone would be wrong in the other
+        // direction — one target carries the ranges of several Portals plus whatever rendered the target
+        // itself — so the slot range is what separates them. FiberElementCleaner.CleanupPortal owns the
+        // call and the range it passes.
+        internal void DisposeInlineFibersInSlotRange(VisualElement mountPoint, int slotStart, int slotLength)
+        {
+            if (mountPoint == null || slotLength <= 0 || _inlineFiberToKey.Count == 0) return;
+            var slotEnd = slotStart + slotLength;
+            List<ComponentFiber>? doomed = null;
+            foreach (var entry in _inlineFiberToKey)
+            {
+                var fiber = entry.Key;
+                if (fiber == null || fiber.IsDisposed) continue;
+                if (!ReferenceEquals(fiber.MountPoint, mountPoint)) continue;
+                if (fiber.MountSlotStart < slotStart || fiber.MountSlotStart >= slotEnd) continue;
+                (doomed ??= new List<ComponentFiber>()).Add(fiber);
+            }
+            if (doomed == null) return;
+            // Snapshotted first: DisposeFiberInternal mutates the dictionary this walk reads, through
+            // its own child cleanup cascades as well as its own unregister.
+            foreach (var fiber in doomed)
+            {
+                if (fiber.IsDisposed) continue;
+                DisposeFiberInternal(fiber);
+            }
+        }
+
         private static bool IsInsideAny(VisualElement? mountPoint, HashSet<VisualElement> roots)
         {
             for (var ve = mountPoint; ve != null; ve = ve.parent)

@@ -27,11 +27,15 @@ container's portal into another's, so the old unmounts and the new mounts, which
 id again with a different element all move them, and the children arrive after whatever the new
 container already held.
 
-Registering an id again is the one of those nothing would otherwise notice: a portal re-reads the
-registry only when it is patched, and a registration causes no patch of its own. `Register`
-therefore asks the components that declared the portals on that id to render again, and the move
-lands on that render rather than inside the `Register` call. Registering the same element again, and unregistering the id, both leave
-a live portal where it is — an unregistered id names nothing to move to.
+Registering an id is the one of those nothing would otherwise notice: a portal re-reads the registry
+only when it is patched, and a registration causes no patch of its own. `Register` therefore asks the
+components that declared the portals on that id to render again, and the move lands on that render
+rather than inside the `Register` call. The same signal is what starts a portal declared before its
+id existed — that one warns and renders nothing at mount, and its children appear on the first
+registration rather than waiting for the declaring component to re-render for some reason of its own.
+Registering the same element again, and
+unregistering the id, both leave a live portal where it is — an unregistered id names nothing to move
+to.
 
 Moving is an unmount and a remount, so child state, refs and effects do not survive it.
 

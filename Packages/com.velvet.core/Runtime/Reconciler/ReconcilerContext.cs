@@ -17,8 +17,8 @@ namespace Velvet
     // TargetId is carried for the one flavor whose element can be replaced under it: it is what
     // ReconcilerContext.OnPortalTargetRegistered matches an incoming registration against, and it is null
     // for the layer, world-space and caller-held-element flavors, which no registration addresses.
-    // DeclaringFiber is the component that rendered the node — the one whose re-render carries a
-    // replacement into a patch — and is null for a Portal rendered outside any component body.
+    // DeclaringFiber is the component that rendered the node — the one whose re-render carries the
+    // registered element into a patch — and is null for a Portal rendered outside any component body.
     internal readonly record struct PortalSlotInfo(
         VisualElement? Target, int SlotStart, int SlotLength,
         string? TargetId = null, ComponentFiber? DeclaringFiber = null);
@@ -1274,12 +1274,17 @@ namespace Velvet
             FiberPortalRegistry.TargetRegistered += OnPortalTargetRegistered;
         }
 
-        // Carries a registration to the Portals on that id holding a different element. A Portal
+        // Carries a registration to the Portals on that id not already on the registered element. A Portal
         // re-reads the registry only when it is patched, and a registration causes no patch of its own,
-        // so the swap reaches one only by asking its declaring component to render again;
-        // FiberNodePatcher.ResolvePortalTarget owns what that patch then does. The memo cache is dropped
-        // first because a component whose hook inputs and props are unchanged otherwise hands back the
-        // same VNode instances, and the reconciler skips a reference-identical node without patching it.
+        // so the registration reaches one only by asking its declaring component to render again;
+        // FiberNodePatcher.ResolvePortalTarget owns what that patch then does. Portals holding NO element
+        // are included, which is the ordinary first run: a Portal whose id was still unregistered when it
+        // mounted warned, recorded no target, and would otherwise stay empty until its declaring
+        // component happened to re-render for a reason of its own. Register
+        // rejects a null target, so a recorded null is never reference-equal to one and the no-op case
+        // below still excludes only a genuine re-registration of the same element. The memo cache is
+        // dropped first because a component whose hook inputs and props are unchanged otherwise hands back
+        // the same VNode instances, and the reconciler skips a reference-identical node without patching it.
         private void OnPortalTargetRegistered(string id, VisualElement registered)
         {
             if (IsDisposed)
@@ -1288,7 +1293,7 @@ namespace Velvet
             }
             foreach (var info in PortalState.Values)
             {
-                if (info.TargetId != id || info.Target == null || ReferenceEquals(info.Target, registered))
+                if (info.TargetId != id || ReferenceEquals(info.Target, registered))
                 {
                     continue;
                 }

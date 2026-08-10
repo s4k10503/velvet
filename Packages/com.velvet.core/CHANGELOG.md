@@ -41,7 +41,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no warning and no way back short of changing the id or the key. The move is an unmount and a
   remount, the same as a changed `createPortal` container, so state, refs and effects under the portal
   do not survive it. Registering the same element again, and unregistering the id, still leave a live
-  portal exactly where it is.
+  portal exactly where it is. A portal declared before its id existed follows the same signal: its
+  children now appear on the first registration, where they used to wait for an unrelated re-render of
+  the declaring component and stay invisible until one happened.
+- A portal that resolved its id late no longer writes over the container's own first child. It
+  recorded its range from slot 0 while the id was unregistered and never rebased it, so the healing
+  patch reconciled its first child against whatever the container already held — an overlay root with
+  a backdrop had the backdrop painted into the portal's content, and the portal's own child never
+  arrived. The range is now taken from the end of the container's children, the same place a portal
+  that resolved at mount takes it.
+- A `V.Component` written directly under a `V.Portal` is now disposed when the portal's children leave
+  the container — its own unmount and a move to another container alike. Its effect cleanups never ran
+  and its hook state was never released, so a subscription a closing modal's top-level component
+  opened outlived the modal.
 - A second `Mutate` call no longer cancels the first or drops its callbacks. Both run, each delivers
   its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which
   is what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to

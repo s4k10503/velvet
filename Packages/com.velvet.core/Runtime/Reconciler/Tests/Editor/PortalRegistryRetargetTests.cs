@@ -9,18 +9,25 @@ using Velvet.TestUtilities;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what happens to an already-mounted <c>V.Portal(targetId:)</c> when its id is registered
-    /// again with a DIFFERENT element.
+    /// Specifies what a registration on a <c>V.Portal(targetId:)</c>'s id does to the portals already
+    /// mounted on it — both entrances to <c>FiberNodePatcher.ResolvePortalTarget</c>'s shared mounting
+    /// tail: an id registered again with a DIFFERENT element, and an id registered for the first time
+    /// under a portal that mounted while it was unregistered.
     /// <list type="bullet">
     /// <item>The children follow the id: they leave the element they were mounted into and appear in the
     /// replacement, after whatever that element already held.</item>
     /// <item>They arrive as a remount, not a reparent — the same route the element-valued form takes.</item>
     /// <item>The move is driven by the registration itself, without the declaring component having any
-    /// reason of its own to re-render.</item>
+    /// reason of its own to re-render — including the first registration, which a portal that warned at
+    /// mount has nothing else to wake it.</item>
+    /// <item>Either entrance addresses its slot range from the end of the target's own children rather
+    /// than from slot 0, so the container keeps them while the portal is mounted and after it goes.</item>
     /// <item>The synthetic-bubbling bridge follows: the replaced element loses it unless another live
     /// portal still resolves to it.</item>
     /// <item>A portal whose slot range sat after the departing one on the replaced element keeps
     /// addressing its own children.</item>
+    /// <item>A <c>V.Component</c> written directly under the portal is disposed when the children leave
+    /// the container — the element-sibling case the containment-based fiber sweep cannot reach.</item>
     /// </list>
     /// Re-registering the SAME element, and unregistering the id outright, both leave a live portal alone —
     /// <see cref="PortalTests"/> owns the unregistration case.
@@ -36,6 +43,8 @@ namespace Velvet.Tests
         {
             _reconciler = new Reconciler();
             _root = new VisualElement();
+            s_siblingRegistered = null;
+            s_childCleanups = 0;
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
@@ -312,6 +321,152 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((original.childCount, Names(replacement)), Is.EqualTo((0, "one|two")));
+        }
+
+        [Test]
+        public void Given_ATargetRegisteredAfterTheMountHoldingItsOwnChildren_When_ThePortalHeals_Then_ItAppendsAfterThem()
+        {
+            // Arrange — the other entrance to the same tail: a mount while the id was unregistered records
+            // no target at all, so the first patch after the registration is where its slot range has to be
+            // addressed at the end of whatever the container already holds.
+            var target = new VisualElement();
+            target.Add(new Label { name = "backdrop" });
+            var tree = Tree("modal-root", "modal");
+            LogAssert.Expect(LogType.Warning,
+                "[Portal] Target \"modal-root\" is not registered. Children will not be rendered.");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            FiberPortalRegistry.Register("modal-root", target);
+
+            // Act
+            _reconciler.Reconcile(_root, tree, Tree("modal-root", "modal"));
+
+            // Assert
+            Assert.That(Names(target), Is.EqualTo("backdrop|modal"));
+        }
+
+        [Test]
+        public void Given_APortalHealedOntoATargetHoldingItsOwnChildren_When_ItUnmounts_Then_TheContainerKeepsThem()
+        {
+            // Arrange — the unmount tears out the range the heal recorded, so a heal that patched its
+            // content onto the container's own child instead of appending leaves that child behind,
+            // carrying the portal's content, with nothing recorded to remove.
+            var target = new VisualElement();
+            target.Add(new Label { name = "backdrop" });
+            var tree = Tree("modal-root", "modal");
+            LogAssert.Expect(LogType.Warning,
+                "[Portal] Target \"modal-root\" is not registered. Children will not be rendered.");
+            _reconciler.Reconcile(_root, Array.Empty<VNode>(), tree);
+            FiberPortalRegistry.Register("modal-root", target);
+            var healed = Tree("modal-root", "modal");
+            _reconciler.Reconcile(_root, tree, healed);
+
+            // Act
+            _reconciler.Reconcile(_root, healed, Array.Empty<VNode>());
+
+            // Assert
+            Assert.That(Names(target), Is.EqualTo("backdrop"));
+        }
+
+        private static VisualElement? s_siblingRegistered;
+
+        [Component]
+        private static VNode SiblingRegistersHost() =>
+            V.Div(children: new VNode?[]
+            {
+                V.Portal("notify-target", children: new VNode?[] { V.Div(name: "content") }),
+                V.Div(refCallback: el =>
+                {
+                    s_siblingRegistered = el;
+                    FiberPortalRegistry.Register("notify-target", el);
+                    return () => FiberPortalRegistry.Unregister("notify-target");
+                }),
+            });
+
+        [Test]
+        public void Given_APortalMountedBeforeItsIdExisted_When_ASiblingRefCallbackRegistersIt_Then_TheChildrenStillFollow()
+        {
+            // Arrange — CreateElement reaches the portal before the sibling, so the mount warns and records
+            // no target; the registration the sibling's ref then makes is the only thing that can reach it.
+            LogAssert.Expect(LogType.Warning,
+                "[Portal] Target \"notify-target\" is not registered. Children will not be rendered.");
+
+            // Act
+            _mounted = V.Mount(new VisualElement(), V.Component(SiblingRegistersHost, key: "host"));
+            _mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_siblingRegistered == null ? "<never registered>" : Names(s_siblingRegistered),
+                Is.EqualTo("content"));
+        }
+
+        private static int s_childCleanups;
+
+        [Component]
+        private static VNode PortalChildWithEffect()
+        {
+            Hooks.UseEffect(() => (Action)(() => s_childCleanups++), Array.Empty<object>());
+            return V.Div(name: "content");
+        }
+
+        [Component]
+        private static VNode ComponentChildPortalHost() =>
+            V.Portal("notify-target", children: new VNode?[] { V.Component(PortalChildWithEffect, key: "c") });
+
+        [Test]
+        public void Given_ATopLevelComponentChild_When_TheIdIsReRegistered_Then_ItsEffectCleanupRuns()
+        {
+            // Arrange
+            var original = new VisualElement();
+            var replacement = new VisualElement();
+            FiberPortalRegistry.Register("notify-target", original);
+            _mounted = V.Mount(new VisualElement(), V.Component(ComponentChildPortalHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_childCleanups = 0;
+            ExpectOverwriteWarning("notify-target");
+
+            // Act
+            FiberPortalRegistry.Register("notify-target", replacement);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_childCleanups, Is.EqualTo(1));
+        }
+
+        private static StateUpdater<bool> s_setDropped;
+
+        [Component]
+        private static VNode DroppablePortalHost()
+        {
+            var (dropped, setDropped) = Hooks.UseState(false);
+            s_setDropped = setDropped;
+            return V.Div(children: new VNode?[]
+            {
+                dropped
+                    ? null
+                    : V.Portal("notify-target",
+                        children: new VNode?[] { V.Component(PortalChildWithEffect, key: "c") }),
+            });
+        }
+
+        [Test]
+        public void Given_ATopLevelComponentChild_When_ThePortalUnmounts_Then_ItsEffectCleanupRuns()
+        {
+            // Arrange — the same disposal the move relies on, reached by the ordinary teardown: this one
+            // needs no registration at all and is what a closing modal runs.
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("notify-target", target);
+            _mounted = V.Mount(new VisualElement(), V.Component(DroppablePortalHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_childCleanups = 0;
+
+            // Act
+            s_setDropped.Invoke(true);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_childCleanups, Is.EqualTo(1));
         }
     }
 }
