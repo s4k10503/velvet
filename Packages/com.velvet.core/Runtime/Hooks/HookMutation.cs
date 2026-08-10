@@ -66,7 +66,8 @@ namespace Velvet
         public bool IsSuccess => Status == MutationStatus.Success;
         /// <summary>True when the last mutation threw.</summary>
         public bool IsError => Status == MutationStatus.Error;
-        /// <summary>Result of the last successful mutation, or default when none has succeeded.</summary>
+        /// <summary>Result of the most recent call, or default until that call has produced one. Starting
+        /// a call clears it, so a pending or failed call never shows an earlier call's result.</summary>
         public TData? Data { get; internal set; }
         /// <summary>Exception from the last failed mutation, or null.</summary>
         public Exception? Error { get; internal set; }
