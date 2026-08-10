@@ -202,9 +202,108 @@ jobs:
             ${BASE:+--base "$BASE"}
 
   # ---------------------------------------------------------------------------
+  # A test written to pin a change has to be red without it, and nothing here asked. The Python half
+  # of that question is answered outright: base_red_check.py checks out the merge base, copies this
+  # branch's changed test modules onto it, and runs the changed cases there, which for Python is the
+  # whole run and costs seconds. The C# half needs an editor and is in `base-red` below.
+  #
+  # fetch-depth 0 because the merge base is what the question is asked against, and a shallow clone
+  # has no merge base to find.
+  # ---------------------------------------------------------------------------
+  base-red-python:
+    name: Base-red check (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          python3 scripts/test_quality/base_red_check.py --lane python \
+            --base "${BASE:-HEAD^}"
+
+  # ---------------------------------------------------------------------------
+  # The C# half of the same question. It reaches Unity through the same action the suite does, so it
+  # is split in two: the first step builds the base tree and writes what it read, the action runs the
+  # fixtures over that tree, and the last step takes the verdict from the results file. Nothing in
+  # between has to hand back an editor log.
+  #
+  # needs: unity-tests is load-bearing rather than tidiness. "It did not compile on the base" is only
+  # evidence about the branch where the same file compiles ON the branch, and that job is what says so.
+  #
+  # This is one round of a loop the local harness runs to a fixed point, and the difference decides
+  # what it can catch. A base that cannot build one carried file writes no results for anything, so a
+  # single round cannot tell which file that was: it reads as the base building none of the branch's
+  # tests, which passes. The harness withdraws one carried file and asks again until something runs,
+  # which is how it separates them — so `base_red_check.py` run locally is the sharper reading of the
+  # same branch, and what stays here is the case the base DID build and answer green, which is the
+  # one this exists for.
+  # ---------------------------------------------------------------------------
+  base-red:
+    name: Base-red check (${{ matrix.testMode }})
+    needs: [license-check, unity-tests]
+    if: needs.license-check.outputs.has_license == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        testMode: [EditMode, PlayMode]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - id: read
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 scripts/test_quality/base_red_check.py --lane csharp \
+            --platform "${{ matrix.testMode }}" --base "$BASE" \
+            --base-tree base-tree --emit plan.json | tee reading.txt
+          grep '^fixtures=' reading.txt >> "$GITHUB_OUTPUT" || true
+
+      # After the reading, not before: the tree is a worktree git refuses to create over a directory
+      # that already holds a Library.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: steps.read.outputs.fixtures != ''
+        with:
+          path: base-tree/Library
+          key: BaseLibrary-${{ matrix.testMode }}-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            BaseLibrary-${{ matrix.testMode }}-
+
+      # continue-on-error because a base that cannot build the branch's test file is the answer, not
+      # a broken job. Which of the two it was is settled by the step after this from the results file.
+      - uses: game-ci/unity-test-runner@0ff419b913a3630032cbe0de48a0099b5a9f0ed9 # v4
+        if: steps.read.outputs.fixtures != ''
+        continue-on-error: true
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          # The version unity-tests runs, for the reason stated there.
+          unityVersion: 6000.3.21f1
+          testMode: ${{ matrix.testMode }}
+          projectPath: base-tree
+          artifactsPath: base-results
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          customParameters: -testFilter "${{ steps.read.outputs.fixtures }}"
+
+      - if: steps.read.outputs.fixtures != ''
+        run: |
+          python3 scripts/test_quality/base_red_check.py \
+            --verdict plan.json --results base-results
+
+  # ---------------------------------------------------------------------------
   # mutation_check.py needs a licence to kill a mutant, but not to build one, and the building is
   # the half everything else rests on: an operator that emits uncompilable C# reports that mutant as
-  # noise rather than as a survivor, so a real hole hides behind it. That half runs here.
+  # noise rather than as a survivor, so a real hole hides behind it. That half runs here, and
+  # base_red_check.py's reader is here for the same reason: a case its parser misses is a case the
+  # base is never asked about, and the run comes back green having measured one fewer thing.
   # ---------------------------------------------------------------------------
   test-quality:
     name: Test quality
@@ -215,6 +314,8 @@ jobs:
       - run: python3 scripts/test_quality/test_mutation_check.py
 
       - run: python3 scripts/test_quality/test_neuter_check.py
+
+      - run: python3 scripts/test_quality/test_base_red_check.py
 
   # ---------------------------------------------------------------------------
   # The one check branch protection requires from this workflow. Naming a real
@@ -230,11 +331,11 @@ jobs:
   required-checks:
     name: Required checks (Unity)
     if: always()
-    needs: [license-check, unity-tests, release-notes, publication, test-quality]
+    needs: [license-check, unity-tests, release-notes, publication, test-quality, base-red-python, base-red]
     runs-on: ubuntu-latest
     steps:
       - env:
-          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }}
+          RESULTS: ${{ needs.license-check.result }} ${{ needs.unity-tests.result }} ${{ needs.release-notes.result }} ${{ needs.publication.result }} ${{ needs.test-quality.result }} ${{ needs.base-red-python.result }} ${{ needs.base-red.result }}
         run: |
           failed=0
           for result in $RESULTS; do

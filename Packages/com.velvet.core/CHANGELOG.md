@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so a subscription a closing modal's top-level component opened outlived the modal. The disposal
   follows the portal the component was written under, so on a container several portals share, one of
   them closing leaves the others' components mounted and takes only its own.
+- Two `V.Suspense` boundaries in one component's render no longer share a single suspended mark. One
+  showing its fallback while a second, placed after it, rendered its children left the component
+  unmarked, so a state update inside the first one's hidden children stopped being deferred and
+  committed into the slot range its fallback occupied — the fallback disappeared from the tree.
+  Whether a boundary is showing a fallback is now read off the per-boundary record each `V.Suspense`
+  writes under its own position, so a sibling that resolves cannot clear it. Ordering decided it:
+  the same two boundaries with the resolved one placed first were unaffected.
 - A second `Mutate` call no longer cancels the first or drops its callbacks. Both run, each delivers
   its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which
   is what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to

@@ -22,7 +22,8 @@ namespace Velvet.Tests
     /// <item>A nested boundary catches its own descendant's suspension, so an outer boundary does not over-suspend
     /// when only the inner boundary's primary is pending.</item>
     /// <item>Sibling Suspense boundaries are tracked independently: resolving one boundary's child leaves the
-    /// other sibling's fallback unchanged.</item>
+    /// other sibling's fallback unchanged, and one showing its fallback while a later sibling renders its
+    /// children keeps its own hidden descendants deferred without deferring that sibling's.</item>
     /// <item>A <c>Hooks.Use</c> resource that faults — synchronously or asynchronously — routes the exception to
     /// the nearest enclosing error boundary rather than the fallback.</item>
     /// <item>An unrelated parent re-render does not remove a still-pending child's fallback.</item>
@@ -61,6 +62,7 @@ namespace Velvet.Tests
             ResetAsyncChild();
             ResetTwoUses();
             ResetSiblingBoundaries();
+            ResetOffscreenSibling();
             ResetSuspenseHost();
             ResetParentRerender();
             ResetRootless();
@@ -341,6 +343,51 @@ namespace Velvet.Tests
             // Assert — boundary B is unaffected and keeps its own fallback
             Assert.That(_root.FindLabelByText("loading-B"), Is.Not.Null,
                 "Resolving one sibling boundary does not pull the other out of (or push it further into) its fallback");
+        }
+
+        [Test]
+        public void Given_SuspendedBoundaryFollowedByResolvedSibling_When_OffscreenDescendantUpdates_Then_FallbackSurvives()
+        {
+            // Arrange — the suspended Suspense is expanded BEFORE the resolved one. That order is what used
+            // to lose the boundary's suspended mark to the resolved sibling's expansion.
+            var source = new UniTaskCompletionSource<string>();
+            s_offscreenFactory = _ => source.Task;
+            using var mounted = V.Mount(_root, V.Component(OffscreenSiblingHostRender, key: "host"));
+            Assume.That(_root.FindLabelByText("sibling-0"), Is.Not.Null,
+                "Precondition: the second Suspense renders its children, not its fallback");
+
+            // Act — a state update on a fiber inside the suspended Suspense's offscreen primary subtree
+            s_offscreenSetter.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.FindLabelByText("loading-A"), Is.Not.Null,
+                "An offscreen primary descendant's flush is deferred, so the committed fallback stays in its slot");
+        }
+
+        // GREEN_ON_BASE(characterization): the base reaches this outcome by never deferring at all —
+        // the boundary-wide mark this branch replaces had already been cleared by this sibling's own
+        // expansion, which is the defect the case above pins. The replacement does report a fallback up
+        // for this boundary, so these children now reach the offscreen walk and what keeps them flushing
+        // is its per-fiber check: widen that marking to the boundary and this case goes red.
+        [Test]
+        public void Given_SuspendedBoundaryFollowedByResolvedSibling_When_ResolvedSiblingsDescendantUpdates_Then_ItRerenders()
+        {
+            // Arrange — the same boundary fiber owns both Suspense nodes, so keeping the suspended one's
+            // mark up must not reach the resolved one's children
+            var source = new UniTaskCompletionSource<string>();
+            s_offscreenFactory = _ => source.Task;
+            using var mounted = V.Mount(_root, V.Component(OffscreenSiblingHostRender, key: "host"));
+            Assume.That(_root.FindLabelByText("loading-A"), Is.Not.Null,
+                "Precondition: the first Suspense is showing its fallback");
+
+            // Act
+            s_resolvedSiblingSetter.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.FindLabelByText("sibling-1"), Is.Not.Null,
+                "A descendant of the resolved sibling Suspense is not offscreen, so its own flush still commits");
         }
 
         #endregion
@@ -826,6 +873,64 @@ namespace Velvet.Tests
                 V.Suspense(
                     fallback: V.Label(text: "loading-B"),
                     children: new VNode[] { V.Component(SiblingChildBRender, key: "childB") },
+                    key: "b"),
+            });
+
+        #endregion
+
+        #region OffscreenSibling components (a suspending V.Suspense followed by a resolving one)
+
+        private static Func<CancellationToken, UniTask<string>> s_offscreenFactory;
+        private static Action<int> s_offscreenSetter;
+        private static Action<int> s_resolvedSiblingSetter;
+
+        private static void ResetOffscreenSibling()
+        {
+            s_offscreenFactory = null;
+            s_offscreenSetter = null;
+            s_resolvedSiblingSetter = null;
+        }
+
+        // Renders before its suspending sibling so its fiber is created — and its setter captured — while
+        // the boundary's primary expansion is still in progress.
+        [Component]
+        private static VNode OffscreenStatefulChildRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_offscreenSetter = setTick;
+            return V.Label(text: $"primary-{tick}");
+        }
+
+        [Component]
+        private static VNode ResolvedSiblingStatefulChildRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_resolvedSiblingSetter = setTick;
+            return V.Label(text: $"sibling-{tick}");
+        }
+
+        [Component]
+        private static VNode OffscreenSuspendingChildRender()
+        {
+            var value = Hooks.Use(s_offscreenFactory, "offscreen");
+            return V.Label(text: value);
+        }
+
+        [Component]
+        private static VNode OffscreenSiblingHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading-A"),
+                    children: new VNode[]
+                    {
+                        V.Component(OffscreenStatefulChildRender, key: "stateful"),
+                        V.Component(OffscreenSuspendingChildRender, key: "suspending"),
+                    },
+                    key: "a"),
+                V.Suspense(
+                    fallback: V.Label(text: "loading-B"),
+                    children: new VNode[] { V.Component(ResolvedSiblingStatefulChildRender, key: "sibling") },
                     key: "b"),
             });
 

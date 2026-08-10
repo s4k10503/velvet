@@ -146,6 +146,56 @@ another disappears leaves identical. `scripts/test_quality/neuter_holes.txt` car
 `--report` regenerates it, so a sweep is read as a diff against it. Nothing runs the sweep automatically:
 wiring it into CI needs a licence activation this repository does not have.
 
+### Checking that a new test could have failed
+
+Both instruments above ask what happens when the production code is broken on purpose.
+`scripts/test_quality/base_red_check.py` asks the cheaper question first, and the one a pull request is
+actually claiming: was this case red before the change it says it pins? It checks out the merge base,
+copies the branch's changed test files onto it, and runs the cases the branch wrote there.
+
+```bash
+python3 scripts/test_quality/base_red_check.py --base origin/main --plan   # what it would ask, no run
+python3 scripts/test_quality/base_red_check.py --base origin/main --warm-library Library
+```
+
+**It passes only where every changed case was measured on a base tree that demonstrably answers.** Most
+of what goes wrong with a run like this ends in a reading nobody took, and a reading nobody took is never
+a pass. So a case that passes on the base fails the check, and a case that could not compile there does
+not — it names something the branch adds, which is a pin doing its job — but that second reading is only
+believed on a tree the run proved can build and answer at all. Two things prove it. Fixtures of the
+base's own that the branch did not carry run alongside, and at least one has to pass; a run that wrote no
+results file at all fails outright rather than reading as a base that built none of the branch's tests.
+Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
+text, so one of those going red means the tree is answering about itself and that fixture's verdicts are
+withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
+cases stop being the base's text and stop being read as the instrument — the run says which and why.
+
+Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
+
+```csharp
+// GREEN_ON_BASE(characterization): the keyed-reorder order this refactor must not change.
+```
+
+```python
+# GREEN_ON_BASE(refactor): the settle-path names this rename preserves.
+```
+
+`characterization` pins behaviour the base already has; `refactor` rides with a change meant to preserve
+it. A declaration answers for the change written under it, and it is read three ways so it cannot outlive
+what it describes: one over a case that turns out red on the base fails the check, one whose category or
+reason the script refuses fails it, and one the branch did not itself write is a declaration for a change
+the base already carries and does not cover this one — restate it. The base tree is a checkout the
+machine has never imported, and that import is most of what a base run costs; `--warm-library` copies an
+existing `Library` into it, sharing blocks where the filesystem will.
+
+`Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
+`Test ▸ base-red` runs the C# lane where one is configured, but only one round of it: a base that
+cannot build one carried file writes no results for anything, and separating that file from the ones
+standing next to it takes withdrawing it and asking again, which is what the local run does and a
+workflow does not. Run it locally on a branch whose tests are the point.
+`scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
+repository and runs in `Test ▸ test-quality`.
+
 ### Repository scripts
 
 `scripts/` holds the harnesses, grouped by what they are for — `test_quality/` (mutation, neuter,
@@ -157,8 +207,8 @@ the tree readable:
   runtime or configuration file this repository does not already have; `python3` is on the CI runner and on
   every developer machine that can run the Unity suites.
 - **A script's name reaches C#.** `NeuterCutAnchorTests`, `WorkflowTriggerCoverageTests`,
-  `StarterSampleShippingTests` and `DocumentationDriftTests` each name one, so a rename that misses a
-  reference fails a pull request instead of failing the next person to run it.
+  `StarterSampleShippingTests`, `BaseRedDeclarationTests` and `DocumentationDriftTests` each name one, so
+  a rename that misses a reference fails a pull request instead of failing the next person to run it.
 
 The same holds for `.claude/hooks/` and for the two build scripts, so nothing in this repository is
 written in shell. That is not a preference about shell: the guards under `.claude/hooks/` parse a
@@ -240,6 +290,9 @@ on every platform.
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
 | `Test ▸ release-notes` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ publication` | push (filtered) / every PR / merge group | not required | no |
+| `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
+| `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
+| `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` | not required | no |
 | `UPM ▸ release` | manual (`workflow_dispatch`) | not required | no |

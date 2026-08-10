@@ -208,12 +208,12 @@ namespace Velvet
             // own re-render (scheduled when the resource resolved) re-attempts the primary subtree and commits
             // the reveal in one pass: a resolved resource schedules the boundary itself, not the
             // suspended child. Leave IsDirty set so that re-render picks this fiber up via the expansion.
-            var suspendedBoundaries = fiber.Reconciler?.Context.SuspendedBoundaries;
-            if (suspendedBoundaries is { Count: > 0 })
+            var context = fiber.Reconciler?.Context;
+            if (context is { AnyBoundaryShowingFallback: true })
             {
                 var enclosingBoundary = ComponentBoundarySearch.FindNearestSuspenseBoundary(fiber);
                 if (enclosingBoundary != null && !ReferenceEquals(enclosingBoundary, fiber)
-                    && suspendedBoundaries.Contains(enclosingBoundary))
+                    && context.IsBoundaryShowingFallback(enclosingBoundary))
                 {
                     // Defer only PRIMARY (offscreen) descendants — their slot is occupied by the
                     // fallback, so an independent flush would write into the fallback's range. A visible
