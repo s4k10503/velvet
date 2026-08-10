@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Unit tests for settle.py's merge decision.
 
-Every case is a merge that went wrong, not a rule someone thought of. The decision is separated from
-the readings precisely so these run without a network, since a guard exercised only against live
-pull requests is exercised only in the states those happen to be in.
+The decision is separated from the readings precisely so these run without a network, since a guard
+exercised only against live pull requests is exercised only in the states those happen to be in.
 
 Run: python3 scripts/pr/test_settle.py
 """
@@ -305,6 +304,50 @@ class CheckResultTests(unittest.TestCase):
 
         # Act / Assert
         self.assertRaises(RuntimeError, settle.check_results, truncated, NO_STATUSES)
+
+    def test_Given_APageThatDidNotCarryEveryCommitStatus_When_Bucketed_Then_ItRaisesRatherThanDeciding(self):
+        # Arrange — a required context truncated off the page reads as one that never ran, so the
+        # merge lands over it. Every entry that did arrive is passing, which is what hides it.
+        truncated = {"state": "failure", "total_count": 31,
+                     "statuses": [{"context": f"external/ci-{index}", "state": "success"}
+                                  for index in range(30)]}
+
+        # Act / Assert
+        self.assertRaises(RuntimeError, settle.check_results,
+                          runs(("Unity", "completed", "success")), truncated)
+
+
+class CheckReadTests(unittest.TestCase):
+    """The paths the two check surfaces are read from: neither leaves its page size to the API."""
+
+    def test_Given_BothCheckSurfaces_When_Read_Then_EachPathAsksForAPageSize(self):
+        # Arrange
+        asked = []
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
+            stack.enter_context(mock.patch.object(settle, "head_sha", lambda *_: GREEN))
+            stack.enter_context(mock.patch.object(
+                settle, "rest_json", lambda path: (asked.append(path), NO_STATUSES)[1]))
+
+            # Act
+            settle.checks(Path("."), 592)
+
+        # Assert
+        self.assertEqual(asked, [f"repos/owner/name/commits/{GREEN}/check-runs?per_page=100",
+                                 f"repos/owner/name/commits/{GREEN}/status?per_page=100"])
+
+
+class RepositoryReadTests(unittest.TestCase):
+    """Which checkout the slug is read from, since --project points this at one that is not the cwd."""
+
+    def test_Given_AProjectThatIsNotTheCwd_When_TheSlugIsRead_Then_ItComesFromThatCheckout(self):
+        # Arrange
+        with repository_holding("topic") as project:
+            subprocess.run(["git", "-C", str(project), "remote", "add", "origin",
+                            "https://github.com/elsewhere/other.git"], capture_output=True, check=True)
+
+            # Act / Assert
+            self.assertEqual(settle.repository(project), "elsewhere/other")
 
 
 def stubbed_readings(head=GREEN, branch="topic", title="A title", body="A body"):

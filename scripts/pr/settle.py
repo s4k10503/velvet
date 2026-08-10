@@ -92,7 +92,7 @@ def gh(*args):
 # REST rather than `gh pr view` / `gh pr list` / `gh pr checks` / `gh pr merge`, which go through
 # GraphQL. The two quotas are separate, and a session long enough to need this script is a session
 # long enough to exhaust the GraphQL one — which left the merge path unusable at exactly the moment
-# the most pull requests were waiting on it. `gh pr checks` was the worst of the five: out of quota
+# the most pull requests were waiting on it. `gh pr checks` was the worst of the four: out of quota
 # it returns nothing at all rather than failing, which this script read as "no workflow was ever
 # triggered for this head" and refused with a reason that was not true. Nothing here needs a field
 # REST does not carry.
@@ -170,31 +170,42 @@ def checks(project, number):
     sha = head_sha(project, number)
     slug = repository(project)
     return check_results(rest_json("repos/{}/commits/{}/check-runs?per_page=100".format(slug, sha)),
-                         rest_json("repos/{}/commits/{}/status".format(slug, sha)))
+                         rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)))
+
+
+def whole_page(payload, listed, kind):
+    """Raises when a payload says more entries exist for this head than its page carried.
+
+    A check missing from a partial read is indistinguishable from one that never ran, which the
+    empty-check-list precondition would then report as a workflow nobody triggered. Both payloads
+    go through here, because a merge decided from a partial read of either is a merge over a check
+    nobody saw.
+    """
+    total = payload.get("total_count", len(listed))
+    if total > len(listed):
+        raise RuntimeError(f"{total} {kind} exist for this head but only {len(listed)} were read")
 
 
 def check_results(runs, statuses):
     """One bucket per check, from the check-runs payload and the legacy commit-status one.
 
     One commit carries two check surfaces, and the base can require a context from either, so
-    leaving one out would decide a merge against a check nobody read. Of the status payload only the
-    individual entries take part; its rollup state is not read.
+    leaving one out would decide a merge against a check nobody read. Only the status payload's
+    individual entries become buckets; its rollup state is not read at all.
 
-    A page that did not carry everything raises rather than deciding: a check missing from a partial
-    read is indistinguishable from one that never ran, which the empty-check-list precondition would
-    then report as a workflow nobody triggered.
+    A page that did not carry everything raises rather than deciding; `whole_page` owns why.
     """
     listed = runs.get("check_runs", [])
-    total = runs.get("total_count", len(listed))
-    if total > len(listed):
-        raise RuntimeError(f"{total} check runs exist for this head but only {len(listed)} were read")
+    reported = statuses.get("statuses", [])
+    whole_page(runs, listed, "check runs")
+    whole_page(statuses, reported, "commit statuses")
     results = [{"name": run.get("name", ""),
                 "bucket": "pending" if run.get("status") != "completed"
                 else _BUCKET.get(run.get("conclusion") or "", "fail")}
                for run in listed]
     results.extend({"name": status.get("context", ""),
                     "bucket": _STATUS_BUCKET.get(status.get("state") or "", "fail")}
-                   for status in statuses.get("statuses", []))
+                   for status in reported)
     return results
 
 
@@ -419,9 +430,8 @@ def merge(project, number, base, dry_run):
     # this one refuses it.
     #
     # The squash body is passed rather than left to GitHub, which composes one from the branch's
-    # commits — landing a copy of every Co-Authored-By trailer they carry, three to sixteen apiece
-    # across the five merged that way. The pull request's description is the summary somebody wrote
-    # for the whole change, and it lands instead.
+    # commits — landing a copy of every Co-Authored-By trailer they carry. The pull request's
+    # description is the summary somebody wrote for the whole change, and it lands instead.
     title, body = pull_request_text(project, number)
     gh("api", "-X", "PUT", "repos/{}/pulls/{}/merge".format(repository(project), number),
        "-f", "merge_method=squash", "-f", "sha={}".format(blocking.head),
