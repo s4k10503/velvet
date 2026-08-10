@@ -99,13 +99,16 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
 
-**Concurrent calls** (TanStack Query v5 parity on cancellation and on the snapshot): calling
-`Mutate` twice starts two runs, neither cancels the other, each delivers its own `OnSuccess` /
-`OnError`, and `Status` / `Data` / `Error` / `Variables` are one snapshot following the newest — so
-a double-tapped button does not lose the first call's follow-up write. Starting a call resets all
-four to that call's own — `Data` included, so a pending call never shows the previous one's result.
-The `CancellationToken` handed to `MutationFn` is still cancelled when the component unmounts, which
-is what a Unity web request wants.
+**Concurrent calls.** Calling `Mutate` twice starts two runs, neither cancels the other, each
+delivers its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Error` / `Variables` are one
+snapshot following the newest — so a double-tapped button does not lose the first call's follow-up
+write. Starting a call resets all four to that call's own — `Data` included, so a pending call never
+shows the previous one's result. Not cancelling on re-entry and following the newest are v5's
+behaviour.
+
+The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
+only its variables. It is cancelled when the component unmounts, which is what a Unity web request
+wants, and it is never cancelled by a later call.
 
 **Callback error semantics** (TanStack Query v5 parity):
 
