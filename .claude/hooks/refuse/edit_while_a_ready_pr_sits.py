@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from deferrals import DEFERRALS, deferred
+from deferrals import DEFERRALS, deferred, unusable
 
 # Held on the editing tools, which carry a file path rather than a shell command, so there is no operand
 # for the shell to expand and nothing here reads one.
@@ -65,6 +65,10 @@ def sitting(now):
         if len(parts) != 2 or not parts[1].isdigit():
             continue
         number, since = parts[0], int(parts[1])
+        broken = unusable(number, now)
+        if broken is not None:
+            print(f"A deferral was written for PR #{number}, and {broken} — so it is being ignored.",
+                  file=sys.stderr)
         if now - since < GRACE or deferred(number, now):
             continue
         found.append((number, int(now - since)))

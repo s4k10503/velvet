@@ -36,7 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
-from deferrals import DEFERRALS, deferred  # noqa: E402
+from deferrals import DEFERRALS, deferred, unusable  # noqa: E402
 
 HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
 # Three polls of the 60s cycle, so one slow `gh` call does not read as a dead watcher.
@@ -88,6 +88,18 @@ def checks_of(pr):
 
 
 def unreadable(output, code):
+    # Its own key, not "backlog": that one holds the backlog guard, and one line silencing both
+    # guards is the unqualified exemption the expiry exists to prevent.
+    holding = deferred("pr-list")
+    if holding is not None:
+        reason, minutes = holding
+        print(f"The pull requests could not be read, and pr-list is held {minutes}m ago "
+              f"because: {reason}", file=sys.stderr)
+        return 0
+    broken = unusable("pr-list")
+    if broken is not None:
+        print(f"A deferral was written for pr-list, and {broken} — so it is being ignored.",
+              file=sys.stderr)
     print(f"""Do not stop: the open pull requests could not be read, so nothing here says they are settled.
 
   gh pr list exited {code}
@@ -96,7 +108,7 @@ def unreadable(output, code):
 If gh is unauthenticated or the network is down, say so and arm the deferral rather than treating
 an unanswered question as a settled one:
 
-  echo "backlog <what clears it> $(date +%s)" >> {DEFERRALS}""", file=sys.stderr)
+  echo "pr-list <what clears it> $(date +%s)" >> {DEFERRALS}""", file=sys.stderr)
     return 2
 
 
@@ -164,8 +176,11 @@ def main():
     if not prs:
         return 0
 
-    blocked, held = [], []
+    blocked, held, ignored = [], [], []
     for pr in prs:
+        broken = unusable(pr)
+        if broken is not None:
+            ignored.append(f"  PR #{pr} — a deferral was written for it, and {broken}.")
         holding = deferred(pr)
         if holding is not None:
             reason, minutes = holding
@@ -181,18 +196,23 @@ def main():
         if held:
             print("Held, not settled — check each reason is still true:", file=sys.stderr)
             print("\n" + "\n".join(held), file=sys.stderr)
+        if ignored:
+            print("\nDeferrals that were ignored:", file=sys.stderr)
+            print("\n".join(ignored), file=sys.stderr)
         return 0
 
     held_block = ("\nHeld on purpose, and worth re-reading:\n" + "\n".join(held)) if held else ""
+    ignored_block = ("\nDeferrals that were ignored:\n" + "\n".join(ignored)) if ignored else ""
     print(f"""Do not stop: an open PR has not settled.
 
 {chr(10).join(blocked)}
 {held_block}
+{ignored_block}
 
 Holding one on purpose is allowed and expires after 45 minutes, so the reason gets re-examined
 rather than forgotten:
 
-  echo "<pr> <what clears it> {int(time.time())}" >> {DEFERRALS}
+  echo "<pr> <what clears it> $(date +%s)" >> {DEFERRALS}
 
 Otherwise: wait for it with a Monitor that emits on both pass and fail, or keep working on
 something that is itself on the critical path. Work that is off the critical path satisfies

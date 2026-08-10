@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from deferrals import deferred
+from deferrals import deferred, unusable
 from shell_commands import command_segments, git_invocation, tokens_of, without_redirections
 from velvet_hooks import BRANCH_BASES
 
@@ -236,6 +236,10 @@ def main():
     # creation chained after a deferred one through on the deferral meant for the other name.
     for name, start_point, directory in made:
         target = directory or cwd
+        broken = unusable(name)
+        if broken is not None:
+            print(f"A deferral was written for {name}, and {broken} — so it is being ignored.",
+                  file=sys.stderr)
         if deferred(name):
             # Parent tip at branch creation is gone after squash-merge; rebase --onto needs it now.
             head_sha = git(target, "rev-parse", "HEAD").stdout.strip()
