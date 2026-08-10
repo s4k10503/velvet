@@ -567,8 +567,8 @@ namespace Velvet.Tests
         // is routed and nothing at all under one it is not, so a payload no guard answers costs a run
         // rather than a wrong verdict.
         //
-        // %SCRATCH% is a directory this fixture makes, holding only what a payload below needs to name.
-        // Pointed at the checkout instead, a guard reading branch state answers one way on main and
+        // %SCRATCH% is a directory this fixture makes, and writes a released CHANGELOG into for the
+        // payload that names one. Pointed at the checkout instead, a guard reading branch state answers one way on main and
         // another on a branch, and the probe would pass or fail with whichever tree the suite happened
         // to run in. %PROJECT% is named by the one payload whose guard reads the repository's own
         // top-level directories.
@@ -741,11 +741,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_ACheckoutAndAWorktreeOfIt_When_TheClosedVersionGuardIsPosedAnEditInTheWorktree_Then_ItRefuses()
         {
-            // Arrange — the payloads above are all answered before any guard reads a repository, so none
-            // of them separates a guard that is scoped from one that is off. This repository does its
-            // branch work in worktrees outside the project directory, and a worktree is where scoping by
-            // containment and scoping by the shared git dir give different answers: the file is in the
-            // repository the session is for, and under no path the project directory holds.
+            // Arrange — this repository does its branch work in worktrees outside the project
+            // directory, and a worktree is where scoping by containment and scoping by the shared git
+            // dir give different answers: the file is in the repository the session is for, and under
+            // no path the project directory holds.
             var stem = Path.Combine(Path.GetTempPath(), "velvet-hook-" + Guid.NewGuid().ToString("N"));
             var checkout = stem + "-checkout";
             var worktree = stem + "-worktree";
@@ -892,8 +891,9 @@ namespace Velvet.Tests
         public void Given_AnEditDeletingAReleasedSectionOutright_When_TheClosedVersionGuardRefusesIt_Then_ItDoesNotNameARename()
         {
             // Arrange — the refusal is the only thing a reader acts on, so a mechanism it names that
-            // the edit did not perform sends them looking for a rename they never wrote. Three edits
-            // reach this refusal and deletion is the one no rename describes.
+            // the edit did not perform sends them looking for a change they never wrote. Three edits
+            // reach this refusal, and deleting the section is the one neither half of a
+            // rename-or-undate wording describes.
             var home = Scratch("-repository");
             try
             {
