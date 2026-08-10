@@ -295,12 +295,27 @@ namespace Velvet
             if (declared is { } value)
             {
                 built.IsDelayed ??= new Recorded<bool>(field.isDelayed);
-                field.isDelayed = value;
+                WriteDelayed(field, value);
             }
             else if (built.IsDelayed != null)
             {
-                field.isDelayed = built.IsDelayed.Value;
+                WriteDelayed(field, built.IsDelayed.Value);
             }
+        }
+
+        // Ordering: an edit the field is still holding is committed before the flag comes off. The flag's
+        // contract is that the value lags the typed text until Enter or blur, so clearing it first strands
+        // that edit — displayed, never reported, and with nothing later to re-sync it, since a render
+        // repeating the same FieldValue does not reach ApplyFieldValue at all.
+        // TextFieldInputPropTests measures the commit on both a redeclared and a dropped flag.
+        private static void WriteDelayed(TextField field, bool value)
+        {
+            if (!value && field.isDelayed)
+            {
+                field.value = field.text;
+            }
+
+            field.isDelayed = value;
         }
 
         private static bool Declares(TextFieldSettings? settings)

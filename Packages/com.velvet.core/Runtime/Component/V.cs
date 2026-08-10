@@ -534,6 +534,11 @@ namespace Velvet
         /// <summary>
         /// Creates a TextField.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/> and
+        /// <paramref name="isDelayed"/> are undeclared when null rather than reset to a default;
+        /// <c>Documentation~/react-migration.md</c> owns what a null and a dropped one each do.
+        /// </remarks>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="value">Current text value (controlled).</param>
         /// <param name="onValueChanged">Handler invoked when the input text changes.</param>
@@ -541,7 +546,7 @@ namespace Velvet
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="label">Label text shown next to the field.</param>
         /// <param name="isPasswordField">When true, masks the input as a password field.</param>
-        /// <param name="placeholder">A short hint shown in the empty field (HTML <c>placeholder</c>). An empty string declares an empty hint; null leaves the field's own.</param>
+        /// <param name="placeholder">A short hint shown in the empty field (HTML <c>placeholder</c>). An empty string declares an empty hint.</param>
         /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
         /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
         /// <param name="isDelayed">When true, the value is not updated until the user presses Enter or the field loses focus, rather than per keystroke.</param>

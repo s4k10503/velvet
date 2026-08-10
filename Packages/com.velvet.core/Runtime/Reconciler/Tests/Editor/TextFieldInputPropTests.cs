@@ -17,6 +17,8 @@ namespace Velvet.Tests
     /// <item>A member no render has declared — including the password flag, which predates the other
     /// four — is left where a <c>refCallback:</c> put it when a later render redeclares its
     /// neighbours.</item>
+    /// <item>An edit a delayed field is still holding reaches the value before the flag comes off,
+    /// whichever render takes it off.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -244,6 +246,44 @@ namespace Velvet.Tests
             Assert.That(
                 (ReferenceEquals(Root!.ElementAt(0), element), whileDeclared, element.isDelayed),
                 Is.EqualTo((true, false, true)));
+        }
+
+        // The two below arrange the state a delayed field is in mid-edit — text on the inner element, a
+        // value that has not received it — and ask what the flag coming off does with it. Both routes out of
+        // the flag are asked: a render redeclaring it false, and a render dropping it onto a constructed
+        // default of false.
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderDeclaresTheFlagFalse_Then_TheValueReceivesIt()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true) };
+            var newTree = new VNode[] { V.TextField(isDelayed: false) };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "typed";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(element.value, Is.EqualTo("typed"));
+        }
+
+        [Test]
+        public void Given_AnEditTheDelayedFieldHasNotCommitted_When_ALaterRenderDropsTheFlag_Then_TheValueReceivesIt()
+        {
+            // Arrange
+            var oldTree = new VNode[] { V.TextField(isDelayed: true) };
+            var newTree = new VNode[] { V.TextField() };
+            Reconciler.Reconcile(Root, Array.Empty<VNode>(), oldTree);
+            var element = (TextField)Root!.ElementAt(0);
+            ((TextElement)element.textEdition).text = "typed";
+
+            // Act
+            Reconciler.Reconcile(Root, oldTree, newTree);
+
+            // Assert
+            Assert.That(element.value, Is.EqualTo("typed"));
         }
 
         [Test]

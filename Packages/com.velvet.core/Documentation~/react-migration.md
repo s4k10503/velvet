@@ -202,6 +202,12 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
 | `<>{children}</>` | `V.Fragment(children)` | No shorthand `<>` syntax |
 
+`V.TextField`'s `placeholder:`, `maxLength:`, `isReadOnly:` and `isDelayed:` are **undeclared** when
+null, not reset: null is not `placeholder=""`, not `maxLength: -1` and not `isReadOnly: false`. A
+member no render has declared is left wherever a `refCallback:` put it, and one a render declared and
+a later render dropped goes back to the value the field carried before any render declared it. The
+three focus props follow the same rule — [focus.md](focus.md) states it for those.
+
 ### 2-2. Conditionals and Lists
 
 | React | Velvet | Notes |
