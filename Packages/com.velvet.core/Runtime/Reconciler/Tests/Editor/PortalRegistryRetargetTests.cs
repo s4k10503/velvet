@@ -33,9 +33,10 @@ namespace Velvet.Tests
     /// orders and after either range has moved the other. A component rendering nothing at all is
     /// disposed on the same terms — as the portal's only child, and as a trailing one adding no slot
     /// to a range its siblings gave.</item>
-    /// <item>A component that leaves the portal's children for a position outside it is disposed with
-    /// them there and then, and the portal closing later takes nothing further — the limit that makes
-    /// the placeholder stamp safe to write once.</item>
+    /// <item>A component that leaves the portal's children for a position outside it survives the portal
+    /// closing — whether it left in an earlier render or in the very render that closes the portal.</item>
+    /// <item>A component the portal's child mounted on its own, in a re-render no portal reconcile was in
+    /// flight for, is disposed with the portal all the same.</item>
     /// </list>
     /// Re-registering the SAME element, and unregistering the id outright, both leave a live portal alone —
     /// <see cref="PortalTests"/> owns the unregistration case.
@@ -609,6 +610,91 @@ namespace Velvet.Tests
             // position would satisfy the count on its own.
             Assert.That((s_childCleanups - cleanupsAfterReHome, container.Query<VisualElement>("content").ToList().Count),
                 Is.EqualTo((0, 1)));
+        }
+
+        [Test]
+        public void Given_AComponentReHomedInThePortalsClosingRender_When_ThatRenderCommits_Then_ItSurvivesTheClose()
+        {
+            // Arrange — the same host driven straight from phase 1 to phase 3, so the component leaves the
+            // portal's children and the portal goes in ONE render. The inline walk carries the fiber to its
+            // outside position before FinalizeGeneralCommit removes the portal; the phase-2 stop above puts
+            // the removal first instead, which is why it cannot stand in for this.
+            var container = new VisualElement();
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("notify-target", target);
+            _mounted = V.Mount(container, V.Component(ReHomingPortalHost, key: "host"));
+            s_setRehomePhase.Invoke(1);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+            var cleanupsBeforeReHome = s_childCleanups;
+
+            // Act
+            s_setRehomePhase.Invoke(3);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That((s_childCleanups - cleanupsBeforeReHome, container.Query<VisualElement>("content").ToList().Count),
+                Is.EqualTo((0, 1)));
+        }
+
+        private static StateUpdater<bool> s_setLateChildShown;
+        private static StateUpdater<bool> s_setLateHostDropped;
+
+        [Component]
+        private static VNode LateInlineChild()
+        {
+            Hooks.UseEffect(() => (Action)(() => s_childCleanups++), Array.Empty<object>());
+            return V.Div(name: "late");
+        }
+
+        // Renders its child as a Fragment rather than under a Div of its own, so the child mounts on the
+        // portal TARGET like the portal's own children do instead of inside an element a containment sweep
+        // could reach it through.
+        [Component]
+        private static VNode LateChildPortalChild()
+        {
+            var (shown, setShown) = Hooks.UseState(false);
+            s_setLateChildShown = setShown;
+            return V.Fragment(new VNode?[] { shown ? V.Component(LateInlineChild, key: "late") : null });
+        }
+
+        [Component]
+        private static VNode LateChildPortalHost()
+        {
+            var (dropped, setDropped) = Hooks.UseState(false);
+            s_setLateHostDropped = setDropped;
+            return V.Div(children: new VNode?[]
+            {
+                dropped
+                    ? null
+                    : V.Portal("notify-target",
+                        children: new VNode?[] { V.Component(LateChildPortalChild, key: "c") }),
+            });
+        }
+
+        [Test]
+        public void Given_APortalChildThatGainedAnInlineChildOfItsOwn_When_ThePortalUnmounts_Then_ThatChildIsDisposedToo()
+        {
+            // Arrange — the inner component is mounted by the portal child's OWN re-render, which runs
+            // outside any portal children reconcile, and the portal then closes without one ever running
+            // again.
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("notify-target", target);
+            _mounted = V.Mount(new VisualElement(), V.Component(LateChildPortalHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_setLateChildShown.Invoke(true);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+            s_childCleanups = 0;
+
+            // Act
+            s_setLateHostDropped.Invoke(true);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_childCleanups, Is.EqualTo(1));
         }
 
         private static StateUpdater<bool> s_setToastGrown;

@@ -176,6 +176,12 @@ namespace Velvet
                 // render here does not collide with a subsequent FlushState pass: clearing IsDirty
                 // makes the later traversal short-circuit while the rendered output is already committed.
                 existingFiber.MountSlotStart = site.SlotStart;
+                // Rewritten on the carry as well as at creation, and before the re-render below: a component
+                // can leave a Portal's children for a position outside them in the very render that removes
+                // the Portal, and GeneralPathReconciler carries it there in the inline walk that precedes
+                // the removals — so a stamp written only at creation would still name the departing Portal
+                // when that Portal's teardown disposes by it.
+                existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 if (propsChanged || existingFiber.IsDirty || refChanged)
                 {
                     // Subsumes the child into the parent's single batch pass: the re-render runs with the
@@ -263,10 +269,8 @@ namespace Velvet
                 var key = (parentFiber, positionKey, identity);
                 _inlineInstances[key] = fiber;
                 _inlineFiberToKey[fiber] = key;
-                // Stamped once, here, rather than on every GetOrCreate: a component that leaves a Portal's
-                // children is disposed with them rather than carried to the position it now renders at, so
-                // the stamp cannot outlive the Portal that set it. PortalRegistryRetargetTests' re-homed
-                // component is what fails if that stops holding.
+                // Written from the same source on both halves of GetOrCreate — see the carry half in
+                // ReconcileExistingFiber for why one write cannot serve.
                 fiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 // Top-level inline fibers (root components mounted with no enclosing component fiber)
                 // have parentFiber == null. They are disposed via the reconcile orphan sweep and the
@@ -459,6 +463,21 @@ namespace Velvet
                 (doomed ??= new List<ComponentFiber>()).Add(fiber);
             }
             if (doomed == null) return;
+            // A fiber mounted by a stamped fiber's ISOLATED re-render carries no stamp: no Portal children
+            // reconcile was in flight to name one. It is reached through the parent index rather than given
+            // a stamp copied from its parent's, so nothing has to keep that copy current as the parent
+            // moves — the registry key pins a fiber to one parent for its whole life, which is what makes
+            // this select exactly the subtree that goes with each already-doomed fiber.
+            var reached = new HashSet<ComponentFiber>(doomed);
+            for (var i = 0; i < doomed.Count; i++)
+            {
+                if (!_parentToInlineFibers.TryGetValue(doomed[i], out var children)) continue;
+                foreach (var child in children)
+                {
+                    if (child.IsDisposed || !reached.Add(child)) continue;
+                    doomed.Add(child);
+                }
+            }
             // Snapshotted first: DisposeFiberInternal mutates the dictionary this walk reads, through
             // its own child cleanup cascades as well as its own unregister.
             foreach (var fiber in doomed)
