@@ -308,6 +308,48 @@ V.Motion(layoutId: "card-3", className: expanded ? "absolute left-[0px] top-[0px
   element's own next `GeometryChangedEvent`, since a reparented/freshly-created element's
   `.layout` stays stale until the following layout pass.
 
+## Looping utilities (`animate-*`)
+
+Five class-driven loops, each infinite, each driven from a panel-root tick rather than from USS —
+UI Toolkit has no `@keyframes`:
+
+| class | what moves | default loop |
+|---|---|---|
+| `animate-gradient` | pans a baked gradient back and forth along its axis | 3s |
+| `animate-shimmer` | sweeps the gradient one way across the box | 1.5s |
+| `animate-hue` | rotates the hue-rotate filter angle a full turn | 4s |
+| `animate-pulse` | oscillates opacity between full and half | 2s |
+| `animate-spin` | rotates a full turn, linearly | 1s |
+
+`animate-none` cancels, and the last *recognised* `animate-*` in the class list wins — an unclaimed
+name leaves the one before it standing. A bracketed time overrides the loop: `animate-spin-[2500ms]`,
+`animate-hue-[5s]`. The two gradient modes are inert without a `bg-gradient-*` to pan.
+
+Each mode owns its style slot while it runs, and a static utility writing that slot is shadowed
+rather than blended: the gradient pair owns background position, size and repeat, `animate-hue` owns
+the filter, `animate-pulse` owns opacity, and `animate-spin` owns rotate. Detaching restores the slot
+and the reconciler re-asserts whatever class was under it.
+
+Two combinations to avoid, both because something else writes the same slot every frame:
+
+- a mode's slot driven by a Motion channel on the same element — `animate-spin` under a Motion
+  `rotate`, say. The result is whichever wrote last, not a blend.
+- a native transition covering that slot. `animate-spin` and `animate-pulse` suspend one while they
+  run, the way Motion's own drivers do, so those two are safe. `animate-hue` and the gradient pair
+  are not: their slots have no flag in the guard yet. Note a transition needs no `transition-*`
+  utility — a bare `duration-*` leaves UI Toolkit's initial `all` standing, which covers every slot.
+
+The suspension is element-wide (UI Toolkit's `transition-property` has no "everything except these"
+spelling), so while a suspended `animate-spin` or `animate-pulse` runs, the element's *other*
+transitions land instantly too. It is taken only when the element's own utility CLASSES name the slot
+the mode writes — `animate-pulse transition-colors` keeps its colour fade — and handed back as soon
+as a re-render leaves nothing transitioning that slot. Reading the classes means anything that never
+reaches the class list is invisible to it — the bracket duration `duration-[400ms]` lands as an
+inline value, and so does a `V.Motion` variant swap's own transition, which belongs to the swap. A
+swap driving the same slot as the mode falls under the first bullet. While such a swap is running the
+slot is the swap's: the suspension is neither taken nor handed back for the swap's length, and the
+swap's own completion puts back whichever of the two the element still needs.
+
 ## Timelines (`Hooks.UseAnimationSequence`)
 
 Framer Motion's `useAnimate` parity target: `UseAnimationSequence` owns the clock (it is itself built

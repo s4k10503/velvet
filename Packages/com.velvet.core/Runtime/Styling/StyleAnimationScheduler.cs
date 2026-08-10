@@ -1375,7 +1375,9 @@ namespace Velvet
             element.style.transitionDelay = StyleKeyword.Null;
             // Release the variant transition-property: all (set by ApplyTransitionStyles for variant swaps).
             // A no-op for preset transitions, which never set it inline (USS provides transition-property).
-            element.style.transitionProperty = StyleKeyword.Null;
+            // Routed through the guard rather than nulled here: a per-frame animate-* driver can be holding the
+            // same slot suspended for longer than this play, and it owns what the slot goes back to.
+            MotionNativeTransitionGuard.RestoreAfterForeignWrite(element);
         }
 
         // StyleList<T> retains the List reference as-is (no copy), so cached lists must not be mutated
