@@ -7,7 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `V.TextField` declares four more of the text-input surface: `placeholder:`, `maxLength:`,
+  `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus a value that
+  catches up with the typed text on Enter, on the field losing focus, and on a render taking
+  `isDelayed:` off. That last one reports through `onValueChanged:`, so turning the flag off mid-edit
+  hands the component the pending text instead of stranding it on screen.
+  Reaching them previously meant writing the UI Toolkit properties
+  by hand from `refCallback:`, which left them outside the diff and so unable to change with state.
+  Each is undeclared when null: a member no render has declared is left alone, and one a render
+  declared and a later one dropped restores the value the field carried before any render declared it.
+  The same four arrive on `Velvet.Experimental.VTextField` as `Placeholder`, `MaxLength`, `IsReadOnly`
+  and `IsDelayed`.
+
+### Changed
+
+- `V.TextField`'s four new parameters sit between `isPasswordField:` and `enabled:`, so a call passing
+  arguments positionally past `isPasswordField` now binds them to different parameters. Every argument
+  there but a `null` literal changes type across the shift, so such a call fails to compile rather than
+  rebinding silently; pass them by name.
+
 ### Fixed
+
+- A `TextField`'s `isPasswordField` was written back to `false` by any render that stopped declaring
+  it, so a mask a `refCallback:` had switched on came off on the first render that dropped the prop.
+  A member a render declared and a later one dropped now restores what the field carried when the
+  prop was first declared, and one no render has declared is nobody's to write.
+
+- A pooled widget carried the `Focusable` default recorded under a previous consumer into its next
+  mount, so a render that dropped a declared `Focusable` prop handed the element that consumer's
+  focusability rather than the one it carried when this consumer first declared the prop. The record
+  is forgotten on the pool return every poolable type passes through.
 
 - A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
   or `false` rather than as the value the element was constructed with — neither of which is the
