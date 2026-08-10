@@ -141,6 +141,15 @@ def in_scope(path, cwd):
 # unexpanded.
 UNEXPANDED_POLICY = "n/a"
 
+# The probe's anchor is a released heading, which is the one line this guard's whole premise says
+# nobody edits.
+UNREADABLE_POLICY = "refuse"
+UNREADABLE_PROBE = {
+    "file_path": "Packages/com.velvet.core/CHANGELOG.md",
+    "old_string": "## [2.0.0] - 2026-08-02\n",
+    "new_string": "## [2.0.0] - 2026-08-02\n\n- an entry nobody released\n",
+}
+
 
 def main():
     try:
