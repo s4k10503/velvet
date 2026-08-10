@@ -11,6 +11,7 @@ Run: python3 scripts/test_quality/test_base_red_check.py
 
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -106,28 +107,78 @@ def python_test_files():
     return tracked("python")
 
 
-def concrete_class_names(corpus):
-    """The simple names of every class, record and struct declared without `abstract`, over a corpus.
+DECLARED_SCOPE = re.compile(
+    r"\b(?:namespace|interface|enum|class|struct|record(?:\s+(?:class|struct))?)"
+    r"\s+([A-Za-z_][A-Za-z0-9_.]*)")
 
-    Off the code lines, so a `class` written into an assertion message is not one of them -- which is
-    the whole point of comparing against this set.
+
+def body_span(blanked, after):
+    """(first offset inside the body, offset of its closing brace) for a declaration, or None.
+
+    None is a declaration that never opens a body, which this repository writes as a positional
+    record. Nothing can be named under one.
     """
-    found = set()
+    depth = 0
+    for offset in range(after, len(blanked)):
+        character = blanked[offset]
+        if character == ";" and depth == 0:
+            return None
+        if character == "{":
+            depth += 1
+            if depth == 1:
+                opened = offset
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return opened, offset
+    return None
+
+
+def declared_scopes(text):
+    """Qualified name -> whether it is abstract, for every namespace and type one file declares.
+
+    Each declaration is qualified by the ones whose braces enclose it, rather than by a running stack
+    of the ones seen so far. The distinction is the point: a stack that fails to unwind emits owner
+    chains no declaration spells, and a set of legitimate chains built from a stack the same way
+    would agree with every one of them and hold nothing.
+    """
+    mask = base_red_check.code_mask(text)
+    blanked = "".join(text[offset] if mask[offset] else " " for offset in range(len(text)))
+    declared = []
+    for match in DECLARED_SCOPE.finditer(blanked):
+        body = body_span(blanked, match.end())
+        if body is None:
+            continue
+        line = blanked[blanked.rfind("\n", 0, match.start()) + 1:match.end()]
+        declared.append((match.start(), body, match.group(1),
+                         bool(base_red_check.CSHARP_ABSTRACT.search(line))))
+    scopes = {}
+    for start, _, name, abstract in declared:
+        enclosing = sorted((outer, outer_name) for outer, (inner, outer_end), outer_name, _ in declared
+                           if inner <= start <= outer_end)
+        qualified = ".".join([outer_name for _, outer_name in enclosing] + [name])
+        scopes[qualified] = abstract
+    return scopes
+
+
+def answerable_names(corpus):
+    """Every qualified type in the corpus a runner could report a case under: declared, and concrete."""
+    answerable = set()
     for text in corpus.values():
-        for line in base_red_check.code_lines(text):
-            declared = base_red_check.CSHARP_TYPE.search(line)
-            if declared and not base_red_check.CSHARP_ABSTRACT.search(line):
-                found.add(declared.group(1))
-    return found
+        answerable |= {name for name, abstract in declared_scopes(text).items() if not abstract}
+    return answerable
 
 
 def unanswered_names(corpus, heirs):
     """Every case in `corpus` whose runner name no concrete class in `corpus` can answer to.
 
     Both ways that happens: a case the naming drops because the abstract fixture it is written in has
-    no concrete heir, and a case it keeps under a class segment nothing declares.
+    no concrete heir, and a case it keeps under an owner chain nothing declares. The whole chain is
+    read, not its last segment -- every segment is part of the name `-testFilter` is given, so a
+    chain of names each of which is declared somewhere still matches nothing when nothing nests them
+    that way.
     """
-    concrete = concrete_class_names(corpus)
+    answerable = answerable_names(corpus)
     unanswered = []
     for relative, text in corpus.items():
         for case in base_red_check.csharp_cases(text, relative):
@@ -135,8 +186,8 @@ def unanswered_names(corpus, heirs):
             if not named:
                 unanswered.append("{}: {} runs under no concrete class".format(relative, case.name))
             unanswered += ["{}: {} names {}, which nothing declares".format(
-                relative, case.name, produced.name.rsplit(".", 2)[-2])
-                for produced in named if produced.name.rsplit(".", 2)[-2] not in concrete]
+                relative, case.name, produced.name.rsplit(".", 1)[0])
+                for produced in named if produced.name.rsplit(".", 1)[0] not in answerable]
     return unanswered
 
 
@@ -216,6 +267,45 @@ class CSharpReadingTests(unittest.TestCase):
 
         # Assert
         self.assertIsNone(case.abstract_owner)
+
+    def test_Given_APositionalRecordAboveAFixture_When_TheCasesAreRead_Then_ItDoesNotQualifyThem(self):
+        # Arrange -- this repository declares its store state as a positional record beside the
+        # fixture. It opens no body, so nothing closes it and nothing pops it off the type stack.
+        text = ("namespace N\n{\n    internal readonly record struct ToggleState(bool Show);\n\n"
+                "    class C\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => Assert.Pass();\n    }\n}\n")
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
+
+    def test_Given_PositionalRecordsAmongAFixturesMembers_When_TheCasesBelowAreRead_Then_TheyNestNothing(self):
+        # Arrange -- one bodiless declaration also blocks the ones under it from leaving the stack,
+        # so the chain grows by a segment per record rather than by one.
+        text = ("namespace N\n{\n    class C\n    {\n        private sealed record A(int X);\n"
+                "        private sealed record B(int Y);\n\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => Assert.Pass();\n    }\n}\n")
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
+
+    def test_Given_ARecordStructWithABody_When_ItsCaseIsRead_Then_ItIsNamedForTheTypeNotTheKeyword(self):
+        # Arrange -- `record` takes an optional `class` or `struct`, which sits where the other two
+        # spellings put the name. The repository-wide guard cannot hold this: it reads declarations
+        # through the same expression, so it would name the owner `struct` as well and agree.
+        text = ("namespace N\n{\n    record struct C\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => Assert.Pass();\n    }\n}\n")
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
 
     def test_Given_APreprocessorDirectiveHoldingAnApostrophe_When_TheFileIsRead_Then_TheCasesBelowAreToo(self):
         # Arrange -- `#region Boundary's own mount` opens a character literal to anything reading the

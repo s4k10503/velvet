@@ -28,8 +28,8 @@ or a timeout, and it is the case the canary exists for rather than a case to dis
 reading, and no reading falls through to the same passing verdict. So the type a case is written in
 is read off the code rather than off the raw line -- `class` occurs in prose and in assertion
 messages -- a type leaves the stack when its body closes, and a case written in an abstract fixture
-is named for each concrete heir. `test_base_red_check.py` holds every case in this repository to a
-name a concrete class in the tree carries.
+is named for each concrete heir. `test_base_red_check.py` holds every C# case in this repository to
+a name the tree declares in full: every owner segment, nested as the name nests them.
 
 *A case that cannot compile is evidence, not an error* -- it names something the branch adds -- and
 that reading holds only where the same file compiles on the branch, which is the condition running
@@ -161,9 +161,12 @@ CSHARP_TEST_DIR = re.compile(r"/Tests/(Editor|PlayMode)/")
 CSHARP_ATTRIBUTE = re.compile(r"^\s*\[")
 CSHARP_CASE_ATTRIBUTE = re.compile(r"\[\s*(Test|UnityTest|TestCase|TestCaseSource|Theory)\b")
 CSHARP_METHOD = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
-CSHARP_TYPE = re.compile(r"\b(?:class|struct|record)\s+([A-Za-z_][A-Za-z0-9_]*)")
+# `record` takes an optional `class` or `struct` after it, so the name sits one token further along
+# than the other two spellings put it.
+CSHARP_DECLARES = r"\b(?:class|struct|record(?:\s+(?:class|struct))?)\s+"
+CSHARP_TYPE = re.compile(CSHARP_DECLARES + r"([A-Za-z_][A-Za-z0-9_]*)")
 CSHARP_ABSTRACT = re.compile(r"\babstract\s+(?:partial\s+)?(?:class|record)\b")
-CSHARP_BASES = re.compile(r"\b(?:class|record)\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:<[^>]*>)?\s*:\s*([^{]+)")
+CSHARP_BASES = re.compile(CSHARP_DECLARES + r"[A-Za-z_][A-Za-z0-9_]*\s*(?:<[^>]*>)?\s*:\s*([^{]+)")
 CSHARP_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 CSHARP_NAMESPACE = re.compile(r"\bnamespace\s+([A-Za-z_][A-Za-z0-9_.]*)")
 
@@ -286,6 +289,9 @@ def csharp_cases(text, path="?"):
     A type leaves the stack when the depth its body opened at comes back, not only when the next
     declaration displaces it. Without that a nested helper class declared after the last one, as an
     abstract args type or a fake, owns every case under it for the rest of the file.
+
+    A declaration that opens no body never joins the stack: the unwinding above is keyed on a body
+    closing, so one that never opens is never popped, and it holds down every type under it too.
     """
     lines = text.splitlines()
     code = code_lines(text)
@@ -305,7 +311,7 @@ def csharp_cases(text, path="?"):
         if found:
             namespace = found.group(1)
         found = CSHARP_TYPE.search(line)
-        if found:
+        if found and not (peak == entering and line.rstrip().endswith(";")):
             types.append([found.group(1), entering, bool(CSHARP_ABSTRACT.search(line)), False])
         if types and not types[-1][3] and peak > types[-1][1]:
             types[-1][3] = True
