@@ -273,8 +273,105 @@ namespace Velvet.Tests
 
         private const string RefuseDirectory = HookDirectory + "/refuse";
 
+        // A released section, and an edit that files one more entry into it.
+        private const string ReleasedChangelog =
+            "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- Not yet released.\n\n"
+            + "## [1.0.0] - 2026-01-01\n\n### Fixed\n\n- As shipped.\n";
+
+        private const string ShippedEntry = "- As shipped.\n";
+        private const string ShippedEntryPlusOne = "- As shipped.\n\n- Smuggled in.\n";
+
+        [Test]
+        public void Given_ACheckoutAndAWorktreeOfIt_When_TheClosedVersionGuardIsPosedAnEditInTheWorktree_Then_ItRefuses()
+        {
+            // Arrange — the payloads above are all answered before any guard reads a repository, so none
+            // of them separates a guard that is scoped from one that is off. This repository does its
+            // branch work in worktrees outside the project directory, and a worktree is where scoping by
+            // containment and scoping by the shared git dir give different answers: the file is in the
+            // repository the session is for, and under no path the project directory holds.
+            var stem = Path.Combine(Path.GetTempPath(), "velvet-hook-" + Guid.NewGuid().ToString("N"));
+            var checkout = stem + "-checkout";
+            var worktree = stem + "-worktree";
+            try
+            {
+                Directory.CreateDirectory(checkout);
+                Git(checkout, "init", "-q", ".");
+                Git(checkout, "-c", "user.email=hooks@velvet.test", "-c", "user.name=hooks",
+                    "commit", "-q", "--allow-empty", "-m", "root");
+                Git(checkout, "worktree", "add", "-q", worktree, "--detach");
+
+                var changelog = Path.Combine(worktree, "CHANGELOG.md");
+                File.WriteAllText(changelog, ReleasedChangelog);
+                var payload = "{\"tool_name\":\"Edit\",\"cwd\":" + Quoted(worktree)
+                    + ",\"tool_input\":{\"file_path\":" + Quoted(changelog)
+                    + ",\"old_string\":" + Quoted(ShippedEntry)
+                    + ",\"new_string\":" + Quoted(ShippedEntryPlusOne) + "}}";
+
+                // Act
+                var answer = Answer(Path.GetFullPath(RefuseDirectory + "/changelog_into_closed_version.py"),
+                    payload, checkout);
+
+                // Assert — the arrangement rides in the comparison because both halves of it are what
+                // make the exit code mean anything: a worktree git did not link is an ordinary directory,
+                // and one inside the checkout is reached by containment as well.
+                Assert.That(
+                    (Linked: File.Exists(Path.Combine(worktree, ".git")),
+                     Outside: !worktree.StartsWith(checkout, StringComparison.Ordinal),
+                     answer.Exit),
+                    Is.EqualTo((true, true, 2)),
+                    "an entry filed into a released section is refused in the project directory and "
+                    + $"allowed everywhere the work happens:\n{answer.Error}");
+            }
+            finally
+            {
+                Remove(worktree);
+                Remove(checkout);
+            }
+        }
+
+        private static void Git(string cwd, params string[] arguments)
+        {
+            var start = new System.Diagnostics.ProcessStartInfo("git")
+            {
+                WorkingDirectory = cwd,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            foreach (var argument in arguments)
+            {
+                start.ArgumentList.Add(argument);
+            }
+
+            using var process = System.Diagnostics.Process.Start(start);
+            process?.StandardOutput.ReadToEnd();
+            process?.StandardError.ReadToEnd();
+            process?.WaitForExit(60000);
+        }
+
+        private static void Remove(string directory)
+        {
+            try
+            {
+                if (Directory.Exists(directory))
+                {
+                    Directory.Delete(directory, recursive: true);
+                }
+            }
+            catch (IOException)
+            {
+            }
+            catch (UnauthorizedAccessException)
+            {
+            }
+        }
+
+        private static string Quoted(string value) =>
+            "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n") + "\"";
+
         /// <summary>Runs one hook against a payload and returns its exit code with whatever it wrote.</summary>
-        private static (int Exit, string Error) Answer(string hook, string payload)
+        private static (int Exit, string Error) Answer(string hook, string payload, string projectDirectory = null)
         {
             var start = new System.Diagnostics.ProcessStartInfo("python3")
             {
@@ -286,6 +383,10 @@ namespace Velvet.Tests
             };
             start.ArgumentList.Add("-B");
             start.ArgumentList.Add(hook);
+            if (projectDirectory != null)
+            {
+                start.Environment["CLAUDE_PROJECT_DIR"] = projectDirectory;
+            }
 
             using var process = System.Diagnostics.Process.Start(start);
             if (process == null)
