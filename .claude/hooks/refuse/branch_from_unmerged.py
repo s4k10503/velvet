@@ -115,6 +115,9 @@ def creations(command):
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'git -C "$D" branch feat/x'
 
+UNREADABLE_POLICY = "refuse"
+UNREADABLE_PROBE = {"command": "git branch tooling/probe"}
+
 
 def git(cwd, *args):
     return subprocess.run(

@@ -71,6 +71,9 @@ HOOK_TOOLS = {"Bash"}
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'gh pr create --title t --body-file $BODY'
 
+UNREADABLE_POLICY = "none"
+UNREADABLE_PROBE = {"command": "gh pr create --title t --body-file velvet-no-such-body.md"}
+
 BODY_FILE_FLAGS = ("--body-file", "-F")
 BODY_FLAGS = ("--body", "-b")
 # Neither opens a pull request, so neither posts a description.

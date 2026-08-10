@@ -31,6 +31,9 @@ HOOK_TOOLS = {"Bash"}
 UNEXPANDED_POLICY = "allow"
 UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
 
+UNREADABLE_POLICY = "none"
+UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash"}
+
 DELETE_FLAGS = ("--delete-branch", "-d")
 
 
