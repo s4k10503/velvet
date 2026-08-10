@@ -14,9 +14,9 @@ namespace Velvet
     {
         private static readonly Dictionary<string, VisualElement> _targets = new();
 
-        // Raised on every accepted registration. A live Portal holds the element its children mounted
-        // into and no render reads this table again, so nothing observes a swap without this signal.
-        // Whether a given registration IS a swap is left to the subscriber (ReconcilerContext) rather
+        // Raised on every accepted registration. A live Portal re-reads this table only when it is
+        // patched, and a registration causes no patch of its own, so nothing observes a swap without
+        // this signal. Whether a given registration IS a swap is left to the subscriber rather
         // than tested here against the previous entry: an id unregistered by a departing screen and
         // registered by its replacement leaves nothing here to compare against, while a Portal still
         // holds the element it mounted into.

@@ -1274,10 +1274,10 @@ namespace Velvet
             FiberPortalRegistry.TargetRegistered += OnPortalTargetRegistered;
         }
 
-        // Carries a registry id's new element to the Portals that resolved the old one. Nothing in a
-        // render reads the registry after mount, so a re-registration reaches a live Portal only if
-        // something asks its declaring component to render again; the swap is then observed by
-        // FiberNodePatcher.ResolvePortalTarget, which owns what happens next. The memo cache is dropped
+        // Carries a registration to the Portals on that id holding a different element. A Portal
+        // re-reads the registry only when it is patched, and a registration causes no patch of its own,
+        // so the swap reaches one only by asking its declaring component to render again;
+        // FiberNodePatcher.ResolvePortalTarget owns what that patch then does. The memo cache is dropped
         // first because a component whose hook inputs and props are unchanged otherwise hands back the
         // same VNode instances, and the reconciler skips a reference-identical node without patching it.
         private void OnPortalTargetRegistered(string id, VisualElement registered)
