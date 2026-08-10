@@ -88,8 +88,16 @@ namespace Velvet.Tests
         // Build output and generated documentation: nothing a document names lives there, DocFX's api/ and
         // _site/ carry a stale copy of every runtime type name until docs/build.py is re-run, and Library
         // alone would make the walk the slowest thing in this fixture.
+        // StrykerOutput is here for a different reason, and it is the reason to be strict about the rest:
+        // a mutation report is a couple of megabytes of source excerpts, it is gitignored, and it survives
+        // the run that made it. One left over from three days earlier put the word this fixture was asked
+        // about into the corpus, so the check passed on the machine that had it and failed on CI.
         private static readonly HashSet<string> BaseUnwalkedDirectories =
-            new() { ".git", "Library", "Temp", "Logs", "Build", "UserSettings", "obj", "bin", "api", "_site" };
+            new()
+            {
+                ".git", "Library", "Temp", "Logs", "Build", "UserSettings",
+                "obj", "bin", "api", "_site", "StrykerOutput",
+            };
 
         private static readonly Lazy<List<string>> DocumentationWalk = new(() => Walk(includeClaude: false));
         private static readonly Lazy<List<string>> ClaudeAwareWalk = new(() => Walk(includeClaude: true));
