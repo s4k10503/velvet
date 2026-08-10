@@ -34,7 +34,8 @@ namespace Velvet.Tests
     /// disposed on the same terms — as the portal's only child, and as a trailing one adding no slot
     /// to a range its siblings gave.</item>
     /// <item>A component that leaves the portal's children for a position outside it survives the portal
-    /// closing — whether it left in an earlier render or in the very render that closes the portal.</item>
+    /// closing, while a sibling that stayed under the portal is disposed by that same close — whether the
+    /// leaver left in an earlier render or in the very render that closes the portal.</item>
     /// <item>A component the portal's child mounted on its own, in a re-render no portal reconcile was in
     /// flight for, is disposed with the portal all the same.</item>
     /// </list>
@@ -54,6 +55,7 @@ namespace Velvet.Tests
             _root = new VisualElement();
             s_siblingRegistered = null;
             s_childCleanups = 0;
+            s_stayingCleanups = 0;
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
@@ -220,8 +222,10 @@ namespace Velvet.Tests
             });
 
             // Assert — releasing the shared element's bridge here would strand the portal still mounted
-            // into it with no logical-chain delivery.
-            Assert.That(_reconciler.Context.SamePanelPortalBridges.ContainsKey(shared), Is.True);
+            // into it with no logical-chain delivery. The move is folded in because a retarget that never
+            // ran satisfies the bridge reading on its own.
+            Assert.That((Names(replacement), _reconciler.Context.SamePanelPortalBridges.ContainsKey(shared)),
+                Is.EqualTo(("gone", true)));
         }
 
         [Component]
@@ -563,10 +567,25 @@ namespace Velvet.Tests
         }
 
         private static StateUpdater<int> s_setRehomePhase;
+        private static int s_stayingCleanups;
 
-        // The component is written into the portal's children by a PATCH rather than by the mount, which is
-        // what gives it the same registry key its position outside the portal takes: both register under the
-        // fiber declaring the portal, and an explicit key makes the position within that fiber irrelevant.
+        // Counted apart from the re-homed child's, so the two cases below read WHICH component the close
+        // took. Read as an occurrence and never as a count: how many fibers a close finds for one component
+        // child is not what either case is about, and a case that pinned it here would go red on a change
+        // that has nothing to do with the child that left.
+        [Component]
+        private static VNode PortalStayingChild()
+        {
+            Hooks.UseEffect(() => (Action)(() => s_stayingCleanups++), Array.Empty<object>());
+            return V.Div(name: "staying");
+        }
+
+        // The "c" component is written into the portal's children by a PATCH rather than by the mount, which
+        // is what gives it the same registry key its position outside the portal takes: both register under
+        // the fiber declaring the portal, and an explicit key makes the position within that fiber
+        // irrelevant. "stay" never leaves the portal, so the close has a disposal of its own to make:
+        // without one, a close that takes nothing further and a close that takes nothing at all produce the
+        // same reading.
         [Component]
         private static VNode ReHomingPortalHost()
         {
@@ -576,8 +595,12 @@ namespace Velvet.Tests
             {
                 phase < 3
                     ? V.Portal("notify-target", children: phase == 1
-                        ? new VNode?[] { V.Component(PortalChildWithEffect, key: "c") }
-                        : Array.Empty<VNode?>())
+                        ? new VNode?[]
+                        {
+                            V.Component(PortalStayingChild, key: "stay"),
+                            V.Component(PortalChildWithEffect, key: "c"),
+                        }
+                        : new VNode?[] { V.Component(PortalStayingChild, key: "stay") })
                     : null,
                 phase >= 2 ? V.Component(PortalChildWithEffect, key: "c") : null,
             });
@@ -586,9 +609,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AComponentReHomedOutOfAPortalsChildren_When_ThatPortalCloses_Then_TheCloseTakesNothingFurther()
         {
-            // Arrange — leaving the portal's children already disposed the fiber that was written under it
-            // (the cleanup this counts), so what the close must not do is reach the component now rendering
-            // outside it.
+            // Arrange — the baseline is taken after the re-home, so whatever that render did to the fiber
+            // written under the portal is excluded and the close's own reach is all that is measured.
             var container = new VisualElement();
             var target = new VisualElement();
             FiberPortalRegistry.Register("notify-target", target);
@@ -599,17 +621,20 @@ namespace Velvet.Tests
             s_setRehomePhase.Invoke(2);
             _mounted.FlushStateForTest();
             _mounted.FlushEffectsForTest();
-            var cleanupsAfterReHome = s_childCleanups;
+            s_childCleanups = 0;
+            s_stayingCleanups = 0;
 
             // Act
             s_setRehomePhase.Invoke(3);
             _mounted.FlushStateForTest();
             _mounted.FlushEffectsForTest();
 
-            // Assert — the element reading is folded in because a component that never reached its new
-            // position would satisfy the count on its own.
-            Assert.That((s_childCleanups - cleanupsAfterReHome, container.Query<VisualElement>("content").ToList().Count),
-                Is.EqualTo((0, 1)));
+            // Assert — the staying child's disposal is folded in because a close that reaches nothing at all
+            // satisfies the survival reading on its own, and the element reading because a component that
+            // never got to its new position would satisfy both of the others.
+            Assert.That(
+                (s_stayingCleanups > 0, s_childCleanups, container.Query<VisualElement>("content").ToList().Count),
+                Is.EqualTo((true, 0, 1)));
         }
 
         [Test]
@@ -626,16 +651,18 @@ namespace Velvet.Tests
             s_setRehomePhase.Invoke(1);
             _mounted.FlushStateForTest();
             _mounted.FlushEffectsForTest();
-            var cleanupsBeforeReHome = s_childCleanups;
+            s_childCleanups = 0;
+            s_stayingCleanups = 0;
 
             // Act
             s_setRehomePhase.Invoke(3);
             _mounted.FlushStateForTest();
             _mounted.FlushEffectsForTest();
 
-            // Assert
-            Assert.That((s_childCleanups - cleanupsBeforeReHome, container.Query<VisualElement>("content").ToList().Count),
-                Is.EqualTo((0, 1)));
+            // Assert — the same reading as the phase-2 stop above, and folded for the same reasons.
+            Assert.That(
+                (s_stayingCleanups > 0, s_childCleanups, container.Query<VisualElement>("content").ToList().Count),
+                Is.EqualTo((true, 0, 1)));
         }
 
         private static StateUpdater<bool> s_setLateChildShown;
@@ -753,22 +780,28 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_ANeighbouringPortalThatGrewFirst_When_ItCloses_Then_TheOtherPortalsComponentChildSurvives()
+        public void Given_ANeighbouringPortalThatGrewFirst_When_ItCloses_Then_TheOtherPortalsComponentChildSurvivesUntilItsOwnClose()
         {
             // Arrange — the toast grows on its own state, which moves where the modal's child sits on the
-            // shared target without the modal re-rendering.
+            // shared target without the modal re-rendering; closing the toast then tears out its own range
+            // while the modal is still open, so nothing of the modal's may have left yet.
             var target = new VisualElement();
             _mounted = MountTwoPortalOverlay(target);
             s_setToastGrown.Invoke(true);
             _mounted.FlushStateForTest();
-
-            // Act — closing the toast tears out its own range only.
             s_setToastOpen.Invoke(false);
             _mounted.FlushStateForTest();
             _mounted.FlushEffectsForTest();
+            var cleanupsAfterTheToastClosed = s_childCleanups;
 
-            // Assert — the modal is still open, so nothing of its has left.
-            Assert.That(s_childCleanups, Is.EqualTo(0));
+            // Act
+            s_setModalOpen.Invoke(false);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert — the modal's own close is folded in because a teardown that disposes nothing at all
+            // satisfies the survival reading on its own.
+            Assert.That((cleanupsAfterTheToastClosed, s_childCleanups), Is.EqualTo((0, 1)));
         }
 
         [Test]
