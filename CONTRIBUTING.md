@@ -181,11 +181,25 @@ in `.claude/settings.json`, where it runs for every session. An agent's frontmat
 that: a guard named there and nowhere else is absent from the main session and from every other
 agent type. Such a guard says so with a `HOOK_SCOPE = "session"` line.
 
+A `PreToolUse` guard is reached only for the tools its `"matcher"` names, and acts only on the tools
+its own gate admits. It declares the second as a `HOOK_TOOLS = {...}` set and gates on that set
+rather than on a literal, which is what leaves the two halves comparable. Register it under the tool
+names themselves: a matcher naming no set a check can read is refused — `"*"`, an empty string, and a
+`PreToolUse` entry carrying no `"matcher"` key at all, which is the shape the `SessionStart`, `Stop`
+and `SubagentStop` entries take. A guard covering several tools spells them out in the matcher.
+
 Every failure mode here is silence, so the wiring is asserted rather than trusted.
 `HookWiringCoverageTests` pairs each script against the settings and agent frontmatter that run it,
-in both directions, fails on a script name a hook builds a path from that no file answers to, and
-fails on a `HOOK_SCOPE = "session"` guard that the settings do not register or that an agent
-registers a second time.
+in both directions, fails on a script name a hook builds a path from that no file answers to, fails
+on a `HOOK_SCOPE = "session"` guard that the settings do not register or that an agent registers a
+second time, and fails when a `PreToolUse` guard's `HOOK_TOOLS` and its matcher name different tools,
+when the guard declares a set its gate never reads, and when its gate answers none of the payloads it
+is posed under a tool it is routed — which is the shape an inverted gate takes, since such a gate
+returns before its readings for exactly the tools it exists to read. A gate reading no tool name at
+all answers under both, and fails the other way round. That first one also fails for a guard none of
+the fixture's `GatePayloads` happens to pose anything about — a guard added since that table was last
+extended wants a row added to it rather than a change to itself — and for a guard that exits neither
+0 nor 2 under any of them, which is one raising rather than deciding.
 
 ### Source generators
 

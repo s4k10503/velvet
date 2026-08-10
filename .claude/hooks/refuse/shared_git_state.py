@@ -23,6 +23,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import git_invocations, unexpanded
 
+
+HOOK_TOOLS = {"Bash"}
+
 # Registered on the event in .claude/settings.json rather than narrowed to the agents expected to
 # run git, which would leave every other session unguarded. `HookWiringCoverageTests` reads this
 # declaration to check that the registration is still there.
@@ -151,6 +154,8 @@ def main():
     try:
         event = json.load(sys.stdin)
     except Exception:
+        return 0
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
     command = (event.get("tool_input") or {}).get("command", "")
     if not isinstance(command, str) or not command:

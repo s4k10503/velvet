@@ -25,6 +25,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations
 import repository
 
+
+HOOK_TOOLS = {"Bash"}
+
 # Anchored at a command position — start of input, or after a separator or newline — so the same
 # text quoted inside an argument or named in a body does not trip it. This file argues for a
 # refusal by naming the command it refuses, which is exactly the text that would.
@@ -77,7 +80,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
     command = event.get("tool_input", {}).get("command", "")
     # Flags read off tokens rather than searched for in the whole command: the flag name occurring

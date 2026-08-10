@@ -18,6 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "releas
 import published_check
 
 
+HOOK_TOOLS = {"Bash"}
+
+
 # No operand takes part in the verdict: the base holds an unpublished release or it does not, whatever
 # pull request is named.
 UNEXPANDED_POLICY = "n/a"
@@ -33,7 +36,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     command = event.get("tool_input", {}).get("command", "")
