@@ -10,8 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `V.TextField` declares four more of the text-input surface: `placeholder:`, `maxLength:`,
-  `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus the
-  commit-on-Enter-or-blur behaviour. Reaching them previously meant writing the UI Toolkit properties
+  `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus a value that
+  catches up with the typed text on Enter, on the field losing focus, and on a render taking
+  `isDelayed:` off. That last one reports through `onValueChanged:`, so turning the flag off mid-edit
+  hands the component the pending text instead of stranding it on screen.
+  Reaching them previously meant writing the UI Toolkit properties
   by hand from `refCallback:`, which left them outside the diff and so unable to change with state.
   Each is undeclared when null: a member no render has declared is left alone, and one a render
   declared and a later one dropped restores the value the field carried before any render declared it.

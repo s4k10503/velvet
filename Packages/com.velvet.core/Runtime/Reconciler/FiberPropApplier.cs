@@ -307,7 +307,12 @@ namespace Velvet
         // contract is that the value lags the typed text until Enter or blur, so clearing it first strands
         // that edit — displayed, never reported, and with nothing later to re-sync it, since a render
         // repeating the same FieldValue does not reach ApplyFieldValue at all.
-        // TextFieldInputPropTests measures the commit on both a redeclared and a dropped flag.
+        // The notifying setter is the point of the write, not an incidental way of making it: reporting
+        // the commit is the half that "never reported" names, and SetValueWithoutNotify would leave it.
+        // Every other prop-path write to a field is the silent one — FiberNodePatcher.RaiseCheckedSignal
+        // names that policy and what it costs — so this is the exception, and nothing else here fails if
+        // it stops notifying. DelayedFlagCommitReportTests measures the report on a real panel;
+        // TextFieldInputPropTests measures the commit itself on both routes off the flag.
         private static void WriteDelayed(TextField field, bool value)
         {
             if (!value && field.isDelayed)

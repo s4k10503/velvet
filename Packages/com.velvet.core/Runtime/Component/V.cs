@@ -549,7 +549,7 @@ namespace Velvet
         /// <param name="placeholder">A short hint shown in the empty field (HTML <c>placeholder</c>). An empty string declares an empty hint.</param>
         /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
         /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
-        /// <param name="isDelayed">When true, the value is not updated until the user presses Enter or the field loses focus, rather than per keystroke.</param>
+        /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
         /// <param name="enabled">When false, disables user input.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>

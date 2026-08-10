@@ -258,7 +258,8 @@ namespace Velvet.Experimental
         /// <summary>When true, the field cannot be edited.</summary>
         public bool? IsReadOnly { get; set; }
 
-        /// <summary>When true, the value is not updated until the user presses Enter or the field loses focus.</summary>
+        /// <summary>When true, the value is not updated per keystroke but on Enter, on the field losing focus,
+        /// and on a later render taking the flag off.</summary>
         public bool? IsDelayed { get; set; }
 
         /// <summary>When false, disables user input.</summary>
