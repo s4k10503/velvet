@@ -40,6 +40,43 @@ def applied(text, mutant):
     return mutation_check.apply_mutation(text, mutant).splitlines()[mutant.line - 1].strip()
 
 
+class CodeMaskTests(unittest.TestCase):
+    """Which offsets count as code. Everything downstream of the mask reads only what it leaves.
+
+    Nothing reports an offset wrongly blanked: a mutant is never generated there, a brace never counted,
+    and both halves come back looking like a file with less in it than it has.
+    """
+
+    def masked_out(self, text, fragment):
+        mask = mutation_check.code_mask(text)
+        start = text.index(fragment)
+        return [text[offset] for offset in range(start, start + len(fragment)) if not mask[offset]]
+
+    def test_Given_AnApostropheInAPreprocessorDirective_When_TheMaskIsRead_Then_TheCodeBelowIsCode(self):
+        # Arrange -- `#region Boundary's own tree` is free-form text after the directive, but reading it
+        # as code opens a character literal that runs to the next apostrophe anywhere in the file.
+        text = "#region Boundary's own tree\nif (a <= b) { }\n#endregion\n"
+
+        # Act / Assert
+        self.assertEqual(self.masked_out(text, "if (a <= b) { }"), [])
+
+    def test_Given_ALoneApostropheInCode_When_TheMaskIsRead_Then_ItSwallowsNoLaterLine(self):
+        # Arrange -- twelve characters is the longest literal C# can spell, `'\\U0001F600'`, so an
+        # apostrophe with no closing one inside that reach is not one and consumes nothing.
+        text = "var x = a ' b;\nif (c <= d) { }\n"
+
+        # Act / Assert
+        self.assertEqual(self.masked_out(text, "if (c <= d) { }"), [])
+
+    # GREEN_ON_BASE(characterization): the masking the two cases above are read against.
+    def test_Given_ARealCharacterLiteral_When_TheMaskIsRead_Then_ItIsStillNotCode(self):
+        # Arrange -- the counterpart, so the two above are not passing for a mask that blanks nothing.
+        text = "var separator = ';';\n"
+
+        # Act / Assert
+        self.assertEqual(self.masked_out(text, "';'"), ["'", ";", "'"])
+
+
 class ClauseRemovalTests(unittest.TestCase):
     def test_Given_AThreeClauseCondition_When_MutantsAreGenerated_Then_EachTrailingClauseIsRemovable(self):
         # Arrange
