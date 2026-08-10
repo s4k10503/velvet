@@ -45,6 +45,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 import repository
 
+HOOK_TOOLS = {"Edit", "Write"}
+
 CHANGELOG = "CHANGELOG.md"
 # Keep A Changelog's heading form, tolerating the run of spaces a hand edit leaves behind. The
 # grammar is `scripts/release/release_notes.py`'s; this is the loosest form that still finds every
@@ -134,9 +136,9 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    tool = event.get("tool_name")
-    if tool not in ("Edit", "Write"):
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
+    tool = event["tool_name"]
     payload = event.get("tool_input", {})
     path = payload.get("file_path", "")
     if Path(path).name != CHANGELOG:

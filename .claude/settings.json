@@ -113,6 +113,11 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/merge_onto_unpublished_release.py\"",
             "timeout": 25000
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/pr_body_of_another_branch.py\"",
+            "timeout": 15000
           }
         ]
       },
@@ -123,7 +128,12 @@
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/edit_while_a_ready_pr_sits.py\"",
             "timeout": 10000
-          },
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/refuse/changelog_into_closed_version.py\"",

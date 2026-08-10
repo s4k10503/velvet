@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 
@@ -14,7 +15,9 @@ namespace Velvet.Tests
     /// shows up as a failure: a guard that stops being invoked reports exactly what a guard that passes
     /// reports. Pairing by file name cannot separate the two files that do the running: an agent
     /// definition runs a hook for one agent type, the settings for every session. A guard over state any
-    /// session can move declares <c>HOOK_SCOPE</c>, and is paired against the settings alone.
+    /// session can move declares <c>HOOK_SCOPE</c>, and is paired against the settings alone. A
+    /// <c>PreToolUse</c> guard declares the tools it acts on as <c>HOOK_TOOLS</c>, and is paired
+    /// against the matcher that decides which tools reach it and against its own gate's behaviour.
     /// </summary>
     [TestFixture]
     internal sealed class HookWiringCoverageTests
@@ -110,20 +113,26 @@ namespace Velvet.Tests
             new(@"^HOOK_SCOPE\s*=\s*""session""\s*$", RegexOptions.Compiled | RegexOptions.Multiline);
 
         private static List<string> SessionScopedHooks() =>
-            Directory
-                .GetFiles(Path.GetFullPath(HookDirectory), "*.py", SearchOption.AllDirectories)
-                .Where(hook => !hook.Contains("__pycache__", StringComparison.Ordinal))
+            HookScripts()
                 .Where(hook => SessionScopePattern.IsMatch(File.ReadAllText(hook)))
                 .Select(RelativeToHookDirectory)
                 .ToList();
 
-        // Folded into both assertions below rather than left to an `Assume`: deleting the declaration
-        // empties both checks, and an `Assume` would report that as inconclusive, which the runner
-        // does not count as a failure.
-        private static IEnumerable<string> UndeclaredScope(List<string> declared) =>
-            declared.Count == 0
-                ? new[] { "no hook declares HOOK_SCOPE, so neither scope check has a subject left" }
-                : Enumerable.Empty<string>();
+        private static List<string> HookScripts() =>
+            Directory
+                .GetFiles(Path.GetFullPath(HookDirectory), "*.py", SearchOption.AllDirectories)
+                .Where(hook => !hook.Contains("__pycache__", StringComparison.Ordinal))
+                .OrderBy(hook => hook, StringComparer.Ordinal)
+                .ToList();
+
+        // Folded into the assertions below rather than left to an `Assume`: deleting a declaration
+        // empties every check keyed on it, and an `Assume` would report that as inconclusive, which
+        // the runner does not count as a failure.
+        private static IEnumerable<string> NothingToCheck(int subjects, string reason) =>
+            subjects == 0 ? new[] { reason } : Enumerable.Empty<string>();
+
+        private const string NoScopeDeclared =
+            "no hook declares HOOK_SCOPE, so neither scope check has a subject left";
 
         [Test]
         public void Given_TheHooksDeclaringSessionScope_When_TheSettingsAreRead_Then_EveryOneIsRegisteredThere()
@@ -138,7 +147,7 @@ namespace Velvet.Tests
                 StringComparer.Ordinal);
 
             // Act
-            var unregistered = UndeclaredScope(declared)
+            var unregistered = NothingToCheck(declared.Count, NoScopeDeclared)
                 .Concat(declared.Where(hook => !registered.Contains(hook)))
                 .ToList();
 
@@ -156,7 +165,7 @@ namespace Velvet.Tests
             var scoped = new HashSet<string>(declared, StringComparer.Ordinal);
 
             // Act
-            var narrowed = UndeclaredScope(declared)
+            var narrowed = NothingToCheck(declared.Count, NoScopeDeclared)
                 .Concat(from file in AgentDefinitions()
                         from Match match in HookReferencePattern.Matches(FrontMatter(File.ReadAllText(file)))
                         where scoped.Contains(match.Groups[1].Value)
@@ -169,6 +178,291 @@ namespace Velvet.Tests
                 "the same guard registered on the event and on an agent fires twice, and a reader has "
                 + $"nothing telling them which of the two was meant:\n{string.Join("\n", narrowed)}");
         }
+
+        // Which tools a `PreToolUse` guard acts on is written twice — the settings matcher routes them
+        // to it, and the hook's own gate decides which of what arrives it reads. Same one-place reason
+        // as HOOK_SCOPE above: the declaration is a line in the hook, and this fixture compares it
+        // against the registration rather than holding a table of its own.
+        private static readonly Regex ToolSetPattern =
+            new(@"^HOOK_TOOLS\s*=\s*\{([^}]*)\}\s*$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+        private static readonly Regex QuotedName = new(@"""([^""]*)""", RegexOptions.Compiled);
+
+        // Sorted because each side means a set: the order a matcher's alternation or a Python literal
+        // happens to be written in is not part of what either says.
+        private static string Sorted(IEnumerable<string> names) =>
+            string.Join("|", names.Select(name => name.Trim()).Where(name => name.Length > 0)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(name => name, StringComparer.Ordinal));
+
+        private static List<string> DeclaringHooks() =>
+            HookScripts().Where(hook => ToolSetPattern.IsMatch(File.ReadAllText(hook))).ToList();
+
+        /// <summary>The tools a hook declares, or null when it names none.</summary>
+        private static string DeclaredTools(string hookName)
+        {
+            var path = Path.GetFullPath(HookDirectory + "/" + hookName);
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var declaration = ToolSetPattern.Match(File.ReadAllText(path));
+            if (!declaration.Success)
+            {
+                return null;
+            }
+
+            // An empty literal is a gate that admits no tool at all, which is the silence the
+            // declaration check below reports. Answered as "declares none" rather than as an empty
+            // set, because an empty string is not null and that check would pass the hook.
+            var declared = Sorted(from Match name in QuotedName.Matches(declaration.Groups[1].Value)
+                                  select name.Groups[1].Value);
+            return declared.Length > 0 ? declared : null;
+        }
+
+        /// <summary>Each PreToolUse hook path in the settings, with every matcher entry that routes to it.</summary>
+        private static List<(string Hook, List<string> Matchers)> PreToolUseRegistrations()
+        {
+            var settings = Path.GetFullPath(SettingsFile);
+            var text = File.Exists(settings) ? File.ReadAllText(settings) : string.Empty;
+            // Grouped by hook, because one guard may be registered under several entries and every one
+            // of them reaches the same gate. Compared entry by entry, each would be held to the whole
+            // declared set on its own and a guard split across two entries could not be written green.
+            return (from entry in JsonObjects(JsonArrayValue(text, "PreToolUse"))
+                    let matcher = MatcherPattern.Match(entry)
+                    from Match reference in HookReferencePattern.Matches(entry)
+                    select (Hook: reference.Groups[1].Value,
+                            Matcher: matcher.Success ? matcher.Groups[1].Value : string.Empty))
+                .Distinct()
+                .GroupBy(registration => registration.Hook, StringComparer.Ordinal)
+                .Select(hook => (hook.Key, hook.Select(registration => registration.Matcher).ToList()))
+                .ToList();
+        }
+
+        private static readonly Regex MatcherPattern =
+            new(@"""matcher""\s*:\s*""([^""]*)""", RegexOptions.Compiled);
+
+        // A matcher is a regular expression, and the comparison below reads it as an alternation of
+        // plain tool names. A matcher naming no tool of its own has no answer here that would stay
+        // true: giving one means holding Claude Code's whole tool list in this fixture, where nothing
+        // updates it when the product gains a tool. It is refused instead, so a guard acting on
+        // several tools names them — `*`, an empty matcher, and a registration carrying no "matcher"
+        // key, which reaches here as the empty one.
+        private static readonly Regex ToolNamePattern = new(@"^[A-Za-z0-9_]+$", RegexOptions.Compiled);
+
+        /// <summary>The tools a hook's matcher entries route to it, or null when one names no set.</summary>
+        private static string RoutedTools(IEnumerable<string> matchers)
+        {
+            var names = matchers.SelectMany(matcher => matcher.Split('|')).ToList();
+            return names.Count > 0 && names.All(name => ToolNamePattern.IsMatch(name))
+                ? Sorted(names)
+                : null;
+        }
+
+        // A hand-rolled reader because this assembly references no JSON library. It tracks string
+        // state, so a bracket inside a matcher's regex or inside a command does not end a span.
+        private static string JsonArrayValue(string text, string key)
+        {
+            var at = text.IndexOf("\"" + key + "\"", StringComparison.Ordinal);
+            var open = at < 0 ? -1 : text.IndexOf('[', at);
+            if (open < 0)
+            {
+                return string.Empty;
+            }
+
+            var depth = 0;
+            foreach (var (index, character) in OutsideStrings(text, open))
+            {
+                if (character == '[')
+                {
+                    depth++;
+                }
+                else if (character == ']' && --depth == 0)
+                {
+                    return text.Substring(open + 1, index - open - 1);
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private static IEnumerable<string> JsonObjects(string text)
+        {
+            var depth = 0;
+            var start = 0;
+            foreach (var (index, character) in OutsideStrings(text, 0))
+            {
+                if (character == '{' && depth++ == 0)
+                {
+                    start = index;
+                }
+                else if (character == '}' && --depth == 0)
+                {
+                    yield return text.Substring(start, index - start + 1);
+                }
+            }
+        }
+
+        private static IEnumerable<(int Index, char Character)> OutsideStrings(string text, int from)
+        {
+            var inString = false;
+            for (var index = from; index < text.Length; index++)
+            {
+                var character = text[index];
+                if (inString)
+                {
+                    if (character == '\\')
+                    {
+                        index++;
+                    }
+                    else if (character == '"')
+                    {
+                        inString = false;
+                    }
+                }
+                else if (character == '"')
+                {
+                    inString = true;
+                }
+                else
+                {
+                    yield return (index, character);
+                }
+            }
+        }
+
+        private const string NoRegistrationRead =
+            "no PreToolUse registration was read out of " + SettingsFile
+            + ", so neither tool-set check has a subject left";
+
+        [Test]
+        public void Given_ThePreToolUseRegistrations_When_EachHookIsRead_Then_EveryOneDeclaresItsToolSet()
+        {
+            // Arrange
+            var registrations = PreToolUseRegistrations();
+
+            // Act
+            var silent = NothingToCheck(registrations.Count, NoRegistrationRead)
+                .Concat(from registration in registrations
+                        where DeclaredTools(registration.Hook) == null
+                        select $"{HookDirectory}/{registration.Hook} is routed "
+                               + Quoted(registration.Matchers))
+                .ToList();
+
+            // Assert
+            Assert.That(silent, Is.Empty,
+                "a hook naming no tool leaves the matcher as the only written statement of which "
+                + "tools it acts on, and its gate free to disagree with that in a literal nothing "
+                + $"compares:\n{string.Join("\n", silent)}");
+        }
+
+        [Test]
+        public void Given_ThePreToolUseRegistrations_When_EachMatcherIsComparedWithTheHooksOwnSet_Then_TheyNameTheSameTools()
+        {
+            // Arrange
+            var registrations = PreToolUseRegistrations();
+
+            // Act — a side that names no set is reported rather than compared with the other.
+            var apart = NothingToCheck(registrations.Count, NoRegistrationRead)
+                .Concat(from registration in registrations
+                        let routed = RoutedTools(registration.Matchers)
+                        let declared = DeclaredTools(registration.Hook)
+                        where routed == null || declared == null
+                              || !string.Equals(routed, declared, StringComparison.Ordinal)
+                        select $"{HookDirectory}/{registration.Hook}: matcher {Quoted(registration.Matchers)} "
+                               + $"routes {routed ?? "no set of tool names"}, "
+                               + $"HOOK_TOOLS admits {declared ?? "nothing"}")
+                .ToList();
+
+            // Assert
+            Assert.That(apart, Is.Empty,
+                "a tool named on one side alone is silent both ways round — dropped from the set it "
+                + "reaches the hook and falls through, dropped from the matcher it never arrives and "
+                + $"the set goes on claiming it:\n{string.Join("\n", apart)}");
+        }
+
+        private static string Quoted(IEnumerable<string> matchers) =>
+            string.Join(" and ", matchers.Select(matcher => "\"" + matcher + "\""));
+
+        [Test]
+        public void Given_TheHooksDeclaringAToolSet_When_TheirSourceIsRead_Then_EveryOneComparesToolNameAgainstIt()
+        {
+            // Arrange
+            var declaring = DeclaringHooks();
+
+            // Act — the gate has to read the declared name, not merely sit beside it. A set the gate
+            // does not consult drifts against a literal spelled out in the comparison, and the two
+            // checks above go on comparing the declaration to the matcher while the hook admits
+            // something else.
+            var unread = NothingToCheck(declaring.Count, NoToolSetDeclared)
+                .Concat(from hook in declaring
+                        where !WithoutProse(File.ReadAllText(hook)).Split('\n').Any(line =>
+                            line.Contains("tool_name", StringComparison.Ordinal)
+                            && line.Contains("HOOK_TOOLS", StringComparison.Ordinal))
+                        select $"{RepoRelative(hook)} declares HOOK_TOOLS and gates on something else")
+                .ToList();
+
+            // Assert
+            Assert.That(unread, Is.Empty,
+                "a declaration nothing reads is the same silence as no declaration:\n"
+                + string.Join("\n", unread));
+        }
+
+        private const string NoToolSetDeclared = "no hook declares HOOK_TOOLS";
+
+        /// <summary>A hook's source with its comments and its triple-quoted spans dropped.</summary>
+        private static string WithoutProse(string source)
+        {
+            // Prose satisfied the reading above: a comment naming tool_name and HOOK_TOOLS together
+            // passed it while the hook's gate compared a literal. Only the triple-quoted spans go
+            // with the comments — the gate's own subject is the string "tool_name", so dropping every
+            // string literal would take the line being looked for along with the prose.
+            var kept = new StringBuilder(source.Length);
+            var index = 0;
+            while (index < source.Length)
+            {
+                var character = source[index];
+                if (character == '#')
+                {
+                    while (index < source.Length && source[index] != '\n')
+                    {
+                        index++;
+                    }
+                }
+                else if (TripleQuoteAt(source, index))
+                {
+                    var end = source.IndexOf(source.Substring(index, 3), index + 3, StringComparison.Ordinal);
+                    index = end < 0 ? source.Length : end + 3;
+                    kept.Append('\n');
+                }
+                else if (character == '"' || character == '\'')
+                {
+                    var end = index + 1;
+                    while (end < source.Length && source[end] != character)
+                    {
+                        end += source[end] == '\\' ? 2 : 1;
+                    }
+
+                    end = Math.Min(end, source.Length - 1);
+                    kept.Append(source, index, end - index + 1);
+                    index = end + 1;
+                }
+                else
+                {
+                    kept.Append(character);
+                    index++;
+                }
+            }
+
+            return kept.ToString();
+        }
+
+        private static bool TripleQuoteAt(string source, int index) =>
+            index + 2 < source.Length
+            && (source[index] == '"' || source[index] == '\'')
+            && source[index + 1] == source[index]
+            && source[index + 2] == source[index];
 
         // Read from the front matter alone: the body below it is the agent's prompt, where a guard can
         // be named without being wired — the distinction WiringFiles draws for skills and guides.
@@ -211,10 +505,7 @@ namespace Velvet.Tests
                     .SelectMany(directory => Directory.GetFiles(directory, "*", SearchOption.AllDirectories))
                     .Select(Path.GetFileName),
                 StringComparer.Ordinal);
-            var hooks = Directory
-                .GetFiles(Path.GetFullPath(HookDirectory), "*.py", SearchOption.AllDirectories)
-                .Where(hook => !hook.Contains("__pycache__", StringComparison.Ordinal))
-                .ToList();
+            var hooks = HookScripts();
             Assume.That(hooks, Is.Not.Empty, "no hook scripts were found to read");
 
             // Act
@@ -242,8 +533,8 @@ namespace Velvet.Tests
         private static readonly (string Label, string Payload, bool MayRefuse)[] Payloads =
         {
             ("a Read event", "{\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"README.md\"}}", false),
-            ("an unclaimed Bash command", "{\"tool_name\":\"Bash\",\"cwd\":\"CWD\",\"tool_input\":{\"command\":\"ls\"}}", false),
-            ("a merge", "{\"tool_name\":\"Bash\",\"cwd\":\"CWD\",\"tool_input\":{\"command\":\"gh pr merge 1 --squash --delete-branch\"}}", true),
+            ("an unclaimed Bash command", "{\"tool_name\":\"Bash\",\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":\"ls\"}}", false),
+            ("a merge", "{\"tool_name\":\"Bash\",\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":\"gh pr merge 1 --squash --delete-branch\"}}", true),
         };
 
         [Test]
@@ -271,7 +562,161 @@ namespace Velvet.Tests
                 "these guards did not reach a verdict, and a hook that does not reach one is not consulted");
         }
 
+        // One payload each declaring guard has an answer to, between them. Which guard answers which
+        // is not asserted: the check below needs each guard to answer something under a tool name it
+        // is routed and nothing at all under one it is not, so a payload no guard answers costs a run
+        // rather than a wrong verdict.
+        //
+        // %SCRATCH% is a directory this fixture makes, holding only what a payload below needs to name.
+        // Pointed at the checkout instead, a guard reading branch state answers one way on main and
+        // another on a branch, and the probe would pass or fail with whichever tree the suite happened
+        // to run in. %PROJECT% is named by the one payload whose guard reads the repository's own
+        // top-level directories.
+        private static readonly (string Label, string Body)[] GatePayloads =
+        {
+            ("a merge naming an unexpanded pull request",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"gh pr merge $PR --squash\"}"),
+            ("a sweeping git add",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git add -A\"}"),
+            ("a stash",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git stash\"}"),
+            ("a branch creation",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git checkout -b probe\"}"),
+            ("a commit scoped by an unexpanded pathspec",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"git commit -m probe -- $PATHS\"}"),
+            ("an issue creation carrying no metadata",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"command\":\"gh issue create --title probe\"}"),
+            ("a background command naming a repository path relatively",
+             "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":\"python3 scripts/release/release_notes.py\","
+             + "\"run_in_background\":true}"),
+            ("a pull request created from a body file that is not there",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":"
+             + "{\"command\":\"gh pr create --title x --body-file velvet-no-such-body.md\"}"),
+            ("an entry filed into a released section",
+             "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"file_path\":\"%SCRATCH%/CHANGELOG.md\","
+             + "\"old_string\":\"- As shipped.\","
+             + "\"new_string\":\"- As shipped.\\n\\n- Smuggled in.\"}"),
+        };
+
+        // No matcher in the settings routes this, so a guard that answers under it has a gate that is
+        // reading something other than the event's tool name.
+        private const string UnroutedTool = "VelvetNoToolIsCalledThis";
+
+        [Test]
+        public void Given_TheHooksDeclaringAToolSet_When_EachIsPosedUnderARoutedNameAndAnUnroutedOne_Then_OnlyTheRoutedOneAnswers()
+        {
+            // Arrange
+            var probes = (from hook in DeclaringHooks()
+                          from tool in (DeclaredTools(RelativeToHookDirectory(hook)) ?? string.Empty)
+                              .Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries)
+                          select (Hook: hook, Tool: tool)).ToList();
+
+            // Act — which way the gate points is what nothing else here reads. Every check above holds
+            // for a gate with its `not` dropped: the declaration is there, it equals the matcher, and
+            // the line still names both. What separates the two is that the inverted gate returns
+            // before its readings for exactly the tools it exists to read, and runs them for the rest.
+            var wrong = NothingToCheck(probes.Count, "no hook declares a tool to pose a payload under")
+                .Concat(probes.SelectMany(probe => GateFaults(probe.Hook, probe.Tool)))
+                .ToList();
+
+            // Assert
+            Assert.That(wrong, Is.Empty,
+                "answering none of them is a gate returning before its readings for a tool it is routed "
+                + "— what an inverted gate does — a GatePayloads table holding nothing that guard "
+                + "decides about, which is what a guard added since the table was last extended wants a "
+                + "row for, or a guard exiting neither 0 nor 2 under any of them, which is one raising "
+                + "rather than deciding. Answering one posed under a tool nothing routes is a gate "
+                + $"reading something other than the event's tool name:\n{string.Join("\n", wrong)}");
+        }
+
+        private static IEnumerable<string> GateFaults(string hook, string tool)
+        {
+            var answering = GatePayloads.FirstOrDefault(
+                payload => Answered(hook, Posed(payload.Body, tool)));
+            if (answering.Body == null)
+            {
+                yield return $"{RepoRelative(hook)} answers none of the {GatePayloads.Length} "
+                             + $"payloads posed as {tool}";
+            }
+            else if (Answered(hook, Posed(answering.Body, UnroutedTool)))
+            {
+                yield return $"{RepoRelative(hook)} answers {answering.Label} posed as {UnroutedTool}, "
+                             + "which nothing routes to it";
+            }
+        }
+
+        private static string Posed(string body, string toolName) =>
+            "{\"tool_name\":\"" + toolName + "\"," + body + "}";
+
+        /// <summary>Whether a hook answered a payload rather than returning before its readings.</summary>
+        private static bool Answered(string hook, string payload)
+        {
+            // Not the exit code alone. blind_git_add.py refuses by printing a deny decision and exiting
+            // 0, so a reading that took 0 for silence would score its refusal as a gate that returned.
+            // What a hook writes merely by being loaded is subtracted rather than scored: a warning
+            // raised at import lands before the gate reads the tool name, so it would answer under
+            // every name including the one nothing routes, and the check above would read that as a
+            // gate pointing the wrong way.
+            var answer = Probe(hook, payload);
+            return answer.Exit == 2 || (answer.Exit == 0 && Wrote(answer) != Loading(hook));
+        }
+
+        // Both readings above go through here, because the baseline one subtracts from the other is
+        // comparable only when the two were measured in the same environment. The project directory
+        // joins HOME in it: a guard scoping its reading by the session's own checkout is answering a
+        // question about whichever tree the suite was started from, and a session exporting one would
+        // move the probe's verdict without touching a hook.
+        private static (int Exit, string Output, string Error) Probe(string hook, string payload) =>
+            Answer(hook, payload, home: ScratchDirectory, projectDirectory: ScratchDirectory);
+
+        private static string Wrote((int Exit, string Output, string Error) answer) =>
+            answer.Output.Trim() + "\n" + answer.Error.Trim();
+
+        private static readonly Dictionary<string, string> LoadingOutput =
+            new(StringComparer.Ordinal);
+
+        /// <summary>What a hook writes for an event naming no tool, measured once per hook.</summary>
+        private static string Loading(string hook)
+        {
+            if (!LoadingOutput.TryGetValue(hook, out var written))
+            {
+                // The payload has to parse. One that does not measures what a hook writes when it
+                // cannot read the event, and a hook letting that error raise then has a traceback
+                // subtracted from the silence it keeps for every payload it can read — so each of
+                // those scores as an answer, including under the name nothing routes, which the check
+                // above reads as a gate not reading the tool name at all.
+                written = Wrote(Probe(hook, "{}"));
+                LoadingOutput[hook] = written;
+            }
+
+            return written;
+        }
+
         private const string RefuseDirectory = HookDirectory + "/refuse";
+
+        private const string ProjectToken = "%PROJECT%";
+        private const string ScratchToken = "%SCRATCH%";
+
+        private static string ScratchDirectory;
+
+        [OneTimeSetUp]
+        public void MakeScratchDirectory()
+        {
+            ScratchDirectory = Directory.CreateDirectory(Path.Combine(
+                Path.GetTempPath(), "velvet-hook-gate-" + Guid.NewGuid().ToString("N"))).FullName;
+            WriteReleasedChangelog(ScratchDirectory);
+            // A baseline is comparable only with answers measured under the same HOME, and the
+            // directory HOME is pointed at is replaced here.
+            LoadingOutput.Clear();
+        }
+
+        [OneTimeTearDown]
+        public void RemoveScratchDirectory() => Directory.Delete(ScratchDirectory, true);
+
+        private static string Resolved(string payload) =>
+            payload
+                .Replace(ProjectToken, Path.GetFullPath(".").Replace("\\", "\\\\"))
+                .Replace(ScratchToken, ScratchDirectory.Replace("\\", "\\\\"));
 
         private const string ClosedVersionGuard = RefuseDirectory + "/changelog_into_closed_version.py";
 
@@ -486,14 +931,15 @@ namespace Velvet.Tests
             return changelog;
         }
 
-        private static (int Exit, string Error) PoseEdit(
+        private static (int Exit, string Output, string Error) PoseEdit(
             string projectDirectory, string changelog, string oldString, string newString)
         {
             var payload = "{\"tool_name\":\"Edit\",\"cwd\":" + Quoted(Path.GetDirectoryName(changelog))
                 + ",\"tool_input\":{\"file_path\":" + Quoted(changelog)
                 + ",\"old_string\":" + Quoted(oldString)
                 + ",\"new_string\":" + Quoted(newString) + "}}";
-            return Answer(Path.GetFullPath(ClosedVersionGuard), payload, projectDirectory);
+            return Answer(Path.GetFullPath(ClosedVersionGuard), payload,
+                          projectDirectory: projectDirectory);
         }
 
         /// <summary>Runs git in a directory and returns its exit code, or -1 if it never answered.</summary>
@@ -550,7 +996,8 @@ namespace Velvet.Tests
             "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n") + "\"";
 
         /// <summary>Runs one hook against a payload and returns its exit code with whatever it wrote.</summary>
-        private static (int Exit, string Error) Answer(string hook, string payload, string projectDirectory = null)
+        private static (int Exit, string Output, string Error) Answer(
+            string hook, string payload, string home = null, string projectDirectory = null)
         {
             var start = new System.Diagnostics.ProcessStartInfo("python3")
             {
@@ -562,6 +1009,14 @@ namespace Velvet.Tests
             };
             start.ArgumentList.Add("-B");
             start.ArgumentList.Add(hook);
+            if (home != null)
+            {
+                // edit_while_a_ready_pr_sits.py reads the pull-request watcher's files out of the home
+                // directory, so a caller wanting an answer that does not depend on what the developer's
+                // watcher last wrote supplies one of its own.
+                start.Environment["HOME"] = home;
+            }
+
             if (projectDirectory != null)
             {
                 start.Environment["CLAUDE_PROJECT_DIR"] = projectDirectory;
@@ -570,20 +1025,22 @@ namespace Velvet.Tests
             using var process = System.Diagnostics.Process.Start(start);
             if (process == null)
             {
-                return (-1, "python3 did not start");
+                return (-1, string.Empty, "python3 did not start");
             }
 
-            process.StandardInput.Write(payload.Replace("CWD", Path.GetFullPath(".").Replace("\\", "\\\\")));
+            process.StandardInput.Write(Resolved(payload));
             process.StandardInput.Close();
-            var error = process.StandardError.ReadToEnd();
-            process.StandardOutput.ReadToEnd();
+            // Drained together: reading one to EOF first deadlocks against a guard that fills the
+            // other's pipe buffer, and the wait below never runs to time that out.
+            var output = process.StandardOutput.ReadToEndAsync();
+            var error = process.StandardError.ReadToEndAsync();
             if (!process.WaitForExit(60000))
             {
                 process.Kill();
-                return (-1, "timed out");
+                return (-1, string.Empty, "timed out");
             }
 
-            return (process.ExitCode, error);
+            return (process.ExitCode, output.Result, error.Result);
         }
 
         private static List<(string Name, string Source)> ReadWiring() =>
