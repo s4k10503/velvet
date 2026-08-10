@@ -739,10 +739,9 @@ namespace Velvet
             // other patch of an already-healthy Portal. Every OTHER path through this method
             // (ResolvePortalTarget's layer case, and its already-resolved registry case) needs the
             // identical marker for the identical reason — see steadyStateDeclaringFiber further down,
-            // after target resolves either way. This one stays split out because it is the only branch
-            // cheap enough to afford a fresh HashSet outright: PatchPortalChildren permanently records
-            // the resolved target the first time it runs, so this branch never re-enters for the same
-            // placeholder again.
+            // after target resolves either way. This one stays split out because it is the rare branch:
+            // PatchPortalChildren records the resolved target, so a placeholder re-enters here only when
+            // a re-registration moves it off that element again.
             ComponentFiber? healingDeclaringFiber = null;
             HashSet<ComponentFiber>? healingChildFibersBefore = null;
             if (isHeal)
@@ -797,11 +796,11 @@ namespace Velvet
         // four ways a Portal can address one: an explicit Layer (host table lookup, plus re-chaining the
         // placeholder when FocusOrder changed), the element the caller passed (already resolved, and
         // ReconcileKeying.CanPatch has refused the patch unless it is the one this Portal mounted into),
-        // an id already resolved by an earlier patch (the target its children are already mounted into —
-        // re-registering the id only points FUTURE portals elsewhere), or an id not yet healed (the
-        // mount warned and recorded no target; this is the first patch since registration, so it also
-        // attaches the same-panel synthetic-bubbling bridge the mount-time drain never got to run for
-        // this target). Returns a null target when
+        // an id whose element is still the one this Portal mounted into, or an id with no children of
+        // this Portal on it yet — either because the mount warned and recorded no target, or because a
+        // re-registration just moved this Portal off the element it had. Both of those go through the
+        // same tail, which also attaches the same-panel synthetic-bubbling bridge the mount-time drain
+        // never got to run for this target. Returns a null target when
         // resolution fails (already warned); the caller bails without patching. IsHeal tells the caller
         // whether this pass took the not-yet-healed case, which needs a declaring-fiber snapshot from
         // before this call for the DetachedMountContext stamp (see PatchPortal).
@@ -839,29 +838,37 @@ namespace Velvet
             describe = newNode.TargetId!;
             if (_ctx.PortalState.TryGetValue(placeholder, out var recorded) && recorded.Target != null)
             {
-                // A live portal keeps the target its children mounted into: re-registering the
-                // id only points FUTURE portals elsewhere, and patching into a re-registered
-                // element would diff this portal's slot range against another element's
-                // children.
-                return (recorded.Target, false);
+                var registered = FiberPortalRegistry.Get(describe);
+                if (registered == null || ReferenceEquals(registered, recorded.Target))
+                {
+                    // Nothing to follow: an unregistered id names no element to move to, so the children
+                    // keep being patched where they live rather than being stranded.
+                    return (recorded.Target, false);
+                }
+                // The id now names a different element. The children leave the old one and are created
+                // into the new one rather than being reparented into it, which is what createPortal does
+                // when its container changes and the route V.Portal(container:) takes through
+                // ReconcileKeying.CanPatch — state, refs and effects under the portal do not survive.
+                // Patching the existing children into the replacement is what is not available: this
+                // portal's slot range addresses positions in the element it mounted into, and reusing it
+                // against another element's children would diff one portal's range against another's.
+                _host.ReleasePortalRangeForRetarget(placeholder, registered);
             }
 
             // Mounted before the id was registered (the mount warned and recorded no
-            // target): resolve fresh so the first patch after registration heals the mount.
+            // target), or released by the retarget just above: resolve fresh so this patch mounts the
+            // children into the element the id names now.
             var resolvedTarget = FiberPortalRegistry.Get(describe);
             if (resolvedTarget == null)
             {
                 FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
                 return (null, false);
             }
-            // The mount-time attach (ChildReconciler's same-panel drain branch) never ran
-            // for this target: CreateElement returned a hidden placeholder without enqueuing a
-            // drain entry while the id was still unregistered, so this first healing patch is
-            // this Portal's only chance to attach the same-panel synthetic-bubbling bridge.
-            // Guarded exactly like that branch — a target another Portal already bridged is not
-            // double-attached — and self-limiting to one run per heal even without the guard:
-            // PatchPortalChildren below records this resolved target, so every later patch on
-            // this placeholder takes the `if` branch above instead of ever re-entering here.
+            // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
+            // target — a mount while the id was unregistered enqueued no drain entry at all, and a
+            // retarget resolves an element that mount never saw — so this patch is where the same-panel
+            // synthetic-bubbling bridge gets attached. Guarded exactly like that branch: a target
+            // another Portal already bridged is not double-attached.
             if (!_ctx.SamePanelPortalBridges.ContainsKey(resolvedTarget))
             {
                 _ctx.SamePanelPortalBridges[resolvedTarget] =

@@ -469,7 +469,8 @@ namespace Velvet
                 {
                     FiberLogger.LogWarning("Portal", $"Target \"{portalNode.TargetId}\" is not registered. Children will not be rendered.");
                     var placeholder = CreateHiddenPlaceholder();
-                    _ctx.PortalState[placeholder] = new PortalSlotInfo(null, 0, 0);
+                    _ctx.PortalState[placeholder] = new PortalSlotInfo(
+                        null, 0, 0, portalNode.TargetId, _ctx.FiberStack.Current);
                     return placeholder;
                 }
             }

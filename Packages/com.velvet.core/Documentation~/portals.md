@@ -21,11 +21,17 @@ and an element reached through a `refCallback` is a valid container without bein
 the whole process. That is what makes an id convenient across unrelated call sites and what makes two
 registrations of one name overwrite each other.
 
-The two differ in one more way, deliberately. **Passing a different target moves the children** — the
-reconciler cannot patch one container's portal into another's, so the old unmounts and the new
-mounts, which is what `createPortal` does. Changing a registry id moves them the same way. What does
-not move an already-mounted portal is **re-registering the id it already resolved**: that resolution
-happens once at mount and is then held, so a later `Register` points only future portals elsewhere.
+**A different target moves the children**, in either form — the reconciler cannot patch one
+container's portal into another's, so the old unmounts and the new mounts, which is what
+`createPortal` does. Passing a different container, rendering a different id, and registering an
+id again with a different element all move them, and the children arrive after whatever the new
+container already held.
+
+Registering an id again is the one of those no render can see: a portal reads the registry when it
+resolves its id and holds the element from then on. `Register` therefore asks the components that
+declared the portals on that id to render again, and the move lands on that render rather than
+inside the `Register` call. Registering the same element again, and unregistering the id, both leave
+a live portal where it is — an unregistered id names nothing to move to.
 
 Moving is an unmount and a remount, so child state, refs and effects do not survive it.
 

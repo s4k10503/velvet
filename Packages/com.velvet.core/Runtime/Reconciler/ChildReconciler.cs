@@ -383,7 +383,8 @@ namespace Velvet
                 }
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
-                _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, slotStart, slotLength);
+                _ctx.PortalState[placeholder] = new PortalSlotInfo(
+                    resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
             }
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
             // last member this pass tears down here, never synchronously mid-diff. `this` mirrors

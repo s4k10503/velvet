@@ -541,6 +541,28 @@ namespace Velvet
             PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, portalInfo.SlotStart, -portalInfo.SlotLength);
         }
 
+        // Empties a Portal's slot range on the element it is mounted into and leaves it in the same
+        // unresolved state a Portal that mounted before its id existed carries, addressed at the end of
+        // the replacement's children — from there FiberNodePatcher.ResolvePortalTarget's heal branch
+        // mounts it into the replacement. The removal must happen before anything creates the
+        // replacements: an inline component fiber is registered under its host element, so one still
+        // live under the old range is handed back to the new mount instead of mounting fresh
+        // (ChildReconciler.PatchOrReplaceAtSlot owns that ordering rule).
+        internal void ReleasePortalRangeForRetarget(VisualElement placeholder, VisualElement replacement)
+        {
+            if (!_ctx.PortalState.TryGetValue(placeholder, out var info))
+            {
+                return;
+            }
+            CleanupPortal(placeholder);
+            _ctx.PortalState[placeholder] = info with
+            {
+                Target = null,
+                SlotStart = LogicalChildSlots.Count(replacement),
+                SlotLength = 0,
+            };
+        }
+
         // The synthetic-bubbling bridge is attached once per resolved TARGET while the Portals sharing that
         // target are many, so it may only be released once the last of them has gone; this Portal's own
         // PortalState entry is already removed by the time this runs. Counted by scanning PortalState

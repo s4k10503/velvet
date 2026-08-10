@@ -12,8 +12,16 @@ namespace Velvet
     // and world-space panels all share this bookkeeping, and only the element identity groups the
     // portals whose ranges shift together — two layer portals on different layers must never
     // shift each other even though neither carries a registry id. Null only for the mount-time
-    // path that found no registry target (nothing was mounted; SlotLength is 0).
-    internal readonly record struct PortalSlotInfo(VisualElement? Target, int SlotStart, int SlotLength);
+    // path that found no registry target (nothing was mounted; SlotLength is 0), and for the
+    // window a retarget opens between leaving one element and mounting into the next.
+    // TargetId is carried for the one flavor whose element can be replaced under it: it is what
+    // ReconcilerContext.OnPortalTargetRegistered matches an incoming registration against, and it is null
+    // for the layer, world-space and caller-held-element flavors, which no registration addresses.
+    // DeclaringFiber is the component that rendered the node — the one whose re-render carries a
+    // replacement into a patch — and is null for a Portal rendered outside any component body.
+    internal readonly record struct PortalSlotInfo(
+        VisualElement? Target, int SlotStart, int SlotLength,
+        string? TargetId = null, ComponentFiber? DeclaringFiber = null);
 
     // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
     // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
@@ -1216,7 +1224,11 @@ namespace Velvet
         // Reset to false when the top-level Reconcile completes.
         public bool IsAborted { get; internal set; }
 
-        internal void MarkDisposed() => IsDisposed = true;
+        internal void MarkDisposed()
+        {
+            IsDisposed = true;
+            FiberPortalRegistry.TargetRegistered -= OnPortalTargetRegistered;
+        }
 
         // Sets the bridge invoked from internal elements (e.g. FiberVirtualListController) that need access
         // to Reconciler subsystems. A double invocation indicates an initialization-order bug, so this
@@ -1259,6 +1271,35 @@ namespace Velvet
                 ZLayerHosts,
                 ZLayerMembers,
             };
+            FiberPortalRegistry.TargetRegistered += OnPortalTargetRegistered;
+        }
+
+        // Carries a registry id's new element to the Portals that resolved the old one. Nothing in a
+        // render reads the registry after mount, so a re-registration reaches a live Portal only if
+        // something asks its declaring component to render again; the swap is then observed by
+        // FiberNodePatcher.ResolvePortalTarget, which owns what happens next. The memo cache is dropped
+        // first because a component whose hook inputs and props are unchanged otherwise hands back the
+        // same VNode instances, and the reconciler skips a reference-identical node without patching it.
+        private void OnPortalTargetRegistered(string id, VisualElement registered)
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+            foreach (var info in PortalState.Values)
+            {
+                if (info.TargetId != id || info.Target == null || ReferenceEquals(info.Target, registered))
+                {
+                    continue;
+                }
+                var declaring = info.DeclaringFiber;
+                if (declaring == null)
+                {
+                    continue;
+                }
+                declaring.InvalidateMemoCache();
+                FiberWorkLoop.RequestRenderFromHook(declaring);
+            }
         }
     }
 }
