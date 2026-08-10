@@ -732,10 +732,8 @@ namespace Velvet
             // explicitly here, mirroring PortalState/PendingPortalMounts above.
             _ctx.ZLayerPlaceholders.Clear();
             _ctx.PendingZLayerTeardownChecks.Clear();
-            // Same-panel registry-portal targets are ordinary, user-owned elements that commonly
-            // outlive this reconciler (unlike the framework-owned hosts destroyed wholesale below), so
-            // each bridge is detached explicitly rather than left to die with a GameObject — see
-            // ReconcilerContext.SamePanelPortalBridges for the full rationale.
+            // Detached explicitly rather than left to die with a GameObject, unlike the framework-owned
+            // hosts destroyed wholesale below — ReconcilerContext.SamePanelPortalBridges owns why.
             foreach (var unbind in _ctx.SamePanelPortalBridges.Values)
             {
                 unbind();

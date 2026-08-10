@@ -43,7 +43,7 @@ namespace Velvet
     /// worth paying where the conflict is real, so the decision is made from the element's own CLASS LIST,
     /// resolved against the table <c>Generators~/src/Velvet.StyleTable</c> derives from the bundled
     /// stylesheets. A play suspends only when the slots it drives intersect what those classes leave
-    /// transitionable (see <see cref="DeclaredSlots"/>): a <c>transition-colors</c> element running an
+    /// transitionable (see <see cref="DeclaredSlots(VisualElement)"/>): a <c>transition-colors</c> element running an
     /// opacity/translate play keeps its hover fade, while the same play on a <c>transition-transform</c> or
     /// <c>transition-all</c> element does suspend, because there the class covers the very slots the driver is
     /// writing.
@@ -61,7 +61,8 @@ namespace Velvet
         // A property name that resolves to no style property computes to zero transitions, which is exactly
         // "transition-property: none". A shared, never-mutated list: StyleList retains the reference as-is
         // (mirroring StyleAnimationScheduler's own transition-property: all list), and the release frees it.
-        private static readonly List<StylePropertyName> s_none = new() { new StylePropertyName("none") };
+        private static readonly StylePropertyName s_noneName = new("none");
+        private static readonly List<StylePropertyName> s_none = new() { s_noneName };
 
         private sealed class Suspension
         {
@@ -93,6 +94,72 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Re-decides <paramref name="owner"/>'s suspension against the element's CURRENT classes, for a driver
+        /// whose life spans class-list patches: it suspends once the classes start naming
+        /// <paramref name="drivenSlots"/> and releases once they stop.
+        /// </summary>
+        /// <remarks>
+        /// Two departures from <see cref="SuspendIfIntercepted"/>, both because this runs on a patch rather than
+        /// at a play's start. The inline transition-duration is not read (see
+        /// <see cref="DeclaredSlots(VisualElement, bool)"/>), and the suspension is written only on the patch
+        /// that ADDS this owner, and then only over a slot this class still holds (see
+        /// <see cref="HoldsAForeignValue"/>) — a patch is not a new play, so re-asserting would overwrite
+        /// whatever the element's inline transition-property legitimately became since the owner took it.
+        /// </remarks>
+        public static void SyncSuspension(VisualElement element, object owner, MotionTransitionSlots drivenSlots)
+        {
+            if (drivenSlots == MotionTransitionSlots.None
+                || (DeclaredSlots(element, readInlineDuration: false) & drivenSlots) == MotionTransitionSlots.None)
+            {
+                Release(element, owner);
+                return;
+            }
+            var suspension = s_suspensions.GetValue(element, static _ => new Suspension());
+            if (suspension.Owners.Add(owner) && !HoldsAForeignValue(element))
+            {
+                element.style.transitionProperty = s_none;
+            }
+        }
+
+        /// <summary>
+        /// Re-decides the inline slot for a layer that has just finished writing it itself: back to the
+        /// suspension while a driver still holds one, back to the cascade otherwise.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="StyleAnimationScheduler"/> clears the slot at the end of EVERY play, while a driver whose
+        /// life spans those plays takes its suspension once — so a play that ends by clearing the slot outright
+        /// leaves a still-running driver unprotected for good, with nothing that would write the suspension
+        /// again.
+        /// </remarks>
+        public static void RestoreAfterForeignWrite(VisualElement element)
+        {
+            if (s_suspensions.TryGetValue(element, out var suspension) && suspension.Owners.Count > 0)
+            {
+                element.style.transitionProperty = s_none;
+                return;
+            }
+            element.style.transitionProperty = StyleKeyword.Null;
+        }
+
+        // Whether the slot holds a value this class did not write. FiberNodePatcher starts a Motion's variant
+        // swap BEFORE the class passes that attach and detach an animate-* driver, so a patch that swaps a
+        // variant while starting or stopping a motion reaches this class with the swap's own
+        // transition-property already in the slot — writing or reverting it there would cancel that swap.
+        // What puts a still-held suspension back afterwards is the swap's own teardown, through
+        // RestoreAfterForeignWrite. Compared by CONTENT rather than by list identity, which the read back out
+        // of the slot does not preserve — MotionNativeTransitionGuardSuspensionTests holds that.
+        private static bool HoldsAForeignValue(VisualElement element)
+        {
+            var current = element.style.transitionProperty;
+            if (current.keyword != StyleKeyword.Null)
+            {
+                var value = current.value;
+                return value == null || value.Count != 1 || value[0] != s_noneName;
+            }
+            return false;
+        }
+
+        /// <summary>
         /// The slots the element's own classes leave natively transitionable.
         /// </summary>
         /// <remarks>
@@ -106,11 +173,22 @@ namespace Velvet
         /// <para>
         /// Two residual blind spots, both accepted rather than fixed: an inline whole-property value written by
         /// something other than a duration utility (the scheduler's own tween swap sets one, though never on a
-        /// spring or bezier play) is not read here, and the answer is computed once at play start, so a variant
-        /// that turns on <c>transition-all</c> midway through a play is not picked up until the next one.
+        /// spring or bezier play) is not read here, and a play asks once at its start, so a variant that turns
+        /// on <c>transition-all</c> midway through one is not picked up until the next.
+        /// <see cref="SyncSuspension"/> is what a driver outliving a patch asks instead.
         /// </para>
         /// </remarks>
         internal static MotionTransitionSlots DeclaredSlots(VisualElement element)
+            => DeclaredSlots(element, readInlineDuration: true);
+
+        /// <param name="readInlineDuration">
+        /// False for a driver that can be live while <see cref="StyleAnimationScheduler"/> is playing a variant
+        /// tween on the same element. That play holds an inline transition-duration for its whole length, so
+        /// reading the slot would report every property transitionable and hand the driver a suspension over
+        /// state the scheduler owns — it writes the same inline transition-property this class does.
+        /// </param>
+        /// <inheritdoc cref="DeclaredSlots(VisualElement)"/>
+        internal static MotionTransitionSlots DeclaredSlots(VisualElement element, bool readInlineDuration)
         {
             var winningPosition = -1;
             var declared = StyleLonghandSet.Empty;
@@ -137,7 +215,8 @@ namespace Velvet
             }
             // duration-[400ms] resolves to an inline value rather than a class, so the class scan cannot see it;
             // the inline slot can.
-            return sawDuration || element.style.transitionDuration.keyword != StyleKeyword.Null
+            return sawDuration
+                || (readInlineDuration && element.style.transitionDuration.keyword != StyleKeyword.Null)
                 ? MotionTransitionSlots.All
                 : MotionTransitionSlots.None;
         }
@@ -217,7 +296,10 @@ namespace Velvet
             if (suspension.Owners.Count == 0)
             {
                 s_suspensions.Remove(element);
-                element.style.transitionProperty = StyleKeyword.Null;
+                if (!HoldsAForeignValue(element))
+                {
+                    element.style.transitionProperty = StyleKeyword.Null;
+                }
             }
         }
 

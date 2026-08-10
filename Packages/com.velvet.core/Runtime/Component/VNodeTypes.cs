@@ -265,10 +265,22 @@ namespace Velvet
     {
         /// <summary>
         /// ID of the mount target registered in FiberPortalRegistry. Null when the portal targets a
-        /// framework-managed layer panel instead (<see cref="Layer"/> is set) — exactly one of the two
-        /// is non-null.
+        /// framework-managed layer panel (<see cref="Layer"/>) or an element the caller holds
+        /// (<see cref="TargetElement"/>) — exactly one of the three is non-null.
         /// </summary>
         public string? TargetId { get; init; }
+
+        /// <summary>
+        /// The container this portal's children attach to, held by the caller rather than published
+        /// under a name. Null when the portal targets a registered id or a layer panel.
+        /// </summary>
+        /// <remarks>
+        /// Changing it across renders moves the children: the reconciler cannot patch one container's
+        /// portal into another's, so the old one unmounts and the new one mounts. That is what
+        /// <c>createPortal</c> does when its container changes, and it is where this differs from a
+        /// registry target, whose id is resolved once at mount and then held.
+        /// </remarks>
+        public VisualElement? TargetElement { get; init; }
 
         /// <summary>
         /// Framework-managed screen-space layer panel this portal's children attach to (null for a

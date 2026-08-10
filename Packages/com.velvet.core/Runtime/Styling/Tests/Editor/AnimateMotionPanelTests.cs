@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -6,10 +8,11 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Applied-frame coverage for the animate-* motions on a real panel. The pan modes read the element's
-    /// resolved box, so they need a laid-out <see cref="UnityEditor.EditorWindow"/> panel; Hue is geometry-free.
-    /// The scheduler never ticks in EditMode, so each frame is driven explicitly via
-    /// <see cref="StyleAnimateDriver.ApplyFrame"/> at a chosen phase — the same pure path the runtime tick
-    /// calls. GWT, one assert each.
+    /// resolved box, so they need a laid-out <see cref="UnityEditor.EditorWindow"/> panel; the non-pan modes
+    /// are geometry-free. The EditMode player loop never advances the recurring tick, so each frame is driven
+    /// explicitly via <see cref="StyleAnimateDriver.ApplyFrame"/> at a chosen phase — the same pure path the
+    /// runtime tick calls. The layout helper is not neutral about this; <c>MountPair</c> says why. GWT, one
+    /// assert each.
     /// </summary>
     [TestFixture]
     internal sealed class AnimateMotionPanelTests : PanelTestBase
@@ -21,9 +24,59 @@ namespace Velvet.Tests
             _mounted = V.Mount(_window.rootVisualElement, V.Div(className: className, name: "card"));
             ForcePanelUpdate(_window.rootVisualElement.panel);
             var element = _window.rootVisualElement[0];
-            _mounted.Root.Reconciler.Context.AnimationBindings.TryGetValue(element, out var binding);
-            return (element, binding);
+            return (element, BindingOf(element));
         }
+
+        // Two Divs under ONE mounted tree. A case needing a control beside its subject would otherwise call
+        // Mount twice, and the second assignment drops the first tree: teardown disposes only what the field
+        // holds at the end.
+        // No layout pass, unlike Mount: ForcePanelUpdate ticks the panel scheduler, which runs the animation's
+        // first frame — so a caller asking what the ATTACH did would be reading what the first frame did.
+        private (VisualElement first, VisualElement second) MountPair(string firstClassName, string secondClassName)
+        {
+            _mounted = V.Mount(_window.rootVisualElement, V.Div(name: "pair", children: new VNode?[]
+            {
+                V.Div(className: firstClassName, name: "first"),
+                V.Div(className: secondClassName, name: "second"),
+            }));
+            var pair = _window.rootVisualElement[0];
+            return (pair[0], pair[1]);
+        }
+
+        private StyleAnimateBinding BindingOf(VisualElement element)
+        {
+            _mounted!.Root.Reconciler.Context.AnimationBindings.TryGetValue(element, out var binding);
+            return binding;
+        }
+
+        // Mounts a Motion carrying className at the "hidden" variant, then swaps it to "visible" — the swap for
+        // whose length StyleAnimationScheduler writes an inline transition-property: all, the write that makes a
+        // variant tween visible at all — and runs two pulse frames over the top. Returns the element's inline
+        // transition-property either side of the swap.
+        private (string beforeSwap, string afterSwap) SwapVariantUnderAPulse(string className)
+        {
+            var variants = new Dictionary<string, string> { ["hidden"] = "opacity-0", ["visible"] = "opacity-100" };
+            VNode Card(string label) => V.Motion(className: className, name: "card", variants: variants,
+                animate: label, transition: new StyleTransitionConfig { DurationSec = 0.35f });
+            _mounted = V.Mount(_window.rootVisualElement, Card("hidden"));
+            ForcePanelUpdate(_window.rootVisualElement.panel);
+            var element = _window.rootVisualElement.Q<VisualElement>("card");
+            var binding = BindingOf(element);
+            var beforeSwap = InlineTransitionProperty(element);
+            _mounted.Root.Reconciler.Reconcile(
+                _window.rootVisualElement, new VNode[] { Card("hidden") }, new VNode[] { Card("visible") });
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.25f);
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.5f);
+            return (beforeSwap, InlineTransitionProperty(element));
+        }
+
+        // The inline transition-property's USS names, joined. A suspension is a one-entry list whose name is
+        // empty, which joins to the same string an empty list would, so "nothing has written the slot" needs a
+        // marker of its own to stay distinguishable.
+        private static string InlineTransitionProperty(VisualElement element)
+            => element.style.transitionProperty.keyword == StyleKeyword.Null
+                ? "<unset>"
+                : string.Join(",", element.style.transitionProperty.value.Select(p => p.ToString() ?? string.Empty));
 
         [Test]
         public void Given_GradientPanAtMidLoop_When_FrameApplied_Then_BackgroundPannedByBoxWidth()
@@ -144,6 +197,112 @@ namespace Velvet.Tests
             StyleAnimateDriver.Detach(element, binding);
 
             Assert.That(element.style.opacity.keyword, Is.EqualTo(StyleKeyword.Null));
+        }
+
+        [Test]
+        public void Given_ASpin_When_FramesAreApplied_Then_TheRotationFollowsThePhase()
+        {
+            // Arrange
+            var (element, binding) = Mount("w-[40px] h-[40px] bg-red-500 animate-spin");
+
+            // Act
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.25f);
+            var quarter = element.style.rotate.value.angle.ToDegrees();
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.5f);
+
+            // Assert — the second frame is what a driver that froze after the first would hold back.
+            Assert.That((quarter, element.style.rotate.value.angle.ToDegrees()), Is.EqualTo((90f, 180f)));
+        }
+
+        [Test]
+        public void Given_ARunningSpinOverAnArbitraryRotation_When_TheSpinIsRemoved_Then_TheClassRotationIsBack()
+        {
+            // Arrange — the rotate slot is shared. The spin drives it while it runs; the class under it is
+            // inline-resolved, so the diff does not re-apply a token that did not change, and only the detach
+            // path can put it back.
+            const string spinning = "w-[40px] h-[40px] bg-red-500 rotate-[30deg] animate-spin";
+            const string still = "w-[40px] h-[40px] bg-red-500 rotate-[30deg]";
+            var (element, binding) = Mount(spinning);
+            StyleAnimateDriver.ApplyFrame(element, binding, 0.5f);
+            var whileSpinning = element.style.rotate.value.angle.ToDegrees();
+
+            // Act
+            _mounted!.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(className: spinning, name: "card") },
+                new VNode[] { V.Div(className: still, name: "card") });
+
+            // Assert
+            Assert.That((whileSpinning, element.style.rotate.value.angle.ToDegrees()), Is.EqualTo((180f, 30f)));
+        }
+
+        [Test]
+        public void Given_ASpinUnderADuration_When_ItAttaches_Then_TheNativeTransitionIsSuspended()
+        {
+            // Arrange — a bare duration leaves UI Toolkit's initial transition-property of `all` standing, so
+            // the rotate slot is transitionable without any transition-* utility present. Nothing has ticked
+            // yet, which is the point: the suspension belongs to the attach, not to a frame. The element beside
+            // it is the other half — the guard must fire on the duration and stay out of the way without one.
+            var (untimed, timed) = MountPair(
+                "w-[40px] h-[40px] bg-red-500 animate-spin",
+                "w-[40px] h-[40px] bg-red-500 duration-300 animate-spin");
+
+            // Act
+            var whileSpinning = timed.style.transitionProperty.keyword;
+            StyleAnimateDriver.Detach(timed, BindingOf(timed));
+
+            // Assert
+            Assert.That(
+                (untimed.style.transitionProperty.keyword, whileSpinning, timed.style.transitionProperty.keyword),
+                Is.EqualTo((StyleKeyword.Null, StyleKeyword.Undefined, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_ASuspendedSpin_When_APatchLeavesNothingTransitioningRotate_Then_TheSuspensionIsHandedBack()
+        {
+            // Arrange — the suspension costs the element every transition it declares, not just the one over
+            // the driven slot (MotionNativeTransitionGuard states why it cannot be narrower), so it has to end
+            // when its reason does. Here the duration that covered rotate gives way to a transition-colors the
+            // spin never contends with.
+            const string suspended = "w-[40px] h-[40px] bg-red-500 duration-300 animate-spin";
+            const string released = "w-[40px] h-[40px] bg-red-500 transition-colors animate-spin";
+            var (element, _) = Mount(suspended);
+            var whileSuspended = element.style.transitionProperty.keyword;
+
+            // Act
+            _mounted!.Root.Reconciler.Reconcile(
+                _window.rootVisualElement,
+                new VNode[] { V.Div(className: suspended, name: "card") },
+                new VNode[] { V.Div(className: released, name: "card") });
+
+            // Assert
+            Assert.That(
+                (whileSuspended, element.style.transitionProperty.keyword),
+                Is.EqualTo((StyleKeyword.Undefined, StyleKeyword.Null)));
+        }
+
+        [Test]
+        public void Given_APulseOverNoDeclaredTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransition()
+        {
+            // Arrange / Act — nothing this element declares covers opacity, so the pulse never takes the slot
+            // and the swap's own write is the only one on it.
+            var (beforeSwap, afterSwap) = SwapVariantUnderAPulse("w-[40px] h-[40px] bg-red-500 animate-pulse");
+
+            // Assert
+            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("<unset>", "all")));
+        }
+
+        [Test]
+        public void Given_APulseSuspendingItsOwnTransition_When_AVariantSwapRunsUnderIt_Then_TheSwapKeepsItsTransition()
+        {
+            // Arrange / Act — transition-opacity covers the slot the pulse writes, so this element IS suspended
+            // going in. Re-taking a suspension the binding already holds is what would take the swap's write
+            // back off the element.
+            var (beforeSwap, afterSwap) =
+                SwapVariantUnderAPulse("w-[40px] h-[40px] bg-red-500 transition-opacity animate-pulse");
+
+            // Assert
+            Assert.That((beforeSwap, afterSwap), Is.EqualTo(("", "all")));
         }
 
         [Test]
@@ -330,6 +489,7 @@ namespace Velvet.Tests
             new TestCaseData("animate-shimmer", AnimateMode.Shimmer).SetName("Given_AnimateShimmer_When_Extracted_Then_ModeIsShimmer"),
             new TestCaseData("animate-hue", AnimateMode.Hue).SetName("Given_AnimateHue_When_Extracted_Then_ModeIsHue"),
             new TestCaseData("animate-pulse", AnimateMode.Pulse).SetName("Given_AnimatePulse_When_Extracted_Then_ModeIsPulse"),
+            new TestCaseData("animate-spin", AnimateMode.Spin).SetName("Given_AnimateSpin_When_Extracted_Then_ModeIsSpin"),
         };
 
         [TestCaseSource(nameof(ModeCases))]
@@ -347,6 +507,7 @@ namespace Velvet.Tests
             new TestCaseData("animate-gradient", 3f).SetName("Given_AnimateGradient_When_Extracted_Then_UsesDefaultDuration"),
             new TestCaseData("animate-hue", 4f).SetName("Given_AnimateHue_When_Extracted_Then_UsesDefaultFourSeconds"),
             new TestCaseData("animate-pulse", 2f).SetName("Given_AnimatePulse_When_Extracted_Then_UsesDefaultTwoSeconds"),
+            new TestCaseData("animate-spin", 1f).SetName("Given_AnimateSpin_When_Extracted_Then_UsesDefaultOneSecond"),
         };
 
         [TestCaseSource(nameof(DefaultDurationCases))]
@@ -391,8 +552,30 @@ namespace Velvet.Tests
         [Test]
         public void Given_UnknownAnimateToken_When_Extracted_Then_NotClaimed()
         {
-            // animate-spin is not a Velvet motion (yet); the namespace stays open, so it is not claimed.
-            Assert.That(StyleAnimateClass.TryExtract(new[] { "animate-spin" }, out _), Is.False);
+            // The namespace stays open: a name this layer does not recognise is not claimed.
+            Assert.That(StyleAnimateClass.TryExtract(new[] { "animate-wobble" }, out _), Is.False);
+        }
+
+        [Test]
+        public void Given_TheSpinTokenWithADuration_When_Extracted_Then_TheOverrideWins()
+        {
+            // Arrange / Act
+            var spec = Extract("animate-spin-[2500ms]");
+
+            // Assert
+            Assert.That((spec.Mode, spec.DurationSec), Is.EqualTo((AnimateMode.Spin, 2.5f)));
+        }
+
+        [Test]
+        public void Given_TheSpinPhase_When_ReadAcrossTheLoop_Then_ItTurnsOnceLinearly()
+        {
+            // Arrange / Act
+            var quarter = StyleAnimateDriver.SpinAngleDeg(0.25f);
+            var half = StyleAnimateDriver.SpinAngleDeg(0.5f);
+            var whole = StyleAnimateDriver.SpinAngleDeg(1f);
+
+            // Assert
+            Assert.That((quarter, half, whole), Is.EqualTo((90f, 180f, 360f)));
         }
 
         [Test]

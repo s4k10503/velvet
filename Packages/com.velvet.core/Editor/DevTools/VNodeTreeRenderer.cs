@@ -79,10 +79,9 @@ namespace Velvet.Editor.DevTools
                     break;
 
                 case PortalNode portalNode:
-                    // TargetId and Layer are a one-of pair; whichever is set names the target. The
-                    // children live in the logical tree even though they attach elsewhere, so the
+                    // The children live in the logical tree even though they attach elsewhere, so the
                     // dump walks them like every other container's.
-                    AppendLine(sb, $"[Portal] target={portalNode.TargetId ?? portalNode.Layer?.ToString()}", depth);
+                    AppendLine(sb, $"[Portal] target={DescribePortalTarget(portalNode)}", depth);
                     AppendChildren(sb, portalNode.Children, depth);
                     break;
 
@@ -143,6 +142,30 @@ namespace Velvet.Editor.DevTools
         {
             sb.Append(' ', depth * IndentWidth);
             sb.AppendLine(content);
+        }
+
+        // TargetId, Layer and TargetElement are a one-of triple; whichever is set names the target. An
+        // element has no published name to print, so the line carries its type and, where it has one,
+        // its own name. The alternative was to leave "target=" empty, which reads as a portal whose
+        // target the dump could not work out rather than as one addressed by element.
+        private static string DescribePortalTarget(PortalNode node)
+        {
+            if (node.TargetId != null)
+            {
+                return node.TargetId;
+            }
+            if (node.Layer != null)
+            {
+                return node.Layer.ToString();
+            }
+            var element = node.TargetElement;
+            if (element == null)
+            {
+                return "(none)";
+            }
+            return string.IsNullOrEmpty(element.name)
+                ? $"<{element.GetType().Name}>"
+                : $"<{element.GetType().Name} {element.name}>";
         }
 
         private static string TruncateText(string text)
