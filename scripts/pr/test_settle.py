@@ -298,7 +298,7 @@ class CheckResultTests(unittest.TestCase):
         self.assertEqual(reasons(results=results), ["failing at aaaaaaa: external/ci=fail"])
 
     def test_Given_APageThatDidNotCarryEveryRun_When_Bucketed_Then_ItRaisesRatherThanDeciding(self):
-        # Arrange — a truncated read looks exactly like a check that never ran.
+        # Arrange — the run that arrived passes, so nothing else in the decision would block.
         truncated = {"total_count": 2, "check_runs": [{"name": "Unity", "status": "completed",
                                                        "conclusion": "success"}]}
 
@@ -306,8 +306,8 @@ class CheckResultTests(unittest.TestCase):
         self.assertRaises(RuntimeError, settle.check_results, truncated, NO_STATUSES)
 
     def test_Given_APageThatDidNotCarryEveryCommitStatus_When_Bucketed_Then_ItRaisesRatherThanDeciding(self):
-        # Arrange — a required context truncated off the page reads as one that never ran, so the
-        # merge lands over it. Every entry that did arrive is passing, which is what hides it.
+        # Arrange — every entry that did arrive is passing, so `whole_page` is the only thing
+        # between this payload and a green merge; its docstring owns why.
         truncated = {"state": "failure", "total_count": 31,
                      "statuses": [{"context": f"external/ci-{index}", "state": "success"}
                                   for index in range(30)]}

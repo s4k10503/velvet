@@ -176,10 +176,12 @@ def checks(project, number):
 def whole_page(payload, listed, kind):
     """Raises when a payload says more entries exist for this head than its page carried.
 
-    A check missing from a partial read is indistinguishable from one that never ran, which the
-    empty-check-list precondition would then report as a workflow nobody triggered. Both payloads
-    go through here, because a merge decided from a partial read of either is a merge over a check
-    nobody saw.
+    An entry that fell off the page produces no reason at all, rather than a wrong one: the buckets
+    handed to `reasons_from` are the only thing it decides from, and the entries that did arrive can
+    all be passing. The merge then lands green with nothing said about the one nobody read. Its
+    empty-check-list precondition does not reach that case — it runs only when the page carried
+    nothing, and a page that dropped entries carried something. Both payloads go through here,
+    because a merge decided from a partial read of either is a merge over a check nobody saw.
     """
     total = payload.get("total_count", len(listed))
     if total > len(listed):
