@@ -518,9 +518,9 @@ namespace Velvet
 
             // Before the removals: a Portal's top-level Component child mounts inline ON THE TARGET, so
             // the per-element CleanupElement below never reaches its fiber and its effect cleanups would
-            // never run (ComponentRegistry.DisposeInlineFibersInSlotRange owns why the selection has to be
-            // by slot range).
-            _ctx.ComponentRegistry.DisposeInlineFibersInSlotRange(target, portalInfo.SlotStart, portalInfo.SlotLength);
+            // never run (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns why the selection is by
+            // the placeholder rather than by the range being torn out).
+            _ctx.ComponentRegistry.DisposeInlineFibersOwnedByPortal(element);
 
             // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
             // already-converted start mixes the two bases, and tears out one element too many the moment an

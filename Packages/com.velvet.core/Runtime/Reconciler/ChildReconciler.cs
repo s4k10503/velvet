@@ -355,12 +355,19 @@ namespace Velvet
                 var parkedKeyed = PendingKeyedState;
                 PendingIndexedState = null;
                 PendingKeyedState = null;
+                // Same set-and-restore as FiberNodePatcher.PatchPortalChildren, and for the same reason:
+                // this is the mount half of the pair that stamps the fibers a Portal's own children
+                // reconcile creates. A nested Portal enqueued here is drained by a later turn of this loop,
+                // with the field already restored, so its own entry sets its own placeholder.
+                var enclosingPortal = _ctx.CurrentPortalPlaceholder;
+                _ctx.CurrentPortalPlaceholder = placeholder;
                 try
                 {
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
                 }
                 finally
                 {
+                    _ctx.CurrentPortalPlaceholder = enclosingPortal;
                     if (contextSnapshot != null)
                     {
                         for (var s = contextSnapshot.Count - 1; s >= 0; s--)

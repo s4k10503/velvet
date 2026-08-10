@@ -1024,7 +1024,18 @@ namespace Velvet
             // child gaining a filter, or a negative z — inflate the recorded length by one, which then
             // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
             var beforeTailCount = LogicalChildSlots.Count(target);
-            _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
+            // Restored rather than cleared: a Portal declared inside another Portal's children patches from
+            // within this call, and what the outer one mounts after that returns is still the outer one's.
+            var enclosingPortal = _ctx.CurrentPortalPlaceholder;
+            _ctx.CurrentPortalPlaceholder = placeholder;
+            try
+            {
+                _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
+            }
+            finally
+            {
+                _ctx.CurrentPortalPlaceholder = enclosingPortal;
+            }
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
             // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.

@@ -28,6 +28,10 @@ namespace Velvet.Tests
     /// addressing its own children.</item>
     /// <item>A <c>V.Component</c> written directly under the portal is disposed when the children leave
     /// the container — the element-sibling case the containment-based fiber sweep cannot reach.</item>
+    /// <item>That disposal follows the portal the component was written under: on a container two
+    /// portals share, whichever closes takes its own component and leaves the other's alone, in both
+    /// orders and after either range has moved the other. A component rendering nothing at all is
+    /// disposed on the same terms.</item>
     /// </list>
     /// Re-registering the SAME element, and unregistering the id outright, both leave a live portal alone —
     /// <see cref="PortalTests"/> owns the unregistration case.
@@ -462,6 +466,143 @@ namespace Velvet.Tests
 
             // Act
             s_setDropped.Invoke(true);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_childCleanups, Is.EqualTo(1));
+        }
+
+        [Component]
+        private static VNode PortalChildRenderingNothing()
+        {
+            Hooks.UseEffect(() => (Action)(() => s_childCleanups++), Array.Empty<object>());
+            return V.Fragment(Array.Empty<VNode>());
+        }
+
+        private static StateUpdater<bool> s_setEmptyDropped;
+
+        [Component]
+        private static VNode EmptyChildPortalHost()
+        {
+            var (dropped, setDropped) = Hooks.UseState(false);
+            s_setEmptyDropped = setDropped;
+            return V.Div(children: new VNode?[]
+            {
+                dropped
+                    ? null
+                    : V.Portal("notify-target",
+                        children: new VNode?[] { V.Component(PortalChildRenderingNothing, key: "c") }),
+            });
+        }
+
+        [Test]
+        public void Given_APortalWhoseOnlyChildRendersNothing_When_ItUnmounts_Then_ThatChildIsStillDisposed()
+        {
+            // Arrange — a component between two states of its own is an ordinary shape, and this one leaves
+            // the portal occupying no slots at all: a teardown that decides what to dispose from the size of
+            // the range it is tearing out has nothing to select on.
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("notify-target", target);
+            _mounted = V.Mount(new VisualElement(), V.Component(EmptyChildPortalHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_childCleanups = 0;
+
+            // Act
+            s_setEmptyDropped.Invoke(true);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert
+            Assert.That(s_childCleanups, Is.EqualTo(1));
+        }
+
+        private static StateUpdater<bool> s_setToastGrown;
+        private static StateUpdater<bool> s_setToastOpen;
+        private static StateUpdater<bool> s_setModalOpen;
+
+        // Two components portal into one target, each holding its own open/size state, so either can
+        // re-render without the other having any reason to. The toast side carries no component child:
+        // its range moves the modal's without any fiber of its own taking part.
+        [Component]
+        private static VNode ToastPortalHost()
+        {
+            var (grown, setGrown) = Hooks.UseState(false);
+            var (open, setOpen) = Hooks.UseState(true);
+            s_setToastGrown = setGrown;
+            s_setToastOpen = setOpen;
+            return V.Div(children: new VNode?[]
+            {
+                open
+                    ? V.Portal("notify-target", children: grown
+                        ? new VNode?[] { V.Div(name: "toast-one"), V.Div(name: "toast-two") }
+                        : new VNode?[] { V.Div(name: "toast-one") })
+                    : null,
+            });
+        }
+
+        [Component]
+        private static VNode ModalPortalHost()
+        {
+            var (open, setOpen) = Hooks.UseState(true);
+            s_setModalOpen = setOpen;
+            return V.Div(children: new VNode?[]
+            {
+                open
+                    ? V.Portal("notify-target",
+                        children: new VNode?[] { V.Component(PortalChildWithEffect, key: "c") })
+                    : null,
+            });
+        }
+
+        [Component]
+        private static VNode TwoPortalOverlayApp() =>
+            V.Div(children: new VNode?[]
+            {
+                V.Component(ToastPortalHost, key: "toast"),
+                V.Component(ModalPortalHost, key: "modal"),
+            });
+
+        private MountedTree MountTwoPortalOverlay(VisualElement target)
+        {
+            FiberPortalRegistry.Register("notify-target", target);
+            var mounted = V.Mount(new VisualElement(), V.Component(TwoPortalOverlayApp, key: "app"));
+            mounted.FlushEffectsForTest();
+            s_childCleanups = 0;
+            return mounted;
+        }
+
+        [Test]
+        public void Given_ANeighbouringPortalThatGrewFirst_When_ItCloses_Then_TheOtherPortalsComponentChildSurvives()
+        {
+            // Arrange — the toast grows on its own state, which moves where the modal's child sits on the
+            // shared target without the modal re-rendering.
+            var target = new VisualElement();
+            _mounted = MountTwoPortalOverlay(target);
+            s_setToastGrown.Invoke(true);
+            _mounted.FlushStateForTest();
+
+            // Act — closing the toast tears out its own range only.
+            s_setToastOpen.Invoke(false);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert — the modal is still open, so nothing of its has left.
+            Assert.That(s_childCleanups, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Given_ANeighbouringPortalThatClosedFirst_When_TheSecondCloses_Then_ItsComponentChildIsDisposed()
+        {
+            // Arrange — the mirror of the growth: the toast leaving collapses the modal's range left, and
+            // the modal closing afterwards has to tear out the child at wherever it now sits.
+            var target = new VisualElement();
+            _mounted = MountTwoPortalOverlay(target);
+            s_setToastOpen.Invoke(false);
+            _mounted.FlushStateForTest();
+
+            // Act
+            s_setModalOpen.Invoke(false);
             _mounted.FlushStateForTest();
             _mounted.FlushEffectsForTest();
 

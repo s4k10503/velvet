@@ -770,6 +770,14 @@ namespace Velvet
         // SlotStart of Portals later in target.children is shifted by the delta.
         public Dictionary<VisualElement, PortalSlotInfo> PortalState { get; } = new();
 
+        // The Portal placeholder whose children are being reconciled right now, or null outside any such
+        // reconcile. Set-and-restore at each entrance a Portal's children reconcile through — the deferred
+        // mount (ChildReconciler.DrainPendingPortalMounts) and every later patch, world-space and heal
+        // included, which all funnel into FiberNodePatcher.PatchPortalChildren. ComponentRegistry stamps it
+        // onto the inline fibers those reconciles mount, which is what
+        // ComponentRegistry.DisposeInlineFibersOwnedByPortal selects by.
+        internal VisualElement? CurrentPortalPlaceholder { get; set; }
+
         // Portal mounts deferred until the enclosing reconcile pass completes. When a PortalNode
         // (or a WorldSpaceNode — the same deferred-mount flow) is encountered during a reconcile,
         // its target-side reconcile is queued here instead of

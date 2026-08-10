@@ -54,9 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arrived. The range is now taken from the end of the container's children, the same place a portal
   that resolved at mount takes it.
 - A `V.Component` written directly under a `V.Portal` is now disposed when the portal's children leave
-  the container — its own unmount and a move to another container alike. Its effect cleanups never ran
-  and its hook state was never released, so a subscription a closing modal's top-level component
-  opened outlived the modal.
+  the container — its own unmount and a move to another container alike, and whether or not it
+  rendered anything of its own. Its effect cleanups never ran and its hook state was never released,
+  so a subscription a closing modal's top-level component opened outlived the modal. The disposal
+  follows the portal the component was written under, so on a container several portals share, one of
+  them closing leaves the others' components mounted and takes only its own.
 - A second `Mutate` call no longer cancels the first or drops its callbacks. Both run, each delivers
   its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which
   is what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to
