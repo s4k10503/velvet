@@ -10,28 +10,44 @@ had a case that passed on the base and had been reported as pinning something.
 What runs is the branch's test file over the base's production code: the base commit is checked out,
 the branch's test-side files are copied onto it, and the changed cases are executed there.
 
-Three things separate a verdict from a guess.
+**Success here means every changed case was measured on a base tree that demonstrably answers.** Not
+that nothing failed: most of what can go wrong with a run like this ends in a reading nobody took,
+and a reading nobody took must never be a pass. That is one sentence and it decides the shape of
+everything below, because the verdict that carries the evidence -- a case the base could not build --
+is indistinguishable, from the results file alone, from a base that built nothing, ran nothing, or
+was never asked. So each of those is closed separately:
 
-*The instrument is read first.* The cases the branch did not change are byte-identical to the base's
-own, which was green, so they must be green here too. Where one is not, the base tree is answering
-about itself rather than about the branch, and every verdict from that fixture is withdrawn. This is
-not hypothetical: a fresh worktree of this repository has been measured failing cases that no branch
-touched, and without the reading each of those would have read as a case going red for the branch.
+*The tree is read by fixtures the branch did not carry.* `canary_fixtures` picks fixtures of the
+base's own, and where it found any, at least one has to pass. A tree where nothing built reports
+every case as uncompilable, which is not a failure here, so without that reading such a run comes
+back green having measured nothing at all. Separately and before it, a run that left no results file
+withdraws every platform outright: that is the ordinary shape of a licence failure, an editor crash
+or a timeout, and it is the case the canary exists for rather than a case to disarm it in.
+
+*A case is measured under the name the runner reports it by.* A name nothing answers to yields no
+reading, and no reading falls through to the same passing verdict. So the type a case is written in
+is read off the code rather than off the raw line -- `class` occurs in prose and in assertion
+messages -- a type leaves the stack when its body closes, and a case written in an abstract fixture
+is named for each concrete heir. `test_base_red_check.py` holds every case in this repository to a
+name a concrete class in the tree carries.
 
 *A case that cannot compile is evidence, not an error* -- it names something the branch adds -- and
 that reading holds only where the same file compiles on the branch, which is the condition running
 this after the branch's own suite satisfies. A round that reports no case of a fixture is one where
-what the branch carried did not build: that file is withdrawn and the run repeated, so the rest is
-still measured rather than lost behind it. All of that is read off the results, and the editor log
-only picks which file to withdraw first, so a runner that hands back a results file and nothing else
-can still take every verdict -- one round of it, without the withdrawing.
+something the branch carried did not build: that file is withdrawn and the run repeated, so the rest
+is still measured rather than lost behind it. Which file is picked off the editor log, over every
+carried file rather than only the ones holding cases, since a shared helper takes its whole assembly
+down with it. A runner that hands back a results file and nothing else can still take every verdict
+-- one round of it, without the withdrawing.
 
 *A case that belongs on the base says so*, above itself, with a reason:
 
     // GREEN_ON_BASE(characterization): the keyed-reorder order this refactor must not change.
 
-A declaration is per case, and it is read in both directions: one over a case that goes red on the
-base fails too, so a declaration cannot outlive what it describes.
+A declaration is per case and answers for the change under it, so it is read three ways: one over a
+case that goes red on the base is stale and fails, one whose category or reason is malformed fails,
+and one the branch did not itself write is a declaration for a change the base already carries and
+does not answer for this one. A declaration therefore cannot outlive what it describes.
 
 Run: python3 scripts/test_quality/base_red_check.py --base origin/main
 """
@@ -83,16 +99,23 @@ def _sibling(name):
 
 
 # Which offsets the C# compiler sees as code is one question with one answer, and mutation_check.py
-# owns it: a brace inside a string or a comment closes no method there and none here.
+# owns it. Everything here that reads C# structure -- braces, types, namespaces, attributes -- reads
+# it through that mask, so a brace or a `class` inside a string or a comment names nothing here.
 _mutation_check = _sibling("mutation_check")
 code_mask = _mutation_check.code_mask
 line_spans = _mutation_check.line_spans
 
 
 class Declaration:
-    def __init__(self, category, reason):
+    def __init__(self, category, reason, written_here=True, line=None):
         self.category = category
         self.reason = reason
+        # A declaration says a case belongs on the base *because of the change under it*. One the
+        # branch did not write was written for a change the base already carries, and it answers for
+        # that one. Without this the first branch to declare a case green silences every later branch
+        # that edits it, however unlike the reason the declaration gives their change is.
+        self.written_here = written_here
+        self.line = line
 
     @property
     def complaint(self):
@@ -175,21 +198,39 @@ def is_test_side(relative):
     return kind_of(relative) is not None or "/TestUtilities/" in "/" + relative
 
 
-def depths(text):
-    """Brace depth at the end of each line, counting only what the compiler sees as code."""
+def code_lines(text):
+    """Each line with every comment, string and character literal blanked to spaces.
+
+    Blanked rather than removed, so a code line is as long as the raw one and the two can be indexed
+    together -- which they are, since a declaration lives in a comment and everything else does not.
+    """
     mask = code_mask(text)
-    result = []
+    return ["".join(text[offset] if mask[offset] else " " for offset in range(start, end)).rstrip("\r\n")
+            for start, end in line_spans(text)]
+
+
+def brace_profile(text):
+    """(depth entering, deepest within, depth leaving) per line, counting only what the compiler sees.
+
+    The peak is what separates a type whose body opens on the line below from one that opens and
+    closes on its own line: both leave the depth exactly where they found it.
+    """
+    mask = code_mask(text)
+    profile = []
     depth = 0
     for start, end in line_spans(text):
+        entering = depth
+        peak = depth
         for offset in range(start, end):
             if not mask[offset]:
                 continue
             if text[offset] == "{":
                 depth += 1
+                peak = max(peak, depth)
             elif text[offset] == "}":
                 depth -= 1
-        result.append(depth)
-    return result
+        profile.append((entering, peak, depth))
+    return profile
 
 
 def comment_block_start(lines, index):
@@ -211,7 +252,7 @@ def leading_declaration(lines, index):
     for probe in range(comment_block_start(lines, index), index):
         match = DECLARATION.search(lines[probe].strip())
         if match:
-            return Declaration(match.group(1), match.group(2).strip())
+            return Declaration(match.group(1), match.group(2).strip(), line=probe + 1)
     return None
 
 
@@ -235,40 +276,55 @@ def member_end(lines, ends, signature):
 
 
 def csharp_cases(text, path="?"):
-    """Every test case in a C# fixture, named as Unity's -testFilter takes it."""
+    """Every test case in a C# fixture, named as Unity's -testFilter takes it.
+
+    Read off the code lines rather than the raw ones. `class` occurs in this repository's assertion
+    messages and in its prose, and a scan that cannot tell those apart from a declaration names the
+    cases under a type the runner has never heard of -- which reports nothing, and no reading is one
+    of the passing verdicts below.
+
+    A type leaves the stack when the depth its body opened at comes back, not only when the next
+    declaration displaces it. Without that a nested helper class declared after the last one, as an
+    abstract args type or a fake, owns every case under it for the rest of the file.
+    """
     lines = text.splitlines()
-    ends = depths(text)
-    starts = [0] + ends[:-1]
+    code = code_lines(text)
+    profile = brace_profile(text)
+    ends = [leaving for _, _, leaving in profile]
 
     namespace = None
     types = []
     cases = []
     index = 0
     while index < len(lines):
-        line = lines[index]
-        if not line.strip().startswith("//"):
-            found = CSHARP_NAMESPACE.search(line)
-            if found:
-                namespace = found.group(1)
-            found = CSHARP_TYPE.search(line)
-            if found:
-                while types and types[-1][1] >= starts[index]:
-                    types.pop()
-                types.append((found.group(1), starts[index], bool(CSHARP_ABSTRACT.search(line))))
+        entering, peak, leaving = profile[index]
+        line = code[index]
+        while types and types[-1][3] and entering <= types[-1][1]:
+            types.pop()
+        found = CSHARP_NAMESPACE.search(line)
+        if found:
+            namespace = found.group(1)
+        found = CSHARP_TYPE.search(line)
+        if found:
+            types.append([found.group(1), entering, bool(CSHARP_ABSTRACT.search(line)), False])
+        if types and not types[-1][3] and peak > types[-1][1]:
+            types[-1][3] = True
+            if leaving <= types[-1][1]:
+                types.pop()
 
         if CSHARP_ATTRIBUTE.match(line):
             block = index
-            while index < len(lines) and (CSHARP_ATTRIBUTE.match(lines[index])
-                                          or not lines[index].strip()):
+            while index < len(lines) and (CSHARP_ATTRIBUTE.match(code[index])
+                                          or not code[index].strip()):
                 index += 1
-            attributes = "\n".join(lines[block:index])
-            signature = lines[index] if index < len(lines) else ""
+            attributes = "\n".join(code[block:index])
+            signature = code[index] if index < len(lines) else ""
             name = CSHARP_METHOD.search(signature)
             if CSHARP_CASE_ATTRIBUTE.search(attributes) and name:
-                owner = ".".join(part for part, _, _ in types)
+                owner = ".".join(part for part, _, _, _ in types)
                 qualified = ".".join(part for part in (namespace, owner, name.group(1)) if part)
                 case = Case(qualified, path, comment_block_start(lines, block) + 1,
-                            member_end(lines, ends, index) + 1, leading_declaration(lines, block))
+                            member_end(code, ends, index) + 1, leading_declaration(lines, block))
                 case.abstract_owner = types[-1][0] if types and types[-1][2] else None
                 cases.append(case)
             continue
@@ -310,9 +366,7 @@ def concrete_heirs(corpus):
     heirs = {}
     for relative, text in corpus.items():
         namespace = None
-        for line in text.splitlines():
-            if line.strip().startswith("//"):
-                continue
+        for line in code_lines(text):
             found = CSHARP_NAMESPACE.search(line)
             if found:
                 namespace = found.group(1)
@@ -353,9 +407,9 @@ def cases_in(relative, text):
 def touched(cases, changed_lines):
     """The cases the branch wrote: the ones a changed line lands inside. `None` is a whole new file.
 
-    A case the branch left alone is not a claim about it, whatever else in the file moved, and it is
-    worth more as a control -- byte-identical to the base's own, so anything but green from it is the
-    environment rather than the branch. `outside` is what this costs; the two are read together.
+    A case the branch left alone is not a claim about it, whatever else in the file moved. Whether it
+    is worth anything as a control is a separate question `collect` answers, and `outside` is half of
+    what that answer is read from.
     """
     if changed_lines is None:
         return list(cases)
@@ -368,7 +422,8 @@ def outside(cases, changed_lines):
 
     A change to what several cases share can make an untouched one stop separating anything, and no
     diff says which. Selecting the file whole on that ground was tried and puts every case a fixture
-    has on trial for a line added to SetUp, so it is reported instead of acted on.
+    has on trial for a line added to SetUp, so it is reported instead of acted on. What it does
+    settle is that the file's untouched cases are no longer the base's text and cannot read the tree.
     """
     if changed_lines is None:
         return set()
@@ -422,7 +477,19 @@ def changed_lines_by_file(project, since):
 
 
 def deleted_files(project, since):
-    return git(project, "diff", "--name-only", "--diff-filter=D", since).stdout.splitlines()
+    """The paths the base holds and the branch does not, so the base tree stops holding them either.
+
+    A rename is one of them. Git reports a rename as R rather than as A+D whenever it can pair the
+    two halves, so a filter that reads only D leaves the base's copy in place beside the carried one
+    -- two files declaring one fixture class, which either refuses to build or reports the same name
+    twice for the results to collapse into one.
+    """
+    gone = git(project, "diff", "--name-only", "--diff-filter=D", since).stdout.splitlines()
+    for line in git(project, "diff", "--name-status", "--diff-filter=R", since).stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) >= 3:
+            gone.append(fields[1])
+    return gone
 
 
 # --------------------------------------------------------------------------------------------------
@@ -511,6 +578,19 @@ def compile_error_files(log_text):
             if relative not in named:
                 named.append(relative)
     return named
+
+
+def next_to_withdraw(log_text, carry, withdrawn, silent):
+    """Which carried file to put back before asking the base again, after a round reported nothing.
+
+    Every carried file is a candidate, not only the ones holding cases. This repository's conventions
+    put a second fixture's shared reach into TestUtilities, that compiles into the same assembly as
+    the fixtures, and one the base cannot build takes every one of them down with it -- so a choice
+    made only over case-bearing files withdraws innocent fixtures one per round until there are none
+    left, and the run ends having measured nothing with nothing saying so.
+    """
+    return next((name for name in compile_error_files(log_text)
+                 if name in carry and name not in withdrawn), silent[0])
 
 
 def run_unity(unity, tree, platform, fixtures, results, log, timeout):
@@ -644,12 +724,17 @@ def decide(case, result, fixture_ran):
     its other cases and not this one resolved the name wrongly, and a name nobody answered to is a
     reading nobody took.
     """
-    if case.declaration is not None:
-        complaint = case.declaration.complaint
+    declaration = case.declaration
+    if declaration is not None and not declaration.written_here:
+        if result == "Passed":
+            return PASSED_ON_BASE, "its declaration is the base's own; restate it for this change"
+        declaration = None
+    if declaration is not None:
+        complaint = declaration.complaint
         if complaint:
             return DECLARED_STALE, complaint
         if result == "Passed":
-            return DECLARED_KEPT, "{}: {}".format(case.declaration.category, case.declaration.reason)
+            return DECLARED_KEPT, "{}: {}".format(declaration.category, declaration.reason)
         return DECLARED_STALE, "it is {} on the base; remove the declaration".format(
             (result or "absent").lower())
     if result == "Passed":
@@ -687,7 +772,8 @@ def as_plan(since, cases, control, shared, canaries):
         return {
             "name": case.name, "path": case.path, "key": case.key, "fixture": case.fixture,
             "declaration": (None if case.declaration is None
-                            else [case.declaration.category, case.declaration.reason]),
+                            else [case.declaration.category, case.declaration.reason,
+                                  case.declaration.written_here]),
         }
 
     return {"since": since, "shared": shared, "canaries": canaries,
@@ -720,10 +806,20 @@ def results_from(where):
     return reported, bool(files)
 
 
-def report(cases, control, reported, canaries=None):
-    """Prints each case's verdict and returns the ones that fail the run."""
+def report(cases, control, reported, canaries=None, wrote=True):
+    """Prints each case's verdict and returns the ones that fail the run.
+
+    `wrote` is whether the run produced a results file at all, and it is read before anything in it.
+    A run that wrote nothing measured nothing, and the verdict for a case nothing measured is not
+    COULD_NOT_COMPILE -- that reading says the base built the rest and not this, which takes a base
+    that built something.
+    """
     unsound = unsound_fixtures(control, reported)
     withdrawn = unsound_platforms(canaries or {}, reported)
+    if not wrote:
+        for platform in {platform_of(case.path) for case in cases
+                         if kind_of(case.path) == "csharp"}:
+            withdrawn[platform] = "the run wrote no results file, so nothing was measured"
     ran = fixtures_that_ran(reported)
     for case in cases:
         if case.fixture in unsound:
@@ -754,26 +850,37 @@ def corpus_of(project):
 
 
 def collect(project, base, lane):
-    """(merge base, changed cases, control cases, shared-line count by file) for a branch."""
+    """(merge base, changed cases, control cases, shared lines by file, carried helpers) for a branch."""
     since = merge_base(project, base)
     heirs = concrete_heirs(corpus_of(project))
+    by_file = changed_lines_by_file(project, since)
+    # A helper this branch rewrote is carried onto the base tree, so no case that calls it is running
+    # the base's own text any more. Its verdict is still worth taking -- a case going red because the
+    # branch sharpened what it shares is the strongest evidence this check can be handed -- but it is
+    # no longer a reading of the tree, and `canary_fixtures` reads the tree by the base's own files.
+    shared_helper = sorted(name for name in by_file
+                           if kind_of(name) is None and is_test_side(name))
     changed, control, shared = [], [], {}
-    for relative, lines in sorted(changed_lines_by_file(project, since).items()):
+    for relative, lines in sorted(by_file.items()):
         if kind_of(relative) is None or (lane != "both" and kind_of(relative) != lane):
             continue
         source = project / relative
         if not source.exists():
             continue
         cases = cases_in(relative, source.read_text())
+        for case in cases:
+            if case.declaration is not None and lines is not None:
+                case.declaration.written_here = case.declaration.line in lines
         wanted = {case.name for case in touched(cases, lines)}
         changed.extend(as_the_runner_names_them(
             [case for case in cases if case.name in wanted], heirs))
-        control.extend(as_the_runner_names_them(
-            [case for case in cases if case.name not in wanted], heirs))
         loose = outside(cases, lines)
+        if not loose and not shared_helper:
+            control.extend(as_the_runner_names_them(
+                [case for case in cases if case.name not in wanted], heirs))
         if loose:
             shared[relative] = len(loose)
-    return since, changed, control, shared
+    return since, changed, control, shared, shared_helper
 
 
 def main():
@@ -812,12 +919,12 @@ def main():
             raise SystemExit("--verdict needs --results")
         reported, wrote = results_from(args.results)
         if not wrote:
-            print("the base run wrote no result, so it did not build what was carried onto it")
+            print("the base run wrote no result, so nothing it was asked was measured")
         return 1 if report(from_plan(plan["cases"]), from_plan(plan["control"]), reported,
-                           plan["canaries"] if wrote else {}) else 0
+                           plan["canaries"], wrote) else 0
 
     project = Path(args.project).resolve()
-    since, cases, control, shared = collect(project, args.base, args.lane)
+    since, cases, control, shared, shared_helper = collect(project, args.base, args.lane)
     if not cases:
         print("no changed test case in scope of --lane {}".format(args.lane))
         return 0
@@ -825,12 +932,17 @@ def main():
     print("merge base {}".format(since[:12]))
     for case in cases:
         print("  {}{}".format(case.name,
-                              " [{}]".format(case.declaration.category) if case.declaration else ""))
+                              " [{}]".format(case.declaration.category)
+                              if case.declaration and case.declaration.written_here else ""))
     print("  ({} control case(s) alongside)".format(len(control)))
     for relative, count in sorted(shared.items()):
-        print("  not judged: {} line(s) of {} sit in no case -- a SetUp, a field, a helper, a using. "
-              "A case\n              they change but whose own body they do not is left as a control."
-              .format(count, relative))
+        print("  no control: {} line(s) of {} sit in no case -- a SetUp, a field, a helper, a using. "
+              "The\n              cases beside them are this branch's text too, so none of them reads "
+              "the base tree.".format(count, relative))
+    for relative in shared_helper:
+        print("  no control: {} is carried onto the base, so every case that calls it is this "
+              "branch's\n              text there. The base's own fixtures are what read the tree."
+              .format(relative))
     if args.plan:
         return 0
 
@@ -911,10 +1023,11 @@ def main():
                 silent = sorted({case.path for case in live if case.fixture not in ran})
                 if not silent:
                     break
-                blamed = [name for name in compile_error_files(
-                    log.read_text(errors="replace") if log.exists() else "") if name in silent]
-                withdraw(base_tree, blamed[0] if blamed else silent[0])
-                withdrawn.add(blamed[0] if blamed else silent[0])
+                offender = next_to_withdraw(
+                    log.read_text(errors="replace") if log.exists() else "",
+                    carry, withdrawn, silent)
+                withdraw(base_tree, offender)
+                withdrawn.add(offender)
     finally:
         if holder is not None:
             git(project, "worktree", "remove", "--force", str(base_tree), check=False)
@@ -924,8 +1037,8 @@ def main():
         (output / "python.log").write_text("\n".join(transcript))
 
     if not ever_wrote:
-        print("no round wrote a result, so the base built none of what was carried onto it")
-    offenders = report(cases, control, reported, canaries if ever_wrote else {})
+        print("no round wrote a result, so nothing any of them was asked was measured")
+    offenders = report(cases, control, reported, canaries, ever_wrote)
     print("\nlogs: {}".format(output))
     return 1 if offenders else 0
 

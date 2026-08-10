@@ -10,8 +10,10 @@ Run: python3 scripts/test_quality/test_base_red_check.py
 """
 
 import importlib.util
+import json
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -104,6 +106,40 @@ def python_test_files():
     return tracked("python")
 
 
+def concrete_class_names(corpus):
+    """The simple names of every class, record and struct declared without `abstract`, over a corpus.
+
+    Off the code lines, so a `class` written into an assertion message is not one of them -- which is
+    the whole point of comparing against this set.
+    """
+    found = set()
+    for text in corpus.values():
+        for line in base_red_check.code_lines(text):
+            declared = base_red_check.CSHARP_TYPE.search(line)
+            if declared and not base_red_check.CSHARP_ABSTRACT.search(line):
+                found.add(declared.group(1))
+    return found
+
+
+def unanswered_names(corpus, heirs):
+    """Every case in `corpus` whose runner name no concrete class in `corpus` can answer to.
+
+    Both ways that happens: a case the naming drops because the abstract fixture it is written in has
+    no concrete heir, and a case it keeps under a class segment nothing declares.
+    """
+    concrete = concrete_class_names(corpus)
+    unanswered = []
+    for relative, text in corpus.items():
+        for case in base_red_check.csharp_cases(text, relative):
+            named = base_red_check.as_the_runner_names_them([case], heirs)
+            if not named:
+                unanswered.append("{}: {} runs under no concrete class".format(relative, case.name))
+            unanswered += ["{}: {} names {}, which nothing declares".format(
+                relative, case.name, produced.name.rsplit(".", 2)[-2])
+                for produced in named if produced.name.rsplit(".", 2)[-2] not in concrete]
+    return unanswered
+
+
 class CSharpReadingTests(unittest.TestCase):
     def test_Given_AFixture_When_ItIsRead_Then_OnlyTheTestMethodsAreCases(self):
         # Act
@@ -138,6 +174,62 @@ class CSharpReadingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(names, ["N.Outer.Inner.Given_X_When_Y_Then_Z"])
+
+    def test_Given_AStringLiteralHoldingTheWordClass_When_ItIsRead_Then_ItOwnsNoCaseBelowIt(self):
+        # Arrange -- this repository writes "the enter-from class is applied" into assertion messages,
+        # and a scan of the raw line reads a type named `is` out of it. Every case below is then
+        # emitted under a name no runner reports, which is a reading nobody takes and a passing one.
+        text = ("namespace N\n{\n    class C\n    {\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C()\n        {\n"
+                "            Assert.That(x, Is.True, \"The class is applied on mount\");\n        }\n\n"
+                "        [Test]\n        public void Given_D_When_E_Then_F() => Assert.Pass();\n"
+                "    }\n}\n")
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C", "N.C.Given_D_When_E_Then_F"])
+
+    def test_Given_ANestedTypeThatCloses_When_TheCasesBelowAreRead_Then_ItDoesNotQualifyThem(self):
+        # Arrange -- a helper type declared among a fixture's members, an args type or a fake, with no
+        # further declaration after it to displace it from the stack.
+        text = ("namespace N\n{\n    class C\n    {\n        abstract class Args\n        {\n"
+                "        }\n\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => Assert.Pass();\n    }\n}\n")
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
+
+    def test_Given_ANestedAbstractTypeThatCloses_When_TheCaseBelowIsRead_Then_ItIsNotWrittenInIt(self):
+        # Arrange -- the same shape read for the other half: a case the naming believes is inherited
+        # is rewritten into one name per concrete heir, and an args type has none, so it is dropped.
+        text = ("namespace N\n{\n    class C\n    {\n        abstract class Args\n        {\n"
+                "        }\n\n        [Test]\n"
+                "        public void Given_A_When_B_Then_C() => Assert.Pass();\n    }\n}\n")
+
+        # Act
+        case = base_red_check.csharp_cases(text)[0]
+
+        # Assert
+        self.assertIsNone(case.abstract_owner)
+
+    def test_Given_APreprocessorDirectiveHoldingAnApostrophe_When_TheFileIsRead_Then_TheCasesBelowAreToo(self):
+        # Arrange -- `#region Boundary's own mount` opens a character literal to anything reading the
+        # directive as code, and it then runs to the next apostrophe anywhere in the file, blanking
+        # every brace, attribute and type between the two.
+        text = ("namespace N\n{\n    class C\n    {\n        #region Boundary's own mount\n\n"
+                "        [Test]\n        public void Given_A_When_B_Then_C() => Assert.Pass();\n\n"
+                "        #endregion\n    }\n}\n")
+
+        # Act
+        names = [case.name for case in base_red_check.csharp_cases(text)]
+
+        # Assert
+        self.assertEqual(names, ["N.C.Given_A_When_B_Then_C"])
 
     def test_Given_ASecondFixtureAfterTheFirstCloses_When_ItIsRead_Then_TheFirstDoesNotQualifyIt(self):
         # Arrange
@@ -336,6 +428,31 @@ class VerdictTests(unittest.TestCase):
         # Assert -- a declaration nothing withdraws is one that silences a later, real green.
         self.assertEqual(verdict, base_red_check.DECLARED_STALE)
 
+    def test_Given_ADeclarationTheBranchDidNotWrite_When_TheCaseIsGreen_Then_ItStillFailsTheRun(self):
+        # Arrange -- it answers for the change that wrote it, which is already on the base. Reading it
+        # as an exemption for whatever the branch does to the case next lets one declaration silence
+        # every later green-on-base in that case for good.
+        merged = base_red_check.Declaration("refactor", "the keyed order this rename keeps",
+                                            written_here=False)
+
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(merged), "Passed", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.PASSED_ON_BASE)
+
+    def test_Given_ADeclarationTheBranchDidNotWrite_When_TheCaseIsRed_Then_ItIsReadAsUndeclared(self):
+        # Arrange -- red on the base is the outcome the check is asking for, and a declaration that
+        # answers for somebody else's change must not turn it into a complaint about this one.
+        merged = base_red_check.Declaration("refactor", "the keyed order this rename keeps",
+                                            written_here=False)
+
+        # Act
+        verdict, _ = base_red_check.decide(self.probe(merged), "Failed", fixture_ran=True)
+
+        # Assert
+        self.assertEqual(verdict, base_red_check.RED_ON_BASE)
+
     def test_Given_ACaseAbsentFromAFixtureThatRan_When_ItIsDecided_Then_ItFailsTheRun(self):
         # Act
         verdict, _ = base_red_check.decide(self.probe(), None, fixture_ran=True)
@@ -530,6 +647,211 @@ class InstrumentTests(unittest.TestCase):
         self.assertEqual(base_red_check.unsound_fixtures([case], reported), {})
 
 
+class WithdrawalTests(unittest.TestCase):
+    """Which carried file goes back when a round of the base run reported nothing of some fixture."""
+
+    HELPER = "Packages/p/TestUtilities/PanelTestBase.cs"
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+
+    def log(self, blamed):
+        return "/tmp/base/{}(12,34): error CS0117: 'V' has no definition for 'Portal'\n".format(blamed)
+
+    def test_Given_TheLogBlamesACarriedHelper_When_TheOffenderIsChosen_Then_ItIsTheHelper(self):
+        # Arrange -- the helper holds no case, so a choice made over case-bearing files alone cannot
+        # name it, and every fixture in its assembly is silent behind it.
+        # Act
+        offender = base_red_check.next_to_withdraw(
+            self.log(self.HELPER), carry=[self.HELPER, self.FIXTURE], withdrawn=set(),
+            silent=[self.FIXTURE])
+
+        # Assert
+        self.assertEqual(offender, self.HELPER)
+
+    def test_Given_TheBlamedFileIsAlreadyWithdrawn_When_TheOffenderIsChosen_Then_ItIsNotChosenAgain(self):
+        # Arrange -- choosing it twice is a round that changes nothing, and there are only so many.
+        # Act
+        offender = base_red_check.next_to_withdraw(
+            self.log(self.HELPER), carry=[self.HELPER, self.FIXTURE], withdrawn={self.HELPER},
+            silent=[self.FIXTURE])
+
+        # Assert
+        self.assertEqual(offender, self.FIXTURE)
+
+
+class UnmeasuredRunTests(unittest.TestCase):
+    """A run that produced no results file at all, which is what a failed base run leaves behind."""
+
+    def cases(self):
+        return [base_red_check.Case("N.C.Given_A_When_B_Then_C",
+                                    "Packages/p/Runtime/A/Tests/Editor/CTests.cs", 1, 2)]
+
+    PLAN = {
+        "since": "0" * 40, "shared": {}, "canaries": {"EditMode": ["N.CanaryTests"]},
+        "cases": [{"name": "N.ProbeTests.Given_A_When_B_Then_C",
+                   "path": "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs",
+                   "key": "N.ProbeTests.Given_A_When_B_Then_C", "fixture": "N.ProbeTests",
+                   "declaration": None}],
+        "control": [],
+    }
+
+    def verdict_over(self, *results):
+        """The exit status of the --verdict lane over a directory holding `results`."""
+        holder = tempfile.mkdtemp(prefix="base-red-verdict-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        plan = Path(holder, "plan.json")
+        plan.write_text(json.dumps(self.PLAN))
+        written = Path(holder, "results")
+        written.mkdir()
+        for index, body in enumerate(results):
+            Path(written, "r{}.xml".format(index)).write_text(body)
+        return subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/test_quality/base_red_check.py"),
+             "--verdict", str(plan), "--results", str(written)],
+            capture_output=True, text=True).returncode
+
+    def test_Given_ABaseRunThatLeftNoResultsFile_When_TheVerdictLaneRuns_Then_ItRefuses(self):
+        # Arrange -- the ordinary shape of a base run that failed. game-ci's runner is continue-on-
+        # error, so a licence failure, an editor crash, an OOM and a timeout all reach this step with
+        # an empty artifacts directory, and every case then reads as one the base could not build.
+        # Act
+        status = self.verdict_over()
+
+        # Assert
+        self.assertEqual(status, 1)
+
+    def test_Given_ABaseRunWhoseCanaryPassed_When_TheCaseIsAbsent_Then_ItIsStillEvidenceNotAFailure(self):
+        # Arrange -- the counterpart, so the refusal above is not the lane refusing everything: a tree
+        # that demonstrably answers, and a case it named nothing of, is the reading this exists to take.
+        # Act
+        status = self.verdict_over(
+            '<test-run><test-case fullname="N.CanaryTests.Given_X_When_Y_Then_Z" result="Passed" />'
+            '</test-run>')
+
+        # Assert
+        self.assertEqual(status, 0)
+
+    def test_Given_ARunThatWroteNothingAndNoCanary_When_TheVerdictsAreTaken_Then_ItStillFails(self):
+        # Arrange -- the canary list is empty when the base tree offers no fixture of its own on this
+        # platform, and an empty one must not read as permission to believe an unmeasured run.
+        cases = self.cases()
+
+        # Act
+        offenders = base_red_check.report(cases, [], {}, {"EditMode": []}, wrote=False)
+
+        # Assert
+        self.assertEqual([case.verdict for case in offenders], [base_red_check.BASE_UNSOUND])
+
+    def test_Given_ARunThatWroteAnEmptyResultsFile_When_TheVerdictsAreTaken_Then_TheCanaryFailsIt(self):
+        # Arrange -- the other half of the same bar, kept beside it: a file that parses to no case is
+        # a run that happened and built nothing, and the canary is what reads that.
+        cases = self.cases()
+
+        # Act
+        offenders = base_red_check.report(cases, [], {}, {"EditMode": ["N.CanaryTests"]}, wrote=True)
+
+        # Assert
+        self.assertEqual([case.verdict for case in offenders], [base_red_check.BASE_UNSOUND])
+
+
+class BranchReadingTests(unittest.TestCase):
+    """`collect` and `deleted_files` over a real two-commit repository rather than an invented diff."""
+
+    FIXTURE = "Packages/p/Runtime/A/Tests/Editor/ProbeTests.cs"
+
+    def source(self, declaration="", first="Assert.Pass()"):
+        return ("namespace N\n{\n    class ProbeTests\n    {\n        [SetUp]\n"
+                "        public void SetUp()\n        {\n            _count = 0;\n        }\n\n"
+                + declaration +
+                "        [Test]\n        public void Given_A_When_B_Then_C() => " + first + ";\n\n"
+                "        [Test]\n        public void Given_D_When_E_Then_F() => Assert.Pass();\n"
+                "    }\n}\n")
+
+    def repository(self, before, after, rename_to=None):
+        """A repository whose HEAD~1 holds `before` and whose HEAD holds `after`."""
+        holder = tempfile.mkdtemp(prefix="base-red-branch-")
+        self.addCleanup(shutil.rmtree, holder, ignore_errors=True)
+        root = Path(holder)
+        run = lambda *arguments: subprocess.run(["git", "-C", holder, *arguments], check=True,
+                                                capture_output=True, text=True)
+        run("init", "-q")
+        run("config", "user.email", "probe@example.com")
+        run("config", "user.name", "probe")
+        path = root / self.FIXTURE
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(before)
+        run("add", self.FIXTURE)
+        run("commit", "-qm", "base")
+        if rename_to:
+            (root / rename_to).parent.mkdir(parents=True, exist_ok=True)
+            path.unlink()
+            (root / rename_to).write_text(after)
+            run("add", self.FIXTURE, rename_to)
+        else:
+            path.write_text(after)
+            run("add", self.FIXTURE)
+        run("commit", "-qm", "branch")
+        return root
+
+    def test_Given_ABranchThatChangedASetUp_When_ItIsRead_Then_ItsOtherCasesAreNotControls(self):
+        # Arrange -- the untouched case is not the base's own text any more: what it shares with the
+        # case beside it moved. Reading the tree by it converts the sharpest red-on-base evidence
+        # there is -- a tightened assertion in shared material -- into "the base cannot answer".
+        root = self.repository(self.source(),
+                               self.source(first="Assert.Fail()").replace("_count = 0", "_count = 1"))
+
+        # Act
+        _, _, control, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
+
+        # Assert
+        self.assertEqual(control, [])
+
+    def test_Given_ABranchThatChangedOneCaseOnly_When_ItIsRead_Then_TheOtherIsAControl(self):
+        # Arrange -- the counterpart, so the case above is not passing for want of any control at all.
+        root = self.repository(self.source(), self.source(first="Assert.Fail()"))
+
+        # Act
+        _, _, control, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
+
+        # Assert
+        self.assertEqual([case.name for case in control], ["N.ProbeTests.Given_D_When_E_Then_F"])
+
+    def test_Given_ADeclarationTheBaseAlreadyHeld_When_TheBranchEditsTheCase_Then_ItIsNotThisBranchs(self):
+        # Arrange -- nothing removes a declaration at merge, so one written for an earlier change sits
+        # over the case for good and silences every later branch that edits it.
+        declared = "        // " + MARKER + "(refactor): a pure rename of the applier.\n"
+        root = self.repository(self.source(declared), self.source(declared, first="Assert.Fail()"))
+
+        # Act
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
+
+        # Assert
+        self.assertFalse(case_named(cases, "Given_A_When_B_Then_C").declaration.written_here)
+
+    def test_Given_ADeclarationTheBranchWrote_When_TheCaseIsRead_Then_ItIsThisBranchs(self):
+        # Arrange -- the counterpart, so the case above is not passing for want of reading any
+        # declaration at all.
+        declared = "        // " + MARKER + "(refactor): a pure rename of the applier.\n"
+        root = self.repository(self.source(), self.source(declared))
+
+        # Act
+        _, cases, _, _, _ = base_red_check.collect(root, "HEAD~1", "csharp")
+
+        # Assert
+        self.assertTrue(case_named(cases, "Given_A_When_B_Then_C").declaration.written_here)
+
+    def test_Given_ARenamedAndEditedTestFile_When_TheDroppedFilesAreRead_Then_TheOldPathIsAmongThem(self):
+        # Arrange -- git pairs the two halves and reports R, so neither the added nor the deleted
+        # filter names anything and the base tree ends up holding both copies of one fixture class.
+        moved = "Packages/p/Runtime/B/Tests/Editor/ProbeTests.cs"
+        root = self.repository(self.source(), self.source(first="Assert.Fail()"), rename_to=moved)
+
+        # Act
+        dropped = base_red_check.deleted_files(root, "HEAD~1")
+
+        # Assert
+        self.assertEqual(dropped, [self.FIXTURE])
+
+
 class RepositoryTests(unittest.TestCase):
     """The reader against every test file this repository has, rather than against invented ones."""
 
@@ -591,21 +913,14 @@ class RepositoryTests(unittest.TestCase):
     def test_Given_EveryCaseHere_When_ItIsNamedAsTheRunnerWould_Then_AConcreteClassCarriesIt(self):
         # Arrange -- a name no concrete class answers to is one the base run reports nothing for,
         # which reads as a case the base could not build and passes. Silence, not a failure.
+        # Read over the cases as written rather than over what the naming returned: that output holds
+        # only names whose class segment resolved, so a case it dropped and a case it misnamed are
+        # both outside anything computed from it, and both are exactly what this is looking for.
         corpus = dict(csharp_test_files())
         heirs = base_red_check.concrete_heirs(corpus)
-        concrete = {name.rsplit(".", 1)[-1]
-                    for owners in heirs.values() for name in owners} | {
-                        case.name.rsplit(".", 2)[-2]
-                        for relative, text in corpus.items()
-                        for case in base_red_check.csharp_cases(text, relative)
-                        if not case.abstract_owner}
 
         # Act
-        homeless = sorted({case.name.rsplit(".", 2)[-2]
-                           for relative, text in corpus.items()
-                           for case in base_red_check.as_the_runner_names_them(
-                               base_red_check.csharp_cases(text, relative), heirs)
-                           if case.name.rsplit(".", 2)[-2] not in concrete})
+        homeless = sorted(set(unanswered_names(corpus, heirs)))
 
         # Assert
         self.assertEqual(homeless, [])

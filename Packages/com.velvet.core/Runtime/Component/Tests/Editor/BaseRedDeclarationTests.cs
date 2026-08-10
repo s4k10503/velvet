@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -14,8 +15,9 @@ namespace Velvet.Tests
     /// contributor copies, so a format change that leaves it behind teaches the wrong shape.
     /// </summary>
     /// <remarks>
-    /// The categories are read out of the script rather than listed here. A second copy is a second thing
-    /// to update, and the failure of the copy that nobody updated is silence.
+    /// Both what the script accepts — its categories and how long a reason has to be — are read out of it
+    /// rather than listed here. A second copy is a second thing to update, and the failure of the copy
+    /// that nobody updated is silence.
     /// </remarks>
     [TestFixture]
     internal sealed class BaseRedDeclarationTests
@@ -28,6 +30,9 @@ namespace Velvet.Tests
 
         private static readonly Regex Quoted = new("\"([^\"]+)\"", RegexOptions.Compiled);
 
+        private static readonly Regex MinimumWords =
+            new(@"MINIMUM_REASON_WORDS\s*=\s*(\d+)", RegexOptions.Compiled);
+
         private static readonly Regex Declaration =
             new(@"GREEN_ON_BASE\(([A-Za-z]*)\)\s*:\s*(.*)", RegexOptions.Compiled);
 
@@ -39,6 +44,12 @@ namespace Velvet.Tests
             return tuple.Success
                 ? Quoted.Matches(tuple.Groups[1].Value).Select(match => match.Groups[1].Value).ToList()
                 : new List<string>();
+        }
+
+        private static int MinimumReasonWords()
+        {
+            var match = MinimumWords.Match(Read(Script));
+            return match.Success ? int.Parse(match.Groups[1].Value) : 0;
         }
 
         /// <summary>Every declaration written in this repository's own C# test sources.</summary>
@@ -80,11 +91,26 @@ namespace Velvet.Tests
         }
 
         [Test]
+        public void Given_TheScript_When_ItsMinimumReasonLengthIsRead_Then_ItIsMoreThanOneWord()
+        {
+            // Act
+            var minimum = MinimumReasonWords();
+
+            // Assert — a reading that comes back zero makes every reason below long enough by
+            // arithmetic, which is the same silence a hand-copied literal fails with.
+            Assert.That(minimum, Is.GreaterThan(1),
+                $"{Script} declares no MINIMUM_REASON_WORDS this fixture can read");
+        }
+
+        [Test]
         public void Given_TheDeclarationTheGuideShows_When_TheScriptsOwnPatternReadsIt_Then_ItIsAccepted()
         {
             // Arrange — what a contributor copies out of the guide, read back by the thing that will
-            // judge it. The categories come from the script, so this fails on a rename of either side.
+            // judge it. Both the categories and the length come from the script: the script splits on
+            // whitespace and drops what falls out empty, so this must too or a reason with a trailing
+            // space is long enough here and short there.
             var categories = Categories();
+            var minimum = MinimumReasonWords();
 
             // Act
             var shown = Declaration.Matches(Read(Guide)).Cast<Match>()
@@ -92,9 +118,12 @@ namespace Velvet.Tests
                 .ToList();
 
             // Assert — the count rides along because a guide that shows no example passes on the rest.
-            Assert.That((shown.Count, shown.All(sample => categories.Contains(sample.Category)
-                                                          && sample.Reason.Split(' ').Length >= 4)),
-                Is.EqualTo((1, true)),
+            // A floor rather than an exact number: the guide shows one spelling per lane, and pinning
+            // how many lanes there are is a mirror that goes stale when a third one arrives.
+            Assert.That((shown.Count >= 1, shown.All(sample => categories.Contains(sample.Category)
+                    && sample.Reason.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)
+                        .Length >= minimum)),
+                Is.EqualTo((true, true)),
                 $"{Guide} shows an example {Script} would not accept");
         }
     }

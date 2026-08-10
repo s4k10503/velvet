@@ -158,10 +158,17 @@ python3 scripts/test_quality/base_red_check.py --base origin/main --plan   # wha
 python3 scripts/test_quality/base_red_check.py --base origin/main --warm-library Library
 ```
 
-A case that passes on the base fails the check. A case that could not compile there does not — it names
-something the branch adds, which is a pin doing its job — and the base tree is read before any of it is
-believed: the cases the branch did not change come from the base's own green run, so one of those going
-red means the tree is answering about itself and its fixture's verdicts are withdrawn.
+**It passes only where every changed case was measured on a base tree that demonstrably answers.** Most
+of what goes wrong with a run like this ends in a reading nobody took, and a reading nobody took is never
+a pass. So a case that passes on the base fails the check, and a case that could not compile there does
+not — it names something the branch adds, which is a pin doing its job — but that second reading is only
+believed on a tree the run proved can build and answer at all. Two things prove it. Fixtures of the
+base's own that the branch did not carry run alongside, and at least one has to pass; a run that wrote no
+results file at all fails outright rather than reading as a base that built none of the branch's tests.
+Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
+text, so one of those going red means the tree is answering about itself and that fixture's verdicts are
+withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
+cases stop being the base's text and stop being read as the instrument — the run says which and why.
 
 Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
 
@@ -169,11 +176,17 @@ Two kinds of case belong on the base, and say so above themselves with a reason 
 // GREEN_ON_BASE(characterization): the keyed-reorder order this refactor must not change.
 ```
 
+```python
+# GREEN_ON_BASE(refactor): the settle-path names this rename preserves.
+```
+
 `characterization` pins behaviour the base already has; `refactor` rides with a change meant to preserve
-it. The declaration is read in both directions — one over a case that turns out red on the base fails the
-check too — so it cannot outlive what it describes. The base tree is a checkout the machine has never
-imported, and that import is most of what a base run costs; `--warm-library` copies an existing `Library`
-into it, sharing blocks where the filesystem will.
+it. A declaration answers for the change written under it, and it is read three ways so it cannot outlive
+what it describes: one over a case that turns out red on the base fails the check, one whose category or
+reason the script refuses fails it, and one the branch did not itself write is a declaration for a change
+the base already carries and does not cover this one — restate it. The base tree is a checkout the
+machine has never imported, and that import is most of what a base run costs; `--warm-library` copies an
+existing `Library` into it, sharing blocks where the filesystem will.
 
 `Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
 `Test ▸ base-red` runs the C# lane where one is configured, but only one round of it: a base that
