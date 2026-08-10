@@ -114,10 +114,15 @@ namespace Velvet.Tests
             // A segment carrying only an environment assignment has no command word, and is not a move.
             ("BODY=x && gh pr create --title x --body-file silent.md", "no-origin"),
             // The other side of the move set, which the rows below pin in one direction only: they
-            // fail when a mover is dropped and pass when one is added, and the repository's own way
-            // of opening a pull request runs `git push` in the segment before the create.
+            // fail when a mover is dropped and pass when one is added.
             ("git push -u origin HEAD && gh pr create --title x --body-file silent.md", "no-origin"),
             ("echo x && gh pr create --title x --body-file silent.md", "no-origin"),
+            // Sharing a prefix with a mover is not being one, either way round: `cdk` starts with
+            // `cd`, and `pushd` starts with `push`. No other command word posed in this fixture does
+            // either, so a comparison loosened to a prefix match answers every other row the way the
+            // equality does, and only these two flip — to "moved", for a body it should have opened.
+            ("cdk deploy && gh pr create --title x --body-file silent.md", "no-origin"),
+            ("push && gh pr create --title x --body-file silent.md", "no-origin"),
             ("gh pr create --title x --body-file {DIR}/absent.md", "missing"),
             // A directory exists and does not read, which is the one way to reach that branch without
             // a permission bit — and a run as root would read a file this fixture had made unreadable.
