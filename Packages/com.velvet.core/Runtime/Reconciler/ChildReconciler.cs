@@ -317,7 +317,7 @@ namespace Velvet
                         stack.PushRaw(contextSnapshot[s].Key, contextSnapshot[s].Value);
                     }
                 }
-                // A top-level Portal child registers in ComponentRegistry under whatever fiber is current
+                // A Portal child registers in ComponentRegistry under whatever fiber is current
                 // while it mounts, and a later patch of the same Portal reaches
                 // FiberNodePatcher.PatchPortalChildren from the reconcile of the tree the declaring
                 // component itself returned — with that component's own fiber current. So the declaring
@@ -366,8 +366,9 @@ namespace Velvet
                 var enclosingChildScope = _ctx.PortalChildKeyScope;
                 _ctx.CurrentPortalPlaceholder = placeholder;
                 // Pushing the declaring fiber gives this Portal's children the registry parent that
-                // fiber's own in-tree children already have, so the two can collide on a whole key. The
-                // scope is what tells such a collision apart — ComponentRegistry.ResolveInline owns it.
+                // fiber's own in-tree children already have, so the two would otherwise collide on a
+                // whole key. The scope is the member that separates them —
+                // ReconcilerContext.PortalChildKeyScope owns it.
                 _ctx.PortalChildKeyScope = placeholder;
                 if (declaringFiber != null) _ctx.FiberStack.Push(declaringFiber);
                 try

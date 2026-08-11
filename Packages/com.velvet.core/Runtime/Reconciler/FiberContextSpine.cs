@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -53,6 +54,9 @@ namespace Velvet
             internal ComponentRegistry Registry { get; init; }
             internal FiberMemoCache MemoCache { get; init; }
             internal bool IsInlineSpineChild { get; init; }
+            // The Portal scope member of SpineChild's own registration key, read back from the registry
+            // rather than derived here — ComponentRegistry.TryGetInlineKey owns why.
+            internal VisualElement? PortalScope { get; init; }
         }
 
         // Pushes the Provider values that enclose target onto the live cursor and
@@ -121,6 +125,7 @@ namespace Velvet
                     }
                     if (detached.DescendantNodes is { Length: > 0 } && detached.Anchor != null)
                     {
+                        registry.TryGetInlineKey(child, out _, out _, out var detachedScope);
                         var detachedWalk = new SpineWalk
                         {
                             Ancestor = detached.Anchor,
@@ -130,6 +135,7 @@ namespace Velvet
                             Registry = registry,
                             MemoCache = memoCache,
                             IsInlineSpineChild = true,
+                            PortalScope = detachedScope,
                         };
                         var detachedCounters = new Dictionary<object, int>();
                         PushEnclosingProviders(detached.DescendantNodes, detachedCounters,
@@ -141,7 +147,7 @@ namespace Velvet
                 var tree = ancestor.PreviousTree;
                 if (tree == null || tree.Length == 0) continue;
 
-                var isInline = registry.TryGetInlineKey(child, out _, out _);
+                var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope);
                 if (!isInline && child.MountPoint == null) continue;
 
                 var walk = new SpineWalk
@@ -153,6 +159,7 @@ namespace Velvet
                     Registry = registry,
                     MemoCache = memoCache,
                     IsInlineSpineChild = isInline,
+                    PortalScope = childScope,
                 };
                 var counters = new Dictionary<object, int>();
                 PushEnclosingProviders(tree, counters, fragmentKeyScope: null, in walk);
@@ -346,7 +353,7 @@ namespace Velvet
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(counters, identity, registry.InlinePositionKeyBoxes);
             var resolved = registry.TryGetFiberForInlineKey(
-                walk.Ancestor, slotKey, identity, walk.SpineChild.OwningPortalPlaceholder);
+                walk.Ancestor, slotKey, identity, walk.PortalScope);
             return ReferenceEquals(resolved, walk.SpineChild);
         }
 

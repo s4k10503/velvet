@@ -779,12 +779,15 @@ namespace Velvet
         // ComponentRegistry.DisposeInlineFibersOwnedByPortal selects by.
         internal VisualElement? CurrentPortalPlaceholder { get; set; }
 
-        // The same placeholder, narrowed to the ONE level CurrentPortalPlaceholder cannot express: the
-        // Portal's own top-level children, whose ComponentRegistry parent is the declaring fiber they
-        // share with everything that fiber renders outside the Portal. Cleared before a component's own
-        // output is expanded (GeneralPathReconciler.ExpandComponentInline), so a fiber deeper in the
-        // Portal's subtree never sees it — its parent is inside the Portal already, and its own isolated
-        // re-render, which sets neither field, has to compute the same key it registered under.
+        // The same placeholder, carried down exactly as far as the declaring component's own fiber stays
+        // the ComponentRegistry parent: the Portal's top-level children, and anything a plain host
+        // element nests below them, since descending a host element pushes no fiber. Those all share a
+        // whole registry key with what the declaring component renders outside the Portal, and this is
+        // the only member that separates them — PortalChildFiberContinuityTests holds the two keys of
+        // the host-nested shape side by side. GeneralPathReconciler.ExpandComponentInline clears it for a
+        // component's own output: a fiber below that component registers under that component's fiber,
+        // which already sits on one side of the Portal only — and that component's isolated re-render
+        // sets neither field, so its children must key the same way then as at mount.
         internal VisualElement? PortalChildKeyScope { get; set; }
 
         // Portal mounts deferred until the enclosing reconcile pass completes. When a PortalNode

@@ -750,10 +750,11 @@ namespace Velvet
             if (_ctx.IsAborted) return;
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(positionCounters, identity, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
-            // Read once and cleared for the rest of this call: the scope names the Portal whose OWN
-            // top-level children this walk is at, and everything below the component resolved here is a
-            // level further in. Restored on the way out so the Portal's remaining top-level children,
-            // which resume in this same walk, still carry it.
+            // Read once and cleared for the rest of this call: the component resolved here becomes the
+            // registry parent of everything its own output holds, and that is where the scope stops
+            // applying — ReconcilerContext.PortalChildKeyScope owns how far down it reaches and why.
+            // Restored on the way out so the Portal's remaining children, which resume in this same walk,
+            // still carry it.
             var portalScope = _ctx.PortalChildKeyScope;
             _ctx.PortalChildKeyScope = null;
             try
