@@ -522,13 +522,13 @@ namespace Velvet
 
         private VisualElement CreateForComponentNode(ComponentNode componentNode)
         {
-            // Wrapper-mount path: reached only when CreateElement is invoked directly on a
-            // ComponentNode the reconcile walk did not inline-expand — a MemoNode whose
-            // resolved inner is a ComponentNode, or a ComponentNode that is a direct child of
-            // an AnimatePresence keyed entry. ComponentNodes reached during a
-            // ChildReconciler.Reconcile pass (top-level or nested under an element) are
-            // inline-mounted (no wrapper VE) by GeneralPathReconciler.ExpandInlineRecursive, so this
-            // case is unreachable for them.
+            // Wrapper-mount path: reached only when CreateElement is invoked on a ComponentNode the
+            // reconcile walk did not inline-expand. The walk expands every ComponentNode it reaches —
+            // a Memo's resolved inner and an AnimatePresence keyed entry included, both of which
+            // recurse back into GeneralPathReconciler.ExpandInlineRecursive — before the flat array its
+            // own CreateElement calls run over exists. What arrives here is a VNode the walk never saw:
+            // a VirtualList item, built straight from the renderer's return in
+            // IReconcilerBridge.CreateElementForController.
             // A Component does not emit a DOM element; its rendered tree attaches
             // directly to the parent. Velvet needs an anchor element for fiber tracking,
             // so the wrapper is made layout-transparent so its single child can size

@@ -192,6 +192,10 @@ namespace Velvet
                 // PortalChildFiberContinuityTests. Null only where the caller had no container to give,
                 // which must not erase a live one.
                 if (site.MountPoint != null) existingFiber.MountPoint = site.MountPoint;
+                // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the
+                // stamp a fiber below a Portal's own child was given at creation — its parent's isolated
+                // re-render is such a reconcile. Losing it costs nothing: that is the same fiber
+                // DisposeInlineFibersOwnedByPortal already reaches through the parent index.
                 existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 if (propsChanged || existingFiber.IsDirty || refChanged)
                 {

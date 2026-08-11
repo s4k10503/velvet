@@ -1027,19 +1027,19 @@ namespace Velvet
             // Restored rather than cleared: a Portal declared inside another Portal's children patches from
             // within this call, and what the outer one mounts after that returns is still the outer one's.
             var enclosingPortal = _ctx.CurrentPortalPlaceholder;
-            var enclosingChildScope = _ctx.PortalChildKeyScope;
             _ctx.CurrentPortalPlaceholder = placeholder;
             // The mount half sets the same scope for the same reason — DrainPendingPortalMounts owns it —
             // and the two have to agree or a patch looks this Portal's children up under a key the mount
-            // did not register them by.
-            _ctx.PortalChildKeyScope = placeholder;
+            // did not register them by. No push here: this runs from the reconcile of the tree the
+            // declaring component returned, so its fiber is already current.
+            var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
             try
             {
                 _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
             }
             finally
             {
-                _ctx.PortalChildKeyScope = enclosingChildScope;
+                _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                 _ctx.CurrentPortalPlaceholder = enclosingPortal;
             }
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to

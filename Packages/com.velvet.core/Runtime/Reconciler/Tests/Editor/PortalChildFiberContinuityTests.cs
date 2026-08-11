@@ -30,6 +30,10 @@ namespace Velvet.Tests
     /// <item>A consumer a component level below the portal's own children, where the scope has been
     /// dropped again, is still found by the spine on its isolated re-render and keeps its Providers.
     /// </item>
+    /// <item>A render that repeats away from the portal's own reconcile keys the same way both times: a
+    /// <c>V.VirtualList</c> item, whose renderer runs from the scroll viewport's geometry as readily as
+    /// from a patch of the portal's children, and an <c>V.Outlet</c> route Component, whose body mounts
+    /// inside the portal's reconcile and re-renders alone afterwards.</item>
     /// </list>
     /// A component that crosses the portal boundary in either direction mounts fresh on the far side, as
     /// a component changing parent does anywhere else and as the guide states of a move; the fiber the
@@ -39,7 +43,8 @@ namespace Velvet.Tests
     /// A component the reconcile carries between two containers is a separate position on this fixture:
     /// two same-identity unkeyed occurrences in different containers of one declaring component still
     /// resolve to one instance, which is an open defect, and what is pinned here is only that the one
-    /// instance's own re-render lands in the container it last occupied.
+    /// instance's own re-render lands in the container it last occupied, and that a container leaving
+    /// the tree in the render that carried the component out of it does not take the component with it.
     /// </para>
     /// </summary>
     internal sealed class PortalChildFiberContinuityTests
@@ -57,6 +62,7 @@ namespace Velvet.Tests
             s_twinSetters.Clear();
             s_contextSeen = null;
             s_deepSeen = null;
+            s_innerSetups = 0;
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
@@ -65,6 +71,7 @@ namespace Velvet.Tests
         {
             _mounted?.Dispose();
             _mounted = null;
+            Router.Current?.Dispose();
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
@@ -363,6 +370,49 @@ namespace Velvet.Tests
 
             // Assert — the cleanup count is folded in for the reason its opposite direction gives.
             Assert.That((Names(target), s_markCleanups), Is.EqualTo(("a", 1)));
+        }
+
+        // Phase 1 writes the component into the container the reconcile reaches FIRST and drops the one it
+        // was in, so the carry into `left` completes and only then does `right` leave the tree. A teardown
+        // reaches a fiber by the container it renders into, which is what makes the order decide whether
+        // the departing subtree takes the carried fiber with it.
+        [Component]
+        private static VNode CarryThenTeardownHost()
+        {
+            var (phase, setPhase) = Hooks.UseState(0);
+            s_setPhase = setPhase;
+            return V.Div(name: "outside", children: new VNode?[]
+            {
+                V.Div(name: "left", children: phase == 1
+                    ? new VNode?[] { V.Component(MarkedChild) }
+                    : Array.Empty<VNode?>()),
+                phase == 0
+                    ? V.Div(name: "right", children: new VNode?[] { V.Component(MarkedChild) })
+                    : null,
+            });
+        }
+
+        [Test]
+        public void Given_AComponentCarriedIntoAnotherContainer_When_TheOneItLeftIsTornDownInTheSameRender_Then_ItIsNotDisposedWithIt()
+        {
+            // Arrange — the mark is set before the move, so the element the carry writes into `left` names
+            // the instance that held it.
+            var container = new VisualElement();
+            _mounted = V.Mount(container, V.Component(CarryThenTeardownHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_setMark.Invoke("b");
+            _mounted.FlushStateForTest();
+
+            // Act
+            s_setPhase.Invoke(1);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert — the arriving container is folded in because a cleanup count of zero is also what a
+            // render that never carried anything reports.
+            Assert.That(
+                (s_markCleanups, Names(container.Q<VisualElement>("left"))),
+                Is.EqualTo((0, "b")));
         }
 
         [Component]
@@ -678,6 +728,151 @@ namespace Velvet.Tests
             // Assert — the element name is folded in because the value read at mount is "inside" either
             // way, so only a name carrying the new tick says the re-render happened at all.
             Assert.That((s_deepSeen, Names(target)), Is.EqualTo(("inside", "deep-1")));
+        }
+
+        private static StateUpdater<string> s_setRowMark;
+
+        [Component]
+        private static VNode Row()
+        {
+            var (mark, setMark) = Hooks.UseState("a");
+            s_setRowMark = setMark;
+            return V.Div(name: "row-" + mark);
+        }
+
+        // The list's items render from the scroll viewport's geometry, outside every reconcile, and again
+        // from a patch of this portal's children — the two drives this case holds against each other. The
+        // item root is named for the host's state so a reading of it says which of the two produced it.
+        [Component]
+        private static VNode VirtualListPortalHost()
+        {
+            var (sibling, setSibling) = Hooks.UseState(0);
+            s_setSibling = setSibling;
+            return V.Portal("continuity-target", children: new VNode?[]
+            {
+                V.VirtualList(
+                    items: new[] { "only" },
+                    keySelector: item => item,
+                    itemHeight: 50f,
+                    renderer: item => V.Div(name: "item-" + sibling, children: new VNode?[] { V.Component(Row) }),
+                    overscan: 0),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base keys an item's components the one way there is, so the
+        // two drives agree there without being held to it. The portal scope makes them two keys, and this
+        // is what says the item render is not one of the levels that carries it.
+        [Test]
+        public void Given_AComponentInsideAVirtualListInAPortal_When_ThePortalsChildrenPatch_Then_TheItemKeepsTheInstanceItsGeometryRenderBuilt()
+        {
+            // Arrange — the viewport height a geometry pass would have left, so the patch below re-renders
+            // the range instead of returning at the controller's unknown-viewport gate.
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("continuity-target", target);
+            _mounted = V.Mount(new VisualElement(), V.Component(VirtualListPortalHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            var scrollView = target.Q<ScrollView>();
+            var controller = _mounted.Root.Reconciler.Context.VirtualListControllers[scrollView];
+            typeof(FiberVirtualListController)
+                .GetField("_viewportHeight", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .SetValue(controller, 200f);
+            controller.UpdateVisibleRange(scrollY: 0f, viewportHeight: 200f);
+            _mounted.FlushEffectsForTest();
+            s_setRowMark.Invoke("b");
+            _mounted.FlushStateForTest();
+
+            // Act
+            s_setSibling.Invoke(1);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert — the item root's own name is what says the patch re-rendered the range at all, so
+            // the child name beside it is a reading of the instance that render resolved to rather than
+            // of one nothing touched. A second row beside the first is the replacement instance.
+            var itemRoot = scrollView.contentContainer.ElementAt(1).ElementAt(0);
+            Assert.That((itemRoot.name, Names(itemRoot)), Is.EqualTo(("item-1", "row-b")));
+        }
+
+        private static int s_innerSetups;
+        private static StateUpdater<string> s_setInnerMark;
+        private static StateUpdater<int> s_setRouteTick;
+
+        [Component]
+        private static VNode RouteInner()
+        {
+            var (mark, setMark) = Hooks.UseState("a");
+            s_setInnerMark = setMark;
+            Hooks.UseLayoutEffect(() => { s_innerSetups++; return (Action)(() => { }); }, Array.Empty<object>());
+            return V.Div(name: "inner-" + mark);
+        }
+
+        // Wrapper-mounted on the Outlet's container rather than inline-expanded, so its body's own
+        // reconcile runs inside FiberRenderer.RenderAndReconcile — once from the portal's deferred mount,
+        // and every time after that from its own state, with no portal reconcile anywhere on the stack.
+        [Component]
+        private static VNode RouteBody()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setRouteTick = setTick;
+            return V.Div(name: "route-" + tick, children: new VNode?[] { V.Component(RouteInner) });
+        }
+
+        [Component]
+        private static VNode OutletPortalHost()
+            => V.Portal("continuity-target", children: new VNode?[]
+            {
+                V.Div(name: "outlet-wrap", children: new VNode?[] { V.Outlet() }),
+            });
+
+        private void MountOutletPortalHostWith(Router router)
+        {
+            _mounted = V.Mount(new VisualElement(),
+                V.Provider(RouterContext.Location, router.CurrentLocation,
+                    children: new VNode[]
+                    {
+                        V.Provider(RouterContext.LoaderData, router.CurrentLoaderData,
+                            children: new VNode[]
+                            {
+                                V.Provider(RouterContext.Errors, router.CurrentLoaderErrors,
+                                    children: new VNode[]
+                                    {
+                                        V.Component(OutletPortalHost, key: "host"),
+                                    }),
+                            }),
+                    }));
+        }
+
+        // GREEN_ON_BASE(characterization): the base has one key for the route body's children whichever
+        // pass reaches them, so the mount and the isolated re-render agree there for want of a second key
+        // rather than by anything holding them to it.
+        [Test]
+        public void Given_AnOutletRouteInsideAPortal_When_TheRouteComponentReRendersAlone_Then_ItsOwnChildKeepsItsInstance()
+        {
+            // Arrange
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("continuity-target", target);
+            var router = new Router(new[]
+            {
+                new RouteDefinition { Path = "home", Element = V.Component(RouteBody, key: "route") },
+            });
+            router.NavigateAsync("/home").GetAwaiter().GetResult();
+            MountOutletPortalHostWith(router);
+            _mounted!.FlushEffectsForTest();
+            s_setInnerMark.Invoke("b");
+            _mounted.FlushStateForTest();
+
+            // Act
+            s_setRouteTick.Invoke(1);
+            _mounted.FlushStateForTest();
+            _mounted.FlushEffectsForTest();
+
+            // Assert — the route element is located by the tick it renders, so a reading at all says the
+            // re-render happened; its children are folded in beside the mount count because a second
+            // instance shows as either a reset mark or a second element next to the first.
+            var route = target.Q<VisualElement>("route-1");
+            Assert.That(
+                (s_innerSetups, route == null ? "<no route-1>" : Names(route)),
+                Is.EqualTo((1, "inner-b")));
         }
     }
 }

@@ -33,12 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
   its state, refs and effects do not survive the move and the departing instance's cleanups run. A
   component written into a live portal's children that a previous render had outside them — and the same
-  move back out — used to keep its instance where the portal's children were reached by a patch, while
-  the same edit against a portal that mounts or closes in that render mounted a fresh one. Which of the
-  two a given edit got was decided by whether the portal already existed, and neither the guide nor
-  `createPortal` promised the surviving half. The portals guide states the contract that now holds in
-  both directions. Keeping state across such a move means lifting it above the portal — to a `Store`, or
-  to a `UseState` in the component that declares the portal.
+  move back out — used to keep its instance whenever a patch of the portal's children had been the last
+  thing to register the portal-side occurrence, the render that closes the portal included; only an
+  occurrence the portal's own deferred mount had registered mounted fresh. Which of the two a given edit
+  got was decided by which of those two entrances had last put the child in the portal, and neither the
+  guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
+  holds in both directions. Keeping state across such a move means lifting it above the portal — to a
+  `Store`, or to a `UseState` in the component that declares the portal.
 - `V.TextField`'s four new parameters sit between `isPasswordField:` and `enabled:`, so a call passing
   arguments positionally past `isPasswordField` now binds them to different parameters. Every argument
   there but a `null` literal changes type across the shift, so such a call fails to compile rather than
@@ -50,6 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
   container did not, so its own `setState` reconciled its new output into the container it had left —
   leaving the stale element behind there and writing the new one into a container it no longer occupies.
+  It also let the container it had left take it down: where the arriving container is reconciled first
+  and the departing one leaves the tree in that same render, the departing subtree's teardown still
+  found the carried component named as living inside it and ran its cleanups.
   Two components at the same unkeyed position in *different* containers still share one instance where
   both containers sit in the declaring component's own tree, which is a separate defect; what changes
   for them is which of the two containers goes stale, since the shared instance's slot index already

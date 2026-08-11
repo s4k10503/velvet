@@ -750,75 +750,65 @@ namespace Velvet
             if (_ctx.IsAborted) return;
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(positionCounters, identity, _ctx.ComponentRegistry.InlinePositionKeyBoxes);
-            // Read once and cleared for the rest of this call: the component resolved here becomes the
-            // registry parent of everything its own output holds, and that is where the scope stops
-            // applying — ReconcilerContext.PortalChildKeyScope owns how far down it reaches and why.
-            // Restored on the way out so the Portal's remaining children, which resume in this same walk,
-            // still carry it.
-            var portalScope = _ctx.PortalChildKeyScope;
-            _ctx.PortalChildKeyScope = null;
-            try
+            // The scope member of this component's own registry key. Read at this level and never carried
+            // into its output: ExpandFiberPreviousTree pushes the fiber below, which is where the reading
+            // stops answering — ReconcilerContext.PortalChildKeyScope owns why that has to be so.
+            var portalScope = _ctx.PortalChildKeyScopeHere;
+            var commit = walk.Commit;
+            var result = walk.Result;
+            if (walk.IsNewSide)
             {
-                var commit = walk.Commit;
-                var result = walk.Result;
-                if (walk.IsNewSide)
+                // Direct, live-context descent: the component renders
+                // in-scope of its ancestor Providers, still pushed on the live
+                // ComponentContextStack during this walk. UseContext reads that live cursor,
+                // so no per-fiber snapshot is captured here. An isolated re-render later
+                // reconstructs the enclosing Providers via FiberContextSpine.
+                var parentFiber = _ctx.FiberStack.Current;
+                // The fiber's output occupies parent.children from this slot; the
+                // emitted-leaf count so far maps 1:1 to parent's slot range. The general
+                // (commit) path commits leaves into NewElements; the structural (collect)
+                // path accumulates them in result.
+                var emittedCount = commit != null ? commit.NewElements.Count : result!.Count;
+                var currentSlotStart = walk.SlotStart + emittedCount;
+                // Two same-identity siblings sharing one explicit key resolve to the
+                // SAME registry fiber; expanding it once per sibling would emit one
+                // component's DOM twice while its slot bookkeeping tracks only the last
+                // position (with hook state shared across both copies). Mirror the
+                // leaf-level duplicate guard: warn and skip the repeat before
+                // GetOrCreate can clobber the first occurrence's slot.
+                var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity, portalScope);
+                if (priorFiber != null && walk.NewFibers.Contains(priorFiber))
                 {
-                    // Direct, live-context descent: the component renders
-                    // in-scope of its ancestor Providers, still pushed on the live
-                    // ComponentContextStack during this walk. UseContext reads that live cursor,
-                    // so no per-fiber snapshot is captured here. An isolated re-render later
-                    // reconstructs the enclosing Providers via FiberContextSpine.
-                    var parentFiber = _ctx.FiberStack.Current;
-                    // The fiber's output occupies parent.children from this slot; the
-                    // emitted-leaf count so far maps 1:1 to parent's slot range. The general
-                    // (commit) path commits leaves into NewElements; the structural (collect)
-                    // path accumulates them in result.
-                    var emittedCount = commit != null ? commit.NewElements.Count : result!.Count;
-                    var currentSlotStart = walk.SlotStart + emittedCount;
-                    // Two same-identity siblings sharing one explicit key resolve to the
-                    // SAME registry fiber; expanding it once per sibling would emit one
-                    // component's DOM twice while its slot bookkeeping tracks only the last
-                    // position (with hook state shared across both copies). Mirror the
-                    // leaf-level duplicate guard: warn and skip the repeat before
-                    // GetOrCreate can clobber the first occurrence's slot.
-                    var priorFiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(parentFiber, slotKey, identity, portalScope);
-                    if (priorFiber != null && walk.NewFibers.Contains(priorFiber))
-                    {
-                        FiberLogger.LogWarning("GeneralPathReconciler",
-                            $"Duplicate component key detected among siblings: '{slotKey}'. " +
-                            "The repeated sibling is skipped; give each sibling a unique key.");
-                        return;
-                    }
-                    var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
-                        component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
-                    walk.NewFibers.Add(fiber);
-                    var preCount = emittedCount;
-                    ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
-                    fiber.MountSlotCount = (commit != null ? commit.NewElements.Count : result!.Count) - preCount;
+                    FiberLogger.LogWarning("GeneralPathReconciler",
+                        $"Duplicate component key detected among siblings: '{slotKey}'. " +
+                        "The repeated sibling is skipped; give each sibling a unique key.");
+                    return;
                 }
-                else
-                {
-                    // Old-side (structural) walk: look up the previously rendered fiber by the
-                    // same tree-position key the new side registered under — (parent fiber,
-                    // position key, identity). FiberStack.Push mirrors the new side so nested
-                    // old-side components resolve against the same parent fiber they were
-                    // registered with; without the symmetric push the lookup parent would
-                    // diverge and the diff would treat reused fibers as orphans.
-                    var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity, portalScope);
-                    if (fiber != null)
-                    {
-                        ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
-                        // Post-order add: a directly-nested component must precede its
-                        // parent in oldFibers so the orphan sweep's forward walk tears the
-                        // subtree down bottom-up — a descendant's effect cleanups complete
-                        // before an ancestor's, matching the commit-phase deletion order.
-                        walk.OldFibers.Add(fiber);
-                    }
-                }
+                var fiber = _ctx.ComponentRegistry.GetOrCreateInline(
+                    component, parentFiber, slotKey, walk.Parent, currentSlotStart, portalScope);
+                walk.NewFibers.Add(fiber);
+                var preCount = emittedCount;
+                ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+                fiber.MountSlotCount = (commit != null ? commit.NewElements.Count : result!.Count) - preCount;
             }
-            finally
+            else
             {
-                _ctx.PortalChildKeyScope = portalScope;
+                // Old-side (structural) walk: look up the previously rendered fiber by the
+                // same tree-position key the new side registered under — (parent fiber,
+                // position key, identity). FiberStack.Push mirrors the new side so nested
+                // old-side components resolve against the same parent fiber they were
+                // registered with; without the symmetric push the lookup parent would
+                // diverge and the diff would treat reused fibers as orphans.
+                var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity, portalScope);
+                if (fiber != null)
+                {
+                    ExpandFiberPreviousTree(walk, fiber, component, position, nodeIndex);
+                    // Post-order add: a directly-nested component must precede its
+                    // parent in oldFibers so the orphan sweep's forward walk tears the
+                    // subtree down bottom-up — a descendant's effect cleanups complete
+                    // before an ancestor's, matching the commit-phase deletion order.
+                    walk.OldFibers.Add(fiber);
+                }
             }
         }
 
