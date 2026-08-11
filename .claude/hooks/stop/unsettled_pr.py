@@ -19,7 +19,8 @@ left to say is indistinguishable from progress.
 
 A pending check is forgiven while a watcher is demonstrably alive. The heartbeat is written by the
 watching process itself on each poll, never by the assistant, so it cannot be satisfied by intending
-to watch — if the watcher dies the file goes stale within one poll and this blocks again. The
+to watch — if the watcher dies the file goes stale within one poll and this blocks again, and
+`scripts/pr/watcher_state.py` owns what else a reader has to establish before believing it. The
 watcher must re-enumerate open PRs every cycle, or a PR opened after it started would be unwatched
 while the heartbeat still looked fresh. Zero checks is judged without the heartbeat: there, nothing
 is running for a watcher to observe.
@@ -31,16 +32,17 @@ import json
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
+sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 
 from deferrals import DEFERRALS, deferred, unusable  # noqa: E402
+from repository import open_pull_requests, unreadable_report  # noqa: E402
+from watcher_state import HEARTBEAT, alive  # noqa: E402
 
-HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
-# Three polls of the 60s cycle, so one slow `gh` call does not read as a dead watcher.
-STALE_AFTER = 180
+UNREADABLE_POLICY = "refuse"
 
 # Merge states that explain an absent check list without anything being wrong with it.
 EXPECTED_WITHOUT_CHECKS = {"UNSTABLE", "BEHIND", "BLOCKED", ""}
@@ -53,22 +55,6 @@ def gh(args):
     except (OSError, subprocess.SubprocessError) as error:
         return "", str(error), 1
     return result.stdout.strip(), (result.stdout + result.stderr).strip(), result.returncode
-
-
-def watcher_is_alive():
-    """True while a watching process is still writing its heartbeat.
-
-    Same two bounds as the deferral expiry, and for the same reason: a malformed stamp must not
-    vouch for a watcher, and one in the future must not vouch for it permanently.
-    """
-    try:
-        beat = HEARTBEAT.read_text(encoding="utf-8").strip()
-    except OSError:
-        return False
-    if not beat.isdigit():
-        return False
-    age = time.time() - int(beat)
-    return 0 <= age < STALE_AFTER
 
 
 def merge_state(pr):
@@ -87,7 +73,8 @@ def checks_of(pr):
         return []
 
 
-def unreadable(output, code):
+def unreadable(attempts):
+    """Every way of asking failed, so this blocks on the guard's own blindness and says which."""
     # Its own key, not "backlog": that one holds the backlog guard, and one line silencing both
     # guards is the unqualified exemption the expiry exists to prevent.
     holding = deferred("pr-list")
@@ -100,15 +87,7 @@ def unreadable(output, code):
     if broken is not None:
         print(f"A deferral was written for pr-list, and {broken} — so it is being ignored.",
               file=sys.stderr)
-    print(f"""Do not stop: the open pull requests could not be read, so nothing here says they are settled.
-
-  gh pr list exited {code}
-{output}
-
-If gh is unauthenticated or the network is down, say so and arm the deferral rather than treating
-an unanswered question as a settled one:
-
-  echo "pr-list <what clears it> $(date +%s)" >> {DEFERRALS}""", file=sys.stderr)
+    print(unreadable_report("the open pull requests", attempts, "pr-list"), file=sys.stderr)
     return 2
 
 
@@ -157,7 +136,7 @@ def judge(pr):
                 "cannot go green on\n    its own. Rebase it, take it out of draft, or say what it is "
                 "waiting on.")
 
-    if watcher_is_alive():
+    if alive():
         return None
 
     names = ", ".join(check.get("name", "") for check in pending)
@@ -168,11 +147,10 @@ def main():
     if shutil.which("gh") is None:
         return 0
 
-    listing, combined, code = gh(["pr", "list", "--state", "open", "--json", "number",
-                                  "--jq", ".[].number"])
-    if code != 0:
-        return unreadable(combined, code)
-    prs = listing.split()
+    reading = open_pull_requests()
+    if reading.numbers is None:
+        return unreadable(reading.attempts)
+    prs = reading.numbers
     if not prs:
         return 0
 

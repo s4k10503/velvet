@@ -24,8 +24,11 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
+sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 from deferrals import DEFERRALS, deferred, unusable
+from watcher_state import READY_STATE, alive
 
 # Held on the editing tools, which carry a file path rather than a shell command, so there is no operand
 # for the shell to expand and nothing here reads one.
@@ -34,25 +37,11 @@ UNEXPANDED_POLICY = "n/a"
 UNREADABLE_POLICY = "none"
 UNREADABLE_PROBE = {"file_path": "CHANGELOG.md", "old_string": "a", "new_string": "b"}
 
-READY_STATE = Path.home() / ".velvet-pr-ready"
-HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
-
 # Long enough that a pull request going green mid-task is not an interruption, short enough that
 # "I will get to it" cannot outlive the task that said it.
 GRACE = 900
 
-# Two polls plus a margin: one missed poll is a slow API call, two is a watcher that stopped.
-HEARTBEAT_TTL = 180
-
 HOOK_TOOLS = {"Edit", "Write", "NotebookEdit"}
-
-
-def watcher_age():
-    """Seconds since the watching process last wrote, or None when it never has."""
-    try:
-        return time.time() - int(HEARTBEAT.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        return None
 
 
 def sitting(now):
@@ -86,8 +75,7 @@ def main():
     if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
-    age = watcher_age()
-    if age is None or age > HEARTBEAT_TTL:
+    if not alive():
         sys.stderr.write(
             "Refusing to write: nothing is watching the open pull requests, so whether one is sitting "
             "green cannot be read.\n\n"

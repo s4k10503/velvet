@@ -95,6 +95,13 @@ jobs:
       - name: Hook unreadable-state tests
         run: python3 scripts/hooks/test_unreadable_state_check.py
 
+      # The reading those Stop guards share, and what it says when no way of asking answered. Held
+      # apart from the check above because that one runs whole guards and this one holds the library
+      # they run through: a guard could satisfy the check by hand-rolling a report, and then only
+      # one of the two would say it.
+      - name: Hook repository-reading tests
+        run: python3 scripts/hooks/test_hook_repository.py
+
   # ---------------------------------------------------------------------------
   # Repository settings live only in GitHub's own state; nothing in this
   # repository reads them back. contents:read is enough for the rulesets

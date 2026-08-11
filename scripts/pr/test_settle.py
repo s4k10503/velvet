@@ -7,11 +7,15 @@ exercised only against live pull requests is exercised only in the states those 
 Run: python3 scripts/pr/test_settle.py
 """
 
+import collections
 import contextlib
 import importlib.util
 import io
+import os
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -32,11 +36,12 @@ settle = load_module()
 
 
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
-            holds_base=True, held_by_worktree=False, unpublished_release=None):
+            holds_base=True, held_by_worktree=False, unpublished_release=None, draft=False,
+            merge_state="clean"):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base, holds_base, held_by_worktree,
-                               unpublished_release)
+                               unpublished_release, draft, merge_state)
 
 
 class MergeDecisionTests(unittest.TestCase):
@@ -134,6 +139,357 @@ class MergeDecisionTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(len(decided), 3)
+
+    def test_Given_ADraftWhoseChecksAllPassed_When_Decided_Then_ItBlocks(self):
+        # Arrange — a deliberate hold reads green, and green was the whole of the readiness question.
+        decided = reasons(draft=True)
+
+        # Act / Assert
+        self.assertEqual(decided, ["it is a draft: mark it ready for review first"])
+
+    def test_Given_ADraftWhoseHeadMoved_When_Decided_Then_BothAreReported(self):
+        # Arrange — a push voids what was read about the head; it does not take a pull request out of
+        # draft, so that reason survives the early return the way the publication one does.
+        decided = reasons(draft=True, after=MOVED)
+
+        # Act / Assert
+        self.assertEqual(len(decided), 2)
+
+    def test_Given_APullRequestConflictingWithTheBase_When_Decided_Then_TheConflictIsNamedBesideIt(self):
+        # Arrange — a conflicting branch does not contain the base either, so both are asked at once:
+        # the conflict alone would be reported by a branch that is merely behind.
+        decided = reasons(merge_state="dirty", holds_base=False)
+
+        # Act / Assert
+        self.assertEqual(decided, [
+            "it conflicts with main: resolve the conflict in the branch, which `settle.py update` "
+            "declines to do",
+            "does not contain origin/main: merge it in and let the checks run again"])
+
+    def test_Given_TheTwoMergeStatesThatDiffer_When_Decided_Then_OnlyTheConflictingOneBlocks(self):
+        # Arrange — `unknown` is the absence of a reading rather than a reason, and a reason that
+        # comes and goes would keep resetting the age write_ready_state carries. Asked beside `dirty`
+        # so deleting the predicate outright cannot satisfy the half about `unknown`.
+        decided = (reasons(merge_state="unknown"), len(reasons(merge_state="dirty")))
+
+        # Act / Assert
+        self.assertEqual(decided, ([], 1))
+
+
+# One pull request's whole state, so `watch` and `merge` can be posed the same table.
+Fabricated = collections.namedtuple(
+    "Fabricated", "sha after branch draft merge_state results holds_base held")
+
+PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
+
+
+def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds_base=True,
+              held=False, moved=False):
+    sha = str(number).rjust(40, "0")
+    return Fabricated(sha=sha, after=MOVED if moved else sha, branch=f"topic-{number}", draft=draft,
+                      merge_state=merge_state, results=results, holds_base=holds_base, held=held)
+
+
+@contextlib.contextmanager
+def fabricated_readings(states):
+    """Every reading a poll takes, answered from a table of pull request states.
+
+    Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
+    stubbing the verdict would make the agreement below true by construction.
+    """
+    by_sha = {state.sha: state for state in states.values()}
+    by_branch = {state.branch: state for state in states.values()}
+    with contextlib.ExitStack() as stack:
+        for name, answer in (
+            ("repository", lambda *_: "owner/name"),
+            ("open_pull_requests", lambda *_: sorted(states)),
+            ("pull_request", lambda _project, number: settle.PullRequest(
+                states[number].sha, states[number].branch, states[number].draft,
+                states[number].merge_state)),
+            ("checks", lambda _project, sha: by_sha[sha].results),
+            ("head_sha", lambda _project, number: states[number].after),
+            ("contains_base", lambda _project, branch, _base: by_branch[branch].holds_base),
+            ("project_state", lambda *_: settle.ProjectState(
+                {state.branch for state in states.values() if state.held}, None)),
+        ):
+            stack.enter_context(mock.patch.object(settle, name, answer))
+        yield stack
+
+
+class Polled(Exception):
+    """Raised out of the watcher's sleep, which is the only way one poll of it ends."""
+
+
+def polled(states):
+    """The pull request numbers one poll of `watch` recorded as ready.
+
+    Every file the watcher touches is redirected, the lock included: taking the real one would make
+    this case's answer depend on whether a watcher happens to be running on the machine.
+    """
+    with tempfile.TemporaryDirectory(prefix="settle-ready-") as directory:
+        ready_state = Path(directory) / "ready"
+        with fabricated_readings(states) as stack:
+            for name, path in (("READY_STATE", ready_state),
+                               ("HEARTBEAT", Path(directory) / "beat"),
+                               ("LOCK", Path(directory) / "lock")):
+                stack.enter_context(mock.patch.object(settle.watcher_state, name, path))
+            stack.enter_context(mock.patch.object(settle.time, "sleep", side_effect=Polled))
+            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            try:
+                settle.watch(Path("."), "main")
+            except Polled:
+                pass
+        return {int(line.split()[0]) for line in ready_state.read_text().splitlines() if line}
+
+
+def merge_would_take(states):
+    """The pull request numbers `settle.py merge` would find nothing blocking, over the same table."""
+    with fabricated_readings(states):
+        return {number for number in states
+                if not settle.blocking_reasons(Path("."), number, "main").reasons}
+
+
+class ReadinessTests(unittest.TestCase):
+    """What the watcher records as ready, against what the merge would take.
+
+    Two readings of one question is what this is here to stop. Asked separately they disagreed on a
+    draft with conflicts, which sat in the ready state while `refuse/edit_while_a_ready_pr_sits.py`
+    refused every Edit and Write in every session and named a merge that could not take it.
+    """
+
+    # Every state the two readings could differ on, plus the ordinary green one so the table is not
+    # made of exceptions alone.
+    TABLE = {
+        1: fabricate(1),
+        2: fabricate(2, draft=True),
+        3: fabricate(3, merge_state="dirty", holds_base=False),
+        4: fabricate(4, holds_base=False),
+        5: fabricate(5, held=True),
+        6: fabricate(6, results=[{"name": "Unity", "bucket": "pending"}]),
+        7: fabricate(7, results=[{"name": "Unity", "bucket": "fail"}]),
+        8: fabricate(8, results=[]),
+        9: fabricate(9, moved=True),
+        10: fabricate(10, draft=True, merge_state="dirty", holds_base=False),
+    }
+
+    def test_Given_ATableOfPullRequestStates_When_BothReadingsAreTaken_Then_TheyNameTheSameSet(self):
+        # Act
+        recorded = polled(self.TABLE)
+
+        # Assert
+        self.assertEqual(recorded, merge_would_take(self.TABLE))
+
+    def test_Given_ADraftWhoseChecksAllPassed_When_TheWatcherPolls_Then_ItIsNotRecordedAsReady(self):
+        # Arrange — draft and nothing else, so no second reason can keep this green while the one
+        # the case is named for stops being asked. The state that raised it carried three.
+        table = {377: fabricate(377, draft=True)}
+
+        # Act / Assert
+        self.assertEqual(polled(table), set())
+
+    def test_Given_APullRequestNothingBlocks_When_TheWatcherPolls_Then_ItIsStillRecordedAsReady(self):
+        # Arrange — the state the guard exists for, which a stricter reading must not stop reporting.
+        table = {592: fabricate(592)}
+
+        # Act / Assert
+        self.assertEqual(polled(table), {592})
+
+
+class ReadyStateTests(unittest.TestCase):
+    def test_Given_AReadyPullRequestThatStoppedBeingReady_When_ItIsRecorded_Then_ItsAgeIsDropped(self):
+        # Arrange
+        since = {}
+        with tempfile.TemporaryDirectory(prefix="settle-ready-") as directory:
+            with mock.patch.object(settle.watcher_state, "READY_STATE", Path(directory) / "ready"):
+                settle.write_ready_state({7}, since)
+
+                # Act
+                settle.write_ready_state(set(), since)
+
+        # Assert
+        self.assertNotIn(7, since)
+
+
+# Holds the watcher lock and says so, then waits to be killed. A separate process because a lock is
+# a claim between processes, and what one makes of its own is the platform's business rather than
+# this decision's.
+HOLDER = """
+import fcntl, os, sys, time
+handle = open(sys.argv[1], "a+")
+fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+handle.seek(0)
+handle.truncate()
+handle.write(str(os.getpid()))
+handle.flush()
+print("held", flush=True)
+time.sleep(120)
+"""
+
+
+def refuse_to_answer(*_):
+    """Stands in for a reading in a case whose whole claim is that no reading is taken."""
+    raise RuntimeError("the watcher asked the API in a case that must not reach it")
+
+
+def exited_pid():
+    """The id of a process that has finished, which is what a killed watcher leaves in a heartbeat."""
+    done = subprocess.Popen([sys.executable, "-c", "pass"])
+    done.wait()
+    return done.pid
+
+
+@contextlib.contextmanager
+def another_watcher_holding(lock):
+    holder = subprocess.Popen([sys.executable, "-c", HOLDER, str(lock)],
+                              stdout=subprocess.PIPE, text=True)
+    try:
+        holder.stdout.readline()
+        yield holder
+    finally:
+        holder.kill()
+        holder.wait()
+        holder.stdout.close()
+
+
+class WatcherLockTests(unittest.TestCase):
+    """One watcher at a time: a second polls the same API on its own cycle against the same quota,
+    and writes the same heartbeat, so neither of them says which one is alive."""
+
+    def test_Given_AWatcherAlreadyHoldingTheLock_When_AnotherAsksForIt_Then_ItIsRefused(self):
+        # Arrange
+        with tempfile.TemporaryDirectory(prefix="settle-lock-") as directory:
+            lock = Path(directory) / "lock"
+            with mock.patch.object(settle.watcher_state, "LOCK", lock):
+                with another_watcher_holding(lock):
+                    # Act
+                    handle, _ = settle.hold_the_watch()
+
+                    # Assert
+                    self.assertIsNone(handle)
+
+    def test_Given_AWatcherAlreadyHoldingTheLock_When_AnotherAsksForIt_Then_ItIsToldWhichPid(self):
+        # Arrange
+        with tempfile.TemporaryDirectory(prefix="settle-lock-") as directory:
+            lock = Path(directory) / "lock"
+            with mock.patch.object(settle.watcher_state, "LOCK", lock):
+                with another_watcher_holding(lock) as holder:
+                    # Act
+                    _, reported = settle.hold_the_watch()
+
+                    # Assert
+                    self.assertEqual(reported, str(holder.pid))
+
+    def test_Given_ALockFileTheHolderDiedUnder_When_AWatcherAsksForIt_Then_ItTakesIt(self):
+        # Arrange — the file survives the kill carrying the dead pid, which is what a pidfile would
+        # have to decide about. Both are asked at once, since a file that never got written would
+        # also be taken and would say nothing about staleness.
+        with tempfile.TemporaryDirectory(prefix="settle-lock-") as directory:
+            lock = Path(directory) / "lock"
+            with mock.patch.object(settle.watcher_state, "LOCK", lock):
+                with another_watcher_holding(lock):
+                    pass
+                left_behind = lock.read_text().strip()
+
+                # Act
+                handle, _ = settle.hold_the_watch()
+                if handle is not None:
+                    handle.close()
+
+                # Assert
+                self.assertEqual((left_behind.isdigit(), handle is not None), (True, True))
+
+    def test_Given_AWatcherHoldingTheLock_When_ItRecordsItself_Then_TheFileNamesItsPid(self):
+        # Arrange
+        with tempfile.TemporaryDirectory(prefix="settle-lock-") as directory:
+            lock = Path(directory) / "lock"
+            with mock.patch.object(settle.watcher_state, "LOCK", lock):
+                # Act
+                handle, _ = settle.hold_the_watch()
+                handle.close()
+
+            # Assert
+            self.assertEqual(lock.read_text().strip(), str(os.getpid()))
+
+
+class HeartbeatTests(unittest.TestCase):
+    """What a reader may conclude from the file, which is what both guards conclude from it."""
+
+    def test_Given_AHeartbeatFromALiveProcess_When_ItIsFresh_Then_TheWatcherReadsAsAlive(self):
+        # Arrange
+        with self.heartbeat(settle.watcher_state.beat(os.getpid(), now=1000)):
+            # Act / Assert
+            self.assertTrue(settle.watcher_state.alive(now=1060))
+
+    def test_Given_AFreshHeartbeatFromAProcessThatIsGone_When_ItIsRead_Then_TheWatcherIsNotAlive(self):
+        # Arrange — a watcher killed between two polls leaves a stamp still inside the window, which
+        # is the whole of what the stamp alone could ever say.
+        with self.heartbeat(settle.watcher_state.beat(exited_pid(), now=1000)):
+            # Act / Assert
+            self.assertFalse(settle.watcher_state.alive(now=1060))
+
+    def test_Given_AHeartbeatNamingNoProcess_When_ItIsRead_Then_TheWatcherIsNotAlive(self):
+        # Arrange — the format the watcher wrote before it had to name itself.
+        with self.heartbeat("1000\n"):
+            # Act / Assert
+            self.assertFalse(settle.watcher_state.alive(now=1060))
+
+    def test_Given_AHeartbeatStampedInTheFuture_When_ItIsRead_Then_TheWatcherIsNotAlive(self):
+        # Arrange — a millisecond epoch or a backward clock step vouched for a watcher permanently.
+        with self.heartbeat(settle.watcher_state.beat(os.getpid(), now=9000)):
+            # Act / Assert
+            self.assertFalse(settle.watcher_state.alive(now=1060))
+
+    def test_Given_AHeartbeatOlderThanThePollWindow_When_ItIsRead_Then_TheWatcherIsNotAlive(self):
+        # Arrange
+        with self.heartbeat(settle.watcher_state.beat(os.getpid(), now=1000)):
+            # Act / Assert
+            self.assertFalse(
+                settle.watcher_state.alive(now=1000 + settle.watcher_state.STALE_AFTER))
+
+    def test_Given_AFreshHeartbeatNamingNoProcess_When_AWatcherStarts_Then_SomebodyElseIsWatching(self):
+        # Arrange — what a watcher launched from a checkout older than the lock leaves, which is the
+        # one kind the lock cannot see.
+        with self.heartbeat("1000\n"):
+            # Act / Assert
+            self.assertTrue(settle.watcher_state.beating_elsewhere(os.getpid(), now=1060))
+
+    def test_Given_AFreshHeartbeatFromAWatcherThatDied_When_AnotherStarts_Then_NobodyElseIsWatching(self):
+        # Arrange — restarting inside the window would otherwise refuse itself.
+        with self.heartbeat(settle.watcher_state.beat(exited_pid(), now=1000)):
+            # Act / Assert
+            self.assertFalse(settle.watcher_state.beating_elsewhere(os.getpid(), now=1060))
+
+    def test_Given_ANamelessHeartbeatOlderThanTheWindow_When_AWatcherStarts_Then_NobodyElseIsWatching(self):
+        # Arrange — a file left behind by a watcher that stopped is not one still being written.
+        with self.heartbeat("1000\n"):
+            # Act / Assert
+            self.assertFalse(settle.watcher_state.beating_elsewhere(
+                os.getpid(), now=1000 + settle.watcher_state.STALE_AFTER))
+
+    def test_Given_SomethingElseStillBeating_When_TheWatcherIsAsked_Then_ItDeclinesToPollAsWell(self):
+        # Arrange — the lock is free, so the heartbeat is the only thing saying anyone else is there.
+        # The readings raise rather than answer, so a watcher that starts anyway ends this case
+        # instead of polling in a loop nothing here would stop.
+        with tempfile.TemporaryDirectory(prefix="settle-lock-") as directory:
+            lock = Path(directory) / "lock"
+            with contextlib.ExitStack() as stack:
+                stack.enter_context(mock.patch.object(settle.watcher_state, "LOCK", lock))
+                stack.enter_context(self.heartbeat(f"{int(time.time())}\n"))
+                stack.enter_context(mock.patch.object(settle, "open_pull_requests", refuse_to_answer))
+                stack.enter_context(mock.patch.object(settle.time, "sleep", side_effect=Polled))
+                stack.enter_context(contextlib.redirect_stderr(io.StringIO()))
+                stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+
+                # Act / Assert
+                self.assertEqual(settle.watch(Path("."), "main"), 1)
+
+    @contextlib.contextmanager
+    def heartbeat(self, text):
+        with tempfile.TemporaryDirectory(prefix="settle-beat-") as directory:
+            path = Path(directory) / "beat"
+            path.write_text(text)
+            with mock.patch.object(settle.watcher_state, "HEARTBEAT", path):
+                yield
 
 
 class UpdateReasonsTests(unittest.TestCase):
@@ -335,12 +691,11 @@ class CheckReadTests(unittest.TestCase):
         asked = []
         with contextlib.ExitStack() as stack:
             stack.enter_context(mock.patch.object(settle, "repository", lambda *_: "owner/name"))
-            stack.enter_context(mock.patch.object(settle, "head_sha", lambda *_: GREEN))
             stack.enter_context(mock.patch.object(
                 settle, "rest_json", lambda path: (asked.append(path), NO_STATUSES)[1]))
 
             # Act
-            settle.checks(Path("."), 592)
+            settle.checks(Path("."), GREEN)
 
         # Assert
         self.assertEqual(asked, [f"repos/owner/name/commits/{GREEN}/check-runs?per_page=100",
@@ -370,7 +725,7 @@ def stubbed_readings(head=GREEN, branch="topic", title="A title", body="A body")
     """
     return [mock.patch.object(settle, "repository", lambda *_: "owner/name"),
             mock.patch.object(settle, "blocking_reasons",
-                              lambda *_: settle.Blocking([], head, branch)),
+                              lambda *_: settle.Blocking([], head, branch, [])),
             mock.patch.object(settle, "pull_request_text", lambda *_: (title, body))]
 
 

@@ -6,6 +6,10 @@ Each synthetic guard below is one shape a failed reading takes in `.claude/hooks
 successful call that printed nothing, and — the one a reading over the source gets wrong — a git
 exit code of 1 that is a legitimate negative answer rather than a failure.
 
+The Stop guards are held to the same declaration and to one thing more, which is the shape their own
+defect took: blocking is not enough if what the block says is a claim about the subject rather than
+about the reading.
+
 Run: python3 scripts/hooks/test_unreadable_state_check.py
 """
 
@@ -227,6 +231,115 @@ class BackingTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(found, [])
+
+
+STOP_PREAMBLE = '''#!/usr/bin/env python3
+"""A synthetic Stop guard."""
+import subprocess
+import sys
+'''
+
+STOP_READ = 'done = subprocess.run(["gh", "pr", "list"], capture_output=True, text=True)'
+
+
+def stop_guard(policy, body):
+    return (STOP_PREAMBLE
+            + f'\n\nUNREADABLE_POLICY = "{policy}"\n\n\n'
+            + "def main():\n"
+            + body
+            + "\n\nsys.exit(main())\n")
+
+
+# Lets the session end when nothing answered, which is what a cleared subject also does.
+STOP_FAILS_OPEN = f"""    {STOP_READ}
+    if done.returncode != 0:
+        return 0
+    return 2
+"""
+
+# Blocks, and describes the subject rather than the reading — the shape both Stop guards shipped.
+STOP_BLOCKS_MUTE = f"""    {STOP_READ}
+    if done.returncode != 0:
+        print("nothing here says they are settled", file=sys.stderr)
+        return 2
+    return 0
+"""
+
+STOP_BLOCKS_SAYING = f"""    {STOP_READ}
+    if done.returncode != 0:
+        print("{check.SELF_REPORT} them", file=sys.stderr)
+        return 2
+    return 0
+"""
+
+STOP_READS_NOTHING = "    return 2\n"
+
+
+def stop_faults(root):
+    return check.stop_faults(root, root, floor=0)
+
+
+class StopGuardTests(unittest.TestCase):
+    def test_Given_AStopGuardEndingTheSessionWhenNothingAnswered_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange
+        root = directory(lenient=stop_guard("refuse", STOP_FAILS_OPEN))
+
+        # Act
+        found = [line for line in stop_faults(root) if 'answers "allow"' in line]
+
+        # Assert
+        self.assertEqual(len(found), 1, stop_faults(root))
+
+    def test_Given_AStopGuardBlockingWithoutSayingTheReadingFailed_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange
+        root = directory(mute=stop_guard("refuse", STOP_BLOCKS_MUTE))
+
+        # Act
+        found = [line for line in stop_faults(root) if "fact about its subject" in line]
+
+        # Assert
+        self.assertEqual(len(found), 1, stop_faults(root))
+
+    def test_Given_AStopGuardThatSaysTheReadingFailed_When_TheCheckRuns_Then_NothingIsReported(self):
+        # Arrange
+        root = directory(plain=stop_guard("refuse", STOP_BLOCKS_SAYING))
+
+        # Act
+        found = stop_faults(root)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AStopGuardDeclaringNothing_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange
+        root = directory(quiet=STOP_PREAMBLE + "\nsys.exit(0)\n")
+
+        # Act
+        found = [line for line in stop_faults(root) if "UNREADABLE_POLICY must be one of" in line]
+
+        # Assert
+        self.assertEqual(len(found), 1, stop_faults(root))
+
+    def test_Given_AStopGuardThatReadsNeitherProgram_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange — a "refuse" no reading takes part in says nothing about an unreadable state.
+        root = directory(textual=stop_guard("refuse", STOP_READS_NOTHING))
+
+        # Act
+        found = [line for line in stop_faults(root) if "never reaches gh" in line]
+
+        # Assert
+        self.assertEqual(len(found), 1, stop_faults(root))
+
+    def test_Given_ThisRepositorysStopGuards_When_NoReadingAnswers_Then_EachAnswersWhatItDeclares(self):
+        # Arrange
+        stop_directory = REPO_ROOT / check.STOP_DIRECTORY
+
+        # Act
+        found = check.stop_faults(stop_directory, REPO_ROOT)
+
+        # Assert — the guard count rides along, because an empty directory disagrees with nothing.
+        self.assertEqual((len(check.guards(stop_directory)) >= check.STOP_FLOOR, found),
+                         (True, []))
 
 
 class RepositoryTests(unittest.TestCase):

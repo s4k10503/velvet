@@ -1,4 +1,5 @@
-"""Locating the tree a session-start guard reports on, and reading git and gh without raising.
+"""Locating the tree a guard reports on, reading git and gh without raising, and saying so when
+neither way of asking could answer.
 
 A guard that cannot answer says nothing rather than failing: a hook writing a traceback into a
 session start is noise a reader cannot act on, and every caller here already treats an unavailable
@@ -7,11 +8,23 @@ answer as "no report".
 For a PreToolUse guard the stake is higher than noise. A hook that raises exits 1, which is not a
 refusal — the tool proceeds — so a guard reaching for a program that is not installed is a guard
 that has been deleted, silently, on every machine without it. Both readers here answer None instead.
+
+A Stop guard blocks instead, and then has a second thing to get right: what it says. "I could not
+establish whether anything is unsettled" and "something is unsettled" are different claims, both
+block, and a reader who cannot tell them apart records the failed reading as what the work is waiting
+on. `unreadable_report` is the first of those, written as a statement about the guard, and it is
+shared so that two guards cannot drift into two ways of saying it.
 """
 
+import collections
 import os
 import subprocess
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from deferrals import DEFERRALS  # noqa: E402
 
 
 def git(args, cwd, timeout=15):
@@ -25,19 +38,96 @@ def git(args, cwd, timeout=15):
     return result.stdout if result.returncode == 0 else None
 
 
+Answer = collections.namedtuple("Answer", "stdout combined code")
+
+
+def gh_answer(args, cwd=None, timeout=7):
+    """gh's stdout, its whole output and its exit code. A gh that never started reports exit 1.
+
+    Separate from `gh` below because a caller that has to say why a reading failed needs the output
+    and the code, and one that only wants the answer must not have to decide what an empty string
+    meant.
+    """
+    try:
+        result = subprocess.run(
+            ["gh", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return Answer("", str(error), 1)
+    return Answer(result.stdout, (result.stdout + result.stderr).strip(), result.returncode)
+
+
 def gh(args, cwd=None, timeout=7):
     """Run gh and return its stdout, or None when it could not answer.
 
     The bound is a hook's budget divided by the calls one invocation makes, not by one call:
     merge_unproven_head makes three inside 25 s, metadata_less_create one inside 15.
     """
-    try:
-        result = subprocess.run(
-            ["gh", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return result.stdout if result.returncode == 0 else None
+    answer = gh_answer(args, cwd, timeout)
+    return answer.stdout if answer.code == 0 else None
+
+
+# Two ways of asking the same question, drawn in order. `gh pr list` goes through GraphQL and
+# `gh api` through REST; scripts/pr/settle.py owns why the difference matters. Asking both means one
+# exhausted quota no longer decides whether this can be read at all — which is a smaller blast
+# radius, not an answer to what a guard says when neither way works.
+OPEN_PULL_REQUEST_READS = (
+    ["pr", "list", "--state", "open", "--json", "number", "--jq", ".[].number"],
+    ["api", "repos/{owner}/{repo}/pulls?state=open&per_page=100", "--jq", ".[].number"],
+)
+
+# What was asked and what came back, for a caller that has to report a failure rather than a subject.
+PullRequests = collections.namedtuple("PullRequests", "numbers attempts")
+
+# Same rule as `gh` above: the calling hook's registered timeout divided by the calls one invocation
+# makes. Adding a way of asking without re-dividing is what scripts/hooks/test_hook_repository.py
+# fails on.
+OPEN_PULL_REQUEST_TIMEOUT = 8
+
+
+def open_pull_requests(cwd=None, timeout=OPEN_PULL_REQUEST_TIMEOUT):
+    """The open pull request numbers, or None with what each way of asking answered.
+
+    An empty list is an answer and takes the ordinary path; None is the absence of one.
+    """
+    attempts = []
+    for args in OPEN_PULL_REQUEST_READS:
+        answer = gh_answer(args, cwd, timeout)
+        if answer.code == 0:
+            return PullRequests(answer.stdout.split(), attempts)
+        attempts.append(("gh " + " ".join(args), answer.code, answer.combined))
+    return PullRequests(None, attempts)
+
+
+# The sentence that separates a guard's blindness from its verdict. Owned here so two guards cannot
+# drift into two ways of saying it, and asserted by scripts/hooks/unreadable_state_check.py against
+# any Stop guard that blocks on an unreadable state.
+SELF_REPORT = "That is a fact about this guard, not about"
+
+
+def unreadable_report(subject, attempts, key):
+    """What a Stop guard prints when no way of asking could answer.
+
+    The deferral it invites asks about the work rather than about the reading: a deferral naming the
+    reading expires, is rewritten identically, and leaves on the record a reason nothing was waiting
+    on.
+    """
+    asked = "\n\n".join(f"  {call} exited {code}\n{output}" for call, code, output in attempts)
+    return f"""Do not stop: this guard could not read {subject}.
+
+{SELF_REPORT} {subject}. Nothing below says they are settled and nothing below says they are not.
+Every way of asking failed:
+
+{asked}
+
+Establish it another way and say what you found: `gh pr view <n>`, `gh run list --branch <b>`, or the
+output of the watcher `scripts/pr/settle.py watch` writes. A reading that failed is not a subject
+that is clear.
+
+If the pause is deliberate, arm the deferral for what the WORK is waiting on. The failure above is
+not that, and naming it there is how a deferral comes to record something nothing was waiting on:
+
+  echo "{key} <what the work is waiting on> $(date +%s)" >> {DEFERRALS}"""
 
 
 def project_tree():

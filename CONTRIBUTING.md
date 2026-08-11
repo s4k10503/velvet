@@ -266,6 +266,15 @@ directory refuses the same probe — otherwise the tool call is guarded by nothi
 the licence-free `source-generators` job rather than beside the fixtures above, which are skipped
 entirely on a checkout with no `UNITY_LICENSE` secret.
 
+The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
+what they got wrong. They blocked, and described the pull requests rather than the reading — so the
+deferral the message invited named the API error instead of whatever the work was waiting on.
+`.claude/hooks/lib/repository.py` owns both halves of the remedy: a second way of asking, drawn on a
+different quota, before blindness is declared at all, and the sentence a block has to carry when it
+is. The same check runs every guard in `.claude/hooks/stop` and requires that sentence of one that
+blocks, posing only the mode where every reading fails — an empty answer is the ordinary state
+`open_backlog.py` acts on.
+
 ### Source generators
 
 The Roslyn source generators live under `Packages/com.velvet.core/Generators~/` and target a
@@ -365,9 +374,10 @@ policy on is what would close it server-side, at the cost that buys.
 
 **A green pull request left sitting starts refusing every edit.**
 `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready
-for fifteen minutes, and the instruction it prints is `settle.py merge`, which the publication guard now
-declines. Both are behaving correctly and the combination is a stall: record the deferral the hook's own
-message describes, or publish.
+for fifteen minutes, and the instruction it prints is `settle.py merge`. Ready is that command's own
+decision rather than a second reading beside it, so a pull request this window declines — like a draft
+or one that conflicts — is never recorded ready and this guard does not name it. What it does name,
+`settle.py merge` will take; hold one on purpose with the deferral its message describes.
 
 **If the dispatch itself is what is broken, the guard has no in-band escape.** `upm.yml` runs from the
 workflow file at whatever ref is dispatched, so tagging the release commit and dispatching from the tag

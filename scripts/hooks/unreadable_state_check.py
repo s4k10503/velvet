@@ -18,10 +18,23 @@ refusal. A stub `git` exiting 1 reported it as failing open here, and exit 1 is 
 `git rev-parse --verify --quiet` returns for a ref that is merely absent — so the stubs below fail
 the way an unreadable state fails, and the verdict is read off the process.
 
+A `Stop` guard is held to the same declaration and to one thing more. It already blocked when it
+could not read, and what was wrong was what it said: it reported its own blindness in the shape of a
+fact about its subject, so the deferral it invited named the API error rather than whatever the work
+was waiting on. `lib/repository.py` owns the sentence that separates the two, and a Stop guard's
+refusal has to carry it — hand-rolled, two guards say it two ways and one of them stops saying it.
+
+Only the gh-error mode is posed to a Stop guard. An empty successful answer from the pull-request
+listing is the ordinary state `open_backlog.py` exists to act on, so refusing on it would be wrong
+there and right in its sibling; what both must agree on is the case where every way of asking fails.
+The git mode is out for a different reason: it stubs git alone, so the real `gh` runs, and a check
+that reaches the network answers about the network.
+
 Run: python3 scripts/hooks/test_unreadable_state_check.py
 """
 
 import ast
+import importlib.util
 import json
 import os
 import shutil
@@ -32,10 +45,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REFUSE_DIRECTORY = ".claude/hooks/refuse"
+STOP_DIRECTORY = ".claude/hooks/stop"
 
 # Raised with the tree, the way the hook fixtures' floors are: an empty directory declares nothing
 # and would otherwise pass every check below.
 GUARD_FLOOR = 14
+STOP_FLOOR = 2
 
 POLICY = "UNREADABLE_POLICY"
 PROBE = "UNREADABLE_PROBE"
@@ -57,6 +72,24 @@ MODES = {
 }
 
 STUB_LOG = "VELVET_UNREADABLE_STATE_LOG"
+
+# Only the mode where every reading fails; the docstring owns why an empty answer is each Stop
+# guard's own question.
+STOP_MODES = ("gh-error",)
+
+STOP_PAYLOAD = json.dumps({"hook_event_name": "Stop", "stop_hook_active": False})
+
+
+def load_hook_library():
+    """Imports .claude/hooks/lib/repository.py by path, since .claude holds no packages."""
+    path = REPO_ROOT / ".claude/hooks/lib/repository.py"
+    spec = importlib.util.spec_from_file_location("hook_repository", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+SELF_REPORT = load_hook_library().SELF_REPORT
 
 
 def guards(refuse_directory):
@@ -113,8 +146,8 @@ def _stubs(mode, directory, log):
         script.chmod(0o755)
 
 
-def answer(hook, tool, probe, mode, cwd, home):
-    """(verdict, whether the broken program was consulted) for one guard under one mode."""
+def run_guard(hook, payload, mode, cwd, home):
+    """(exit code, stdout, stderr, whether the broken program was consulted) for one run."""
     workspace = Path(tempfile.mkdtemp(prefix="velvet-unreadable-"))
     try:
         log = workspace / "consulted"
@@ -127,19 +160,25 @@ def answer(hook, tool, probe, mode, cwd, home):
         _stubs(mode, workspace, log)
         environment["PATH"] = str(workspace) + os.pathsep + environment.get("PATH", "")
 
-        payload = json.dumps({"tool_name": tool, "cwd": str(cwd), "tool_input": probe})
         finished = subprocess.run(
             [sys.executable, "-B", str(hook)],
             input=payload, text=True, capture_output=True,
             cwd=str(cwd), env=environment, timeout=180,
         )
-        # Not the exit code alone: blind_git_add.py refuses by printing a deny decision and exiting
-        # 0, so reading 0 as a pass would score its refusal as a guard that let the tool through.
-        denied = '"permissionDecision"' in finished.stdout and '"deny"' in finished.stdout
-        verdict = REFUSE if finished.returncode == 2 or denied else ALLOW
-        return verdict, bool(log.read_text().strip())
+        return (finished.returncode, finished.stdout, finished.stderr,
+                bool(log.read_text().strip()))
     finally:
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+def answer(hook, tool, probe, mode, cwd, home):
+    """(verdict, whether the broken program was consulted) for one guard under one mode."""
+    payload = json.dumps({"tool_name": tool, "cwd": str(cwd), "tool_input": probe})
+    code, out, _, consulted = run_guard(hook, payload, mode, cwd, home)
+    # Not the exit code alone: blind_git_add.py refuses by printing a deny decision and exiting
+    # 0, so reading 0 as a pass would score its refusal as a guard that let the tool through.
+    denied = '"permissionDecision"' in out and '"deny"' in out
+    return (REFUSE if code == 2 or denied else ALLOW), consulted
 
 
 def _backed(hook, tool, probe, mode, cwd, home, siblings):
@@ -201,10 +240,59 @@ def _guard_faults(hook, subjects, cwd, home):
     return found
 
 
+def stop_answer(hook, mode, cwd, home):
+    """(verdict, whether the broken program was consulted, what it printed) for one Stop guard."""
+    code, _, errors, consulted = run_guard(hook, STOP_PAYLOAD, mode, cwd, home)
+    return (REFUSE if code == 2 else ALLOW), consulted, errors
+
+
+def stop_faults(stop_directory, cwd, floor=STOP_FLOOR):
+    """Every disagreement between what a Stop guard declares and what it does. Empty means agreement."""
+    found = []
+    subjects = guards(stop_directory)
+    if len(subjects) < floor:
+        found.append(f"{stop_directory} holds {len(subjects)} guards, fewer than {floor}")
+
+    home = Path(tempfile.mkdtemp(prefix="velvet-unreadable-home-"))
+    try:
+        for hook in subjects:
+            found += _stop_guard_faults(hook, cwd, home)
+    finally:
+        shutil.rmtree(home, ignore_errors=True)
+    return found
+
+
+def _stop_guard_faults(hook, cwd, home):
+    policy, _ = _assigned(ast.parse(Path(hook).read_text(encoding="utf-8")), POLICY)
+    if policy not in POLICIES:
+        return [f"{hook.name}: {POLICY} must be one of {', '.join(POLICIES)}, found {policy!r}"]
+
+    found, evidence = [], []
+    for mode in STOP_MODES:
+        verdict, consulted, errors = stop_answer(hook, mode, cwd, home)
+        if not consulted:
+            continue
+        evidence.append(mode)
+        if policy == NONE:
+            found.append(f"{hook.name}: declares \"{NONE}\" and consulted a broken program in {mode}")
+        elif verdict != policy:
+            found.append(f"{hook.name}: declares \"{policy}\", answers \"{verdict}\" in {mode}")
+        elif verdict == REFUSE and SELF_REPORT not in errors:
+            found.append(
+                f"{hook.name}: blocks in {mode} without saying the reading is what failed, so it "
+                "reports its own blindness as a fact about its subject")
+
+    if policy != NONE and not evidence:
+        found.append(f"{hook.name}: declares \"{policy}\" but its run never reaches gh, the one "
+                     "reading posed here, so the declaration is about something that never happens")
+    return found
+
+
 def main(argv):
     directory = Path(argv[1]) if len(argv) > 1 else REPO_ROOT / REFUSE_DIRECTORY
     cwd = Path(argv[2]) if len(argv) > 2 else REPO_ROOT
-    found = faults(directory, cwd)
+    stop_directory = Path(argv[3]) if len(argv) > 3 else REPO_ROOT / STOP_DIRECTORY
+    found = faults(directory, cwd) + stop_faults(stop_directory, cwd)
     for line in found:
         print(line, file=sys.stderr)
     return 1 if found else 0

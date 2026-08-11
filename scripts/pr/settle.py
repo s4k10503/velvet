@@ -12,7 +12,7 @@ shape is its own change. What this adds is reporting them together: one run name
 rather than costing a round of CI per reason. If a precondition is worth having here it belongs in a
 hook, because a script nobody is obliged to run guards nothing.
 
-Five preconditions:
+Seven preconditions:
 
 - **Checks are bound to the head SHA they were read at.** `gh pr checks` answers about whatever the
   API last recorded, which after a force-push is the previous commit's run. So the head is read, then
@@ -30,6 +30,14 @@ Five preconditions:
 - **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
+- **A draft is not merged**, and neither is one whose merge state is `dirty`.
+
+`watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
+decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
+recorded ready, and `refuse/edit_while_a_ready_pr_sits.py` reads that record out of $HOME — so it
+refused Edit and Write in sessions with nothing to do with that pull request, naming `settle.py merge`
+as the way out when nothing could make that command take it. What a guard offers as the way out is
+worth only what the readiness that raised it means, so the two are one function.
 
 Run: python3 scripts/pr/settle.py watch
      python3 scripts/pr/settle.py merge <number>
@@ -37,8 +45,10 @@ Run: python3 scripts/pr/settle.py watch
 
 import argparse
 import collections
+import fcntl
 import importlib.util
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -48,30 +58,30 @@ import time
 from pathlib import Path
 
 
+def load_by_path(path, name):
+    """Imports a script by path, since scripts/ holds no packages."""
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_published_check():
-    """Imports the release guard by path, since scripts/ holds no packages.
+    """Imports the release guard by path.
 
     Its own directory goes on the path first: the module reads the CHANGELOG heading grammar out of
     release_notes.py rather than restating it, and a by-path import gives a module no siblings.
     """
     release = Path(__file__).resolve().parent.parent / "release"
     sys.path.insert(0, str(release))
-    spec = importlib.util.spec_from_file_location("published_check", release / "published_check.py")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_by_path(release / "published_check.py", "published_check")
 
 
 published_check = load_published_check()
 
-HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
-
-# When each pull request first read as ready, so a guard can ask how long one has sat rather than
-# whether one exists. Several are usually in flight here and one of them is usually green, so the
-# existence of a ready pull request is the ordinary state and only its age is a defect.
-READY_STATE = Path.home() / ".velvet-pr-ready"
-
-POLL_SECONDS = 60
+# The three files this writes and two hooks read; watcher_state.py owns their format.
+watcher_state = load_by_path(Path(__file__).resolve().with_name("watcher_state.py"),
+                             "watcher_state")
 
 # What the checks API calls a state that will not change again. "skipping" is terminal and passing:
 # the Unity jobs are skipped wholesale on a fork with no licence, which is what lets one merge at all.
@@ -141,14 +151,29 @@ def rest_json(path):
 
 
 def open_pull_requests(project):
+    """The open pull request numbers.
+
+    Numbers alone: `mergeable_state` is not on this payload, so everything else the decision reads is
+    taken per pull request by `pull_request` anyway.
+    """
     listing = rest("repos/{}/pulls?state=open&per_page=100".format(repository(project)),
-                   '.[] | "\(.number) \(.head.ref)"')
-    return [{"number": int(n), "headRefName": ref}
-            for n, _, ref in (line.partition(" ") for line in listing.splitlines() if line)]
+                   ".[].number")
+    return [int(line) for line in listing.split()]
 
 
 def head_sha(project, number):
     return rest("repos/{}/pulls/{}".format(repository(project), number), ".head.sha")
+
+
+# Everything the decision reads off the pull request itself. `mergeable_state` is on this payload and
+# not on the listing one, so a caller that wants it has to ask per pull request anyway.
+PullRequest = collections.namedtuple("PullRequest", "sha branch draft merge_state")
+
+
+def pull_request(project, number):
+    payload = rest_json("repos/{}/pulls/{}".format(repository(project), number))
+    return PullRequest(payload["head"]["sha"], payload["head"]["ref"],
+                       bool(payload.get("draft")), payload.get("mergeable_state") or "")
 
 
 # The bucket names this script decides from. A conclusion absent from the table falls to `fail` at
@@ -162,9 +187,8 @@ _BUCKET = {"success": "pass", "neutral": "skipping", "skipped": "skipping",
 _STATUS_BUCKET = {"success": "pass", "pending": "pending", "failure": "fail", "error": "fail"}
 
 
-def checks(project, number):
-    """Check results, or an empty list when no workflow ever ran for this head."""
-    sha = head_sha(project, number)
+def checks(project, sha):
+    """Check results for one head, or an empty list when no workflow ever ran for it."""
     slug = repository(project)
     return check_results(rest_json("repos/{}/commits/{}/check-runs?per_page=100".format(slug, sha)),
                          rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)))
@@ -227,29 +251,39 @@ def contains_base(project, branch, base):
     """Whether the branch already holds every commit on the base.
 
     Asked of the remote refs rather than of local ones, because a local base can be behind what the
-    merge will actually happen against and would report a stale answer as a clean one.
+    merge will actually happen against and would report a stale answer as a clean one. Both refs have
+    to have been fetched first — `project_state` is where that happens for every caller here.
     """
-    gh_git(project, "fetch", "origin", base, "--quiet")
     merge_base = gh_git(project, "merge-base", f"origin/{base}", f"origin/{branch}").strip()
     base_head = gh_git(project, "rev-parse", f"origin/{base}").strip()
     return merge_base == base_head
 
 
 def reasons_from(before, after, results, branch, base, holds_base, held_by_worktree,
-                 unpublished_release):
+                 unpublished_release, draft, merge_state):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
     read as a clean base, and the only production caller is held by no test.
 
-    A moved head returns with the publication reason and nothing else: with the readings straddling a
-    force-push, nothing else read here is known to be about the same commit, so reporting the rest
-    would be reporting about two SHAs at once. The publication reason is about the base, which the
-    force-push did not touch.
+    A moved head returns with the reasons that are not about a commit and nothing else: with the
+    readings straddling a force-push, nothing else read here is known to be about the same commit, so
+    reporting the rest would be reporting about two SHAs at once. The publication reason is about the
+    base, which the force-push did not touch, and draft is a state of the pull request rather than of
+    its head.
     """
     reasons = [unpublished_release] if unpublished_release else []
+    if draft:
+        reasons.append("it is a draft: mark it ready for review first")
     if before != after:
         return reasons + [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
+
+    # Only `dirty`. An entry that leaves the ready state loses the age `write_ready_state` kept for it,
+    # so a merge state that comes and goes without the pull request changing would keep resetting the
+    # clock `refuse/edit_while_a_ready_pr_sits.py` reads and that guard would never fire.
+    if merge_state == "dirty":
+        reasons.append(f"it conflicts with {base}: resolve the conflict in the branch, which "
+                       f"`settle.py update` declines to do")
 
     if not results:
         reasons.append(f"no check has run for {after[:7]}: a workflow was never triggered for this head")
@@ -274,22 +308,35 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
 
 
 # What merge needs from the readings besides the verdict: the SHA the checks were read at, which the
-# merge request carries, and the branch it deletes afterwards.
-Blocking = collections.namedtuple("Blocking", "reasons head branch")
+# merge request carries, the branch it deletes afterwards, and the check results, which `watch` prints.
+Blocking = collections.namedtuple("Blocking", "reasons head branch results")
+
+# The readings that answer for the whole repository rather than for one pull request. Taken once and
+# handed down, so a watcher poll over N pull requests costs one fetch and one `git ls-remote --tags`
+# rather than N of each.
+ProjectState = collections.namedtuple("ProjectState", "held unpublished_release")
 
 
-def blocking_reasons(project, number, base):
+def project_state(project, base):
+    """The per-repository readings, with the fetch that both of the git ones below depend on."""
+    gh_git(project, "fetch", "origin", "--quiet")
+    return ProjectState(worktree_branches(project),
+                        published_check.unpublished_reason(project, f"origin/{base}", fetch=False))
+
+
+def blocking_reasons(project, number, base, state=None):
     """reasons_from, with every reading taken from the repository and the API."""
-    before = head_sha(project, number)
-    results = checks(project, number)
+    state = project_state(project, base) if state is None else state
+    before = pull_request(project, number)
+    results = checks(project, before.sha)
     after = head_sha(project, number)
-    branch = rest("repos/{}/pulls/{}".format(repository(project), number), ".head.ref")
-    return Blocking(reasons_from(before, after, results, branch, base,
-                                 holds_base=contains_base(project, branch, base),
-                                 held_by_worktree=branch in worktree_branches(project),
-                                 unpublished_release=published_check.unpublished_reason(
-                                     project, f"origin/{base}", fetch=True)),
-                    after, branch)
+    return Blocking(reasons_from(before.sha, after, results, before.branch, base,
+                                 holds_base=contains_base(project, before.branch, base),
+                                 held_by_worktree=before.branch in state.held,
+                                 unpublished_release=state.unpublished_release,
+                                 draft=before.draft,
+                                 merge_state=before.merge_state),
+                    after, before.branch, results)
 
 
 def write_ready_state(ready, since):
@@ -304,51 +351,94 @@ def write_ready_state(ready, since):
             del since[number]
     for number in ready:
         since.setdefault(number, int(time.time()))
-    READY_STATE.write_text("".join(f"{number} {since[number]}\n" for number in sorted(since)))
+    watcher_state.READY_STATE.write_text(
+        "".join(f"{number} {since[number]}\n" for number in sorted(since)))
+
+
+def hold_the_watch():
+    """(the open lock, the pid holding it). No lock means another watcher already has it.
+
+    flock rather than a pidfile: the kernel drops it when the holder exits, so a killed watcher
+    leaves a file behind but no lock, and the next one takes it without anything having to decide
+    whether a recorded pid is stale. The handle is returned rather than dropped — the lock lives
+    with the open file description, so keeping it open is the whole of holding it.
+    """
+    handle = open(watcher_state.LOCK, "a+", encoding="utf-8")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.seek(0)
+        holder = handle.read().strip()
+        handle.close()
+        return None, holder
+    handle.seek(0)
+    handle.truncate()
+    handle.write(f"{os.getpid()}\n")
+    handle.flush()
+    return handle, ""
 
 
 def watch(project, base):
     """Emit each check that reaches a terminal state, once, and hold the heartbeat open meanwhile."""
+    lock, holder = hold_the_watch()
+    if lock is None:
+        print(f"Refusing to watch: process {holder or 'unknown'} already holds "
+              f"{watcher_state.LOCK}. A second watcher polls the same API on its own cycle against "
+              f"the same quota, and writes the same heartbeat, so neither says which one is alive.",
+              file=sys.stderr)
+        return 1
+    # After the lock and not before: "writing the heartbeat without holding the lock" is only a
+    # reading anyone can take while this process is the one holding it.
+    if watcher_state.beating_elsewhere(os.getpid()):
+        lock.close()
+        print(f"Refusing to watch: {watcher_state.HEARTBEAT} was written inside the last "
+              f"{watcher_state.STALE_AFTER}s by something that is not holding {watcher_state.LOCK} "
+              f"— a watcher from a checkout older than the lock, either still running or only just "
+              f"stopped. Find it with `ps -Ao pid=,command= | grep '[s]ettle.py watch'` and kill "
+              f"it; if it is already gone, its last heartbeat ages out within "
+              f"{watcher_state.STALE_AFTER}s.", file=sys.stderr)
+        return 1
+
     seen = set()
     ready_since = {}
     while True:
-        HEARTBEAT.write_text(f"{int(time.time())}\n")
+        watcher_state.HEARTBEAT.write_text(watcher_state.beat(os.getpid()))
         try:
             pull_requests = open_pull_requests(project)
+            state = project_state(project, base)
         except RuntimeError as error:
             print(f"! {error}", flush=True)
-            time.sleep(POLL_SECONDS)
+            time.sleep(watcher_state.POLL_SECONDS)
             continue
 
         ready = set()
-        for entry in pull_requests:
-            number = entry["number"]
+        for number in pull_requests:
             try:
-                sha = head_sha(project, number)
-                results = checks(project, number)
+                blocking = blocking_reasons(project, number, base, state)
             except RuntimeError as error:
                 print(f"! PR#{number}: {error}", flush=True)
                 continue
 
-            for result in results:
+            for result in blocking.results:
                 if result["bucket"] == "pending":
                     continue
-                line = "PR#{} {} {} => {}".format(number, sha[:7], result["name"], result["bucket"])
+                line = "PR#{} {} {} => {}".format(number, blocking.head[:7], result["name"],
+                                                  result["bucket"])
                 if line not in seen:
                     seen.add(line)
                     print(line, flush=True)
 
-            if results and all(r["bucket"] in TERMINAL_PASS for r in results):
+            if not blocking.reasons:
                 # A pull request that finished green and sits unmerged is what this exists for as much
                 # as a pending one: a watcher reporting only state CHANGES goes silent on it forever.
                 ready.add(number)
-                line = f"PR#{number} {sha[:7]} READY: every check terminal and passing"
+                line = f"PR#{number} {blocking.head[:7]} READY: nothing blocks the merge"
                 if line not in seen:
                     seen.add(line)
                     print(line, flush=True)
 
         write_ready_state(ready, ready_since)
-        time.sleep(POLL_SECONDS)
+        time.sleep(watcher_state.POLL_SECONDS)
 
 
 def update_reasons(branch, base, holds_base, held_by_worktree):
@@ -512,8 +602,7 @@ def main():
 
     project = Path(args.project).resolve()
     if args.command == "watch":
-        watch(project, args.base)
-        return 0
+        return watch(project, args.base)
     if args.command == "update":
         return update(project, args.number, args.base)
     return merge(project, args.number, args.base, args.dry_run)
