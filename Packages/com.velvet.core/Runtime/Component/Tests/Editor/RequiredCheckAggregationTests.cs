@@ -130,6 +130,139 @@ namespace Velvet.Tests
                 .Select(job => relativePath + ":" + job);
         }
 
+        private static readonly Regex WorkflowNamePattern =
+            new(@"^name:\s*(?<name>.+)$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+        private static readonly Regex JobNamePattern =
+            new(@"^    name:\s*(?<name>.+)$", RegexOptions.Compiled | RegexOptions.Multiline);
+
+        // The first backticked run of a table row's first cell. A row names either a workflow (`Docs`) or
+        // one of its jobs (`Test ▸ unity-tests`), and the rest of the cell is prose about the matrix.
+        private static readonly Regex TableRowPattern =
+            new(@"^\|\s*`(?<cell>[^`]+)`", RegexOptions.Compiled);
+
+        private static string Unquoted(string value) => value.Trim().Trim('"', '\'');
+
+        private static string WorkflowDisplayName(string workflow)
+        {
+            var match = WorkflowNamePattern.Match(workflow);
+            return match.Success ? Unquoted(match.Groups["name"].Value) : string.Empty;
+        }
+
+        private static string JobDisplayName(string workflow, string job)
+        {
+            var match = JobNamePattern.Match(AggregateBlock(workflow, job));
+            return match.Success ? Unquoted(match.Groups["name"].Value) : string.Empty;
+        }
+
+        /// <summary>Each `Workflow ▸ job` / `Workflow` reference in CONTRIBUTING's continuous-integration table.</summary>
+        private static IReadOnlyList<(string Workflow, string Job)> ContributingRows()
+        {
+            var rows = new List<(string, string)>();
+            var lines = File.ReadAllLines(Path.Combine(RepositoryRoot(), "CONTRIBUTING.md"));
+            var start = Array.FindIndex(lines, line => line.TrimEnd('\r') == "## Continuous integration");
+            for (var i = start + 1; start >= 0 && i < lines.Length; i++)
+            {
+                var line = lines[i].TrimEnd('\r');
+                if (line.StartsWith("##", StringComparison.Ordinal))
+                {
+                    break;
+                }
+
+                var match = TableRowPattern.Match(line);
+                if (!match.Success)
+                {
+                    continue;
+                }
+
+                var cell = match.Groups["cell"].Value;
+                var separator = cell.IndexOf('▸');
+                rows.Add(separator < 0
+                    ? (cell.Trim(), string.Empty)
+                    : (cell.Substring(0, separator).Trim(), cell.Substring(separator + 1).Trim()));
+            }
+
+            return rows;
+        }
+
+        /// <summary>Every workflow file, paired with its display name.</summary>
+        private static IReadOnlyList<(string Path, string Name, string Text)> Workflows()
+        {
+            var directory = Path.Combine(RepositoryRoot(), ".github", "workflows");
+            return Directory.EnumerateFiles(directory, "*.yml")
+                .OrderBy(path => path, StringComparer.Ordinal)
+                .Select(path =>
+                {
+                    var text = File.ReadAllText(path);
+                    return (Path.GetFileName(path), WorkflowDisplayName(text), text);
+                })
+                .ToList();
+        }
+
+        private static bool Names(string workflow, string reference, string job) =>
+            reference == job || reference == JobDisplayName(workflow, job);
+
+        [Test]
+        public void Given_EveryRowOfContributingsCiTable_When_TheWorkflowsAreRead_Then_ItNamesOneThatExists()
+        {
+            // Arrange — a row naming no job is the direction that needs no curation: it is wrong outright.
+            var workflows = Workflows();
+            var rows = ContributingRows();
+
+            // Act
+            var dangling = new List<string>();
+            foreach (var (name, job) in rows)
+            {
+                var workflow = workflows.FirstOrDefault(entry => entry.Name == name);
+                if (workflow.Text == null)
+                {
+                    dangling.Add(name + " (no workflow of that name)");
+                }
+                else if (job.Length > 0 && !JobNames(workflow.Text).Any(key => Names(workflow.Text, job, key)))
+                {
+                    dangling.Add(name + " ▸ " + job + " (no such job in " + workflow.Path + ")");
+                }
+            }
+
+            // Assert — the floors ride along for the reason the cases below give: a table nobody found, or
+            // a workflow directory that read empty, reports nothing dangling and would pass having measured
+            // nothing.
+            Assert.That((rows.Count >= 2, workflows.Count >= 2, string.Join("\n", dangling)),
+                Is.EqualTo((true, true, string.Empty)));
+        }
+
+        [Test]
+        public void Given_EveryJobOfARequiredWorkflow_When_ContributingsCiTableIsRead_Then_ItHasARow()
+        {
+            // Arrange — which jobs a contributor is owed a row for is read off the workflows rather than
+            // curated here: the ones in a workflow carrying a required aggregate are the ones that can
+            // block a merge. The rest — the docs publishing chain, the upm split — are summarised by a row
+            // per workflow, and an exemption list kept here would be the second place to edit that let the
+            // table drift in the first place.
+            var listed = ContributingRows();
+            var required = RequiredWorkflows()
+                .Select(entry => (entry.Workflow, Text: ReadWorkflow(entry.Workflow)))
+                .ToList();
+
+            // Act
+            var unlisted = new List<string>();
+            foreach (var (path, text) in required)
+            {
+                var name = WorkflowDisplayName(text);
+                foreach (var job in JobNames(text))
+                {
+                    if (!listed.Any(row => row.Workflow == name && row.Job.Length > 0 && Names(text, row.Job, job)))
+                    {
+                        unlisted.Add(path + ":" + job);
+                    }
+                }
+            }
+
+            // Assert — same floors as the cases below, for the same reason.
+            Assert.That((required.Count >= 2, listed.Count >= 2, string.Join("\n", unlisted)),
+                Is.EqualTo((true, true, string.Empty)));
+        }
+
         [Test]
         public void Given_EveryJobInARequiredWorkflow_When_TheAggregateIsRead_Then_ItDependsOnThatJob()
         {

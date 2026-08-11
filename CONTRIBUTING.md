@@ -286,7 +286,9 @@ on every platform.
 | Workflow | Trigger | Unity license | Required to merge |
 |----------|---------|---------------|-------------------|
 | `Source generators ▸ source-generators` | push (filtered) / every PR / merge group | not required | no |
+| `Source generators ▸ repository-settings` | push (filtered) / every PR / merge group, on this repository only | not required | no |
 | `Source generators ▸ Required checks (generators)` | every PR / merge group | not required | **yes** |
+| `Test ▸ license-check` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
 | `Test ▸ release-notes` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ publication` | push (filtered) / every PR / merge group | not required | no |
@@ -294,8 +296,7 @@ on every platform.
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | every PR / merge group | not required | **yes** |
-| `UPM ▸ split` | push to `main` | not required | no |
-| `UPM ▸ release` | manual (`workflow_dispatch`) | not required | no |
+| `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages) | push to `main` / release / manual | **required** (skipped if absent) | no |
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
