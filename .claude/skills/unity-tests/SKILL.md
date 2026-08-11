@@ -9,11 +9,16 @@ The editor must be closed — it holds the project lock.
 
 ```bash
 UNITY=/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/MacOS/Unity
+mkdir -p Logs
 "$UNITY" -runTests -batchmode -projectPath "$PWD" -testPlatform EditMode \
-  -testResults /tmp/results.xml -logFile /tmp/run.log
+  -testResults "$PWD/Logs/results.xml" -logFile "$PWD/Logs/run.log"
+python3 scripts/test_quality/assert_results_from_this_tree.py Logs/results.xml --log Logs/run.log
+python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ```
 
 `-testPlatform PlayMode` for the other suite. `-testFilter "Velvet.Tests.SomeFixture"` narrows it; semicolons separate several, and it matches fully-qualified class or method names.
+
+**Write into the worktree's own Logs directory, never /tmp/results.xml.** That path is one file for every worktree and every session on the machine, and the compile-error paragraph below is what it costs.
 
 ## Traps that produce wrong answers
 
@@ -27,9 +32,9 @@ ps -Ao command= | grep -c '^/Applications/.*/MacOS/Uni[t]y -runTests'
 
 Concurrent Unity instances make unrelated tests fail. A failure measured while another run was in flight is not evidence; re-measure on a quiet machine before concluding anything.
 
-**Compile errors appear only in the log**, never in the XML: `grep "error CS" /tmp/run.log`. A run that failed to compile still writes an XML, so a missing failure count is not proof of success.
+**Compile errors appear only in the log**, never in the XML — `grep "error CS"` over it. A run that will not compile prints "Aborting batchmode due to failure: Scripts have compiler errors", exits 1 and writes **no** XML — so whatever sits at that path is the last run that got there, and reading it gives another tree's counts under a `-testFilter` nobody posed. Measured: one passing case named for a fixture the worktree did not contain, from a filter naming something else. `assert_results_from_this_tree.py` is what refuses this; run it before you read a count, not after you have quoted one.
 
-**Counts come only from the XML**: `grep -o 'passed="[0-9]*"\|failed="[0-9]*"\|inconclusive="[0-9]*"' /tmp/results.xml | head -3`.
+**Counts come only from the XML**: `grep -o 'passed="[0-9]*"\|failed="[0-9]*"\|inconclusive="[0-9]*"' | head -3`.
 
 **`inconclusive` is not counted as a failure by the runner.** A non-zero count means a test skipped rather than reported — usually an `Assume` gating the behaviour under test. Treat it as a failure and find the test.
 
