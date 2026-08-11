@@ -22,8 +22,9 @@ namespace Velvet
     /// covering an out-of-range cast, which no named member can supply.
     /// <para/>
     /// That signal is load-bearing, so <c>Runtime/csc.rsp</c> compiles CS8509 as an error: a member added
-    /// without an arm has to fail the build, and a warning nothing gates on is a member reaching a site that
-    /// never learned it.
+    /// without an arm at one of these sites fails this assembly's build rather than warning into a log
+    /// nothing gates on. Answering that error with a discard arm would put the silence back, so
+    /// <c>ExhaustiveSwitchSeverityTests</c> holds both halves at once.
     /// </remarks>
     public enum StyleVariantKind
     {

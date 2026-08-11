@@ -1,71 +1,31 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using NUnit.Framework;
 
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Specifies what the discard-less classification switches over <see cref="StyleVariantKind"/> answer:
-    /// every named member is classified by each of them, and a value naming no member is refused rather
-    /// than answered. The compiler raises CS8509 for the first and CS8524 for the second, and the enum's
-    /// own remarks lean on that; these cases are what makes either survive a discard arm being added.
+    /// Specifies what the classification surface answers for a value that names no
+    /// <see cref="StyleVariantKind"/>, and that the two responsive questions stay one question.
+    /// Coverage of the named members is the compiler's job — <c>Runtime/csc.rsp</c> raises CS8509 to an
+    /// error, so a member no arm covers does not build — and asking it here as well would only pass,
+    /// since no tree that fails it can be compiled to run the case.
     /// </summary>
     [TestFixture]
     internal sealed class StyleVariantKindClassificationTests
     {
-        private static IEnumerable<StyleVariantKind> NamedKinds() =>
-            Enum.GetValues(typeof(StyleVariantKind)).Cast<StyleVariantKind>();
-
         private static StyleVariantKind UnnamedKind() =>
-            (StyleVariantKind)(NamedKinds().Cast<int>().Max() + 1);
+            (StyleVariantKind)(Enum.GetValues(typeof(StyleVariantKind)).Cast<int>().Max() + 1);
 
-        private static List<StyleVariantKind> Unclassified(Action<StyleVariantKind> classify)
-        {
-            var refused = new List<StyleVariantKind>();
-            foreach (var kind in NamedKinds())
-            {
-                try
-                {
-                    classify(kind);
-                }
-                catch (Exception)
-                {
-                    refused.Add(kind);
-                }
-            }
-            return refused;
-        }
-
-        // GREEN_ON_BASE(characterization): a discard arm added later silences CS8509 and leaves this red.
-        [Test]
-        public void Given_EveryNamedKind_When_BreakpointPxIsAsked_Then_NoneIsUnclassified()
-        {
-            // Act
-            var refused = Unclassified(kind => StyleVariantClass.BreakpointPx(kind));
-
-            // Assert
-            Assert.That(refused, Is.Empty);
-        }
-
-        // GREEN_ON_BASE(characterization): a discard arm added later silences CS8509 and leaves this red.
-        [Test]
-        public void Given_EveryNamedKind_When_RelationalOfIsAsked_Then_NoneIsUnclassified()
-        {
-            // Act
-            var refused = Unclassified(kind => StyleVariantClass.RelationalOf(kind));
-
-            // Assert
-            Assert.That(refused, Is.Empty);
-        }
-
-        // GREEN_ON_BASE(characterization): pins the delegation both summaries claim, against either growing
-        // its own arms.
+        // GREEN_ON_BASE(characterization): pins the delegation both summaries claim, against either
+        // growing its own arms.
         [Test]
         public void Given_EveryNamedKind_When_BothResponsiveQuestionsAreAsked_Then_TheyAgree()
         {
             // Act
-            var disagreeing = NamedKinds()
+            var disagreeing = Enum.GetValues(typeof(StyleVariantKind))
+                .Cast<StyleVariantKind>()
                 .Where(kind => StyleVariantClass.IsResponsive(kind) != StyleVariantClass.BreakpointPx(kind) > 0f)
                 .ToList();
 
@@ -73,30 +33,34 @@ namespace Velvet.Tests
             Assert.That(disagreeing, Is.Empty);
         }
 
-        // GREEN_ON_BASE(characterization): the refusal is the recorded behaviour, so a discard arm returning
-        // zero cannot come back unnoticed.
+        // GREEN_ON_BASE(characterization): the refusal is the behaviour the CHANGELOG now records, and
+        // naming the type is what separates it from a member that throws for a reason of its own.
         [Test]
         public void Given_AValueNamingNoKind_When_BreakpointPxIsAsked_Then_ItIsRefused()
         {
             // Arrange
             var unnamed = UnnamedKind();
-            Assume.That(Enum.IsDefined(typeof(StyleVariantKind), unnamed), Is.False);
+            Assume.That(Enum.IsDefined(typeof(StyleVariantKind), unnamed), Is.False,
+                "the probe value has to name no member for the refusal to be what is measured");
 
             // Assert
-            Assert.That(() => StyleVariantClass.BreakpointPx(unnamed), Throws.Exception);
+            Assert.That(() => StyleVariantClass.BreakpointPx(unnamed),
+                Throws.InstanceOf<SwitchExpressionException>());
         }
 
-        // GREEN_ON_BASE(characterization): the refusal is the recorded behaviour, so a discard arm returning
-        // false cannot come back unnoticed.
+        // GREEN_ON_BASE(characterization): the refusal is the behaviour the CHANGELOG now records, and
+        // naming the type is what separates it from a member that throws for a reason of its own.
         [Test]
         public void Given_AValueNamingNoKind_When_IsResponsiveIsAsked_Then_ItIsRefused()
         {
             // Arrange
             var unnamed = UnnamedKind();
-            Assume.That(Enum.IsDefined(typeof(StyleVariantKind), unnamed), Is.False);
+            Assume.That(Enum.IsDefined(typeof(StyleVariantKind), unnamed), Is.False,
+                "the probe value has to name no member for the refusal to be what is measured");
 
             // Assert
-            Assert.That(() => StyleVariantClass.IsResponsive(unnamed), Throws.Exception);
+            Assert.That(() => StyleVariantClass.IsResponsive(unnamed),
+                Throws.InstanceOf<SwitchExpressionException>());
         }
     }
 }
