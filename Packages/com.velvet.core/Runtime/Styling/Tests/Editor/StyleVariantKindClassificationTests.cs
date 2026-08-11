@@ -47,8 +47,10 @@ namespace Velvet.Tests
             Assert.That(refused, Is.Empty);
         }
 
-        // GREEN_ON_BASE(characterization): pins the delegation both summaries claim, against either
-        // growing its own arms. Also the only enumeration of BreakpointPx over the named members.
+        // GREEN_ON_BASE(characterization): the only enumeration of BreakpointPx over the named members,
+        // and it separates the two the moment a responsive kind reaches one of them and not the other. It
+        // does not pin the delegation itself: a rewritten IsResponsive listing the same five kinds agrees
+        // with BreakpointPx and keeps this green.
         [Test]
         public void Given_EveryNamedKind_When_BothResponsiveQuestionsAreAsked_Then_TheyAgree()
         {
@@ -69,13 +71,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AValueNamingNoKind_When_BreakpointPxIsAsked_Then_ItIsRefused()
         {
-            // Arrange
-            var unnamed = UnnamedKind();
-            Assume.That(Enum.IsDefined(typeof(StyleVariantKind), unnamed), Is.False,
-                "the probe value has to name no member for the refusal to be what is measured");
-
             // Assert
-            Assert.That(() => StyleVariantClass.BreakpointPx(unnamed),
+            Assert.That(() => StyleVariantClass.BreakpointPx(UnnamedKind()),
                 Throws.InstanceOf<SwitchExpressionException>());
         }
 
@@ -86,13 +83,8 @@ namespace Velvet.Tests
         [Test]
         public void Given_AValueNamingNoKind_When_IsResponsiveIsAsked_Then_ItIsRefused()
         {
-            // Arrange
-            var unnamed = UnnamedKind();
-            Assume.That(Enum.IsDefined(typeof(StyleVariantKind), unnamed), Is.False,
-                "the probe value has to name no member for the refusal to be what is measured");
-
             // Assert
-            Assert.That(() => StyleVariantClass.IsResponsive(unnamed),
+            Assert.That(() => StyleVariantClass.IsResponsive(UnnamedKind()),
                 Throws.InstanceOf<SwitchExpressionException>());
         }
     }

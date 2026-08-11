@@ -40,7 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   produce a wrong layout instead of a stack trace. The classification switches this comes from are now
   exhaustive by compilation rather than by review — `Runtime/csc.rsp` compiles CS8509 as an error — so a
   `StyleVariantKind` member added without an arm fails the build rather than warning into a log that
-  nothing gates on.
+  nothing gates on. That response file ships with the package, so a project compiling `Velvet.asmdef`
+  compiles CS8509 as an error too; it applies to Velvet's own sources only, and none of the switches it
+  reaches is over an engine-owned enum.
 
 ### Fixed
 
