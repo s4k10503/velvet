@@ -355,12 +355,19 @@ namespace Velvet
                 var parkedKeyed = PendingKeyedState;
                 PendingIndexedState = null;
                 PendingKeyedState = null;
+                // Same set-and-restore as FiberNodePatcher.PatchPortalChildren, and for the same reason:
+                // this is the mount half of the pair that stamps the fibers a Portal's own children
+                // reconcile creates. A nested Portal enqueued here is drained by a later turn of this loop,
+                // with the field already restored, so its own entry sets its own placeholder.
+                var enclosingPortal = _ctx.CurrentPortalPlaceholder;
+                _ctx.CurrentPortalPlaceholder = placeholder;
                 try
                 {
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
                 }
                 finally
                 {
+                    _ctx.CurrentPortalPlaceholder = enclosingPortal;
                     if (contextSnapshot != null)
                     {
                         for (var s = contextSnapshot.Count - 1; s >= 0; s--)
@@ -383,7 +390,8 @@ namespace Velvet
                 }
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
-                _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, slotStart, slotLength);
+                _ctx.PortalState[placeholder] = new PortalSlotInfo(
+                    resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
             }
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
             // last member this pass tears down here, never synchronously mid-diff. `this` mirrors

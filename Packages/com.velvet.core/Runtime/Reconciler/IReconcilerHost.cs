@@ -16,6 +16,8 @@ namespace Velvet
         // Operations provided by FiberElementCleaner
         void RemoveElement(VisualElement parent, int index);                               // Used by Patcher only
         void RemoveElementDirect(VisualElement parent, VisualElement element);
+        // Used by Patcher only, for a registry Portal whose id now names a different element.
+        void ReleasePortalRangeForRetarget(VisualElement placeholder);
 
         // Operations provided by ChildReconciler (used by Patcher)
         // Refreshes context snapshots and force-renders consumers under FiberStack.Current

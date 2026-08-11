@@ -516,6 +516,12 @@ namespace Velvet
 
             ReleaseBridgeIfLastPortalOn(target);
 
+            // Before the removals: a Portal's top-level Component child mounts inline ON THE TARGET, so
+            // the per-element CleanupElement below never reaches its fiber and its effect cleanups would
+            // never run (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns why the selection is by
+            // the placeholder rather than by the range being torn out).
+            _ctx.ComponentRegistry.DisposeInlineFibersOwnedByPortal(element);
+
             // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
             // already-converted start mixes the two bases, and tears out one element too many the moment an
             // invisible child sits anywhere inside the portal's range.
@@ -539,6 +545,21 @@ namespace Velvet
             // Surviving Portals on the same target whose slot starts after the removed range
             // collapse left by SlotLength so their next patch addresses the right DOM positions.
             PortalSlotTracker.ShiftSlotStartsAfter(_ctx.PortalState, target, portalInfo.SlotStart, -portalInfo.SlotLength);
+        }
+
+        // Empties a Portal's slot range on the element it is mounted into and leaves it in exactly the
+        // unresolved state a Portal that mounted before its id existed carries, so
+        // FiberNodePatcher.ResolvePortalTarget's tail rebases and mounts both the same way. Called before
+        // anything creates the replacements: the departing children's effect cleanups and fiber disposal
+        // must run before the arriving ones mount.
+        internal void ReleasePortalRangeForRetarget(VisualElement placeholder)
+        {
+            if (!_ctx.PortalState.TryGetValue(placeholder, out var info))
+            {
+                return;
+            }
+            CleanupPortal(placeholder);
+            _ctx.PortalState[placeholder] = info with { Target = null, SlotStart = 0, SlotLength = 0 };
         }
 
         // The synthetic-bubbling bridge is attached once per resolved TARGET while the Portals sharing that
