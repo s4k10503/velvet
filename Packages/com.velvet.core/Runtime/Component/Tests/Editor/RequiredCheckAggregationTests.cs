@@ -316,6 +316,10 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(characterization): the two namings already agree on both sides — every job key in
+        // these workflows is plain, so the base's narrower pattern found them all. What this holds is the
+        // pattern the branch widened, against being narrowed again by someone who has only the passing
+        // cases to go on.
         [Test]
         public void Given_EveryJobARequiredAggregateNames_When_TheWorkflowIsEnumerated_Then_ItIsFound()
         {
