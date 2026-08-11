@@ -301,6 +301,8 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(characterization): this column happened to be right on both sides. The other two
+        // cases found the first column wrong, which is the reason to hold this one before it drifts too.
         [Test]
         public void Given_EveryRequiredCheckAggregate_When_ContributingsCiTableIsRead_Then_ItsRowIsTheOneMarkedRequired()
         {
