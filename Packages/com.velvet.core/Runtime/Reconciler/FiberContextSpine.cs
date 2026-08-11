@@ -345,7 +345,8 @@ namespace Velvet
             var registry = walk.Registry;
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(counters, identity, registry.InlinePositionKeyBoxes);
-            var resolved = registry.TryGetFiberForInlineKey(walk.Ancestor, slotKey, identity);
+            var resolved = registry.TryGetFiberForInlineKey(
+                walk.Ancestor, slotKey, identity, walk.SpineChild.OwningPortalPlaceholder);
             return ReferenceEquals(resolved, walk.SpineChild);
         }
 

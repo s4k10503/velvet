@@ -363,7 +363,12 @@ namespace Velvet
                 // reconcile creates. A nested Portal enqueued here is drained by a later turn of this loop,
                 // with the field already restored, so its own entry sets its own placeholder.
                 var enclosingPortal = _ctx.CurrentPortalPlaceholder;
+                var enclosingChildScope = _ctx.PortalChildKeyScope;
                 _ctx.CurrentPortalPlaceholder = placeholder;
+                // Pushing the declaring fiber gives this Portal's children the registry parent that
+                // fiber's own in-tree children already have, so the two can collide on a whole key. The
+                // scope is what tells such a collision apart — ComponentRegistry.ResolveInline owns it.
+                _ctx.PortalChildKeyScope = placeholder;
                 if (declaringFiber != null) _ctx.FiberStack.Push(declaringFiber);
                 try
                 {
@@ -372,6 +377,7 @@ namespace Velvet
                 finally
                 {
                     if (declaringFiber != null) _ctx.FiberStack.Pop();
+                    _ctx.PortalChildKeyScope = enclosingChildScope;
                     _ctx.CurrentPortalPlaceholder = enclosingPortal;
                     if (contextSnapshot != null)
                     {

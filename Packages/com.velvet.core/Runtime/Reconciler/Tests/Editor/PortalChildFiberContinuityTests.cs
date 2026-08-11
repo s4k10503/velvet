@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -14,16 +15,23 @@ namespace Velvet.Tests
     /// contract <c>Documentation~/portals.md</c> opens with, applied to the one child position whose mount
     /// runs in the deferred drain rather than in the declaring component's own reconcile.
     /// <list type="bullet">
-    /// <item>Its mount effect runs once across a patch, and its hook state carries that patch.</item>
+    /// <item>Its mount effect runs once across a patch, and its hook state carries two.</item>
     /// <item>The target holds one element for it, not one per patch.</item>
     /// <item>A component that then leaves the portal's children takes its element out of the target with
     /// it, rather than leaving one behind for the portal to keep.</item>
     /// <item>The fiber the deferred mount pushes to reach that agreement comes back off the stack.</item>
     /// <item>A fiber the reconcile carries to another container re-renders itself into the container it
     /// is in, not the one it was created in.</item>
+    /// <item>Sharing that parent does not merge the child with a same-position component the declaring
+    /// tree renders outside the portal: each keeps its own instance and its own state.</item>
+    /// <item>The stamp the deferred mount writes onto the children it created reaches those and no other
+    /// child of the declaring fiber, so a sibling's isolated re-render still sees its own Providers.</item>
     /// </list>
-    /// The move itself is still an unmount and a remount — <see cref="PortalRegistryRetargetTests"/> owns
-    /// what a portal close reaches, and the guide states the move contract.
+    /// A component that leaves the portal's children in the render that removes the portal is carried,
+    /// state and all, which is the fifth item above. A portal that survives and re-homes its child, or
+    /// whose target id is re-registered elsewhere, unmounts and remounts it instead —
+    /// <see cref="PortalRegistryRetargetTests"/> owns what a portal close reaches, and the guide states
+    /// the move contract.
     /// </summary>
     internal sealed class PortalChildFiberContinuityTests
     {
@@ -34,6 +42,9 @@ namespace Velvet.Tests
         {
             s_setups = 0;
             s_lastRenderedCount = -1;
+            s_twinSetups = 0;
+            s_twinSetters.Clear();
+            s_contextSeen = null;
             RuntimeStateProbe.ClearPortalRegistry();
         }
 
@@ -112,8 +123,11 @@ namespace Velvet.Tests
             Assert.That(Names(target), Is.EqualTo("content|sib-1"));
         }
 
+        // Two patches rather than one: the instance a single patch builds to replace the lost one
+        // registers where every later patch looks, so its state survives from there and one patch cannot
+        // tell "kept its state" from "lost it once, then kept the replacement's".
         [Test]
-        public void Given_APortalChildComponentHoldingState_When_ThePortalsChildrenPatch_Then_ItKeepsThatState()
+        public void Given_APortalChildComponentHoldingState_When_ThePortalsChildrenPatchTwice_Then_ItKeepsThatState()
         {
             // Arrange
             var target = new VisualElement();
@@ -126,10 +140,12 @@ namespace Velvet.Tests
             // Act
             s_setSibling.Invoke(1);
             _mounted.FlushStateForTest();
+            s_setSibling.Invoke(2);
+            _mounted.FlushStateForTest();
 
             // Assert — the sibling name is folded in because the last render of a component that never
             // lost its state and of one that was never re-rendered at all both report 7.
-            Assert.That((s_lastRenderedCount, Names(target)), Is.EqualTo((7, "content|sib-1")));
+            Assert.That((s_lastRenderedCount, Names(target)), Is.EqualTo((7, "content|sib-2")));
         }
 
         private static int FiberStackDepth(MountedTree mounted)
@@ -247,6 +263,128 @@ namespace Velvet.Tests
             Assert.That(
                 (target.childCount, container.Query<VisualElement>("content").ToList().Count),
                 Is.EqualTo((0, 1)));
+        }
+
+        private static int s_twinSetups;
+        private static readonly List<StateUpdater<string>> s_twinSetters = new();
+
+        // Its own state names its element, and every setter is collected in render order so a test can
+        // drive one occurrence and read the other. The one outside the portal renders first.
+        [Component]
+        private static VNode Twin()
+        {
+            var (mark, setMark) = Hooks.UseState("a");
+            s_twinSetters.Add(setMark);
+            Hooks.UseLayoutEffect(() => { s_twinSetups++; return (Action)(() => { }); }, Array.Empty<object>());
+            return V.Div(name: "twin-" + mark);
+        }
+
+        // Both occurrences are unkeyed, first of their identity in their own reconcile scope, and rendered
+        // by this one fiber — so they agree on the whole of the tree-position key, and only the portal
+        // scope ComponentRegistry.ResolveInline hands out separates them.
+        [Component]
+        private static VNode TwinHost()
+            => V.Div(name: "twin-host", children: new VNode?[]
+            {
+                V.Div(name: "inline-slot", children: new VNode?[] { V.Component(Twin) }),
+                V.Portal("continuity-target", children: new VNode?[] { V.Component(Twin), V.Div(name: "sib") }),
+            });
+
+        private (VisualElement InlineSlot, VisualElement Target) MountTwins()
+        {
+            var container = new VisualElement();
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("continuity-target", target);
+            _mounted = V.Mount(container, V.Component(TwinHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            return (container.Q<VisualElement>("inline-slot"), target);
+        }
+
+        // GREEN_ON_BASE(characterization): the base gives the two occurrences separate registry parents by
+        // accident — the drained one lands on the reconcile root — so it separates them without meaning to.
+        // Keying the drained child on the declaring fiber removes that accident, and this pins that what
+        // replaces it separates them on purpose.
+        [Test]
+        public void Given_OneComponentBothInAPortalAndOutsideIt_When_TheyMount_Then_EachRunsItsOwnMountEffect()
+        {
+            // Arrange & Act
+            var (_, target) = MountTwins();
+
+            // Assert — the target's contents are folded in so the second run is attributed: a count of two
+            // says two mount effects ran, not that one of them belongs to a child that reached the target.
+            Assert.That((s_twinSetups, Names(target)), Is.EqualTo((2, "twin-a|sib")));
+        }
+
+        // GREEN_ON_BASE(characterization): separate on the base for the accidental reason its sibling case
+        // above states, so this reads the same there and pins the same replacement.
+        [Test]
+        public void Given_OneComponentBothInAPortalAndOutsideIt_When_TheOutsideOneSetsItsState_Then_ThePortalsKeepsItsOwn()
+        {
+            // Arrange
+            var (inlineSlot, target) = MountTwins();
+
+            // Act
+            s_twinSetters[0].Invoke("b");
+            _mounted!.FlushStateForTest();
+
+            // Assert — the container outside is folded in because a setter that reached nothing at all
+            // leaves the portal's child reading "a" just as a separate instance does.
+            Assert.That((Names(inlineSlot), Names(target)), Is.EqualTo(("twin-b", "twin-a|sib")));
+        }
+
+        private static readonly ComponentContext<string> ScopeContext = ComponentContext<string>.Create("outside");
+        private static string s_contextSeen;
+        private static StateUpdater<int> s_setSiblingTick;
+
+        [Component]
+        private static VNode PlainPortalChild() => V.Div(name: "plain");
+
+        [Component]
+        private static VNode ContextReadingSibling()
+        {
+            s_contextSeen = Hooks.UseContext(ScopeContext);
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setSiblingTick = setTick;
+            return V.Div(name: "sibling-" + tick);
+        }
+
+        // The sibling is an ordinary direct child fiber of the same declaring fiber the deferred mount
+        // anchors this portal's children on, so the mount's own "which of these did I just create" diff is
+        // the only thing keeping the portal's DetachedMountContext off it. Carrying that stamp would send
+        // the sibling's isolated re-render down the spine's detached arm, which rebuilds context from the
+        // snapshot taken at the portal's position — above the Provider written below it.
+        [Component]
+        private static VNode PortalAndProviderHost()
+            => V.Div(name: "scope-host", children: new VNode?[]
+            {
+                V.Portal("continuity-target", children: new VNode?[] { V.Component(PlainPortalChild) }),
+                V.Provider(ScopeContext, "inside", new VNode[] { V.Component(ContextReadingSibling, key: "s") }),
+            });
+
+        // GREEN_ON_BASE(characterization): the base anchors a drained portal child on the reconcile root,
+        // where this declaring fiber's other children are not, so its stamp cannot reach them and the case
+        // is green there for want of the anchor rather than by the diff this pins. The anchor being the
+        // declaring fiber is what makes that diff load-bearing, and removing either half of it — the
+        // before-set add, or the skip that reads it — leaves every other case in this fixture green.
+        [Test]
+        public void Given_APortalBesideAContextConsumingSibling_When_TheSiblingReRendersAlone_Then_ItStillReadsTheProviderAroundIt()
+        {
+            // Arrange
+            var container = new VisualElement();
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("continuity-target", target);
+            _mounted = V.Mount(container, V.Component(PortalAndProviderHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+
+            // Act
+            s_setSiblingTick.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert — the sibling's own element is folded in because the value read at mount is "inside"
+            // either way, so only a name carrying the new tick says the re-render happened at all.
+            Assert.That(
+                (s_contextSeen, Names(container.Q<VisualElement>("scope-host"))),
+                Is.EqualTo(("inside", "|sibling-1")));
         }
     }
 }

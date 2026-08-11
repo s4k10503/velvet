@@ -38,19 +38,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A component the reconciler carries to a different container now re-renders itself into the container
-  it is in. Only its slot index followed the move, so its own `setState` reconciled its new output into
-  the container it had left — leaving the stale element behind there and writing the new one into a
-  container it no longer occupies. It also let a component that had moved out of a subtree be disposed
-  with that subtree when the subtree was later torn down. Two components at the same unkeyed position
-  in *different* containers still share one instance, which is a separate defect; what changes for them
-  is which of the two containers goes stale, since the shared instance's slot index already named the
-  last one reconciled and its container now agrees. Give each an explicit `key:` to keep them apart.
+  it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
+  container did not, so its own `setState` reconciled its new output into the container it had left —
+  leaving the stale element behind there and writing the new one into a container it no longer occupies.
+  It also let a component that had moved out of a subtree be disposed with that subtree when the subtree
+  was later torn down. Two components at the same unkeyed position in *different* containers still share
+  one instance where both containers sit in the declaring component's own tree, which is a separate
+  defect; what changes for them is which of the two containers goes stale, since the shared instance's
+  slot index already named the last one reconciled and its container now agrees. Give each an explicit
+  `key:` to keep them apart.
 - A `V.Component` written as a top-level child of a `V.Portal` now survives a patch of that portal's
   children. Its mount ran in the deferred pass that follows the reconcile, which registered it under a
   different parent from the one every later patch looks it up by, so the first patch failed to find it:
   the component was built a second time with fresh hook state and fresh effects, the first instance's
   effect cleanups never ran, and the element it had rendered stayed behind in the target. A modal whose
-  content component held its own `UseState` reset it whenever anything else in that portal re-rendered.
+  content component held its own `UseState` lost it the first time anything else in that portal
+  re-rendered — once, because the instance built to replace it registers where the patch looks, so it
+  survives every patch after that. The element the first instance rendered stayed in the target for the
+  life of the tree. Where the declaring component renders the same component at the same position both
+  inside the portal and outside it, the two no longer end up sharing one instance from the first patch
+  onwards: the portal's child keeps the instance it mounted with.
 - Registering a portal target id again with a different element now moves the portals already mounted
   into the old one, instead of leaving them writing into an element the UI has replaced. A
   `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt

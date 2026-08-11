@@ -692,8 +692,9 @@ namespace Velvet
             var placeholder = CreateHiddenPlaceholder();
             var contextSnapshot = _ctx.ComponentContextStack.SnapshotTops();
             // FiberStack.Current is the component whose Body is mid-render right now — the one that
-            // actually wrote `V.Portal(...)`/`V.WorldSpace(...)` into its returned tree. This is the
-            // only point where that's true; by drain time nothing on the stack reflects it anymore.
+            // actually wrote `V.Portal(...)`/`V.WorldSpace(...)` into its returned tree. Capturing it
+            // here is what makes it available at all: the pass that had it on the stack has unwound by
+            // drain time, and the drain pushes this captured value back rather than reading one.
             var logicalParent = _ctx.FiberStack.Current;
             _ctx.PendingPortalMounts.Enqueue((placeholder, node, target, contextSnapshot, logicalParent));
             return placeholder;
