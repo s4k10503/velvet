@@ -99,6 +99,17 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 | `mutate(variables)` | `mutation.Mutate(variables)` |
 | `mutateAsync(variables)` | `await mutation.MutateAsync(variables)` |
 
+**Concurrent calls.** Calling `Mutate` twice starts two runs, neither cancels the other, each
+delivers its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Error` / `Variables` are one
+snapshot following the newest — so a double-tapped button does not lose the first call's follow-up
+write. Starting a call resets all four to that call's own — `Data` included, so a pending call never
+shows the previous one's result. Not cancelling on re-entry and following the newest are v5's
+behaviour.
+
+The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
+only its variables. It is cancelled when the component unmounts, which is what a Unity web request
+wants, and it is never cancelled by a later call.
+
 **Callback error semantics** (TanStack Query v5 parity):
 
 - A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws.
@@ -196,11 +207,22 @@ Since C# has no JSX syntax, Velvet builds the VNode tree through `V.*` method ca
 | `<div className="x">` | `V.Div(className: "x")` | Unity has no HTML elements. Produces a `VisualElement` |
 | `<span>` | `V.Div()` | No span-equivalent element. Substitute a generic `VisualElement` |
 | `<button onClick={fn}>` | `V.Button(onClick: fn)` | Produces a UI Toolkit `Button` type |
-| `<input type="text">` | `V.TextField()` | |
+| `<input type="text">` | `V.TextField()` | `placeholder` / `maxlength` / `readonly` are the `placeholder:` / `maxLength:` / `isReadOnly:` parameters. `isDelayed:` has no HTML counterpart: it holds the value back instead of updating per keystroke — see below for what releases it |
 | `<input type="checkbox">` | `V.Toggle()` | |
 | `<input type="range">` | `V.Slider()` | |
 | `<p>` / `<h1>` | `V.Label()` | UI Toolkit `Label` type |
 | `<>{children}</>` | `V.Fragment(children)` | No shorthand `<>` syntax |
+
+`V.TextField`'s `placeholder:`, `maxLength:`, `isReadOnly:` and `isDelayed:` are **undeclared** when
+null, not reset: null is not `placeholder=""`, not `maxLength: -1` and not `isReadOnly: false`. A
+member no render has declared is left wherever a `refCallback:` put it, and one a render declared and
+a later render dropped goes back to the value the field carried before any render declared it. The
+three focus props follow the same rule — [focus.md](focus.md) states it for those.
+
+A field holding `isDelayed:` releases the typed text into its value on Enter, on losing focus, and on
+a render taking the flag off — that third one whether the render declares `isDelayed: false` or drops
+the parameter. The render-driven release reports through `onValueChanged:`, so a component that turns
+the flag off mid-edit receives the pending text rather than stranding it on screen.
 
 ### 2-2. Conditionals and Lists
 

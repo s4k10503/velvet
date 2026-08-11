@@ -260,11 +260,11 @@ namespace Velvet
                 {
                     continue;
                 }
-                // Resolve the deferred targets: a registry portal arrived with its target resolved
-                // at enqueue; a layer portal creates (or reuses) the per-layer framework host here,
-                // and a world-space node creates its per-instance host here — the placeholder is
-                // attached by now, so the declaring panel whose settings/theme the host copies is
-                // known.
+                // Resolve the deferred targets: a same-panel portal (a registered id, or the container
+                // the caller passed) arrived with its target resolved at enqueue; a layer portal
+                // creates (or reuses) the per-layer framework host here, and a world-space node
+                // creates its per-instance host here — the placeholder is attached by now, so the
+                // declaring panel whose settings/theme the host copies is known.
                 VNode?[] children;
                 switch (node)
                 {
@@ -274,8 +274,8 @@ namespace Velvet
                     case WorldSpaceNode worldSpaceNode:
                         (target, children) = ResolveWorldSpacePortalTarget(placeholder, worldSpaceNode);
                         break;
-                    case PortalNode registryPortal:
-                        (target, children) = ResolveRegistryPortalTarget(target, registryPortal);
+                    case PortalNode samePanelPortal:
+                        (target, children) = ResolveSamePanelPortalTarget(target, samePanelPortal);
                         break;
                     case ZLayerMountNode zLayerMount:
                         // Not a host mount: the real element is already fully built (CreateElement / a
@@ -355,12 +355,19 @@ namespace Velvet
                 var parkedKeyed = PendingKeyedState;
                 PendingIndexedState = null;
                 PendingKeyedState = null;
+                // Same set-and-restore as FiberNodePatcher.PatchPortalChildren, and for the same reason:
+                // this is the mount half of the pair that stamps the fibers a Portal's own children
+                // reconcile creates. A nested Portal enqueued here is drained by a later turn of this loop,
+                // with the field already restored, so its own entry sets its own placeholder.
+                var enclosingPortal = _ctx.CurrentPortalPlaceholder;
+                _ctx.CurrentPortalPlaceholder = placeholder;
                 try
                 {
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
                 }
                 finally
                 {
+                    _ctx.CurrentPortalPlaceholder = enclosingPortal;
                     if (contextSnapshot != null)
                     {
                         for (var s = contextSnapshot.Count - 1; s >= 0; s--)
@@ -383,7 +390,8 @@ namespace Velvet
                 }
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
-                _ctx.PortalState[placeholder] = new PortalSlotInfo(resolvedTarget, slotStart, slotLength);
+                _ctx.PortalState[placeholder] = new PortalSlotInfo(
+                    resolvedTarget, slotStart, slotLength, (node as PortalNode)?.TargetId, logicalParent);
             }
             // Same safe (post-pass, no diff in flight) context as the drain above: a container that lost its
             // last member this pass tears down here, never synchronously mid-diff. `this` mirrors
@@ -427,27 +435,27 @@ namespace Velvet
             return (target, children);
         }
 
-        private (VisualElement Target, VNode?[] Children) ResolveRegistryPortalTarget(
-            VisualElement? target, PortalNode registryPortal)
+        private (VisualElement Target, VNode?[] Children) ResolveSamePanelPortalTarget(
+            VisualElement? target, PortalNode samePanelPortal)
         {
-            // The target was resolved (non-null) at enqueue: the create path never
-            // queues a registry portal without one.
-            var children = registryPortal.Children ?? Array.Empty<VNode>();
+            // The target was resolved (non-null) at enqueue: the create path never queues a registry
+            // portal without one, and an element-valued portal arrives already holding its container.
+            var children = samePanelPortal.Children ?? Array.Empty<VNode>();
             // Same-panel synthetic-bubbling bridge: attached ONCE per resolved target,
             // guarded by SamePanelPortalBridges (see its own comment for why the guard
             // lives here rather than at a single creation call site — unlike a layer/
-            // world-space host, a registry target is an ordinary, already-existing
+            // world-space host, a same-panel target is an ordinary, already-existing
             // element with no one-time "just created it" moment to hook). Never attached
             // from FiberPortalRegistry.Register itself: that registry is a bare global
             // static with no ReconcilerContext to guard duplicate attaches with or later
             // dispose the bridge through.
-            var registryTarget = target!;
-            if (!_ctx.SamePanelPortalBridges.ContainsKey(registryTarget))
+            var samePanelTarget = target!;
+            if (!_ctx.SamePanelPortalBridges.ContainsKey(samePanelTarget))
             {
-                _ctx.SamePanelPortalBridges[registryTarget] =
-                    FiberCrossPanelEventDispatcher.AttachBridge(registryTarget, _ctx);
+                _ctx.SamePanelPortalBridges[samePanelTarget] =
+                    FiberCrossPanelEventDispatcher.AttachBridge(samePanelTarget, _ctx);
             }
-            return (registryTarget, children);
+            return (samePanelTarget, children);
         }
 
         // Resumes a suspended IndexedReconcile.

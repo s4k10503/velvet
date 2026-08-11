@@ -30,12 +30,21 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import program_invocations, unexpanded
 import repository
 
+
+HOOK_TOOLS = {"Bash"}
+
 TERMINAL_PASS = frozenset({"pass", "skipping"})
 
 # An operand the shell has not expanded yet resolves to nothing readable, and a merge guard errs
 # toward refusing: allowing means the branch lands with this check never having run.
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'gh pr merge $PR --squash --delete-branch'
+
+# gh answers None both for a check list it could not read and for a number that is not a pull
+# request, and nothing here separates them. The merge is still refused — same backing rule as
+# merge_onto_unpublished_release.py states.
+UNREADABLE_POLICY = "allow"
+UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 
 
 def gh_json(cwd, args):
@@ -91,7 +100,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     cwd = event.get("cwd") or "."

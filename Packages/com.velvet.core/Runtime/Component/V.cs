@@ -534,6 +534,11 @@ namespace Velvet
         /// <summary>
         /// Creates a TextField.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="placeholder"/>, <paramref name="maxLength"/>, <paramref name="isReadOnly"/> and
+        /// <paramref name="isDelayed"/> are undeclared when null rather than reset to a default;
+        /// <c>Documentation~/react-migration.md</c> owns what a null and a dropped one each do.
+        /// </remarks>
         /// <param name="className">CSS-like utility class string. Multiple classes separated by spaces.</param>
         /// <param name="value">Current text value (controlled).</param>
         /// <param name="onValueChanged">Handler invoked when the input text changes.</param>
@@ -541,6 +546,10 @@ namespace Velvet
         /// <param name="name">Element name assigned to <see cref="VisualElement.name"/> for query/debug.</param>
         /// <param name="label">Label text shown next to the field.</param>
         /// <param name="isPasswordField">When true, masks the input as a password field.</param>
+        /// <param name="placeholder">A short hint shown in the empty field (HTML <c>placeholder</c>). An empty string declares an empty hint.</param>
+        /// <param name="maxLength">Maximum number of characters the field accepts, -1 for no limit (HTML <c>maxlength</c>).</param>
+        /// <param name="isReadOnly">When true, the field cannot be edited (HTML <c>readonly</c>).</param>
+        /// <param name="isDelayed">When true, the value is not updated per keystroke but on Enter, on the field losing focus, and on a later render taking the flag off.</param>
         /// <param name="enabled">When false, disables user input.</param>
         /// <param name="refCallback">Callback invoked on mount with the created VisualElement; returned Action runs on unmount.</param>
         /// <param name="whileHoverClass">USS class toggled while the pointer hovers the element.</param>
@@ -557,6 +566,10 @@ namespace Velvet
             string? name = null,
             string? label = null,
             bool? isPasswordField = null,
+            string? placeholder = null,
+            int? maxLength = null,
+            bool? isReadOnly = null,
+            bool? isDelayed = null,
             bool? enabled = null,
             Func<VisualElement, Action>? refCallback = null,
             string? whileHoverClass = null,
@@ -567,15 +580,18 @@ namespace Velvet
         {
             var events = SingleEvent(onValueChanged != null ? new ChangeEventBinding<string> { Handler = onValueChanged } : null);
 
+            var declaresTextField = isPasswordField.HasValue || placeholder != null || maxLength.HasValue
+                                    || isReadOnly.HasValue || isDelayed.HasValue;
+
             FiberElementProps? props = null;
-            if (value != null || label != null || isPasswordField.HasValue || enabled.HasValue)
+            if (value != null || label != null || declaresTextField || enabled.HasValue)
             {
                 props = VNodePool.RentProps();
                 props.FieldValue = value;
                 props.Text = label;
                 props.Enabled = enabled;
-                props.TextField = isPasswordField.HasValue
-                    ? new TextFieldSettings(isPasswordField)
+                props.TextField = declaresTextField
+                    ? new TextFieldSettings(isPasswordField, placeholder, maxLength, isReadOnly, isDelayed)
                     : null;
             }
             props = WithAttributes(props, data, aria);
@@ -1539,6 +1555,35 @@ namespace Velvet
             {
                 Key = key,
                 TargetId = targetId,
+                Children = children ?? EmptyChildren,
+            };
+        }
+
+        /// <summary>
+        /// Renders <paramref name="children"/> into <paramref name="target"/> — a container the caller
+        /// already holds, rather than one published under a name. The React form:
+        /// <c>createPortal(children, container)</c> takes the node itself, so two trees in one process
+        /// cannot collide the way two registrations of one id do, and an element reached through a
+        /// <c>refCallback</c> is a valid container without being named first.
+        /// </summary>
+        /// <remarks>
+        /// Passing a different container on a later render moves the children: the reconciler cannot
+        /// patch one container's portal into another's, so the old unmounts and the new mounts. A
+        /// registry target behaves differently — its id resolves once at mount and is then held, so
+        /// re-registering the id points only future portals elsewhere. The portals documentation
+        /// states that difference; the rest of the contract (context inheritance, event bubbling) is
+        /// the same as the <see cref="Portal(string, VNode?[], string)"/> form.
+        /// </remarks>
+        /// <param name="target">Container the children attach to. Null renders nothing and warns.</param>
+        /// <param name="children">Nodes to render at the target.</param>
+        /// <param name="key">Key used to disambiguate siblings at the same position.</param>
+        /// <returns>The created <see cref="PortalNode"/>.</returns>
+        public static PortalNode Portal(VisualElement target, VNode?[]? children = null, string? key = null)
+        {
+            return new PortalNode
+            {
+                Key = key,
+                TargetElement = target,
                 Children = children ?? EmptyChildren,
             };
         }

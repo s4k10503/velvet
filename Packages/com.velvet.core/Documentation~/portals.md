@@ -1,22 +1,60 @@
-# Portals: registry targets, layer panels, and world space
+# Portals: element and registry targets, layer panels, and world space
 
-Velvet has three ways to render children somewhere other than their position in the tree. All
-three share one contract: **the children stay part of the logical tree** — context, state and
+Velvet has four ways to render children somewhere other than their position in the tree. All
+share one contract: **the children stay part of the logical tree** — context, state and
 re-renders flow from the call site — while attaching physically elsewhere.
 
 ```csharp
+V.Portal(container, children: …);                    // into an element you hold (same panel)
 V.Portal("modal-root", children: …);                 // into a registered element (same panel)
 V.Portal(UILayer.Topmost, children: …);              // into a framework-managed layer panel
 V.WorldSpace(anchor.position, children: …);          // into a world-space panel at a transform
 ```
 
+## Element or id
+
+`V.Portal(container, …)` takes the container itself, the way `createPortal(children, container)`
+does. Nothing is published and nothing is named, so two mounted trees in one process cannot collide,
+and an element reached through a `refCallback` is a valid container without being registered first.
+
+`V.Portal("modal-root", …)` resolves a name through `FiberPortalRegistry`, whose table is one map for
+the whole process. That is what makes an id convenient across unrelated call sites and what makes two
+registrations of one name overwrite each other.
+
+**A different target moves the children**, in either form — the reconciler cannot patch one
+container's portal into another's, so the old unmounts and the new mounts, which is what
+`createPortal` does. Passing a different container, rendering a different id, and registering an
+id again with a different element all move them, and the children arrive after whatever the new
+container already held.
+
+Registering an id is the one of those nothing would otherwise notice: a portal re-reads the registry
+only when it is patched, and a registration causes no patch of its own. `Register` therefore asks the
+components that declared the portals on that id to render again, and the move lands on that render
+rather than inside the `Register` call. The same signal is what starts a portal declared before its
+id existed — that one warns and renders nothing at mount, and its children appear on the first
+registration rather than waiting for the declaring component to re-render for some reason of its own.
+Registering the same element again, and
+unregistering the id, both leave a live portal where it is — an unregistered id names nothing to move
+to.
+
+Moving is an unmount and a remount, so child state, refs and effects do not survive it.
+
+**Keep the container's own children out of Velvet's hands for as long as the portal is mounted**, in
+either form. A portal's range is recorded after whatever the container already held, and a child added
+or removed ahead of that range by an ordinary render moves it out from under the portal: the next patch
+writes over the container's own child and leaves a duplicate of the portal's. A
+container Velvet renders is a fine target when it has no children of its own — which is what the
+`refCallback` case usually is, an empty `V.Div` used as a mount point. A portal nested inside another
+portal on the same target is not this case and is supported: a portal's own patch shifts the ranges
+that follow it.
+
 ## The shared boundary semantics
 
-The boundary behaves the same in all three forms:
+The boundary behaves the same in all four forms:
 
 - **Context crosses.** A `V.Provider` above the portal call site is visible to the children.
 - **Stores cross.** `UseStore` subscriptions are independent of panels.
-- **`events:` handlers cross in all three portal forms**, through one synthetic-bubbling
+- **`events:` handlers cross in every portal form**, through one synthetic-bubbling
   mechanism: `PointerDown`/`Up`/`Move`/`Enter`/`Leave`, `Wheel`, `KeyDown`/`Up`, and
   `FocusIn`/`Out` bindings on an `events:` prop bubble to the logical ancestor chain outside the
   portal boundary (React's own root-level event delegation, walking the logical parent chain

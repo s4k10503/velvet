@@ -21,6 +21,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import git_invocations, unexpanded
 
+
+HOOK_TOOLS = {"Bash"}
+
 NEUTER_CUTS = "scripts/test_quality/neuter_cuts.json"
 
 # `git commit` options that take a value, so their argument is not mistaken for a pathspec.
@@ -38,19 +41,38 @@ COMMIT_ALL_FLAGS = {"-a", "--all"}
 UNEXPANDED_POLICY = "refuse"
 UNEXPANDED_PROBE = 'git commit -m x $PATHS'
 
+UNREADABLE_POLICY = "refuse"
+UNREADABLE_PROBE = {"command": "git commit -m probe"}
+
+
+# What a reading that did not answer resolves to. Every reader below otherwise reports it as an
+# empty result, and an empty result is "this commit records nothing that could fail a check".
+UNREADABLE = object()
+
 
 def git(cwd, *args):
-    return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=30)
+    """A finished `git`, or None when it could not be run at all.
+
+    Same reason `lib/repository.py` answers None rather than raising: a hook that raises exits 1,
+    and 1 lets the tool through.
+    """
+    try:
+        return subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def git_bytes(cwd, *args):
-    result = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
+    try:
+        result = subprocess.run(["git", "-C", cwd, *args], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
     return result.stdout if result.returncode == 0 else None
 
 
 def repo_root(cwd):
     result = git(cwd, "rev-parse", "--show-toplevel")
-    return result.stdout.strip() if result.returncode == 0 else cwd
+    return result.stdout.strip() if result and result.returncode == 0 else cwd
 
 
 def commit_invocations(command):
@@ -99,8 +121,8 @@ def staged_paths(cwd):
     # R is included: a rename reports it, and dropping it left a file renamed and broken in one
     # staged change checked by nothing.
     result = git(cwd, "diff", "--cached", "--name-only", "--diff-filter=ACMR")
-    if result.returncode != 0:
-        return []
+    if result is None or result.returncode != 0:
+        return UNREADABLE
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
@@ -109,20 +131,27 @@ def worktree_paths(cwd, pathspecs):
     if pathspecs:
         args += ["--", *pathspecs]
     result = git(cwd, *args)
-    if result.returncode != 0:
-        return []
+    if result is None or result.returncode != 0:
+        return UNREADABLE
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
 def committed_content(cwd, commits_all, pathspecs):
-    """path -> bytes the commit would record."""
+    """path -> bytes the commit would record, or UNREADABLE when git did not answer."""
+    staged = staged_paths(cwd)
+    if staged is UNREADABLE:
+        return UNREADABLE
     content = {}
-    for path in staged_paths(cwd):
+    for path in staged:
         blob = git_bytes(cwd, "show", ":" + path)
-        if blob is not None:
-            content[path] = blob
+        if blob is None:
+            return UNREADABLE
+        content[path] = blob
     if commits_all or pathspecs:
-        for path in worktree_paths(cwd, pathspecs):
+        worktree = worktree_paths(cwd, pathspecs)
+        if worktree is UNREADABLE:
+            return UNREADABLE
+        for path in worktree:
             try:
                 with open(os.path.join(cwd, path), "rb") as handle:
                     content[path] = handle.read()
@@ -256,6 +285,13 @@ def carried_neuters(content, edits):
 def audit(cwd, commits_all, pathspecs):
     root = repo_root(cwd)
     content = committed_content(root, commits_all, pathspecs)
+    if content is UNREADABLE:
+        sys.stderr.write(
+            "Refusing `git commit`: what this commit would record could not be read.\n\n"
+            "Every check below reads that content, so they would all run over nothing and pass, and "
+            "the commit would be recorded with none of them having seen it.\n\n"
+            "Retry when git answers.\n")
+        return 2
     if not content:
         return 0
 
@@ -287,7 +323,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     commits = commit_invocations(event.get("tool_input", {}).get("command", ""))

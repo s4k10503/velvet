@@ -2,30 +2,32 @@
 """Watch open pull requests, and merge one only when every precondition holds.
 
 Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` printed a watcher for
-the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time and
-re-derived wrong — the watcher has been written pinned to one pull request number, leaving the next
-one unwatched behind a fresh heartbeat, which is the exact failure the hook's own text warns about.
+the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time,
+and that hook's own text owns what a re-derived watcher gets wrong.
 
-**Every precondition below is also a refuse hook**, one apiece, so a merge typed without this script
-is held to the same five. What this adds is reporting them together: one run names everything wrong
+**Every precondition below has a refuse hook behind it**, so a `gh pr merge` typed by hand is held
+to them as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks match on
+`gh pr merge` and do not see the `gh api -X PUT .../merge` this script sends, so teaching them that
+shape is its own change. What this adds is reporting them together: one run names everything wrong
 rather than costing a round of CI per reason. If a precondition is worth having here it belongs in a
 hook, because a script nobody is obliged to run guards nothing.
 
-Five preconditions, each from a merge that went wrong rather than from a list of good practice:
+Five preconditions:
 
 - **Checks are bound to the head SHA they were read at.** `gh pr checks` answers about whatever the
-  API last recorded, which after a force-push is the previous commit's run. A green read was once
-  carried into a merge decision for a SHA that had never been tested. So the head is read, then the
-  checks, then the head again, and a change between the two readings voids the answer.
+  API last recorded, which after a force-push is the previous commit's run. So the head is read, then
+  the checks, then the head again, and a change between the two readings voids the answer. The merge
+  request carries that SHA as well, so a push landing after the last reading is refused by GitHub
+  rather than by whoever reads the history next.
 - **The branch must contain the current base.** `mergeStateStatus` reports CLEAN for a branch whose
   tests never saw a commit that is now on main: GitHub reports BEHIND only where the base requires
   up-to-date heads, which this repository deliberately does not. So the merge-base is compared
   directly.
-- **No worktree may hold the branch.** `gh pr merge --delete-branch` deletes the remote branch, then
-  fails to delete the local one, and reports that failure as a line of output after the merge has
-  already happened. Nothing is left to retry and the leftover looks like an unmerged branch.
-- **An empty check list is not "still running".** It means no workflow was ever triggered for that
-  SHA, which is what a cancelled run followed by a force-push leaves behind.
+- **No worktree may hold the branch.** The branch is deleted locally after the merge, and a worktree
+  holding it makes that delete fail once the merge has already happened — so the branch outlives the
+  pull request and has to be swept by hand later, when nothing in the checkout can still tell a
+  merged branch from an abandoned one.
+- **An empty check list is not "still running".** It means no workflow was ever triggered for that SHA.
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 
@@ -34,8 +36,10 @@ Run: python3 scripts/pr/settle.py watch
 """
 
 import argparse
+import collections
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -75,28 +79,132 @@ TERMINAL_PASS = frozenset({"pass", "skipping"})
 TERMINAL_FAIL = frozenset({"fail", "cancel"})
 
 
-def gh(*args, check=True):
+def gh(*args):
     result = subprocess.run(["gh", *args], capture_output=True, text=True)
-    if check and result.returncode != 0:
+    if result.returncode != 0:
         raise RuntimeError("gh {} failed: {}".format(" ".join(args), result.stderr.strip()))
     return result.stdout
 
 
-def open_pull_requests():
-    return json.loads(gh("pr", "list", "--state", "open", "--json", "number,headRefName") or "[]")
+# REST rather than `gh pr view` / `gh pr list` / `gh pr checks` / `gh pr merge`, which go through
+# GraphQL. The two quotas are separate, and a session long enough to need this script is a session
+# long enough to exhaust the GraphQL one — which left the merge path unusable at exactly the moment
+# the most pull requests were waiting on it. `gh pr checks` was the worst of the four: out of quota
+# it returns nothing at all rather than failing, which this script read as "no workflow was ever
+# triggered for this head" and refused with a reason that was not true. Nothing here needs a field
+# REST does not carry.
+def repository(project):
+    """owner/name, read off the origin remote of the checkout being settled.
+
+    Not `gh repo view`: that goes through GraphQL, which is the quota this whole change exists to
+    stop depending on. Not a hardcoded constant either — --project points this at a checkout, and
+    every git reading here is taken from that one, so the API paths have to address the same
+    repository the git readings do.
+    """
+    if project not in _REPOSITORY:
+        result = subprocess.run(["git", "-C", str(project), "config", "--get", "remote.origin.url"],
+                                capture_output=True, text=True)
+        url = result.stdout.strip()
+        if result.returncode != 0 or not url:
+            raise RuntimeError(f"{project} has no origin remote, so there is no repository to ask about")
+        _REPOSITORY[project] = repository_slug(url)
+    return _REPOSITORY[project]
 
 
-def head_sha(number):
-    return json.loads(gh("pr", "view", str(number), "--json", "headRefOid"))["headRefOid"]
+_REPOSITORY = {}
+
+# Everything before the first slash of a remote that carries no scheme: `git@github.com:`, and also
+# the bare `alias:` an ssh config Host entry produces, which is what a clone made through one has in
+# remote.origin.url.
+_SCHEMELESS_HOST = re.compile(r"^[^/]+:")
 
 
-def checks(number):
+def repository_slug(url):
+    """owner/name out of the remote forms a GitHub clone is made with."""
+    text = url.strip().rstrip("/")
+    text = (text.split("://", 1)[1].partition("/")[2] if "://" in text
+            else _SCHEMELESS_HOST.sub("", text, count=1))
+    if text.endswith(".git"):
+        text = text[:-len(".git")]
+    parts = [part for part in text.split("/") if part]
+    if len(parts) < 2:
+        raise RuntimeError(f"origin {url} names no owner and repository")
+    return "/".join(parts[-2:])
+
+
+def rest(path, jq):
+    return gh("api", path, "--jq", jq).strip()
+
+
+def rest_json(path):
+    return json.loads(gh("api", path))
+
+
+def open_pull_requests(project):
+    listing = rest("repos/{}/pulls?state=open&per_page=100".format(repository(project)),
+                   '.[] | "\(.number) \(.head.ref)"')
+    return [{"number": int(n), "headRefName": ref}
+            for n, _, ref in (line.partition(" ") for line in listing.splitlines() if line)]
+
+
+def head_sha(project, number):
+    return rest("repos/{}/pulls/{}".format(repository(project), number), ".head.sha")
+
+
+# The bucket names this script decides from. A conclusion absent from the table falls to `fail` at
+# the lookup, so a conclusion GitHub adds later blocks until somebody classifies it rather than
+# merging unclassified.
+_BUCKET = {"success": "pass", "neutral": "skipping", "skipped": "skipping",
+           "failure": "fail", "timed_out": "fail", "action_required": "fail",
+           "cancelled": "cancel", "stale": "cancel"}
+
+# The legacy commit-status vocabulary, which is a different set of words for the same decision.
+_STATUS_BUCKET = {"success": "pass", "pending": "pending", "failure": "fail", "error": "fail"}
+
+
+def checks(project, number):
     """Check results, or an empty list when no workflow ever ran for this head."""
-    result = subprocess.run(["gh", "pr", "checks", str(number), "--json", "name,bucket"],
-                            capture_output=True, text=True)
-    # A pull request with no checks at all exits non-zero with nothing on stdout, which is a state
-    # this reports rather than an error it raises.
-    return json.loads(result.stdout) if result.stdout.strip() else []
+    sha = head_sha(project, number)
+    slug = repository(project)
+    return check_results(rest_json("repos/{}/commits/{}/check-runs?per_page=100".format(slug, sha)),
+                         rest_json("repos/{}/commits/{}/status?per_page=100".format(slug, sha)))
+
+
+def whole_page(payload, listed, kind):
+    """Raises when a payload says more entries exist for this head than its page carried.
+
+    An entry that fell off the page produces no reason at all, rather than a wrong one: the buckets
+    handed to `reasons_from` are the only thing it decides from, and the entries that did arrive can
+    all be passing. The merge then lands green with nothing said about the one nobody read. Both
+    payloads go through here, because a merge decided from a partial read of either is a merge over a
+    check nobody saw.
+    """
+    total = payload.get("total_count", len(listed))
+    if total > len(listed):
+        raise RuntimeError(f"{total} {kind} exist for this head but only {len(listed)} were read")
+
+
+def check_results(runs, statuses):
+    """One bucket per check, from the check-runs payload and the legacy commit-status one.
+
+    One commit carries two check surfaces, and the base can require a context from either, so
+    leaving one out would decide a merge against a check nobody read. Only the status payload's
+    individual entries become buckets; its rollup state is not read at all.
+
+    A page that did not carry everything raises rather than deciding; `whole_page` owns why.
+    """
+    listed = runs.get("check_runs", [])
+    reported = statuses.get("statuses", [])
+    whole_page(runs, listed, "check runs")
+    whole_page(statuses, reported, "commit statuses")
+    results = [{"name": run.get("name", ""),
+                "bucket": "pending" if run.get("status") != "completed"
+                else _BUCKET.get(run.get("conclusion") or "", "fail")}
+               for run in listed]
+    results.extend({"name": status.get("context", ""),
+                    "bucket": _STATUS_BUCKET.get(status.get("state") or "", "fail")}
+                   for status in reported)
+    return results
 
 
 def worktree_branches(project):
@@ -159,23 +267,29 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
         reasons.append(f"does not contain origin/{base}: merge it in and let the checks run again")
 
     if held_by_worktree:
-        reasons.append(f"a worktree holds {branch}: remove it first, or --delete-branch half-fails "
-                       f"after the merge has already happened")
+        reasons.append(f"a worktree holds {branch}: remove it first, or the local branch outlives "
+                       f"the merge and has to be swept by hand later")
 
     return reasons
 
 
+# What merge needs from the readings besides the verdict: the SHA the checks were read at, which the
+# merge request carries, and the branch it deletes afterwards.
+Blocking = collections.namedtuple("Blocking", "reasons head branch")
+
+
 def blocking_reasons(project, number, base):
     """reasons_from, with every reading taken from the repository and the API."""
-    before = head_sha(number)
-    results = checks(number)
-    after = head_sha(number)
-    branch = json.loads(gh("pr", "view", str(number), "--json", "headRefName"))["headRefName"]
-    return reasons_from(before, after, results, branch, base,
-                        holds_base=contains_base(project, branch, base),
-                        held_by_worktree=branch in worktree_branches(project),
-                        unpublished_release=published_check.unpublished_reason(
-                            project, f"origin/{base}", fetch=True))
+    before = head_sha(project, number)
+    results = checks(project, number)
+    after = head_sha(project, number)
+    branch = rest("repos/{}/pulls/{}".format(repository(project), number), ".head.ref")
+    return Blocking(reasons_from(before, after, results, branch, base,
+                                 holds_base=contains_base(project, branch, base),
+                                 held_by_worktree=branch in worktree_branches(project),
+                                 unpublished_release=published_check.unpublished_reason(
+                                     project, f"origin/{base}", fetch=True)),
+                    after, branch)
 
 
 def write_ready_state(ready, since):
@@ -200,7 +314,7 @@ def watch(project, base):
     while True:
         HEARTBEAT.write_text(f"{int(time.time())}\n")
         try:
-            pull_requests = open_pull_requests()
+            pull_requests = open_pull_requests(project)
         except RuntimeError as error:
             print(f"! {error}", flush=True)
             time.sleep(POLL_SECONDS)
@@ -210,8 +324,8 @@ def watch(project, base):
         for entry in pull_requests:
             number = entry["number"]
             try:
-                sha = head_sha(number)
-                results = checks(number)
+                sha = head_sha(project, number)
+                results = checks(project, number)
             except RuntimeError as error:
                 print(f"! PR#{number}: {error}", flush=True)
                 continue
@@ -261,7 +375,7 @@ def update(project, number, base):
     whose files really do conflict needs a person, and the conflicting one this exists for
     (a long-held branch that re-conflicts on every base move) is exactly the case not to automate.
     """
-    branch = json.loads(gh("pr", "view", str(number), "--json", "headRefName"))["headRefName"]
+    branch = rest("repos/{}/pulls/{}".format(repository(project), number), ".head.ref")
     gh_git(project, "fetch", "origin", "--quiet")
     reasons = update_reasons(branch, base, contains_base(project, branch, base),
                              branch in worktree_branches(project))
@@ -296,10 +410,10 @@ def update(project, number, base):
 
 
 def merge(project, number, base, dry_run):
-    reasons = blocking_reasons(project, number, base)
-    if reasons:
+    blocking = blocking_reasons(project, number, base)
+    if blocking.reasons:
         print(f"Refusing to merge PR#{number}:", file=sys.stderr)
-        for reason in reasons:
+        for reason in blocking.reasons:
             print(f"  - {reason}", file=sys.stderr)
         return 1
 
@@ -307,8 +421,77 @@ def merge(project, number, base, dry_run):
         print(f"PR#{number} would merge: no blocking reason")
         return 0
 
-    subprocess.run(["gh", "pr", "merge", str(number), "--squash", "--delete-branch"], check=True)
+    # REST, for the same reason as every other read here — `gh pr merge` is GraphQL, so under an
+    # exhausted quota the whole merge path stopped working while the reads still could have answered.
+    #
+    # `sha` binds the merge to the head those readings were about: the sandwich above reports a move,
+    # this one refuses it.
+    #
+    # The squash body is passed rather than left to GitHub, which composes one from the branch's
+    # commits — landing a copy of every Co-Authored-By trailer they carry. The pull request's
+    # description is the summary somebody wrote for the whole change, and it lands instead.
+    title, body = pull_request_text(project, number)
+    gh("api", "-X", "PUT", "repos/{}/pulls/{}/merge".format(repository(project), number),
+       "-f", "merge_method=squash", "-f", "sha={}".format(blocking.head),
+       "-f", "commit_title={} (#{})".format(title, number),
+       "-f", "commit_message={}".format(body))
+    # `gh pr merge` printed its own confirmation and the API call prints nothing, so without this a
+    # merge and a dry run that decided nothing look identical from the terminal.
+    print(f"PR#{number} merged: {blocking.branch} squashed onto {base}")
+    for failure in delete_merged_branch(project, blocking.branch):
+        print(f"PR#{number} merged, but {failure}", file=sys.stderr)
     return 0
+
+
+def reference_already_gone(stderr):
+    """Whether a ref delete failed because the ref was not there, which is not a failure to report.
+
+    The repository deletes the head on merge by itself, so this DELETE normally arrives second and
+    finds nothing. It is still sent, because that setting is GitHub state nothing in this repository
+    reads back, and a script that relies on it silently stops deleting when somebody turns it off.
+    """
+    return "Reference does not exist" in stderr
+
+
+def delete_merged_branch(project, branch):
+    """Deletes the merged branch locally and on the remote, and returns what survived.
+
+    The local half is the one nothing else does, and the one that cost: ninety-six local branches
+    accumulated before anyone counted them, and the sweep that followed is what
+    `.claude/hooks/refuse/merge_without_branch_deletion.py` records. A branch that was only ever
+    worked on from a detached worktree has no local ref at all, which is not a failure.
+
+    Failures come back to be reported rather than raised, because the merge has already happened and
+    an exit code saying otherwise sends the reader to merge it again.
+    """
+    failures = []
+    present = subprocess.run(["git", "-C", str(project), "rev-parse", "--verify", "--quiet",
+                              f"refs/heads/{branch}"], capture_output=True, text=True)
+    if present.returncode == 0:
+        deleted = subprocess.run(["git", "-C", str(project), "branch", "-D", branch],
+                                 capture_output=True, text=True)
+        if deleted.returncode != 0:
+            failures.append(f"the local branch {branch} survived: {deleted.stderr.strip()}")
+
+    remote = delete_remote_ref(project, branch)
+    if remote:
+        failures.append(f"the remote branch {branch} survived: {remote}")
+    return failures
+
+
+def delete_remote_ref(project, branch):
+    """Deletes the branch on the remote, and answers with what stderr said when it did not."""
+    removed = subprocess.run(["gh", "api", "-X", "DELETE", "repos/{}/git/refs/heads/{}".format(
+        repository(project), branch)], capture_output=True, text=True)
+    if removed.returncode == 0 or reference_already_gone(removed.stderr):
+        return ""
+    return removed.stderr.strip()
+
+
+def pull_request_text(project, number):
+    """The pull request's own title and body, which is what the squash commit must carry."""
+    payload = rest_json("repos/{}/pulls/{}".format(repository(project), number))
+    return payload["title"], payload.get("body") or ""
 
 
 def main():

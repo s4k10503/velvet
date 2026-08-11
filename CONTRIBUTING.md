@@ -9,6 +9,54 @@ they may be slow or sparse, and not every change can be merged.
 If you need Velvet to move on your own timeline, **forking is encouraged**. The MIT license
 lets you build on it and maintain your own line freely — no need to wait on upstream.
 
+### What a pull request says it came from
+
+A pull request opens by naming its origin. If it closes an issue, the first line closes it on merge:
+
+```
+Closes #123.
+```
+
+If it closes nothing — a tooling change, a release, something noticed while reading — say so with a
+reason, on a line of its own:
+
+```
+No issue: found while reading the pool reset helpers.
+```
+
+Either answer is fine; the silence is not, and it is the one that happened: a change that came
+straight out of an issue was merged without linking it, so the issue stayed open with its work
+already shipped. `refuse/pr_body_of_another_branch.py` declines a `gh pr create` whose body carries
+neither. An answer is a closing or referring keyword — Closes, Fixes, Resolves, Refs — against the
+number right after it, or the issue's own URL. A number on its own is not one: a colour is six digits
+behind a `#`, and a number mentioned in passing closes nothing on merge.
+
+The guard reads the description that will be posted, so the body has to exist before the command
+runs. What it cannot read it declines rather than skips, and that is the part you are most likely to
+meet:
+
+- the file is not there — write the body in a step of its own and open the pull request in the next,
+  because a heredoc in the same command has not run yet when the guard looks;
+- the path is still unexpanded, or the body comes from stdin;
+- the command changes directory and the body path is relative, so `gh` would open a different file
+  than this one reads — give the body an absolute path.
+
+A command carrying no body operand at all — `--fill` and its relatives, `--template`, `--editor`, the
+interactive form — holds no text here, so the question goes unasked, and `--dry-run` or `--help`
+opens nothing to ask about. Only `gh pr create` is asked: `gh pr edit --body-file` is how an answer
+gets added after the fact.
+
+It does not judge what the body is about, and no longer tries to. An earlier version dated the body
+file against the branch's first commit. Posed the leftover it existed for — a body stamped when one
+pull request here was opened, against the branch of the next, whose first commit lands sixteen
+seconds later — it allowed it, the window being fifteen minutes wide. Widening or narrowing that
+window does not help: a `PreToolUse` hook runs first, so the file it would date is whatever was
+already at the path rather than the description that will be posted.
+
+A gh that the parser does not recognise — behind sudo or bash -c, or with gh's own options before the
+subcommand — is not seen at all rather than refused. Four attempts to reach it each refused ordinary
+commands or broke a sibling guard, so the guard stops where it can answer.
+
 ## Local development
 
 1. Install **Unity 6000.3.11f1** (see `ProjectSettings/ProjectVersion.txt`).
@@ -98,6 +146,56 @@ another disappears leaves identical. `scripts/test_quality/neuter_holes.txt` car
 `--report` regenerates it, so a sweep is read as a diff against it. Nothing runs the sweep automatically:
 wiring it into CI needs a licence activation this repository does not have.
 
+### Checking that a new test could have failed
+
+Both instruments above ask what happens when the production code is broken on purpose.
+`scripts/test_quality/base_red_check.py` asks the cheaper question first, and the one a pull request is
+actually claiming: was this case red before the change it says it pins? It checks out the merge base,
+copies the branch's changed test files onto it, and runs the cases the branch wrote there.
+
+```bash
+python3 scripts/test_quality/base_red_check.py --base origin/main --plan   # what it would ask, no run
+python3 scripts/test_quality/base_red_check.py --base origin/main --warm-library Library
+```
+
+**It passes only where every changed case was measured on a base tree that demonstrably answers.** Most
+of what goes wrong with a run like this ends in a reading nobody took, and a reading nobody took is never
+a pass. So a case that passes on the base fails the check, and a case that could not compile there does
+not — it names something the branch adds, which is a pin doing its job — but that second reading is only
+believed on a tree the run proved can build and answer at all. Two things prove it. Fixtures of the
+base's own that the branch did not carry run alongside, and at least one has to pass; a run that wrote no
+results file at all fails outright rather than reading as a base that built none of the branch's tests.
+Alongside that, the cases the branch left alone in a file it changed nothing shared in are the base's own
+text, so one of those going red means the tree is answering about itself and that fixture's verdicts are
+withdrawn. Change a `[SetUp]`, a field, a private helper or anything under `TestUtilities/`, and those
+cases stop being the base's text and stop being read as the instrument — the run says which and why.
+
+Two kinds of case belong on the base, and say so above themselves with a reason a reviewer can weigh:
+
+```csharp
+// GREEN_ON_BASE(characterization): the keyed-reorder order this refactor must not change.
+```
+
+```python
+# GREEN_ON_BASE(refactor): the settle-path names this rename preserves.
+```
+
+`characterization` pins behaviour the base already has; `refactor` rides with a change meant to preserve
+it. A declaration answers for the change written under it, and it is read three ways so it cannot outlive
+what it describes: one over a case that turns out red on the base fails the check, one whose category or
+reason the script refuses fails it, and one the branch did not itself write is a declaration for a change
+the base already carries and does not cover this one — restate it. The base tree is a checkout the
+machine has never imported, and that import is most of what a base run costs; `--warm-library` copies an
+existing `Library` into it, sharing blocks where the filesystem will.
+
+`Test ▸ base-red-python` runs the Python lane on every pull request and needs no licence.
+`Test ▸ base-red` runs the C# lane where one is configured, but only one round of it: a base that
+cannot build one carried file writes no results for anything, and separating that file from the ones
+standing next to it takes withdrawing it and asking again, which is what the local run does and a
+workflow does not. Run it locally on a branch whose tests are the point.
+`scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
+repository and runs in `Test ▸ test-quality`.
+
 ### Repository scripts
 
 `scripts/` holds the harnesses, grouped by what they are for — `test_quality/` (mutation, neuter,
@@ -109,8 +207,8 @@ the tree readable:
   runtime or configuration file this repository does not already have; `python3` is on the CI runner and on
   every developer machine that can run the Unity suites.
 - **A script's name reaches C#.** `NeuterCutAnchorTests`, `WorkflowTriggerCoverageTests`,
-  `StarterSampleShippingTests` and `DocumentationDriftTests` each name one, so a rename that misses a
-  reference fails a pull request instead of failing the next person to run it.
+  `StarterSampleShippingTests`, `BaseRedDeclarationTests` and `DocumentationDriftTests` each name one, so
+  a rename that misses a reference fails a pull request instead of failing the next person to run it.
 
 The same holds for `.claude/hooks/` and for the two build scripts, so nothing in this repository is
 written in shell. That is not a preference about shell: the guards under `.claude/hooks/` parse a
@@ -133,11 +231,40 @@ in `.claude/settings.json`, where it runs for every session. An agent's frontmat
 that: a guard named there and nowhere else is absent from the main session and from every other
 agent type. Such a guard says so with a `HOOK_SCOPE = "session"` line.
 
+A `PreToolUse` guard is reached only for the tools its `"matcher"` names, and acts only on the tools
+its own gate admits. It declares the second as a `HOOK_TOOLS = {...}` set and gates on that set
+rather than on a literal, which is what leaves the two halves comparable. Register it under the tool
+names themselves: a matcher naming no set a check can read is refused — `"*"`, an empty string, and a
+`PreToolUse` entry carrying no `"matcher"` key at all, which is the shape the `SessionStart`, `Stop`
+and `SubagentStop` entries take. A guard covering several tools spells them out in the matcher.
+
 Every failure mode here is silence, so the wiring is asserted rather than trusted.
 `HookWiringCoverageTests` pairs each script against the settings and agent frontmatter that run it,
-in both directions, fails on a script name a hook builds a path from that no file answers to, and
-fails on a `HOOK_SCOPE = "session"` guard that the settings do not register or that an agent
-registers a second time.
+in both directions, fails on a script name a hook builds a path from that no file answers to, fails
+on a `HOOK_SCOPE = "session"` guard that the settings do not register or that an agent registers a
+second time, and fails when a `PreToolUse` guard's `HOOK_TOOLS` and its matcher name different tools,
+when the guard declares a set its gate never reads, and when its gate answers none of the payloads it
+is posed under a tool it is routed — which is the shape an inverted gate takes, since such a gate
+returns before its readings for exactly the tools it exists to read. A gate reading no tool name at
+all answers under both, and fails the other way round. That first one also fails for a guard none of
+the fixture's `GatePayloads` happens to pose anything about — a guard added since that table was last
+extended wants a row added to it rather than a change to itself — and for a guard that exits neither
+0 nor 2 under any of them, which is one raising rather than deciding.
+
+A guard's readings are the other way it goes quiet. Exiting 0 lets the tool through, so a `gh` that
+could not answer and a repository with nothing to report reach the caller as the same event — which
+is how an exhausted GitHub GraphQL quota emptied `gh pr view --json headRefName` while the separate
+REST quota stayed healthy, leaving `gh` working everywhere else and two merge guards alone silent.
+Each guard therefore declares an `UNREADABLE_POLICY` of `"refuse"`, `"allow"` or `"none"`, and an
+`UNREADABLE_PROBE` holding a tool input to pose it. `scripts/hooks/test_unreadable_state_check.py`
+runs every guard with `git` or `gh` unable to answer and compares the verdict against the
+declaration, rather than reading the source for the shape: which direction a `return 0` means is a
+property of the call site, and `shared_git_state.py`'s refusal is the answer it gives when git cannot
+be asked. `"none"` claims the probe reaches neither program, and fails if either is invoked.
+`"allow"` needs a comment above it saying what holds instead, and fails unless another guard in the
+directory refuses the same probe — otherwise the tool call is guarded by nothing at all. It runs in
+the licence-free `source-generators` job rather than beside the fixtures above, which are skipped
+entirely on a checkout with no `UNITY_LICENSE` secret.
 
 ### Source generators
 
@@ -163,6 +290,9 @@ on every platform.
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
 | `Test ▸ release-notes` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ publication` | push (filtered) / every PR / merge group | not required | no |
+| `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
+| `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
+| `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` | not required | no |
 | `UPM ▸ release` | manual (`workflow_dispatch`) | not required | no |

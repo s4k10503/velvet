@@ -12,8 +12,16 @@ namespace Velvet
     // and world-space panels all share this bookkeeping, and only the element identity groups the
     // portals whose ranges shift together — two layer portals on different layers must never
     // shift each other even though neither carries a registry id. Null only for the mount-time
-    // path that found no registry target (nothing was mounted; SlotLength is 0).
-    internal readonly record struct PortalSlotInfo(VisualElement? Target, int SlotStart, int SlotLength);
+    // path that found no registry target (nothing was mounted; SlotLength is 0), and for the
+    // window a retarget opens between leaving one element and mounting into the next.
+    // TargetId is carried for the one flavor whose element can be replaced under it: it is what
+    // ReconcilerContext.OnPortalTargetRegistered matches an incoming registration against, and it is null
+    // for the layer, world-space and caller-held-element flavors, which no registration addresses.
+    // DeclaringFiber is the component that rendered the node — the one whose re-render carries the
+    // registered element into a patch — and is null for a Portal rendered outside any component body.
+    internal readonly record struct PortalSlotInfo(
+        VisualElement? Target, int SlotStart, int SlotLength,
+        string? TargetId = null, ComponentFiber? DeclaringFiber = null);
 
     // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
     // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
@@ -755,12 +763,20 @@ namespace Velvet
         internal DndActiveDrag? ActiveDrag { get; set; }
 
         // Per-Portal placeholder bookkeeping. SlotStart + SlotLength identify the
-        // range of FiberPortalRegistry.Get(TargetId).Children owned by this Portal — the
+        // range of the resolved target's children owned by this Portal — the
         // invariant that lets multiple Portals coexist on the same target without overwriting each
         // other on patch (each Portal reconciles only its own slot range) and on cleanup (only the
         // range is removed, not the entire target). When a Portal's range grows or shrinks, the
         // SlotStart of Portals later in target.children is shifted by the delta.
         public Dictionary<VisualElement, PortalSlotInfo> PortalState { get; } = new();
+
+        // The Portal placeholder whose children are being reconciled right now, or null outside any such
+        // reconcile. Set-and-restore at each entrance a Portal's children reconcile through — the deferred
+        // mount (ChildReconciler.DrainPendingPortalMounts) and every later patch, world-space and heal
+        // included, which all funnel into FiberNodePatcher.PatchPortalChildren. ComponentRegistry stamps it
+        // onto the inline fibers those reconciles mount, which is what
+        // ComponentRegistry.DisposeInlineFibersOwnedByPortal selects by.
+        internal VisualElement? CurrentPortalPlaceholder { get; set; }
 
         // Portal mounts deferred until the enclosing reconcile pass completes. When a PortalNode
         // (or a WorldSpaceNode — the same deferred-mount flow) is encountered during a reconcile,
@@ -851,9 +867,10 @@ namespace Velvet
         // reconciler disposal.
         public Dictionary<VisualElement, PanelHostRecord> WorldSpaceBindings { get; } = new();
 
-        // Same-panel registry-portal (V.Portal(targetId:)) resolved TARGET elements that already carry
+        // Same-panel portal TARGET elements — a registered id's element (V.Portal(targetId:)) or one the
+        // caller passed outright (V.Portal(target:)) — that already carry
         // FiberCrossPanelEventDispatcher's synthetic-bubbling bridge, mapped to the delegate that
-        // detaches it. Doubles as the attach-once guard: ChildReconciler's registry-portal drain branch
+        // detaches it. Doubles as the attach-once guard: ChildReconciler's same-panel drain branch
         // checks this before calling AttachBridge, since multiple Portals — or repeated mounts of the
         // same Portal — commonly resolve to the SAME target (see PortalSlotInfo's own multi-Portal-per-
         // target contract), and re-attaching would stack duplicate callbacks. The guard is scoped to
@@ -865,18 +882,15 @@ namespace Velvet
         // about elements this context itself bound; a chain resolved via the other context's fibers has
         // no matching entry there, so the second listener never double-invokes a handler — just redundant
         // scanning on every event that reaches the shared target.
-        // Deliberately NOT cleared when the one Portal that triggered the attach unmounts:
-        // FiberElementCleaner.CleanupPortal only removes THAT Portal's own slot range from the target's
-        // children (a registry target is always user-owned and outlives any one Portal mounted into
-        // it), so a bridge with no remaining DetachedMountContext-tagged descendant under the target is
-        // a harmless no-op the next time an event reaches it (Continue's own ancestor scan finds
-        // nothing and returns immediately) — and staying attached lets a LATER Portal mount (the same
-        // id re-registered, or the same Portal remounting) skip re-attaching for free.
-        // Reconciler.Dispose is therefore the only teardown point: a registry target commonly outlives
-        // this reconciler (the app owns it independently of any one mounted tree), so leaving the
-        // callbacks attached past disposal would leak a closure over a now-dead ReconcilerContext onto
-        // still-live app UI — mirroring NavigatorAttachments' identical "panel roots... can outlive
-        // this reconciler" teardown rationale.
+        // Released by FiberElementCleaner.CleanupPortal once no live Portal resolves to the element any
+        // more, and swept at Reconciler.Dispose for whatever the teardown order leaves behind. A target
+        // the caller passed outright is routinely one Velvet itself rendered — an element reached
+        // through a refCallback dies with the row that produced it — so an entry held past the last
+        // Portal pins a dead element and its callbacks for the reconciler's whole life. The Dispose
+        // sweep stays necessary on top: a target the app owns independently commonly outlives this
+        // reconciler, so callbacks left attached past disposal would hold a closure over a dead
+        // ReconcilerContext on still-live app UI — mirroring NavigatorAttachments' identical "panel
+        // roots... can outlive this reconciler" teardown rationale.
         public Dictionary<VisualElement, System.Action> SamePanelPortalBridges { get; } = new();
 
         // The declaring panel's driving UIDocument per panel, filled by
@@ -1005,45 +1019,74 @@ namespace Velvet
             RefCallbacks[element] = (refCallback, cleanup);
         }
 
-        // Wrapper-less Suspense fallback state, keyed by (boundary fiber, the Suspense's scoped position
-        // key). True while that Suspense is showing its fallback subtree instead of its children. The
-        // new-side walk sets it after attempting the children expansion (suspended ⇒ true); the old-side
-        // structural walk reads it to reproduce whichever subtree (children vs fallback) was committed
-        // last render, so the diff's old leaves match the DOM. Entries are pruned when the boundary fiber
-        // is disposed (registry teardown).
-        internal Dictionary<(ComponentFiber? boundary, string positionKey), bool> SuspenseFallbackShown { get; } = new();
+        // Wrapper-less Suspense fallback state: per boundary fiber, the scoped position keys of the
+        // Suspense nodes that are currently showing their fallback subtree instead of their children. The
+        // new-side walk records the decision after attempting the children expansion (suspended ⇒ the key
+        // is present); the old-side structural walk reads it to reproduce whichever subtree (children vs
+        // fallback) was committed last render, so the diff's old leaves match the DOM.
+        //
+        // Only keys showing the fallback are stored, and a boundary with none holds no entry, so both
+        // readings FlushState needs — "this boundary has a fallback up" and "any boundary does" — are
+        // derived from this table rather than tracked beside it. One component fiber can render several
+        // Suspense nodes and each is keyed by its own position, so a boundary-level flag cannot express
+        // them: whichever node expanded last would decide for all of them, and a resolved one expanded
+        // after a suspended one would clear the guard that keeps the suspended one's offscreen primary
+        // from committing into the slot its fallback occupies.
+        //
+        // A Suspense rendered with no enclosing component fiber has no boundary to key on and is held
+        // separately, so the dictionary's emptiness stays equivalent to "no boundary has a fallback up".
+        private readonly Dictionary<ComponentFiber, HashSet<string>> _suspenseFallbackKeys = new();
+        private readonly HashSet<string> _rootlessSuspenseFallbackKeys = new();
 
-        // Boundary fibers that currently have a wrapper-less Suspense showing its fallback. A dirty fiber
-        // whose nearest Suspense boundary is in this set is "offscreen": its own lane flush is deferred to
-        // the boundary's re-render, which re-attempts the primary subtree and commits the reveal in one pass
-        // (a resolved resource schedules the boundary itself, not the suspended child — committing
-        // the child independently would write into the slot range the fallback occupies). Maintained by
-        // GeneralPathReconciler.ExpandSuspenseInline; read by FiberWorkLoop.FlushState.
-        internal HashSet<ComponentFiber> SuspendedBoundaries { get; } = new();
+        // A dirty fiber whose nearest Suspense boundary has a fallback up is a candidate for the offscreen
+        // deferral in FiberWorkLoop.FlushState; this is the cheap pre-check that skips the ancestor walk.
+        internal bool AnyBoundaryShowingFallback => _suspenseFallbackKeys.Count > 0;
 
-        // Removes all wrapper-less Suspense boundary state keyed by boundary.
-        // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a
-        // boundary that unmounts while suspended leaves no dangling fiber reference in
-        // SuspendedBoundaries / SuspenseFallbackShown.
-        internal void PruneSuspenseBoundaryState(ComponentFiber boundary)
+        internal bool IsBoundaryShowingFallback(ComponentFiber boundary)
+            => _suspenseFallbackKeys.ContainsKey(boundary);
+
+        internal bool IsSuspenseFallbackShown(ComponentFiber? boundary, string positionKey)
+            => boundary == null
+                ? _rootlessSuspenseFallbackKeys.Contains(positionKey)
+                : _suspenseFallbackKeys.TryGetValue(boundary, out var keys) && keys.Contains(positionKey);
+
+        internal void SetSuspenseFallbackShown(ComponentFiber? boundary, string positionKey, bool shown)
         {
-            SuspendedBoundaries.Remove(boundary);
-            if (SuspenseFallbackShown.Count == 0) return;
-            List<(ComponentFiber? boundary, string positionKey)>? stale = null;
-            foreach (var key in SuspenseFallbackShown.Keys)
+            if (boundary == null)
             {
-                if (key.boundary == boundary) (stale ??= new()).Add(key);
+                if (shown) _rootlessSuspenseFallbackKeys.Add(positionKey);
+                else _rootlessSuspenseFallbackKeys.Remove(positionKey);
+                return;
             }
-            if (stale != null)
+            if (shown)
             {
-                foreach (var key in stale) SuspenseFallbackShown.Remove(key);
+                if (!_suspenseFallbackKeys.TryGetValue(boundary, out var keys))
+                {
+                    keys = new HashSet<string>();
+                    _suspenseFallbackKeys[boundary] = keys;
+                }
+                keys.Add(positionKey);
+                return;
+            }
+            if (_suspenseFallbackKeys.TryGetValue(boundary, out var existing)
+                && existing.Remove(positionKey) && existing.Count == 0)
+            {
+                _suspenseFallbackKeys.Remove(boundary);
             }
         }
 
+        // Removes all wrapper-less Suspense boundary state keyed by boundary.
+        // Invoked from ComponentRegistry when the boundary fiber is unregistered, so a
+        // boundary that unmounts while suspended leaves no dangling fiber reference behind.
+        internal void PruneSuspenseBoundaryState(ComponentFiber boundary)
+        {
+            _suspenseFallbackKeys.Remove(boundary);
+        }
+
         // Per-AnimatePresence state for the DOM-less (wrapper-less) expansion, keyed by
-        // (boundary fiber, the AnimatePresence's scoped position key) — mirroring
-        // SuspenseFallbackShown's keying. The keyed children are expanded directly into the
-        // parent's slot range (no wrapper element); this state records, per AnimatePresence, the leaf
+        // (boundary fiber, the AnimatePresence's scoped position key). The keyed children are expanded
+        // directly into the parent's slot range (no wrapper element); this state records, per
+        // AnimatePresence, the leaf
         // composition currently committed to the DOM so the old-side structural walk can reproduce it for
         // the diff, plus which keys are mid-exit (kept mounted as ghosts) and which have finished exiting
         // (dropped on the next render). Pruned when the boundary fiber is disposed.
@@ -1218,7 +1261,11 @@ namespace Velvet
         // Reset to false when the top-level Reconcile completes.
         public bool IsAborted { get; internal set; }
 
-        internal void MarkDisposed() => IsDisposed = true;
+        internal void MarkDisposed()
+        {
+            IsDisposed = true;
+            FiberPortalRegistry.TargetRegistered -= OnPortalTargetRegistered;
+        }
 
         // Sets the bridge invoked from internal elements (e.g. FiberVirtualListController) that need access
         // to Reconciler subsystems. A double invocation indicates an initialization-order bug, so this
@@ -1261,6 +1308,40 @@ namespace Velvet
                 ZLayerHosts,
                 ZLayerMembers,
             };
+            FiberPortalRegistry.TargetRegistered += OnPortalTargetRegistered;
+        }
+
+        // Carries a registration to the Portals on that id not already on the registered element. A Portal
+        // re-reads the registry only when it is patched, and a registration causes no patch of its own,
+        // so the registration reaches one only by asking its declaring component to render again;
+        // FiberNodePatcher.ResolvePortalTarget owns what that patch then does. Portals holding NO element
+        // are included, which is the ordinary first run: a Portal whose id was still unregistered when it
+        // mounted warned, recorded no target, and would otherwise stay empty until its declaring
+        // component happened to re-render for a reason of its own. Register
+        // rejects a null target, so a recorded null is never reference-equal to one and the no-op case
+        // below still excludes only a genuine re-registration of the same element. The memo cache is
+        // dropped first because a component whose hook inputs and props are unchanged otherwise hands back
+        // the same VNode instances, and the reconciler skips a reference-identical node without patching it.
+        private void OnPortalTargetRegistered(string id, VisualElement registered)
+        {
+            if (IsDisposed)
+            {
+                return;
+            }
+            foreach (var info in PortalState.Values)
+            {
+                if (info.TargetId != id || ReferenceEquals(info.Target, registered))
+                {
+                    continue;
+                }
+                var declaring = info.DeclaringFiber;
+                if (declaring == null)
+                {
+                    continue;
+                }
+                declaring.InvalidateMemoCache();
+                FiberWorkLoop.RequestRenderFromHook(declaring);
+            }
         }
     }
 }

@@ -185,12 +185,14 @@ namespace Velvet
         public bool IsSuspenseBoundary { get; internal set; }
 
         /// <summary>
-        /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense boundary that
-        /// is currently showing its fallback. Set by <c>GeneralPathReconciler.ExpandSuspenseInline</c> when
-        /// the boundary suspends and cleared when it reveals. <see cref="FiberWorkLoop.FlushState"/>'s
+        /// True while this fiber is a primary (hidden) child of a wrapper-less Suspense that is currently
+        /// showing its fallback. Written by <c>GeneralPathReconciler.ExpandSuspenseInline</c> over the
+        /// fibers that expansion created — which is not the same as per-Suspense, since an enclosing
+        /// Suspense's expansion writes over an inner one's fibers too. <see cref="FiberWorkLoop.FlushState"/>'s
         /// offscreen guard defers a lane flush for offscreen fibers (their slot is occupied by the
-        /// fallback) while still allowing the visible fallback subtree to flush (the
-        /// fallback renders normally; only the primary subtree is offscreen).
+        /// fallback). It is per-fiber rather than per-boundary because one component fiber can render
+        /// several Suspense nodes: that Suspense's own visible fallback subtree, and a sibling Suspense's
+        /// children, sit under the same boundary and must still flush.
         /// </summary>
         internal bool IsOffscreen { get; set; }
 
@@ -609,6 +611,20 @@ namespace Velvet
         /// dedicated wrapper VE is used and the fiber owns the entire MountPoint's children.
         /// </summary>
         internal bool IsInlineMounted { get; set; }
+
+        /// <summary>
+        /// The Portal placeholder whose children reconcile last placed this inline fiber, or null for one
+        /// placed outside any Portal. A Portal's top-level Component child mounts inline with the portal
+        /// TARGET as its <see cref="MountPoint"/>, so it is a sibling of the elements a portal teardown
+        /// removes rather than a descendant of any of them; this is what tells the teardown which of the
+        /// several Portals sharing that target the fiber belongs to.
+        /// <see cref="MountSlotStart"/> cannot answer that: a NEIGHBOURING Portal's own children changing
+        /// on the same target moves this fiber's output along it without rewriting it.
+        /// Rewritten on every placement rather than at creation only, so it names where the fiber renders
+        /// now; a fiber the teardown must reach that no placement ever named is reached instead through the
+        /// parent index (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns which is which).
+        /// </summary>
+        internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder { get; set; }
 
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }

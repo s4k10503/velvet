@@ -739,10 +739,9 @@ namespace Velvet
             // other patch of an already-healthy Portal. Every OTHER path through this method
             // (ResolvePortalTarget's layer case, and its already-resolved registry case) needs the
             // identical marker for the identical reason — see steadyStateDeclaringFiber further down,
-            // after target resolves either way. This one stays split out because it is the only branch
-            // cheap enough to afford a fresh HashSet outright: PatchPortalChildren permanently records
-            // the resolved target the first time it runs, so this branch never re-enters for the same
-            // placeholder again.
+            // after target resolves either way. This one stays split out because it is the rare branch:
+            // PatchPortalChildren records the resolved target, so a placeholder re-enters here only when
+            // a re-registration moves it off that element again.
             ComponentFiber? healingDeclaringFiber = null;
             HashSet<ComponentFiber>? healingChildFibersBefore = null;
             if (isHeal)
@@ -793,13 +792,15 @@ namespace Velvet
             }
         }
 
-        // Resolves the target VisualElement a Portal patch reconciles its slot range against, across
-        // the three ways a Portal can address one: an explicit Layer (host table lookup, plus re-chaining
-        // the placeholder when FocusOrder changed), an id already resolved by an earlier patch (the
-        // target its children are already mounted into — re-registering the id only points FUTURE
-        // portals elsewhere), or an id not yet healed (the mount warned and recorded no target; this is
-        // the first patch since registration, so it also attaches the same-panel synthetic-bubbling
-        // bridge the mount-time drain never got to run for this target). Returns a null target when
+        // Resolves the target VisualElement a Portal patch reconciles its slot range against, across the
+        // four ways a Portal can address one: an explicit Layer (host table lookup, plus re-chaining the
+        // placeholder when FocusOrder changed), the element the caller passed (already resolved, and
+        // ReconcileKeying.CanPatch has refused the patch unless it is the one this Portal mounted into),
+        // an id whose element is still the one this Portal mounted into, or an id with no children of
+        // this Portal on it yet — either because the mount warned and recorded no target, or because a
+        // re-registration just moved this Portal off the element it had. Both of those go through the
+        // same tail, which also attaches the same-panel synthetic-bubbling bridge the mount-time drain
+        // never got to run for this target. Returns a null target when
         // resolution fails (already warned); the caller bails without patching. IsHeal tells the caller
         // whether this pass took the not-yet-healed case, which needs a declaring-fiber snapshot from
         // before this call for the DetachedMountContext stamp (see PatchPortal).
@@ -828,32 +829,59 @@ namespace Velvet
                 return (target, false);
             }
 
+            if (newNode.TargetElement is { } held)
+            {
+                describe = "an element the caller holds";
+                return (held, false);
+            }
+
             describe = newNode.TargetId!;
             if (_ctx.PortalState.TryGetValue(placeholder, out var recorded) && recorded.Target != null)
             {
-                // A live portal keeps the target its children mounted into: re-registering the
-                // id only points FUTURE portals elsewhere, and patching into a re-registered
-                // element would diff this portal's slot range against another element's
-                // children.
-                return (recorded.Target, false);
+                var registered = FiberPortalRegistry.Get(describe);
+                if (registered == null || ReferenceEquals(registered, recorded.Target))
+                {
+                    // Nothing to follow: an unregistered id names no element to move to, so the children
+                    // keep being patched where they live rather than being stranded.
+                    return (recorded.Target, false);
+                }
+                // The id now names a different element. The children leave the old one and are created
+                // into the new one rather than being reparented into it, which is what createPortal does
+                // when its container changes and the route V.Portal(container:) takes through
+                // ReconcileKeying.CanPatch — state, refs and effects under the portal do not survive.
+                // Patching the existing children into the replacement is what is not available: this
+                // portal's slot range addresses positions in the element it mounted into, and reusing it
+                // against another element's children would diff one portal's range against another's.
+                _host.ReleasePortalRangeForRetarget(placeholder);
             }
 
             // Mounted before the id was registered (the mount warned and recorded no
-            // target): resolve fresh so the first patch after registration heals the mount.
+            // target), or released by the retarget just above: resolve fresh so this patch mounts the
+            // children into the element the id names now.
             var resolvedTarget = FiberPortalRegistry.Get(describe);
             if (resolvedTarget == null)
             {
                 FiberLogger.LogWarning("Portal", $"Target \"{describe}\" is not registered. Children will not be rendered.");
                 return (null, false);
             }
-            // The mount-time attach (ChildReconciler's registry-portal drain branch) never ran
-            // for this target: CreateElement returned a hidden placeholder without enqueuing a
-            // drain entry while the id was still unregistered, so this first healing patch is
-            // this Portal's only chance to attach the same-panel synthetic-bubbling bridge.
-            // Guarded exactly like that branch — a target another Portal already bridged is not
-            // double-attached — and self-limiting to one run per heal even without the guard:
-            // PatchPortalChildren below records this resolved target, so every later patch on
-            // this placeholder takes the `if` branch above instead of ever re-entering here.
+            // Both entrances reach here holding a range that addresses nothing on this target — the
+            // unregistered mount recorded slot 0 against no element at all, the retarget emptied the range
+            // it held on a different one — so the range is rebased to the end of whatever this target
+            // already holds, the slot ChildReconciler's deferred-mount pass would have taken. Patching from
+            // an unrebased slot 0 instead diffs this Portal's first child against the container's own.
+            if (_ctx.PortalState.TryGetValue(placeholder, out var released))
+            {
+                _ctx.PortalState[placeholder] = released with
+                {
+                    SlotStart = LogicalChildSlots.Count(resolvedTarget),
+                    SlotLength = 0,
+                };
+            }
+            // The mount-time attach (ChildReconciler's same-panel drain branch) never ran for this
+            // target — a mount while the id was unregistered enqueued no drain entry at all, and a
+            // retarget resolves an element that mount never saw — so this patch is where the same-panel
+            // synthetic-bubbling bridge gets attached. Guarded exactly like that branch: a target
+            // another Portal already bridged is not double-attached.
             if (!_ctx.SamePanelPortalBridges.ContainsKey(resolvedTarget))
             {
                 _ctx.SamePanelPortalBridges[resolvedTarget] =
@@ -967,9 +995,9 @@ namespace Velvet
             }
         }
 
-        // The shared slot-range child patch for every portal flavor (registry, layer, world-space):
-        // reconciles only this placeholder's own slot range against the target and shifts the
-        // downstream ranges on the same target by the growth delta. describe names the target in
+        // The shared slot-range child patch for every portal flavor (registry, held element, layer,
+        // world-space): reconciles only this placeholder's own slot range against the target and shifts
+        // the downstream ranges on the same target by the growth delta. describe names the target in
         // diagnostics only.
         private void PatchPortalChildren(
             VisualElement placeholder, VisualElement target,
@@ -996,7 +1024,18 @@ namespace Velvet
             // child gaining a filter, or a negative z — inflate the recorded length by one, which then
             // shifted every downstream portal's SlotStart and made the cleanup walk over-remove.
             var beforeTailCount = LogicalChildSlots.Count(target);
-            _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
+            // Restored rather than cleared: a Portal declared inside another Portal's children patches from
+            // within this call, and what the outer one mounts after that returns is still the outer one's.
+            var enclosingPortal = _ctx.CurrentPortalPlaceholder;
+            _ctx.CurrentPortalPlaceholder = placeholder;
+            try
+            {
+                _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
+            }
+            finally
+            {
+                _ctx.CurrentPortalPlaceholder = enclosingPortal;
+            }
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to
             // this Portal's slot — unchanged by the reconcile above. Subtracting it from the new total
             // isolates this Portal's new slot length without re-counting the foreign children.
@@ -2371,8 +2410,8 @@ namespace Velvet
             {
                 foreach (var info in ctx.PortalState.Values)
                 {
-                    // The resolved target recorded at mount covers every portal flavor (registry,
-                    // layer, world-space); null only for the never-mounted missing-registry path.
+                    // The resolved target recorded at mount covers every portal flavor; null only for
+                    // the never-mounted missing-registry path.
                     if (info.Target != null)
                     {
                         ReevaluateHasOnAncestorChain(ctx, info.Target, hasClass, hasManip);

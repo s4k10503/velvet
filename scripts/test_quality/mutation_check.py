@@ -55,6 +55,11 @@ class Mutant:
         return "{}:{} {} -> {} ({})".format(where, self.line, self.before, self.after, self.operator)
 
 
+# The furthest offset from an opening quote at which a closing one can still sit: `'\U0001F600'` is
+# the longest character literal C# can spell.
+CHARACTER_LITERAL_REACH = len("'\\U0001F600'") - 1
+
+
 def code_mask(text):
     """True at every offset that the compiler sees as code.
 
@@ -66,7 +71,16 @@ def code_mask(text):
     n = len(text)
     while i < n:
         two = text[i:i + 2]
-        if two == "//":
+        if text[i] == "#" and not text[text.rfind("\n", 0, i) + 1:i].strip():
+            # A preprocessor line is blanked whole. Nothing downstream of this mask reads a directive,
+            # and none of them can hold a brace or a type; what one can hold is `#region Boundary's
+            # own tree`, whose apostrophe opens a character literal against the rule below.
+            end = text.find("\n", i)
+            end = n if end < 0 else end
+            for j in range(i, end):
+                mask[j] = False
+            i = end
+        elif two == "//":
             end = text.find("\n", i)
             end = n if end < 0 else end
             for j in range(i, end):
@@ -98,10 +112,17 @@ def code_mask(text):
             for j in range(start, min(i, n)):
                 mask[j] = False
         elif text[i] == "'":
+            # An apostrophe with no closing one inside a literal's reach is not a literal. Consuming
+            # to the next one anywhere in the file instead blanks arbitrary code, and nothing after
+            # this reports a wrongly blanked offset: no mutant is generated there and no brace
+            # counted, so both halves come back looking like a file with less in it than it has.
             start = i
             i += 1
-            while i < n and text[i] != "'":
+            while i < n and i - start <= CHARACTER_LITERAL_REACH and text[i] != "'":
                 i += 2 if text[i] == "\\" else 1
+            if i >= n or i - start > CHARACTER_LITERAL_REACH or text[i] != "'":
+                i = start + 1
+                continue
             i += 1
             for j in range(start, min(i, n)):
                 mask[j] = False

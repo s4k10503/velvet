@@ -25,11 +25,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 from shell_commands import unexpanded  # noqa: E402  (path set above)
 
 
+HOOK_TOOLS = {"Bash"}
+
+
 # Nothing here reads a path's contents: a token the shell will still rewrite may or may not be
 # relative, and a background command that gets it wrong fails silently, so the guard errs toward
 # allowing rather than refusing every command carrying a variable.
 UNEXPANDED_POLICY = "allow"
 UNEXPANDED_PROBE = 'python3 $DIR/scripts/pr/settle.py watch'
+
+UNREADABLE_POLICY = "none"
+UNREADABLE_PROBE = {"command": "python3 scripts/pr/settle.py watch", "run_in_background": True}
 
 # The repository's own top-level directories, which a command reaching one of them relatively is
 # reaching through the session's directory rather than through a stated one. Derived from the
@@ -64,7 +70,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     tool_input = event.get("tool_input", {})

@@ -7,7 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `animate-spin` — a full turn a second, linear, forever, with `animate-spin-[<time>]` overriding the
+  loop like the other looping utilities. It owns the rotate slot while it runs, on the terms
+  `animate-hue` owns the filter.
+- `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
+  shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
+  later render moves the children — an unmount and a remount, so their state does not survive. The
+  portals guide states which containers a portal of either form may target.
+- `V.TextField` declares four more of the text-input surface: `placeholder:`, `maxLength:`,
+  `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus a value that
+  catches up with the typed text on Enter, on the field losing focus, and on a render taking
+  `isDelayed:` off. That last one reports through `onValueChanged:`, so turning the flag off mid-edit
+  hands the component the pending text instead of stranding it on screen.
+  Reaching them previously meant writing the UI Toolkit properties
+  by hand from `refCallback:`, which left them outside the diff and so unable to change with state.
+  Each is undeclared when null: a member no render has declared is left alone, and one a render
+  declared and a later one dropped restores the value the field carried before any render declared it.
+  The same four arrive on `Velvet.Experimental.VTextField` as `Placeholder`, `MaxLength`, `IsReadOnly`
+  and `IsDelayed`.
+
+### Changed
+
+- `V.TextField`'s four new parameters sit between `isPasswordField:` and `enabled:`, so a call passing
+  arguments positionally past `isPasswordField` now binds them to different parameters. Every argument
+  there but a `null` literal changes type across the shift, so such a call fails to compile rather than
+  rebinding silently; pass them by name.
+
 ### Fixed
+
+- Registering a portal target id again with a different element now moves the portals already mounted
+  into the old one, instead of leaving them writing into an element the UI has replaced. A
+  `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt
+  screen's `refCallback` — used to leave every live portal's children on the destroyed element, with
+  no warning and no way back short of changing the id or the key. The move is an unmount and a
+  remount, the same as a changed `createPortal` container, so state, refs and effects under the portal
+  do not survive it. Registering the same element again, and unregistering the id, still leave a live
+  portal exactly where it is. A portal declared before its id existed follows the same signal: its
+  children now appear on the first registration, where they used to wait for an unrelated re-render of
+  the declaring component and stay invisible until one happened.
+- A portal that resolved its id late no longer writes over the container's own first child. It
+  recorded its range from slot 0 while the id was unregistered and never rebased it, so the healing
+  patch reconciled its first child against whatever the container already held — an overlay root with
+  a backdrop had the backdrop painted into the portal's content, and the portal's own child never
+  arrived. The range is now taken from the end of the container's children, the same place a portal
+  that resolved at mount takes it.
+- A `V.Component` written directly under a `V.Portal` is now disposed when the portal's children leave
+  the container — its own unmount and a move to another container alike, and whether or not it
+  rendered anything of its own. Its effect cleanups never ran and its hook state was never released,
+  so a subscription a closing modal's top-level component opened outlived the modal. The disposal
+  follows the portal the component was written under, so on a container several portals share, one of
+  them closing leaves the others' components mounted and takes only its own.
+- Two `V.Suspense` boundaries in one component's render no longer share a single suspended mark. One
+  showing its fallback while a second, placed after it, rendered its children left the component
+  unmarked, so a state update inside the first one's hidden children stopped being deferred and
+  committed into the slot range its fallback occupied — the fallback disappeared from the tree.
+  Whether a boundary is showing a fallback is now read off the per-boundary record each `V.Suspense`
+  writes under its own position, so a sibling that resolves cannot clear it. Ordering decided it:
+  the same two boundaries with the resolved one placed first were unaffected.
+- A second `Mutate` call no longer cancels the first or drops its callbacks. Both run, each delivers
+  its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which
+  is what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to
+  abort a request the server may already have committed and then skip the `OnSuccess` that records
+  it. The token survives for unmount, where a request does want cancelling. A starting call also
+  clears `Data` along with `Error`, so a result belonging to the previous call is not read as this
+  one's while it is still pending.
+- A `TextField`'s `isPasswordField` was written back to `false` by any render that stopped declaring
+  it, so a mask a `refCallback:` had switched on came off on the first render that dropped the prop.
+  A member a render declared and a later one dropped now restores what the field carried when the
+  prop was first declared, and one no render has declared is nobody's to write.
+
+- A pooled widget carried the `Focusable` default recorded under a previous consumer into its next
+  mount, so a render that dropped a declared `Focusable` prop handed the element that consumer's
+  focusability rather than the one it carried when this consumer first declared the prop. The record
+  is forgotten on the pool return every poolable type passes through.
+
+- A `TabIndex` or `DelegatesFocus` prop that a later render stopped declaring was written back as `0`
+  or `false` rather than as the value the element was constructed with — neither of which is the
+  right answer for every type. A `Label` is built out of the tab ring at -1, which shows once a
+  consumer declares it focusable; a `TextField`, `Toggle` or `Slider` is built delegating focus to
+  the input beneath it, so dropping that prop stranded focus on the field's own root. `Focusable` already restored its
+  constructed value; all three do now.
+- `animate-pulse` now suspends the element's native transitions while it runs, on the same terms
+  `V.Motion`'s own per-frame drivers already do. An element whose own utilities declare a transition
+  covering opacity — including the bare `duration-*` that leaves UI Toolkit's initial `all` standing —
+  previously left the pulse's per-frame writes to that transition. The suspension is element-wide
+  while it lasts, so such an element's other transitions land instantly for the length of the pulse;
+  it is handed back as soon as a re-render leaves nothing transitioning opacity, and an element that
+  transitions nothing over opacity is left alone. A `V.Motion` variant swap on the same element owns
+  the slot for its own length: the suspension stands aside for the swap, which therefore still tweens,
+  and is back once the swap ends.
 
 - A pooled widget carried far more than its reset helper named. Most of the writable surface of
   `Button`, `Label`, `Toggle`, `Slider` and `TextField` survived a pool cycle and arrived on whatever

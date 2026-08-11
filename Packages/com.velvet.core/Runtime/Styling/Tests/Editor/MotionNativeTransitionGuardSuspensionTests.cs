@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 
@@ -93,6 +94,25 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(suspended, Is.True);
+        }
+
+        [Test]
+        public void Given_AWrittenTransitionPropertyList_When_TheInlineSlotIsReadBack_Then_ItIsNotTheListThatWasWritten()
+        {
+            // CHARACTERIZATION PIN, not a requirement on Velvet: the guard decides whether the inline slot is
+            // still holding its own suspension by comparing what it reads back by CONTENT, because this editor
+            // hands back a different list instance than the one assigned. Should that ever change, an identity
+            // comparison becomes available and this is the test that says so.
+            //
+            // Arrange
+            var written = new List<StylePropertyName> { new StylePropertyName("none") };
+            var element = new VisualElement();
+
+            // Act
+            element.style.transitionProperty = written;
+
+            // Assert
+            Assert.That(ReferenceEquals(element.style.transitionProperty.value, written), Is.False);
         }
 
         [Test]

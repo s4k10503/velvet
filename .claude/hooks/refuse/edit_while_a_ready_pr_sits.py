@@ -25,11 +25,14 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from deferrals import DEFERRALS, deferred
+from deferrals import DEFERRALS, deferred, unusable
 
 # Held on the editing tools, which carry a file path rather than a shell command, so there is no operand
 # for the shell to expand and nothing here reads one.
 UNEXPANDED_POLICY = "n/a"
+
+UNREADABLE_POLICY = "none"
+UNREADABLE_PROBE = {"file_path": "CHANGELOG.md", "old_string": "a", "new_string": "b"}
 
 READY_STATE = Path.home() / ".velvet-pr-ready"
 HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
@@ -41,7 +44,7 @@ GRACE = 900
 # Two polls plus a margin: one missed poll is a slow API call, two is a watcher that stopped.
 HEARTBEAT_TTL = 180
 
-HELD_TOOLS = {"Edit", "Write", "NotebookEdit"}
+HOOK_TOOLS = {"Edit", "Write", "NotebookEdit"}
 
 
 def watcher_age():
@@ -65,6 +68,10 @@ def sitting(now):
         if len(parts) != 2 or not parts[1].isdigit():
             continue
         number, since = parts[0], int(parts[1])
+        broken = unusable(number, now)
+        if broken is not None:
+            print(f"A deferral was written for PR #{number}, and {broken} — so it is being ignored.",
+                  file=sys.stderr)
         if now - since < GRACE or deferred(number, now):
             continue
         found.append((number, int(now - since)))
@@ -76,7 +83,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") not in HELD_TOOLS:
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     age = watcher_age()

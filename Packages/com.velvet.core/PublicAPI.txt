@@ -108,7 +108,7 @@
 [Velvet] ctor Velvet.StyleSlotRecipe.ctor(System.Collections.Generic.Dictionary`2[System.String, System.String], System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.Collections.Generic.Dictionary`2[System.String, System.String]]], System.Collections.Generic.Dictionary`2[System.String, System.String]?, Velvet.StyleSlotRecipe+SlotCompoundVariant[]?): System.Void
 [Velvet] ctor Velvet.StyleTransitionConfig.ctor(): System.Void
 [Velvet] ctor Velvet.SuspenseNode.ctor(): System.Void
-[Velvet] ctor Velvet.TextFieldSettings.ctor(System.Nullable`1[System.Boolean]): System.Void
+[Velvet] ctor Velvet.TextFieldSettings.ctor(System.Nullable`1[System.Boolean], System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean]): System.Void
 [Velvet] ctor Velvet.TextNode.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetFontFamily.ctor(): System.Void
 [Velvet] ctor Velvet.VelvetFontFamily.ctor(System.String, Velvet.VelvetFontWeightEntry[]): System.Void
@@ -481,6 +481,7 @@
 [Velvet] method Velvet.V.Outlet(System.Object?, System.String?): Velvet.OutletNode
 [Velvet] method Velvet.V.Particles(UnityEngine.ParticleSystem?, System.String?, System.String?, System.String?, Velvet.PlayTrigger, System.Single, Velvet.StyleOverrides?, System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Portal(System.String, Velvet.VNode?[]?, System.String?): Velvet.PortalNode
+[Velvet] method Velvet.V.Portal(UnityEngine.UIElements.VisualElement, Velvet.VNode?[]?, System.String?): Velvet.PortalNode
 [Velvet] method Velvet.V.Portal(Velvet.UILayer, Velvet.VNode?[]?, System.String?, Velvet.PanelFocusOrder): Velvet.PortalNode
 [Velvet] method Velvet.V.Provider`1(Velvet.ComponentContext`1[T], T, Velvet.VNode?[]?, System.String?): Velvet.ContextProviderNode`1[T]
 [Velvet] method Velvet.V.RadioButton(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
@@ -493,7 +494,7 @@
 [Velvet] method Velvet.V.Slider(System.String?, System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Nullable`1[System.Single], System.Action`1[System.Single]?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.Action`1[UnityEngine.UIElements.VisualElement]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Suspense(Velvet.VNode?, Velvet.VNode?[], System.String?): Velvet.SuspenseNode
 [Velvet] method Velvet.V.Text(System.String?): Velvet.TextNode
-[Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
+[Velvet] method Velvet.V.TextField(System.String?, System.String?, System.Action`1[System.String]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.String?, System.Nullable`1[System.Int32], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.Toggle(System.String?, System.Nullable`1[System.Boolean], System.Action`1[System.Boolean]?, System.String?, System.String?, System.String?, System.Nullable`1[System.Boolean], System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]?, System.String?, System.String?, System.String?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?, System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.String]?): Velvet.ElementNode
 [Velvet] method Velvet.V.VirtualList`1(System.Collections.Generic.IReadOnlyList`1[T], System.Func`2[T, System.String], System.Single, System.Func`2[T, Velvet.VNode], System.Int32, System.String?, System.String?, System.String?): Velvet.VirtualListNode
 [Velvet] method Velvet.V.When(System.Boolean, System.Func`1[Velvet.VNode]?): Velvet.VNode?
@@ -656,9 +657,13 @@
 [Velvet] property Velvet.Experimental.VSlider.OnChange: System.Action`1[System.Single]?
 [Velvet] property Velvet.Experimental.VSlider.Value: System.Nullable`1[System.Single]
 [Velvet] property Velvet.Experimental.VTextField.Enabled: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VTextField.IsDelayed: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.IsPasswordField: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.Experimental.VTextField.IsReadOnly: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VTextField.Label: System.String?
+[Velvet] property Velvet.Experimental.VTextField.MaxLength: System.Nullable`1[System.Int32]
 [Velvet] property Velvet.Experimental.VTextField.OnChange: System.Action`1[System.String]?
+[Velvet] property Velvet.Experimental.VTextField.Placeholder: System.String?
 [Velvet] property Velvet.Experimental.VTextField.Value: System.String?
 [Velvet] property Velvet.Experimental.VToggle.Enabled: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.Experimental.VToggle.Label: System.String?
@@ -759,6 +764,7 @@
 [Velvet] property Velvet.PortalNode.Children: Velvet.VNode?[]
 [Velvet] property Velvet.PortalNode.FocusOrder: Velvet.PanelFocusOrder
 [Velvet] property Velvet.PortalNode.Layer: System.Nullable`1[Velvet.UILayer]
+[Velvet] property Velvet.PortalNode.TargetElement: UnityEngine.UIElements.VisualElement?
 [Velvet] property Velvet.PortalNode.TargetId: System.String?
 [Velvet] property Velvet.Ref`1[T].Current: T?
 [Velvet] property Velvet.Ref`1[T].SetElement: System.Func`2[UnityEngine.UIElements.VisualElement, System.Action]
@@ -834,7 +840,11 @@
 [Velvet] property Velvet.StyleTransitionConfig.When: Velvet.TransitionWhen
 [Velvet] property Velvet.SuspenseNode.Children: Velvet.VNode?[]
 [Velvet] property Velvet.SuspenseNode.Fallback: Velvet.VNode
+[Velvet] property Velvet.TextFieldSettings.IsDelayed: System.Nullable`1[System.Boolean]
 [Velvet] property Velvet.TextFieldSettings.IsPassword: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.TextFieldSettings.IsReadOnly: System.Nullable`1[System.Boolean]
+[Velvet] property Velvet.TextFieldSettings.MaxLength: System.Nullable`1[System.Int32]
+[Velvet] property Velvet.TextFieldSettings.Placeholder: System.String?
 [Velvet] property Velvet.TextNode.Text: System.String
 [Velvet] property Velvet.VNode.Key: System.String?
 [Velvet] property Velvet.VelvetFonts.DefaultFamily: System.String?

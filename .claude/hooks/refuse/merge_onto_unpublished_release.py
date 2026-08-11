@@ -18,9 +18,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "releas
 import published_check
 
 
+HOOK_TOOLS = {"Bash"}
+
+
 # No operand takes part in the verdict: the base holds an unpublished release or it does not, whatever
 # pull request is named.
 UNEXPANDED_POLICY = "n/a"
+
+# A base whose release state cannot be read leaves nothing to decide from, and answering either way
+# would be a guess. The merge is still refused: unreadable_state_check.py accepts an "allow" only
+# where another guard in this directory refuses the same probe.
+UNREADABLE_POLICY = "allow"
+UNREADABLE_PROBE = {"command": "gh pr merge 1 --squash --delete-branch"}
 
 # Repository state any session can move — the scope rule shared_git_state.py states.
 HOOK_SCOPE = "session"
@@ -33,7 +42,7 @@ def main():
         event = json.load(sys.stdin)
     except Exception:
         return 0
-    if event.get("tool_name") != "Bash":
+    if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
     command = event.get("tool_input", {}).get("command", "")
