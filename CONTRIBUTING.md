@@ -286,7 +286,7 @@ on every platform.
 | Workflow | Trigger | Unity license | Required to merge |
 |----------|---------|---------------|-------------------|
 | `Source generators ▸ source-generators` | push (filtered) / every PR / merge group | not required | no |
-| `Source generators ▸ repository-settings` | push (filtered) / every PR / merge group, on this repository only | not required | no |
+| `Source generators ▸ repository-settings` | push (filtered) / every PR / merge group; skipped when the workflow runs in a fork | not required | no |
 | `Source generators ▸ Required checks (generators)` | every PR / merge group | not required | **yes** |
 | `Test ▸ license-check` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |

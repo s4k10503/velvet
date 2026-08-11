@@ -31,8 +31,11 @@ namespace Velvet.Tests
             new(@"^\s*name:\s*(?<context>Required checks \([^)]+\))\s*$",
                 RegexOptions.Compiled | RegexOptions.Multiline);
 
+        // The trailing comment is allowed for: a job key carrying one is valid YAML and a valid job id, and
+        // a pattern that misses it drops that job out of every case here — which is the drift these exist
+        // to catch, happening inside them.
         private static readonly Regex JobKeyPattern =
-            new(@"^  ([A-Za-z_][A-Za-z0-9_-]*):\s*$", RegexOptions.Compiled);
+            new(@"^  ([A-Za-z_][A-Za-z0-9_-]*):\s*(#.*)?$", RegexOptions.Compiled);
 
         private static readonly Regex NeedsListPattern =
             new(@"^\s*needs:\s*\[(?<jobs>[^\]]*)\]", RegexOptions.Compiled | RegexOptions.Multiline);
@@ -58,8 +61,7 @@ namespace Velvet.Tests
         private static IReadOnlyList<(string Workflow, string Aggregate)> RequiredWorkflows()
         {
             var found = new List<(string, string)>();
-            var directory = Path.Combine(RepositoryRoot(), ".github", "workflows");
-            foreach (var path in Directory.EnumerateFiles(directory, "*.yml").OrderBy(path => path, StringComparer.Ordinal))
+            foreach (var path in WorkflowFiles())
             {
                 var workflow = File.ReadAllText(path);
                 foreach (var job in JobNames(workflow))
@@ -110,7 +112,11 @@ namespace Velvet.Tests
         private static string AggregateBlock(string workflow, string aggregate)
         {
             var lines = workflow.Split('\n');
-            var start = Array.FindIndex(lines, line => line.TrimEnd('\r') == "  " + aggregate + ":");
+            var start = Array.FindIndex(lines, line =>
+            {
+                var match = JobKeyPattern.Match(line.TrimEnd('\r'));
+                return match.Success && match.Groups[1].Value == aggregate;
+            });
             if (start < 0)
             {
                 return string.Empty;
@@ -136,10 +142,13 @@ namespace Velvet.Tests
         private static readonly Regex JobNamePattern =
             new(@"^    name:\s*(?<name>.+)$", RegexOptions.Compiled | RegexOptions.Multiline);
 
-        // The first backticked run of a table row's first cell. A row names either a workflow (`Docs`) or
-        // one of its jobs (`Test ▸ unity-tests`), and the rest of the cell is prose about the matrix.
+        // The first backticked run of a table row's first cell, which names either a workflow (`Docs`) or
+        // one of its jobs (`Test ▸ unity-tests`).
         private static readonly Regex TableRowPattern =
             new(@"^\|\s*`(?<cell>[^`]+)`", RegexOptions.Compiled);
+
+        // A pipe row of dashes and colons, and nothing else.
+        private static readonly Regex TableSeparator = new(@"^\|[\s:|-]+\|\s*$", RegexOptions.Compiled);
 
         private static string Unquoted(string value) => value.Trim().Trim('"', '\'');
 
@@ -155,16 +164,30 @@ namespace Velvet.Tests
             return match.Success ? Unquoted(match.Groups["name"].Value) : string.Empty;
         }
 
-        /// <summary>Each `Workflow ▸ job` / `Workflow` reference in CONTRIBUTING's continuous-integration table.</summary>
-        private static IReadOnlyList<(string Workflow, string Job)> ContributingRows()
+        /// <summary>
+        /// Each row of CONTRIBUTING's continuous-integration table: the `Workflow ▸ job` / `Workflow` its
+        /// first cell names, and whether its last column says the check is required to merge.
+        /// <para>
+        /// Bounded by the table rather than by the section. Collection starts at the header's separator
+        /// row and ends at the first line that is not a row, so a second table or a fenced example in the
+        /// same section is not read as continuous-integration rows and misreported as a dangling one.
+        /// </para>
+        /// </summary>
+        private static IReadOnlyList<(string Workflow, string Job, bool Required)> ContributingRows()
         {
-            var rows = new List<(string, string)>();
+            var rows = new List<(string, string, bool)>();
             var lines = File.ReadAllLines(Path.Combine(RepositoryRoot(), "CONTRIBUTING.md"));
-            var start = Array.FindIndex(lines, line => line.TrimEnd('\r') == "## Continuous integration");
-            for (var i = start + 1; start >= 0 && i < lines.Length; i++)
+            var heading = Array.FindIndex(lines, line => line.TrimEnd('\r') == "## Continuous integration");
+            if (heading < 0)
+            {
+                return rows;
+            }
+
+            var separator = Array.FindIndex(lines, heading + 1, line => TableSeparator.IsMatch(line.TrimEnd('\r')));
+            for (var i = separator + 1; separator > heading && i < lines.Length; i++)
             {
                 var line = lines[i].TrimEnd('\r');
-                if (line.StartsWith("##", StringComparison.Ordinal))
+                if (!line.StartsWith("|", StringComparison.Ordinal))
                 {
                     break;
                 }
@@ -175,22 +198,33 @@ namespace Velvet.Tests
                     continue;
                 }
 
+                var columns = line.Split('|');
+                var required = columns.Length > 4
+                    && string.Equals(columns[4].Replace("*", string.Empty).Trim(), "yes", StringComparison.OrdinalIgnoreCase);
                 var cell = match.Groups["cell"].Value;
-                var separator = cell.IndexOf('▸');
-                rows.Add(separator < 0
-                    ? (cell.Trim(), string.Empty)
-                    : (cell.Substring(0, separator).Trim(), cell.Substring(separator + 1).Trim()));
+                var arrow = cell.IndexOf('▸');
+                rows.Add(arrow < 0
+                    ? (cell.Trim(), string.Empty, required)
+                    : (cell.Substring(0, arrow).Trim(), cell.Substring(arrow + 1).Trim(), required));
             }
 
             return rows;
         }
 
-        /// <summary>Every workflow file, paired with its display name.</summary>
-        private static IReadOnlyList<(string Path, string Name, string Text)> Workflows()
+        /// <summary>Every workflow file. Both extensions, because GitHub Actions runs both.</summary>
+        private static IReadOnlyList<string> WorkflowFiles()
         {
             var directory = Path.Combine(RepositoryRoot(), ".github", "workflows");
             return Directory.EnumerateFiles(directory, "*.yml")
+                .Concat(Directory.EnumerateFiles(directory, "*.yaml"))
                 .OrderBy(path => path, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        /// <summary>Every workflow file, paired with its display name.</summary>
+        private static IReadOnlyList<(string Path, string Name, string Text)> Workflows()
+        {
+            return WorkflowFiles()
                 .Select(path =>
                 {
                     var text = File.ReadAllText(path);
@@ -211,7 +245,7 @@ namespace Velvet.Tests
 
             // Act
             var dangling = new List<string>();
-            foreach (var (name, job) in rows)
+            foreach (var (name, job, _) in rows)
             {
                 var workflow = workflows.FirstOrDefault(entry => entry.Name == name);
                 if (workflow.Text == null)
@@ -224,9 +258,9 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — the floors ride along for the reason the cases below give: a table nobody found, or
-            // a workflow directory that read empty, reports nothing dangling and would pass having measured
-            // nothing.
+            // Assert — the row floor rides along because a heading that was renamed leaves no rows to
+            // dangle, which reads the same as a table that agrees. An empty workflow directory needs no
+            // floor: it dangles every row rather than none.
             Assert.That((rows.Count >= 2, workflows.Count >= 2, string.Join("\n", dangling)),
                 Is.EqualTo((true, true, string.Empty)));
         }
@@ -246,11 +280,13 @@ namespace Velvet.Tests
 
             // Act
             var unlisted = new List<string>();
+            var asked = 0;
             foreach (var (path, text) in required)
             {
                 var name = WorkflowDisplayName(text);
                 foreach (var job in JobNames(text))
                 {
+                    asked++;
                     if (!listed.Any(row => row.Workflow == name && row.Job.Length > 0 && Names(text, row.Job, job)))
                     {
                         unlisted.Add(path + ":" + job);
@@ -258,9 +294,34 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — same floors as the cases below, for the same reason.
-            Assert.That((required.Count >= 2, listed.Count >= 2, string.Join("\n", unlisted)),
+            // Assert — the second floor counts the jobs actually asked about, as the cases below do, rather
+            // than the rows offered to answer them. A workflow whose jobs went unenumerated reports nothing
+            // unlisted, and a full table would have covered for it.
+            Assert.That((required.Count >= 2, asked > required.Count, string.Join("\n", unlisted)),
                 Is.EqualTo((true, true, string.Empty)));
+        }
+
+        [Test]
+        public void Given_EveryRequiredCheckAggregate_When_ContributingsCiTableIsRead_Then_ItsRowIsTheOneMarkedRequired()
+        {
+            // Arrange — the column a contributor acts on is the last one, and it was as unpinned as the
+            // first. Which rows may carry a yes is the same question the fixture already answers to find
+            // the aggregates, so it is asked once rather than curated twice.
+            var aggregates = RequiredWorkflows()
+                .Select(entry => (Text: ReadWorkflow(entry.Workflow), entry.Aggregate))
+                .Select(entry => (Workflow: WorkflowDisplayName(entry.Text), Display: JobDisplayName(entry.Text, entry.Aggregate)))
+                .ToHashSet();
+
+            // Act
+            var wrong = ContributingRows()
+                .Where(row => row.Job.Length > 0)
+                .Where(row => aggregates.Contains((row.Workflow, row.Job)) != row.Required)
+                .Select(row => row.Workflow + " ▸ " + row.Job + (row.Required ? " (marked required)" : " (not marked required)"))
+                .ToList();
+
+            // Assert — the floor rides along because an aggregate set that read empty matches no row, and
+            // every row then correctly reads "not required", which is a pass having measured nothing.
+            Assert.That((aggregates.Count >= 2, string.Join("\n", wrong)), Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
