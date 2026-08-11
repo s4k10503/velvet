@@ -448,6 +448,9 @@ namespace Velvet
 
         void IReconcilerHost.RemoveElementDirect(VisualElement parent, VisualElement element) => _cleaner.RemoveElementDirect(parent, element);
 
+        void IReconcilerHost.ReleasePortalRangeForRetarget(VisualElement placeholder)
+            => _cleaner.ReleasePortalRangeForRetarget(placeholder);
+
         void IReconcilerHost.ReconcileChildren(VisualElement parent, VNode?[] oldChildren, VNode?[] newChildren, int slotStart)
             => _childReconciler.Reconcile(parent, oldChildren, newChildren, slotStart: slotStart);
 

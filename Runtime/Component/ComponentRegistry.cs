@@ -176,6 +176,12 @@ namespace Velvet
                 // render here does not collide with a subsequent FlushState pass: clearing IsDirty
                 // makes the later traversal short-circuit while the rendered output is already committed.
                 existingFiber.MountSlotStart = site.SlotStart;
+                // Rewritten on the carry as well as at creation, and before the re-render below: a component
+                // can leave a Portal's children for a position outside them in the very render that removes
+                // the Portal, and GeneralPathReconciler carries it there in the inline walk that precedes
+                // the removals — so a stamp written only at creation would still name the departing Portal
+                // when that Portal's teardown disposes by it.
+                existingFiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 if (propsChanged || existingFiber.IsDirty || refChanged)
                 {
                     // Subsumes the child into the parent's single batch pass: the re-render runs with the
@@ -263,6 +269,9 @@ namespace Velvet
                 var key = (parentFiber, positionKey, identity);
                 _inlineInstances[key] = fiber;
                 _inlineFiberToKey[fiber] = key;
+                // Written from the same source on both halves of GetOrCreate — see the carry half in
+                // ReconcileExistingFiber for why one write cannot serve.
+                fiber.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
                 // Top-level inline fibers (root components mounted with no enclosing component fiber)
                 // have parentFiber == null. They are disposed via the reconcile orphan sweep and the
                 // registry's full Dispose, not via parent-fiber cascade, so they are not grouped here.
@@ -434,6 +443,48 @@ namespace Velvet
             if (root == null) return;
             if (_inlineFiberToKey.Count == 0 && _wrapperFiberInfo.Count == 0) return;
             DisposeFibersUnder(new HashSet<VisualElement> { root });
+        }
+
+        // The containment form above cannot express this selection: the fiber is a sibling of the elements
+        // a portal teardown removes rather than a descendant of any of them, so the parent-walk steps
+        // straight past it (ComponentFiber.OwningPortalPlaceholder owns why the fiber is stamped rather
+        // than located). Selecting by MountPoint alone would be wrong in the other direction — one target
+        // carries the ranges of several Portals plus whatever rendered the target itself.
+        // FiberElementCleaner.CleanupPortal owns the call.
+        internal void DisposeInlineFibersOwnedByPortal(VisualElement placeholder)
+        {
+            if (placeholder == null || _inlineFiberToKey.Count == 0) return;
+            List<ComponentFiber>? doomed = null;
+            foreach (var entry in _inlineFiberToKey)
+            {
+                var fiber = entry.Key;
+                if (fiber == null || fiber.IsDisposed) continue;
+                if (!ReferenceEquals(fiber.OwningPortalPlaceholder, placeholder)) continue;
+                (doomed ??= new List<ComponentFiber>()).Add(fiber);
+            }
+            if (doomed == null) return;
+            // A fiber mounted by a stamped fiber's ISOLATED re-render carries no stamp: no Portal children
+            // reconcile was in flight to name one. It is reached through the parent index rather than given
+            // a stamp copied from its parent's, so nothing has to keep that copy current as the parent
+            // moves — the registry key pins a fiber to one parent for its whole life, which is what makes
+            // this select exactly the subtree that goes with each already-doomed fiber.
+            var reached = new HashSet<ComponentFiber>(doomed);
+            for (var i = 0; i < doomed.Count; i++)
+            {
+                if (!_parentToInlineFibers.TryGetValue(doomed[i], out var children)) continue;
+                foreach (var child in children)
+                {
+                    if (child.IsDisposed || !reached.Add(child)) continue;
+                    doomed.Add(child);
+                }
+            }
+            // Snapshotted first: DisposeFiberInternal mutates the dictionary this walk reads, through
+            // its own child cleanup cascades as well as its own unregister.
+            foreach (var fiber in doomed)
+            {
+                if (fiber.IsDisposed) continue;
+                DisposeFiberInternal(fiber);
+            }
         }
 
         private static bool IsInsideAny(VisualElement? mountPoint, HashSet<VisualElement> roots)

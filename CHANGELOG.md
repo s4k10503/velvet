@@ -14,9 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `animate-hue` owns the filter.
 - `V.Portal(target, …)` takes the element itself, the way `createPortal` does — no registration, no
   shared name, and an element from a `refCallback` is a valid container. Passing a different target on a
-  later render moves the children — an unmount and a remount, so their state does not survive. What
-  does not move them is re-registering an id a mounted portal already resolved. The portals guide
-  states which containers a portal of either form may target.
+  later render moves the children — an unmount and a remount, so their state does not survive. The
+  portals guide states which containers a portal of either form may target.
 - `V.TextField` declares four more of the text-input surface: `placeholder:`, `maxLength:`,
   `isReadOnly:` and `isDelayed:` — HTML's `placeholder`, `maxlength` and `readonly`, plus a value that
   catches up with the typed text on Enter, on the field losing focus, and on a render taking
@@ -38,6 +37,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Registering a portal target id again with a different element now moves the portals already mounted
+  into the old one, instead of leaving them writing into an element the UI has replaced. A
+  `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt
+  screen's `refCallback` — used to leave every live portal's children on the destroyed element, with
+  no warning and no way back short of changing the id or the key. The move is an unmount and a
+  remount, the same as a changed `createPortal` container, so state, refs and effects under the portal
+  do not survive it. Registering the same element again, and unregistering the id, still leave a live
+  portal exactly where it is. A portal declared before its id existed follows the same signal: its
+  children now appear on the first registration, where they used to wait for an unrelated re-render of
+  the declaring component and stay invisible until one happened.
+- A portal that resolved its id late no longer writes over the container's own first child. It
+  recorded its range from slot 0 while the id was unregistered and never rebased it, so the healing
+  patch reconciled its first child against whatever the container already held — an overlay root with
+  a backdrop had the backdrop painted into the portal's content, and the portal's own child never
+  arrived. The range is now taken from the end of the container's children, the same place a portal
+  that resolved at mount takes it.
+- A `V.Component` written directly under a `V.Portal` is now disposed when the portal's children leave
+  the container — its own unmount and a move to another container alike, and whether or not it
+  rendered anything of its own. Its effect cleanups never ran and its hook state was never released,
+  so a subscription a closing modal's top-level component opened outlived the modal. The disposal
+  follows the portal the component was written under, so on a container several portals share, one of
+  them closing leaves the others' components mounted and takes only its own.
 - Two `V.Suspense` boundaries in one component's render no longer share a single suspended mark. One
   showing its fallback while a second, placed after it, rendered its children left the component
   unmarked, so a state update inside the first one's hidden children stopped being deferred and
@@ -45,7 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Whether a boundary is showing a fallback is now read off the per-boundary record each `V.Suspense`
   writes under its own position, so a sibling that resolves cannot clear it. Ordering decided it:
   the same two boundaries with the resolved one placed first were unaffected.
-
 - A second `Mutate` call no longer cancels the first or drops its callbacks. Both run, each delivers
   its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Variables` show the most recent — which
   is what TanStack Query does, and it hands `mutationFn` no signal at all. A double-tapped Buy used to

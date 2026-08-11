@@ -45,7 +45,6 @@ namespace Velvet.Tests
             _host?.Dispose();
             _host = null;
             FiberPortalRegistry.Unregister("late-target");
-            FiberPortalRegistry.Unregister("swap-target");
         }
 
         private static HashSet<int> DocIds()
@@ -293,38 +292,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(target.childCount, Is.EqualTo(0));
-        }
-
-        [Component]
-        private static VNode GrowingIdPortalHost()
-        {
-            var (grown, setGrown) = Hooks.UseState(false);
-            s_setFlag = setGrown;
-            return V.Portal("swap-target", children: grown
-                ? new VNode[] { V.Div(name: "one"), V.Div(name: "two") }
-                : new VNode[] { V.Div(name: "one") });
-        }
-
-        [Test]
-        public void Given_ATargetReRegisteredMidLife_When_ThePortalPatches_Then_ItKeepsItsMountedTarget()
-        {
-            // Arrange — re-registering an id points FUTURE portals elsewhere; a live portal's children
-            // already occupy a slot range on the ORIGINAL element, so its patches must keep operating
-            // there (patching into the new element would diff against another element's children).
-            var original = new VisualElement();
-            var replacement = new VisualElement();
-            FiberPortalRegistry.Register("swap-target", original);
-            MountAndLayout(V.Component(GrowingIdPortalHost, key: "root"));
-            Assume.That(original.childCount, Is.EqualTo(1), "Precondition: mounted into the original target");
-            LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("swap-target"));
-            FiberPortalRegistry.Register("swap-target", replacement);
-
-            // Act — grow the portal's children after the re-registration.
-            s_setFlag.Invoke(true);
-            FlushAndLayout();
-
-            // Assert — both children live on the original target; the replacement stays untouched.
-            Assert.That((original.childCount, replacement.childCount), Is.EqualTo((2, 0)));
         }
 
         #endregion

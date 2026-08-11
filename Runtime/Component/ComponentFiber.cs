@@ -612,6 +612,20 @@ namespace Velvet
         /// </summary>
         internal bool IsInlineMounted { get; set; }
 
+        /// <summary>
+        /// The Portal placeholder whose children reconcile last placed this inline fiber, or null for one
+        /// placed outside any Portal. A Portal's top-level Component child mounts inline with the portal
+        /// TARGET as its <see cref="MountPoint"/>, so it is a sibling of the elements a portal teardown
+        /// removes rather than a descendant of any of them; this is what tells the teardown which of the
+        /// several Portals sharing that target the fiber belongs to.
+        /// <see cref="MountSlotStart"/> cannot answer that: a NEIGHBOURING Portal's own children changing
+        /// on the same target moves this fiber's output along it without rewriting it.
+        /// Rewritten on every placement rather than at creation only, so it names where the fiber renders
+        /// now; a fiber the teardown must reach that no placement ever named is reached instead through the
+        /// parent index (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns which is which).
+        /// </summary>
+        internal UnityEngine.UIElements.VisualElement? OwningPortalPlaceholder { get; set; }
+
         /// <summary>The VNode array fixed by the previous reconcile. Serves as the "old" side for the next reconcile.</summary>
         internal VNode?[]? PreviousTree { get; set; }
 
