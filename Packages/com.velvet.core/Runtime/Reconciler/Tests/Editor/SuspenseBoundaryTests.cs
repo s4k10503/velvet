@@ -22,8 +22,11 @@ namespace Velvet.Tests
     /// <item>A nested boundary catches its own descendant's suspension, so an outer boundary does not over-suspend
     /// when only the inner boundary's primary is pending.</item>
     /// <item>Sibling Suspense boundaries are tracked independently: resolving one boundary's child leaves the
-    /// other sibling's fallback unchanged, and one showing its fallback while a later sibling renders its
-    /// children keeps its own hidden descendants deferred without deferring that sibling's.</item>
+    /// other sibling's fallback unchanged, and one showing its fallback keeps its own hidden descendants
+    /// deferred without deferring the other's, whichever of the two expanded first.</item>
+    /// <item>A nested boundary owns its own descendants' visibility: an enclosing boundary that resolves leaves
+    /// the inner boundary's primary subtree deferred, while an enclosing boundary that suspends defers the
+    /// inner boundary's visible fallback subtree too and releases it again on resolve.</item>
     /// <item>A <c>Hooks.Use</c> resource that faults — synchronously or asynchronously — routes the exception to
     /// the nearest enclosing error boundary rather than the fallback.</item>
     /// <item>An unrelated parent re-render does not remove a still-pending child's fallback.</item>
@@ -63,6 +66,7 @@ namespace Velvet.Tests
             ResetTwoUses();
             ResetSiblingBoundaries();
             ResetOffscreenSibling();
+            ResetNestedOffscreen();
             ResetSuspenseHost();
             ResetParentRerender();
             ResetRootless();
@@ -388,6 +392,103 @@ namespace Velvet.Tests
             // Assert
             Assert.That(_root.FindLabelByText("sibling-1"), Is.Not.Null,
                 "A descendant of the resolved sibling Suspense is not offscreen, so its own flush still commits");
+        }
+
+        // GREEN_ON_BASE(characterization): the snapshot exclusion is the only thing separating these two
+        // in this order, since the resolved one expands first and claims nothing.
+        [Test]
+        public void Given_ResolvedBoundaryFollowedBySuspendedSibling_When_TheResolvedOnesDescendantUpdates_Then_ItRerenders()
+        {
+            // Arrange — the mirror order: the resolved Suspense expands first, so the suspended one's
+            // marking pass runs with the resolved one's children already in the walk's fiber set
+            var source = new UniTaskCompletionSource<string>();
+            s_offscreenFactory = _ => source.Task;
+            using var mounted = V.Mount(_root, V.Component(ResolvedFirstSiblingHostRender, key: "host"));
+
+            // Act
+            s_resolvedSiblingSetter.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert — the fallback term is folded in rather than assumed: with no boundary showing a
+            // fallback the offscreen walk never runs, and the update would commit whatever the marking did
+            Assert.That(
+                (_root.FindLabelByText("loading-D") != null, _root.FindLabelByText("sibling-1") != null),
+                Is.EqualTo((true, true)),
+                "While the later sibling holds its fallback up, the earlier resolved sibling's descendant is not offscreen and its own flush still commits");
+        }
+
+        #endregion
+
+        #region Nested boundary ownership of offscreen primaries
+
+        [Test]
+        public void Given_NestedBoundaries_When_InnerPrimaryDescendantUpdatesWhileOuterResolved_Then_InnerFallbackKeepsItsSlot()
+        {
+            // Arrange — only the inner boundary suspends, so the outer commits the inner's fallback as its
+            // own resolved output and its expansion covers the inner's offscreen primary subtree
+            var source = new UniTaskCompletionSource<string>();
+            s_nestedInnerFactory = _ => source.Task;
+            using var mounted = V.Mount(_root, V.Component(NestedPrimaryHostRender, key: "host"));
+            Assume.That(_root.FindLabelByText("inner-loading"), Is.Not.Null,
+                "Precondition: the inner boundary is showing its fallback");
+
+            // Act — a state update on a fiber inside the inner boundary's offscreen primary subtree
+            s_nestedPrimarySetter.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.FindLabelByText("inner-loading"), Is.Not.Null,
+                "An enclosing boundary resolving leaves the inner boundary's primary offscreen, so that primary's flush does not patch over the inner fallback");
+        }
+
+        // GREEN_ON_BASE(characterization): an enclosing boundary that suspends still hides an inner
+        // boundary's visible fallback subtree, which the nested-ownership skip must not reach.
+        [Test]
+        public void Given_NestedBoundariesBothSuspended_When_InnerFallbackDescendantUpdates_Then_OuterFallbackKeepsItsSlot()
+        {
+            // Arrange — a second suspending child suspends the OUTER boundary as well, so the inner
+            // boundary's fallback sits inside the rolled-back primary whose slot the outer fallback holds
+            var innerSource = new UniTaskCompletionSource<string>();
+            var outerSource = new UniTaskCompletionSource<string>();
+            s_nestedInnerFactory = _ => innerSource.Task;
+            s_nestedOuterFactory = _ => outerSource.Task;
+            using var mounted = V.Mount(_root, V.Component(NestedBothSuspendHostRender, key: "host"));
+            Assume.That(_root.FindLabelByText("outer-loading"), Is.Not.Null,
+                "Precondition: the outer boundary is showing its fallback");
+
+            // Act — a state update on a fiber inside the inner boundary's own fallback subtree
+            s_nestedFallbackSetter.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.FindLabelByText("outer-loading"), Is.Not.Null,
+                "The inner boundary's fallback is offscreen under the suspended outer boundary, so its flush does not patch over the outer fallback");
+        }
+
+        // GREEN_ON_BASE(characterization): the mark an enclosing suspend wrote on an inner boundary's
+        // fallback subtree is released when that enclosing boundary resolves.
+        [Test]
+        public void Given_NestedBoundariesBothSuspended_When_OuterResolvesAndInnerFallbackDescendantUpdates_Then_ItRerenders()
+        {
+            // Arrange — the outer resolves while the inner is still pending, which puts the inner
+            // boundary's fallback back on screen
+            var innerSource = new UniTaskCompletionSource<string>();
+            var outerSource = new UniTaskCompletionSource<string>();
+            s_nestedInnerFactory = _ => innerSource.Task;
+            s_nestedOuterFactory = _ => outerSource.Task;
+            using var mounted = V.Mount(_root, V.Component(NestedBothSuspendHostRender, key: "host"));
+            outerSource.TrySetResult("outer-ready");
+            mounted.FlushStateForTest();
+            Assume.That(_root.FindLabelByText("inner-fallback-0"), Is.Not.Null,
+                "Precondition: the outer revealed its children and the inner boundary is still showing its fallback");
+
+            // Act
+            s_nestedFallbackSetter.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.FindLabelByText("inner-fallback-1"), Is.Not.Null,
+                "A visible inner fallback flushes its own state update once the enclosing boundary has resolved");
         }
 
         #endregion
@@ -933,6 +1034,106 @@ namespace Velvet.Tests
                     children: new VNode[] { V.Component(ResolvedSiblingStatefulChildRender, key: "sibling") },
                     key: "b"),
             });
+
+        // The same two boundaries in the opposite order, so the suspended one's marking pass is the one
+        // that has to leave the other's children alone.
+        [Component]
+        private static VNode ResolvedFirstSiblingHostRender()
+            => V.Div(children: new VNode[]
+            {
+                V.Suspense(
+                    fallback: V.Label(text: "loading-C"),
+                    children: new VNode[] { V.Component(ResolvedSiblingStatefulChildRender, key: "sibling") },
+                    key: "c"),
+                V.Suspense(
+                    fallback: V.Label(text: "loading-D"),
+                    children: new VNode[] { V.Component(OffscreenSuspendingChildRender, key: "suspending") },
+                    key: "d"),
+            });
+
+        #endregion
+
+        #region NestedOffscreen components (a V.Suspense inside another V.Suspense's children)
+
+        private static Func<CancellationToken, UniTask<string>> s_nestedInnerFactory;
+        private static Func<CancellationToken, UniTask<string>> s_nestedOuterFactory;
+        private static Action<int> s_nestedPrimarySetter;
+        private static Action<int> s_nestedFallbackSetter;
+
+        private static void ResetNestedOffscreen()
+        {
+            s_nestedInnerFactory = null;
+            s_nestedOuterFactory = null;
+            s_nestedPrimarySetter = null;
+            s_nestedFallbackSetter = null;
+        }
+
+        // Renders before its suspending sibling so its fiber is created — and its setter captured — while
+        // the inner boundary's primary expansion is still in progress.
+        [Component]
+        private static VNode NestedPrimaryStatefulChildRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_nestedPrimarySetter = setTick;
+            return V.Label(text: $"inner-primary-{tick}");
+        }
+
+        [Component]
+        private static VNode NestedInnerSuspendingChildRender()
+        {
+            var value = Hooks.Use(s_nestedInnerFactory, "nested-inner");
+            return V.Label(text: value);
+        }
+
+        [Component]
+        private static VNode NestedOuterSuspendingChildRender()
+        {
+            var value = Hooks.Use(s_nestedOuterFactory, "nested-outer");
+            return V.Label(text: value);
+        }
+
+        [Component]
+        private static VNode NestedStatefulFallbackRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_nestedFallbackSetter = setTick;
+            return V.Label(text: $"inner-fallback-{tick}");
+        }
+
+        [Component]
+        private static VNode NestedPrimaryMiddleRender()
+            => V.Suspense(
+                fallback: V.Label(text: "inner-loading"),
+                children: new VNode[]
+                {
+                    V.Component(NestedPrimaryStatefulChildRender, key: "stateful"),
+                    V.Component(NestedInnerSuspendingChildRender, key: "suspending"),
+                });
+
+        // Nothing under the outer boundary suspends except through the inner one, which catches it — so the
+        // outer commits the inner's fallback as its own resolved output.
+        [Component]
+        private static VNode NestedPrimaryHostRender()
+            => V.Suspense(
+                fallback: V.Label(text: "outer-loading"),
+                children: new VNode[] { V.Component(NestedPrimaryMiddleRender, key: "middle") });
+
+        [Component]
+        private static VNode NestedStatefulFallbackMiddleRender()
+            => V.Suspense(
+                fallback: V.Component(NestedStatefulFallbackRender, key: "fb"),
+                children: new VNode[] { V.Component(NestedInnerSuspendingChildRender, key: "suspending") });
+
+        // The second child suspends outside the inner boundary, so the outer boundary suspends as well.
+        [Component]
+        private static VNode NestedBothSuspendHostRender()
+            => V.Suspense(
+                fallback: V.Label(text: "outer-loading"),
+                children: new VNode[]
+                {
+                    V.Component(NestedStatefulFallbackMiddleRender, key: "middle"),
+                    V.Component(NestedOuterSuspendingChildRender, key: "outer-suspending"),
+                });
 
         #endregion
 
