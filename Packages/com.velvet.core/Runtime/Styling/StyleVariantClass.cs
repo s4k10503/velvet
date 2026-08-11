@@ -20,6 +20,10 @@ namespace Velvet
     /// what left <c>checked:</c>, the two focus-within relationals and <c>peer-checked:</c> unclassified and
     /// inert as the inner of a stacked variant. Those sites suppress CS8524 instead: it asks for an arm
     /// covering an out-of-range cast, which no named member can supply.
+    /// <para/>
+    /// That signal is load-bearing, so <c>Runtime/csc.rsp</c> compiles CS8509 as an error: a member added
+    /// without an arm has to fail the build, and a warning nothing gates on is a member reaching a site that
+    /// never learned it.
     /// </remarks>
     public enum StyleVariantKind
     {
@@ -239,12 +243,15 @@ namespace Velvet
         /// <summary>
         /// True for the responsive min-width variants (<c>sm:</c>…<c>2xl:</c>) — read off
         /// <see cref="BreakpointPx"/> rather than listing them again, so the two cannot disagree.
+        /// A value that names no kind throws, for the reason given there.
         /// </summary>
         public static bool IsResponsive(StyleVariantKind kind) => BreakpointPx(kind) > 0f;
 
         /// <summary>
         /// Min-width (px) at which a responsive variant activates. The default breakpoints:
-        /// sm 640, md 768, lg 1024, xl 1280, 2xl 1536. Returns 0 for non-responsive kinds.
+        /// sm 640, md 768, lg 1024, xl 1280, 2xl 1536. Returns 0 for every other named kind, and throws
+        /// for a value that names no kind — a cast outside the enum's range is a caller error, and a
+        /// silent 0 is how one survives to produce a wrong layout instead of a stack trace.
         /// </summary>
 #pragma warning disable CS8524 // no discard arm — see the remarks on StyleVariantKind
         public static float BreakpointPx(StyleVariantKind kind) => kind switch
