@@ -168,9 +168,10 @@ namespace Velvet.Tests
         /// Each row of CONTRIBUTING's continuous-integration table: the `Workflow ▸ job` / `Workflow` its
         /// first cell names, and whether its last column says the check is required to merge.
         /// <para>
-        /// Bounded by the table rather than by the section. Collection starts at the header's separator
-        /// row and ends at the first line that is not a row, so a second table or a fenced example in the
-        /// same section is not read as continuous-integration rows and misreported as a dangling one.
+        /// Bounded by the table rather than by the section, and fenced blocks are skipped whole. Collection
+        /// starts at the first separator row outside a fence and ends at the first line that is not a row,
+        /// so neither a second table nor an example of one — before the table or after it — is read as a
+        /// continuous-integration row and misreported as naming no workflow.
         /// </para>
         /// </summary>
         private static IReadOnlyList<(string Workflow, string Job, bool Required)> ContributingRows()
@@ -183,7 +184,21 @@ namespace Velvet.Tests
                 return rows;
             }
 
-            var separator = Array.FindIndex(lines, heading + 1, line => TableSeparator.IsMatch(line.TrimEnd('\r')));
+            var separator = -1;
+            var fenced = false;
+            for (var i = heading + 1; i < lines.Length && separator < 0; i++)
+            {
+                var scan = lines[i].TrimEnd('\r');
+                if (scan.StartsWith("```", StringComparison.Ordinal))
+                {
+                    fenced = !fenced;
+                }
+                else if (!fenced && TableSeparator.IsMatch(scan))
+                {
+                    separator = i;
+                }
+            }
+
             for (var i = separator + 1; separator > heading && i < lines.Length; i++)
             {
                 var line = lines[i].TrimEnd('\r');
@@ -258,11 +273,10 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — the row floor rides along because a heading that was renamed leaves no rows to
-            // dangle, which reads the same as a table that agrees. An empty workflow directory needs no
-            // floor: it dangles every row rather than none.
-            Assert.That((rows.Count >= 2, workflows.Count >= 2, string.Join("\n", dangling)),
-                Is.EqualTo((true, true, string.Empty)));
+            // Assert — the floor is on the rows, because a heading that was renamed leaves none to dangle
+            // and reads the same as a table that agrees. A workflow directory that read empty needs none:
+            // it dangles every row rather than nothing.
+            Assert.That((rows.Count >= 2, string.Join("\n", dangling)), Is.EqualTo((true, string.Empty)));
         }
 
         [Test]
@@ -294,11 +308,42 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — the second floor counts the jobs actually asked about, as the cases below do, rather
-            // than the rows offered to answer them. A workflow whose jobs went unenumerated reports nothing
-            // unlisted, and a full table would have covered for it.
+            // Assert — the second floor counts the jobs actually asked about rather than the rows offered
+            // to answer them, so a required workflow that collapsed to its aggregate alone cannot be
+            // covered for by a full table. It does not catch a workflow that lost *some* of its jobs to
+            // the parser; the case below is what does.
             Assert.That((required.Count >= 2, asked > required.Count, string.Join("\n", unlisted)),
                 Is.EqualTo((true, true, string.Empty)));
+        }
+
+        [Test]
+        public void Given_EveryJobARequiredAggregateNames_When_TheWorkflowIsEnumerated_Then_ItIsFound()
+        {
+            // Arrange — every case here answers over the jobs the enumerator returns, so a job it cannot
+            // see is one nothing asks about. The aggregate's own `needs:` is a second naming of the same
+            // set, written by hand in the workflow, and the two disagreeing is what says the enumerator
+            // stopped seeing something.
+            var required = RequiredWorkflows();
+
+            // Act
+            var missing = new List<string>();
+            foreach (var (path, aggregate) in required)
+            {
+                var text = ReadWorkflow(path);
+                var found = JobNames(text).ToHashSet(StringComparer.Ordinal);
+                foreach (var job in NeedsListPattern.Match(AggregateBlock(text, aggregate)).Groups["jobs"].Value
+                             .Split(',').Select(job => job.Trim()).Where(job => job.Length > 0))
+                {
+                    if (!found.Contains(job))
+                    {
+                        missing.Add(path + ":" + job);
+                    }
+                }
+            }
+
+            // Assert — the floor rides along because an aggregate whose needs list went unread names no
+            // job, and nothing is then missing from an enumeration that returned nothing either.
+            Assert.That((required.Count >= 2, string.Join("\n", missing)), Is.EqualTo((true, string.Empty)));
         }
 
         // GREEN_ON_BASE(characterization): this column happened to be right on both sides. The other two
@@ -308,21 +353,30 @@ namespace Velvet.Tests
         {
             // Arrange — the column a contributor acts on is the last one, and it was as unpinned as the
             // first. Which rows may carry a yes is the same question the fixture already answers to find
-            // the aggregates, so it is asked once rather than curated twice.
+            // the aggregates, so it is asked once rather than curated twice. Matched through the same
+            // Names as the cases above: the aggregate rows are the only ones spelt by display name today,
+            // and spelling them by key instead is legal there, so a case that accepted only one spelling
+            // would red on a table it had just been made consistent with.
             var aggregates = RequiredWorkflows()
                 .Select(entry => (Text: ReadWorkflow(entry.Workflow), entry.Aggregate))
-                .Select(entry => (Workflow: WorkflowDisplayName(entry.Text), Display: JobDisplayName(entry.Text, entry.Aggregate)))
-                .ToHashSet();
-
-            // Act
-            var wrong = ContributingRows()
-                .Where(row => row.Job.Length > 0)
-                .Where(row => aggregates.Contains((row.Workflow, row.Job)) != row.Required)
-                .Select(row => row.Workflow + " ▸ " + row.Job + (row.Required ? " (marked required)" : " (not marked required)"))
+                .Select(entry => (Workflow: WorkflowDisplayName(entry.Text), entry.Text, entry.Aggregate))
                 .ToList();
 
-            // Assert — the floor rides along because an aggregate set that read empty matches no row, and
-            // every row then correctly reads "not required", which is a pass having measured nothing.
+            // Act — every row, including one naming a workflow and no job: such a row can carry a yes too,
+            // and nothing else would notice.
+            var wrong = ContributingRows()
+                .Where(row => aggregates.Any(entry =>
+                    entry.Workflow == row.Workflow
+                    && row.Job.Length > 0
+                    && Names(entry.Text, row.Job, entry.Aggregate)) != row.Required)
+                .Select(row => row.Workflow + (row.Job.Length > 0 ? " ▸ " + row.Job : string.Empty)
+                    + (row.Required ? " (marked required)" : " (not marked required)"))
+                .ToList();
+
+            // Assert — the floor catches an aggregate set that read empty *and* a table with no yes left in
+            // it, which agree with each other and describe a repository where nothing gates a merge. Either
+            // alone reds through the message: the rows carrying a yes stop matching, or the aggregates stop
+            // being matched.
             Assert.That((aggregates.Count >= 2, string.Join("\n", wrong)), Is.EqualTo((true, string.Empty)));
         }
 
