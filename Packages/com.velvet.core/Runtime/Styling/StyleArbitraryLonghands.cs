@@ -4,6 +4,9 @@ namespace Velvet
     // pins. Two vocabularies describe one cascade — an inline layer and a USS class contend for the same
     // storage slot — and only this translation lets StyleClassProjection compare them.
     //
+    // Every row is re-derived by StyleArbitraryLonghandTableTests, which applies each property to a bare
+    // element and fails when a row stops matching the slots that came away written.
+    //
     // The filter family and FilterCustom map to nothing on purpose. Filters COMPOSE rather than override, so
     // "a class already claims filter" is not a reason to drop a layer; and re-resolving a filter property
     // hands the composed list to the transition driver and restarts its tween. Their string-keyed identity
