@@ -176,6 +176,14 @@ namespace Velvet
                 // render here does not collide with a subsequent FlushState pass: clearing IsDirty
                 // makes the later traversal short-circuit while the rendered output is already committed.
                 existingFiber.MountSlotStart = site.SlotStart;
+                // The container half of the same carry, and it travels with the slot start above or the
+                // pair names two different containers: everything that reads MountPoint wants where the
+                // fiber's output is NOW — the isolated re-render reconciles into it at MountSlotStart,
+                // Unmount reconciles it away, the containment sweeps ask whether it is inside a departing
+                // subtree, and the rest reach it for a panel. Left at creation, a carried fiber re-renders
+                // itself into the container it has left. Null only where the caller had no container to
+                // give, which must not erase a live one.
+                if (site.MountPoint != null) existingFiber.MountPoint = site.MountPoint;
                 // Rewritten on the carry as well as at creation, and before the re-render below: a component
                 // can leave a Portal's children for a position outside them in the very render that removes
                 // the Portal, and GeneralPathReconciler carries it there in the inline walk that precedes

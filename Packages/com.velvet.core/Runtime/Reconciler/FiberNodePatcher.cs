@@ -746,11 +746,11 @@ namespace Velvet
             HashSet<ComponentFiber>? healingChildFibersBefore = null;
             if (isHeal)
             {
-                // FiberStack.Current is genuinely the declaring fiber here (RenderAndReconcile keeps
-                // it pushed for the whole patch of its own returned tree — unlike DrainPendingPortalMounts,
-                // which runs later with the reconcile root current instead), so it doubles as both the
-                // ComponentRegistry parent new children below will actually register under AND the
-                // logical ancestor FiberCrossPanelEventDispatcher.Continue needs.
+                // FiberStack.Current is the declaring fiber here (RenderAndReconcile keeps it pushed for
+                // the whole patch of its own returned tree), so it doubles as both the ComponentRegistry
+                // parent new children below will actually register under AND the logical ancestor
+                // FiberCrossPanelEventDispatcher.Continue needs. The deferred mount arrives at the same
+                // fiber by pushing it explicitly — DrainPendingPortalMounts owns why it has to.
                 healingDeclaringFiber = CaptureDeclaringChildFibers(pooled: false, out healingChildFibersBefore);
             }
 

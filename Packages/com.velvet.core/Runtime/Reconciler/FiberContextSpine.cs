@@ -99,9 +99,9 @@ namespace Velvet
 
                 // Detached-mount top-level child (a Portal's drained children, or a VirtualList's
                 // controller-rendered items): the subtree mounted outside the parent-walked reconcile, so
-                // `ancestor`'s committed tree either does not contain this child (Portal: parented off the
-                // reconcile root) or hides it behind a wrapper-emitting leaf the canonical descent skips
-                // (VirtualList). Rebuild from the captured snapshot instead: push the context that enclosed
+                // `ancestor`'s committed tree hides this child behind a wrapper-emitting leaf the canonical
+                // descent skips (see the default arm of PushEnclosingProvidersForNode, which is where both
+                // kinds of host land). Rebuild from the captured snapshot instead: push the context that enclosed
                 // the detached mount as the base, then — when descendant VNodes were captured (Portal) — walk
                 // them to recover any Provider placed directly inside the subtree above this child. Deeper
                 // spine edges (this child -> target) then push the in-subtree Providers normally on top.
