@@ -310,9 +310,12 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
     if before != after:
         return reasons + [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
 
-    # Only `dirty`. An entry that leaves the ready state loses the age `write_ready_state` kept for it,
-    # so a merge state that comes and goes without the pull request changing would keep resetting the
-    # clock `refuse/edit_while_a_ready_pr_sits.py` reads and that guard would never fire.
+    # This reason changes no verdict, and that is the whole of why only `dirty` is read. A branch
+    # holding every commit on the base fast-forwards, so it cannot conflict: `dirty` implies
+    # `holds_base` is false, and the reason below it already blocks. What this adds is a message that
+    # names the conflict rather than telling a conflicting branch to merge the base in. `unknown` is
+    # left out because there is nothing for it to add — the same containment reading, taken from
+    # fetched refs rather than from GitHub, has already decided.
     if merge_state == "dirty":
         reasons.append(f"it conflicts with {base}: resolve the conflict in the branch, which "
                        f"`settle.py update` declines to do")

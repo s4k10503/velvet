@@ -108,9 +108,12 @@ suites, and all twenty-five completed. Nothing needs doing.
 launched wedges while the editor is still alive, before anything is killed. `SIGTERM` on the editor
 reaps the editor; the wedged child does not follow it out, and no signal recovers it.
 
-Not every unreapable process here comes from Unity, and none of them blocks a later run. They
-accumulate, so `.claude/hooks/report/wedged_processes.py` reports the set at session start once it
-holds enough memory for a reboot to be worth the interruption, and says nothing below that.
+Not every unreapable process here comes from Unity, and one of them does block a later run:
+`scripts/pr/settle.py watch` holds a lock while it polls, so a wedged watcher stops the replacement —
+its refusal names the pid and the command that ends it, and every editing tool is refused meanwhile.
+The rest accumulate rather than blocking, so `.claude/hooks/report/wedged_processes.py` reports the
+set at session start once it holds enough memory for a reboot to be worth the interruption, and says
+nothing below that.
 
 ### Checking that the tests can fail
 
@@ -376,8 +379,10 @@ policy on is what would close it server-side, at the cost that buys.
 `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready
 for fifteen minutes, and the instruction it prints is `settle.py merge`. Ready is that command's own
 decision rather than a second reading beside it, so a pull request this window declines — like a draft
-or one that conflicts — is never recorded ready and this guard does not name it. What it does name,
-`settle.py merge` will take; hold one on purpose with the deferral its message describes.
+or one that conflicts — is not recorded ready while the window can be read. It is read by
+`published_check.unpublished_reason`, which answers None on any git failure, so an `ls-remote` that
+times out mid-poll records the green ones ready again and the stall is back for as long as that
+lasts. The deferral the hook's own message describes is still what clears it.
 
 **If the dispatch itself is what is broken, the guard has no in-band escape.** `upm.yml` runs from the
 workflow file at whatever ref is dispatched, so tagging the release commit and dispatching from the tag

@@ -320,12 +320,13 @@ class ReadinessTests(unittest.TestCase):
 
     def test_Given_AForkPullRequest_When_TheWatcherPolls_Then_ItIsCarriedRatherThanDropped(self):
         # Arrange — the readings raise the way git does on `origin/<a branch on the fork>`. Both
-        # outcomes leave the same ready set, so the ready set alone separates nothing: what a drop
-        # costs is the entry, and what it shows is the error line beside it.
+        # outcomes leave the same ready set, so the ready set alone separates nothing; what a drop
+        # costs is the poll's report of it — an error line where the checks should be.
         outcome = poll({1: fabricate(1), 11: fabricate(11, fork=True)})
 
         # Act / Assert
-        self.assertEqual((outcome.ready, "! PR#11" in outcome.output), ({1}, False))
+        self.assertEqual((outcome.ready, "! PR#11" in outcome.output, "PR#11" in outcome.output),
+                         ({1}, False, True))
 
     def test_Given_APullRequestNothingBlocks_When_TheWatcherPolls_Then_ItIsStillRecordedAsReady(self):
         # Arrange — the state the guard exists for, which a stricter reading must not stop reporting.
@@ -333,6 +334,23 @@ class ReadinessTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(polled(table), {592})
+
+
+class ForkMergeTests(unittest.TestCase):
+    """What `settle.py merge` does with a head this checkout has no ref for."""
+
+    def test_Given_AForkPullRequest_When_TheMergeIsDecided_Then_ItIsRefusedRatherThanRaising(self):
+        # Arrange — `contains_base` is what would run on `origin/<a branch on the fork>`, and it
+        # exits 128 rather than answering, so a merge decided without the fork reading raises out of
+        # a command whose whole job is to report what blocks.
+        printed = io.StringIO()
+        with fabricated_readings({8: fabricate(8, fork=True)}):
+            with contextlib.redirect_stderr(printed):
+                # Act
+                code = settle.merge(Path("."), 8, "main", dry_run=True)
+
+        # Assert
+        self.assertEqual((code, "head is on another repository" in printed.getvalue()), (1, True))
 
 
 class ReadyStateTests(unittest.TestCase):

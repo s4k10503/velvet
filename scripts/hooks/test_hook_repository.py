@@ -131,11 +131,17 @@ def stop_guard_budget():
 
 
 class ReadingBudgetTests(unittest.TestCase):
+    """A tripwire on the shared reading, and not a claim about a guard's worst case.
+
+    Neither guard's worst case is bounded by anything here: both make their own 60-second calls, and
+    unsettled_pr.py makes two of them per pull request, so what they can spend rises with the number
+    of pull requests and no fixed sum describes it. What this holds is the one part that is fixed —
+    the reading in `repository`, whose cost is the number of ways of asking times the bound each one
+    gets, and which is where a third way would be added.
+    """
+
     def test_Given_EveryWayOfAsking_When_TheirTimeoutsAreAdded_Then_TheyFitInTheGuardsOwn(self):
-        # Arrange — the rule `repository.gh`'s own bound states: the calling guard's registered
-        # timeout divided by the calls one invocation makes. This is what fails when a way of asking
-        # is added and the division stops holding, and the registered number is scaled the way that
-        # bound already reads it.
+        # Arrange — the registered number is scaled the way `repository.gh`'s own bound reads it.
         spent = (len(repository.OPEN_PULL_REQUEST_READS)
                  * repository.OPEN_PULL_REQUEST_TIMEOUT * 1000)
 
@@ -144,29 +150,49 @@ class ReadingBudgetTests(unittest.TestCase):
 
 
 class UnreadableReportTests(unittest.TestCase):
-    ATTEMPTS = [("gh pr list", 1, "HTTP 403"), ("gh api repos/x/y/pulls", 1, "HTTP 403")]
+    BOTH = [("gh pr list", "exited 1\nHTTP 403"), ("gh api repos/x/y/pulls", "exited 1\nHTTP 403")]
+    ONE = [("gh issue list", "exited 1\nHTTP 403")]
+    WAY = "`gh issue list --assignee @me` from another shell"
+
+    def report(self, attempts=None, subject="the open pull requests", key="pr-list", way="`gh pr view <n>`"):
+        return repository.unreadable_report(subject, attempts or self.BOTH, key, way)
 
     def test_Given_AReport_When_ItIsRead_Then_ItSaysTheGuardIsWhatCouldNotRead(self):
-        # Act
-        report = repository.unreadable_report("the open pull requests", self.ATTEMPTS, "pr-list")
-
-        # Assert
-        self.assertIn(repository.SELF_REPORT, report)
+        # Act / Assert
+        self.assertIn(repository.SELF_REPORT, self.report())
 
     def test_Given_AReport_When_ItIsRead_Then_EveryAttemptIsShown(self):
         # Arrange — a reader asked to establish it another way needs to know which ways were tried.
-        report = repository.unreadable_report("the open pull requests", self.ATTEMPTS, "pr-list")
+        report = self.report()
 
         # Act / Assert
-        self.assertTrue(all(call in report for call, _, _ in self.ATTEMPTS), report)
+        self.assertTrue(all(call in report for call, _ in self.BOTH), report)
 
     def test_Given_AReport_When_ItsDeferralLineIsRead_Then_ItAsksWhatTheWorkWaitsOn(self):
         # Arrange — a deferral naming the failed reading expires and is rewritten identically, so the
         # reason on the record ends up being one nothing was waiting on.
-        report = repository.unreadable_report("the open pull requests", self.ATTEMPTS, "pr-list")
+        report = self.report()
 
         # Act / Assert
         self.assertIn('echo "pr-list <what the work is waiting on>', report)
+
+    def test_Given_OneFailedCall_When_TheReportIsRead_Then_ItDoesNotCallThatEveryWayOfAsking(self):
+        # Arrange — one caller passes a single call, and a report that says every way failed about
+        # one call is wrong about the evidence directly below it. Asked beside the two-call form so
+        # dropping the sentence outright cannot satisfy this.
+        counted = ("Every way of asking failed" in self.report(self.ONE),
+                   "Every way of asking failed" in self.report(self.BOTH))
+
+        # Act / Assert
+        self.assertEqual(counted, (False, True))
+
+    def test_Given_ASubjectWithItsOwnRemedy_When_TheReportIsRead_Then_ThatRemedyIsWhatItNames(self):
+        # Arrange — one report served two subjects and told a reader with an unread issue list to
+        # run `gh pr view`, which is a remedy for the other one.
+        report = self.report(self.ONE, subject="the backlog", key="backlog", way=self.WAY)
+
+        # Act / Assert
+        self.assertEqual((self.WAY in report, "gh pr view" in report), (True, False))
 
 
 if __name__ == "__main__":
