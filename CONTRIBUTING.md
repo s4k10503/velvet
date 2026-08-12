@@ -287,7 +287,7 @@ on every platform.
 |----------|---------|---------------|-------------------|
 | `Source generators ▸ source-generators` | push (filtered) / every PR / merge group | not required | no |
 | `Source generators ▸ repository-settings` | push (filtered) / every PR / merge group; skipped when the workflow runs in a fork | not required | no |
-| `Source generators ▸ Required checks (generators)` | every PR / merge group | not required | **yes** |
+| `Source generators ▸ Required checks (generators)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `Test ▸ license-check` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ unity-tests` (EditMode / PlayMode) | push (filtered) / every PR / merge group | **required** (skipped if absent) | no |
 | `Test ▸ release-notes` | push (filtered) / every PR / merge group | not required | no |
@@ -295,7 +295,7 @@ on every platform.
 | `Test ▸ test-quality` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red-python` | push (filtered) / every PR / merge group | not required | no |
 | `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
-| `Test ▸ Required checks (Unity)` | every PR / merge group | not required | **yes** |
+| `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
 | `Docs` (DocFX → GitHub Pages) | push to `main` / release / manual | **required** (skipped if absent) | no |
 

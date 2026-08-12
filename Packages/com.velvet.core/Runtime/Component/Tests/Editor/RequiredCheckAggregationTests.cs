@@ -40,6 +40,29 @@ namespace Velvet.Tests
         private static readonly Regex NeedsListPattern =
             new(@"^\s*needs:\s*\[(?<jobs>[^\]]*)\]", RegexOptions.Compiled | RegexOptions.Multiline);
 
+        // A block sequence and a flow list are the same to Actions, and a formatter turns one into the
+        // other. Reading only the flow form left the case below asking nothing and passing for it.
+        private static readonly Regex NeedsBlockPattern =
+            new(@"^\s*needs:\s*(?:#[^\r\n]*)?\r?\n(?<jobs>(?:\s*-\s*[^\r\n]+\r?\n?)+)",
+                RegexOptions.Compiled | RegexOptions.Multiline);
+
+        /// <summary>The jobs an aggregate's block declares it needs, in either YAML spelling.</summary>
+        private static IEnumerable<string> NeedsOf(string block)
+        {
+            var flow = NeedsListPattern.Match(block);
+            if (flow.Success)
+            {
+                return flow.Groups["jobs"].Value.Split(',').Select(job => job.Trim()).Where(job => job.Length > 0);
+            }
+
+            var sequence = NeedsBlockPattern.Match(block);
+            return sequence.Success
+                ? sequence.Groups["jobs"].Value.Split('\n')
+                    .Select(line => line.Trim().TrimStart('-').Trim())
+                    .Where(job => job.Length > 0)
+                : Enumerable.Empty<string>();
+        }
+
         private static readonly Regex ResultReferencePattern =
             new(@"needs\.(?<job>[A-Za-z_][A-Za-z0-9_-]*)\.result", RegexOptions.Compiled);
 
@@ -170,13 +193,14 @@ namespace Velvet.Tests
         /// <para>
         /// Bounded by the table rather than by the section, and fenced blocks are skipped whole. Collection
         /// starts at the first separator row outside a fence and ends at the first line that is not a row,
-        /// so neither a second table nor an example of one — before the table or after it — is read as a
-        /// continuous-integration row and misreported as naming no workflow.
+        /// so neither a second table nor a fenced example of one — before the table or after it — is read
+        /// as a continuous-integration row and misreported as naming no workflow. A fence is recognised by
+        /// its opening run of backticks or tildes at the line's start, which is every fence in this file.
         /// </para>
         /// </summary>
-        private static IReadOnlyList<(string Workflow, string Job, bool Required)> ContributingRows()
+        private static IReadOnlyList<(string Workflow, string Job, bool Required, string Trigger)> ContributingRows()
         {
-            var rows = new List<(string, string, bool)>();
+            var rows = new List<(string, string, bool, string)>();
             var lines = File.ReadAllLines(Path.Combine(RepositoryRoot(), "CONTRIBUTING.md"));
             var heading = Array.FindIndex(lines, line => line.TrimEnd('\r') == "## Continuous integration");
             if (heading < 0)
@@ -189,7 +213,7 @@ namespace Velvet.Tests
             for (var i = heading + 1; i < lines.Length && separator < 0; i++)
             {
                 var scan = lines[i].TrimEnd('\r');
-                if (scan.StartsWith("```", StringComparison.Ordinal))
+                if (scan.StartsWith("```", StringComparison.Ordinal) || scan.StartsWith("~~~", StringComparison.Ordinal))
                 {
                     fenced = !fenced;
                 }
@@ -216,11 +240,12 @@ namespace Velvet.Tests
                 var columns = line.Split('|');
                 var required = columns.Length > 4
                     && string.Equals(columns[4].Replace("*", string.Empty).Trim(), "yes", StringComparison.OrdinalIgnoreCase);
+                var trigger = columns.Length > 2 ? columns[2] : string.Empty;
                 var cell = match.Groups["cell"].Value;
                 var arrow = cell.IndexOf('▸');
                 rows.Add(arrow < 0
-                    ? (cell.Trim(), string.Empty, required)
-                    : (cell.Substring(0, arrow).Trim(), cell.Substring(arrow + 1).Trim(), required));
+                    ? (cell.Trim(), string.Empty, required, trigger)
+                    : (cell.Substring(0, arrow).Trim(), cell.Substring(arrow + 1).Trim(), required, trigger));
             }
 
             return rows;
@@ -260,7 +285,7 @@ namespace Velvet.Tests
 
             // Act
             var dangling = new List<string>();
-            foreach (var (name, job, _) in rows)
+            foreach (var (name, job, _, _) in rows)
             {
                 var workflow = workflows.FirstOrDefault(entry => entry.Name == name);
                 if (workflow.Text == null)
@@ -294,13 +319,11 @@ namespace Velvet.Tests
 
             // Act
             var unlisted = new List<string>();
-            var asked = 0;
             foreach (var (path, text) in required)
             {
                 var name = WorkflowDisplayName(text);
                 foreach (var job in JobNames(text))
                 {
-                    asked++;
                     if (!listed.Any(row => row.Workflow == name && row.Job.Length > 0 && Names(text, row.Job, job)))
                     {
                         unlisted.Add(path + ":" + job);
@@ -308,11 +331,12 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — the second floor counts the jobs actually asked about rather than the rows offered
-            // to answer them, so a required workflow that collapsed to its aggregate alone cannot be
-            // covered for by a full table. It does not catch a workflow that lost *some* of its jobs to
-            // the parser; the case below is what does.
-            Assert.That((required.Count >= 2, asked > required.Count, string.Join("\n", unlisted)),
+            // Assert — the second floor is per workflow rather than a total, so one required workflow
+            // collapsing to its aggregate alone cannot be covered for by the other's jobs or by a full
+            // table. It does not catch a workflow that lost *some* of its jobs to the parser; the case
+            // below is what does.
+            var enumerated = required.All(entry => JobNames(entry.Text).Count >= 2);
+            Assert.That((required.Count >= 2, enumerated, string.Join("\n", unlisted)),
                 Is.EqualTo((true, true, string.Empty)));
         }
 
@@ -320,13 +344,104 @@ namespace Velvet.Tests
         // these workflows is plain, so the base's narrower pattern found them all. What this holds is the
         // pattern the branch widened, against being narrowed again by someone who has only the passing
         // cases to go on.
+        // The events a contributor's own work starts. `workflow_dispatch` and `release` sit outside by
+        // decision rather than by omission: neither is something a pull request or a push to main causes,
+        // and the table does not offer them for the required workflows.
+        private static readonly string[] ContributorEvents = { "push", "pull_request", "merge_group" };
+
+        // The words the Trigger column uses for those three. A cell naming none of them is reported rather
+        // than read as claiming nothing, so a row rewritten in a vocabulary this does not know fails here
+        // instead of quietly leaving the column unheld.
+        private static readonly (string Phrase, string Event)[] TriggerPhrases =
+        {
+            ("push", "push"),
+            ("every PR", "pull_request"),
+            ("merge group", "merge_group"),
+        };
+
+        private static readonly Regex OnKeyPattern = new(@"^  (?<event>[a-z_]+):", RegexOptions.Compiled);
+
+        // Four spaces is a job-level key. A step's `if:` sits deeper and answers for that step alone —
+        // upm.yml gates three steps on workflow_dispatch while the job itself runs on push too.
+        private static readonly Regex JobLevelIfPattern =
+            new(@"^    if:[^\r\n]*github\.event_name\s*==\s*'(?<event>[a-z_]+)'",
+                RegexOptions.Compiled | RegexOptions.Multiline);
+
+        /// <summary>The events a workflow subscribes to, read out of its own `on:` block.</summary>
+        private static IEnumerable<string> SubscribedEvents(string workflow)
+        {
+            var lines = workflow.Split('\n');
+            var start = Array.FindIndex(lines, line => line.TrimEnd('\r') == "on:");
+            if (start < 0)
+            {
+                return Enumerable.Empty<string>();
+            }
+
+            var end = Array.FindIndex(lines, start + 1, line =>
+                line.Length > 0 && !char.IsWhiteSpace(line[0]) && !line.StartsWith("#", StringComparison.Ordinal));
+            return lines.Skip(start + 1).Take((end < 0 ? lines.Length : end) - start - 1)
+                .Select(line => OnKeyPattern.Match(line.TrimEnd('\r')))
+                .Where(match => match.Success)
+                .Select(match => match.Groups["event"].Value);
+        }
+
+        [Test]
+        public void Given_EveryRowOfContributingsCiTable_When_ItsTriggerCellIsRead_Then_ItNamesWhatStartsThatJob()
+        {
+            // Arrange — the Trigger column was as unpinned as the other two the branch holds, and it was
+            // wrong: both aggregate rows omitted push while their jobs carry no event gate at all.
+            var workflows = Workflows();
+            var rows = ContributingRows();
+
+            // Act
+            var wrong = new List<string>();
+            foreach (var row in rows)
+            {
+                var workflow = workflows.FirstOrDefault(entry => entry.Name == row.Workflow);
+                if (workflow.Text == null)
+                {
+                    continue;
+                }
+
+                var starts = SubscribedEvents(workflow.Text).Intersect(ContributorEvents, StringComparer.Ordinal)
+                    .ToHashSet(StringComparer.Ordinal);
+                var job = row.Job.Length == 0
+                    ? null
+                    : JobNames(workflow.Text).FirstOrDefault(key => Names(workflow.Text, row.Job, key));
+                var gate = job == null ? null : JobLevelIfPattern.Match(AggregateBlock(workflow.Text, job));
+                if (gate is { Success: true })
+                {
+                    starts.IntersectWith(new[] { gate.Groups["event"].Value });
+                }
+
+                var claimed = TriggerPhrases
+                    .Where(phrase => row.Trigger.Contains(phrase.Phrase, StringComparison.Ordinal))
+                    .Select(phrase => phrase.Event)
+                    .ToHashSet(StringComparer.Ordinal);
+                var label = row.Workflow + (row.Job.Length > 0 ? " \u25b8 " + row.Job : string.Empty);
+                if (claimed.Count == 0)
+                {
+                    wrong.Add(label + " (its trigger names no event this reads)");
+                }
+                else if (!claimed.SetEquals(starts))
+                {
+                    wrong.Add(label + " (claims [" + string.Join("+", claimed.OrderBy(e => e, StringComparer.Ordinal))
+                        + "], starts on [" + string.Join("+", starts.OrderBy(e => e, StringComparer.Ordinal)) + "])");
+                }
+            }
+
+            // Assert — the floor is on the rows for the reason the case above gives.
+            Assert.That((rows.Count >= 2, string.Join("\n", wrong)), Is.EqualTo((true, string.Empty)));
+        }
+
         [Test]
         public void Given_EveryJobARequiredAggregateNames_When_TheWorkflowIsEnumerated_Then_ItIsFound()
         {
-            // Arrange — every case here answers over the jobs the enumerator returns, so a job it cannot
-            // see is one nothing asks about. The aggregate's own `needs:` is a second naming of the same
-            // set, written by hand in the workflow, and the two disagreeing is what says the enumerator
-            // stopped seeing something.
+            // Arrange — a job the enumerator loses is reported by the cases beside this one as a job that
+            // does not exist, since the enumerator is their oracle for that. What none of them reds on is
+            // the pair a real change makes: a job added in a spelling the enumerator misses, or one made
+            // invisible and its row removed together. The aggregate's own `needs:` is a second naming of
+            // the same set, written by hand in the workflow, and the two disagreeing is what says so.
             var required = RequiredWorkflows();
 
             // Act
@@ -335,8 +450,7 @@ namespace Velvet.Tests
             {
                 var text = ReadWorkflow(path);
                 var found = JobNames(text).ToHashSet(StringComparer.Ordinal);
-                foreach (var job in NeedsListPattern.Match(AggregateBlock(text, aggregate)).Groups["jobs"].Value
-                             .Split(',').Select(job => job.Trim()).Where(job => job.Length > 0))
+                foreach (var job in NeedsOf(AggregateBlock(text, aggregate)))
                 {
                     if (!found.Contains(job))
                     {
@@ -345,8 +459,10 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — the floor rides along because an aggregate whose needs list went unread names no
-            // job, and nothing is then missing from an enumeration that returned nothing either.
+            // Assert — the floor is on the workflows because that is what it can hold: an aggregate whose
+            // needs list went unread names no job, nothing is missing from an enumeration that returned
+            // nothing, and `RequiredWorkflows` never reads that list so its count does not move. Reading
+            // both list spellings is what keeps that state out of reach rather than the floor.
             Assert.That((required.Count >= 2, string.Join("\n", missing)), Is.EqualTo((true, string.Empty)));
         }
 
@@ -392,11 +508,7 @@ namespace Velvet.Tests
 
             // Act
             var unwired = aggregates
-                .SelectMany(entry => Unwired(entry.Workflow, entry.Aggregate, block => NeedsListPattern
-                    .Match(block).Groups["jobs"].Value
-                    .Split(',')
-                    .Select(job => job.Trim())
-                    .Where(job => job.Length > 0)))
+                .SelectMany(entry => Unwired(entry.Workflow, entry.Aggregate, NeedsOf))
                 .ToList();
 
             // Assert — the two counts ride along because no aggregate found, or an aggregate whose block
