@@ -41,6 +41,10 @@ UNREADABLE_PROBE = {"file_path": "CHANGELOG.md", "old_string": "a", "new_string"
 # "I will get to it" cannot outlive the task that said it.
 GRACE = 900
 
+# Its own deferral key. A pull request number holds one pull request; this holds the reading itself,
+# and the two are not the same claim.
+WATCHER_KEY = "watcher"
+
 HOOK_TOOLS = {"Edit", "Write", "NotebookEdit"}
 
 
@@ -75,17 +79,34 @@ def main():
     if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
+    now = time.time()
     if not alive():
+        # The one branch that can refuse every write on the machine at once, so it is the one branch
+        # that must have a way out other than the command it names. That command can itself refuse:
+        # a watcher wedged mid-poll holds the lock while its heartbeat goes stale, and then starting
+        # a replacement is exactly what `hold_the_watch` declines to do.
+        held = deferred(WATCHER_KEY, now)
+        if held is not None:
+            reason, minutes = held
+            sys.stderr.write(f"Nothing is watching the open pull requests, and {WATCHER_KEY} is held "
+                             f"{minutes}m ago because: {reason}\n")
+            return 0
+        broken = unusable(WATCHER_KEY, now)
+        if broken is not None:
+            sys.stderr.write(f"A deferral was written for {WATCHER_KEY}, and {broken} — so it is "
+                             "being ignored.\n")
         sys.stderr.write(
             "Refusing to write: nothing is watching the open pull requests, so whether one is sitting "
             "green cannot be read.\n\n"
             "An unwatched pull request and none at all look identical from here, which is the state "
             "this guard exists to stop being invisible.\n\n"
             "  python3 scripts/pr/settle.py watch\n\n"
-            "Run it in the background and this clears within a poll.\n")
+            "That reports what stops it starting, if anything does — a watcher already holding the "
+            "lock is named there with the command to end it. If the watcher is deliberately off, say "
+            "what turns it back on; the reason expires, so it gets re-read rather than forgotten:\n\n"
+            f'  echo "{WATCHER_KEY} <what turns it back on> {int(now)}" >> {DEFERRALS}\n')
         return 2
 
-    now = time.time()
     found = sitting(now)
     if not found:
         return 0

@@ -24,11 +24,16 @@ fact about its subject, so the deferral it invited named the API error rather th
 was waiting on. `lib/repository.py` owns the sentence that separates the two, and a Stop guard's
 refusal has to carry it — hand-rolled, two guards say it two ways and one of them stops saying it.
 
-Only the gh-error mode is posed to a Stop guard. An empty successful answer from the pull-request
-listing is the ordinary state `open_backlog.py` exists to act on, so refusing on it would be wrong
-there and right in its sibling; what both must agree on is the case where every way of asking fails.
-The git mode is out for a different reason: it stubs git alone, so the real `gh` runs, and a check
-that reaches the network answers about the network.
+Two gh modes are posed to a Stop guard: nothing answers, and the listing answers while every
+per-pull-request read fails. The second is the one a REST fallback creates, and it is where a guard
+that reads its subject two ways can report on pull requests it learned nothing about. An empty
+successful answer is posed to neither — no open pull request is the ordinary state
+`open_backlog.py` exists to act on. The git mode is out for a different reason: it stubs git alone,
+so the real `gh` runs, and a check that reaches the network answers about the network.
+
+A guard whose own question is answered in a mode that broke somebody else's reading declares
+`UNREADABLE_ALLOWS`, with a comment and with a sibling that refuses there — an exemption no other
+guard stands behind is the silence this exists to stop.
 
 Run: python3 scripts/hooks/test_unreadable_state_check.py
 """
@@ -55,6 +60,7 @@ STOP_FLOOR = 2
 POLICY = "UNREADABLE_POLICY"
 PROBE = "UNREADABLE_PROBE"
 TOOLS = "HOOK_TOOLS"
+ALLOWS = "UNREADABLE_ALLOWS"
 
 REFUSE, ALLOW, NONE = "refuse", "allow", "none"
 POLICIES = (REFUSE, ALLOW, NONE)
@@ -73,9 +79,26 @@ MODES = {
 
 STUB_LOG = "VELVET_UNREADABLE_STATE_LOG"
 
-# Only the mode where every reading fails; the docstring owns why an empty answer is each Stop
-# guard's own question.
-STOP_MODES = ("gh-error",)
+# Its own table rather than a selection from MODES: the second mode below is about a guard that
+# reads one thing through REST and the rest through GraphQL, which no PreToolUse guard does.
+#
+# gh-graphql-error is the state that made the fallback worse than no fallback. The listing answers
+# over REST, every per-pull-request read still fails, and a guard that reads the first and reports on
+# the second has answered about pull requests it learned nothing about. An empty answer is left out
+# for the reason the docstring gives.
+STOP_MODES = {
+    "gh-error": {"gh": 'echo "gh: HTTP 502" >&2\nexit 1'},
+    "gh-graphql-error": {"gh": 'if [ "$1" = "api" ]; then\n'
+                               '  case "$2" in\n'
+                               '    *pulls*) echo 42 ;;\n'
+                               '    user) echo someone ;;\n'
+                               '    *) echo "[]" ;;\n'
+                               '  esac\n'
+                               '  exit 0\n'
+                               'fi\n'
+                               'echo "gh: API rate limit already exceeded" >&2\n'
+                               'exit 1'},
+}
 
 STOP_PAYLOAD = json.dumps({"hook_event_name": "Stop", "stop_hook_active": False})
 
@@ -139,14 +162,14 @@ def declaration(path):
     return policy, probe, tool, missing
 
 
-def _stubs(mode, directory, log):
-    for name, body in MODES[mode].items():
+def _stubs(mode, directory, log, table=None):
+    for name, body in (table or MODES)[mode].items():
         script = directory / name
         script.write_text(f'#!/bin/sh\nprintf \'{name}\\n\' >> "${STUB_LOG}"\n{body}\n')
         script.chmod(0o755)
 
 
-def run_guard(hook, payload, mode, cwd, home):
+def run_guard(hook, payload, mode, cwd, home, table=None):
     """(exit code, stdout, stderr, whether the broken program was consulted) for one run."""
     workspace = Path(tempfile.mkdtemp(prefix="velvet-unreadable-"))
     try:
@@ -157,7 +180,7 @@ def run_guard(hook, payload, mode, cwd, home):
         environment[STUB_LOG] = str(log)
         # The session's own project would otherwise decide what a guard reads instead of `cwd`.
         environment.pop("CLAUDE_PROJECT_DIR", None)
-        _stubs(mode, workspace, log)
+        _stubs(mode, workspace, log, table)
         environment["PATH"] = str(workspace) + os.pathsep + environment.get("PATH", "")
 
         finished = subprocess.run(
@@ -242,8 +265,19 @@ def _guard_faults(hook, subjects, cwd, home):
 
 def stop_answer(hook, mode, cwd, home):
     """(verdict, whether the broken program was consulted, what it printed) for one Stop guard."""
-    code, _, errors, consulted = run_guard(hook, STOP_PAYLOAD, mode, cwd, home)
+    code, _, errors, consulted = run_guard(hook, STOP_PAYLOAD, mode, cwd, home, STOP_MODES)
     return (REFUSE if code == 2 else ALLOW), consulted, errors
+
+
+def _stop_backed(hook, mode, cwd, home, siblings):
+    """Whether some other Stop guard refuses under the same mode."""
+    for sibling in siblings:
+        if sibling == hook:
+            continue
+        verdict, _, _ = stop_answer(sibling, mode, cwd, home)
+        if verdict == REFUSE:
+            return sibling.name
+    return None
 
 
 def stop_faults(stop_directory, cwd, floor=STOP_FLOOR):
@@ -256,16 +290,24 @@ def stop_faults(stop_directory, cwd, floor=STOP_FLOOR):
     home = Path(tempfile.mkdtemp(prefix="velvet-unreadable-home-"))
     try:
         for hook in subjects:
-            found += _stop_guard_faults(hook, cwd, home)
+            found += _stop_guard_faults(hook, subjects, cwd, home)
     finally:
         shutil.rmtree(home, ignore_errors=True)
     return found
 
 
-def _stop_guard_faults(hook, cwd, home):
-    policy, _ = _assigned(ast.parse(Path(hook).read_text(encoding="utf-8")), POLICY)
+def _stop_guard_faults(hook, subjects, cwd, home):
+    source = Path(hook).read_text(encoding="utf-8")
+    module = ast.parse(source)
+    policy, _ = _assigned(module, POLICY)
     if policy not in POLICIES:
         return [f"{hook.name}: {POLICY} must be one of {', '.join(POLICIES)}, found {policy!r}"]
+
+    allows, allows_line = _assigned(module, ALLOWS)
+    if allows is not None and not _has_reason(source, allows_line):
+        return [f"{hook.name}: {ALLOWS} with no comment above it saying why letting the session end "
+                "is right in those modes"]
+    allows = set(allows or ())
 
     found, evidence = [], []
     for mode in STOP_MODES:
@@ -273,7 +315,9 @@ def _stop_guard_faults(hook, cwd, home):
         if not consulted:
             continue
         evidence.append(mode)
-        if policy == NONE:
+        if mode in allows:
+            found += _exemption_faults(hook, mode, verdict, cwd, home, subjects)
+        elif policy == NONE:
             found.append(f"{hook.name}: declares \"{NONE}\" and consulted a broken program in {mode}")
         elif verdict != policy:
             found.append(f"{hook.name}: declares \"{policy}\", answers \"{verdict}\" in {mode}")
@@ -286,6 +330,21 @@ def _stop_guard_faults(hook, cwd, home):
         found.append(f"{hook.name}: declares \"{policy}\" but its run never reaches gh, the one "
                      "reading posed here, so the declaration is about something that never happens")
     return found
+
+
+def _exemption_faults(hook, mode, verdict, cwd, home, subjects):
+    """What is wrong with a declared exemption: a stale one, or one nothing stands behind.
+
+    A guard whose own question was answered may let the session end in a mode that broke somebody
+    else's reading. What it may not do is be the only guard there, which is the exemption turning
+    into the silence the whole check exists to stop.
+    """
+    if verdict == REFUSE:
+        return [f"{hook.name}: {ALLOWS} names {mode} and it refuses there — the declaration is stale"]
+    backing = _stop_backed(hook, mode, cwd, home, subjects)
+    return [] if backing else [
+        f"{hook.name}: {ALLOWS} names {mode} and no sibling refuses there, so the session ends with "
+        "the reading that failed unreported"]
 
 
 def main(argv):

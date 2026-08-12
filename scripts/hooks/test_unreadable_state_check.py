@@ -8,13 +8,17 @@ exit code of 1 that is a legitimate negative answer rather than a failure.
 
 The Stop guards are held to the same declaration and to one thing more, which is the shape their own
 defect took: blocking is not enough if what the block says is a claim about the subject rather than
-about the reading.
+about the reading. The last class runs a guard from the tree rather than a synthetic one, because
+the branch it exercises is the only refusal that can hold every write on the machine at once.
 
 Run: python3 scripts/hooks/test_unreadable_state_check.py
 """
 
 import importlib.util
+import json
+import shutil
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -242,10 +246,12 @@ import sys
 STOP_READ = 'done = subprocess.run(["gh", "pr", "list"], capture_output=True, text=True)'
 
 
-def stop_guard(policy, body):
+def stop_guard(policy, body, allows=None, reason=""):
     return (STOP_PREAMBLE
-            + f'\n\nUNREADABLE_POLICY = "{policy}"\n\n\n'
-            + "def main():\n"
+            + f'\n\nUNREADABLE_POLICY = "{policy}"\n'
+            + ("" if allows is None
+               else (f"\n# {reason}\n" if reason else "\n") + f"UNREADABLE_ALLOWS = {allows}\n")
+            + "\n\ndef main():\n"
             + body
             + "\n\nsys.exit(main())\n")
 
@@ -274,6 +280,15 @@ STOP_BLOCKS_SAYING = f"""    {STOP_READ}
 
 STOP_READS_NOTHING = "    return 2\n"
 
+# Blocks when nothing answered, and lets the session end when the listing did — open_backlog.py's
+# shape, which is right there and would be a silent pass anywhere else.
+STOP_PARTIAL_ALLOWS = f"""    listing = subprocess.run(["gh", "api", "pulls"], capture_output=True, text=True)
+    if listing.returncode == 0:
+        return 0
+    print("{check.SELF_REPORT} them", file=sys.stderr)
+    return 2
+"""
+
 
 def stop_faults(root):
     return check.stop_faults(root, root, floor=0)
@@ -287,8 +302,9 @@ class StopGuardTests(unittest.TestCase):
         # Act
         found = [line for line in stop_faults(root) if 'answers "allow"' in line]
 
-        # Assert
-        self.assertEqual(len(found), 1, stop_faults(root))
+        # Assert — a number rather than the table's own length, which would shrink with it and
+        # agree all the way down to the one mode that missed the defect this branch is about.
+        self.assertEqual(len(found), 2, stop_faults(root))
 
     def test_Given_AStopGuardBlockingWithoutSayingTheReadingFailed_When_TheCheckRuns_Then_ItIsReported(self):
         # Arrange
@@ -297,8 +313,9 @@ class StopGuardTests(unittest.TestCase):
         # Act
         found = [line for line in stop_faults(root) if "fact about its subject" in line]
 
-        # Assert
-        self.assertEqual(len(found), 1, stop_faults(root))
+        # Assert — a number rather than the table's own length, which would shrink with it and
+        # agree all the way down to the one mode that missed the defect this branch is about.
+        self.assertEqual(len(found), 2, stop_faults(root))
 
     def test_Given_AStopGuardThatSaysTheReadingFailed_When_TheCheckRuns_Then_NothingIsReported(self):
         # Arrange
@@ -330,6 +347,54 @@ class StopGuardTests(unittest.TestCase):
         # Assert
         self.assertEqual(len(found), 1, stop_faults(root))
 
+    def test_Given_AStopGuardDeclaringAnExemptionWithNoCommentAboveIt_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange
+        root = directory(lenient=stop_guard("refuse", STOP_BLOCKS_SAYING,
+                                            allows='("gh-graphql-error",)'))
+
+        # Act
+        found = [line for line in stop_faults(root) if "no comment above it" in line]
+
+        # Assert
+        self.assertEqual(len(found), 1, stop_faults(root))
+
+    def test_Given_AnExemptionNoSiblingRefusesUnder_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange — the exemption alone would let the session end with the failed reading unsaid.
+        root = directory(lenient=stop_guard("refuse", STOP_PARTIAL_ALLOWS,
+                                            allows='("gh-graphql-error",)',
+                                            reason="the sibling refuses there"))
+
+        # Act
+        found = [line for line in stop_faults(root) if "no sibling refuses there" in line]
+
+        # Assert
+        self.assertEqual(len(found), 1, stop_faults(root))
+
+    def test_Given_AnExemptionWithASiblingRefusingUnderIt_When_TheCheckRuns_Then_NothingIsReported(self):
+        # Arrange
+        root = directory(lenient=stop_guard("refuse", STOP_PARTIAL_ALLOWS,
+                                            allows='("gh-graphql-error",)',
+                                            reason="the sibling refuses there"),
+                         holds=stop_guard("refuse", STOP_BLOCKS_SAYING))
+
+        # Act
+        found = stop_faults(root)
+
+        # Assert
+        self.assertEqual(found, [])
+
+    def test_Given_AnExemptionForAModeTheGuardRefusesIn_When_TheCheckRuns_Then_ItIsReportedStale(self):
+        # Arrange
+        root = directory(lenient=stop_guard("refuse", STOP_BLOCKS_SAYING,
+                                            allows='("gh-graphql-error",)',
+                                            reason="claimed, and not what it does"))
+
+        # Act
+        found = [line for line in stop_faults(root) if "the declaration is stale" in line]
+
+        # Assert
+        self.assertEqual(len(found), 1, stop_faults(root))
+
     def test_Given_ThisRepositorysStopGuards_When_NoReadingAnswers_Then_EachAnswersWhatItDeclares(self):
         # Arrange
         stop_directory = REPO_ROOT / check.STOP_DIRECTORY
@@ -353,6 +418,42 @@ class RepositoryTests(unittest.TestCase):
         # Assert — the guard count rides along, because an empty directory disagrees with nothing.
         self.assertEqual((len(check.guards(refuse_directory)) >= check.GUARD_FLOOR, found),
                          (True, []))
+
+
+class WatcherDeferralTests(unittest.TestCase):
+    """The one refusal that can hold every write on the machine, and the way past it.
+
+    Its own instruction can refuse: a watcher wedged mid-poll holds the lock while its heartbeat goes
+    stale, and starting a replacement is exactly what the lock declines. A branch that can refuse
+    everything needs an escape that does not go through the thing that is stuck.
+    """
+
+    GUARD = REPO_ROOT / ".claude/hooks/refuse/edit_while_a_ready_pr_sits.py"
+    PAYLOAD = json.dumps({"tool_name": "Edit", "cwd": str(REPO_ROOT),
+                          "tool_input": {"file_path": "CHANGELOG.md",
+                                         "old_string": "a", "new_string": "b"}})
+
+    def verdict(self, deferral):
+        """The guard's exit code with no watcher state at all, under a HOME of its own."""
+        home = Path(tempfile.mkdtemp(prefix="velvet-watcher-home-"))
+        try:
+            if deferral is not None:
+                (home / ".velvet-pr-deferrals").write_text(deferral, encoding="utf-8")
+            code, _, _, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+            return code
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_Given_NothingWatchingAndNoDeferral_When_AWriteIsAttempted_Then_ItIsRefused(self):
+        # Act / Assert — the control: an escape that is always open is not an escape.
+        self.assertEqual(self.verdict(None), 2)
+
+    def test_Given_NothingWatchingAndTheWatcherHeld_When_AWriteIsAttempted_Then_ItGoesThrough(self):
+        # Arrange — the deferral the guard's own message describes, armed with a live stamp.
+        deferral = f"watcher the network is down until the VPN is back {int(time.time())}\n"
+
+        # Act / Assert
+        self.assertEqual(self.verdict(deferral), 0)
 
 
 if __name__ == "__main__":

@@ -37,11 +37,11 @@ settle = load_module()
 
 def reasons(before=GREEN, after=GREEN, results=None, branch="topic", base="main",
             holds_base=True, held_by_worktree=False, unpublished_release=None, draft=False,
-            merge_state="clean"):
+            merge_state="clean", fork=False):
     if results is None:
         results = [{"name": "Required checks (Unity)", "bucket": "pass"}]
     return settle.reasons_from(before, after, results, branch, base, holds_base, held_by_worktree,
-                               unpublished_release, draft, merge_state)
+                               unpublished_release, draft, merge_state, fork)
 
 
 class MergeDecisionTests(unittest.TestCase):
@@ -166,6 +166,16 @@ class MergeDecisionTests(unittest.TestCase):
             "declines to do",
             "does not contain origin/main: merge it in and let the checks run again"])
 
+    def test_Given_AHeadOnAFork_When_Decided_Then_ItBlocksWithoutClaimingAContainmentReading(self):
+        # Arrange — `holds_base` is the default nothing computed for a fork, so the case asks that
+        # the reason naming it is absent as well as that the fork reason is there.
+        decided = reasons(fork=True, holds_base=False)
+
+        # Act / Assert
+        self.assertEqual(decided, [
+            "its head is on another repository: this settles branches on origin, so nothing here "
+            "read whether it contains origin/main"])
+
     def test_Given_TheTwoMergeStatesThatDiffer_When_Decided_Then_OnlyTheConflictingOneBlocks(self):
         # Arrange — `unknown` is the absence of a reading rather than a reason, and a reason that
         # comes and goes would keep resetting the age write_ready_state carries. Asked beside `dirty`
@@ -178,16 +188,17 @@ class MergeDecisionTests(unittest.TestCase):
 
 # One pull request's whole state, so `watch` and `merge` can be posed the same table.
 Fabricated = collections.namedtuple(
-    "Fabricated", "sha after branch draft merge_state results holds_base held")
+    "Fabricated", "sha after branch draft merge_state results holds_base held fork")
 
 PASSING = [{"name": "Required checks (Unity)", "bucket": "pass"}]
 
 
 def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds_base=True,
-              held=False, moved=False):
+              held=False, moved=False, fork=False):
     sha = str(number).rjust(40, "0")
     return Fabricated(sha=sha, after=MOVED if moved else sha, branch=f"topic-{number}", draft=draft,
-                      merge_state=merge_state, results=results, holds_base=holds_base, held=held)
+                      merge_state=merge_state, results=results, holds_base=holds_base, held=held,
+                      fork=fork)
 
 
 @contextlib.contextmanager
@@ -205,10 +216,12 @@ def fabricated_readings(states):
             ("open_pull_requests", lambda *_: sorted(states)),
             ("pull_request", lambda _project, number: settle.PullRequest(
                 states[number].sha, states[number].branch, states[number].draft,
-                states[number].merge_state)),
+                states[number].merge_state, states[number].fork)),
             ("checks", lambda _project, sha: by_sha[sha].results),
             ("head_sha", lambda _project, number: states[number].after),
-            ("contains_base", lambda _project, branch, _base: by_branch[branch].holds_base),
+            ("contains_base", lambda _project, branch, _base: (
+                _refuse_for_a_fork(by_branch[branch]) if by_branch[branch].fork
+                else by_branch[branch].holds_base)),
             ("project_state", lambda *_: settle.ProjectState(
                 {state.branch for state in states.values() if state.held}, None)),
         ):
@@ -216,16 +229,27 @@ def fabricated_readings(states):
         yield stack
 
 
+def _refuse_for_a_fork(state):
+    """git is what would run here on a real fork, and it exits 128 rather than answering."""
+    raise RuntimeError(f"fatal: ambiguous argument 'origin/{state.branch}': unknown revision")
+
+
 class Polled(Exception):
     """Raised out of the watcher's sleep, which is the only way one poll of it ends."""
 
 
-def polled(states):
-    """The pull request numbers one poll of `watch` recorded as ready.
+# What a poll recorded, and what it said. A pull request whose readings raised is dropped from the
+# poll rather than reported, and the two are the same ready set — the saying is where they differ.
+Poll = collections.namedtuple("Poll", "ready output")
+
+
+def poll(states):
+    """One poll of `watch` over a table of fabricated readings.
 
     Every file the watcher touches is redirected, the lock included: taking the real one would make
     this case's answer depend on whether a watcher happens to be running on the machine.
     """
+    printed = io.StringIO()
     with tempfile.TemporaryDirectory(prefix="settle-ready-") as directory:
         ready_state = Path(directory) / "ready"
         with fabricated_readings(states) as stack:
@@ -234,12 +258,18 @@ def polled(states):
                                ("LOCK", Path(directory) / "lock")):
                 stack.enter_context(mock.patch.object(settle.watcher_state, name, path))
             stack.enter_context(mock.patch.object(settle.time, "sleep", side_effect=Polled))
-            stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+            stack.enter_context(contextlib.redirect_stdout(printed))
             try:
                 settle.watch(Path("."), "main")
             except Polled:
                 pass
-        return {int(line.split()[0]) for line in ready_state.read_text().splitlines() if line}
+        recorded = {int(line.split()[0]) for line in ready_state.read_text().splitlines() if line}
+    return Poll(recorded, printed.getvalue())
+
+
+def polled(states):
+    """The pull request numbers one poll recorded as ready."""
+    return poll(states).ready
 
 
 def merge_would_take(states):
@@ -270,6 +300,7 @@ class ReadinessTests(unittest.TestCase):
         8: fabricate(8, results=[]),
         9: fabricate(9, moved=True),
         10: fabricate(10, draft=True, merge_state="dirty", holds_base=False),
+        11: fabricate(11, fork=True),
     }
 
     def test_Given_ATableOfPullRequestStates_When_BothReadingsAreTaken_Then_TheyNameTheSameSet(self):
@@ -286,6 +317,15 @@ class ReadinessTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(polled(table), set())
+
+    def test_Given_AForkPullRequest_When_TheWatcherPolls_Then_ItIsCarriedRatherThanDropped(self):
+        # Arrange — the readings raise the way git does on `origin/<a branch on the fork>`. Both
+        # outcomes leave the same ready set, so the ready set alone separates nothing: what a drop
+        # costs is the entry, and what it shows is the error line beside it.
+        outcome = poll({1: fabricate(1), 11: fabricate(11, fork=True)})
+
+        # Act / Assert
+        self.assertEqual((outcome.ready, "! PR#11" in outcome.output), ({1}, False))
 
     def test_Given_APullRequestNothingBlocks_When_TheWatcherPolls_Then_ItIsStillRecordedAsReady(self):
         # Arrange — the state the guard exists for, which a stricter reading must not stop reporting.

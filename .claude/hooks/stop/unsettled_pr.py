@@ -39,13 +39,15 @@ sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 
 from deferrals import DEFERRALS, deferred, unusable  # noqa: E402
-from repository import open_pull_requests, unreadable_report  # noqa: E402
+from repository import SELF_REPORT, open_pull_requests, unreadable_report  # noqa: E402
 from watcher_state import HEARTBEAT, alive  # noqa: E402
 
 UNREADABLE_POLICY = "refuse"
 
-# Merge states that explain an absent check list without anything being wrong with it.
-EXPECTED_WITHOUT_CHECKS = {"UNSTABLE", "BEHIND", "BLOCKED", ""}
+# Merge states that explain an absent check list without anything being wrong with it. The empty
+# string is NOT one of them: it used to stand for both "GitHub answered nothing" and "the read
+# failed", and the second is what put a pull request nothing was read about into this set.
+EXPECTED_WITHOUT_CHECKS = {"UNSTABLE", "BEHIND", "BLOCKED"}
 
 
 def gh(args):
@@ -57,20 +59,26 @@ def gh(args):
     return result.stdout.strip(), (result.stdout + result.stderr).strip(), result.returncode
 
 
+# Both of these go through GraphQL while the listing above can fall back to REST, so the state this
+# guard has to survive is not only "nothing answered": the listing can answer and these not. A pull
+# request read that far and no further is one this guard knows nothing about, and None is how it says
+# so — an empty answer from either is a different claim and keeps its own path.
 def merge_state(pr):
+    """The pull request's merge state, or None when the read did not answer."""
     state, _, code = gh(["pr", "view", pr, "--json", "mergeStateStatus",
                          "--jq", ".mergeStateStatus"])
-    return state if code == 0 else ""
+    return state if code == 0 else None
 
 
 def checks_of(pr):
+    """The pull request's check list, or None when the read did not answer."""
     out, _, code = gh(["pr", "checks", pr, "--json", "name,bucket"])
     if code != 0:
-        return []
+        return None
     try:
         return json.loads(out or "[]")
     except ValueError:
-        return []
+        return None
 
 
 def unreadable(attempts):
@@ -87,13 +95,22 @@ def unreadable(attempts):
     if broken is not None:
         print(f"A deferral was written for pr-list, and {broken} — so it is being ignored.",
               file=sys.stderr)
-    print(unreadable_report("the open pull requests", attempts, "pr-list"), file=sys.stderr)
+    print(unreadable_report("the open pull requests", attempts, "pr-list",
+                            '`gh pr view <n>`, `gh run list --branch <b>`, or the output of the watcher `scripts/pr/settle.py watch` writes'), file=sys.stderr)
     return 2
+
+
+def unread(pr, what):
+    """A pull request this guard learned nothing about, said as a fact about the guard."""
+    return (f"  PR #{pr} — {what} could not be read. {SELF_REPORT} PR #{pr}, and nothing here says "
+            "it is\n    settled. Read it another way and say what you found.")
 
 
 def judge(pr):
     """The reason this PR blocks a Stop, or None when it does not."""
     checks = checks_of(pr)
+    if checks is None:
+        return unread(pr, "its checks")
 
     if not checks:
         # Zero checks is legitimate when nothing the PR touches matches a workflow's path filter —
@@ -102,6 +119,8 @@ def judge(pr):
         # conflicting PR reports DIRTY (or UNKNOWN while GitHub is still computing) and never starts
         # CI at all, which is the shape that went unwatched for seven hours.
         state = merge_state(pr)
+        if state is None:
+            return unread(pr, "its merge state")
         if state == "CLEAN":
             # Ready, and ready is the state that reads as finished. A docs-only or .claude/-only
             # change reports no checks at all and so never reached the merge reminder below, which
@@ -119,6 +138,8 @@ def judge(pr):
         # Nothing is running, so a watcher has nothing to observe and its heartbeat vouches for
         # nothing.
         state = merge_state(pr)
+        if state is None:
+            return unread(pr, "its merge state")
         # A cancelled check is counted here rather than nowhere. In gh's buckets it is neither
         # `pass` nor `fail`, so a run that was cancelled outright used to read as every check
         # having passed.
@@ -132,7 +153,7 @@ def judge(pr):
                     "is waiting on and arm\n    something that brings you back when that arrives.")
         # Every other merge state, rather than the ones seen so far. Listing them made an unlisted
         # state mean "settled", which is how a green DIRTY or DRAFT pull request passed both guards.
-        return (f"  PR #{pr} — checks are settled but the merge state is {state or 'unknown'}, so it "
+        return (f"  PR #{pr} — checks are settled but the merge state is {state or 'unnamed'}, so it "
                 "cannot go green on\n    its own. Rebase it, take it out of draft, or say what it is "
                 "waiting on.")
 

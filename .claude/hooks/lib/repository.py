@@ -68,11 +68,15 @@ def gh(args, cwd=None, timeout=7):
 
 
 # Two ways of asking the same question, drawn in order. `gh pr list` goes through GraphQL and
-# `gh api` through REST; scripts/pr/settle.py owns why the difference matters. Asking both means one
-# exhausted quota no longer decides whether this can be read at all — which is a smaller blast
-# radius, not an answer to what a guard says when neither way works.
+# `gh api` through REST; scripts/pr/settle.py owns why the difference matters.
+#
+# What this buys is the LISTING surviving one exhausted quota, and nothing else a caller reads. A
+# guard that reads the listing here and its subject through GraphQL is one whose listing answers
+# while everything it wanted to say is unread — so it has to block per subject rather than report on
+# one, which stop/unsettled_pr.py does and unreadable_state_check.py's gh-graphql-error mode holds it
+# to. Two ways is a smaller blast radius, not an answer to what a guard says when it cannot read.
 OPEN_PULL_REQUEST_READS = (
-    ["pr", "list", "--state", "open", "--json", "number", "--jq", ".[].number"],
+    ["pr", "list", "--state", "open", "--limit", "100", "--json", "number", "--jq", ".[].number"],
     ["api", "repos/{owner}/{repo}/pulls?state=open&per_page=100", "--jq", ".[].number"],
 )
 
@@ -95,7 +99,7 @@ def open_pull_requests(cwd=None, timeout=OPEN_PULL_REQUEST_TIMEOUT):
         answer = gh_answer(args, cwd, timeout)
         if answer.code == 0:
             return PullRequests(answer.stdout.split(), attempts)
-        attempts.append(("gh " + " ".join(args), answer.code, answer.combined))
+        attempts.append(("gh " + " ".join(args), f"exited {answer.code}\n{answer.combined}"))
     return PullRequests(None, attempts)
 
 
@@ -105,24 +109,34 @@ def open_pull_requests(cwd=None, timeout=OPEN_PULL_REQUEST_TIMEOUT):
 SELF_REPORT = "That is a fact about this guard, not about"
 
 
-def unreadable_report(subject, attempts, key):
-    """What a Stop guard prints when no way of asking could answer.
+def unreadable_report(subject, attempts, key, another_way):
+    """What a Stop guard prints when a reading it needed did not answer.
+
+    `another_way` is the caller's, not this module's: the remedy for an unread pull request is not
+    the remedy for an unread issue list, and one report written with the first in mind told a caller
+    with the second to run `gh pr view`. So is the count — one failed call is not "every way of
+    asking failed", and a report that says so about a single call is wrong about its own evidence.
 
     The deferral it invites asks about the work rather than about the reading: a deferral naming the
     reading expires, is rewritten identically, and leaves on the record a reason nothing was waiting
     on.
+
+    Both outcomes a Stop guard can have exit 2 — the guards' own docstrings own what that means, and
+    there is no second blocking code to spend — so the whole of the distinction is this text.
     """
-    asked = "\n\n".join(f"  {call} exited {code}\n{output}" for call, code, output in attempts)
+    asked = "\n\n".join(f"  {call}\n{detail}" for call, detail in attempts)
+    header = "Every way of asking failed:" if len(attempts) > 1 else "What was asked, and what came back:"
     return f"""Do not stop: this guard could not read {subject}.
 
-{SELF_REPORT} {subject}. Nothing below says they are settled and nothing below says they are not.
-Every way of asking failed:
+{SELF_REPORT} {subject}. What follows is what was asked and what came back, and nothing more — no
+part of it is a finding about {subject}.
+
+{header}
 
 {asked}
 
-Establish it another way and say what you found: `gh pr view <n>`, `gh run list --branch <b>`, or the
-output of the watcher `scripts/pr/settle.py watch` writes. A reading that failed is not a subject
-that is clear.
+Establish it another way and say what you found: {another_way}. A reading that failed is not a
+subject that is clear.
 
 If the pause is deliberate, arm the deferral for what the WORK is waiting on. The failure above is
 not that, and naming it there is how a deferral comes to record something nothing was waiting on:

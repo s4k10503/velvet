@@ -43,6 +43,11 @@ from repository import open_pull_requests, unreadable_report  # noqa: E402
 
 UNREADABLE_POLICY = "refuse"
 
+# An open pull request is this guard's whole answer — it hands the stall to unsettled_pr.py rather
+# than reporting one twice — so a listing that answered ends the question here whatever fails after
+# it. Nothing past that point is read, so nothing past it is being reported unread.
+UNREADABLE_ALLOWS = ("gh-graphql-error",)
+
 EXCLUDING_LABELS = {"blocked", "needs-decision"}
 
 
@@ -55,7 +60,16 @@ def gh(args):
     return result.stdout.strip(), (result.stdout + result.stderr).strip(), result.returncode
 
 
-def unreachable(subject, attempts):
+# Each subject's own remedy: the guard reads two, and one report told a reader with an unread issue
+# list to run `gh pr view`.
+PULL_REQUESTS_ANOTHER_WAY = ("`gh pr view <n>`, `gh run list --branch <b>`, or the output of the "
+                             "watcher `scripts/pr/settle.py watch` writes")
+
+BACKLOG_ANOTHER_WAY = ("`gh issue list --assignee @me` from another shell, or the issue list on "
+                       "github.com")
+
+
+def unreachable(subject, attempts, another_way):
     """A gh that cannot answer is not an empty answer.
 
     Every one of these used to take `|| exit 0` with stderr discarded, so an unauthenticated,
@@ -63,7 +77,7 @@ def unreachable(subject, attempts):
     what puts the difference in front of the reader; `lib/repository.py` owns the shape the refusal
     takes and why it is a statement about this guard rather than about the backlog.
     """
-    print(unreadable_report(subject, attempts, "backlog"), file=sys.stderr)
+    print(unreadable_report(subject, attempts, "backlog", another_way), file=sys.stderr)
     return 2
 
 
@@ -87,20 +101,24 @@ def main():
 
     reading = open_pull_requests()
     if reading.numbers is None:
-        return unreachable("the open pull requests", reading.attempts)
+        return unreachable("the open pull requests", reading.attempts,
+                           PULL_REQUESTS_ANOTHER_WAY)
     if reading.numbers:
         return 0
 
     me, combined, code = gh(["api", "user", "--jq", ".login"])
     if code != 0:
-        return unreachable("the backlog", [("gh api user", code, combined)])
+        return unreachable("the backlog", [("gh api user", f"exited {code}\n{combined}")],
+                           BACKLOG_ANOTHER_WAY)
     if not me:
-        return unreachable("the backlog", [("gh api user", 0, "  it named no login")])
+        return unreachable("the backlog", [("gh api user", "answered, and named no login")],
+                           BACKLOG_ANOTHER_WAY)
 
     raw, combined, code = gh(["issue", "list", "--state", "open", "--assignee", me,
                               "--json", "number,title,labels"])
     if code != 0:
-        return unreachable("the backlog", [("gh issue list", code, combined)])
+        return unreachable("the backlog", [("gh issue list", f"exited {code}\n{combined}")],
+                           BACKLOG_ANOTHER_WAY)
     try:
         issues = json.loads(raw or "[]")
     except ValueError:

@@ -89,8 +89,31 @@ TERMINAL_PASS = frozenset({"pass", "skipping"})
 TERMINAL_FAIL = frozenset({"fail", "cancel"})
 
 
+# Every call below can hang rather than fail — a dead TCP connection, a credential helper waiting on
+# a terminal that is gone. `watch` holds the watcher lock while it polls, so an unbounded call there
+# stops the only watcher there can be, and `hold_the_watch` then refuses the replacement.
+GH_TIMEOUT = 60
+GIT_TIMEOUT = 300
+
+
+def run(command, timeout):
+    """subprocess.run with a bound, reporting a timeout as the failure every caller here catches."""
+    try:
+        return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("{} did not answer within {}s".format(" ".join(command[:3]), timeout))
+
+
+def run_quietly(command, timeout):
+    """The same bound for a call whose failure is reported rather than raised."""
+    try:
+        return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(command, 1, "", f"did not answer within {timeout}s")
+
+
 def gh(*args):
-    result = subprocess.run(["gh", *args], capture_output=True, text=True)
+    result = run(["gh", *args], GH_TIMEOUT)
     if result.returncode != 0:
         raise RuntimeError("gh {} failed: {}".format(" ".join(args), result.stderr.strip()))
     return result.stdout
@@ -112,8 +135,8 @@ def repository(project):
     repository the git readings do.
     """
     if project not in _REPOSITORY:
-        result = subprocess.run(["git", "-C", str(project), "config", "--get", "remote.origin.url"],
-                                capture_output=True, text=True)
+        result = run(["git", "-C", str(project), "config", "--get", "remote.origin.url"],
+                     GIT_TIMEOUT)
         url = result.stdout.strip()
         if result.returncode != 0 or not url:
             raise RuntimeError(f"{project} has no origin remote, so there is no repository to ask about")
@@ -167,13 +190,21 @@ def head_sha(project, number):
 
 # Everything the decision reads off the pull request itself. `mergeable_state` is on this payload and
 # not on the listing one, so a caller that wants it has to ask per pull request anyway.
-PullRequest = collections.namedtuple("PullRequest", "sha branch draft merge_state")
+PullRequest = collections.namedtuple("PullRequest", "sha branch draft merge_state fork")
 
 
 def pull_request(project, number):
+    """The pull request's own fields, in one request.
+
+    `fork` is what stops `branch` being handed to git: a cross-repository head names a branch on the
+    fork, `origin/<it>` is not a ref here, and `contains_base` exits 128 on the lookup. A head whose
+    repository is gone reads as a fork too, which is the same answer — this checkout cannot see it.
+    """
     payload = rest_json("repos/{}/pulls/{}".format(repository(project), number))
-    return PullRequest(payload["head"]["sha"], payload["head"]["ref"],
-                       bool(payload.get("draft")), payload.get("mergeable_state") or "")
+    head = payload.get("head") or {}
+    home = ((head.get("repo") or {}).get("full_name") or "")
+    return PullRequest(head["sha"], head["ref"], bool(payload.get("draft")),
+                       payload.get("mergeable_state") or "", home != repository(project))
 
 
 # The bucket names this script decides from. A conclusion absent from the table falls to `fail` at
@@ -241,7 +272,7 @@ def worktree_branches(project):
 
 
 def gh_git(project, *args):
-    result = subprocess.run(["git", "-C", str(project), *args], capture_output=True, text=True)
+    result = run(["git", "-C", str(project), *args], GIT_TIMEOUT)
     if result.returncode != 0:
         raise RuntimeError("git {} failed: {}".format(" ".join(args), result.stderr.strip()))
     return result.stdout
@@ -252,7 +283,8 @@ def contains_base(project, branch, base):
 
     Asked of the remote refs rather than of local ones, because a local base can be behind what the
     merge will actually happen against and would report a stale answer as a clean one. Both refs have
-    to have been fetched first — `project_state` is where that happens for every caller here.
+    to have been fetched first: `project_state` does it for the readings `blocking_reasons` takes,
+    and `update` fetches for itself.
     """
     merge_base = gh_git(project, "merge-base", f"origin/{base}", f"origin/{branch}").strip()
     base_head = gh_git(project, "rev-parse", f"origin/{base}").strip()
@@ -260,7 +292,7 @@ def contains_base(project, branch, base):
 
 
 def reasons_from(before, after, results, branch, base, holds_base, held_by_worktree,
-                 unpublished_release, draft, merge_state):
+                 unpublished_release, draft, merge_state, fork):
     """Every reason not to merge, decided from plain data so the decision is testable without a network.
 
     `unpublished_release` takes no default on purpose: a caller that stops supplying it would otherwise
@@ -297,7 +329,12 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
     if failed:
         reasons.append("failing at {}: {}".format(after[:7], ", ".join(sorted(failed))))
 
-    if not holds_base:
+    if fork:
+        # Ahead of the containment reason rather than beside it: `holds_base` was never computed for
+        # a fork, so reporting it would be reporting a default as a reading.
+        reasons.append(f"its head is on another repository: this settles branches on origin, so "
+                       f"nothing here read whether it contains origin/{base}")
+    elif not holds_base:
         reasons.append(f"does not contain origin/{base}: merge it in and let the checks run again")
 
     if held_by_worktree:
@@ -331,11 +368,13 @@ def blocking_reasons(project, number, base, state=None):
     results = checks(project, before.sha)
     after = head_sha(project, number)
     return Blocking(reasons_from(before.sha, after, results, before.branch, base,
-                                 holds_base=contains_base(project, before.branch, base),
+                                 holds_base=(not before.fork
+                                             and contains_base(project, before.branch, base)),
                                  held_by_worktree=before.branch in state.held,
                                  unpublished_release=state.unpublished_release,
                                  draft=before.draft,
-                                 merge_state=before.merge_state),
+                                 merge_state=before.merge_state,
+                                 fork=before.fork),
                     after, before.branch, results)
 
 
@@ -358,10 +397,12 @@ def write_ready_state(ready, since):
 def hold_the_watch():
     """(the open lock, the pid holding it). No lock means another watcher already has it.
 
-    flock rather than a pidfile: the kernel drops it when the holder exits, so a killed watcher
-    leaves a file behind but no lock, and the next one takes it without anything having to decide
-    whether a recorded pid is stale. The handle is returned rather than dropped — the lock lives
-    with the open file description, so keeping it open is the whole of holding it.
+    flock rather than a pidfile: the kernel drops it when the holder exits, so the LOCK is never
+    stale and the next watcher takes it without reading anything to decide that. The pid written
+    here is read only to name a holder in a refusal. A pid judgement still happens, one file over —
+    `watcher_state.beating_elsewhere` makes it about the heartbeat, which is a different question.
+    The handle is returned rather than dropped: the lock lives with the open file description, so
+    keeping it open is the whole of holding it.
     """
     handle = open(watcher_state.LOCK, "a+", encoding="utf-8")
     try:
@@ -384,8 +425,10 @@ def watch(project, base):
     if lock is None:
         print(f"Refusing to watch: process {holder or 'unknown'} already holds "
               f"{watcher_state.LOCK}. A second watcher polls the same API on its own cycle against "
-              f"the same quota, and writes the same heartbeat, so neither says which one is alive.",
-              file=sys.stderr)
+              f"the same quota, and writes the same heartbeat, so neither says which one is alive.\n"
+              f"\nIf that process is wedged rather than watching — every guard reading the heartbeat "
+              f"says nothing is watching while this refuses to replace it — kill it and run this "
+              f"again:\n\n  kill {holder or '<pid>'}\n", file=sys.stderr)
         return 1
     # After the lock and not before: "writing the heartbeat without holding the lock" is only a
     # reading anyone can take while this process is the one holding it.
@@ -413,6 +456,10 @@ def watch(project, base):
 
         ready = set()
         for number in pull_requests:
+            # Written again per pull request, not once per cycle: a poll over several of them takes
+            # longer than the window a reader believes a heartbeat for, and a watcher that is working
+            # must not read as one that stopped.
+            watcher_state.HEARTBEAT.write_text(watcher_state.beat(os.getpid()))
             try:
                 blocking = blocking_reasons(project, number, base, state)
             except RuntimeError as error:
@@ -490,10 +537,9 @@ def update(project, number, base):
             return 1
         gh_git(work, "push", "origin", f"HEAD:{branch}")
     finally:
-        subprocess.run(["git", "-C", str(project), "worktree", "remove", str(work), "--force"],
-                       capture_output=True, text=True)
-        subprocess.run(["git", "-C", str(project), "branch", "-D", temp_branch],
-                       capture_output=True, text=True)
+        run_quietly(["git", "-C", str(project), "worktree", "remove", str(work), "--force"],
+                    GIT_TIMEOUT)
+        run_quietly(["git", "-C", str(project), "branch", "-D", temp_branch], GIT_TIMEOUT)
         shutil.rmtree(scratch, ignore_errors=True)
     print(f"PR#{number}: {base} merged into {branch} and pushed; its checks run again")
     return 0
@@ -555,11 +601,10 @@ def delete_merged_branch(project, branch):
     an exit code saying otherwise sends the reader to merge it again.
     """
     failures = []
-    present = subprocess.run(["git", "-C", str(project), "rev-parse", "--verify", "--quiet",
-                              f"refs/heads/{branch}"], capture_output=True, text=True)
+    present = run_quietly(["git", "-C", str(project), "rev-parse", "--verify", "--quiet",
+                           f"refs/heads/{branch}"], GIT_TIMEOUT)
     if present.returncode == 0:
-        deleted = subprocess.run(["git", "-C", str(project), "branch", "-D", branch],
-                                 capture_output=True, text=True)
+        deleted = run_quietly(["git", "-C", str(project), "branch", "-D", branch], GIT_TIMEOUT)
         if deleted.returncode != 0:
             failures.append(f"the local branch {branch} survived: {deleted.stderr.strip()}")
 
@@ -571,8 +616,8 @@ def delete_merged_branch(project, branch):
 
 def delete_remote_ref(project, branch):
     """Deletes the branch on the remote, and answers with what stderr said when it did not."""
-    removed = subprocess.run(["gh", "api", "-X", "DELETE", "repos/{}/git/refs/heads/{}".format(
-        repository(project), branch)], capture_output=True, text=True)
+    removed = run_quietly(["gh", "api", "-X", "DELETE", "repos/{}/git/refs/heads/{}".format(
+        repository(project), branch)], GH_TIMEOUT)
     if removed.returncode == 0 or reference_already_gone(removed.stderr):
         return ""
     return removed.stderr.strip()

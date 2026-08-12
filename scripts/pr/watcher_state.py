@@ -8,7 +8,8 @@ places and read back in two, under two different comments for the same 180 secon
 A heartbeat names the process that wrote it. Nothing stopped several watchers running at once, each
 on its own poll cycle against one shared API quota and all writing this one file, so a fresh stamp
 meant that one of them was alive and said nothing about which. `settle.py`'s `hold_the_watch` is what
-stops the several; the pid here is what lets a reader check the claim rather than take it.
+stops the several; the pid here is what lets a reader ask whether the process that wrote the stamp
+still exists. That is all it establishes — `running` answers about a process id, not about a watcher.
 """
 
 import os
