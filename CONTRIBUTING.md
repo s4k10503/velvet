@@ -202,13 +202,14 @@ Everything above asks what a run measured. `scripts/test_quality/assert_results_
 asks the prior question — whether the results are this checkout's reading at all. A results file is
 written where the caller points rather than by the run that later reads it, so a run that aborts
 leaves the previous one there to be read; the guard refuses a results file no log in the run names,
-a log carrying a compiler diagnostic, and a fixture reported under this checkout's own assemblies
+a log carrying any diagnostic at error severity, and a fixture reported under this checkout's own assemblies
 that no source here declares — that last one holding whatever the log says. Every reading it cannot
 take is a refusal too, since a guard exiting 0 unread looks exactly like one that checked.
 
 Each Unity job in CI runs it after the suite, and CLAUDE.md's headless recipe runs it beside
 `assert_no_inconclusive.py`. `scripts/test_quality/test_assert_results_from_this_tree.py` holds it,
-and its type reader against every fixture in this repository, in `Test ▸ test-quality`.
+and its type reader against every fixture this repository's case reader finds, in
+`Test ▸ test-quality`.
 
 ### Repository scripts
 

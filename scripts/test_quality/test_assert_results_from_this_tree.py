@@ -78,7 +78,7 @@ class Workspace:
     """A project the guard can be pointed at: a git worktree, an asmdef, a source, a package cache."""
 
     def __init__(self, sources=None, assemblies=("Velvet.Tests.Probe.Editor",),
-                 packages=("Unity.Package.Tests",), library=True):
+                 packages=("Unity.Package.Tests",), library=True, csharp=True):
         self.root = Path(tempfile.mkdtemp(prefix="velvet-provenance-"))
         self.project = self.root / "project"
         (self.project / "Runtime").mkdir(parents=True)
@@ -88,8 +88,9 @@ class Workspace:
         for name in assemblies:
             (self.project / "Runtime" / (name + ".asmdef")).write_text(
                 json.dumps({"name": name}), encoding="utf-8")
-        (self.project / "Runtime" / "ProbeTests.cs").write_text(
-            FIXTURE_SOURCE if sources is None else sources, encoding="utf-8")
+        if csharp:
+            (self.project / "Runtime" / "ProbeTests.cs").write_text(
+                FIXTURE_SOURCE if sources is None else sources, encoding="utf-8")
 
         if library:
             for name in packages:
@@ -245,11 +246,24 @@ class LogTests(unittest.TestCase):
             # Assert
             self.assertEqual(code, 0)
 
-    def test_Given_ALogSayingErrorCSWithNoDiagnosticCode_When_TheRunIsRead_Then_ItIsNotRefused(self):
-        # Arrange -- a test's own expected-log message reaches the editor log, and refusing on the
-        # words alone would fail a run for what one of its cases printed on purpose.
+    def test_Given_ALogCarryingAnAnalyzerDiagnosticAtErrorSeverity_When_TheRunIsRead_Then_ItIsRefused(self):
+        # Arrange -- the analyzers under Generators~ declare VEL500, VEL501 and VEL502 as errors, and
+        # one of those fails the compile with no CS code in the log to find it by.
         with workspace() as tree:
-            tree.wrote(log="Saving results to: {}\nexpected message: no error CS here\n"
+            tree.wrote(log="Saving results to: {}\nV.cs(9,5): error VEL501: Member 'R' makes 21 "
+                           "branching decisions; the limit is 20\n".format(tree.results))
+
+            # Act
+            code, said = tree.verdict()
+
+            # Assert
+            self.assertEqual((code, "VEL501" in said), (1, True))
+
+    def test_Given_ALogWhoseOwnOutputSaysErrorWithoutTheSeparator_When_TheRunIsRead_Then_ItIsNotRefused(self):
+        # Arrange -- a case's expected-log message reaches the editor log, so a pattern reading the
+        # bare word would fail a run for what one of its own cases printed on purpose.
+        with workspace() as tree:
+            tree.wrote(log="Saving results to: {}\n[Velvet] mount error: the target was null\n"
                            .format(tree.results))
 
             # Act
@@ -288,6 +302,19 @@ class LogTests(unittest.TestCase):
             self.assertEqual(code, 0)
 
 
+    def test_Given_NoResultsFileAndADiagnosticInTheLog_When_TheRunIsRead_Then_TheDiagnosticIsWhatItSays(self):
+        # Arrange -- what an aborted CI job leaves: an artifacts directory holding the log alone.
+        with workspace() as tree:
+            tree.wrote(log="V.cs(9,5): error VEL500: Member 'R' nests 5 levels deep\n")
+            tree.results.unlink()
+
+            # Act
+            code, said = tree.verdict(str(tree.run_directory), "--project", str(tree.project))
+
+            # Assert
+            self.assertEqual((code, "VEL500" in said), (1, True))
+
+
 class UnreadableTests(unittest.TestCase):
     """Every reading the guard cannot take is a refusal, since exiting 0 unread looks like a pass."""
 
@@ -312,6 +339,55 @@ class UnreadableTests(unittest.TestCase):
 
             # Assert
             self.assertEqual(code, 2)
+
+    def test_Given_AnAssemblyNeitherThisTreeNorAPackageNames_When_ItIsAllThatRan_Then_TheReadingIsRefused(self):
+        # Arrange -- a test asmdef renamed here, reported out of a Library seeded before the rename.
+        # Its fixture is one this tree does declare, so only the floor can catch it.
+        with workspace() as tree:
+            tree.wrote([("Velvet.Tests.Renamed.Editor", ["Velvet.Tests.ProbeTests"])])
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 2)
+
+    def test_Given_NoAssemblyDefinitionHere_When_TheRunIsRead_Then_TheRefusalNamesIt(self):
+        # Arrange -- with none, no assembly is this worktree's, and the floor below refuses the same
+        # reading for a different reason, so only the wording separates a project holding no asmdef
+        # from a run that loaded none of them.
+        with workspace(assemblies=()) as tree:
+            tree.wrote()
+
+            # Act
+            code, said = tree.verdict()
+
+            # Assert
+            self.assertEqual((code, "no assembly definition here" in said), (2, True))
+
+    def test_Given_NoCSharpSourceHere_When_TheRunIsRead_Then_TheReadingIsRefused(self):
+        # Arrange -- an empty set of declared types makes every reported fixture foreign, which would
+        # refuse for the wrong reason and name every fixture in the run doing it.
+        with workspace(csharp=False) as tree:
+            tree.wrote()
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 2)
+
+    def test_Given_AnXmlThatIsNoTestRun_When_ItIsAllThatWasNamed_Then_TheRefusalNamesIt(self):
+        # Arrange -- a coverage report has no test-case in it. The floor below refuses this reading
+        # too, for want of an assembly, so only the wording says the file was never a run at all.
+        with workspace() as tree:
+            tree.wrote(results='<?xml version="1.0"?><coverage />')
+
+            # Act
+            code, said = tree.verdict()
+
+            # Assert
+            self.assertEqual((code, "no test run among" in said), (2, True))
 
     def test_Given_ResultsNamingNoAssemblyOfThisTree_When_TheRunIsRead_Then_TheReadingIsRefused(self):
         # Arrange -- a run where this project's assemblies never loaded measured nothing of it, and
@@ -363,11 +439,39 @@ class UnreadableTests(unittest.TestCase):
             self.assertEqual((code, "git could not list" in said), (2, True))
 
 
+class TypeReadingTests(unittest.TestCase):
+    def test_Given_TwoBlockNamespaces_When_TheTypeInsideIsRead_Then_BothQualifyIt(self):
+        # Arrange -- the name NUnit reports for such a type carries both, and a reader holding only
+        # the last one it saw names it one level short and refuses a fixture that is right here.
+        text = "namespace A\n{\n    namespace B\n    {\n        class C { }\n    }\n}\n"
+
+        # Act
+        names = check.declared_types(text)
+
+        # Assert
+        self.assertEqual(sorted(names), ["A.B.C"])
+
+    def test_Given_AFileScopedNamespace_When_ATypeBelowItIsRead_Then_ItStillQualifiesIt(self):
+        # Arrange -- it opens no body, so a reader dropping a scope on depth alone loses it at the
+        # first closing brace in the file.
+        text = "namespace Velvet.Tests;\n\nclass D\n{\n    class E { }\n}\n\nclass F { }\n"
+
+        # Act
+        names = check.declared_types(text)
+
+        # Assert
+        self.assertEqual(sorted(names),
+                         ["Velvet.Tests.D", "Velvet.Tests.D.E", "Velvet.Tests.F"])
+
+
 class RepositoryTests(unittest.TestCase):
     """The type reader against this repository's own fixtures, rather than against invented ones."""
 
     def test_Given_EveryFixtureThisRepositoryDeclares_When_TheTypesAreRead_Then_EachIsNamed(self):
-        # Arrange -- a fixture a run reports and this reader cannot name is a refusal of a good run.
+        # Arrange -- the two readers share base_red_check.py's masking and brace profile, so this
+        # holds them to naming the same fixtures and cannot see a defect below that line. What reads
+        # the names NUnit itself reports is the guard running over each suite's real results, which
+        # both Unity jobs do wherever a licence is configured.
         names = subprocess.run(["git", "-C", str(REPO_ROOT), "ls-files"],
                                capture_output=True, text=True, check=True).stdout.splitlines()
         declared = set()

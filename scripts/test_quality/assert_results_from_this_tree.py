@@ -3,16 +3,16 @@
 
 A results file is written where the caller points, and nothing ties it to the run that reads it.
 Measured on a worktree seeded with another checkout's `Library`, with that checkout's extra
-fixture deleted here and a compile error introduced: Unity printed "Aborting batchmode due to
-failure: Scripts have compiler errors", exited 1 and wrote no results, and the file already at that
-path went on reporting one passing case named for a fixture no source in the tree declares -- under
-a -testFilter naming something else, which is what makes it read as a result rather than as a
-failure to run. Unity's exit code is the caller's to notice, and nobody was reading it.
+fixture deleted here and a compile error introduced: Unity exited 1 and wrote no results, leaving
+"Scripts have compiler errors" in the log, and the file already at that path went on reporting one
+passing case named for a fixture no source in the tree declares -- under a -testFilter naming
+something else, which is what makes it read as a result rather than as a failure to run. Unity's
+exit code is the caller's to notice, and nobody was reading it.
 
 Three readings, and the run has to survive all of them:
 
   - the log names the results file, which is how a run says the file is its own;
-  - the log carries no compile error;
+  - the log carries no diagnostic at error severity, whoever raised it;
   - every fixture reported under an assembly this worktree declares is a type some source here
     declares.
 
@@ -36,9 +36,11 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# The code is part of the pattern so that a case printing "error CS" on purpose, into a log the
-# editor also carries, does not refuse the run that printed it.
-COMPILE_ERROR = re.compile(r"\berror CS\d+\b")
+# Not the CS ID space: the analyzers under Generators~ declare VEL500, VEL501 and VEL502 at error
+# severity, and one of those fails the compile with no CS code in the log anywhere -- measured twice
+# on this machine, both times a run that wrote no results. Matched on the separator the diagnostic
+# line carries rather than on a list of ID prefixes, which would be one more mirror to keep.
+COMPILE_ERROR = re.compile(r": error ")
 
 SAVED_RESULTS = re.compile(r"^Saving results to: (.+?)\s*$", re.MULTILINE)
 
@@ -121,34 +123,57 @@ def resolved_assemblies(project):
     return {assembly_name(path) for path in library.rglob("*.asmdef")}
 
 
-def declared_types(text):
-    """Every type a C# source declares, fully qualified, an enclosing type joined on with a dot.
+def _unwind(stack, entering):
+    """Drops every scope whose body opened and whose depth has come back."""
+    while stack and stack[-1][2] and entering <= stack[-1][1]:
+        stack.pop()
 
-    Same stack discipline as base_red_check.py's case reader, which owns why a type leaves the stack
-    on the depth its body opened at.
+
+def _opened(stack, entering, peak, leaving):
+    """Marks the innermost scope as having a body, and drops it when that body also closed here."""
+    if stack and not stack[-1][2] and peak > stack[-1][1]:
+        stack[-1][2] = True
+        if leaving <= stack[-1][1]:
+            stack.pop()
+
+
+def declared_types(text):
+    """Every type a C# source declares, fully qualified, an enclosing scope joined on with a dot.
+
+    Same stack discipline as base_red_check.py's case reader, which owns why a scope leaves the
+    stack on the depth its body opened at. Namespaces are on a stack of their own rather than a
+    last-seen name, because two block namespaces nest to the name NUnit reports and a name that
+    reads one level short refuses a fixture that is right here.
     """
     code = _base_red_check.code_lines(text)
     profile = _base_red_check.brace_profile(text)
 
-    namespace = None
+    file_scoped = None
+    namespaces = []
     types = []
     found = set()
     for index, line in enumerate(code):
         entering, peak, leaving = profile[index]
-        while types and types[-1][2] and entering <= types[-1][1]:
-            types.pop()
+        closes_here = peak == entering and line.rstrip().endswith(";")
+        _unwind(types, entering)
+        _unwind(namespaces, entering)
         match = _base_red_check.CSHARP_NAMESPACE.search(line)
         if match:
-            namespace = match.group(1)
+            # A file-scoped namespace is held apart from the stack rather than pushed onto it as a
+            # scope that never opens: the first brace anywhere below would otherwise be read as its
+            # body opening, and the type that brace belongs to would take it back off again.
+            if closes_here:
+                file_scoped = match.group(1)
+            else:
+                namespaces.append([match.group(1), entering, False])
         match = _base_red_check.CSHARP_TYPE.search(line)
-        if match and not (peak == entering and line.rstrip().endswith(";")):
+        if match and not closes_here:
             types.append([match.group(1), entering, False])
-            found.add(".".join([part for part in [namespace] if part]
+            found.add(".".join(([file_scoped] if file_scoped else [])
+                               + [name for name, _, _ in namespaces]
                                + [name for name, _, _ in types]))
-        if types and not types[-1][2] and peak > types[-1][1]:
-            types[-1][2] = True
-            if leaving <= types[-1][1]:
-                types.pop()
+        _opened(namespaces, entering, peak, leaving)
+        _opened(types, entering, peak, leaving)
     return found
 
 
@@ -230,7 +255,7 @@ def fixtures_by_assembly(path):
 # --------------------------------------------------------------------------------------------------
 
 def compile_errors(logs):
-    """Every compiler diagnostic any log carries, as (log, line).
+    """Every error-severity diagnostic any log carries, as (log, line).
 
     Distinct: the reproduction's three diagnostics came back as nine lines, and the repetition
     buries the other two readings under them.
@@ -256,23 +281,38 @@ def unclaimed_results(results, logs):
 
 
 def foreign_fixtures(reported, ours, resolved, types):
-    """Every fixture an assembly of this worktree's reported that no source here declares.
+    """(assemblies of this worktree's that ran, every fixture checked that no source here declares).
 
     An assembly this worktree names is checked even where a package names one too, since of the two
-    answers available for such a name, only checking it can refuse a stranger.
+    answers available for such a name, only checking it can refuse a stranger. One that is neither
+    -- a test asmdef this worktree renamed, reported out of a Library seeded before the rename -- is
+    checked for the same reason and counted for neither, since the floor above asks whether anything
+    of THIS worktree's ran and a stranger answering is the state it exists to catch.
     """
     found = []
-    checked = []
+    ran = []
     for assembly, fixtures in sorted(reported.items()):
         if assembly not in ours and assembly in resolved:
             continue
-        checked.append(assembly)
+        if assembly in ours:
+            ran.append(assembly)
         found.extend((assembly, fixture) for fixture in sorted(fixtures) if fixture not in types)
-    return checked, found
+    return ran, found
 
 
 def refusals(project, results, logs):
     """Every reason the results are not this worktree's reading. Empty means they are."""
+    # First, and returning on its own: a run that did not compile wrote no results, so every reading
+    # below would refuse it for the absence rather than for the cause, and the caller would be told
+    # a file is missing while the diagnostic explaining why sits unread in the log beside it.
+    diagnostics = ["{}: the run did not compile this tree -- {}".format(path, line)
+                   for path, line in compile_errors(logs)]
+    if diagnostics:
+        return diagnostics, 0, []
+
+    if not results:
+        raise Unreadable("no results file, and no diagnostic in the log to say why")
+
     ours = declared_assemblies(project)
     resolved = resolved_assemblies(project)
     types = types_here(project)
@@ -283,28 +323,24 @@ def refusals(project, results, logs):
             ((path, fixtures_by_assembly(path)) for path in results) if reported is not None]
 
     found = []
-    for path, line in compile_errors(logs):
-        found.append("{}: the run did not compile this tree -- {}".format(path, line))
     for path in unclaimed_results([path for path, _ in runs], logs):
         found.append("{}: no log names this file, so it is some earlier run's".format(path))
 
-    checked = []
+    ours_ran = []
     for path, reported in runs:
-        here, foreign = foreign_fixtures(reported, ours, resolved, types)
-        checked.extend(here)
+        ran, foreign = foreign_fixtures(reported, ours, resolved, types)
+        ours_ran.extend(ran)
         for assembly, fixture in foreign:
             found.append("{}: {} reports {}, which no source in this worktree declares".format(
                 path, assembly, fixture))
 
-    # Ahead of the floors, so a run that did not compile is answered with the diagnostic rather than
-    # with a complaint about what failed to load because of it.
     if not found:
         if not runs:
             raise Unreadable("no test run among: {}".format(
                 ", ".join(str(path) for path in results)))
-        if not checked:
+        if not ours_ran:
             raise Unreadable("no assembly of this worktree's ran, so nothing here was measured")
-    return found, len(runs), checked
+    return found, len(runs), ours_ran
 
 
 def main(argv):
@@ -320,21 +356,19 @@ def main(argv):
     try:
         results = named_files(args.results, ".xml")
         logs = named_files(args.log, ".log") + named_files(args.results, ".log")
-        if not results:
-            raise Unreadable("no results file among: {}".format(" ".join(args.results)))
         if not logs:
             raise Unreadable(
                 "no editor log among: {}. A run whose compile nobody read is not a "
                 "result -- pass -logFile and name it with --log.".format(
                     " ".join(args.results + args.log)))
-        found, runs, checked = refusals(Path(args.project), results, logs)
+        found, runs, ours_ran = refusals(Path(args.project), results, logs)
     except Unreadable as error:
         print("cannot take this reading: {}".format(error), file=sys.stderr)
         return 2
 
     if not found:
         print("checked {} test run(s) against {}: {} assembl(ies) of this worktree, {} log(s) "
-              "with no compile error".format(runs, args.project, len(checked), len(logs)))
+              "carrying no error".format(runs, args.project, len(ours_ran), len(logs)))
         return 0
 
     print("these results are not this worktree's reading:", file=sys.stderr)
