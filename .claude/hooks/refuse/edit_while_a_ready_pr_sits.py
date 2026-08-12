@@ -81,10 +81,10 @@ def main():
 
     now = time.time()
     if not alive():
-        # The one branch that can refuse every write on the machine at once, so it is the one branch
-        # that must have a way out other than the command it names. That command can itself refuse:
-        # a watcher wedged mid-poll holds the lock while its heartbeat goes stale, and then starting
-        # a replacement is exactly what `hold_the_watch` declines to do.
+        # Both refusals here hold every editing tool in every session; this is the one that had no
+        # deferral, and the command it names can itself refuse — a watcher wedged mid-poll holds the
+        # lock while its heartbeat goes stale, and starting a replacement is what `hold_the_watch`
+        # declines. So the way out of this branch cannot go through the thing that is stuck.
         held = deferred(WATCHER_KEY, now)
         if held is not None:
             reason, minutes = held

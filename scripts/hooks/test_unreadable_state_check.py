@@ -9,7 +9,8 @@ exit code of 1 that is a legitimate negative answer rather than a failure.
 The Stop guards are held to the same declaration and to one thing more, which is the shape their own
 defect took: blocking is not enough if what the block says is a claim about the subject rather than
 about the reading. The last class runs a guard from the tree rather than a synthetic one, because
-the branch it exercises is the only refusal that can hold every write on the machine at once.
+the branch it exercises refuses every editing tool in every session and, until this branch, offered
+no deferral to get past it.
 
 Run: python3 scripts/hooks/test_unreadable_state_check.py
 """
@@ -421,11 +422,11 @@ class RepositoryTests(unittest.TestCase):
 
 
 class WatcherDeferralTests(unittest.TestCase):
-    """The one refusal that can hold every write on the machine, and the way past it.
+    """A refusal that holds every editing tool in every session, and the way past it.
 
     Its own instruction can refuse: a watcher wedged mid-poll holds the lock while its heartbeat goes
-    stale, and starting a replacement is exactly what the lock declines. A branch that can refuse
-    everything needs an escape that does not go through the thing that is stuck.
+    stale, and starting a replacement is exactly what the lock declines. So the escape cannot go
+    through the thing that is stuck, which is what the deferral below is for.
     """
 
     GUARD = REPO_ROOT / ".claude/hooks/refuse/edit_while_a_ready_pr_sits.py"
