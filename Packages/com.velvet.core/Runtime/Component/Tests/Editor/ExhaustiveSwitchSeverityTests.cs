@@ -31,14 +31,18 @@ namespace Velvet.Tests
         private const string PackageRoot = "Packages/com.velvet.core";
         private const string Severity = "-warnaserror:CS8509";
 
+        // The `\r?` is what keeps a CRLF working tree from matching no directive at all and leaving both
+        // cases green over nothing: .NET's `$` matches before `\n` and not before `\r\n`. `.gitattributes`
+        // pins these sources to LF, so this is belt and braces rather than a state reachable here.
         private static readonly Regex PragmaDirective = new(
-            @"^[ \t]*#pragma\s+warning\s+(?<kind>disable|restore)(?<codes>[^\r\n]*)$",
+            @"^[ \t]*#pragma\s+warning\s+(?<kind>disable|restore)(?<codes>[^\r\n]*)\r?$",
             RegexOptions.Compiled | RegexOptions.Multiline);
 
         // `_` and `var x` are catch-alls outright; two bare identifiers are a type pattern (`StyleVariantKind
-        // other =>`), which is what someone writes to get the offending value in scope. A constant arm carries
-        // a '.' in its single token, so it does not match. Anchored on the arm list's opening brace or a
-        // comma, so it reads patterns rather than anything else an arm's body contains.
+        // other =>`), which is what someone writes to get the offending value in scope. A constant arm is one
+        // token where this needs two, which is what excludes it; the '.' the alternative allows is there so a
+        // qualified type pattern still matches. Anchored on the arm list's opening brace or a comma, so it
+        // reads patterns rather than anything else an arm's body contains.
         private static readonly Regex CatchAllArm = new(
             @"[{,]\s*(_|var\s+[A-Za-z_]\w*|[A-Za-z_][\w.]*\s+[A-Za-z_]\w*)\s*(=>|when\b)",
             RegexOptions.Compiled);
