@@ -4,13 +4,14 @@ namespace Velvet
     // pins. Two vocabularies describe one cascade — an inline layer and a USS class contend for the same
     // storage slot — and only this translation lets StyleClassProjection compare them.
     //
-    // Every row is re-derived by StyleArbitraryLonghandTableTests, which applies each property to a bare
-    // element and fails when a row stops matching the slots that came away written.
-    //
     // The filter family and FilterCustom map to nothing on purpose. Filters COMPOSE rather than override, so
     // "a class already claims filter" is not a reason to drop a layer; and re-resolving a filter property
     // hands the composed list to the transition driver and restarts its tween. Their string-keyed identity
     // (a registered custom-filter name, not an ArbitraryProperty) therefore never has to be modelled at all.
+    //
+    // Both halves are held to what the properties actually write by StyleArbitraryLonghandTableTests, which
+    // probes each one: a mapped row that stops matching fails, and so does a filter row that stops being
+    // empty.
     internal static class StyleArbitraryLonghands
     {
         private static readonly StyleLonghandSet[] s_sets = Build();

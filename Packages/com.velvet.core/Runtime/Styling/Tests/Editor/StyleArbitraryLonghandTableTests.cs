@@ -12,22 +12,26 @@ namespace Velvet.Tests
     /// Pins <see cref="StyleArbitraryLonghands"/> — the map from each <see cref="ArbitraryProperty"/> to the
     /// <see cref="StyleLonghand"/> slots it writes — by re-deriving it rather than restating it: every member
     /// is applied to a bare element through <see cref="StyleArbitraryValueResolver.Apply"/> and the inline
-    /// slots that came away non-<see cref="StyleKeyword.Null"/> are compared against its declared row.
+    /// slots that came away non-<see cref="StyleKeyword.Null"/> are read back beside its declared row.
     /// <see cref="StyleClassProjection"/> reads that map to decide whether an inline arbitrary layer and a
-    /// USS utility class are contending for one slot, so a row that names the wrong slot costs the class its
-    /// win with no diagnostic: with the transform-origin row pointed at another slot,
-    /// <c>origin-[10%_20%] md:origin-top-left</c> keeps painting the bracket pivot, because the layer's slot
-    /// set no longer overlaps what the class claims and no floor is recorded.
+    /// USS utility class are contending for one slot. What a wrong row costs a user is stated on the one
+    /// case that covered a row before this fixture, in <see cref="VariantClassProjectionPanelTests"/>.
     /// </summary>
     /// <remarks>
     /// Panel-free by design, like <see cref="MotionPropertyChannelTests"/>: every reading is of the INLINE
     /// style the resolver writes, which needs no layout pass, no stylesheet and no panel. The composed-filter
-    /// family is held out of the map on purpose and gets its own case below rather than a silent skip. GWT,
-    /// one assert per case.
+    /// family is held out of the map on purpose and gets its own case below rather than a silent skip — its
+    /// rows are the inverse claim, failing when one is filled IN.
     /// </remarks>
     [TestFixture]
     internal sealed class StyleArbitraryLonghandTableTests
     {
+        // The members whose row is compared to their probe directly — everything the composed-filter family
+        // does not hold out. A literal rather than the complement of the family, so a family that swallowed
+        // a mapped member cannot shrink both sides of the comparison together. Updated deliberately when an
+        // ArbitraryProperty is added.
+        private const int MappedPropertyCount = 60;
+
         private readonly List<UnityEngine.Object> _spawned = new();
 
         [TearDown]
@@ -50,12 +54,11 @@ namespace Velvet.Tests
         {
             // Arrange
             var family = ComposedFilterFamily();
-            var properties = Enum.GetValues(typeof(ArbitraryProperty)).Cast<ArbitraryProperty>().ToList();
 
             // Act
             var compared = 0;
             var disagreements = new List<string>();
-            foreach (var property in properties)
+            foreach (ArbitraryProperty property in Enum.GetValues(typeof(ArbitraryProperty)))
             {
                 if (family.Contains(property))
                 {
@@ -74,7 +77,7 @@ namespace Velvet.Tests
             // leave this green with nothing derived. The disagreements are joined into the message for the
             // reason MotionPropertyChannelTests joins its own.
             Assert.That((compared, string.Join("; ", disagreements)),
-                Is.EqualTo((properties.Count - family.Count, string.Empty)));
+                Is.EqualTo((MappedPropertyCount, string.Empty)));
         }
 
         // GREEN_ON_BASE(characterization): the family is already held out on purpose; the case pins that
@@ -99,25 +102,52 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert
-            Assert.That((family.Count > 0, string.Join("; ", offenders)), Is.EqualTo((true, string.Empty)));
+            // Assert — the family's size is the enum's less the mapped count, so a family that gained or lost
+            // a member fails here rather than quietly changing which members the case above compares.
+            Assert.That((family.Count, string.Join("; ", offenders)),
+                Is.EqualTo((Enum.GetValues(typeof(ArbitraryProperty)).Length - MappedPropertyCount,
+                    string.Empty)));
         }
 
-        // GREEN_ON_BASE(characterization): the reading instrument the two cases above depend on already
-        // covers the whole vocabulary; the case keeps a later gap from reading as agreement.
+        // GREEN_ON_BASE(characterization): the vocabulary already reaches every inline slot one-to-one; the
+        // case keeps a later gap or a mis-aimed accessor from reading as agreement.
         [Test]
-        public void Given_TheLonghandVocabulary_When_EachMemberIsMappedToItsInlineSlot_Then_EveryOneResolves()
+        public void Given_EveryInlineStyleSlot_When_ReachedThroughTheLonghandVocabulary_Then_ExactlyOneLonghandReachesEach()
         {
-            // Arrange / Act
+            // Arrange — the probe sees a write only through this mapping, so a slot no longhand reaches is one
+            // a property could write unobserved, and two longhands reaching one slot means at least one of
+            // them is aimed at the wrong accessor. Deprecated slots are held out of the reach requirement:
+            // the vocabulary derives from the bundled stylesheets and does not carry them.
+            var reached = new Dictionary<string, List<string>>();
+            foreach (var slot in s_inlineSlots)
+            {
+                var name = slot.Value.Accessor.Name;
+                if (!reached.TryGetValue(name, out var owners))
+                {
+                    reached[name] = owners = new List<string>();
+                }
+                owners.Add(slot.Key.ToString());
+            }
+
+            // Act
             var unresolved = Enum.GetValues(typeof(StyleLonghand)).Cast<StyleLonghand>()
                 .Where(longhand => !s_inlineSlots.ContainsKey(longhand))
                 .Select(longhand => longhand.ToString())
                 .ToList();
+            var shared = reached.Where(entry => entry.Value.Count > 1)
+                .Select(entry => $"{entry.Key} <- {string.Join("+", entry.Value)}")
+                .ToList();
+            var unreached = typeof(IStyle).GetProperties()
+                .Where(property => IsStyleSlot(property)
+                    && property.GetCustomAttribute<ObsoleteAttribute>() == null
+                    && !reached.ContainsKey(property.Name))
+                .Select(property => property.Name)
+                .ToList();
 
-            // Assert — an empty vocabulary would likewise report nothing unresolved, so the population the
-            // mapping did reach is part of the claim.
-            Assert.That((s_inlineSlots.Count > 0, string.Join(",", unresolved)),
-                Is.EqualTo((true, string.Empty)));
+            // Assert — an empty vocabulary leaves every slot unreached and an empty IStyle leaves every
+            // longhand unresolved, so neither side can go vacuous without the other reporting it.
+            Assert.That((string.Join(",", unresolved), string.Join(",", shared), string.Join(",", unreached)),
+                Is.EqualTo((string.Empty, string.Empty, string.Empty)));
         }
 
         // The members routed to the composed filter applier, taken from the resolver's own membership set so
@@ -183,22 +213,24 @@ namespace Velvet.Tests
             s_inlineSlots = BuildInlineSlots();
 
         // A longhand missing from this map would make every property that writes it read as writing nothing,
-        // and a row naming neither would then agree with the probe; the vocabulary case above is what fails
-        // when one stops resolving.
+        // and a row naming neither would then agree with the probe; the slot-reach case above is what fails
+        // when one stops resolving or lands on another longhand's accessor.
         private static Dictionary<StyleLonghand, (PropertyInfo, PropertyInfo)> BuildInlineSlots()
         {
             var slots = new Dictionary<StyleLonghand, (PropertyInfo, PropertyInfo)>();
             foreach (StyleLonghand longhand in Enum.GetValues(typeof(StyleLonghand)))
             {
                 var accessor = typeof(IStyle).GetProperty(AccessorName(longhand));
-                var keyword = accessor?.PropertyType.GetProperty("keyword");
-                if (accessor != null && keyword != null)
+                if (accessor != null && IsStyleSlot(accessor))
                 {
-                    slots[longhand] = (accessor, keyword);
+                    slots[longhand] = (accessor, accessor.PropertyType.GetProperty("keyword"));
                 }
             }
             return slots;
         }
+
+        private static bool IsStyleSlot(PropertyInfo property) =>
+            property.PropertyType.GetProperty("keyword")?.PropertyType == typeof(StyleKeyword);
 
         private static string AccessorName(StyleLonghand longhand)
         {
