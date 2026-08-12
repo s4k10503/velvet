@@ -176,14 +176,16 @@ class MergeDecisionTests(unittest.TestCase):
             "its head is on another repository: this settles branches on origin, so nothing here "
             "read whether it contains origin/main"])
 
-    def test_Given_TheTwoMergeStatesThatDiffer_When_Decided_Then_OnlyTheConflictingOneBlocks(self):
-        # Arrange — `unknown` is the absence of a reading rather than a reason, and a reason that
-        # comes and goes would keep resetting the age write_ready_state carries. Asked beside `dirty`
-        # so deleting the predicate outright cannot satisfy the half about `unknown`.
-        decided = (reasons(merge_state="unknown"), len(reasons(merge_state="dirty")))
+    def test_Given_TheTwoMergeStatesThatDiffer_When_Decided_Then_TheyBlockAlikeAndSayDifferently(self):
+        # Arrange — a conflicting branch cannot contain the base, so both states are posed with the
+        # containment reading that really accompanies them. That reading is what blocks either way,
+        # which is the point: `dirty` changes no verdict, it adds the reason that names the conflict,
+        # and `unknown` is left out because there is nothing for it to add.
+        counted = (len(reasons(merge_state="unknown", holds_base=False)),
+                   len(reasons(merge_state="dirty", holds_base=False)))
 
         # Act / Assert
-        self.assertEqual(decided, ([], 1))
+        self.assertEqual(counted, (1, 2))
 
 
 # One pull request's whole state, so `watch` and `merge` can be posed the same table.
