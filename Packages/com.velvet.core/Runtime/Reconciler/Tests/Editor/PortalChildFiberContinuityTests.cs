@@ -666,6 +666,68 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, true, (object?)placeholder, (object?)null)));
         }
 
+        private static StateUpdater<string> s_setResidueMark;
+        private static StateUpdater<int> s_setResidueTick;
+
+        [Component]
+        private static VNode ResidueLeaf()
+        {
+            var (mark, setMark) = Hooks.UseState("a");
+            s_setResidueMark = setMark;
+            return V.Div(name: "leaf-" + mark);
+        }
+
+        // A component level between the declarer and the leaf, so the leaf's own position is expanded one
+        // fiber deeper than the declarer's re-render starts — which is the depth the drain entered its
+        // scope at, the declaring fiber having been pushed over the pass's own.
+        [Component]
+        private static VNode ResidueMiddle() => V.Div(name: "middle", children: new VNode?[]
+        {
+            V.Component(ResidueLeaf),
+        });
+
+        [Component]
+        private static VNode ResidueDeclarer()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_setResidueTick = setTick;
+            return V.Div(name: "declarer-" + tick, children: new VNode?[]
+            {
+                V.Portal("continuity-target", children: new VNode?[] { V.Component(PlainPortalChild) }),
+                V.Component(ResidueMiddle),
+            });
+        }
+
+        // GREEN_ON_BASE(characterization): the base has no portal scope to leave behind, so it keeps this
+        // instance for want of a scope rather than by restoring one. What this pins is the restore: with
+        // the drain's ExitPortalChildKeyScope removed, the scope it set outlives the pass, and the next
+        // render reaching the same fiber depth keys a component nowhere near the portal as one of its
+        // children — measured as a second fiber built beside the first, the container reading
+        // "leaf-a|leaf-b" rather than "leaf-b".
+        [Test]
+        public void Given_APortalDrainedUnderItsDeclaringComponent_When_ALaterRenderReachesThatSameDepth_Then_AComponentOutsideThePortalKeepsItsInstance()
+        {
+            // Arrange
+            var container = new VisualElement();
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("continuity-target", target);
+            _mounted = V.Mount(container, V.Component(ResidueDeclarer, key: "host"));
+            _mounted.FlushEffectsForTest();
+            s_setResidueMark.Invoke("b");
+            _mounted.FlushStateForTest();
+
+            // Act — the declarer re-renders alone, which expands the middle component's own children at
+            // the depth the drain recorded.
+            s_setResidueTick.Invoke(1);
+            _mounted.FlushStateForTest();
+
+            // Assert — the declarer's name carries the tick because a render that never reached the leaf
+            // leaves it reading "b" just as a kept instance does.
+            Assert.That(
+                (Names(container.Q<VisualElement>("middle")), Names(container)),
+                Is.EqualTo(("leaf-b", "declarer-1")));
+        }
+
         private static readonly ComponentContext<string> ScopeContext = ComponentContext<string>.Create("outside");
         private static string s_contextSeen;
         private static StateUpdater<int> s_setSiblingTick;
