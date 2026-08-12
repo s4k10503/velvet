@@ -780,11 +780,11 @@ namespace Velvet
         internal VisualElement? CurrentPortalPlaceholder { get; set; }
 
         // The same placeholder, for the levels of that Portal's children whose ComponentRegistry parent is
-        // still the declaring component's own fiber: the Portal's top-level children, and anything a plain
-        // host element nests below them, since descending a host element pushes no fiber. Those all share a
-        // whole registry key with what the declaring component renders outside the Portal, and this is the
-        // only member that separates them — PortalChildFiberContinuityTests holds the two keys of the
-        // host-nested shape side by side.
+        // still the declaring component's own fiber — every level the reconcile reaches while the fiber
+        // stack stands where it did. Those all share a whole registry key with what the declaring
+        // component renders outside the Portal, and this is the only member that separates them —
+        // PortalChildFiberContinuityTests holds the two keys side by side, for a host element between the
+        // two and for a Provider.
         //
         // Both members are written only by EnterPortalChildKeyScope, and read only through
         // PortalChildKeyScopeHere. The set of levels above is not the set of levels this reconcile passes
@@ -793,35 +793,28 @@ namespace Velvet
         // second reading builds a second set of fibers over the first. The nesting recorded here is what
         // separates the two. A component body reached through FiberRenderer.PushFiber or
         // GeneralPathReconciler.ExpandFiberPreviousTree, and a VirtualList item reached through
-        // Reconciler.BeginDetachedItemScope, each push one of the two counters, so the scope stops
-        // applying at each of them without any of them naming it.
+        // Reconciler.BeginDetachedItemScope, each push a fiber, so the scope stops applying at each of
+        // them without any of them naming it.
         private VisualElement? PortalChildKeyScope { get; set; }
-        private (int Fibers, int DetachedItems) PortalChildKeyScopeNesting { get; set; }
-
-        // Item renders of a VirtualList currently on the stack. Counted rather than flagged so an item that
-        // itself renders a VirtualList still leaves the outer one's nesting distinguishable, and bumped even
-        // where that scope has no host fiber to push, which is the case FiberStack.Depth alone would miss.
-        internal int DetachedItemScopeDepth { get; set; }
-
-        private (int Fibers, int DetachedItems) RenderNesting => (FiberStack.Depth, DetachedItemScopeDepth);
+        private int PortalChildKeyScopeNesting { get; set; }
 
         // The Portal scope in force for a registry key written right here, which is PortalChildKeyScope at
         // the nesting it was entered at and nothing anywhere else.
         internal VisualElement? PortalChildKeyScopeHere
-            => RenderNesting == PortalChildKeyScopeNesting ? PortalChildKeyScope : null;
+            => FiberStack.Depth == PortalChildKeyScopeNesting ? PortalChildKeyScope : null;
 
         // Returns what restores the enclosing scope. Restored rather than cleared on the way out: a Portal
         // declared inside another Portal's children reconciles from within the outer one's, and what the
         // outer one reaches after that returns is still the outer one's.
-        internal (VisualElement? Scope, (int, int) Nesting) EnterPortalChildKeyScope(VisualElement placeholder)
+        internal (VisualElement? Scope, int Nesting) EnterPortalChildKeyScope(VisualElement placeholder)
         {
             var enclosing = (PortalChildKeyScope, PortalChildKeyScopeNesting);
             PortalChildKeyScope = placeholder;
-            PortalChildKeyScopeNesting = RenderNesting;
+            PortalChildKeyScopeNesting = FiberStack.Depth;
             return enclosing;
         }
 
-        internal void ExitPortalChildKeyScope((VisualElement? Scope, (int, int) Nesting) enclosing)
+        internal void ExitPortalChildKeyScope((VisualElement? Scope, int Nesting) enclosing)
         {
             PortalChildKeyScope = enclosing.Scope;
             PortalChildKeyScopeNesting = enclosing.Nesting;

@@ -625,6 +625,47 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, true, (object?)placeholder, (object?)null)));
         }
 
+        // A V.Provider is inline-expanded and pushes no fiber either, so what the scope reaches is not the
+        // list of node types the host-element case above happens to name.
+        [Component]
+        private static VNode ProviderNestedTwinHost()
+            => V.Div(name: "twin-host", children: new VNode?[]
+            {
+                V.Div(name: "inline-wrap", children: new VNode?[]
+                {
+                    V.Provider(ScopeContext, "inside", new VNode[] { V.Component(Twin) }),
+                }),
+                V.Portal("continuity-target", children: new VNode?[]
+                {
+                    V.Provider(ScopeContext, "inside", new VNode[] { V.Component(Twin) }),
+                }),
+            });
+
+        [Test]
+        public void Given_APortalChildComponentNestedUnderAProvider_When_TheSameShapeIsRenderedOutsideThePortal_Then_TheirRegistryKeysDifferOnlyInTheScope()
+        {
+            // Arrange
+            var container = new VisualElement();
+            var target = new VisualElement();
+            FiberPortalRegistry.Register("continuity-target", target);
+            _mounted = V.Mount(container, V.Component(ProviderNestedTwinHost, key: "host"));
+            _mounted.FlushEffectsForTest();
+            var placeholder = _mounted.Root.Reconciler.Context.PortalState.Keys.Single();
+
+            // Act — the Provider emits no element, so the portal's occurrence renders straight into the
+            // target rather than into a wrapper of its own.
+            var inside = InlineKeyForOutputIn(_mounted, target);
+            var outside = InlineKeyForOutputIn(_mounted, container.Q<VisualElement>("inline-wrap"));
+
+            // Assert — the three other members being equal is what says the two shapes collide this deep
+            // at all; a scope naming the placeholder on one side and nothing on the other is the whole of
+            // what holds them apart.
+            Assert.That(
+                (ReferenceEquals(inside.Parent, outside.Parent), Equals(inside.PositionKey, outside.PositionKey),
+                    ReferenceEquals(inside.Identity, outside.Identity), inside.Scope, outside.Scope),
+                Is.EqualTo((true, true, true, (object?)placeholder, (object?)null)));
+        }
+
         private static readonly ComponentContext<string> ScopeContext = ComponentContext<string>.Create("outside");
         private static string s_contextSeen;
         private static StateUpdater<int> s_setSiblingTick;

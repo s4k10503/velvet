@@ -49,8 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A component the reconciler carries to a different container now re-renders itself into the container
   it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
-  container did not, so its own `setState` reconciled its new output into the container it had left —
-  leaving the stale element behind there and writing the new one into a container it no longer occupies.
+  container did not, so its own `setState` reconciled its new output into the container it had left,
+  while the container it had moved into kept the element from before the move.
   It also let the container it had left take it down: where the arriving container is reconciled first
   and the departing one leaves the tree in that same render, the departing subtree's teardown still
   found the carried component named as living inside it and ran its cleanups.

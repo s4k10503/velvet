@@ -522,13 +522,11 @@ namespace Velvet
 
         private VisualElement CreateForComponentNode(ComponentNode componentNode)
         {
-            // Wrapper-mount path: reached only when CreateElement is invoked on a ComponentNode the
-            // reconcile walk did not inline-expand. The walk expands every ComponentNode it reaches —
-            // a Memo's resolved inner and an AnimatePresence keyed entry included, both of which
-            // recurse back into GeneralPathReconciler.ExpandInlineRecursive — before the flat array its
-            // own CreateElement calls run over exists. What arrives here is a VNode the walk never saw:
-            // a VirtualList item, built straight from the renderer's return in
-            // IReconcilerBridge.CreateElementForController.
+            // Wrapper-mount path, reached from a VirtualList item and nothing else: the item renderer's
+            // return goes to IReconcilerBridge.CreateElementForController unexpanded, while a reconcile
+            // rules a ComponentNode out on both of its paths — the fast one runs only where
+            // GeneralPathReconciler.NeedsExpansion found none, and the general one expands each one it
+            // reaches, a Memo's resolved inner and an AnimatePresence keyed entry included.
             // A Component does not emit a DOM element; its rendered tree attaches
             // directly to the parent. Velvet needs an anchor element for fiber tracking,
             // so the wrapper is made layout-transparent so its single child can size
@@ -542,15 +540,10 @@ namespace Velvet
         {
             // A context Provider emits no DOM element of its own; descendants attach directly to
             // the parent fiber's host. Velvet maps each VNode to exactly one VisualElement so a
-            // layout-passthrough wrapper anchors the Provider subtree without imposing layout.
-            // The wrapper is what AnimatePresence's keyed map (and any BaseElementNode children
-            // list reached through MemoNode's resolved inner) tracks for this Provider entry —
-            // the wrapper element is a deliberate choice, as documented on ContextProviderNode.
-            //
-            // GeneralPathReconciler.ExpandInlineRecursive expands Provider inline (no wrapper) during
-            // a Reconcile pass, so this case is unreachable for slot-based reconciliation; it is
-            // reached only when CreateElement is invoked directly on a Provider VNode — e.g. a
-            // MemoNode resolved inner.
+            // layout-passthrough wrapper anchors the Provider subtree without imposing layout — a
+            // deliberate choice, as documented on ContextProviderNode.
+            // Reached the one way CreateForComponentNode above is, and ruled out on the reconcile
+            // paths for the same reason.
             var container = CreateLayoutPassthroughContainer();
             container.AddToClassList(ContextProviderClassName);
 

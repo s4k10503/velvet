@@ -374,9 +374,6 @@ namespace Velvet
                     stack.PushRaw(enclosingContext[i].Key, enclosingContext[i].Value);
                 }
             }
-            // Counted before the host gate, since an item render is a producer of its own tree whether or
-            // not there is a host to parent it under — ReconcilerContext.DetachedItemScopeDepth owns it.
-            _ctx.DetachedItemScopeDepth++;
             if (host == null) return null;
             // Item fibers created during the scope AppendChild onto FiberStack.Current; making it the host
             // links them under the host (so they share the host's ReconcilerContext / context cursor) and
@@ -413,7 +410,6 @@ namespace Velvet
         void IReconcilerBridge.EndDetachedItemScope(
             ComponentFiber? host, List<KeyValuePair<object, object>>? enclosingContext, object? scopeToken)
         {
-            _ctx.DetachedItemScopeDepth--;
             if (host != null)
             {
                 _ctx.FiberStack.Pop();
