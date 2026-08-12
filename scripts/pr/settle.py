@@ -101,7 +101,7 @@ def run(command, timeout):
     try:
         return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        raise RuntimeError("{} did not answer within {}s".format(" ".join(command[:3]), timeout))
+        raise RuntimeError("{} did not answer within {}s".format(" ".join(command), timeout))
 
 
 def run_quietly(command, timeout):

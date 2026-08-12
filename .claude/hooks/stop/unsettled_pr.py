@@ -129,9 +129,10 @@ def judge(pr):
                     "it is waiting on and arm\n    something that brings you back when that arrives.")
         if state in EXPECTED_WITHOUT_CHECKS:
             return None
-        return (f"  PR #{pr} — no checks reported and merge state is {state}. A conflicting PR never "
-                "starts CI, so\n    this is not 'still running'. Rebase it, or check the head SHA "
-                "against\n    'gh run list --branch <b> --json headSha' if you expected a run.")
+        return (f"  PR #{pr} — no checks reported and merge state is {state or 'unnamed'}. A "
+                "conflicting PR never starts CI, so\n    this is not 'still running'. Rebase it, or "
+                "check the head SHA against\n    'gh run list --branch <b> --json headSha' if you "
+                "expected a run.")
 
     pending = [check for check in checks if check.get("bucket") == "pending"]
     if not pending:
