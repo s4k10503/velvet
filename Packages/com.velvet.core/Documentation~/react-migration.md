@@ -110,10 +110,21 @@ The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v
 only its variables. It is cancelled when the component unmounts, which is what a Unity web request
 wants, and it is never cancelled by a later call.
 
+**`Reset`.** Puts the handle back to `Idle` and abandons whatever is in flight, as v5's `reset()`
+detaches the observer from the mutation. The abandoned call is not cancelled: it runs to completion
+and still delivers its own `OnSuccess` / `OnError`, but neither its result nor its failure reaches the
+handle, so resetting a save while it is in flight leaves the handle idle when the save lands.
+
+**When the outcome is committed.** After the handlers, which is when v5 dispatches it. A handler
+therefore reads the handle as the call still pending, and the four snapshots become that call's only
+once `OnSuccess` / `OnError` has returned. Each outcome is written whole: `Data` is what one call
+produced and `Error` is how one call failed, so `Data` stands only under `Status == Success` and
+`Error` only under `Status == Error` — a pending or reset handle has neither.
+
 **Callback error semantics** (TanStack Query v5 parity):
 
-- A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws.
-- A throwing **`onError`** handler does **not** change the mutation outcome already written to the slot (`Status` / `Error` stay the mutation's). The handler exception is routed to the same unobserved-exception channel as `.Forget()` (logged via `Debug.LogException` when no custom handler is registered). `MutateAsync` still rethrows the **mutation** exception, not the handler's.
+- A throwing **`onSuccess`** handler makes the mutation an **error**: `Status` becomes `Error`, `Error` holds the handler's exception, `onError` runs with that exception, and `MutateAsync` rethrows it to the caller. This matches React Query — the success state is not committed when the handler throws, so `Data` is left empty as well.
+- A throwing **`onError`** handler does **not** change the mutation outcome (`Status` / `Error` still become the mutation's own, after the handler has returned). The handler exception is routed to the same unobserved-exception channel as `.Forget()` (logged via `Debug.LogException` when no custom handler is registered). `MutateAsync` still rethrows the **mutation** exception, not the handler's.
 
 ### 1-3. State Management (React + Zustand)
 

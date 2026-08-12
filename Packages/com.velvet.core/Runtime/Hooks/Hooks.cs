@@ -1824,24 +1824,18 @@ namespace Velvet
             // mutate(vars, { onSuccess }), which has no equivalent here.
             var mine = ++slot.Generation;
 
-            slot.Result.Status = MutationStatus.Pending;
-            slot.Result.Variables = variables;
-            slot.Result.Error = null;
-            // Data goes with them. The observer shows the newest call, and a `Data` left over from the
-            // previous one reads as this call's result while it is still pending.
-            slot.Result.Data = default!;
+            slot.Result.MarkPending(variables);
             RequestRender(fiber);
 
             try
             {
                 var data = await slot.MutationFn(variables, cts.Token);
                 if (fiber.IsDisposed) return data;
-                if (mine == slot.Generation)
-                {
-                    slot.Result.Data = data;
-                    slot.Result.Status = MutationStatus.Success;
-                }
+                // The handler runs before the outcome is committed, which is where TanStack dispatches
+                // it: what OnSuccess reads is this call still pending, and a handler that throws leaves
+                // the call a failure with nothing of its own written.
                 slot.OnSuccess?.Invoke(data, variables);
+                if (mine == slot.Generation) slot.Result.MarkSuccess(data);
                 RequestRender(fiber);
                 return data;
             }
@@ -1857,11 +1851,6 @@ namespace Velvet
                     if (rethrowOnFailure) throw;
                     return default!;
                 }
-                if (mine == slot.Generation)
-                {
-                    slot.Result.Error = ex;
-                    slot.Result.Status = MutationStatus.Error;
-                }
                 try
                 {
                     slot.OnError?.Invoke(ex, variables);
@@ -1870,6 +1859,9 @@ namespace Velvet
                 {
                     UniTask.FromException(handlerEx).Forget();
                 }
+                // Below the inner catch, not inside the try: a throwing OnError must not cost the
+                // mutation the Error status. Committed after the handler for the same reason as a success.
+                if (mine == slot.Generation) slot.Result.MarkFailed(ex);
                 RequestRender(fiber);
                 if (rethrowOnFailure) throw;
                 return default!;
@@ -1888,10 +1880,8 @@ namespace Velvet
             HookMutationSlot<TVariables, TData> slot)
         {
             if (fiber.IsDisposed) return;
-            slot.Result.Status = MutationStatus.Idle;
-            slot.Result.Data = default;
-            slot.Result.Error = null;
-            slot.Result.Variables = default;
+            slot.Generation++;
+            slot.Result.MarkIdle();
             RequestRender(fiber);
         }
 
