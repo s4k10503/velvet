@@ -2,15 +2,16 @@
 """Unit tests for the decisions neuter_check.py makes before and after its Unity runs.
 
 The runs need a licence; the decisions do not, and it is the decisions that make a sweep's output mean
-anything. Both cases below are ones where the harness would otherwise report full coverage: a filter
-that ran nothing reports no holes, and a fixture already red reports every case as killed by the cut.
+anything. Several cases below are ones where the harness would otherwise report full coverage: a filter
+that ran nothing reports no holes, a fixture already red reports every case as killed by the cut, and a
+reader that came back empty agrees with every record it is handed.
 
 Run: python3 scripts/test_quality/test_neuter_check.py
 """
 
 import importlib.util
 import json
-import re
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -28,17 +29,6 @@ def load_module():
 
 
 neuter_check = load_module()
-
-
-def declaring_sources(short_name):
-    """The test sources declaring a class by that name.
-
-    Sought as a class declaration rather than as a file name: one file may declare several fixtures, and
-    the file that shares its name with one of them is not the file the others live in.
-    """
-    pattern = re.compile(rf"\bclass\s+{re.escape(short_name)}\b")
-    return [str(path) for path in sorted(REPO_ROOT.glob("Packages/**/Tests/**/*.cs"))
-            if pattern.search(path.read_text())]
 
 
 class BaselineProblem(unittest.TestCase):
@@ -106,8 +96,8 @@ class CutMap(unittest.TestCase):
         # Act
         wrong = []
         for entry in self.map["fixtures"]:
-            found = declaring_sources(entry["fixture"].rsplit(".", 1)[-1])
-            expected = "PlayMode" if any("PlayMode" in path for path in found) else "EditMode"
+            found = neuter_check.declaring_sources(REPO_ROOT, entry["fixture"].rsplit(".", 1)[-1])
+            expected = "PlayMode" if any("PlayMode" in str(path) for path in found) else "EditMode"
             if not found or entry.get("platform") != expected:
                 wrong.append(f"{entry['fixture']}: declares {entry.get('platform')!r}, source says {expected}")
 
@@ -122,6 +112,127 @@ class CutMap(unittest.TestCase):
 
         # Assert
         self.assertEqual(missing, [])
+
+
+class AuditReadsNothing(unittest.TestCase):
+    """What the audit does on a tree it can find neither a mechanism nor a cut in.
+
+    Every comparison it makes is a set difference, and an empty set differs from an empty record by
+    nothing. So the reading that must never pass is the one where there was no reading: an audit that
+    exits 0 having looked at an empty tree is indistinguishable from one that checked the repository.
+    The empty cut map is what makes these two cases sharp — with no anchor to locate, nothing but the
+    floors can report.
+    """
+
+    def audit_empty_tree(self):
+        with tempfile.TemporaryDirectory() as tree:
+            project = Path(tree)
+            (project / "scripts/test_quality").mkdir(parents=True)
+            for folder, _ in neuter_check.MECHANISM_GLOBS:
+                (project / neuter_check.PACKAGE_ROOT / folder).mkdir(parents=True)
+            (project / neuter_check.UNCOVERED_FILE).write_text("")
+            (project / neuter_check.HOLES_FILE).write_text("")
+            return neuter_check.audit(project, {"cuts": {}, "fixtures": {}})
+
+    def test_Given_ATreeWithNoMechanismInIt_When_TheAuditReadsIt_Then_TheGlobFloorRefuses(self):
+        # Act
+        problems = self.audit_empty_tree()
+
+        # Assert
+        self.assertTrue(any("mechanism glob found 0" in problem for problem in problems), problems)
+
+    def test_Given_ACutMapThatParsedToNothing_When_TheAuditReadsIt_Then_TheMapFloorRefuses(self):
+        # Act
+        problems = self.audit_empty_tree()
+
+        # Assert
+        self.assertTrue(any("cut map parsed to 0" in problem for problem in problems), problems)
+
+
+class CoverageDrift(unittest.TestCase):
+    """Both directions of the uncovered record, which is the only thing that answers for a mechanism
+    nobody wrote a cut for."""
+
+    def test_Given_AMechanismWithNoCutAndNoEntry_When_TheRecordIsCompared_Then_ItIsReported(self):
+        # Act
+        drift = neuter_check.coverage_drift(["Runtime/Styling/StyleNewClass.cs"], set(), set())
+
+        # Assert
+        self.assertIn("has no cut and is not recorded", "\n".join(drift))
+
+    def test_Given_AMechanismACutDisables_When_ItIsStillRecorded_Then_ItIsReported(self):
+        # Arrange
+        path = "Runtime/Styling/StyleNewClass.cs"
+
+        # Act
+        drift = neuter_check.coverage_drift([path], {path}, {path})
+
+        # Assert
+        self.assertIn("a cut disables it", "\n".join(drift))
+
+    def test_Given_AMechanismACutDisables_When_TheRecordDoesNotName_It_Then_NothingIsReported(self):
+        # Arrange
+        path = "Runtime/Styling/StyleNewClass.cs"
+
+        # Act
+        drift = neuter_check.coverage_drift([path], {path}, set())
+
+        # Assert
+        self.assertEqual(drift, [])
+
+
+class HoleBaseline(unittest.TestCase):
+    """The baseline is compared as a set, so an entry naming something gone matches no sweep and reads
+    as a hole that closed — a guard retired by a rename rather than by a decision."""
+
+    FIXTURE = "Velvet.Tests.GapParityTests"
+    CUTS = {"fixtures": {FIXTURE: {"cuts": ["gap-parser"]}}}
+    CASES = {FIXTURE: {"Given_A_When_B_Then_C"}}
+
+    def problems(self, line):
+        return neuter_check.hole_problems([(1, line)], self.CUTS, self.CASES)
+
+    def test_Given_AWellFormedEntry_When_ItIsRead_Then_NothingIsReported(self):
+        # Act
+        problems = self.problems(f"{self.FIXTURE}\tgap-parser\tGiven_A_When_B_Then_C\tPassed")
+
+        # Assert
+        self.assertEqual(problems, [])
+
+    def test_Given_AnEntryWithAMissingField_When_ItIsRead_Then_ItIsReported(self):
+        # Act
+        problems = self.problems(f"{self.FIXTURE}\tgap-parser\tGiven_A_When_B_Then_C")
+
+        # Assert
+        self.assertIn("3 tab-separated fields", "\n".join(problems))
+
+    def test_Given_AnEntryNamingAFixtureTheMapLost_When_ItIsRead_Then_ItIsReported(self):
+        # Act
+        problems = self.problems("Velvet.Tests.Gone\tgap-parser\tGiven_A_When_B_Then_C\tPassed")
+
+        # Assert
+        self.assertIn("no fixture 'Velvet.Tests.Gone'", "\n".join(problems))
+
+    def test_Given_AnEntryNamingACutItsFixtureIsNotAsked_When_ItIsRead_Then_ItIsReported(self):
+        # Act
+        problems = self.problems(f"{self.FIXTURE}\tring-parser\tGiven_A_When_B_Then_C\tPassed")
+
+        # Assert
+        self.assertIn("not registered against cut 'ring-parser'", "\n".join(problems))
+
+    def test_Given_AnEntryNamingACaseARenameRemoved_When_ItIsRead_Then_ItIsReported(self):
+        # Act
+        problems = self.problems(f"{self.FIXTURE}\tgap-parser\tGiven_A_When_B_Then_Renamed\tPassed")
+
+        # Assert
+        self.assertIn("declares no case", "\n".join(problems))
+
+    def test_Given_AnEntryClaimingTheCutKilledIt_When_ItIsRead_Then_ItIsReported(self):
+        # Act
+        problems = self.problems(f"{self.FIXTURE}\tgap-parser\tGiven_A_When_B_Then_C\tFailed")
+
+        # Assert
+        self.assertIn("'Failed' is not a result a hole can carry", "\n".join(problems))
 
 
 if __name__ == "__main__":

@@ -36,6 +36,29 @@ DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/M
 UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 
 CUTS_FILE = "scripts/test_quality/neuter_cuts.json"
+UNCOVERED_FILE = "scripts/test_quality/neuter_uncovered.txt"
+HOLES_FILE = "scripts/test_quality/neuter_holes.txt"
+PACKAGE_ROOT = "Packages/com.velvet.core"
+
+# A parser and its applier are the two halves a class-driven payload passes through, and both are named
+# by convention, which is what lets the uncovered record be derived rather than listed. Neither shape is
+# a guess: every registered cut is of one of these two kinds.
+MECHANISM_GLOBS = (
+    ("Runtime/Styling", "Style*Class.cs"),
+    ("Runtime/Reconciler", "Fiber*Applier.cs"),
+)
+
+# Every comparison the audit makes is a set difference, and each one agrees with an empty reading: a
+# moved directory globs nothing, a renamed JSON key parses to no cut, and neither disagrees with any
+# record. So the floors are what separate an audit that read the repository from one that read nothing
+# and exited 0. They are floors rather than exact counts, so a cut added tomorrow needs no edit here.
+MECHANISM_FLOOR = 25
+CUT_FLOOR = 25
+FIXTURE_FLOOR = 15
+
+# Failed is the one result no hole may carry: report_pair keeps a case only when the cut did not turn it
+# red, so a line saying otherwise came from something other than a sweep.
+HOLE_RESULTS = ("Passed", "Inconclusive", "Skipped")
 
 
 def unity_processes():
@@ -201,6 +224,120 @@ def validate(project, cuts):
             if name not in cuts["cuts"]:
                 problems.append(f"{fixture} names an undeclared cut '{name}'")
     return problems
+
+
+def read_record(path):
+    """The non-blank lines of a checked-in record, stripped."""
+    return [line.strip() for line in path.read_text().splitlines() if line.strip()]
+
+
+def mechanisms(project):
+    """Every class-driven mechanism, as its path under the package."""
+    found = []
+    for folder, pattern in MECHANISM_GLOBS:
+        found += [f"{folder}/{path.name}" for path in (project / PACKAGE_ROOT / folder).glob(pattern)]
+    return sorted(found)
+
+
+def cut_files(cuts):
+    """The mechanisms some cut disables, in the same spelling mechanisms() returns."""
+    prefix = PACKAGE_ROOT + "/"
+    return {edit["file"][len(prefix):] if edit["file"].startswith(prefix) else edit["file"]
+            for cut in cuts["cuts"].values() for edit in cut["edits"]}
+
+
+def coverage_drift(found, cut, recorded):
+    """Both directions the uncovered record can disagree with the sources in.
+
+    An arrival is a mechanism nothing can disable, which is the one this exists for: a class-driven
+    mechanism fails by being ignored, and an ignored utility class reads exactly like a class nobody
+    wrote. A departure is a cut somebody has since written, and a record keeping the line stops meaning
+    what it says.
+    """
+    uncovered = {path for path in found if path not in cut}
+    return ([f"{UNCOVERED_FILE}: {path} has no cut and is not recorded — write one in {CUTS_FILE}, "
+             "or record it as uncovered" for path in sorted(uncovered - recorded)]
+            + [f"{UNCOVERED_FILE}: {path} is recorded as uncovered and a cut disables it — drop the line"
+               for path in sorted(recorded - uncovered)])
+
+
+def coverage_problems(project, cuts):
+    path = project / UNCOVERED_FILE
+    if not path.is_file():
+        return [f"{UNCOVERED_FILE} not found; nothing answers for a mechanism with no cut"]
+    found = mechanisms(project)
+    recorded = set(read_record(path))
+    problems = []
+    if len(found) < MECHANISM_FLOOR:
+        problems.append(f"the mechanism glob found {len(found)} files under {PACKAGE_ROOT}, "
+                        f"fewer than {MECHANISM_FLOOR}")
+    problems += coverage_drift(found, cut_files(cuts), recorded)
+    problems += [f"{UNCOVERED_FILE}: {entry} names no file under {PACKAGE_ROOT}"
+                 for entry in sorted(recorded) if not (project / PACKAGE_ROOT / entry).is_file()]
+    return problems
+
+
+def declaring_sources(project, short_name):
+    """The test sources declaring a fixture by that name.
+
+    Sought as a class declaration rather than as a file name: one file may declare several fixtures, and
+    the file sharing its name with one of them is not the file the others live in.
+    """
+    pattern = re.compile(rf"\bclass\s+{re.escape(short_name)}\b")
+    return [path for path in sorted(project.glob("Packages/**/Tests/**/*.cs"))
+            if pattern.search(path.read_text())]
+
+
+def declared_cases(project, fixture):
+    """The case names a fixture's source declares."""
+    found = set()
+    for path in declaring_sources(project, fixture.rsplit(".", 1)[-1]):
+        found |= set(re.findall(r"public\s+(?:void|IEnumerator)\s+(Given_\w+)", path.read_text()))
+    return found
+
+
+def hole_problems(lines, cuts, cases):
+    """Why a recorded hole cannot be compared against a sweep. `cases` maps a fixture to its case names.
+
+    An entry naming a fixture, a cut or a case that no longer exists is matched by no sweep, and
+    compare_baseline hands it back as a hole that closed rather than as a line to delete.
+    """
+    problems = []
+    for number, line in lines:
+        fields = line.split("\t")
+        if len(fields) != 4:
+            problems.append(f"{HOLES_FILE}:{number}: {len(fields)} tab-separated fields, expected 4")
+            continue
+        fixture, name, case, result = fields
+        entry = cuts["fixtures"].get(fixture)
+        if entry is None:
+            problems.append(f"{HOLES_FILE}:{number}: no fixture '{fixture}' in {CUTS_FILE}")
+        elif name not in entry["cuts"]:
+            problems.append(f"{HOLES_FILE}:{number}: {fixture} is not registered against cut '{name}'")
+        elif case not in cases.get(fixture, set()):
+            problems.append(f"{HOLES_FILE}:{number}: {fixture} declares no case {case}")
+        if result not in HOLE_RESULTS:
+            problems.append(f"{HOLES_FILE}:{number}: '{result}' is not a result a hole can carry")
+    return problems
+
+
+def holes_problems(project, cuts):
+    path = project / HOLES_FILE
+    if not path.is_file():
+        return [f"{HOLES_FILE} not found; a sweep has nothing to be read as a diff against"]
+    lines = [(number, line) for number, line in enumerate(path.read_text().splitlines(), start=1)
+             if line.strip()]
+    cases = {fixture: declared_cases(project, fixture) for fixture in cuts["fixtures"]}
+    return hole_problems(lines, cuts, cases)
+
+
+def audit(project, cuts):
+    """Everything a sweep rests on that can be decided without an editor."""
+    problems = validate(project, cuts)
+    if len(cuts["cuts"]) < CUT_FLOOR or len(cuts["fixtures"]) < FIXTURE_FLOOR:
+        problems.append(f"the cut map parsed to {len(cuts['cuts'])} cuts and {len(cuts['fixtures'])} "
+                        f"fixtures, fewer than {CUT_FLOOR} and {FIXTURE_FLOOR}")
+    return problems + coverage_problems(project, cuts) + holes_problems(project, cuts)
 
 
 def apply_cut(project, cut):
@@ -372,6 +509,9 @@ def main():
                         help="override the platform every fixture declares; default is to use each one's")
     parser.add_argument("--validate", action="store_true",
                         help="check every anchor still matches exactly once, then exit")
+    parser.add_argument("--audit", action="store_true",
+                        help="check the anchors, the uncovered record and the hole baseline against the "
+                             "sources, then exit; no editor needed")
     parser.add_argument("--timeout", type=int, default=900, help="seconds per run (default: 900)")
     parser.add_argument("--busy-timeout", type=int, default=1800,
                         help="seconds to wait for a quiet machine (default: 1800)")
@@ -385,6 +525,18 @@ def main():
 
     project = Path(args.project).resolve()
     cuts = load_cuts(project)
+
+    if args.audit:
+        problems = audit(project, cuts)
+        for problem in problems:
+            print(f"error: {problem}", file=sys.stderr)
+        if problems:
+            return 1
+        print(f"{len(mechanisms(project))} mechanisms, {len(cuts['cuts'])} cuts across "
+              f"{len(cuts['fixtures'])} fixtures, "
+              f"{len(read_record(project / UNCOVERED_FILE))} recorded uncovered, "
+              f"{len(read_record(project / HOLES_FILE))} recorded holes", flush=True)
+        return 0
 
     problems = validate(project, cuts)
     if problems:

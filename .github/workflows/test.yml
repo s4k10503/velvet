@@ -313,6 +313,11 @@ jobs:
   # noise rather than as a survivor, so a real hole hides behind it. That half runs here, and
   # base_red_check.py's reader is here for the same reason: a case its parser misses is a case the
   # base is never asked about, and the run comes back green having measured one fewer thing.
+  #
+  # neuter_check.py splits the same way and could not run here at all otherwise — a sweep is one
+  # editor run per cut. What --audit holds is everything the sweep rests on and never exercises: the
+  # anchors it would cut at, the record of what no cut reaches, and the baseline its output is read as
+  # a diff against.
   # ---------------------------------------------------------------------------
   test-quality:
     name: Test quality
@@ -323,6 +328,8 @@ jobs:
       - run: python3 scripts/test_quality/test_mutation_check.py
 
       - run: python3 scripts/test_quality/test_neuter_check.py
+
+      - run: python3 scripts/test_quality/neuter_check.py --audit
 
       - run: python3 scripts/test_quality/test_base_red_check.py
 

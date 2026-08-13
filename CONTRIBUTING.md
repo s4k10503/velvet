@@ -143,8 +143,21 @@ so a rename is caught by the pull request that makes it rather than by the next 
 Most holes are legitimate — a negative assertion no cut can falsify, a case whose subject is another cut's
 layer — so what is worth catching is not the count but a change to the set, which a hole appearing while
 another disappears leaves identical. `scripts/test_quality/neuter_holes.txt` carries the approved set;
-`--report` regenerates it, so a sweep is read as a diff against it. Nothing runs the sweep automatically:
-wiring it into CI needs a licence activation this repository does not have.
+`--report` regenerates it, so a sweep is read as a diff against it.
+
+A sweep is one editor run per cut, which no pull request has the budget for, so what runs in
+`Test ▸ test-quality` is the half that needs no editor:
+
+```bash
+python3 scripts/test_quality/neuter_check.py --audit
+```
+
+It holds the three things a sweep rests on and never exercises — the anchors, the hole baseline, and
+`scripts/test_quality/neuter_uncovered.txt`, which records every `Style*Class` and `Fiber*Applier` no cut
+reaches. That record is the one a mechanism arriving tomorrow answers to: a class-driven mechanism fails
+by being ignored, which reads exactly like a class nobody wrote, so a new one must be given a cut or
+recorded as having none. Each comparison is a set difference and every one of them agrees with an empty
+record, so the audit refuses wherever a reader came back empty rather than reporting agreement.
 
 ### Checking that a new test could have failed
 
