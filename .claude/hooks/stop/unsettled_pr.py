@@ -94,19 +94,27 @@ def carries_no_check(pr):
 def checks_of(pr):
     """The pull request's check list, or None when the read did not answer.
 
-    `gh pr checks` exits non-zero for both "I could not read" and "there are none", so its exit code
-    cannot separate an exhausted quota from a head no workflow has run for yet. Reading the second as
-    the first blocks a pull request whose head has no check yet; reading the first as the second is
-    what let one nobody could see into the settled set. So a non-zero exit is taken to the rollup,
-    which answers 0 rather than erroring, and only an answer there makes this an empty list.
+    `gh pr checks` says "there are none" by failing, and it says "I could not read" two ways: by
+    failing, and — the shape `scripts/pr/settle.py` records for an exhausted quota — by succeeding
+    and printing nothing. So neither an empty answer nor a failed one is decided here. Both go to the
+    rollup, which answers where this errors, and only an empty list from there makes this empty.
+
+    Reading a failure as "there are none" is what let a pull request nobody could see into the
+    settled set; reading "there are none" as a failure blocks one whose head has no check yet.
     """
     out, _, code = gh(["pr", "checks", pr, "--json", "name,bucket"])
-    if code != 0:
-        return [] if carries_no_check(pr) else None
-    try:
-        return json.loads(out or "[]")
-    except ValueError:
-        return None
+    if code == 0 and out:
+        try:
+            listed = json.loads(out)
+        except ValueError:
+            return None
+        if not isinstance(listed, list):
+            return None
+        if listed:
+            return listed
+    # Every way of arriving at "there are none" ends here — the call failing, printing nothing, or
+    # printing an empty list — because none of the three is something this can tell from a failure.
+    return [] if carries_no_check(pr) else None
 
 
 def unreadable(attempts):

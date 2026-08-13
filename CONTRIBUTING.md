@@ -108,12 +108,9 @@ suites, and all twenty-five completed. Nothing needs doing.
 launched wedges while the editor is still alive, before anything is killed. `SIGTERM` on the editor
 reaps the editor; the wedged child does not follow it out, and no signal recovers it.
 
-Not every unreapable process here comes from Unity, and one of them does block a later run:
-`scripts/pr/settle.py watch` holds a lock while it polls, so a wedged watcher stops the replacement —
-its refusal names the pid and the command that ends it, and every editing tool is refused meanwhile.
-The rest accumulate rather than blocking, so `.claude/hooks/report/wedged_processes.py` reports the
-set at session start once it holds enough memory for a reboot to be worth the interruption, and says
-nothing below that.
+Not every unreapable process here comes from Unity, and none of them blocks a later run. They
+accumulate, so `.claude/hooks/report/wedged_processes.py` reports the set at session start once it
+holds enough memory for a reboot to be worth the interruption, and says nothing below that.
 
 ### Checking that the tests can fail
 

@@ -498,8 +498,11 @@ esac
 """
 
 
-# The merge state read succeeds and names nothing, which is what a renamed field leaves behind. It
-# is the one state that reaches EXPECTED_WITHOUT_CHECKS with an empty string in hand.
+# The merge state read succeeds and names nothing. What produces that from a real `gh pr view` was
+# not established — a field it does not know exits 1 rather than selecting nothing — so this poses
+# the state rather than a cause of it. It is posed because it is the one state that reaches
+# EXPECTED_WITHOUT_CHECKS with an empty string in hand, and a merge state nobody named must not read
+# as one that explains an absent check list.
 NO_CHECKS_AND_AN_UNNAMED_MERGE_STATE = """#!/bin/sh
 case "$1 $2" in
   "pr list")   echo 51 ;;
@@ -507,6 +510,38 @@ case "$1 $2" in
   "pr view")   case "$*" in
                  *statusCheckRollup*) echo '{"statusCheckRollup":[]}' ;;
                  *) exit 0 ;;
+               esac ;;
+  *)           exit 0 ;;
+esac
+"""
+
+
+# `gh pr checks` succeeding and printing nothing, which is the shape scripts/pr/settle.py records
+# for an exhausted quota — and the rollup says the head does carry a check, so an empty answer taken
+# at face value states the opposite of what the one readable source says.
+AN_EMPTY_ANSWER_AND_A_ROLLUP_WITH_CHECKS = """#!/bin/sh
+case "$1 $2" in
+  "pr list")   echo 51 ;;
+  "pr checks") exit 0 ;;
+  "pr view")   case "$*" in
+                 *statusCheckRollup*) echo '{"statusCheckRollup":[{"name":"Unity tests"}]}' ;;
+                 *) echo CLEAN ;;
+               esac ;;
+  *)           exit 0 ;;
+esac
+"""
+
+
+# The third empty shape: a literal empty list on stdout with exit 0. The premise says gh fails
+# instead, so this is posed as a shape rather than as something observed — and it is posed because
+# "no check" reached without asking the rollup is the defect whichever spelling arrives in.
+AN_EMPTY_LIST_AND_A_ROLLUP_WITH_CHECKS = """#!/bin/sh
+case "$1 $2" in
+  "pr list")   echo 51 ;;
+  "pr checks") echo '[]' ;;
+  "pr view")   case "$*" in
+                 *statusCheckRollup*) echo '{"statusCheckRollup":[{"name":"Unity tests"}]}' ;;
+                 *) echo CLEAN ;;
                esac ;;
   *)           exit 0 ;;
 esac
@@ -551,9 +586,10 @@ class ZeroCheckTests(unittest.TestCase):
         self.assertEqual((check.SELF_REPORT in said, "PR #51" in said), (True, True))
 
     def test_Given_AMergeStateThatAnsweredAndNamedNothing_When_Judged_Then_ItIsNotSettledEither(self):
-        # Arrange — gh exits 0 and selects nothing, which is what a renamed field leaves. Listing the
-        # empty string among the states that explain an absent check list made this pull request
-        # settled; leaving it out sends it to the reason that reports what the state was.
+        # Arrange — gh exits 0 and names nothing; the stub above owns why that is posed as a state
+        # rather than as something with a known cause. Listing the empty string among the states
+        # that explain an absent check list made this pull request settled; leaving it out sends it
+        # to the reason that reports what the state was.
         said = self.said(NO_CHECKS_AND_AN_UNNAMED_MERGE_STATE)
 
         # Act / Assert
@@ -568,6 +604,22 @@ class ZeroCheckTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual((check.SELF_REPORT in said, "its merge state" in said), (True, True))
+
+    def test_Given_AnEmptyAnswerFromTheCheckRead_When_Judged_Then_ItIsNotTakenForNone(self):
+        # Arrange — the exit code is 0 and the output is empty, so nothing about the exit says the
+        # read failed; the rollup naming a check is what says the empty answer was not one.
+        said = self.said(AN_EMPTY_ANSWER_AND_A_ROLLUP_WITH_CHECKS)
+
+        # Act / Assert
+        self.assertEqual((check.SELF_REPORT in said, "no checks apply to it" in said), (True, False))
+
+    def test_Given_AnEmptyListFromTheCheckRead_When_Judged_Then_ItIsNotTakenForNone(self):
+        # Arrange — the same question as the case above with the other spelling of empty, so the
+        # rollup is what decides however the emptiness arrives rather than for one shape of it.
+        said = self.said(AN_EMPTY_LIST_AND_A_ROLLUP_WITH_CHECKS)
+
+        # Act / Assert
+        self.assertEqual((check.SELF_REPORT in said, "no checks apply to it" in said), (True, False))
 
     def test_Given_ARollupThatIsNotAList_When_ItIsRead_Then_ItIsNotTakenForNone(self):
         # Arrange — the merge state answers CLEAN, so a rollup misread as empty produces the
