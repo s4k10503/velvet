@@ -127,11 +127,10 @@ class CutMap(unittest.TestCase):
 class AuditReadsNothing(unittest.TestCase):
     """What the audit does on a tree it can find neither a mechanism nor a cut in.
 
-    Every comparison it makes is a set difference, and an empty set differs from an empty record by
-    nothing. So the reading that must never pass is the one where there was no reading: an audit that
-    exits 0 having looked at an empty tree is indistinguishable from one that checked the repository.
-    The empty cut map is what makes these two cases sharp — with no anchor to locate, nothing but the
-    floors can report.
+    An empty glob and an empty cut map disagree with no record, so the reading that must never pass is
+    the one where there was no reading: an audit that exits 0 having looked at an empty tree is
+    indistinguishable from one that checked the repository. The empty cut map is what makes these two
+    cases sharp — with no anchor to locate, nothing but the floors can report.
     """
 
     def audit_empty_tree(self):

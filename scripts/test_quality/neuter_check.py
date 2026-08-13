@@ -49,9 +49,8 @@ MECHANISM_GLOBS = (
     ("Runtime/Reconciler", "Fiber*Applier.cs"),
 )
 
-# Every comparison the audit makes is a set difference, and each one agrees with an empty reading: a
-# moved directory globs nothing, a renamed JSON key parses to no cut, and neither disagrees with any
-# record. So the floors are what separate an audit that read the repository from one that read nothing
+# A moved directory globs nothing and a renamed JSON key parses to no cut, and neither disagrees with
+# any record. So these are what separate an audit that read the repository from one that read nothing
 # and exited 0. They are floors rather than exact counts, so a cut added tomorrow needs no edit here.
 MECHANISM_FLOOR = 25
 CUT_FLOOR = 25
