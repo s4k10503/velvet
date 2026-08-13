@@ -12,13 +12,15 @@ Run the following inside the `Generators~/` directory:
 
 Needs `python3` on PATH alongside the .NET SDK. On Windows, close Unity and any IDE first: Windows cannot overwrite an analyzer assembly a Roslyn host still holds open.
 
-It regenerates all three committed artifacts, leaving the tree in the same state:
+It regenerates all three committed artifacts:
 
 - `../Runtime/Styling/StyleUtilityProperties.g.cs`
 - `../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`
 - `../Runtime/Plugins/Analyzers/Velvet.SourceGenerators.CodeFixes.dll`
 
 Commit all three. The distribution model assumes Unity users do not need to install `dotnet`.
+
+A run that follows no source change leaves the working tree clean, so `git status` after one answers whether the committed artifacts correspond to the sources — run it to check something and there is nothing to restore afterwards.
 
 ## Test
 
@@ -310,9 +312,10 @@ fixture owns why each half needs the instrument it uses, and what the pair of th
 The analyzers arrive from a **second compile** of the same sources rather than from the project that declares
 them, because a project cannot reference itself as an analyzer — MSBuild rejects the cycle with `MSB4006`
 during restore, before any compile starts. The alternative, pointing at the already-committed
-`../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`, was rejected: nothing verifies that artifact was
-rebuilt from the current sources, so an edit to a rule would go on being enforced by the previous rule until
-someone remembered to redeploy — the failure mode this wiring exists to remove.
+`../Runtime/Plugins/Generators/Velvet.SourceGenerators.dll`, was rejected: `build.py` deploys that artifact
+after this compile, so an edit to a rule would go on being enforced by the previous rule throughout the very
+build that introduced it — the failure mode this wiring exists to remove, and one a check run afterwards
+cannot reach.
 
 The bootstrap therefore compiles the sibling's `**/*.cs` through a glob and is not itself opted in; its
 content is measured by the sibling's own compile. A glob that stopped matching would produce an analyzer
@@ -328,12 +331,15 @@ This README is now scoped to **contributor concerns** (build / test / artifact s
 
 ## CI
 
-`.github/workflows/generators.yml` has a single job with one build/test step: check out, install the .NET SDK pinned by `global.json`, then `dotnet test Velvet.SourceGenerators.sln -c Release --nologo` (which restores and builds as part of the run). No Unity license is required.
+`.github/workflows/generators.yml` builds and tests this solution in its `source-generators` job: check out, install the .NET SDK pinned by `global.json`, then `dotnet test Velvet.SourceGenerators.sln -c Release --nologo` (which restores and builds as part of the run), then the repository guards that run without a Unity license.
 
 Which paths trigger it is stated in the repository's `CLAUDE.md`; the reason `Runtime/**` is among them is that the drift guards read the runtime sources, so a PR that only renames a hook, reshapes its signature or edits a stylesheet must still run this job.
 
-**CI does not check the committed DLLs under `../Runtime/Plugins/` at all.** It tests the sources; it never compares the deployed assemblies against a rebuild, so a PR that edits generator sources and forgets to rerun the build script goes green while Unity keeps consuming the stale binaries. Rebuilding and committing them is the contributor's responsibility. The third committed artifact, `../Runtime/Styling/StyleUtilityProperties.g.cs`, is the exception — `BundledStyleSheetCensusTests` compares it against a fresh derivation, so forgetting to regenerate that one is caught.
+Each committed artifact is compared against a fresh derivation, so forgetting to regenerate one fails rather than reaching Unity:
 
-A plain `git diff --exit-code` against a rebuild would not close that gap either: the SDK writes the commit `HEAD` was at when the build ran into the assembly's informational version (`0.1.0+<sha>`), so a rebuild at any other commit carries a different id. What does compare is a build at the commit the assembly names — measured byte-identical from a separate working tree, because `ContinuousIntegrationBuild` replaces the source paths with `/_/`.
+- `../Runtime/Styling/StyleUtilityProperties.g.cs` — `BundledStyleSheetCensusTests`, which re-derives the table from the bundled stylesheets
+- both DLLs under `../Runtime/Plugins/` — `scripts/generators/deployed_dll_check.py`, which rebuilds each deployed project and compares byte for byte
 
-The deployed pair is still not checkable that way. `build.py` runs before the commit that carries its output, so a redeploy that also edits generator sources names a commit those sources are not in. And when that commit lived only on a PR branch, the squash merge left nothing to build at: the pair on `main` names one that no ref here reaches.
+The byte comparison is possible because the build is reproducible, and `Directory.Build.props` owns what makes it so. It was not, and the varying input was not the one the symptom suggested: two clean builds in one working tree were already byte-identical, and so were two builds of one commit from two different paths, while two builds of *identical sources at two different commits* differed by 143 bytes. The SDK queried git and wrote the commit `HEAD` was at into the assembly's informational version (`0.1.0+<sha>`); the rest of that difference sat in the Win32 version resource repeating the same string, and in the MVID, the PE timestamp and the PDB checksum. `build.py` also runs before the commit that carries its output, so the id a deployed assembly named was a commit older than the one it shipped in.
+
+The check refuses rather than passes when it cannot make the comparison — an absent binary, a build that fails, an SDK other than the one `global.json` pins. `test_deployed_dll_check.py` runs each of those states, because a guard that exits 0 having compared nothing is indistinguishable from one that compared and was satisfied.

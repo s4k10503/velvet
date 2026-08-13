@@ -1,0 +1,24 @@
+<Project>
+
+  <!--
+    Two of the assemblies built here are committed under ../Runtime/Plugins, so their bytes have to
+    follow from the sources beside them and the pinned toolchain alone. Left alone the SDK queries git
+    and writes the commit id into the assembly, which rewrites binaries whose sources did not move and
+    makes a rebuild-and-compare answer "different" unless it runs at the very commit the binary was
+    built at.
+    scripts/generators/deployed_dll_check.py is what fails when this stops holding.
+  -->
+  <PropertyGroup>
+    <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+  </PropertyGroup>
+
+  <!--
+    Declared rather than taken from the queries above, because ContinuousIntegrationBuild rewrites
+    source paths against it: with neither, the build succeeds and embeds the absolute path of whoever
+    ran it.
+  -->
+  <ItemGroup>
+    <SourceRoot Include="$(MSBuildThisFileDirectory)" />
+  </ItemGroup>
+
+</Project>
