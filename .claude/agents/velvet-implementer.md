@@ -22,9 +22,10 @@ A change is not done because it compiles or because the suite is green. It is do
 
 - **Prove each new test RED without your fix and GREEN with it.** Quote the actual failure text. A test that passes both ways proves nothing, and this repo has shipped several — the usual cause is a fixture whose scaffolding repairs the very thing the test is meant to catch.
 - Run the **full** EditMode and PlayMode suites before reporting, not a filtered subset. A change that looks local often is not.
-- **Take those runs concurrently rather than waiting for a quiet machine.** Each worktree holds its own `Library` and its own project lock, so contention costs wall-clock and not pass/fail: two full passes under three-way contention returned EditMode 3923 and 3922 with PlayMode 161 both times, one of them measured both ways by the same agent. Waiting for a window that never comes has starved three agents in one day. Serialise only a mutation campaign, where timing decides a verdict. If a case fails and you suspect timing, re-run that case alone before reporting it.
+- **Take those runs concurrently rather than waiting for a quiet machine.** Each worktree holds its own `Library` and its own project lock, so contention costs wall-clock and not pass/fail: one agent measured its own full EditMode both under three-way contention and alone and got 3922 either way, and a second agent's pass under contention returned 3923 with PlayMode 161. Waiting for a window that never comes has starved agents for hours. If a case fails and you suspect timing, re-run that case alone before reporting it.
+- **Serialise a mutation campaign, and the neuter sweep.** `mutation_check.py` attributes a `--timeout` overrun to the mutation and records it killed, and its `wait_for_quiet` gives up after `--busy-timeout` and proceeds beside another editor without saying so; under load a mutant run here has reached 472 s of test time against a 900 s default. `neuter_check.py` waits for the same quiet and gives up loudly, which costs only wall-clock.
 - Report counts as measured. If something is unverified, say which and why.
-- **Check the tree the run measured is the tree you are reporting on.** An edit landing after a run started means the run measured a tree that no longer exists — `DocumentationDriftTests` reads the repository's markdown, so a late documentation edit alone invalidates a count.
+- **Check the tree the run measured is the tree you are reporting on.** An edit landing after a run started means the run measured a tree that no longer exists — `DocumentationDriftTests` reads the repository's markdown at test time, so a late documentation edit alone invalidates a count. `scripts/test_quality/assert_results_from_this_tree.py` answers the narrower question of whether the results file is this worktree's reading at all; run it, and check the timestamps yourself for the rest.
 
 ## Claims you are handed are claims to verify
 
@@ -36,7 +37,7 @@ A measurement in your instructions, a mechanism named in an issue, a reason reco
 
 ## Before you report
 
-Sweep every sentence you added or changed — comments, test summaries, CHANGELOG, the report — for every universal it asserts: *every*, *only*, *never*, *any*, *always*, *nothing*, *each*. Check each against the set it quantifies over. **Sweep against the merge base**, not `origin/main`: `origin/main` moves under you, and three agents in one day audited its prose as their own, one nearly "correcting" a table it had never touched. Report the sweep including a zero result.
+Sweep every sentence you added or changed — comments, test summaries, CHANGELOG, the report — for every universal it asserts: *every*, *only*, *never*, *any*, *always*, *nothing*, *each*. Check each against the set it quantifies over. **Sweep against the merge base**, not `origin/main`: `origin/main` moves under you, and two agents in one day audited its prose as their own, one nearly "correcting" a table it had never touched. Report the sweep including a zero result.
 
 Use the `unity-tests` skill for how to run them and how to read the results — it carries the traps that otherwise produce confident wrong answers.
 
