@@ -86,7 +86,7 @@ def checks_of(pr):
 
     `gh pr checks` exits non-zero for both "I could not read" and "there are none", so its exit code
     cannot separate an exhausted quota from a head no workflow has run for yet. Reading the second as
-    the first blocks on every pull request in its first minutes; reading the first as the second is
+    the first blocks a pull request whose head has no check yet; reading the first as the second is
     what let one nobody could see into the settled set. So a non-zero exit is taken to the rollup,
     which answers 0 rather than erroring, and only an answer there makes this an empty list.
     """

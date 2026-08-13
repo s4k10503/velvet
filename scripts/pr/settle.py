@@ -205,8 +205,8 @@ def pull_request(project, number):
 
     Both names come off this payload rather than one of them off `remote.origin.url`. GitHub answers
     the same pull request for any casing of the path, so a clone made with different capitals, or a
-    repository since renamed, would make every pull request read as a fork — and then nothing is ever
-    ready and the guard that reads that never fires again.
+    repository since renamed, would make every pull request read as a fork — and then nothing is
+    recorded ready and the guard that reads that state stops firing.
     """
     payload = rest_json("repos/{}/pulls/{}".format(repository(project), number))
     head = payload.get("head") or {}

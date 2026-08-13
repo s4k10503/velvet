@@ -83,9 +83,8 @@ OPEN_PULL_REQUEST_READS = (
 # What was asked and what came back, for a caller that has to report a failure rather than a subject.
 PullRequests = collections.namedtuple("PullRequests", "numbers attempts")
 
-# Bounded so that asking twice cannot take twice as long as anyone budgeted for asking once, and
-# held against the guards' registered timeout by scripts/hooks/test_hook_repository.py — which says
-# there what that comparison does and does not cover.
+# Bounded so that two ways of asking still fit inside a pause worth waiting through, and held to
+# that by scripts/hooks/test_hook_repository.py — which says there what the comparison covers.
 OPEN_PULL_REQUEST_TIMEOUT = 8
 
 

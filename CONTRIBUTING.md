@@ -280,7 +280,7 @@ listing answers while every per-pull-request read fails, which is where a guard 
 pull request it learned nothing about. An empty answer is posed as neither, being the ordinary state
 `open_backlog.py` acts on. A guard whose own question is answered in a mode that broke somebody
 else's reading declares `UNREADABLE_ALLOWS`, with a comment and with a sibling that refuses there,
-so the exemption cannot be what ends the session.
+so an exemption no other guard stands behind is reported rather than taken.
 
 ### Source generators
 
