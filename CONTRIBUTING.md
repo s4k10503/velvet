@@ -271,11 +271,29 @@ workflow does not. Run it locally on a branch whose tests are the point.
 `scripts/test_quality/test_base_red_check.py` holds the reader against every test file in this
 repository and runs in `Test ▸ test-quality`.
 
+### Trusting the reading itself
+
+Everything above asks what a run measured. `scripts/test_quality/assert_results_from_this_tree.py`
+asks the prior question — whether the results are this checkout's reading at all. A results file is
+written where the caller points rather than by the run that later reads it, so a run that aborts
+leaves the previous one there to be read; the guard refuses a results file no log in the run names,
+a log carrying a line rendered as a compiler error whichever analyzer raised it, and a fixture no
+source here declares reported under any assembly but one a resolved package owns alone — the last of
+these asking nothing of the log at all. Every reading it cannot take is a refusal too, since a guard
+exiting 0 unread looks exactly like one that checked. What it cannot separate is two runs writing a
+results file of the same name; what answers that is the headless recipe's per-worktree logs
+directory, not the guard.
+
+Each Unity job in CI runs it after the suite, and CLAUDE.md's headless recipe runs it beside
+`assert_no_inconclusive.py`. `scripts/test_quality/test_assert_results_from_this_tree.py` holds it,
+its type reader against every fixture this repository's case reader finds, and its log reading
+against every diagnostic identifier the analyzer sources declare, in `Test ▸ test-quality`.
+
 ### Repository scripts
 
 `scripts/` holds the harnesses, grouped by what they are for — `test_quality/` (mutation, neuter,
-inconclusive-result guard), `release/` (the release-note builder), `unity/` (sample sync). Two rules keep
-the tree readable:
+inconclusive-result and results-provenance guards), `release/` (the release-note builder), `unity/`
+(sample sync). Two rules keep the tree readable:
 
 - **Python, named in `snake_case`.** Every harness is importable, so a test can exercise it directly rather
   than only through a shell invocation — which is what `release/test_release_notes.py` does. Python needs no
@@ -340,6 +358,19 @@ be asked. `"none"` claims the probe reaches neither program, and fails if either
 directory refuses the same probe — otherwise the tool call is guarded by nothing at all. It runs in
 the licence-free `source-generators` job rather than beside the fixtures above, which are skipped
 entirely on a checkout with no `UNITY_LICENSE` secret.
+
+The `Stop` guards declare the same policy and are held to one thing more, because blocking was never
+what they got wrong. They blocked, and described the pull requests rather than the reading — so the
+deferral the message invited named the API error instead of whatever the work was waiting on.
+`.claude/hooks/lib/repository.py` owns both halves of the remedy: a second way of asking, drawn on a
+different quota, before blindness is declared at all, and the sentence a block has to carry when it
+is. The same check runs every guard in `.claude/hooks/stop` and requires that sentence of one that
+blocks. It poses two modes: nothing answers, and — the one a second way of asking creates — the
+listing answers while every per-pull-request read fails, which is where a guard can report on a
+pull request it learned nothing about. An empty answer is posed as neither, being the ordinary state
+`open_backlog.py` acts on. A guard whose own question is answered in a mode that broke somebody
+else's reading declares `UNREADABLE_ALLOWS`, with a comment and with a sibling that refuses there,
+so an exemption no other guard stands behind is reported rather than taken.
 
 ### Source generators
 
@@ -441,9 +472,12 @@ policy on is what would close it server-side, at the cost that buys.
 
 **A green pull request left sitting starts refusing every edit.**
 `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready
-for fifteen minutes, and the instruction it prints is `settle.py merge`, which the publication guard now
-declines. Both are behaving correctly and the combination is a stall: record the deferral the hook's own
-message describes, or publish.
+for fifteen minutes, and the instruction it prints is `settle.py merge`. Ready is that command's own
+decision rather than a second reading beside it, so a pull request this window declines is not
+recorded ready while the window can be read. It is read by
+`published_check.unpublished_reason`, which answers None on any git failure, so an `ls-remote` that
+times out mid-poll records the green ones ready again and the stall is back for as long as that
+lasts. The deferral the hook's own message describes is still what clears it.
 
 **If the dispatch itself is what is broken, the guard has no in-band escape.** `upm.yml` runs from the
 workflow file at whatever ref is dispatched, so tagging the release commit and dispatching from the tag

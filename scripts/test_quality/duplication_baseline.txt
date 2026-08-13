@@ -65,7 +65,6 @@
 4857aa169d44	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 4919bddab474	Runtime/Styling/BorderStyleSilhouette.cs,Runtime/Styling/SkewSilhouette.cs
 4940fc21d9ba	Runtime/Styling/StyleAnimateClass.cs,Runtime/Styling/StyleBorderStyleClass.cs,Runtime/Styling/StyleDivideClass.cs,Runtime/Styling/StyleGradientClass.cs,Runtime/Styling/StyleRingClass.cs,Runtime/Styling/StyleShadowClass.cs,Runtime/Styling/StyleSkewClass.cs
-4aae019f3fbc	Runtime/Reconciler/FiberNodePatcher.cs,Runtime/Styling/StyleGapManipulator.cs
 4b83c8a1b0a4	Editor/PlayerBuild/BundledShaderBuildInclusion.cs,Editor/PlayerBuild/BundledStyleSheetBuildInclusion.cs
 4c4467250645	Runtime/Styling/StyleArbitraryValueResolver.cs,Runtime/Styling/StyleColorValueParser.cs
 4c5fb9cef5dc	Runtime/Styling/StyleDivideManipulator.cs,Runtime/Styling/StyleGapManipulator.cs
