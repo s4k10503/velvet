@@ -180,30 +180,24 @@ class ReportOverTheRecord(unittest.TestCase):
     checked-in record replaces the rest of it with them — which the audit downstream reads as a record
     every line still in it agrees with."""
 
-    def problems(self, fixtures, report):
-        return neuter_check.baseline_arg_problems(argparse.Namespace(
-            project=".", fixtures=fixtures, report=report, baseline=None))
+    def refused(self, fixtures, report):
+        return bool(neuter_check.baseline_arg_problems(argparse.Namespace(
+            project=".", fixtures=fixtures, report=report, baseline=None)))
 
-    def test_Given_ANarrowedSweep_When_ItReportsOverTheRecord_Then_ItIsRefused(self):
+    def test_Given_FourWaysToReport_When_TheArgumentsAreRead_Then_OnlyTheNarrowedOneOverTheRecordIsRefused(self):
+        # Arrange — the three that must pass ride with the one that must not, because a check refusing
+        # nothing and a check refusing everything each satisfy one of them alone. Each of the three is
+        # a term of the condition: the whole sweep, the report aimed elsewhere, and no report at all.
+        narrowed = ["Velvet.Tests.HasVariantTests"]
+
         # Act
-        problems = self.problems(["Velvet.Tests.HasVariantTests"], neuter_check.HOLES_FILE)
+        verdicts = (self.refused(narrowed, neuter_check.HOLES_FILE),
+                    self.refused(None, neuter_check.HOLES_FILE),
+                    self.refused(narrowed, "Logs/sweep.txt"),
+                    self.refused(narrowed, None))
 
         # Assert
-        self.assertIn("--report would write only those over", "\n".join(problems))
-
-    def test_Given_AWholeSweep_When_ItReportsOverTheRecord_Then_NothingIsReported(self):
-        # Act
-        problems = self.problems(None, neuter_check.HOLES_FILE)
-
-        # Assert
-        self.assertEqual(problems, [])
-
-    def test_Given_ANarrowedSweep_When_ItReportsElsewhere_Then_NothingIsReported(self):
-        # Act
-        problems = self.problems(["Velvet.Tests.HasVariantTests"], "Logs/sweep.txt")
-
-        # Assert
-        self.assertEqual(problems, [])
+        self.assertEqual(verdicts, (True, False, False, False))
 
 
 class CoverageDrift(unittest.TestCase):
