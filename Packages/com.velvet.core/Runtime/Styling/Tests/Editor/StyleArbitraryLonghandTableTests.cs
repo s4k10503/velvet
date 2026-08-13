@@ -28,8 +28,8 @@ namespace Velvet.Tests
     {
         // The members whose row is compared to their probe directly — everything the composed-filter family
         // does not hold out. A literal rather than the complement of the family, so a family that swallowed
-        // a mapped member cannot shrink both sides of the comparison together. Updated deliberately when an
-        // ArbitraryProperty is added.
+        // a mapped member cannot shrink both sides of the comparison together. Updated deliberately when a
+        // MAPPED property is added; a filter member added to the resolver's set leaves it where it is.
         private const int MappedPropertyCount = 60;
 
         private readonly List<UnityEngine.Object> _spawned = new();
@@ -57,7 +57,7 @@ namespace Velvet.Tests
 
             // Act
             var compared = 0;
-            var disagreements = new List<string>();
+            var problems = new List<string>();
             foreach (ArbitraryProperty property in Enum.GetValues(typeof(ArbitraryProperty)))
             {
                 if (family.Contains(property))
@@ -69,15 +69,18 @@ namespace Velvet.Tests
                 var written = ProbeInlineWrites(property);
                 if (declared != written)
                 {
-                    disagreements.Add($"{property}: row=[{declared}] writes=[{written}]");
+                    problems.Add($"{property}: row=[{declared}] writes=[{written}]");
                 }
             }
+            if (compared != MappedPropertyCount)
+            {
+                problems.Add($"compared {compared} members, MappedPropertyCount says {MappedPropertyCount}");
+            }
 
-            // Assert — the compared population rides along so a loop that stopped reaching the members cannot
-            // leave this green with nothing derived. The disagreements are joined into the message for the
-            // reason MotionPropertyChannelTests joins its own.
-            Assert.That((compared, string.Join("; ", disagreements)),
-                Is.EqualTo((MappedPropertyCount, string.Empty)));
+            // Assert — the population is folded into the message rather than compared beside it, so the
+            // failure names the literal a maintainer has to update. The problems are joined into one string
+            // for the reason MotionPropertyChannelTests joins its own.
+            Assert.That(string.Join("; ", problems), Is.Empty);
         }
 
         // GREEN_ON_BASE(characterization): the family is already held out on purpose; the case pins that
@@ -91,22 +94,27 @@ namespace Velvet.Tests
             var family = ComposedFilterFamily();
 
             // Act
-            var offenders = new List<string>();
+            var problems = new List<string>();
             foreach (var property in family)
             {
                 var declared = DeclaredRow(property);
                 var written = ProbeInlineWrites(property);
                 if (declared.Length != 0 || written != nameof(StyleLonghand.Filter))
                 {
-                    offenders.Add($"{property}: row=[{declared}] writes=[{written}]");
+                    problems.Add($"{property}: row=[{declared}] writes=[{written}]");
                 }
             }
+            // The same inequality the case above states from the other side, so nothing can move one
+            // population without moving the other: it is one partition check, carried by both cases so
+            // neither depends on the other having run.
+            var room = Enum.GetValues(typeof(ArbitraryProperty)).Length - MappedPropertyCount;
+            if (family.Count != room)
+            {
+                problems.Add($"{family.Count} filter members, MappedPropertyCount leaves room for {room}");
+            }
 
-            // Assert — the family's size is the enum's less the mapped count, so a family that gained or lost
-            // a member fails here rather than quietly changing which members the case above compares.
-            Assert.That((family.Count, string.Join("; ", offenders)),
-                Is.EqualTo((Enum.GetValues(typeof(ArbitraryProperty)).Length - MappedPropertyCount,
-                    string.Empty)));
+            // Assert
+            Assert.That(string.Join("; ", problems), Is.Empty);
         }
 
         // GREEN_ON_BASE(characterization): the vocabulary already reaches every inline slot one-to-one; the
@@ -116,8 +124,11 @@ namespace Velvet.Tests
         {
             // Arrange — the probe sees a write only through this mapping, so a slot no longhand reaches is one
             // a property could write unobserved, and two longhands reaching one slot means at least one of
-            // them is aimed at the wrong accessor. Deprecated slots are held out of the reach requirement:
-            // the vocabulary derives from the bundled stylesheets and does not carry them.
+            // them is aimed at the wrong accessor. A newly unreached slot is added to the hand-kept
+            // vocabulary in Generators~/src/Velvet.StyleTable/UssPropertyVocabulary.cs, not to the bundled
+            // stylesheets. The one slot IStyle exposes that the vocabulary omits is a SHORTHAND, which
+            // StyleLonghand holds none of; the ObsoleteAttribute filter that skips it here is the one
+            // PooledElementStyleGhostTests applies, on the reason stated there.
             var reached = new Dictionary<string, List<string>>();
             foreach (var slot in s_inlineSlots)
             {
