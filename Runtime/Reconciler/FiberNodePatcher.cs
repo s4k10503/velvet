@@ -746,11 +746,11 @@ namespace Velvet
             HashSet<ComponentFiber>? healingChildFibersBefore = null;
             if (isHeal)
             {
-                // FiberStack.Current is genuinely the declaring fiber here (RenderAndReconcile keeps
-                // it pushed for the whole patch of its own returned tree — unlike DrainPendingPortalMounts,
-                // which runs later with the reconcile root current instead), so it doubles as both the
-                // ComponentRegistry parent new children below will actually register under AND the
-                // logical ancestor FiberCrossPanelEventDispatcher.Continue needs.
+                // FiberStack.Current is the declaring fiber here (RenderAndReconcile keeps it pushed for
+                // the whole patch of its own returned tree), so it doubles as both the ComponentRegistry
+                // parent new children below will actually register under AND the logical ancestor
+                // FiberCrossPanelEventDispatcher.Continue needs. The deferred mount arrives at the same
+                // fiber by pushing it explicitly — DrainPendingPortalMounts owns why it has to.
                 healingDeclaringFiber = CaptureDeclaringChildFibers(pooled: false, out healingChildFibersBefore);
             }
 
@@ -1028,12 +1028,18 @@ namespace Velvet
             // within this call, and what the outer one mounts after that returns is still the outer one's.
             var enclosingPortal = _ctx.CurrentPortalPlaceholder;
             _ctx.CurrentPortalPlaceholder = placeholder;
+            // The mount half sets the same scope for the same reason — DrainPendingPortalMounts owns it —
+            // and the two have to agree or a patch looks this Portal's children up under a key the mount
+            // did not register them by. No push here: this runs from the reconcile of the tree the
+            // declaring component returned, so its fiber is already current.
+            var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
             try
             {
                 _host.ReconcileChildren(target, oldChildren, newChildren, slotStart: prevState.SlotStart);
             }
             finally
             {
+                _ctx.ExitPortalChildKeyScope(enclosingChildScope);
                 _ctx.CurrentPortalPlaceholder = enclosingPortal;
             }
             // (beforeTailCount - prevState.SlotLength) is the count of target children that do NOT belong to

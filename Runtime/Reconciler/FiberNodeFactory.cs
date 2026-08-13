@@ -522,13 +522,11 @@ namespace Velvet
 
         private VisualElement CreateForComponentNode(ComponentNode componentNode)
         {
-            // Wrapper-mount path: reached only when CreateElement is invoked directly on a
-            // ComponentNode the reconcile walk did not inline-expand — a MemoNode whose
-            // resolved inner is a ComponentNode, or a ComponentNode that is a direct child of
-            // an AnimatePresence keyed entry. ComponentNodes reached during a
-            // ChildReconciler.Reconcile pass (top-level or nested under an element) are
-            // inline-mounted (no wrapper VE) by GeneralPathReconciler.ExpandInlineRecursive, so this
-            // case is unreachable for them.
+            // Wrapper-mount path, reached from a VirtualList item and nothing else: the item renderer's
+            // return goes to IReconcilerBridge.CreateElementForController unexpanded, while a reconcile
+            // rules a ComponentNode out on both of its paths — the fast one runs only where
+            // GeneralPathReconciler.NeedsExpansion found none, and the general one expands each one it
+            // reaches, a Memo's resolved inner and an AnimatePresence keyed entry included.
             // A Component does not emit a DOM element; its rendered tree attaches
             // directly to the parent. Velvet needs an anchor element for fiber tracking,
             // so the wrapper is made layout-transparent so its single child can size
@@ -542,15 +540,10 @@ namespace Velvet
         {
             // A context Provider emits no DOM element of its own; descendants attach directly to
             // the parent fiber's host. Velvet maps each VNode to exactly one VisualElement so a
-            // layout-passthrough wrapper anchors the Provider subtree without imposing layout.
-            // The wrapper is what AnimatePresence's keyed map (and any BaseElementNode children
-            // list reached through MemoNode's resolved inner) tracks for this Provider entry —
-            // the wrapper element is a deliberate choice, as documented on ContextProviderNode.
-            //
-            // GeneralPathReconciler.ExpandInlineRecursive expands Provider inline (no wrapper) during
-            // a Reconcile pass, so this case is unreachable for slot-based reconciliation; it is
-            // reached only when CreateElement is invoked directly on a Provider VNode — e.g. a
-            // MemoNode resolved inner.
+            // layout-passthrough wrapper anchors the Provider subtree without imposing layout — a
+            // deliberate choice, as documented on ContextProviderNode.
+            // Reached the one way CreateForComponentNode above is, and ruled out on the reconcile
+            // paths for the same reason.
             var container = CreateLayoutPassthroughContainer();
             container.AddToClassList(ContextProviderClassName);
 
@@ -692,8 +685,9 @@ namespace Velvet
             var placeholder = CreateHiddenPlaceholder();
             var contextSnapshot = _ctx.ComponentContextStack.SnapshotTops();
             // FiberStack.Current is the component whose Body is mid-render right now — the one that
-            // actually wrote `V.Portal(...)`/`V.WorldSpace(...)` into its returned tree. This is the
-            // only point where that's true; by drain time nothing on the stack reflects it anymore.
+            // actually wrote `V.Portal(...)`/`V.WorldSpace(...)` into its returned tree. Capturing it
+            // here is what makes it available at all: the pass that had it on the stack has unwound by
+            // drain time, and the drain pushes this captured value back rather than reading one.
             var logicalParent = _ctx.FiberStack.Current;
             _ctx.PendingPortalMounts.Enqueue((placeholder, node, target, contextSnapshot, logicalParent));
             return placeholder;

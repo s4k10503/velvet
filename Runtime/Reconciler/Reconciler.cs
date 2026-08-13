@@ -49,8 +49,8 @@ namespace Velvet
 
         /// <summary>
         /// Inline-mounted descendants share the root Reconciler's <see cref="ReconcilerContext"/>
-        /// so that <see cref="ComponentRegistry"/> lookups by <c>(anchor, slotKey, identity)</c>
-        /// resolve to the same fiber instance regardless of which fiber's Reconciler is currently
+        /// so that <see cref="ComponentRegistry"/> lookups resolve to the same fiber instance
+        /// regardless of which fiber's Reconciler is currently
         /// running. Each fiber still has its own Reconciler (and ChildReconciler) so per-fiber
         /// time-sliced pause/resume state is independent, but the registries / stacks
         /// (ComponentRegistry / FiberStack / ComponentContextStack / BufferPool / element-keyed
