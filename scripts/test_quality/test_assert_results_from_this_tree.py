@@ -13,6 +13,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -20,6 +21,10 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# A diagnostic identifier as the analyzer sources declare one, in the two spellings they use:
+# a bare string literal in a descriptor and a const beside the fixer that consumes it.
+ANALYZER_ID = re.compile(r'"((?:VEL|USS)\d{3})"')
 
 
 def load_module(name):
@@ -247,8 +252,8 @@ class LogTests(unittest.TestCase):
             self.assertEqual(code, 0)
 
     def test_Given_ALogCarryingAnAnalyzerDiagnosticAtErrorSeverity_When_TheRunIsRead_Then_ItIsRefused(self):
-        # Arrange -- the analyzers under Generators~ declare VEL500, VEL501 and VEL502 as errors, and
-        # one of those fails the compile with no CS code in the log to find it by.
+        # Arrange -- an analyzer under Generators~ raising its own at error severity fails the
+        # compile with no CS code in the log to find it by.
         with workspace() as tree:
             tree.wrote(log="Saving results to: {}\nV.cs(9,5): error VEL501: Member 'R' makes 21 "
                            "branching decisions; the limit is 20\n".format(tree.results))
@@ -258,6 +263,20 @@ class LogTests(unittest.TestCase):
 
             # Assert
             self.assertEqual((code, "VEL501" in said), (1, True))
+
+    def test_Given_ALogCarryingUnitysOwnCapitalisedErrorLine_When_TheRunIsRead_Then_ItIsNotRefused(self):
+        # Arrange -- Unity's own subsystems print a capitalised error line into every editor log,
+        # and the separator is the only thing between it and a diagnostic: measured, a pattern
+        # widened to the bare word refuses every results-writing log on this machine, all 265.
+        with workspace() as tree:
+            tree.wrote(log="Saving results to: {}\n[Licensing::Module] Error: Access token is "
+                           "unavailable; failed to update\n".format(tree.results))
+
+            # Act
+            code, _ = tree.verdict()
+
+            # Assert
+            self.assertEqual(code, 0)
 
     def test_Given_ALogWhoseOwnOutputSaysErrorWithoutTheSeparator_When_TheRunIsRead_Then_ItIsNotRefused(self):
         # Arrange -- a case's expected-log message reaches the editor log, so a pattern reading the
@@ -351,6 +370,20 @@ class UnreadableTests(unittest.TestCase):
 
             # Assert
             self.assertEqual(code, 2)
+
+    def test_Given_NoResultsFileAndNothingInTheLogToSayWhy_When_TheRunIsRead_Then_TheRefusalSaysBoth(self):
+        # Arrange -- a run that wrote nothing and explained nothing. The floor below refuses this
+        # reading too, for want of a test run, so only the wording separates a missing file from a
+        # file that turned out to hold no run.
+        with workspace() as tree:
+            tree.wrote(log="Refreshing native plugins compatible for Editor\n")
+            tree.results.unlink()
+
+            # Act
+            code, said = tree.verdict(str(tree.run_directory), "--project", str(tree.project))
+
+            # Assert
+            self.assertEqual((code, "no results file" in said), (2, True))
 
     def test_Given_NoAssemblyDefinitionHere_When_TheRunIsRead_Then_TheRefusalNamesIt(self):
         # Arrange -- with none, no assembly is this worktree's, and the floor below refuses the same
@@ -462,6 +495,26 @@ class TypeReadingTests(unittest.TestCase):
         # Assert
         self.assertEqual(sorted(names),
                          ["Velvet.Tests.D", "Velvet.Tests.D.E", "Velvet.Tests.F"])
+
+
+class DiagnosticIdTests(unittest.TestCase):
+    def test_Given_EveryDiagnosticIdTheAnalyzersHereDeclare_When_RaisedAsAnError_Then_TheLogReadingMatchesIt(self):
+        # Arrange -- read off the analyzer sources rather than listed, since which of them is an
+        # error is not fixed: a descriptor can be declared at error severity, and any of them can be
+        # promoted to one by warnaserror or by a severity entry. A reading keyed on an ID space
+        # would have to be widened once per addition, and nothing would say when.
+        generators = REPO_ROOT / "Packages" / "com.velvet.core" / "Generators~" / "src"
+        ids = sorted({found for path in generators.rglob("*.cs")
+                      for found in ANALYZER_ID.findall(
+                          path.read_text(encoding="utf-8", errors="replace"))})
+
+        # Act
+        unmatched = [name for name in ids
+                     if not check.COMPILE_ERROR.search(
+                         "Packages/x/Foo.cs(1,1): error {}: something".format(name))]
+
+        # Assert -- the count rides along because an empty corpus leaves nothing unmatched.
+        self.assertEqual((len(ids) > 20, unmatched), (True, []))
 
 
 class RepositoryTests(unittest.TestCase):

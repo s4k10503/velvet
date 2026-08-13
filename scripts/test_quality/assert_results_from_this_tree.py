@@ -36,10 +36,14 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# Not the CS ID space: the analyzers under Generators~ declare VEL500, VEL501 and VEL502 at error
-# severity, and one of those fails the compile with no CS code in the log anywhere -- measured twice
-# on this machine, both times a run that wrote no results. Matched on the separator the diagnostic
-# line carries rather than on a list of ID prefixes, which would be one more mirror to keep.
+# Not the CS ID space: an analyzer under Generators~ raises its own at error severity, which fails
+# the compile with no CS code in the log to find it by. Matched on the separator a diagnostic line
+# carries rather than on a list of ID prefixes -- the test module reads the identifiers the
+# analyzers declare and holds this pattern to matching every one.
+#
+# The separator is not decoration. Every editor log carries capitalised `] Error:` lines from Unity's
+# own subsystems, so a pattern widened to the bare word refuses every run there has ever been; the
+# test module pins that too.
 COMPILE_ERROR = re.compile(r": error ")
 
 SAVED_RESULTS = re.compile(r"^Saving results to: (.+?)\s*$", re.MULTILINE)
@@ -60,8 +64,10 @@ def _sibling(name):
     return module
 
 
-# The brace and namespace reading that names a type below is base_red_check.py's, which owns why it
-# is taken off a masked line rather than a raw one.
+# The masking and the brace profile a type is read off below are base_red_check.py's, which owns why
+# a declaration is taken off a masked line rather than a raw one. Its namespace reading is not
+# taken: that one keeps the last name it saw, and `declared_types` stacks them instead because two
+# block namespaces nest to the name NUnit reports.
 _base_red_check = _sibling("base_red_check")
 
 
