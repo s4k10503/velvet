@@ -27,8 +27,9 @@ namespace Velvet.Tests
     /// the observed status, data and variables come from the latest call.</item>
     /// <item>A call <c>Reset</c> abandoned still runs to completion and delivers its own callbacks, but neither
     /// its result nor its failure reaches the handle.</item>
-    /// <item>The outcome is committed after the handlers, so a handler observes the call still pending; and a
-    /// mutation whose <c>OnSuccess</c> threw leaves no data standing under the resulting error.</item>
+    /// <item>The outcome is committed after the handlers, so a handler of a call nothing has superseded or reset
+    /// observes it still pending; and a mutation whose <c>OnSuccess</c> threw leaves no data standing under the
+    /// resulting error.</item>
     /// <item>If the component unmounts while a mutation is in flight, the caller's await still observes the function
     /// result but the disposed fiber does not receive a Success state transition.</item>
     /// </list>

@@ -103,8 +103,8 @@ TanStack Query's `useMutation` equivalent. Returns a handle with `Mutate` (fire-
 delivers its own `OnSuccess` / `OnError`, and `Status` / `Data` / `Error` / `Variables` are one
 snapshot following the newest — so a double-tapped button does not lose the first call's follow-up
 write. Starting a call resets all four to that call's own — `Data` included, so a pending call never
-shows the previous one's result. Not cancelling on re-entry and following the newest are v5's
-behaviour.
+shows the previous one's result. Not cancelling on re-entry, following the newest, and clearing
+`Data` when a call starts are all v5's behaviour.
 
 The `CancellationToken` handed to `MutationFn` has **no v5 counterpart** — a v5 `mutationFn` receives
 only its variables. It is cancelled when the component unmounts, which is what a Unity web request
@@ -116,10 +116,12 @@ and still delivers its own `OnSuccess` / `OnError`, but neither its result nor i
 handle, so resetting a save while it is in flight leaves the handle idle when the save lands.
 
 **When the outcome is committed.** After the handlers, which is when v5 dispatches it. A handler
-therefore reads the handle as the call still pending, and the four snapshots become that call's only
-once `OnSuccess` / `OnError` has returned. Each outcome is written whole: `Data` is what one call
-produced and `Error` is how one call failed, so `Data` stands only under `Status == Success` and
-`Error` only under `Status == Error` — a pending or reset handle has neither.
+therefore never reads its own call's outcome: `Status` / `Data` / `Error` still show whatever the
+handle showed before it ran — this call pending on the ordinary path, a newer call's outcome where
+that call has already settled, `Idle` for a call `Reset` abandoned. `Variables` is not part of that:
+it is written when the call starts and no outcome touches it. Each outcome is written whole: `Data`
+is what one call produced and `Error` is how one call failed, so `Data` stands only under
+`Status == Success` and `Error` only under `Status == Error` — a pending or reset handle has neither.
 
 **Callback error semantics** (TanStack Query v5 parity):
 

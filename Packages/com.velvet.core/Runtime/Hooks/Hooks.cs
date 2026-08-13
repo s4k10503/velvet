@@ -1831,9 +1831,9 @@ namespace Velvet
             {
                 var data = await slot.MutationFn(variables, cts.Token);
                 if (fiber.IsDisposed) return data;
-                // The handler runs before the outcome is committed, which is where TanStack dispatches
-                // it: what OnSuccess reads is this call still pending, and a handler that throws leaves
-                // the call a failure with nothing of its own written.
+                // The handler runs before this call's outcome is committed, which is where TanStack
+                // dispatches it: what OnSuccess reads is the handle as it stands rather than its own
+                // result, and a handler that throws leaves the call a failure with nothing written.
                 slot.OnSuccess?.Invoke(data, variables);
                 if (mine == slot.Generation) slot.Result.MarkSuccess(data);
                 RequestRender(fiber);

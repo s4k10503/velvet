@@ -7,11 +7,11 @@ using NUnit.Framework;
 namespace Velvet.Tests
 {
     /// <summary>
-    /// Holds the invariant every state transition of <see cref="MutationResult{TVariables, TData}"/> shares:
-    /// <c>Data</c> is what one call produced and <c>Error</c> is how one call failed, so neither stands under a
+    /// Holds the invariant every write to a <see cref="MutationResult{TVariables, TData}"/> shares: <c>Data</c>
+    /// is what one call produced and <c>Error</c> is how one call failed, so neither stands under a
     /// <see cref="MutationStatus"/> that disowns it. <see cref="UseMutationHookTests"/> reads that off the paths
-    /// a mutation takes today; this reads it off the transitions themselves, so a path added later answers for
-    /// it without being enumerated anywhere.
+    /// a mutation takes today; this reads it off the writers — each constructor and each declared method — so
+    /// one added later answers for it without being enumerated anywhere.
     /// </summary>
     [TestFixture]
     internal sealed class MutationStateTransitionTests
@@ -20,17 +20,32 @@ namespace Velvet.Tests
         private static readonly Exception Stale = new InvalidOperationException("stale");
 
         [Test]
-        public void Given_AHandleShowingBothOutcomes_When_EveryDeclaredTransitionRuns_Then_NeitherStandsUnderTheOtherStatus()
+        public void Given_AHandleShowingBothOutcomes_When_EveryDeclaredWriterRuns_Then_NeitherStandsUnderTheOtherStatus()
         {
             // Arrange — the setters are what make the sweep the whole question rather than part of it: with
-            // no writer outside the type, every path that moves the observed four is one of these methods.
+            // no writer outside the type, what moves the observed four is declared on it. A property with
+            // no setter at all is the stricter case, not a laxer one, so it is not counted here.
             var type = typeof(MutationResult<string, string>);
             var writableFromOutside = string.Join(", ", new[] { "Status", "Data", "Error", "Variables" }
-                .Where(name => type.GetProperty(name)!.SetMethod is not { IsPrivate: true }));
+                .Where(name => type.GetProperty(name)!.SetMethod is { IsPrivate: false }));
 
             // Act — the arranged handle carries a result and a failure at once, so a transition that writes
-            // only the field it is named for leaves the other one behind for the sweep to find.
+            // only the field it is named for leaves the other one behind for the sweep to find. A handle as
+            // constructed is asked first and unarranged: what a seed writes there is no transition's doing,
+            // and arranging over it is what would hide it.
             var findings = new List<string>();
+            foreach (var constructor in type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                var seeds = constructor.GetParameters().Select(parameter => Argument(parameter.ParameterType)).ToArray();
+                if (seeds.Any(seed => seed is null))
+                {
+                    findings.Add("a constructor takes an argument this sweep cannot supply");
+                    continue;
+                }
+
+                Record((MutationResult<string, string>)constructor.Invoke(seeds), "a constructed handle", findings);
+            }
+
             var moved = 0;
             foreach (var transition in type
                          .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
@@ -51,14 +66,7 @@ namespace Velvet.Tests
                 if (Snapshot(handle) == arranged) continue;
 
                 moved++;
-                if (handle.Data is not null && handle.Status != MutationStatus.Success)
-                {
-                    findings.Add($"{transition.Name} left Data standing under {handle.Status}");
-                }
-                if (handle.Error is not null && handle.Status != MutationStatus.Error)
-                {
-                    findings.Add($"{transition.Name} left Error standing under {handle.Status}");
-                }
+                Record(handle, transition.Name, findings);
             }
 
             // A sweep over transitions that all leave the handle alone reports the same empty finding as one
@@ -67,7 +75,19 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((writableFromOutside, string.Join("; ", findings)), Is.EqualTo(("", "")),
-                "Nothing outside the handle writes the observed state, and every transition of it leaves a whole outcome behind");
+                "Nothing outside the handle writes the observed state, and every writer of it leaves a whole outcome behind");
+        }
+
+        private static void Record(MutationResult<string, string> handle, string what, List<string> findings)
+        {
+            if (handle.Data is not null && handle.Status != MutationStatus.Success)
+            {
+                findings.Add($"{what} leaves Data standing under {handle.Status}");
+            }
+            if (handle.Error is not null && handle.Status != MutationStatus.Error)
+            {
+                findings.Add($"{what} leaves Error standing under {handle.Status}");
+            }
         }
 
         private static MutationResult<string, string> ShowingBothOutcomes()

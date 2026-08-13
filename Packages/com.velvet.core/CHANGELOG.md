@@ -132,7 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   written before `OnSuccess` ran, so a handler that threw — which correctly makes the mutation an
   error — left that result on show underneath the error, and a view rendering `Data` without checking
   `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
-  where v5 dispatches it: a handler reads the handle as the call still pending, and `Data` stands only
+  where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
   under `Status == Success`.
 
 ## [2.1.0] - 2026-08-09
