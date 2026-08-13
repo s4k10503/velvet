@@ -1,23 +1,49 @@
 #!/usr/bin/env python3
-"""Report every mutation of this branch's changed lines that no test failed on.
+"""Fail this branch on a mutation of its changed lines that no test failed on and nobody answered for.
 
 A test that asserts nothing passes whether or not the code under test works, and the suite is
 green either way, so nothing in CI can see it. Mutating the code the branch touched and rerunning
 the suite is the only check that asks the question directly: change the behaviour, and if the
 suite still passes, no test was measuring it.
 
-A mutant surviving is a question, not a verdict: it is either a test that stopped asking, or a
-mutation the behaviour does not depend on. Both need a person to read them.
+A mutant surviving is a question, and a run that only prints the question leaves answering it to
+whoever feels like it. So a survivor either goes away -- the test that should have noticed gets
+written -- or it is answered above the line it lives on, with a reason a reviewer can disagree with:
+
+    // MUTANT_SURVIVES(equivalent): both spellings clamp to the same bound, so nothing can differ.
+
+A declaration answers for the change written under it, so it is read the three ways `base_red_check.py`
+reads `GREEN_ON_BASE`: one over a line whose mutants all died is stale and fails, one whose category or
+reason is malformed fails, and one the branch did not itself write answers for a change the base already
+carries rather than for this one.
+
+**Success means every mutant was measured, and every survivor answered for.** Not that nothing was
+reported: most of what goes wrong with a campaign ends in a mutant nobody asked about, and a mutant
+nobody asked about must never be a pass. So the ways a run can measure less than it looks like it
+measured each fail on their own -- a cap that left mutants unrun, an assembly the editor never rebuilt,
+a second editor sharing the machine, and a file whose comment and string mask swallowed code, which
+generates no mutant there and says nothing.
+
+It is not success over the whole change, and the difference is most of one: the operators reach a
+minority of the code lines a branch touches, so the reach is printed beside every verdict rather than
+folded into it, and a change nothing reaches at all refuses.
 
 The default scope is the whole platform suite rather than the fixtures nearest the mutated file,
 so that nothing is reported as surviving merely because the fixture that would have killed it was
 out of scope.
+
+A campaign holds a mutation in the working tree while the suite runs, so it records what it holds
+before writing it and clears that record only after putting the original back. Nothing else in the
+tree says a campaign is running: the mutation is a plausible one-line change in a file the branch is
+already touching, and two of them reached a commit that way.
 """
 
 import argparse
 import hashlib
 import json
+import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -29,11 +55,29 @@ DEFAULT_UNITY = "/Applications/Unity/Hub/Editor/6000.3.11f1/Unity.app/Contents/M
 # report a busy machine forever on an idle one.
 UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 
+# At the project root and not in .gitignore, so `git status` names it beside the file it explains.
+# Under Logs/ it would be correct and unread: what a resumed session looks at is `git status`, and a
+# mutation there reads as an interrupted implementation.
+SENTINEL = "MUTATION_IN_PROGRESS.json"
+
 KILLED = "killed"
 SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
 UNCOMPILABLE = "uncompilable"
 NOT_BUILT = "not rebuilt"
+
+SURVIVING = (SURVIVED, INCONCLUSIVE)
+
+CATEGORIES = ("equivalent", "unreachable")
+
+# Four words, for the reason base_red_check.py's own floor gives.
+MINIMUM_REASON_WORDS = 4
+
+DECLARATION = re.compile(r"MUTANT_SURVIVES\(([A-Za-z]*)\)\s*:\s*(.*)")
+
+# How many unreached line numbers a file lists before the rest become a count. The count stays exact
+# either way; what this bounds is a whole-file `--files` run printing several hundred of them.
+LINES_LISTED = 25
 
 
 class Mutant:
@@ -55,18 +99,76 @@ class Mutant:
         return "{}:{} {} -> {} ({})".format(where, self.line, self.before, self.after, self.operator)
 
 
+class Declaration:
+    def __init__(self, category, reason, line, written_here=True):
+        self.category = category
+        self.reason = reason
+        self.line = line
+        # Whether the branch wrote it, for the reason base_red_check.py's own field carries.
+        self.written_here = written_here
+
+    @property
+    def complaint(self):
+        if self.category not in CATEGORIES:
+            return "category {!r} is not one of {}".format(self.category, ", ".join(CATEGORIES))
+        if len(self.reason.split()) < MINIMUM_REASON_WORDS:
+            return "the reason is under {} words".format(MINIMUM_REASON_WORDS)
+        return None
+
+    def __repr__(self):
+        return "Declaration({!r}, line {})".format(self.category, self.line)
+
+
+def declarations_in(text):
+    """(the line it answers for, the declaration) for every one in a file.
+
+    A declaration answers for the line under it, reached past any further comment lines of the same
+    block. A blank line ends the block: prose further up belongs to whatever sits under it, and
+    reaching past the gap would let one line's answer cover a neighbour nobody wrote it for.
+    """
+    lines = text.splitlines()
+    found = []
+    for index, line in enumerate(lines):
+        match = DECLARATION.search(line)
+        if not match:
+            continue
+        subject = index + 1
+        while subject < len(lines) and lines[subject].strip().startswith("//"):
+            subject += 1
+        if subject < len(lines) and lines[subject].strip():
+            found.append((subject + 1,
+                          Declaration(match.group(1), match.group(2).strip(), line=index + 1)))
+    return found
+
+
 # The furthest offset from an opening quote at which a closing one can still sit: `'\U0001F600'` is
 # the longest character literal C# can spell.
 CHARACTER_LITERAL_REACH = len("'\\U0001F600'") - 1
 
 
-def code_mask(text):
-    """True at every offset that the compiler sees as code.
+DIRECTIVE = "preprocessor directive"
+LINE_COMMENT = "line comment"
+BLOCK_COMMENT = "block comment"
+STRING = "string literal"
+VERBATIM = "verbatim string literal"
+CHARACTER = "character literal"
+
+# The four the scanner above reads as ending on the line they open on. A span of one of them that
+# reaches the next line is therefore the scanner having read something as a construct it is not, and
+# every offset it covers is blanked out of the mask -- which generates no mutant there and reports
+# nothing. A raw string literal is the shape that would land here legitimately; the scanner does not
+# read one, so refusing is the answer rather than trusting the mask over that file.
+SINGLE_LINE_CONSTRUCTS = (DIRECTIVE, LINE_COMMENT, STRING, CHARACTER)
+
+
+def mask_spans(text):
+    """(start, end, kind) for the spans this reads as something other than code.
 
     Mutating a comment or a string literal produces a mutant that cannot change behaviour, and
-    each one still costs a full compile-and-run cycle.
+    each one still costs a full compile-and-run cycle. Whether the reading is right about a file is
+    what `mask_defects` puts a floor under; a raw string literal is a shape it does not read at all.
     """
-    mask = [True] * len(text)
+    spans = []
     i = 0
     n = len(text)
     while i < n:
@@ -77,20 +179,17 @@ def code_mask(text):
             # own tree`, whose apostrophe opens a character literal against the rule below.
             end = text.find("\n", i)
             end = n if end < 0 else end
-            for j in range(i, end):
-                mask[j] = False
+            spans.append((i, end, DIRECTIVE))
             i = end
         elif two == "//":
             end = text.find("\n", i)
             end = n if end < 0 else end
-            for j in range(i, end):
-                mask[j] = False
+            spans.append((i, end, LINE_COMMENT))
             i = end
         elif two == "/*":
             end = text.find("*/", i + 2)
             end = n if end < 0 else end + 2
-            for j in range(i, end):
-                mask[j] = False
+            spans.append((i, end, BLOCK_COMMENT))
             i = end
         elif text[i] == '"' or two in ('@"', '$"') or text[i:i + 3] == '$@"':
             start = i
@@ -109,8 +208,7 @@ def code_mask(text):
                     i += 1
                     break
                 i += 1
-            for j in range(start, min(i, n)):
-                mask[j] = False
+            spans.append((start, min(i, n), VERBATIM if verbatim else STRING))
         elif text[i] == "'":
             # An apostrophe with no closing one inside a literal's reach is not a literal. Consuming
             # to the next one anywhere in the file instead blanks arbitrary code, and nothing after
@@ -124,11 +222,36 @@ def code_mask(text):
                 i = start + 1
                 continue
             i += 1
-            for j in range(start, min(i, n)):
-                mask[j] = False
+            spans.append((start, min(i, n), CHARACTER))
         else:
             i += 1
+    return spans
+
+
+def code_mask(text):
+    """True at each offset `mask_spans` did not read as a comment, a literal or a directive."""
+    mask = [True] * len(text)
+    for start, end, _ in mask_spans(text):
+        for offset in range(start, end):
+            mask[offset] = False
     return mask
+
+
+def mask_defects(text):
+    """(first line, last line, kind) for every span blanked through a construct that ends on its own line.
+
+    What this catches is the mask reading something as a construct it is not. It cannot see the
+    converse -- code read as code that the compiler treats otherwise -- so it is a floor rather than a
+    proof that the mask is right about a file.
+    """
+    starts = [start for start, _ in line_spans(text)]
+    defects = []
+    for start, end, kind in mask_spans(text):
+        if kind in SINGLE_LINE_CONSTRUCTS and "\n" in text[start:end]:
+            first = sum(1 for offset in starts if offset <= start)
+            last = sum(1 for offset in starts if offset < end)
+            defects.append((first, last, kind))
+    return defects
 
 
 # Spacing is what separates a comparison from a generic argument list and a binary operator from
@@ -274,6 +397,27 @@ def mutations_for(path, text, target_lines):
     return found
 
 
+def code_line_numbers(text, numbers):
+    """The changed lines the compiler sees something on beyond block punctuation.
+
+    This is the denominator every verdict is quoted against, because the operators above reach a
+    minority of it -- a method written as a run of assignments generates nothing at all -- and a
+    campaign reporting only that nothing survived reads as a statement about the whole change.
+    Generators~/README.md ▸ Mutation testing carries what that minority measures.
+    """
+    spans = line_spans(text)
+    mask = code_mask(text)
+    found = []
+    for number in sorted(numbers):
+        if number > len(spans):
+            continue
+        start, end = spans[number - 1]
+        seen = "".join(text[offset] for offset in range(start, end) if mask[offset])
+        if seen.strip(" \t\r\n{};"):
+            found.append(number)
+    return found
+
+
 def apply_mutation(text, mutant):
     spans = line_spans(text)
     start, end = spans[mutant.line - 1]
@@ -364,6 +508,72 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else ""
 
 
+# --------------------------------------------------------------------------------------------------
+# Holding a mutation
+# --------------------------------------------------------------------------------------------------
+
+class Holder:
+    """The one mutation on disk, recorded before it is written and released after it is undone.
+
+    The order is the whole mechanism, and it is chosen so that no interruption can leave a mutation
+    with nothing naming it: the record is written first and removed last, so an interruption leaves
+    either nothing, or a record over a file that may or may not be mutated -- and rewriting the
+    original is correct in both of those. The other order leaves the state this exists to end, a
+    mutated production file that reads as somebody's unfinished edit.
+
+    A `finally` alone does not reach it. SIGTERM runs no Python at all under the default handler,
+    which is what `TaskStop`, a timeout and a killed session all send.
+    """
+
+    def __init__(self, sentinel):
+        self.sentinel = Path(sentinel)
+        self.child = None
+
+    def hold(self, source, original, description):
+        self.sentinel.write_text(json.dumps({
+            "source": str(source),
+            "original": original,
+            "mutation": description,
+            "pid": os.getpid(),
+            "since": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        }, indent=2))
+
+    def release(self):
+        """Puts back whatever the record names and removes it. Safe to call when there is no record."""
+        if not self.sentinel.exists():
+            return None
+        try:
+            held = json.loads(self.sentinel.read_text())
+            Path(held["source"]).write_text(held["original"])
+        except (OSError, ValueError, KeyError) as failure:
+            # Leaving the record is the point: what it names is still on disk, and a run that removed
+            # it would take the only thing saying so with it.
+            print("could not restore from {}: {}".format(self.sentinel, failure), file=sys.stderr)
+            return None
+        self.sentinel.unlink()
+        return held
+
+    def outstanding(self):
+        if not self.sentinel.exists():
+            return None
+        try:
+            return json.loads(self.sentinel.read_text())
+        except (OSError, ValueError):
+            return {"source": "<unreadable>", "mutation": "<unreadable>"}
+
+    def guard(self):
+        """Restores on the signals that end a campaign, then dies of the signal rather than of this."""
+        def handler(number, _frame):
+            if self.child is not None and self.child.poll() is None:
+                self.child.kill()
+            self.release()
+            signal.signal(number, signal.SIG_DFL)
+            os.kill(os.getpid(), number)
+
+        for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+            signal.signal(number, handler)
+
+
 def unity_busy():
     result = subprocess.run(["ps", "-Ao", "command="], capture_output=True, text=True)
     return sum(1 for line in result.stdout.splitlines() if re.match(UNITY_RUNNING, line))
@@ -384,11 +594,15 @@ def wait_for_quiet(seconds):
     return True
 
 
-def run_suite(unity, project, platform, scope, results, log, timeout):
+def run_suite(unity, project, platform, scope, results, log, timeout, holder=None):
     """Returns the wall clock and whether the editor had to be killed.
 
     A mutation can turn a loop bound into one that never terminates, and the run would otherwise
     wait on it for as long as the machine is left alone.
+
+    The editor is held rather than waited on, so that a signal arriving here reaps it before the
+    restore: an editor left running over a tree somebody has just put back writes a results file
+    for a mutant that is no longer on disk.
     """
     command = [
         unity, "-runTests", "-batchmode", "-projectPath", str(project),
@@ -396,11 +610,35 @@ def run_suite(unity, project, platform, scope, results, log, timeout):
     ]
     command += scope
     start = time.time()
+    child = subprocess.Popen(command)
+    if holder is not None:
+        holder.child = child
     try:
-        subprocess.run(command, timeout=timeout)
+        child.wait(timeout=timeout)
         return time.time() - start, False
     except subprocess.TimeoutExpired:
+        child.kill()
+        child.wait()
         return time.time() - start, True
+    finally:
+        if holder is not None:
+            holder.child = None
+
+
+# Anchored on a source path and a position, so an assertion message quoting the words "error CS" is
+# not one. The code is not pinned to CS: this repository's own analyzers report VEL500 and VEL501 as
+# errors, and a build they stop writes no results file at all -- which reads, from the results alone,
+# exactly like an editor that crashed.
+BUILD_ERROR = re.compile(
+    r"^(?:.*?[\\/])?((?:Assets|Packages)[\\/][^(]+)\(\d+,\d+\): error [A-Z]+\d+", re.MULTILINE)
+
+
+def build_error(log):
+    """The first source a Unity log blames a build error on, or None."""
+    if not log.exists():
+        return None
+    found = BUILD_ERROR.search(log.read_text(errors="replace"))
+    return found.group(1).replace("\\", "/") if found else None
 
 
 def failing_names(results):
@@ -419,6 +657,75 @@ def read_counts(results):
     if root.tag != "test-run":
         return None
     return {key: int(root.get(key, "0")) for key in ("total", "passed", "failed", "inconclusive")}
+
+
+# --------------------------------------------------------------------------------------------------
+# Deciding
+# --------------------------------------------------------------------------------------------------
+
+def reach(mutants, unreached, project):
+    """What the campaign was able to ask about, printed beside whatever it then answers.
+
+    The lines are named rather than counted, because the count alone is a number nobody has to act on.
+    """
+    reached = {(mutant.path, mutant.line) for mutant in mutants}
+    left = sum(len(lines) for lines in unreached.values())
+    report = ["{} mutant(s) over {} changed code line(s); {} line(s) no operator reaches".format(
+        len(mutants), len(reached) + left, left)]
+    for path, lines in sorted(unreached.items(), key=lambda item: str(item[0])):
+        try:
+            where = path.relative_to(project)
+        except ValueError:
+            where = path
+        shown = ",".join(str(number) for number in lines[:LINES_LISTED])
+        rest = "" if len(lines) <= LINES_LISTED else " and {} more".format(len(lines) - LINES_LISTED)
+        report.append("  unreached  {}:{}{}".format(where, shown, rest))
+    return "\n".join(report)
+
+
+def declarations_for(targets, changed):
+    """(path, subject line) -> the declaration answering for it, over every file being mutated.
+
+    `changed` is the branch's own lines, and a declaration outside them was written for a change the
+    base already carries.
+    """
+    found = {}
+    for path in targets:
+        for subject, declaration in declarations_in(path.read_text()):
+            declaration.written_here = declaration.line in changed.get(path, set())
+            found[(path, subject)] = declaration
+    return found
+
+
+def answered(mutants, deferred, declared):
+    """(the survivors nothing answers for, the declarations nothing is left for them to answer).
+
+    A declaration is stale when the line under it produced no survivor -- because the mutants there
+    all died, or because there were none to begin with. Both mean it describes a state the tree is
+    no longer in, and a declaration that outlives what it describes silences whatever lands there
+    next. A line the cap left unrun is neither: it says nothing about that line at all, and the cap
+    fails the run on its own.
+    """
+    surviving = {(mutant.path, mutant.line) for mutant in mutants if mutant.verdict in SURVIVING}
+    unanswered = []
+    for mutant in mutants:
+        if mutant.verdict not in SURVIVING:
+            continue
+        declaration = declared.get((mutant.path, mutant.line))
+        if declaration is None:
+            unanswered.append((mutant, "nothing above this line answers for it"))
+        elif not declaration.written_here:
+            unanswered.append((mutant, "its declaration is the base's own; restate it for this change"))
+        elif declaration.complaint:
+            unanswered.append((mutant, declaration.complaint))
+        else:
+            mutant.detail = "{}: {}".format(declaration.category, declaration.reason)
+    settled = surviving | deferred
+    stale = [(path, subject, declaration)
+             for (path, subject), declaration in sorted(declared.items(),
+                                                        key=lambda item: (str(item[0][0]), item[0][1]))
+             if declaration.written_here and (path, subject) not in settled]
+    return unanswered, stale
 
 
 def main():
@@ -441,9 +748,61 @@ def main():
                         help="seconds to wait for another Unity run to finish (default: 1800)")
     parser.add_argument("--output", default="", help="directory for the per-mutant logs and XML")
     parser.add_argument("--unity", default=DEFAULT_UNITY, help="editor binary (default: the pinned macOS one)")
+    parser.add_argument("--restore", action="store_true",
+                        help="put back the mutation an interrupted campaign left, and stop")
+    parser.add_argument("--carried", nargs="*",
+                        help="paths something is about to record; refuses when one of them is the "
+                             "source a campaign is holding a mutation in")
     args = parser.parse_args()
 
     project = Path(args.project).resolve()
+    holder = Holder(project / SENTINEL)
+
+    if args.carried is not None:
+        # A campaign's mutation reads as an ordinary edit in a file the branch is already touching,
+        # and `git add -u` stages it with the rest. Naming it in `git status` was not enough on its
+        # own: this was written after one reached a commit that way with the record sitting beside it.
+        outstanding = holder.outstanding()
+        if outstanding is None:
+            return 0
+        # Resolved on both sides: a macOS temporary directory reaches the same file through /var and
+        # through /private/var, and comparing the spellings finds no match where there is one.
+        held = Path(outstanding.get("source", "")).resolve()
+        for name in args.carried:
+            candidate = Path(name)
+            candidate = candidate if candidate.is_absolute() else project / name
+            if candidate.resolve() == held:
+                raise SystemExit(
+                    "a mutation campaign is holding {} -- {}\n"
+                    "Recording it now captures the campaign's edit, not yours. Wait for the "
+                    "campaign,\nor put the file back with\n"
+                    "  python3 scripts/test_quality/mutation_check.py --restore".format(
+                        name, outstanding.get("mutation", "<unnamed>")))
+        return 0
+
+    if args.restore:
+        if holder.outstanding() is None:
+            print("no mutation is outstanding")
+            return 0
+        held = holder.release()
+        if held is None:
+            raise SystemExit("{} names a mutation this could not put back; read it and restore by "
+                             "hand".format(holder.sentinel))
+        print("restored {} ({})".format(held["source"], held["mutation"]))
+        return 0
+
+    # Before anything is read, because everything below reads the working tree: the baseline would be
+    # taken over somebody else's mutation, every mutant would be applied on top of it, and the restore
+    # at the end would write it back as though it were the author's own code.
+    outstanding = holder.outstanding()
+    if outstanding is not None:
+        raise SystemExit(
+            "a campaign is holding a mutation in this tree, so nothing here can be measured:\n"
+            "  {} -- {}\n"
+            "Wait for it if one is running; otherwise put it back with\n"
+            "  python3 scripts/test_quality/mutation_check.py --restore".format(
+                outstanding.get("source", "<unnamed>"), outstanding.get("mutation", "<unnamed>")))
+
     output = Path(args.output).resolve() if args.output else project / "Logs" / "mutation_check"
     output.mkdir(parents=True, exist_ok=True)
     scope = []
@@ -452,6 +811,10 @@ def main():
     if args.filter:
         scope += ["-testFilter", args.filter]
 
+    # A declaration answers for a change, so only a run scoped to one reads any. `--files` and
+    # `--filter` ask a different question -- whether this file, or this fixture, notices -- and a
+    # survivor there is the answer rather than something to sign off.
+    changed = {} if args.files else changed_files_and_lines(project, args.base)
     if args.files:
         targets = {}
         for name in args.files:
@@ -461,37 +824,67 @@ def main():
             else:
                 print("skipping {}: not a mutable package source".format(name))
     else:
-        targets = {
-            path: lines
-            for path, lines in changed_files_and_lines(project, args.base).items()
-            if mutable(path, project)
-        }
+        targets = {path: lines for path, lines in changed.items() if mutable(path, project)}
+
+    # A file the mask misreads has offsets no mutant is ever generated from, and the campaign reports
+    # that as a line with nothing to ask rather than as a reading it could not take.
+    blinded = [(path, defects) for path in sorted(targets) for defects in [mask_defects(path.read_text())]
+               if defects]
+    if blinded:
+        raise SystemExit("\n".join(
+            ["the comment-and-string mask swallows code in these files, so mutants there are missing "
+             "with nothing saying which:"]
+            + ["  {} lines {}-{} read as a {}".format(path, first, last, kind)
+               for path, defects in blinded for first, last, kind in defects]))
 
     mutants = []
+    unreached = {}
     for path, lines in sorted(targets.items()):
-        mutants.extend(mutations_for(path, path.read_text(), lines))
+        text = path.read_text()
+        found = mutations_for(path, text, lines)
+        mutants.extend(found)
+        covered = {mutant.line for mutant in found}
+        left = [number for number in code_line_numbers(text, lines) if number not in covered]
+        if left:
+            unreached[path] = left
+    coverage = reach(mutants, unreached, project)
+
     if not mutants:
+        # A branch that changed only documentation comments, a rename or a signature is the ordinary
+        # way to get here and there is nothing to ask of it. A branch that changed code and still
+        # generates nothing is the state this refuses: the verdict would be about no line at all.
+        if unreached:
+            print(coverage)
+            raise SystemExit(
+                "no operator reaches any of the {} changed code line(s) above, so a verdict here "
+                "would\nbe about nothing. Read them, and widen the operators or say in the pull "
+                "request why\nthe change is not something a mutation can ask about.".format(
+                    sum(len(lines) for lines in unreached.values())))
         print("no mutable change found")
         return 0
     if args.list:
         for mutant in mutants:
             print(mutant.describe(project))
-        print("{} mutant(s); a run covers the first {}".format(len(mutants), args.max))
+        print(coverage)
+        print("a run covers the first {}".format(args.max))
         return 0
 
-    truncated = len(mutants) > args.max
+    deferred = {(mutant.path, mutant.line) for mutant in mutants[args.max:]}
+    truncated = len(mutants) - args.max
     mutants = mutants[:args.max]
 
     if not wait_for_quiet(args.busy_timeout):
         raise SystemExit("another Unity test run is still in flight after {}s".format(args.busy_timeout))
 
-    print("{} mutant(s) over {} file(s)".format(len(mutants), len(targets)))
-    if truncated:
-        print("(capped by --max; raise it to cover the rest)")
+    print(coverage)
 
+    # Before the baseline, not before the loop: the guard reaps the editor as well as restoring, and
+    # the baseline's editor outliving a killed campaign holds the project lock against the next one.
+    holder.guard()
     baseline_results = output / "baseline.xml"
     baseline_wall, baseline_timed_out = run_suite(args.unity, project, args.platform, scope,
-                                                  baseline_results, output / "baseline.log", args.timeout)
+                                                  baseline_results, output / "baseline.log",
+                                                  args.timeout, holder)
     if baseline_timed_out:
         raise SystemExit("the baseline run did not finish within --timeout, so no mutant can be timed")
     baseline = read_counts(baseline_results)
@@ -518,23 +911,30 @@ def main():
     try:
         for index, mutant in enumerate(mutants, start=1):
             print("[{}/{}] {}".format(index, len(mutants), mutant.describe(project)), flush=True)
-            mutant.path.write_text(apply_mutation(originals[mutant.path], mutant))
             results = output / "mutant-{:03d}.xml".format(index)
             log = output / "mutant-{:03d}.log".format(index)
             if results.exists():
                 results.unlink()
-            wait_for_quiet(args.busy_timeout)
+            # Queue first, mutate second. The wait runs to --busy-timeout, half an hour by default,
+            # and there is nothing the campaign needs on disk across it.
+            if not wait_for_quiet(args.busy_timeout):
+                raise SystemExit("another Unity test run is still in flight after {}s, so this "
+                                 "mutant's failures would not all be its own".format(args.busy_timeout))
+            holder.hold(mutant.path, originals[mutant.path], mutant.describe(project))
+            mutant.path.write_text(apply_mutation(originals[mutant.path], mutant))
             wall, timed_out = run_suite(args.unity, project, args.platform, scope, results, log,
-                                        args.timeout)
-            mutant.path.write_text(originals[mutant.path])
+                                        args.timeout, holder)
+            holder.release()
 
             counts = read_counts(results)
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
+            blamed = build_error(log)
             if timed_out:
                 mutant.verdict = KILLED
                 mutant.detail = "the run did not finish; the mutation left something not terminating"
-            elif "error CS" in (log.read_text(errors="replace") if log.exists() else ""):
+            elif blamed:
                 mutant.verdict = UNCOMPILABLE
+                mutant.detail = "the build stopped in {}".format(blamed)
             elif counts is None:
                 mutant.verdict = UNCOMPILABLE
                 mutant.detail = "the runner wrote no result"
@@ -557,11 +957,15 @@ def main():
             print("      {} ({}) in {:.0f}s; {:.0f}s left at {:.0f}s each".format(
                 mutant.verdict, mutant.detail or "-", wall, average * (len(mutants) - index), average))
     finally:
+        holder.release()
         for path, text in originals.items():
             path.write_text(text)
 
+    declared = {} if args.files else declarations_for(targets, changed)
+    unanswered, stale = answered(mutants, deferred, declared)
+
     print("\n--- mutants no test killed ---")
-    survivors = [m for m in mutants if m.verdict in (SURVIVED, INCONCLUSIVE)]
+    survivors = [m for m in mutants if m.verdict in SURVIVING]
     for mutant in survivors:
         print("{}  [{}] {}".format(mutant.describe(project), mutant.verdict, mutant.detail))
     if not survivors:
@@ -580,8 +984,28 @@ def main():
     for mutant in mutants:
         tally[mutant.verdict] = tally.get(mutant.verdict, 0) + 1
     print("\n" + ", ".join("{}: {}".format(key, value) for key, value in sorted(tally.items())))
+    # Repeated under the tally, not only before the run: the tally is what gets quoted, and quoted
+    # alone it reads as a statement about the diff rather than about the lines an operator reached.
+    print(coverage)
     print("logs: {}".format(output))
-    return 1 if survivors or unmeasured else 0
+
+    for mutant, complaint in unanswered:
+        print("\nUNANSWERED  {}\n            {}".format(mutant.describe(project), complaint))
+    for path, subject, declaration in stale:
+        print("\nSTALE       {}:{} declares a survivor, and line {} has none"
+              .format(path, declaration.line, subject))
+    if unanswered and args.files:
+        print("\nA survivor is a test that stopped asking, or a mutation nothing can depend on. This "
+              "run is\nscoped by --files rather than by a change, so it reads no declaration: it "
+              "asks what this\nfile is covered by, and the survivors above are the answer.")
+    elif unanswered:
+        print("\nA survivor is a test that stopped asking, or a mutation nothing can depend on. Write "
+              "the\ntest, or say which it is above the line:")
+        print("  // MUTANT_SURVIVES({}): <why>".format("|".join(CATEGORIES)))
+    if truncated > 0:
+        print("\n{} further mutant(s) were never run: --max is {}. Raise it, or the lines they sit on "
+              "went\nunmeasured with the run still reporting.".format(truncated, args.max))
+    return 1 if unanswered or stale or unmeasured or truncated > 0 else 0
 
 
 if __name__ == "__main__":

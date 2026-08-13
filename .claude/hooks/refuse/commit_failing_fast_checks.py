@@ -242,6 +242,29 @@ def check_content(display, data):
             pass
 
 
+def check_carried_mutation(root, paths):
+    """Refuses a commit that would record a file a mutation campaign is holding.
+
+    Same hazard as `carried_neuters` below, and not the same shape: a cut is declared in a file this
+    can match against, while a mutation is whatever the campaign generated. The campaign records what
+    it holds instead, and mutation_check.py owns reading that record.
+    """
+    script = os.path.join(root, "scripts", "test_quality", "mutation_check.py")
+    if not os.path.exists(script):
+        return 0
+    # Asked on every commit rather than gated on the record existing here. Where the record lives is
+    # mutation_check.py's to know, and a copy of that here would go on answering "no campaign" after
+    # a rename moved it.
+    proc = subprocess.run(["python3", "-B", script, "--project", root, "--carried", *paths],
+                          capture_output=True, text=True, timeout=30, cwd=root)
+    if proc.returncode == 0:
+        return 0
+    sys.stderr.write(
+        "Refusing `git commit`: a mutation campaign is holding one of these files.\n\n"
+        + (proc.stdout or proc.stderr).rstrip() + "\n")
+    return 2
+
+
 def check_neuter(root):
     script = os.path.join(root, "scripts", "test_quality", "neuter_check.py")
     if not os.path.exists(script):
@@ -294,6 +317,10 @@ def audit(cwd, commits_all, pathspecs):
         return 2
     if not content:
         return 0
+
+    code = check_carried_mutation(root, sorted(content))
+    if code:
+        return code
 
     targets, edits = cut_targets(root)
     neutered = carried_neuters(content, edits)

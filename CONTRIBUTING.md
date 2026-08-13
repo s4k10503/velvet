@@ -118,11 +118,54 @@ A green suite says nothing about whether the tests would have noticed the change
 answers that for the lines a branch touched, by breaking each of them and rerunning the suite:
 
 ```bash
+python3 scripts/test_quality/mutation_check.py --base main --list   # the mutants, and what they cost, without a run
 python3 scripts/test_quality/mutation_check.py --base main
 ```
 
 [Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
-covers this and the generator solution's own run, and owns what the verdicts mean and how to read a survivor.
+covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
+survivor, and which line shapes the operators reach — which is 27% of the changed code lines measured
+over the twenty commits before this paragraph, so **a survivor count is a statement about the lines an
+operator reached and not about the change**. The run prints both numbers and names the lines it could
+not ask about.
+
+**A survivor is closed or answered for; it is not reported and left.** Either the test that should have
+noticed gets written, or the line says why nothing could have, above itself:
+
+```csharp
+// MUTANT_SURVIVES(equivalent): every caller clamps the operand, so both bounds accept the same set.
+```
+
+`equivalent` says the mutated program cannot behave differently; `unreachable` says the state where it
+would is not reachable from any entry point. A declaration answers for the change written under it and
+is read the three ways the base-red one below is: one over a line whose mutants all died is stale and
+fails, one whose category or reason the script refuses fails, and one the branch did not itself write
+answers for the base's change rather than for this one — restate it. The run also fails on every way it
+can measure less than it looks like it measured: a `--max` cap that left mutants unrun, an assembly the
+editor never rebuilt, a second editor sharing the machine, and a source whose comment-and-string mask
+swallows code, which generates no mutant there and reports nothing.
+
+**Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
+Over the twenty commits before this one, ten generated no mutant at all — a rename, a move, a signature,
+a documentation comment — and the other ten ranged 4 to 49 with a median of 13. A mutant's
+launch-compile-run measured 100–118 s here against a 94 s baseline, so a median branch is around
+25 minutes and the largest around an hour and a half; on the CI runner, where the EditMode job alone
+takes 5m47s, a median branch is 14 sequential Unity jobs. Run it on a branch before opening the pull request. `Test ▸ test-quality` holds the half that
+needs no editor: that the mutants can be generated at all, and that every declaration in the tree is one
+the script would accept rather than one it silently refuses.
+
+A campaign holds a mutation in the working tree while the suite runs, and records what it holds in
+MUTATION_IN_PROGRESS.json at the repository root — untracked, and deliberately not in `.gitignore`, so
+`git status` names it beside the file it explains. `SIGINT`, `SIGTERM` and `SIGHUP` put the source back;
+a SIGKILL and a machine losing power cannot, so the record outlives them and the next campaign refuses
+to start while one is present. Being named in `git status` is not enough on its own — a mutation reads
+as an unfinished edit in a file the branch is already touching, and `git add -u` stages it with
+everything else — so a commit that would record the held file is refused as well. Put it back by hand
+with:
+
+```bash
+python3 scripts/test_quality/mutation_check.py --restore
+```
 
 A mutation asks whether any test depends on one line. `scripts/test_quality/neuter_check.py` asks the other question a
 fixture's name makes — with the mechanism it is named for disabled, does it still pass?
