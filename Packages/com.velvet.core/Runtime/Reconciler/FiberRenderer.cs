@@ -206,8 +206,8 @@ namespace Velvet
 
             fiber.MountPoint = mountPoint ?? throw new ArgumentNullException(nameof(mountPoint));
             // Inline-mounted descendants share the root's ReconcilerContext so registry lookups
-            // by (anchor, slotKey, identity) resolve to the same fiber instance regardless of
-            // which fiber's Reconciler is currently running. Wrapper-mounted fibers without a
+            // resolve to the same fiber instance regardless of which fiber's Reconciler is currently
+            // running. Wrapper-mounted fibers without a
             // parent fiber (root mount path) bootstrap a fresh Reconciler that owns its ctx.
             var parentCtx = sharedContext ?? fiber.Parent?.Reconciler?.Context;
             fiber.Reconciler = parentCtx != null
