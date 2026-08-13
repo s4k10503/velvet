@@ -17,7 +17,7 @@
     <!-- Release is the configuration that gets committed, and Generators~/Directory.Build.props owns
          why its bytes have to be the same anywhere. The PDB carried the last input that was not: it
          records the .NET runtime the compiler ran on, and the assembly carries the PDB's checksum.
-         Debug keeps its PDB, so debugging the generator is unaffected. -->
+         Debug keeps its PDB; what is lost is line numbers when a Release build is debugged. -->
     <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
   </PropertyGroup>
 

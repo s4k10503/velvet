@@ -7,8 +7,8 @@
     and makes a rebuild-and-compare answer "different" unless it runs at the very commit the binary was
     built at. It is not the only such input — each deployed project drops its Release PDB for the
     second one, and says so where it does. scripts/generators/deployed_dll_check.py is what fails when
-    either stops holding, and it compares a build made on Linux against a binary built on a
-    contributor's machine, so it holds the SourceRoot below too.
+    either stops holding, and on the runner it compares a Linux build against a binary built
+    elsewhere, so it holds the SourceRoot below too.
   -->
   <PropertyGroup>
     <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
