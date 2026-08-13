@@ -1028,9 +1028,7 @@ namespace Velvet
                     // enclosing expansion, whose own fallback occupies that slot too.
                     //
                     // A nested Suspense that suspended has already answered for the fibers it created, and
-                    // this delta contains them, so its answer stands. Skipping by "the fiber's nearest
-                    // boundary is a nested one" instead would also skip that boundary's fallback subtree
-                    // and its plain children, which no expansion would then be left to clear.
+                    // this delta contains them, so its answer stands.
                     foreach (var f in newFibers)
                     {
                         if (fibersBefore.Contains(f)) continue;

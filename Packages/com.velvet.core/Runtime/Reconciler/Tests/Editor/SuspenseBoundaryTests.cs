@@ -499,10 +499,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_TwoSuspenseNodesOnOneBoundaryFiber_When_TheOuterSuspendsAndAnInnerChildUpdates_Then_OuterFallbackKeepsItsSlot()
         {
-            // Arrange — no component sits between the two V.Suspense nodes, so one boundary fiber owns
-            // both records and FindNearestSuspenseBoundary answers with it for the inner one's children.
-            // The inner Suspense resolves, so it claims nothing and marks its children visible; the outer
-            // then suspends on its own second child and marks them over
+            // Arrange — the host's two Suspense nodes share one boundary fiber, for the reason
+            // SameFiberNestedHostRender states, so FindNearestSuspenseBoundary answers with that fiber for
+            // the inner one's children. The inner Suspense resolves, so it claims nothing and marks its
+            // children visible; the outer then suspends on its own second child and marks them over
             var source = new UniTaskCompletionSource<string>();
             s_sameFiberOuterFactory = _ => source.Task;
             using var mounted = V.Mount(_root, V.Component(SameFiberNestedHostRender, key: "host"));
@@ -513,7 +513,7 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That(_root.FindLabelByText("outer-loading"), Is.Not.Null,
-                "A resolved inner Suspense's children are offscreen under the suspended enclosing one, so their flush does not patch over its fallback");
+                "Where one boundary fiber owns both Suspense nodes, a resolved inner one's children are offscreen under the suspended enclosing one, so their flush does not patch over its fallback");
         }
 
         #endregion
