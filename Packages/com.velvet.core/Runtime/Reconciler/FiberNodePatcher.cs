@@ -1747,8 +1747,8 @@ namespace Velvet
         // member below binds to a direct call. A class implementation, or a delegate parameter in place of
         // this interface, would allocate once per element per patch on a path that runs for every styled
         // element in the tree.
-        // Create takes the context because most families' manipulators resolve their payloads through
-        // it; gap and grid write only their own target's child margins and ignore it.
+        // Create takes the context because every family's manipulator reaches it — to resolve its payloads,
+        // or (gap, grid, divide) to claim the children it writes to.
         private interface IManipulatorOp<TManip> where TManip : Manipulator
         {
             Dictionary<VisualElement, TManip> Table(ReconcilerContext ctx);
@@ -1929,7 +1929,7 @@ namespace Velvet
                 => ctx.GapManipulators;
 
             public StyleGapManipulator Create(ReconcilerContext ctx)
-                => new StyleGapManipulator(_gap, _axis, _xReverse, _yReverse);
+                => new StyleGapManipulator(ctx, _gap, _axis, _xReverse, _yReverse);
 
             public void Update(StyleGapManipulator manipulator)
                 => manipulator.UpdateGap(_gap, _axis, _xReverse, _yReverse);
@@ -1967,7 +1967,7 @@ namespace Velvet
                 => ctx.GridManipulators;
 
             public StyleGridManipulator Create(ReconcilerContext ctx)
-                => new StyleGridManipulator(_spec);
+                => new StyleGridManipulator(ctx, _spec);
 
             public void Update(StyleGridManipulator manipulator)
                 => manipulator.UpdateSpec(_spec);
