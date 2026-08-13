@@ -1,5 +1,6 @@
 #nullable enable
 using System.Collections.Generic;
+using UnityEngine.UIElements;
 
 namespace Velvet
 {
@@ -20,8 +21,8 @@ namespace Velvet
     // for unkeyed ComponentNodes are per-identity counters within one reconcile scope (a fiber body
     // output, or one element's children reconcile), Fragment/Provider continue the current scope, an
     // element node opens a fresh scope for its children, and a Memo resolves to its committed inner.
-    // The match against the registry's (parentFiber, positionKey, identity) key is what lets the
-    // reconstruction recognize the spine child without re-rendering. Both walkers derive every key
+    // The match against the registry's key is what lets the reconstruction recognize the spine
+    // child without re-rendering. Both walkers derive every key
     // through FiberKeying so the two stay in lockstep by construction.
     internal readonly struct FiberContextSpine
     {
@@ -53,6 +54,9 @@ namespace Velvet
             internal ComponentRegistry Registry { get; init; }
             internal FiberMemoCache MemoCache { get; init; }
             internal bool IsInlineSpineChild { get; init; }
+            // The Portal scope member of SpineChild's own registration key, read back from the registry
+            // rather than derived here — ComponentRegistry.TryGetInlineKey owns why.
+            internal VisualElement? PortalScope { get; init; }
         }
 
         // Pushes the Provider values that enclose target onto the live cursor and
@@ -99,9 +103,9 @@ namespace Velvet
 
                 // Detached-mount top-level child (a Portal's drained children, or a VirtualList's
                 // controller-rendered items): the subtree mounted outside the parent-walked reconcile, so
-                // `ancestor`'s committed tree either does not contain this child (Portal: parented off the
-                // reconcile root) or hides it behind a wrapper-emitting leaf the canonical descent skips
-                // (VirtualList). Rebuild from the captured snapshot instead: push the context that enclosed
+                // `ancestor`'s committed tree hides this child behind a wrapper-emitting leaf the canonical
+                // descent skips (see the default arm of PushEnclosingProvidersForNode, which is where both
+                // kinds of host land). Rebuild from the captured snapshot instead: push the context that enclosed
                 // the detached mount as the base, then — when descendant VNodes were captured (Portal) — walk
                 // them to recover any Provider placed directly inside the subtree above this child. Deeper
                 // spine edges (this child -> target) then push the in-subtree Providers normally on top.
@@ -121,6 +125,7 @@ namespace Velvet
                     }
                     if (detached.DescendantNodes is { Length: > 0 } && detached.Anchor != null)
                     {
+                        registry.TryGetInlineKey(child, out _, out _, out var detachedScope);
                         var detachedWalk = new SpineWalk
                         {
                             Ancestor = detached.Anchor,
@@ -130,6 +135,7 @@ namespace Velvet
                             Registry = registry,
                             MemoCache = memoCache,
                             IsInlineSpineChild = true,
+                            PortalScope = detachedScope,
                         };
                         var detachedCounters = new Dictionary<object, int>();
                         PushEnclosingProviders(detached.DescendantNodes, detachedCounters,
@@ -141,7 +147,7 @@ namespace Velvet
                 var tree = ancestor.PreviousTree;
                 if (tree == null || tree.Length == 0) continue;
 
-                var isInline = registry.TryGetInlineKey(child, out _, out _);
+                var isInline = registry.TryGetInlineKey(child, out _, out _, out var childScope);
                 if (!isInline && child.MountPoint == null) continue;
 
                 var walk = new SpineWalk
@@ -153,6 +159,7 @@ namespace Velvet
                     Registry = registry,
                     MemoCache = memoCache,
                     IsInlineSpineChild = isInline,
+                    PortalScope = childScope,
                 };
                 var counters = new Dictionary<object, int>();
                 PushEnclosingProviders(tree, counters, fragmentKeyScope: null, in walk);
@@ -331,8 +338,8 @@ namespace Velvet
             return false;
         }
 
-        // Inline-mounted ComponentNodes register under (ancestor, slotKey, identity) with the SAME
-        // position-key scheme used by ExpandInlineRecursive. A match means we have descended exactly to
+        // Inline-mounted ComponentNodes register under the SAME position-key scheme used by
+        // ExpandInlineRecursive. A match means we have descended exactly to
         // the spine child — its enclosing Providers are pushed, so stop. A sibling component is never
         // descended into: its own subtree's Providers do not enclose spineChild (a direct child fiber of
         // `ancestor`). The counter bump happens for every unkeyed ComponentNode either way, so the keying
@@ -345,7 +352,8 @@ namespace Velvet
             var registry = walk.Registry;
             var identity = component.ResolvedIdentity;
             var slotKey = component.Key ?? FiberKeying.ResolveInlinePositionKey(counters, identity, registry.InlinePositionKeyBoxes);
-            var resolved = registry.TryGetFiberForInlineKey(walk.Ancestor, slotKey, identity);
+            var resolved = registry.TryGetFiberForInlineKey(
+                walk.Ancestor, slotKey, identity, walk.PortalScope);
             return ReferenceEquals(resolved, walk.SpineChild);
         }
 

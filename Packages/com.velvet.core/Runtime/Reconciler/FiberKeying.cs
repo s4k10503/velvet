@@ -12,9 +12,8 @@ namespace Velvet
     // ChildReconciler's inline-expansion (which mounts / diffs fibers and emits DOM) and
     // FiberContextSpine's spine-rewalk (which re-pushes the Providers enclosing a spine child
     // for an isolated re-render). They perform different actions per node but must agree bit-for-bit
-    // on the derived keys — otherwise a registry lookup keyed by <c>(parentFiber, positionKey,
-    // identity)</c> misses and either the spine reconstruction fails to recognize a child or a fiber's
-    // state is reset. Centralizing the derivation here makes that lockstep structural: changing a
+    // on the derived keys — otherwise a registry lookup misses and either the spine reconstruction
+    // fails to recognize a child or a fiber's state is reset. Centralizing the derivation here makes that lockstep structural: changing a
     // keying rule changes both walkers at once.
 
     // How the child array a node sits in was opened. Part of the structural path below, so two arrays opened

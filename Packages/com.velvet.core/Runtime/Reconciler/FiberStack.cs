@@ -15,6 +15,10 @@ namespace Velvet
 
         public ComponentFiber? Current => _stack.TryPeek(out var top) ? top : null;
 
+        // Recorded by a frame on entry and compared against later, so it can tell its own level from one
+        // a nested render has pushed over it. ReconcilerContext.PortalChildKeyScopeHere is the reader.
+        public int Depth => _stack.Count;
+
         public void Push(ComponentFiber fiber)
         {
             if (fiber == null)

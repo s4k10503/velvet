@@ -37,7 +37,13 @@ Registering the same element again, and
 unregistering the id, both leave a live portal where it is — an unregistered id names nothing to move
 to.
 
-Moving is an unmount and a remount, so child state, refs and effects do not survive it.
+Moving the portal is an unmount and a remount, so child state, refs and effects do not survive it.
+
+**Moving a child across the boundary is one too**, in either direction: writing a component into a
+portal's children that a render had outside them, or out of them to a position in the declaring
+component's own tree, mounts a fresh instance on the far side and runs the departing one's cleanups.
+A portal's children and the tree around them are different positions, so nothing is carried between
+them, `key:` included.
 
 **Keep the container's own children out of Velvet's hands for as long as the portal is mounted**, in
 either form. A portal's range is recorded after whatever the container already held, and a child added
