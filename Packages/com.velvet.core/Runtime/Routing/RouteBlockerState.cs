@@ -11,8 +11,8 @@ namespace Velvet
         Blocked,
         /// <summary>
         /// <see cref="RouteBlockerState.Proceed"/> has released the block and the navigation it held is
-        /// running. <see cref="RouteBlockerState.Attempt"/> still holds that attempt, and this Blocker is not
-        /// consulted again until the navigation commits.
+        /// running. <see cref="RouteBlockerState.Attempt"/> still holds that attempt, and this Blocker is
+        /// consulted about no navigation until one commits.
         /// </summary>
         Proceeding,
     }

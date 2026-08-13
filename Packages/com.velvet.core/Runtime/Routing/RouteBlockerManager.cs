@@ -47,7 +47,8 @@ namespace Velvet
         /// Evaluates the registered Blockers asynchronously.
         /// </summary>
         /// <remarks>
-        /// When multiple Blockers are registered, every one of them is evaluated (no short-circuit).
+        /// When multiple Blockers are registered, each one that is not
+        /// <see cref="RouteBlockerStatus.Proceeding"/> is evaluated (no short-circuit).
         /// Every Blocker that blocks transitions its State to Blocked and takes <paramref name="resume"/> as
         /// what its <see cref="RouteBlockerState.Proceed"/> re-issues.
         /// </remarks>
