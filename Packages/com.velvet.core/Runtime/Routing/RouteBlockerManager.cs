@@ -61,9 +61,9 @@ namespace Velvet
             // ToArray() snapshots the list so a blocker that unregisters during an await does not mutate it.
             foreach (var entry in _blockers.ToArray())
             {
-                // A Blocker whose Proceed() released this navigation is not asked about it again — the user
-                // has already answered. It returns to Idle when the navigation commits, so the window this
-                // skip covers is the resumed navigation and anything that supersedes it.
+                // A Blocker that has proceeded is not consulted: it released a navigation and returns to Idle
+                // when one commits, so this skip covers the navigation it released and anything that
+                // supersedes that before it lands.
                 if (entry.State.Status == RouteBlockerStatus.Proceeding)
                 {
                     continue;

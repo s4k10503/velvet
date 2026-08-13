@@ -9,8 +9,8 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>Proceed re-issues the blocked attempt, which commits without consulting that Blocker again — a
     /// Push by its path, a Back or Forward as the same history step.</item>
-    /// <item>While the re-issued navigation runs, the Blocker reports
-    /// <see cref="RouteBlockerStatus.Proceeding"/> and still holds the attempt it released.</item>
+    /// <item>While the re-issued navigation runs, the Blocker still holds the attempt it released — the
+    /// status it reports over that span is pinned by <see cref="BlockerTests"/>.</item>
     /// <item>The commit returns it to Idle, so the next navigation is blocked again.</item>
     /// <item><see cref="RouteBlockerState.Reset"/> re-issues nothing.</item>
     /// </list>
@@ -130,33 +130,6 @@ namespace Velvet.Tests
 
             // Assert
             Assert.That((blockedResult, attemptSeenOnResume), Is.EqualTo((NavigationResult.Blocked, "/other")));
-        }
-
-        [Test]
-        public void Given_ABlockerThatProceeded_When_AnotherIsConsultedByTheResumedNavigation_Then_ItReportsProceeding()
-        {
-            // Arrange
-            var router = BuildRouter("/home", Route("home"), Route("other"));
-            var proceeding = new RouteBlockerState();
-            router.RouteBlockerManager.Register(_ => true, proceeding);
-            var checks = 0;
-            RouteBlockerStatus? statusSeenOnResume = null;
-            router.RouteBlockerManager.Register(_ =>
-            {
-                checks++;
-                if (checks == 2)
-                {
-                    statusSeenOnResume = proceeding.Status;
-                }
-                return false;
-            }, new RouteBlockerState());
-            router.NavigateSync("/other");
-
-            // Act
-            proceeding.Proceed();
-
-            // Assert — null means the resumed navigation never reached a second Blocker.
-            Assert.That(statusSeenOnResume, Is.EqualTo(RouteBlockerStatus.Proceeding));
         }
 
         [Test]

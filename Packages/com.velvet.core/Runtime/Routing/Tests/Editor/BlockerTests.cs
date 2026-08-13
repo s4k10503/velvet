@@ -19,6 +19,8 @@ namespace Velvet.Tests
     /// regardless of the others.</item>
     /// <item>Registration returns a disposable that unregisters the blocker on dispose.</item>
     /// <item><c>ResetAllBlocked</c> returns every Blocked state to Idle.</item>
+    /// <item>A Blocker left <see cref="RouteBlockerStatus.Proceeding"/> by <c>Proceed</c> is skipped by
+    /// <c>CheckAsync</c> and keeps that status, until <c>ClearProceeding</c> puts it back in the way.</item>
     /// <item><c>CheckAsync</c> evaluates every registered blocker (sync and async entries alike).</item>
     /// <item>A blocking blocker on a router navigation yields <see cref="NavigationResult.Blocked"/> and keeps
     /// the current location — and, on a Back/Forward step, the history index describing it; an allowing
@@ -167,6 +169,49 @@ namespace Velvet.Tests
             Assert.That(
                 (state1.Status, state2.Status),
                 Is.EqualTo((RouteBlockerStatus.Idle, RouteBlockerStatus.Idle)));
+        }
+
+        [Test]
+        public void Given_ABlockerThatProceeded_When_CheckAsyncRunsAgain_Then_ItIsNotConsulted()
+        {
+            // Arrange — the resume is a no-op, so the pass under test is the next CheckAsync rather than
+            // whatever Proceed() would have re-issued through a Router.
+            var checks = 0;
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            manager.Register(_ =>
+            {
+                checks++;
+                return true;
+            }, state);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            state.Proceed();
+
+            // Act
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+
+            // Assert — the status is what the skip is keyed on, and the pass leaves it where it was.
+            Assert.That(
+                (checks, blocked, state.Status),
+                Is.EqualTo((1, false, RouteBlockerStatus.Proceeding)));
+        }
+
+        [Test]
+        public void Given_ABlockerThatProceeded_When_ClearProceeding_Then_ItBlocksAgain()
+        {
+            // Arrange
+            var manager = new RouteBlockerManager();
+            var state = new RouteBlockerState();
+            manager.Register(_ => true, state);
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+            state.Proceed();
+
+            // Act
+            manager.ClearProceeding();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
+
+            // Assert
+            Assert.That((blocked, state.Status), Is.EqualTo((true, RouteBlockerStatus.Blocked)));
         }
 
         #endregion
