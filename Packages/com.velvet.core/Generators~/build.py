@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Rebuild the source generators and redeploy their committed DLLs.
 
-Set CONFIGURATION to build something other than Release.
+Release only, and not by omission: what makes the deployed pair reproducible is declared per configuration
+-- each deployed project drops its Release PDB and keeps its Debug one -- so a Debug build deployed here
+carries a debug directory pointing at a PDB nothing ships, and scripts/generators/deployed_dll_check.py
+cannot say whether it corresponds to its sources. This used to take the configuration from the environment.
 """
 
-import os
 import shutil
 import subprocess
 import sys
@@ -12,7 +14,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-CONFIGURATION = os.environ.get("CONFIGURATION", "Release")
+CONFIGURATION = "Release"
 
 STYLE_TABLE_PROJECT = "src/Velvet.StyleTable/Velvet.StyleTable.csproj"
 STYLE_SHEET_DIR = "../Runtime/Styles"
@@ -33,6 +35,16 @@ DEPLOYMENTS = (
         "../Runtime/Plugins/Analyzers",
     ),
 )
+
+
+def build_command(project):
+    """--no-incremental because MSBuild decides whether to recompile from source timestamps, while
+    what makes the deployed pair reproducible is a set of properties. A bin/ left by a build that
+    passed different ones -- `-p:DebugType=portable` to get a Release PDB, say -- is newer than every
+    source, so an incremental build keeps it and the deployment below copies it out unchanged.
+    scripts/generators/deployed_dll_check.py builds through this, and its tests pin the flag.
+    """
+    return ["dotnet", "build", project, "-c", CONFIGURATION, "--no-incremental", "--nologo"]
 
 
 def run(command, failure):
@@ -61,10 +73,7 @@ def main():
     # pair exists to avoid.
     for name, project, _, _ in DEPLOYMENTS:
         print(f"[{name}] dotnet build -c {CONFIGURATION}", flush=True)
-        run(
-            ["dotnet", "build", project, "-c", CONFIGURATION, "--nologo"],
-            f"dotnet build failed: {project}",
-        )
+        run(build_command(project), f"dotnet build failed: {project}")
 
     for name, _, built_dll, deploy_dir in DEPLOYMENTS:
         destination = HERE / deploy_dir / f"{name}.dll"
