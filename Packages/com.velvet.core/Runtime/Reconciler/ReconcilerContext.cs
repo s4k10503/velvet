@@ -26,7 +26,8 @@ namespace Velvet
     // Captured on the top-level child fiber of a DETACHED mount — one whose children reconcile outside the
     // normal parent-walked reconcile, so FiberContextSpine's parent-walk cannot reach the host that carries
     // their enclosing Providers. Two cases:
-    //   Portal — children mount in the deferred drain (DrainPendingPortalMounts) under the reconcile root.
+    //   Portal — children mount in the deferred drain (DrainPendingPortalMounts), after the pass that
+    //   reconciled the declaring component's own tree has already unwound past it.
     //   VirtualList — items mount via the controller (FiberVirtualListController) on scroll, outside any pass.
     // EnclosingSnapshot is the top value of every context active outside the detached mount (the base the
     // consumer reads). DescendantNodes is the committed VNode children to walk to recover any Provider placed
@@ -41,11 +42,11 @@ namespace Velvet
         internal readonly List<KeyValuePair<object, object>>? EnclosingSnapshot;
         internal readonly VNode?[]? DescendantNodes;
         internal readonly ComponentFiber Anchor;
-        // The ComponentFiber that logically called V.Portal/V.WorldSpace (captured at enqueue time, when
-        // FiberStack.Current is genuinely correct — see PendingPortalMounts). Null for VirtualList's
-        // detached items (no portal call site to resolve) and for a bare Reconciler.Reconcile() drain
-        // with nothing on FiberStack. Distinct from Anchor: Anchor is a REGISTRY-lookup key (where the
-        // drain happened to leave the child fiber parented), not the authoring component.
+        // The ComponentFiber that logically called V.Portal/V.WorldSpace (captured at enqueue time — see
+        // PendingPortalMounts). Null for VirtualList's detached items (no portal call site to resolve)
+        // and for a bare Reconciler.Reconcile() drain with nothing on FiberStack. Anchor is the separate
+        // question of which fiber the detached mount parented the children under, which VirtualList
+        // answers with its host and a portal drain answers with this same declaring fiber.
         internal readonly ComponentFiber? LogicalParent;
 
         internal DetachedMountContext(
@@ -778,6 +779,48 @@ namespace Velvet
         // ComponentRegistry.DisposeInlineFibersOwnedByPortal selects by.
         internal VisualElement? CurrentPortalPlaceholder { get; set; }
 
+        // The same placeholder, for the levels of that Portal's children whose ComponentRegistry parent is
+        // still the declaring component's own fiber — every level the reconcile reaches while the fiber
+        // stack stands where it did. Those all share a whole registry key with what the declaring
+        // component renders outside the Portal, and this is the only member that separates them —
+        // PortalChildFiberContinuityTests holds the two keys side by side, for a host element between the
+        // two and for a Provider.
+        //
+        // Nothing outside the three members below touches the pair: Enter overwrites it and hands back
+        // what it displaced, Exit puts that back, and PortalChildKeyScopeHere is the only other read.
+        // The set of levels above is not the set of levels this reconcile passes through: a component body rendered anywhere below one of them renders again, later and alone,
+        // with no Portal reconcile in sight, and its children have to key the same way both times or the
+        // second reading builds a second set of fibers over the first. The nesting recorded here is what
+        // separates the two. A component body reached through FiberRenderer.PushFiber or
+        // GeneralPathReconciler.ExpandFiberPreviousTree, and a VirtualList item reached through
+        // Reconciler.BeginDetachedItemScope, each push a fiber, so the scope stops applying at each of
+        // them without any of them naming it.
+        private VisualElement? PortalChildKeyScope { get; set; }
+        private int PortalChildKeyScopeNesting { get; set; }
+
+        // The Portal scope in force for a registry key written right here, which is PortalChildKeyScope at
+        // the nesting it was entered at and nothing anywhere else.
+        internal VisualElement? PortalChildKeyScopeHere
+            => FiberStack.Depth == PortalChildKeyScopeNesting ? PortalChildKeyScope : null;
+
+        // Returns what restores the enclosing scope. Restored rather than cleared on the way out: a Portal
+        // declared inside another Portal's children patches from within the outer one's, and what the
+        // outer one reaches after that returns is still the outer one's. The mount entrance does not
+        // nest that way — ChildReconciler.DrainPendingPortalMounts says why.
+        internal (VisualElement? Scope, int Nesting) EnterPortalChildKeyScope(VisualElement placeholder)
+        {
+            var enclosing = (PortalChildKeyScope, PortalChildKeyScopeNesting);
+            PortalChildKeyScope = placeholder;
+            PortalChildKeyScopeNesting = FiberStack.Depth;
+            return enclosing;
+        }
+
+        internal void ExitPortalChildKeyScope((VisualElement? Scope, int Nesting) enclosing)
+        {
+            PortalChildKeyScope = enclosing.Scope;
+            PortalChildKeyScopeNesting = enclosing.Nesting;
+        }
+
         // Portal mounts deferred until the enclosing reconcile pass completes. When a PortalNode
         // (or a WorldSpaceNode — the same deferred-mount flow) is encountered during a reconcile,
         // its target-side reconcile is queued here instead of
@@ -796,11 +839,10 @@ namespace Velvet
         // attached and the declaring panel is therefore known.
         // LogicalParent is the ComponentFiber whose Body was mid-render when V.Portal/V.WorldSpace was
         // called (_ctx.FiberStack.Current at enqueue time — the only point this is available, since the
-        // drain runs after the whole top-level reconcile pass unwinds). Captured for cross-panel
-        // synthetic event bubbling: the drained children's own fiber.Parent ends up pointing at
-        // whatever fiber happens to be on top of FiberStack at DRAIN time (see DrainPendingPortalMounts'
-        // drainAnchor), which is NOT the logically-enclosing component — LogicalParent is the correct
-        // one, stamped onto DetachedMountContext separately from Anchor.
+        // drain runs after the whole top-level reconcile pass unwinds). The drain pushes it back for its
+        // nested reconcile, so it is both the parent the children register and link under and the logical
+        // ancestor cross-panel synthetic bubbling resolves to; DrainPendingPortalMounts owns why the
+        // registry half cannot be left to whatever fiber the drain happens to find current.
         public Queue<(VisualElement Placeholder, VNode Node, VisualElement? Target,
             List<KeyValuePair<object, object>> ContextSnapshot, ComponentFiber? LogicalParent)> PendingPortalMounts { get; } = new();
 
