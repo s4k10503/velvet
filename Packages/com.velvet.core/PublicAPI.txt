@@ -182,6 +182,7 @@
 [Velvet] field Velvet.ResolvedFont.ResidualItalic: System.Boolean
 [Velvet] field Velvet.RouteBlockerStatus.Blocked: Velvet.RouteBlockerStatus
 [Velvet] field Velvet.RouteBlockerStatus.Idle: Velvet.RouteBlockerStatus
+[Velvet] field Velvet.RouteBlockerStatus.Proceeding: Velvet.RouteBlockerStatus
 [Velvet] field Velvet.RouterContext.Depth: Velvet.ComponentContext`1[System.Int32]
 [Velvet] field Velvet.RouterContext.Errors: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Exception]]
 [Velvet] field Velvet.RouterContext.LoaderData: Velvet.ComponentContext`1[System.Collections.Generic.IReadOnlyDictionary`2[System.String, System.Object]]

@@ -86,6 +86,13 @@ namespace Velvet.Tests
             => new NavigationAttempt { CurrentPath = from, NextPath = to };
 
         /// <summary>
+        /// Stands in for the re-issue <c>RouteBlockerManager.CheckAsync</c> hands to a Blocker it blocks,
+        /// for a manager-level test asserting on the block decision rather than on what
+        /// <c>RouteBlockerState.Proceed</c> does with it.
+        /// </summary>
+        public static readonly Action NoResume = () => { };
+
+        /// <summary>
         /// Creates a toggleable Guard: returns null until <paramref name="enable"/> is invoked,
         /// then returns <paramref name="redirectTo"/>.
         /// </summary>

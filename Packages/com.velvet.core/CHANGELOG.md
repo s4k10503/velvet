@@ -46,6 +46,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `RouteBlockerState.Proceed()` now re-issues the navigation its Blocker held, so the confirm-dialog flow
+  it exists for reaches the destination: the user clicks "Leave" and the router goes there. It used to
+  clear the state and invoke a callback nothing assigned, leaving the dialog closed and the navigation
+  gone — the only way through was to copy `Attempt.NextPath` and `Attempt.NavigationMode` out before
+  calling `Proceed()`, re-issue them by hand, and arrange for the predicate to stop blocking, because a
+  re-issued attempt was evaluated by that predicate again. A blocked Back or Forward now resumes as the
+  same history step rather than as a navigation to the path it recorded. The Blocker is not consulted
+  about the navigation it released. `RouteBlockerStatus` has a third member, `Proceeding`, for the span
+  between `Proceed()` and that navigation committing — the Blocker still reports its `Attempt`
+  throughout, and returns to `Idle` on the commit, which is what arms it again for the next navigation.
+  A `switch` over `RouteBlockerStatus` with no default arm needs one for it. `Reset()` is unchanged: it
+  abandons the attempt.
 - Registering a portal target id again with a different element now moves the portals already mounted
   into the old one, instead of leaving them writing into an element the UI has replaced. A
   `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt

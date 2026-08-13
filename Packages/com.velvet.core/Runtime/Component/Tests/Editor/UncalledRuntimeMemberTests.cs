@@ -109,7 +109,11 @@ namespace Velvet.Tests
             // and from nothing else outside the package.
             method.IsAssembly
             && !method.IsConstructor
-            && !method.IsGetter && !method.IsSetter && !method.IsAddOn && !method.IsRemoveOn
+            // A property accessor counts. An assembly-visible setter nothing calls is a member whose value
+            // is only ever the one the field initializer left, and reading it back reports that value to a
+            // caller who has no way to have changed it — which is what an unwired seam looks like from the
+            // outside.
+            && !method.IsAddOn && !method.IsRemoveOn
             // An override or an implementation is reached through the declaration it satisfies, and the
             // call site names that one.
             && !method.IsVirtual && !method.IsAbstract
