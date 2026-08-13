@@ -4,33 +4,38 @@ using UnityEngine.UIElements;
 
 namespace Velvet
 {
-    // Within the Reconciler, manages creation / reuse / disposal of ComponentNode.
-    // The cache key is (VisualElement anchor, object slotKey, object identity). Two
-    // mounting modes share this key:
-    //   inline-mounted: anchor is the parent VE shared with sibling fibers,
-    //   slotKey is the explicit ComponentNode.Key or a position counter
-    //   computed per (parent, identity), and the fiber's rendered output occupies a
-    //   sub-range of anchor.children;
-    //   wrapper-mounted: anchor is a dedicated wrapper VE unique to the
-    //   fiber, slotKey is null. Retained for Suspense and Outlet route mounts
-    //   that require a single anchor for pending-fiber lookup.
+    // Within the Reconciler, manages creation / reuse / disposal of ComponentNode. Two mounting modes
+    // each have their own table and their own key:
+    //   inline-mounted: keyed by _inlineInstances' tuple, whose members are documented on it, and the
+    //   fiber's rendered output occupies a sub-range of the container's children;
+    //   wrapper-mounted: keyed by a dedicated wrapper VE unique to the fiber, with no slot key.
+    //   Retained for Suspense and Outlet route mounts that require a single anchor for pending-fiber
+    //   lookup.
     // Identity prefers ComponentNode.Identity, and falls back to
     // Body.Method (the function component's MethodInfo) when not specified.
     internal sealed class ComponentRegistry : IDisposable
     {
-        // Inline-mounted fibers (function components emit no host node) anchor on their
-        // parent ComponentFiber by tree position, never on the element they render into: that host VE
-        // does not exist yet when the fiber is matched during begin-work. positionKey is the
+        // Inline-mounted fibers (function components emit no host node) anchor on their parent
+        // ComponentFiber and on the container their output lands in. positionKey is the
         // tree-position scope key, identity is ComponentNode.ResolvedIdentity.
+        // container carries the levels the parent fiber cannot: a host element gets no fiber of its
+        // own here, so two sibling containers under one declaring component can tie on every other
+        // member, and then one instance would answer for both positions. The walk position the
+        // expansion carries was tried for this and cannot serve — it restarts at FiberKeying.WalkRoot
+        // for each container, so it is equal at both call sites, and its Path differs between an outer
+        // walk and the enclosing component's own isolated re-render, so it cannot key anything that
+        // has to survive one. Being the same value as ComponentFiber.MountPoint is what keeps removal
+        // single: DisposeFibersUnder already selects a leaving subtree's fibers by that containment,
+        // so no second path has to learn about this member.
         // portalScope is the Portal placeholder a child level of that Portal's own children belongs to,
         // and null everywhere else. The declaring component's fiber is the parentFiber on both sides of
         // a Portal, so what it renders into the Portal and what it renders outside it agree on the rest
         // of the key; the scope is the whole of what separates them. It is part of the key rather than a
         // fallback the lookup tries second, so which of the two mounts first cannot decide which one owns
         // the shared spelling. ReconcilerContext.PortalChildKeyScope owns which levels carry it.
-        private readonly Dictionary<(ComponentFiber? parentFiber, VisualElement? portalScope, object? positionKey, object identity), ComponentFiber> _inlineInstances = new();
+        private readonly Dictionary<(ComponentFiber? parentFiber, VisualElement? portalScope, VisualElement? container, object? positionKey, object identity), ComponentFiber> _inlineInstances = new();
         // O(1) reverse index inline fiber → its key, so disposal removes the entry without scanning.
-        private readonly Dictionary<ComponentFiber, (ComponentFiber? parentFiber, VisualElement? portalScope, object? positionKey, object identity)> _inlineFiberToKey = new();
+        private readonly Dictionary<ComponentFiber, (ComponentFiber? parentFiber, VisualElement? portalScope, VisualElement? container, object? positionKey, object identity)> _inlineFiberToKey = new();
         // O(1) forward index parent fiber → its inline child fibers, so subtree disposal locates them
         // without scanning _inlineInstances (and without the re-entrant dictionary-mutation hazard when
         // FiberRenderer.Dispose recursively triggers disposal during descendant cleanup).
@@ -56,7 +61,8 @@ namespace Velvet
 
         // Where one GetOrCreate call anchors its fiber and where that fiber's output lands. Anchor,
         // PositionKey and PortalScope are the identity half — what the registry looks the fiber up by —
-        // and MountPoint and SlotStart the placement half; IsInline selects which spelling of both is in
+        // and SlotStart the placement half; MountPoint is both, which is why an inline fiber is not
+        // found under a container it has left. IsInline selects which spelling is in
         // force, so the six are never meaningful apart. Taken by `in`: this runs once per Component per
         // reconcile.
         private readonly struct FiberMountSite
@@ -87,11 +93,9 @@ namespace Velvet
             return GetOrCreateCore(node, in site);
         }
 
-        // Fiber identity is anchored on its parent parentFiber
-        // by tree position (positionKey) — independent of any VisualElement, so the same
-        // fiber resolves regardless of which host container its output lands in (a child
-        // fiber's identity is (parent fiber, key, position)). The fiber's rendered output occupies the
-        // sub-range starting at slotStart of mountPoint.children.
+        // Fiber identity is anchored on parentFiber, mountPoint and tree position (positionKey) — the
+        // _inlineInstances key owns which of those carries what. The fiber's rendered output occupies
+        // the sub-range starting at slotStart of mountPoint.children.
         // On the existing-fiber path, the slot start is updated and the fiber is synchronously re-rendered
         // when props changed or it is dirty (setState / context invalidation) so the caller observes the
         // fresh ComponentFiber.PreviousTree; otherwise the previous tree is reused (the
@@ -124,7 +128,7 @@ namespace Velvet
             var identity = node.ResolvedIdentity;
 
             var existingFiber = site.IsInline
-                ? LookupInline((ComponentFiber)site.Anchor!, site.PortalScope, site.PositionKey, identity)
+                ? LookupInline((ComponentFiber)site.Anchor!, site.PortalScope, site.MountPoint, site.PositionKey, identity)
                 : LookupWrapper((VisualElement)site.Anchor!, identity);
 
             if (existingFiber != null)
@@ -186,12 +190,6 @@ namespace Velvet
                 // render here does not collide with a subsequent FlushState pass: clearing IsDirty
                 // makes the later traversal short-circuit while the rendered output is already committed.
                 existingFiber.MountSlotStart = site.SlotStart;
-                // The container half of the same carry, and it travels with the slot start above or the
-                // pair names two different containers. Left at creation, a carried fiber re-renders itself
-                // into the container it has left, at the new container's slot index — the reading is in
-                // PortalChildFiberContinuityTests. Null only where the caller had no container to give,
-                // which must not erase a live one.
-                if (site.MountPoint != null) existingFiber.MountPoint = site.MountPoint;
                 // Rewritten even where the reconcile reaching the fiber names no Portal, which erases the
                 // stamp a fiber below a Portal's own child was given at creation — its parent's isolated
                 // re-render is such a reconcile. Losing it costs nothing: that is the same fiber
@@ -217,9 +215,6 @@ namespace Velvet
 
         private ComponentFiber CreateAndMountFiber(ComponentNode node, object identity, in FiberMountSite site)
         {
-            var anchor = site.Anchor;
-            var portalScope = site.PortalScope;
-            var positionKey = site.PositionKey;
             var isInline = site.IsInline;
             var fiber = FiberRenderer.CreateChild(node.Body, node.IsErrorBoundary);
             _ctx.FiberStack.Current?.AppendChild(fiber);
@@ -239,7 +234,7 @@ namespace Velvet
             }
             catch (FiberSuspendSignal)
             {
-                RegisterFiber(anchor, portalScope, positionKey, identity, fiber, isInline);
+                RegisterFiber(in site, identity, fiber);
                 throw;
             }
             // Dispose BEFORE any detach: Dispose's Unmount retires the committed tree with the parent
@@ -247,7 +242,7 @@ namespace Velvet
             // detaches itself; detaching first would sever the chain and let the sweep recycle nodes
             // a surviving ancestor's slot still owes to a comeback render.
             catch { FiberRenderer.Dispose(fiber); throw; }
-            RegisterFiber(anchor, portalScope, positionKey, identity, fiber, isInline);
+            RegisterFiber(in site, identity, fiber);
             return fiber;
         }
 
@@ -266,8 +261,9 @@ namespace Velvet
         }
 
         private ComponentFiber? LookupInline(
-            ComponentFiber? parentFiber, VisualElement? portalScope, object? positionKey, object identity)
-            => _inlineInstances.TryGetValue((parentFiber, portalScope, positionKey, identity), out var fiber)
+            ComponentFiber? parentFiber, VisualElement? portalScope, VisualElement? container,
+            object? positionKey, object identity)
+            => _inlineInstances.TryGetValue((parentFiber, portalScope, container, positionKey, identity), out var fiber)
                 ? fiber
                 : null;
 
@@ -278,14 +274,13 @@ namespace Velvet
             return _wrapperFiberInfo.TryGetValue(fiber, out var info) && Equals(info.identity, identity) ? fiber : null;
         }
 
-        private void RegisterFiber(
-            object? anchor, VisualElement? portalScope, object? positionKey, object identity,
-            ComponentFiber fiber, bool isInline)
+        private void RegisterFiber(in FiberMountSite site, object identity, ComponentFiber fiber)
         {
-            if (isInline)
+            var anchor = site.Anchor;
+            if (site.IsInline)
             {
                 var parentFiber = (ComponentFiber)anchor!;
-                var key = (parentFiber, portalScope, positionKey, identity);
+                var key = (parentFiber, site.PortalScope, site.MountPoint, site.PositionKey, identity);
                 _inlineInstances[key] = fiber;
                 _inlineFiberToKey[fiber] = key;
                 // Written from the same source on both halves of GetOrCreate — see the carry half in
@@ -382,9 +377,10 @@ namespace Velvet
         // anything: the old-side walk in GeneralPathReconciler reads the previously rendered
         // ComponentFiber.PreviousTree through it, and FiberContextSpine matches a spine child by it.
         internal ComponentFiber? TryGetFiberForInlineKey(
-            ComponentFiber? parentFiber, object positionKey, object identity, VisualElement? portalScope)
+            ComponentFiber? parentFiber, object positionKey, object identity, VisualElement? portalScope,
+            VisualElement? container)
         {
-            return LookupInline(parentFiber, portalScope, positionKey, identity);
+            return LookupInline(parentFiber, portalScope, container, positionKey, identity);
         }
 
         // Returns the inline registration key under which fiber is registered, or false when it is not
@@ -395,18 +391,21 @@ namespace Velvet
         // the walk has nothing of its own to derive it from and a guess would look the child up under a
         // key it is not registered by.
         internal bool TryGetInlineKey(
-            ComponentFiber fiber, out object? positionKey, out object? identity, out VisualElement? portalScope)
+            ComponentFiber fiber, out object? positionKey, out object? identity, out VisualElement? portalScope,
+            out VisualElement? container)
         {
             if (fiber != null && _inlineFiberToKey.TryGetValue(fiber, out var key))
             {
                 positionKey = key.positionKey;
                 identity = key.identity;
                 portalScope = key.portalScope;
+                container = key.container;
                 return true;
             }
             positionKey = null;
             identity = null;
             portalScope = null;
+            container = null;
             return false;
         }
 
