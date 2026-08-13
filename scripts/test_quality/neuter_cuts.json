@@ -142,7 +142,7 @@
     },
     {
       "name": "balance-register",
-      "mechanism": "balance-wiring",
+      "mechanism": "balance",
       "summary": "the reconciler attaches and detaches no balance manipulator",
       "edits": [
         {
