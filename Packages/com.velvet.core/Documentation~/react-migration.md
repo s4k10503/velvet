@@ -118,8 +118,10 @@ handle, so resetting a save while it is in flight leaves the handle idle when th
 **When the outcome is committed.** After the handlers, which is when v5 dispatches it. A handler
 therefore never reads its own call's outcome: `Status` / `Data` / `Error` still show whatever the
 handle showed before it ran — this call pending on the ordinary path, a newer call's outcome where
-that call has already settled, `Idle` for a call `Reset` abandoned. `Variables` is not part of that:
-it is written when the call starts and no outcome touches it. Each outcome is written whole: `Data`
+that call has already settled, `Idle` for a call `Reset` abandoned. `Variables` is not an outcome —
+it is written when a call starts, and neither outcome touches it — but a handler reads it under the
+same rule: `Reset` clears it and a later call overwrites it, so a superseded call's handler reads the
+newer call's variables and a reset one's reads none. Each outcome is written whole: `Data`
 is what one call produced and `Error` is how one call failed, so `Data` stands only under
 `Status == Success` and `Error` only under `Status == Error` — a pending or reset handle has neither.
 

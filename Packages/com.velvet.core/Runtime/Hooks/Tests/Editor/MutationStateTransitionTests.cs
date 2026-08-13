@@ -29,11 +29,29 @@ namespace Velvet.Tests
             var writableFromOutside = string.Join(", ", new[] { "Status", "Data", "Error", "Variables" }
                 .Where(name => type.GetProperty(name)!.SetMethod is { IsPrivate: false }));
 
-            // Act — the arranged handle carries a result and a failure at once, so a transition that writes
-            // only the field it is named for leaves the other one behind for the sweep to find. A handle as
-            // constructed is asked first and unarranged: what a seed writes there is no transition's doing,
-            // and arranging over it is what would hide it.
+            // Act
             var findings = new List<string>();
+            SweepConstructors(type, findings);
+            // Two arrangements, differing in the status they hold. A writer that only sets Status moves
+            // nothing under the arrangement already holding that status, and a writer that moves nothing is
+            // what the sweep has to pass over; under the other arrangement the same writer moves.
+            var moved = SweepWriters(type, MutationStatus.Success, findings)
+                        + SweepWriters(type, MutationStatus.Error, findings);
+            // A sweep over writers that all leave the handle alone reports the same empty finding as one
+            // over writers that all keep the invariant.
+            if (moved == 0) findings.Add("no declared writer moved the arranged state");
+
+            // Assert
+            Assert.That((writableFromOutside, string.Join("; ", findings)), Is.EqualTo(("", "")),
+                "Nothing outside the handle writes the observed state, and every writer of it leaves a whole outcome behind");
+        }
+
+        /// <summary>
+        /// A handle as constructed, unarranged: what a seed writes there is no transition's doing, and
+        /// arranging over it is what would hide it.
+        /// </summary>
+        private static void SweepConstructors(Type type, List<string> findings)
+        {
             foreach (var constructor in type.GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
             {
                 var seeds = constructor.GetParameters().Select(parameter => Argument(parameter.ParameterType)).ToArray();
@@ -45,37 +63,47 @@ namespace Velvet.Tests
 
                 Record((MutationResult<string, string>)constructor.Invoke(seeds), "a constructed handle", findings);
             }
+        }
 
+        /// <summary>
+        /// Every declared method against a handle carrying a result and a failure at once, so a writer that
+        /// writes only the field it is named for leaves the other one behind to be found. Returns how many
+        /// of them wrote anything.
+        /// </summary>
+        private static int SweepWriters(Type type, MutationStatus arrangedStatus, List<string> findings)
+        {
             var moved = 0;
-            foreach (var transition in type
-                         .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
+            foreach (var writer in type
+                         .GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly)
                          .Where(method => !method.IsSpecialName))
             {
-                var arguments = transition.GetParameters().Select(parameter => Argument(parameter.ParameterType)).ToArray();
+                var arguments = writer.GetParameters().Select(parameter => Argument(parameter.ParameterType)).ToArray();
                 if (arguments.Any(argument => argument is null))
                 {
-                    findings.Add($"{transition.Name} takes an argument this sweep cannot supply");
+                    findings.Add($"{writer.Name} takes an argument this sweep cannot supply");
                     continue;
                 }
 
-                var handle = ShowingBothOutcomes();
+                var handle = ShowingBothOutcomes(arrangedStatus);
                 var arranged = Snapshot(handle);
-                transition.Invoke(handle, arguments);
+                var produced = writer.Invoke(handle, arguments);
+                // A handle handed back rather than written in place — a static factory's shape — answers for
+                // the invariant whatever became of the arranged one.
+                if (produced is MutationResult<string, string> other && !ReferenceEquals(other, handle))
+                {
+                    moved++;
+                    Record(other, $"the handle {writer.Name} returns", findings);
+                }
+
                 // One that wrote nothing answers for nothing, and a handle nothing wrote is still the
                 // incoherent one arranged above.
                 if (Snapshot(handle) == arranged) continue;
 
                 moved++;
-                Record(handle, transition.Name, findings);
+                Record(handle, writer.Name, findings);
             }
 
-            // A sweep over transitions that all leave the handle alone reports the same empty finding as one
-            // over transitions that all keep the invariant.
-            if (moved == 0) findings.Add("no declared transition moved the arranged state");
-
-            // Assert
-            Assert.That((writableFromOutside, string.Join("; ", findings)), Is.EqualTo(("", "")),
-                "Nothing outside the handle writes the observed state, and every writer of it leaves a whole outcome behind");
+            return moved;
         }
 
         private static void Record(MutationResult<string, string> handle, string what, List<string> findings)
@@ -90,14 +118,14 @@ namespace Velvet.Tests
             }
         }
 
-        private static MutationResult<string, string> ShowingBothOutcomes()
+        private static MutationResult<string, string> ShowingBothOutcomes(MutationStatus status)
         {
             var handle = new MutationResult<string, string>();
             var type = typeof(MutationResult<string, string>);
             type.GetProperty(nameof(MutationResult<string, string>.Data))!.SetValue(handle, Committed);
             type.GetProperty(nameof(MutationResult<string, string>.Error))!.SetValue(handle, Stale);
             type.GetProperty(nameof(MutationResult<string, string>.Variables))!.SetValue(handle, "arranged");
-            type.GetProperty(nameof(MutationResult<string, string>.Status))!.SetValue(handle, MutationStatus.Success);
+            type.GetProperty(nameof(MutationResult<string, string>.Status))!.SetValue(handle, status);
             return handle;
         }
 
