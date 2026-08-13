@@ -30,7 +30,9 @@ python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ps -Ao command= | grep -c '^/Applications/.*/MacOS/Uni[t]y -runTests'
 ```
 
-Concurrent Unity instances make unrelated tests fail. A failure measured while another run was in flight is not evidence; re-measure on a quiet machine before concluding anything.
+Concurrent Unity instances do not change what the suite reports. Measured on one tree: the same EditMode suite, run five times with zero, two and three other runs alive, reported 3943 passed / 0 failed / 0 inconclusive / 0 skipped every time, and the duration ranged 114–141 s without tracking concurrency — the slowest reading was the least contended one. So do not wait for a quiet machine; that wait has starved agents for hours.
+
+What the count above is still for: one tree and one suite is what the reading rests on, so **a single failing case you suspect of timing gets re-run alone before you report it.** That is a question about one case rather than a reason to hold the run.
 
 **Compile errors appear only in the log**, never in the XML — and `grep ": error "` over it, not `error CS`. An analyzer under `Generators~` raises its own at error severity, which fails the compile with no `CS` code anywhere in the log; that has happened here, and the run wrote no results. The abort banner is **not** in the log — it goes to the process output, and a failed-compile `-logFile` carries the line "Scripts have compiler errors" instead. A run that will not compile exits 1 and writes **no** XML, so whatever sits at that path is the last run that got there, and reading it gives another tree's counts under a `-testFilter` nobody posed. Measured: one passing case named for a fixture the worktree did not contain, from a filter naming something else. `assert_results_from_this_tree.py` is what refuses this; run it before you read a count, not after you have quoted one.
 
