@@ -21,8 +21,8 @@ namespace Velvet
     // for unkeyed ComponentNodes are per-identity counters within one reconcile scope (a fiber body
     // output, or one element's children reconcile), Fragment/Provider continue the current scope, an
     // element node opens a fresh scope for its children, and a Memo resolves to its committed inner.
-    // The match against the registry's (parentFiber, positionKey, identity) key is what lets the
-    // reconstruction recognize the spine child without re-rendering. Both walkers derive every key
+    // The match against the registry's key is what lets the reconstruction recognize the spine
+    // child without re-rendering. Both walkers derive every key
     // through FiberKeying so the two stay in lockstep by construction.
     internal readonly struct FiberContextSpine
     {
@@ -338,8 +338,8 @@ namespace Velvet
             return false;
         }
 
-        // Inline-mounted ComponentNodes register under (ancestor, slotKey, identity) with the SAME
-        // position-key scheme used by ExpandInlineRecursive. A match means we have descended exactly to
+        // Inline-mounted ComponentNodes register under the SAME position-key scheme used by
+        // ExpandInlineRecursive. A match means we have descended exactly to
         // the spine child — its enclosing Providers are pushed, so stop. A sibling component is never
         // descended into: its own subtree's Providers do not enclose spineChild (a direct child fiber of
         // `ancestor`). The counter bump happens for every unkeyed ComponentNode either way, so the keying

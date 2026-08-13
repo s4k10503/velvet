@@ -794,9 +794,8 @@ namespace Velvet
             else
             {
                 // Old-side (structural) walk: look up the previously rendered fiber by the
-                // same tree-position key the new side registered under — (parent fiber,
-                // position key, identity). FiberStack.Push mirrors the new side so nested
-                // old-side components resolve against the same parent fiber they were
+                // same registry key the new side registered under. FiberStack.Push mirrors the new
+                // side so nested old-side components resolve against the same parent fiber they were
                 // registered with; without the symmetric push the lookup parent would
                 // diverge and the diff would treat reused fibers as orphans.
                 var fiber = _ctx.ComponentRegistry.TryGetFiberForInlineKey(_ctx.FiberStack.Current, slotKey, identity, portalScope);

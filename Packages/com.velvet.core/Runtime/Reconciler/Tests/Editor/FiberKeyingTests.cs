@@ -5,8 +5,8 @@ namespace Velvet.Tests
 {
     /// <summary>
     /// Specifies the tree-position keying contract that the inline-expansion walk and the context
-    /// spine-rewalk must derive identically for the same committed node, so a registry lookup keyed
-    /// by <c>(parentFiber, positionKey, identity)</c> never misses.
+    /// spine-rewalk must derive identically for the same committed node, so a registry lookup never
+    /// misses.
     /// <list type="bullet">
     /// <item>An unkeyed inline ComponentNode's position key is the n-th occurrence of its identity
     /// within one reconcile scope, counted independently per identity.</item>

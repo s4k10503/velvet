@@ -75,8 +75,8 @@ namespace Velvet
         //     prefix scan's slot always exists by construction (Pass 1 never changes childCount ahead
         //     of index i).
         //   Removal deliberately stays BEFORE CreateElement (remove-then-create), not
-        //     create-then-remove: an inline-mounted component fiber is keyed by
-        //     (parentFiber, positionKey, identity) — NOT by which VisualElement currently hosts it
+        //     create-then-remove: an inline-mounted component fiber is keyed by its tree position —
+        //     NOT by which VisualElement currently hosts it
         //     (FiberRenderer.SetupMount's comment on the registry key; ComponentRegistry.cs). If the
         //     OLD element (and the same-keyed nested fiber ComponentRegistry still has registered
         //     under it) is still present when CreateElement builds the NEW element's same-keyed

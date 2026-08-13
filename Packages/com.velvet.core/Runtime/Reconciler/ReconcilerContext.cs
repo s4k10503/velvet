@@ -786,9 +786,9 @@ namespace Velvet
         // PortalChildFiberContinuityTests holds the two keys side by side, for a host element between the
         // two and for a Provider.
         //
-        // Both members are written only by EnterPortalChildKeyScope, and read only through
-        // PortalChildKeyScopeHere. The set of levels above is not the set of levels this reconcile passes
-        // through: a component body rendered anywhere below one of them renders again, later and alone,
+        // Nothing outside the three members below touches the pair: Enter overwrites it and hands back
+        // what it displaced, Exit puts that back, and PortalChildKeyScopeHere is the only other read.
+        // The set of levels above is not the set of levels this reconcile passes through: a component body rendered anywhere below one of them renders again, later and alone,
         // with no Portal reconcile in sight, and its children have to key the same way both times or the
         // second reading builds a second set of fibers over the first. The nesting recorded here is what
         // separates the two. A component body reached through FiberRenderer.PushFiber or
@@ -804,8 +804,9 @@ namespace Velvet
             => FiberStack.Depth == PortalChildKeyScopeNesting ? PortalChildKeyScope : null;
 
         // Returns what restores the enclosing scope. Restored rather than cleared on the way out: a Portal
-        // declared inside another Portal's children reconciles from within the outer one's, and what the
-        // outer one reaches after that returns is still the outer one's.
+        // declared inside another Portal's children patches from within the outer one's, and what the
+        // outer one reaches after that returns is still the outer one's. The mount entrance does not
+        // nest that way — ChildReconciler.DrainPendingPortalMounts says why.
         internal (VisualElement? Scope, int Nesting) EnterPortalChildKeyScope(VisualElement placeholder)
         {
             var enclosing = (PortalChildKeyScope, PortalChildKeyScopeNesting);

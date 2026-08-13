@@ -19,9 +19,9 @@ namespace Velvet
     internal sealed class ComponentRegistry : IDisposable
     {
         // Inline-mounted fibers (function components emit no host node) anchor on their
-        // parent ComponentFiber by tree position. The host VE does not exist when the fiber is matched
-        // during begin-work, so identity is (parent fiber, position key, component identity) — never a
-        // VisualElement. positionKey is the tree-position scope key, identity is ComponentNode.ResolvedIdentity.
+        // parent ComponentFiber by tree position, never on the element they render into: that host VE
+        // does not exist yet when the fiber is matched during begin-work. positionKey is the
+        // tree-position scope key, identity is ComponentNode.ResolvedIdentity.
         // portalScope is the Portal placeholder a child level of that Portal's own children belongs to,
         // and null everywhere else. The declaring component's fiber is the parentFiber on both sides of
         // a Portal, so what it renders into the Portal and what it renders outside it agree on the rest
