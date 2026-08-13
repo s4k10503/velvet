@@ -15,7 +15,7 @@ namespace Velvet.Tests
     /// <list type="bullet">
     /// <item>With no blockers registered a check reports not-blocked; a registered predicate returning true
     /// blocks and transitions its <see cref="RouteBlockerState"/> to Blocked, while false leaves it Idle.</item>
-    /// <item>Every registered blocker is evaluated with no short-circuit, so a single blocking predicate blocks
+    /// <item>Registered blockers are evaluated with no short-circuit, so a single blocking predicate blocks
     /// regardless of the others.</item>
     /// <item>Registration returns a disposable that unregisters the blocker on dispose.</item>
     /// <item><c>ResetAllBlocked</c> returns every Blocked state to Idle.</item>

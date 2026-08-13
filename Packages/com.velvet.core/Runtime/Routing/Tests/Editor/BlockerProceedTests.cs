@@ -7,8 +7,8 @@ namespace Velvet.Tests
     /// <summary>
     /// Specifies what <see cref="RouteBlockerState.Proceed"/> does with the navigation its Blocker held.
     /// <list type="bullet">
-    /// <item>Proceed re-issues the blocked attempt, which commits without consulting that Blocker again — a
-    /// Push by its path, a Back or Forward as the same history step.</item>
+    /// <item>Proceed re-issues the blocked attempt without consulting that Blocker again — a Push by its
+    /// path, a Back or Forward as the same history step.</item>
     /// <item>While the re-issued navigation runs, the Blocker still holds the attempt it released — the
     /// status it reports over that span is pinned by <see cref="BlockerTests"/>.</item>
     /// <item>The commit returns it to Idle, so the next navigation is blocked again.</item>
