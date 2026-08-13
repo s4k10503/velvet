@@ -206,7 +206,8 @@ namespace Velvet
         }
 
         // The claim in ReconcilerContext.ChildBoxOwners decides this, not the tracked list, and every
-        // turn-off goes through here so no path can skip the question.
+        // turn-off on a child that has LEFT the container goes through here. The one null that lands on a
+        // CURRENT child does not ask — Apply defers the width to Null while no row width has resolved yet.
         private void ReleaseChild(VisualElement child)
         {
             if (StyleChildOwnership.TryRelease(_ctx.ChildBoxOwners, child, this))

@@ -144,14 +144,19 @@ can change outside the manipulator's own events, so it is re-applied from three 
    (below). Registered on the attached element only, since the inner box attaches in its subtree pass.
 
 **A child that leaves keeps whatever its new container wrote.** A container also clears what it wrote
-on a child that is no longer in it, so a child moved elsewhere carries no leftover gap. Because the
-three sources above land on their own schedules, the container a child left can re-apply *after* the
-container it joined has already spaced it — and the element pool makes that ordinary, handing a child
-pooled out of one container straight to another. So the clear only fires while the value on the child
-is still the clearing container's own: two `gap-4` rows exchanging a child leave it spaced by the row
-it is in, and a child claimed by nobody still loses the margin its old row wrote. `grid-cols-*` shares
-that answer with `gap-*`, both writing the same margin slots; `divide-*` keeps its own for the border
-edge it owns.
+on a child that is no longer in it, so a child *reparented* elsewhere carries no leftover gap. Because
+the three sources above land on their own schedules, the container a child left can re-apply *after*
+the container it joined has already spaced it — and the element pool makes that ordinary, handing a
+child pooled out of one container straight to another. So the clear only fires while the value on the
+child is still the clearing container's own: two `gap-4` rows exchanging a child leave it spaced by
+the row it is in. `grid-cols-*` shares that answer with `gap-*` — both write a child's margins, and
+the grid its width as well; `divide-*` keeps its own for the border edge it owns.
+
+A child the reconciler *removes* is the one case where nothing clears: element cleanup drops the
+child's record before the container's next pass looks for it, so the container has nothing to clear
+against and the inline spacing stays on the element. Nothing on screen shows it — a removed element is
+discarded with its subtree, or scrubbed on its way into the element pool — so it matters only for an
+element your own code kept a reference to and re-parented after the removal.
 
 **Which element the verdict is read from: the container the children are actually in.** Both
 manipulators are attached to the element the class string is written on, but they resolve, iterate and

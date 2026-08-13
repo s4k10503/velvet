@@ -67,9 +67,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   container's children and so never loses the race, and what reached this was the panel's own re-apply
   sources — a `GeometryChangedEvent` or an `AttachToPanelEvent` arriving after the other container had
   written. Each turn-off now asks a claim first, so only the container whose write is still on the child
-  may take it back off, and a child claimed by nobody still loses what its old container wrote. Gap and
-  grid share one claim, since both write a child's margins: a child moving between a gap container and a
-  grid one is one owner's or the other's.
+  may take it back off. Gap and grid share one claim, since both write a child's margins: a child moving
+  between a gap container and a grid one is one owner's or the other's.
+  One case moves the other way with it. A child the reconciler *removes* now keeps the spacing its
+  container wrote, where before the container's next pass cleared it: element cleanup drops the child's
+  claim, and the container then finds no claim to release against. This is every reconciler-driven child
+  removal, not an edge case. A removed element is either discarded with its subtree or scrubbed on its
+  way into the element pool, so what this changes is the inline state of an element an application has
+  kept a reference to and re-parented itself.
 - A component the reconciler carries to a different container now re-renders itself into the container
   it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
   container did not, so its own `setState` reconciled its new output into the container it had left,

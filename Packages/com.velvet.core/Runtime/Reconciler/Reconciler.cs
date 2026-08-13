@@ -717,12 +717,14 @@ namespace Velvet
             }
 
             _ctx.TextBalanceManipulators.Clear();
-            // Last, after every loop above: the child-variant, gap, divide and grid manipulators each turn
-            // a value off only on a child whose claim in the per-child ownership tables is still its own,
-            // so emptying those tables ahead of a loop would make every release in it a no-op. Empties
-            // every pure side-table (structural / has-[.class]: / data-/aria- rules + store / supports- /
-            // the per-child claims) in one call, mirroring the per-element ClearElementSideTables used on
-            // cleanup.
+            // Empties every pure side-table in one call, mirroring the per-element ClearElementSideTables
+            // used on cleanup: the structural / has-[.class]: / data- / aria- rules and their attribute
+            // store, supports-, the Motion applied-classes and child label, the layout-id map, the four
+            // text tables, the per-child claims, the variant gate classes, and the z-layer host and member
+            // maps — ReconcilerContext's own enrolment list is the set, and this reaches all of it.
+            // It runs last, after every loop above, for the claims specifically: the child-variant, gap,
+            // divide and grid manipulators each turn a value off only on a child whose claim is still
+            // their own, so emptying those tables ahead of a loop would make every release in it a no-op.
             _ctx.ClearAllSideTables();
         }
 

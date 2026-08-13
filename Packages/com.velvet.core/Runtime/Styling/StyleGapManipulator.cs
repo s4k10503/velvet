@@ -477,7 +477,9 @@ namespace Velvet
         }
 
         // The claim in ReconcilerContext.ChildBoxOwners decides this, not the tracked list, and every
-        // turn-off goes through here so no path can skip the question. It resets all four margin edges
+        // turn-off on a child that has LEFT the container goes through here. The nulls that land on
+        // CURRENT children do not ask — ClearEdge and ClearHalfMargin clear an edge this pass is about to
+        // rewrite. It resets all four margin edges
         // rather than the currently applied one: an earlier axis or mode flip may have written any of them
         // while this element was still a member.
         private void ReleaseGapMargins(VisualElement child)

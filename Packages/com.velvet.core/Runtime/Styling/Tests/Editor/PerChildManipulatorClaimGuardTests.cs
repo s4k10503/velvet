@@ -21,8 +21,23 @@ namespace Velvet.Tests
     /// Both the subject set and the requirement are derived from the code. The subjects are the
     /// manipulators <c>ReconcilerContext</c> keys by container element, which is how a class list gets one
     /// attached and therefore how two containers come to hold the same child; among those, the ones
-    /// declaring a field that holds <c>VisualElement</c>s. A fifth family wired the same way is a subject
+    /// declaring a field that holds <c>VisualElement</c>s. A fifth family wired that same way is a subject
     /// the day it is written, with no list here to update.
+    /// <para>
+    /// Four known limits, stated because the sentence above otherwise reads as coverage it does not
+    /// have. They are the ones established, not a proof that no fifth exists:
+    /// </para>
+    /// <list type="bullet">
+    /// <item>Owned by something other than a <c>ReconcilerContext</c> table.
+    /// <see cref="StyleSkewChildTranslateManipulator"/> is that today — it tracks children in a dictionary
+    /// but hangs off the caster's <c>SkewBinding</c>, so the derivation never reaches it.</item>
+    /// <item>Keyed by a tuple rather than by the element. <c>StackedVariantManipulators</c> is that, and
+    /// <c>KeyedByElement</c> rejects it.</item>
+    /// <item>Holding its children inside a helper object rather than in a field of its own, which
+    /// <c>HoldsChildrenByReference</c> reads and so would not find.</item>
+    /// <item>Gating only some of its turn-offs. One reference anywhere in the type satisfies the IL read
+    /// below, so a manipulator with two turn-off paths that asks the claim on one of them passes.</item>
+    /// </list>
     /// </remarks>
     [TestFixture]
     internal sealed class PerChildManipulatorClaimGuardTests
@@ -112,8 +127,10 @@ namespace Velvet.Tests
                 .ToList();
 
             // Assert — the subject count rides along because a derivation that matched nothing would agree
-            // with a codebase where every manipulator asks.
-            Assert.That((subjects.Count > 1, string.Join("\n", silent)), Is.EqualTo((true, string.Empty)),
+            // with a codebase where every manipulator asks. A ratchet rather than an exact count: a fifth
+            // family must not fail this case, but a derivation that quietly stopped reaching today's four
+            // must.
+            Assert.That((subjects.Count >= 4, string.Join("\n", silent)), Is.EqualTo((true, string.Empty)),
                 "these track children by reference and reset a value on one that has left, with nothing "
                 + "asking whether the value is still theirs; route every turn-off through "
                 + OwnershipTypeName + " against a claim table on ReconcilerContext");
@@ -163,8 +180,8 @@ namespace Velvet.Tests
                 .OrderBy(name => name, StringComparer.Ordinal)
                 .ToList();
 
-            // Assert — the table count rides along, for the same reason as above.
-            Assert.That((tables.Count > 1, string.Join("\n", loose)), Is.EqualTo((true, string.Empty)),
+            // Assert — the table count rides along, on the same ratchet as above.
+            Assert.That((tables.Count >= 3, string.Join("\n", loose)), Is.EqualTo((true, string.Empty)),
                 "add each to _pureElementSideTables so a claim dies with the element that carries it");
         }
     }

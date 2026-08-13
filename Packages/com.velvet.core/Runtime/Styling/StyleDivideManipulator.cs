@@ -392,7 +392,9 @@ namespace Velvet
         }
 
         // The claim in ReconcilerContext.ChildDividerOwners decides this, not the tracked list, and every
-        // turn-off goes through here so no path can skip the question. The dash paint goes with the border:
+        // turn-off on a child that has LEFT the container goes through here. The nulls that land on
+        // CURRENT children do not ask — ClearEdge clears an edge this pass is about to rewrite, and the
+        // first child's own pass writes the no-divider null. The dash paint goes with the border:
         // it is the same divider drawn a different way, so a container that may not reset one may not
         // detach the other.
         private void ReleaseBordered(VisualElement child)

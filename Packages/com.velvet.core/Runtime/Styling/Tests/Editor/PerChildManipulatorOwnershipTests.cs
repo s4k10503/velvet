@@ -1,6 +1,5 @@
 using System;
 using System.Globalization;
-using System.Reflection;
 using NUnit.Framework;
 using UnityEngine.UIElements;
 using Velvet.TestUtilities;
@@ -32,9 +31,12 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class PerChildManipulatorOwnershipTests
     {
-        // --space-4 == 16px, --space-8 == 32px (_tokens.uss); divide-x-N is N px (StyleDivideClass).
+        // A gap suffix resolves through StyleArbitraryValueResolver.TryGetSpacingPx: 4 is 16px and 8 is
+        // 32px. A divide-x-N is N px on its own scale (StyleDivideClass). Wrap writes gap/2 on all four
+        // sides, so Wrap4Row's children carry 8.
         private const string Gap4Row = "flex flex-row gap-x-4";
         private const string Gap8Row = "flex flex-row gap-x-8";
+        private const string Wrap4Row = "flex flex-row flex-wrap gap-4";
         private const string Divide4Row = "flex flex-row divide-x-4";
         private const string Divide8Row = "flex flex-row divide-x-8";
         private const string Grid4 = "grid grid-cols-2 gap-x-4";
@@ -51,11 +53,6 @@ namespace Velvet.Tests
             => value.keyword == StyleKeyword.Null
                 ? "null"
                 : value.value.ToString(CultureInfo.InvariantCulture);
-
-        private static ReconcilerContext Context(ReconcilerScope scope)
-            => (ReconcilerContext)typeof(Reconciler)
-                .GetField("_ctx", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .GetValue(scope.Reconciler)!;
 
         // Two rows, each spacing its own children, with one Label in the first that the second will take.
         private static (VisualElement First, VisualElement Second, VisualElement Moving) TwoRows(
@@ -117,7 +114,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var ctx = Context(scope);
+            var ctx = ReconcilerContextProbe.Of(scope);
             var (first, second, moving) = TwoRows(scope, Gap4Row, Gap8Row);
             var spacedByFirst = Inline(moving.style.marginLeft);
             ReRent(first, second, moving, () => ctx.GapManipulators[second].Apply());
@@ -135,7 +132,7 @@ namespace Velvet.Tests
         {
             // Arrange — the same ownership question reached through detach rather than through the walk.
             using var scope = new ReconcilerScope();
-            var ctx = Context(scope);
+            var ctx = ReconcilerContextProbe.Of(scope);
             var (first, second, moving) = TwoRows(scope, Gap4Row, Gap8Row);
             var spacedByFirst = Inline(moving.style.marginLeft);
             ReRent(first, second, moving, () => ctx.GapManipulators[second].Apply());
@@ -154,7 +151,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var ctx = Context(scope);
+            var ctx = ReconcilerContextProbe.Of(scope);
             var (first, _, moving) = TwoRows(scope, Gap4Row, Gap8Row);
             var spacedByFirst = Inline(moving.style.marginLeft);
             first.Remove(moving);
@@ -194,7 +191,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var ctx = Context(scope);
+            var ctx = ReconcilerContextProbe.Of(scope);
             var (first, second, moving) = TwoRows(scope, Divide4Row, Divide8Row);
             var dividedByFirst = Inline(moving.style.borderLeftWidth);
             ReRent(first, second, moving, () => ctx.DivideManipulators[second].Apply());
@@ -213,7 +210,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var ctx = Context(scope);
+            var ctx = ReconcilerContextProbe.Of(scope);
             var (first, _, moving) = TwoRows(scope, Divide4Row, Divide8Row);
             var dividedByFirst = Inline(moving.style.borderLeftWidth);
             first.Remove(moving);
@@ -231,7 +228,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var ctx = Context(scope);
+            var ctx = ReconcilerContextProbe.Of(scope);
             var (first, second, moving) = TwoRows(scope, Grid4, Grid8);
             var sizedByFirst = Inline(moving.style.marginLeft);
             ReRent(first, second, moving, () => ctx.GridManipulators[second].Apply());
@@ -250,7 +247,7 @@ namespace Velvet.Tests
         {
             // Arrange
             using var scope = new ReconcilerScope();
-            var ctx = Context(scope);
+            var ctx = ReconcilerContextProbe.Of(scope);
             var (first, _, moving) = TwoRows(scope, Grid4, Grid8);
             var sizedByFirst = Inline(moving.style.marginLeft);
             first.Remove(moving);
@@ -263,13 +260,63 @@ namespace Velvet.Tests
             Assert.That((sizedByFirst, Inline(moving.style.marginLeft)), Is.EqualTo(("16", "null")));
         }
 
+        // GREEN_ON_BASE(characterization): the divider a departing child already loses on the base, which
+        // is what a divide row sharing the box table would stop happening.
+        [Test]
+        public void Given_ADivideChildReRentedByAGapRow_When_TheDivideRowRunsAfterwards_Then_TheDividerIsRemoved()
+        {
+            // Arrange — the child leaves a divide row for a gap row, so the gap row claims its box while
+            // the divide row still owes it a border reset. Nothing about the gap row's claim may answer for
+            // the divider: the child now sits in a row carrying no divide class at all.
+            using var scope = new ReconcilerScope();
+            var ctx = ReconcilerContextProbe.Of(scope);
+            var (divide, row, moving) = TwoRows(scope, Divide4Row, Gap8Row);
+            var dividedByFirst = Inline(moving.style.borderLeftWidth);
+            ReRent(divide, row, moving, () => ctx.GapManipulators[row].Apply());
+
+            // Act
+            ctx.DivideManipulators[divide].Apply();
+
+            // Assert — the divide row's own border rides along, since a child that never carried one and
+            // one the sweep cleared leave the same inline slot.
+            Assert.That((dividedByFirst, Inline(moving.style.borderLeftWidth)), Is.EqualTo(("4", "null")));
+        }
+
+        // GREEN_ON_BASE(characterization): the wrap path's four-side margins a departing child already
+        // loses on the base, which is what a wrap pass that claimed nothing would stop happening.
+        [Test]
+        public void Given_AChildThatLeftAWrappingGapRow_When_TheRowRunsAfterwards_Then_TheHalfMarginsAreRemoved()
+        {
+            // Arrange — a wrapping row spaces every child on all four sides rather than on one leading
+            // edge, and it is a separate write path from the non-wrap one every other case here drives.
+            using var scope = new ReconcilerScope();
+            var ctx = ReconcilerContextProbe.Of(scope);
+            var tree = new VNode[]
+            {
+                V.Div(className: Wrap4Row, children: new VNode[] { V.Text("a"), V.Text("b") }),
+            };
+            scope.Reconciler.Reconcile(scope.Root, Array.Empty<VNode>(), tree);
+            var row = scope.Root[0];
+            var moving = row[1];
+            var spacedByRow = Inline(moving.style.marginRight);
+            row.Remove(moving);
+            new VisualElement().Add(moving);
+
+            // Act
+            ctx.GapManipulators[row].Apply();
+
+            // Assert — the trailing side is read because the non-wrap path never writes it, so a wrap pass
+            // that did nothing at all could not produce the precondition.
+            Assert.That((spacedByRow, Inline(moving.style.marginRight)), Is.EqualTo(("8", "null")));
+        }
+
         [Test]
         public void Given_AGridChildReRentedByAGapRow_When_TheGridRunsAfterwards_Then_TheGapSpacingSurvives()
         {
             // Arrange — the two families write the same margin slot, so the claim they share has to answer
             // across them and not only within one.
             using var scope = new ReconcilerScope();
-            var ctx = Context(scope);
+            var ctx = ReconcilerContextProbe.Of(scope);
             var (grid, row, moving) = TwoRows(scope, Grid4, Gap8Row);
             var sizedByGrid = Inline(moving.style.marginLeft);
             ReRent(grid, row, moving, () => ctx.GapManipulators[row].Apply());
@@ -286,7 +333,7 @@ namespace Velvet.Tests
         {
             // Arrange — the other direction across the shared claim.
             using var scope = new ReconcilerScope();
-            var ctx = Context(scope);
+            var ctx = ReconcilerContextProbe.Of(scope);
             var (row, grid, moving) = TwoRows(scope, Gap4Row, Grid8);
             var spacedByRow = Inline(moving.style.marginLeft);
             ReRent(row, grid, moving, () => ctx.GridManipulators[grid].Apply());
