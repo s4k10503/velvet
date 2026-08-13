@@ -129,8 +129,8 @@ that need a run, the declarations and the cap among them, it does not take.
 
 [Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
 covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
-survivor, and which line shapes the operators reach — which is 32% of the changed code lines measured
-over the twenty commits ending at `48057c8`, so **a survivor count is a statement about the lines an
+survivor, and which line shapes the operators reach — which is 31% of the changed code lines measured
+over the twenty commits ending at `48057c8` with the generator as this branch leaves it, so **a survivor count is a statement about the lines an
 operator reached and not about the change**. The run prints both numbers and names the lines it could
 not ask about.
 
