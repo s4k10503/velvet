@@ -49,19 +49,19 @@ MECHANISM_GLOBS = (
     ("Runtime/Reconciler", "Fiber*Applier.cs"),
 )
 
-# A moved directory globs nothing, a renamed JSON key parses to no cut, and a record overwritten by a
-# one-fixture --report names one fixture. None of the three disagrees with anything, so these are what
-# separate an audit that read the repository from one that read nothing and exited 0. Each is checked
-# on its own: OR them together and a test can only hold that some one of them is still positive.
+# Each is checked on its own, and AuditReadsNothing in test_neuter_check.py holds one case per floor.
 # Floors rather than exact counts, so growth needs no edit here. A campaign that shrinks the hole
 # record past its floor does need one, and that is where a record getting smaller is reviewed.
+#
+# HOLE_FIXTURE_FLOOR catches a record collapsed to a handful of fixtures, not one merely thinned: at
+# 18 it passes a record rewritten to 18 fixtures of one line each, 376 of 394 lines gone.
 MECHANISM_FLOOR = 25
 CUT_FLOOR = 25
 FIXTURE_FLOOR = 15
 HOLE_FIXTURE_FLOOR = 18
 
-# Failed is the one result no hole may carry: report_pair keeps a case only when the cut did not turn it
-# red, so a line saying otherwise came from something other than a sweep.
+# What report_pair can write: it keeps a case only when the cut did not turn it red, so a line naming
+# anything outside this came from something other than a sweep.
 HOLE_RESULTS = ("Passed", "Inconclusive", "Skipped")
 
 
@@ -251,18 +251,24 @@ def cut_files(cuts):
 
 
 def coverage_drift(found, cut, recorded):
-    """Both directions the uncovered record can disagree with the sources in.
+    """Both directions the uncovered record can disagree with the globbed set.
 
     An arrival is a mechanism nothing can disable, which is the one this exists for: a class-driven
     mechanism fails by being ignored, and an ignored utility class reads exactly like a class nobody
     wrote. A departure is a cut somebody has since written, and a record keeping the line stops meaning
     what it says.
+
+    Both are computed against `found` rather than against the record alone. A recorded path no glob
+    matches is in neither direction, and read as a departure it is told that a cut disables it — which
+    sends whoever recorded it to delete the line they were right to add. coverage_problems answers for
+    that path instead.
     """
+    globbed = set(found)
     uncovered = {path for path in found if path not in cut}
     return ([f"{UNCOVERED_FILE}: {path} has no cut and is not recorded — write one in {CUTS_FILE}, "
              "or record it as uncovered" for path in sorted(uncovered - recorded)]
             + [f"{UNCOVERED_FILE}: {path} is recorded as uncovered and a cut disables it — drop the line"
-               for path in sorted(recorded - uncovered)])
+               for path in sorted((recorded & globbed) - uncovered)])
 
 
 def coverage_problems(project, cuts):
@@ -276,8 +282,12 @@ def coverage_problems(project, cuts):
         problems.append(f"the mechanism glob found {len(found)} files under {PACKAGE_ROOT}, "
                         f"fewer than {MECHANISM_FLOOR}")
     problems += coverage_drift(found, cut_files(cuts), recorded)
+    missing = {entry for entry in recorded if not (project / PACKAGE_ROOT / entry).is_file()}
     problems += [f"{UNCOVERED_FILE}: {entry} names no file under {PACKAGE_ROOT}"
-                 for entry in sorted(recorded) if not (project / PACKAGE_ROOT / entry).is_file()]
+                 for entry in sorted(missing)]
+    problems += [f"{UNCOVERED_FILE}: {entry} matches neither glob, so this record does not answer for "
+                 "it — a mechanism outside the two shapes is answered for by nothing"
+                 for entry in sorted(recorded - set(found) - missing)]
     return problems
 
 
@@ -444,19 +454,23 @@ def baseline_problem(fixture, baseline):
     return None, []
 
 
-def baseline_arg_problems(args):
+def baseline_arg_problems(args, cuts):
     """Arguments that would make --report or --baseline meaningless, checked before the first run.
 
     --report writes the fixtures this run swept and nothing else, so aiming a narrowed sweep at the
     checked-in record replaces the rest of it with them. The audit downstream reads a truncated record
     as one every line still in it agrees with, and the next full sweep reads it as holes that opened.
+
+    Narrowed against the map rather than against the flag, since --fixtures naming every registered
+    fixture is a whole sweep spelt out, and refusing it would answer with the thing it just did.
     """
     problems = []
-    if args.report and args.fixtures and (
-            Path(args.report).resolve() == (Path(args.project).resolve() / HOLES_FILE)):
+    if (args.report and args.fixtures and set(args.fixtures) != set(cuts["fixtures"])
+            and Path(args.report).resolve() == (Path(args.project).resolve() / HOLES_FILE)):
         problems.append(
-            f"--fixtures narrows this sweep to {len(args.fixtures)}, and --report would write only "
-            f"those over {HOLES_FILE}. Report elsewhere and fold the lines in, or sweep every fixture.")
+            f"--fixtures narrows this sweep to {len(args.fixtures)} of {len(cuts['fixtures'])}, and "
+            f"--report would write only those over {HOLES_FILE}, dropping the rest. Report elsewhere "
+            "and read it there, or sweep every fixture.")
     if not args.baseline:
         return problems
     baseline = Path(args.baseline).resolve()
@@ -587,7 +601,7 @@ def main():
             print(f"  {path}", file=sys.stderr)
         return 1
 
-    for problem in baseline_arg_problems(args):
+    for problem in baseline_arg_problems(args, cuts):
         print(f"error: {problem}", file=sys.stderr)
         return BASELINE_DRIFT_EXIT
 

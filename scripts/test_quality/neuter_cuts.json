@@ -494,7 +494,7 @@
     {
       "name": "text-effect-apply",
       "mechanism": "text-effect",
-      "summary": "the text-effect applier returns the raw string, wrapping and transforming nothing",
+      "summary": "the text-effect applier returns the raw string, collapsing, transforming, decorating and leading nothing",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs",
@@ -596,7 +596,7 @@
     {
       "name": "filter-transition-applier",
       "mechanism": "filter-transition",
-      "summary": "the reconciler attaches and syncs no filter tween, at create or at patch",
+      "summary": "the reconciler starts and updates no filter tween, at create or at patch",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Reconciler/FiberFilterTransitionApplier.cs",

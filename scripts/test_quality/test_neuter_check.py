@@ -3,8 +3,8 @@
 
 The runs need a licence; the decisions do not, and it is the decisions that make a sweep's output mean
 anything. Several cases below are ones where the harness would otherwise report full coverage: a filter
-that ran nothing reports no holes, a fixture already red reports every case as killed by the cut, and a
-reader that came back empty agrees with every record it is handed.
+that ran nothing reports no holes, a fixture already red reports every case as killed by the cut, and an
+audit whose readers all came back empty has nothing but its floors left to report.
 
 Run: python3 scripts/test_quality/test_neuter_check.py
 """
@@ -128,11 +128,11 @@ class CutMap(unittest.TestCase):
 class AuditReadsNothing(unittest.TestCase):
     """What the audit does on each reader that came back with nothing.
 
-    A glob that matched no file, a map that parsed to no cut and no fixture, and a record naming no
-    fixture each disagree with nothing, so an audit that exits 0 having read an empty tree is
-    indistinguishable from one that checked the repository. A case per floor rather than one over all
-    of them: with the cut and fixture floors OR'd into a single branch, either could be set to zero
-    and this suite stayed green.
+    On a tree where the globs match nothing, the map parses to nothing and both records are empty,
+    nothing disagrees with anything, so the floors are the only thing that can report — and an audit
+    that exits 0 there is indistinguishable from one that checked the repository. A case per floor
+    rather than one over all of them: with the cut and fixture floors OR'd into a single branch, either
+    could be set to zero and this suite stayed green.
     """
 
     def audit_empty_tree(self, cuts=None):
@@ -180,24 +180,30 @@ class ReportOverTheRecord(unittest.TestCase):
     checked-in record replaces the rest of it with them — which the audit downstream reads as a record
     every line still in it agrees with."""
 
-    def refused(self, fixtures, report):
-        return bool(neuter_check.baseline_arg_problems(argparse.Namespace(
-            project=".", fixtures=fixtures, report=report, baseline=None)))
+    REGISTERED = {"fixtures": {"Velvet.Tests.HasVariantTests": {}, "Velvet.Tests.GapParityTests": {}}}
 
-    def test_Given_FourWaysToReport_When_TheArgumentsAreRead_Then_OnlyTheNarrowedOneOverTheRecordIsRefused(self):
-        # Arrange — the three that must pass ride with the one that must not, because a check refusing
-        # nothing and a check refusing everything each satisfy one of them alone. Each of the three is
-        # a term of the condition: the whole sweep, the report aimed elsewhere, and no report at all.
+    def refused(self, fixtures, report):
+        return bool(neuter_check.baseline_arg_problems(
+            argparse.Namespace(project=".", fixtures=fixtures, report=report, baseline=None),
+            self.REGISTERED))
+
+    def test_Given_FiveWaysToReport_When_TheArgumentsAreRead_Then_OnlyTheNarrowedOneOverTheRecordIsRefused(self):
+        # Arrange — the four that must pass ride with the one that must not, because a check refusing
+        # nothing and a check refusing everything each satisfy one of them alone. Each of the four is a
+        # term of the condition: no --fixtures, every fixture named, the report aimed elsewhere, and no
+        # report at all. The fourth is a whole sweep spelt out, which the map decides and the flag cannot.
         narrowed = ["Velvet.Tests.HasVariantTests"]
+        every = list(self.REGISTERED["fixtures"])
 
         # Act
         verdicts = (self.refused(narrowed, neuter_check.HOLES_FILE),
                     self.refused(None, neuter_check.HOLES_FILE),
+                    self.refused(every, neuter_check.HOLES_FILE),
                     self.refused(narrowed, "Logs/sweep.txt"),
                     self.refused(narrowed, None))
 
         # Assert
-        self.assertEqual(verdicts, (True, False, False, False))
+        self.assertEqual(verdicts, (True, False, False, False, False))
 
 
 class CoverageDrift(unittest.TestCase):
@@ -230,6 +236,24 @@ class CoverageDrift(unittest.TestCase):
 
         # Assert
         self.assertEqual(drift, [])
+
+    def test_Given_ARecordedFileNoGlobMatches_When_TheCoverageIsRead_Then_ItIsNotCalledACut(self):
+        # Arrange — a real file outside both name shapes. Read as a departure it is told a cut disables
+        # it, which sends whoever recorded it to delete the line; no cut names this file.
+        with tempfile.TemporaryDirectory() as tree:
+            project = scaffold(Path(tree))
+            outside = project / neuter_check.PACKAGE_ROOT / "Runtime/Styling/MotionPropertyClassParser.cs"
+            outside.write_text("")
+            (project / neuter_check.UNCOVERED_FILE).write_text(
+                "Runtime/Styling/MotionPropertyClassParser.cs\n")
+
+            # Act
+            problems = neuter_check.coverage_problems(project, {"cuts": {}, "fixtures": {}})
+
+        # Assert — both halves, because dropping the new message leaves the wrong one still absent
+        joined = "\n".join(problems)
+        self.assertEqual(("a cut disables it" in joined, "matches neither glob" in joined),
+                         (False, True))
 
     def test_Given_ARecordedEntryARenameRemoved_When_TheCoverageIsRead_Then_ItIsReported(self):
         # Arrange — an entry describing nothing leaves the record's count looking the same.
