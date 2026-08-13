@@ -212,6 +212,42 @@ class GenerationAcrossLinesTests(unittest.TestCase):
         self.assertEqual((len(sources) > 200, total > 8000), (True, True))
 
 
+class StatementChainCutTests(unittest.TestCase):
+    """A chain that is a whole statement rather than a condition closes no group.
+
+    The balance check next door cannot see this: the remainder's code parentheses are balanced, and
+    what it is missing is the semicolon. An uncompilable mutant fails its run, and a failing run is
+    scored as a kill — so this shape reports a false kill rather than noise.
+    """
+
+    def test_Given_AChainThatIsAWholeStatement_When_ACutIsApplied_Then_ItKeepsTheTerminator(self):
+        # Arrange
+        text = 'var isRgb = !isRgba && s.StartsWith("rgb(", StringComparison.Ordinal);\n'
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["var isRgb = !isRgba;"])
+
+    def test_Given_EveryRuntimeSource_When_ACutIsApplied_Then_NoneDropsATerminator(self):
+        # Arrange — the sweep, because one hand-written line is a single shape and the operator now
+        # emits 1141 cuts across the package rather than 183.
+        sources = [path for path in RUNTIME.rglob("*.cs") if "/Tests/" not in path.as_posix()]
+
+        # Act
+        dropped = []
+        for path in sources:
+            text = path.read_text()
+            for mutant in mutants_of(text, "clause removed"):
+                whole = text.splitlines()[mutant.line - 1].rstrip()
+                if whole.endswith(";") and not applied(text, mutant).endswith((";", "{", "}")):
+                    dropped.append(f"{path.name}:{mutant.line} {applied(text, mutant)}")
+
+        # Assert — the source count rides along because an empty scan drops nothing by arithmetic.
+        self.assertEqual((len(sources) > 200, dropped), (True, []))
+
+
 class GuardRemovalTests(unittest.TestCase):
     def test_Given_ASingleLineReturnGuard_When_ItIsRemoved_Then_OnlyTheGuardGoes(self):
         # Arrange
@@ -656,6 +692,7 @@ class StubbedCampaign:
 
     kills = False
     times_out = False
+    build_error = False
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         # The baseline has to be green whatever the mutants do, or the run stops before the loop.
@@ -663,7 +700,9 @@ class StubbedCampaign:
         if mutant and self.times_out:
             return 0.0, True
         Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else GREEN_RESULTS)
-        Path(log).write_text("")
+        Path(log).write_text(
+            "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS1002: ; expected\n"
+            if (mutant and self.build_error) else "")
         return 0.0, False
 
     def unity_busy(self):
@@ -1296,6 +1335,20 @@ class CampaignVerdictTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(len(keys), 2)
+
+
+class UncompilableMutantTests(unittest.TestCase):
+    def test_Given_AMutantTheBuildRejected_When_TheRunIsDecided_Then_ItIsNotASurvivor(self):
+        # Arrange — the suite writes a green result either way when the build never produced an
+        # assembly for it, so read without the log this reads as a mutation nothing noticed.
+        campaign = StubbedCampaign()
+        campaign.build_error = True
+
+        # Act
+        code = campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual(code, 0)
 
 
 class SignalledCampaignTests(unittest.TestCase):

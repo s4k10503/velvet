@@ -143,16 +143,21 @@ noticed gets written, or the line says why nothing could have, above itself:
 
 `equivalent` says the mutated program cannot behave differently; `unreachable` says the state where it
 would is not reachable from any entry point. A declaration answers for the change written under it and
-is read the three ways the base-red one below is: one over a line whose mutants all died is stale and
-fails, one whose category or reason the script refuses fails, and one the branch did not itself write
-answers for the base's change rather than for this one — restate it. The run also fails on every way it
-can measure less than it looks like it measured: a `--max` cap that left mutants unrun, an assembly the
-editor never rebuilt, a second editor sharing the machine, and a source whose comment-and-string mask
-swallows code, which generates no mutant there and reports nothing.
+is read the three ways the base-red one below is: one over a statement whose mutants all died is stale
+and fails, one whose category or reason the script refuses fails, and one the branch did not itself
+write answers for the base's change rather than for this one — restate it. It answers for the statement
+rather than the line, because a condition broken across two lines carries mutants on both. Only a
+whole-suite run over the diff reads any: `--files`, `--filter`, `--assemblies` and `--platform` each ask
+a narrower question, and under one nearly everything survives.
+
+The run also fails on the ways it can measure less than it looks like it measured: a `--max` cap that
+left mutants unrun, an editor killed at `--timeout`, an assembly the editor never rebuilt, a second
+editor sharing the machine, and a source whose comment-and-string mask swallows code, which generates
+no mutant there and reports nothing.
 
 **What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
-under the campaign's own log directory, naming the merge base and the content of every file it mutated,
-and `gh pr create` and `gh pr merge` are refused where no receipt covers the change in front of them. A
+under the campaign's own log directory, naming the merge base, the platform, and the content of every
+file it mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
 branch that changes no mutable package source is owed nothing and is not asked; a change no operator
 reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
 receipt is keyed on what the campaign measured rather than on the head commit, because the campaign
@@ -161,6 +166,13 @@ it measured and moves no tree sha — and because 16 of 44 commits over five rec
 mutable source, each of which would have voided a receipt over a change no operator can see. What it
 does not cover is a test-side change: removing a test can make a killed mutant survive, and including
 tests would void the receipt on the ordinary act of adding one after the run.
+
+**Merge time is not gated, and cannot be from here.** A guard on `gh pr merge` would read the checkout
+the command runs in, which at merge time is `main` after a pull — a tree with no change in it — so it
+would pass every merge while printing a verdict about a change it never read. `scripts/pr/settle.py`
+merges through `gh api -X PUT` besides, which no hook matcher sees. The effective contract is one
+campaign at pull-request-open time, and a review round that changes production code after that is
+measured by nothing until the next `gh pr create`.
 
 **Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
 Over the twenty commits before this one, nine generated no mutant at all and the other eleven ranged
