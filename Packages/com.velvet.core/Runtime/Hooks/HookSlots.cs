@@ -167,8 +167,9 @@ namespace Velvet
         public Action<TData, TVariables>? OnSuccess { get; set; }
         public Action<Exception, TVariables>? OnError { get; set; }
         // Every call in flight, not just the newest: two Mutate calls run side by side, so unmounting has
-        // more than one token to cancel. The newest is identified by Generation instead, which is what
-        // decides who may write the observed Status / Data — the callbacks are every call's own.
+        // more than one token to cancel. Who may write the observed Status / Data is Generation's to say
+        // instead: a call writes only while it still holds the current value, and Reset advances that too,
+        // so every call then in flight has lost it. The callbacks are every call's own either way.
         public List<CancellationTokenSource> Live { get; } = new();
 
         public long Generation { get; set; }

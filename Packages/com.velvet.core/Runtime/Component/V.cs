@@ -2183,8 +2183,9 @@ namespace Velvet
         #region Suspense
 
         /// <summary>
-        /// Boundary that displays <paramref name="fallback"/> while any descendant declares a pending async
-        /// resource via <c>Use&lt;T&gt;()</c>, until the resource resolves.
+        /// Boundary that displays <paramref name="fallback"/> while a descendant declares a pending async
+        /// resource via <c>Use&lt;T&gt;()</c>, until the resource resolves. A descendant behind a nested
+        /// <c>V.Suspense()</c> is caught by that boundary instead, so it does not raise this one's fallback.
         /// On error, the failure is propagated to the nearest Error Boundary
         /// (a component that overrides <c>RenderFallback</c>).
         /// </summary>
