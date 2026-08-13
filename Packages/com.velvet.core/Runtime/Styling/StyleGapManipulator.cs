@@ -31,8 +31,9 @@ namespace Velvet
     // so writing margin-right there is the leading-margin equivalent, not an extra trailing gap.
     // Lifecycle mirrors the other style manipulators (StyleVariantManipulator): the
     // reconciler attaches one per gap container, keeps it in ReconcilerContext.GapManipulators,
-    // and removes it on cleanup / dispose. UnregisterCallbacksFromTarget clears the
-    // margins it wrote so removing the gap class (or unmounting) leaves no residue.
+    // and removes it on cleanup / dispose. UnregisterCallbacksFromTarget clears what it still owns —
+    // the margins on its current children, and on a departed one only while
+    // ReconcilerContext.ChildBoxOwners still names this manipulator.
     // Child container. The manipulator is attached to the gap ELEMENT, but its children are reconciled
     // into FiberNodePatcher.GetChildContainer(element) — a composite widget's inner box, not the widget.
     // Everything naming a container names that one: the iteration, the wrap path's negative margin, and
@@ -50,9 +51,10 @@ namespace Velvet
     // A signature (_lastSignature) makes repeated Apply calls with no relevant change — notably the
     // GeometryChanged feedback the manipulator's own margin writes provoke — into no-ops.
     // Reparent / removal. The manipulator tracks every element it wrote a margin to
-    // (_margined); on each Apply / Clear any tracked element
-    // that is no longer a current child has its gap margins reset first, so a child moved out of (or
-    // removed from) a gap container carries no residual inline margin.
+    // (_margined); on each Apply / Clear any tracked element that is no longer a current child is offered
+    // for release first, so a child moved out of (or removed from) a gap container carries no margin this
+    // container still owns. What it owns is ReconcilerContext.ChildBoxOwners' answer rather than the
+    // tracked list's: a child re-rented by another gap or grid container keeps what that one wrote.
     // Out-of-flow children (position: absolute) are excluded from the index walk entirely — see
     // StyleOutOfFlowChild — matching CSS gap, which never spaces a child that has been taken out of
     // flow. This is not a PopLayout-only carve-out: any app-authored .absolute child under a gap
@@ -100,6 +102,7 @@ namespace Velvet
     // avoids it. Non-wrap containers never bleed (they write no container margin).
     internal sealed class StyleGapManipulator : Manipulator
     {
+        private readonly ReconcilerContext _ctx;
         private float _gap;
         private GapAxis _axis;
 
@@ -143,8 +146,9 @@ namespace Velvet
         private Mode _mode = Mode.None;
 
         // Every element this manipulator has written a gap margin to. On each Apply / Clear, any tracked
-        // element that is no longer a current child of the child container has its margins reset, so a
-        // child reparented or removed out of the gap container does not keep its inline gap margin.
+        // element that is no longer a current child of the child container is offered for release; whether
+        // it loses the margin is the claim's answer, not this list's — see
+        // ReconcilerContext.ChildBoxOwners.
         private readonly List<VisualElement> _margined = new();
 
         // Signature of the last successful Apply: gap, mode, edge, and the current child identity set.
@@ -156,8 +160,9 @@ namespace Velvet
         // Null unless the child container is a separate element — see ObserveChildContainer.
         private VisualElement? _observed;
 
-        public StyleGapManipulator(float gap, GapAxis axis, bool xReverse, bool yReverse)
+        public StyleGapManipulator(ReconcilerContext ctx, float gap, GapAxis axis, bool xReverse, bool yReverse)
         {
+            _ctx = ctx;
             _gap = gap;
             _axis = axis;
             _xReverse = xReverse;
@@ -316,6 +321,7 @@ namespace Velvet
                         child.style.marginBottom = value;
                         break;
                 }
+                StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _margined.Add(child);
                 logicalIndex++;
             }
@@ -354,6 +360,7 @@ namespace Velvet
                 child.style.marginRight = half;
                 child.style.marginTop = half;
                 child.style.marginBottom = half;
+                StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _margined.Add(child);
             }
 
@@ -363,7 +370,7 @@ namespace Velvet
             container.style.marginBottom = negHalf;
         }
 
-        // Clears every margin this manipulator wrote (invoked on detach / removal / mode flip).
+        // Clears every margin this manipulator still owns (invoked on detach / removal / mode flip).
         private void Clear()
         {
             var container = ChildContainer;
@@ -444,10 +451,8 @@ namespace Velvet
             _applied = Edge.None;
         }
 
-        // Resets the gap margins on any tracked element that is no longer a current child of
-        // container (reparented or removed), then prunes it from the tracking list.
-        // Resets ALL margins this manipulator may have written (both modes' edges) since the element has
-        // left the container and the manipulator no longer owns its layout.
+        // Offers every tracked element that is no longer a current child of container (reparented or
+        // removed) for release, then prunes it from the tracking list.
         private void ResetStaleMargined(VisualElement container)
         {
             for (var i = _margined.Count - 1; i >= 0; i--)
@@ -455,20 +460,32 @@ namespace Velvet
                 var child = _margined[i];
                 if (child.parent != container)
                 {
-                    ResetGapMargins(child);
+                    ReleaseGapMargins(child);
                     _margined.RemoveAt(i);
                 }
             }
         }
 
-        // Resets the gap margins on every tracked element (used on Clear / detach).
+        // Offers every tracked element for release (used on Clear / detach).
         private void ResetAllMargined()
         {
             foreach (var child in _margined)
             {
-                ResetGapMargins(child);
+                ReleaseGapMargins(child);
             }
             _margined.Clear();
+        }
+
+        // The claim in ReconcilerContext.ChildBoxOwners decides this, not the tracked list, and every
+        // turn-off goes through here so no path can skip the question. It resets all four margin edges
+        // rather than the currently applied one: an earlier axis or mode flip may have written any of them
+        // while this element was still a member.
+        private void ReleaseGapMargins(VisualElement child)
+        {
+            if (StyleChildOwnership.TryRelease(_ctx.ChildBoxOwners, child, this))
+            {
+                ResetGapMargins(child);
+            }
         }
 
         // Resets the inline margin edges this manipulator writes (leading edge + all four half-margin sides).

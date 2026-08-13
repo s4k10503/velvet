@@ -56,6 +56,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
+  spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
+  it had written to by raw reference and reset the value on one no longer in the container, and the
+  element pool hands a child straight from one container to another — so the container a child left could
+  still be tracking it after the container it joined had written to it, and reset that write on its next
+  pass. A row that took a pooled `Label` from a sibling `gap-4` row lost one gap, a `divide-x` row lost
+  one rule, and a grid child lost its column gap and its width. Which container won was decided by the
+  order their re-applies landed in: a reconcile pass re-applies a container right after reconciling that
+  container's children and so never loses the race, and what reached this was the panel's own re-apply
+  sources — a `GeometryChangedEvent` or an `AttachToPanelEvent` arriving after the other container had
+  written. Each turn-off now asks a claim first, so only the container whose write is still on the child
+  may take it back off, and a child claimed by nobody still loses what its old container wrote. Gap and
+  grid share one claim, since both write a child's margins: a child moving between a gap container and a
+  grid one is one owner's or the other's.
 - A component the reconciler carries to a different container now re-renders itself into the container
   it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
   container did not, so its own `setState` reconciled its new output into the container it had left,

@@ -39,8 +39,9 @@ namespace Velvet
     //
     // Lifecycle mirrors StyleGapManipulator / StyleDivideManipulator: the reconciler attaches one per grid
     // container, keeps it in ReconcilerContext.GridManipulators, and removes it on cleanup / dispose.
-    // UnregisterCallbacksFromTarget clears the widths + margins it wrote so removing the grid class (or
-    // unmounting) leaves no residue. Like the gap manipulator it iterates FiberNodePatcher.GetChildContainer,
+    // UnregisterCallbacksFromTarget clears what it still owns, on the same terms the gap manipulator's
+    // header states — the two share ReconcilerContext.ChildBoxOwners, both writing a child's margins.
+    // Like the gap manipulator it iterates FiberNodePatcher.GetChildContainer,
     // so the sizing lands on the reconciled content and never on a composite widget's internal hierarchy.
     //
     // Out-of-flow children (position: absolute) are excluded from the column/row walk — see
@@ -54,16 +55,19 @@ namespace Velvet
         private const float WrapSafetyPx = 0.5f;
 
         private GridSpec _spec;
+        private readonly ReconcilerContext _ctx;
 
-        // Every child this manipulator has sized, so a child reparented or removed out of the grid has its
-        // inline width + margins reset and keeps no residue.
+        // Every child this manipulator has sized. A child reparented or removed out of the grid is offered
+        // for release; whether it loses the width + margins is the claim's answer, not this list's — see
+        // ReconcilerContext.ChildBoxOwners.
         private readonly List<VisualElement> _sized = new();
 
         private int _lastSignature;
         private bool _hasSignature;
 
-        public StyleGridManipulator(GridSpec spec)
+        public StyleGridManipulator(ReconcilerContext ctx, GridSpec spec)
         {
+            _ctx = ctx;
             _spec = spec;
         }
 
@@ -148,6 +152,7 @@ namespace Velvet
                 child.style.marginTop = new StyleLength(row == 0 ? 0f : _spec.RowGap);
                 child.style.marginRight = new StyleLength(0f);
                 child.style.marginBottom = new StyleLength(0f);
+                StyleChildOwnership.Claim(_ctx.ChildBoxOwners, child, this);
                 _sized.Add(child);
                 logicalIndex++;
             }
@@ -177,7 +182,7 @@ namespace Velvet
             _hasSignature = false;
         }
 
-        // Resets the sizing on any tracked element no longer a current child, then prunes it.
+        // Offers any tracked element no longer a current child for release, then prunes it.
         private void ResetStaleSized(VisualElement container)
         {
             for (var i = _sized.Count - 1; i >= 0; i--)
@@ -185,7 +190,7 @@ namespace Velvet
                 var child = _sized[i];
                 if (child.parent != container)
                 {
-                    ResetChild(child);
+                    ReleaseChild(child);
                     _sized.RemoveAt(i);
                 }
             }
@@ -195,9 +200,19 @@ namespace Velvet
         {
             foreach (var child in _sized)
             {
-                ResetChild(child);
+                ReleaseChild(child);
             }
             _sized.Clear();
+        }
+
+        // The claim in ReconcilerContext.ChildBoxOwners decides this, not the tracked list, and every
+        // turn-off goes through here so no path can skip the question.
+        private void ReleaseChild(VisualElement child)
+        {
+            if (StyleChildOwnership.TryRelease(_ctx.ChildBoxOwners, child, this))
+            {
+                ResetChild(child);
+            }
         }
 
         // Resets the width + four margins this manipulator may have written, falling each back to its
