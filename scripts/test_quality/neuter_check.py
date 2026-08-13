@@ -53,8 +53,8 @@ MECHANISM_GLOBS = (
 # one-fixture --report names one fixture. None of the three disagrees with anything, so these are what
 # separate an audit that read the repository from one that read nothing and exited 0. Each is checked
 # on its own: OR them together and a test can only hold that some one of them is still positive.
-# Floors rather than exact counts, so a cut added tomorrow needs no edit here — but a campaign that
-# closes holes down past the last one lowers it here, where the shrinking record is reviewed with it.
+# Floors rather than exact counts, so growth needs no edit here. A campaign that shrinks the hole
+# record past its floor does need one, and that is where a record getting smaller is reviewed.
 MECHANISM_FLOOR = 25
 CUT_FLOOR = 25
 FIXTURE_FLOOR = 15
