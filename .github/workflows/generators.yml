@@ -89,6 +89,13 @@ jobs:
           dotnet --version > /tmp/probe/sdk.txt
           dotnet --info >> /tmp/probe/sdk.txt
           strings -a src/Velvet.SourceGenerators/bin/Release/netstandard2.0/Velvet.SourceGenerators.pdb > /tmp/probe/pdb-strings.txt
+          rm -rf src/Velvet.SourceGenerators/bin src/Velvet.SourceGenerators/obj
+          rm -rf src/Velvet.SourceGenerators.CodeFixes/bin src/Velvet.SourceGenerators.CodeFixes/obj
+          dotnet build src/Velvet.SourceGenerators/Velvet.SourceGenerators.csproj -c Release --nologo -p:DebugType=none
+          dotnet build src/Velvet.SourceGenerators.CodeFixes/Velvet.SourceGenerators.CodeFixes.csproj -c Release --nologo -p:DebugType=none
+          mkdir -p /tmp/probe/nodbg
+          cp src/Velvet.SourceGenerators/bin/Release/netstandard2.0/Velvet.SourceGenerators.dll /tmp/probe/nodbg/
+          cp src/Velvet.SourceGenerators.CodeFixes/bin/Release/netstandard2.0/Velvet.SourceGenerators.CodeFixes.dll /tmp/probe/nodbg/
 
       # TEMPORARY PROBE - remove before merge.
       - name: Probe - upload
