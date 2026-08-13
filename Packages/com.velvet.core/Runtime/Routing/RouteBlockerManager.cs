@@ -47,9 +47,8 @@ namespace Velvet
         /// Evaluates the registered Blockers asynchronously.
         /// </summary>
         /// <remarks>
-        /// Blocking does not end the pass. A Blocker left <see cref="RouteBlockerStatus.Proceeding"/> by
-        /// <see cref="RouteBlockerState.Proceed"/> is passed over rather than consulted, having already
-        /// answered for the navigation being re-issued.
+        /// Blocking does not end the pass. A Blocker is passed over rather than consulted for as long as it
+        /// is <see cref="RouteBlockerStatus.Proceeding"/>, whichever navigation reaches here over that span.
         /// </remarks>
         /// <param name="attempt">The navigation attempt each Blocker decides on.</param>
         /// <param name="resume">Re-issues <paramref name="attempt"/>; invoked by <see cref="RouteBlockerState.Proceed"/>.</param>
@@ -95,7 +94,7 @@ namespace Velvet
                 // down): nothing live is waiting on their state.
                 if (blocked && _blockers.Contains(entry))
                 {
-                    entry.State.Block(attempt, resume, SettleProceeding);
+                    entry.State.Block(attempt, resume, AbandonAttempt);
                     anyBlocked = true;
                 }
             }
@@ -112,8 +111,7 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// A <see cref="RouteBlockerStatus.Proceeding"/> Blocker is left alone: the attempt starting here may
-        /// be the one it released, and returning it to Idle would let <see cref="CheckAsync"/> block that
-        /// attempt a second time. <see cref="SettleProceeding"/> is what ends that state.
+        /// be the one it released, and returning it to Idle would put it back in the way of that attempt.
         /// </remarks>
         public void ResetAllBlocked()
         {
@@ -127,9 +125,20 @@ namespace Velvet
         }
 
         /// <summary>
+        /// Ends the attempt every Blocker is holding: the Blocked ones are released and the ones that had
+        /// proceeded into it are armed again. Reached from <see cref="RouteBlockerState.Reset"/>, which is
+        /// one Blocker answering for a navigation the router has already turned back.
+        /// </summary>
+        internal void AbandonAttempt()
+        {
+            ResetAllBlocked();
+            SettleProceeding();
+        }
+
+        /// <summary>
         /// Returns each <see cref="RouteBlockerStatus.Proceeding"/> Blocker to Idle, which is what arms it
         /// for the next navigation. Reached when a navigation commits, when a re-issued one ends without
-        /// committing, and from <see cref="RouteBlockerState.Reset"/>.
+        /// committing, and when an attempt is abandoned.
         /// </summary>
         /// <remarks>
         /// A Blocker still Blocked is a confirm nobody has answered yet, over an attempt that has therefore

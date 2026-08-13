@@ -24,13 +24,20 @@ names the destination from.
 
 ## Resolving a block
 
-`Proceed()` re-issues the navigation the Blocker is holding. A Push or a Replace goes again by its path
-and in its own mode; a Back or Forward goes again as the same history step. The re-issued navigation
-does not consult the Blocker that released it — that is what `Proceeding` is for — so a predicate that
-still answers "block" does not have to disarm itself.
+`Proceed()` re-issues the navigation the Blocker is holding — the one the caller asked for, so a Back or
+Forward goes again as the same history step. The re-issued navigation does not consult the Blocker that
+released it — that is what `Proceeding` is for — so a predicate that still answers "block" does not have
+to disarm itself.
+
+Where a Guard redirected the attempt, the two halves come apart: `Attempt` describes where the
+navigation was actually heading when the Blocker saw it, and `Proceed()` re-issues the step the user
+asked for, so the Guard is consulted again and its redirect lands where it would have without the block.
+
+`Proceed()` hands nothing back — like `useBlocker`'s `proceed`, it is `void`. The resumed navigation's
+outcome arrives through `Router.OnLocationChanged` and `Router.Status`, not from the call.
 
 `Reset()` abandons the navigation instead. The router is already back where it was by the time any UI
-can call it, so this only clears the state the dialog is bound to.
+can call it, so this clears the state the dialogs are bound to and nothing else.
 
 Both do nothing unless the Blocker is `Blocked`, so a stale button handler is a no-op rather than an
 error.
@@ -58,8 +65,9 @@ veto one navigation, and both dialogs have to be answered.
 
 The order they are answered in does not matter. Each `Proceed()` re-issues the attempt; the Blockers
 that have already consented stay out of the way, and the ones that have not veto it again — until they
-all have, at which point it lands. A `Reset()` from any of them abandons the attempt, and once no
-Blocker is holding it any more the ones that had consented come back into the way.
+all have, at which point it lands. A `Reset()` from any of them abandons the attempt for all of them:
+the others are released with it, and the ones that had consented come back into the way. React Router
+does not settle this, since it consults one blocker and never has a second to release.
 
 ## Where the router puts Blockers in the sequence
 
