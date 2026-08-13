@@ -118,11 +118,86 @@ A green suite says nothing about whether the tests would have noticed the change
 answers that for the lines a branch touched, by breaking each of them and rerunning the suite:
 
 ```bash
+python3 scripts/test_quality/mutation_check.py --base main --list   # the mutants, and what they cost, without a run
 python3 scripts/test_quality/mutation_check.py --base main
 ```
 
+`--list` takes the readings that come before an editor is launched — the outstanding-mutation record,
+the comment-and-string mask, and which changed code lines an operator reaches — so it refuses where
+those would, which is the point of running it first rather than a reason to distrust it. The readings
+that need a run, the declarations and the cap among them, it does not take.
+
 [Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
-covers this and the generator solution's own run, and owns what the verdicts mean and how to read a survivor.
+covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
+survivor, and which line shapes the operators reach — which is 31% of the changed code lines measured
+over the twenty commits ending at `48057c8` with the generator as this branch leaves it, so **a survivor count is a statement about the lines an
+operator reached and not about the change**. The run prints both numbers and names the lines it could
+not ask about.
+
+**A survivor is closed or answered for; it is not reported and left.** Either the test that should have
+noticed gets written, or the line says why nothing could have, above itself:
+
+```csharp
+// MUTANT_SURVIVES(equivalent): every caller clamps the operand, so both bounds accept the same set.
+```
+
+`equivalent` says the mutated program cannot behave differently; `unreachable` says the state where it
+would is not reachable from any entry point. A mutant whose run came back inconclusive counts as
+surviving and needs the same answer: an `Assume` that stopped holding measured nothing either. A declaration answers for the change written under it and
+is read the three ways the base-red one below is: one over a statement whose mutants all died is stale
+and fails, one whose category or reason the script refuses fails, and one the branch did not itself
+write answers for the base's change rather than for this one — restate it. It answers for the statement
+rather than the line, because a condition broken across two lines carries mutants on both. Only a
+whole-suite run over the diff reads any: `--files`, `--filter` and `--assemblies` each ask a narrower
+question, and under one nearly everything survives. `--platform` is not one of those — it runs a whole
+suite, just a different one — so it reads declarations and writes a receipt, and the platform is part
+of the receipt's key so that an EditMode question is never answered by a PlayMode run.
+
+The run also fails on the ways it can measure less than it looks like it measured: a `--max` cap that
+left mutants unrun, an editor killed at `--timeout`, a build the compiler or an analyzer stopped, an
+assembly the editor never rebuilt, a second editor sharing the machine, and a source whose
+comment-and-string mask swallows code, which generates no mutant there and reports nothing.
+
+**What asks whether the campaign was run is a receipt, not attentiveness.** A finished run leaves one
+under the campaign's own log directory, keyed on the merge base, the platform and the content of
+every file it mutated, and `gh pr create` is refused where no receipt covers the checkout it is run in. A
+branch that changes no mutable package source is owed nothing and is not asked; a change no operator
+reaches records that verdict and is accepted, since such a branch cannot earn a passing run at all. The
+receipt is keyed on what the campaign measured rather than on the head commit, because the campaign
+diffs the merge base against the **working tree** — an uncommitted edit to a mutated file changes what
+it measured and moves no tree sha — and because 16 of 44 commits over five recent branches changed no
+mutable source, each of which would have voided a receipt over a change no operator can see. What it
+does not cover is a test-side change: removing a test can make a killed mutant survive, and including
+tests would void the receipt on the ordinary act of adding one after the run.
+
+**Merge time is not gated, and cannot be from here.** A guard on `gh pr merge` would read the checkout
+the command runs in, which at merge time is `main` after a pull — a tree with no change in it — so it
+would pass every merge while printing a verdict about a change it never read. `scripts/pr/settle.py`
+merges through the REST merge endpoint besides, which no hook matcher sees. The effective contract is one
+campaign at pull-request-open time, and a review round that changes production code after that is
+measured by nothing until the next `gh pr create`.
+
+**Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
+Over the twenty commits ending at `48057c8`, ten generated no mutant at all and the other ten ranged
+3 to 51 with a median of 22. A mutant's launch-compile-run measured 100–118 s here against a 94 s
+baseline, so a median branch is around 41 minutes and the largest around an hour and a half; on the CI
+runner, where the EditMode job alone takes 5m47s, a median branch is 23 sequential Unity jobs.
+Run it on a branch before opening the pull request. `Test ▸ test-quality` holds the half that
+needs no editor: that the mutants can be generated at all, and that every declaration in the package is one
+the script would accept rather than one it silently refuses.
+
+A campaign holds a mutation in the working tree while the suite runs, and records what it holds in
+MUTATION_IN_PROGRESS.json at the repository root — untracked, and deliberately not in `.gitignore`, so
+`git status` names it beside the file it explains. `SIGINT`, `SIGTERM` and `SIGHUP` put the source back;
+a SIGKILL and a machine losing power cannot, so the record outlives them and the next campaign refuses
+to start while one is present. Being named in `git status` is not enough on its own — a mutation reads
+as an unfinished edit in a file the branch is already touching, and `git add -u` stages it with
+everything else — so a commit that would record the held file is refused as well. Put it back by hand
+with:
+
+```bash
+python3 scripts/test_quality/mutation_check.py --restore
+```
 
 A mutation asks whether any test depends on one line. `scripts/test_quality/neuter_check.py` asks the other question a
 fixture's name makes — with the mechanism it is named for disabled, does it still pass?
