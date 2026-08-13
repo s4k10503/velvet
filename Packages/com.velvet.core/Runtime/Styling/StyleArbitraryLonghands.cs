@@ -8,6 +8,10 @@ namespace Velvet
     // "a class already claims filter" is not a reason to drop a layer; and re-resolving a filter property
     // hands the composed list to the transition driver and restarts its tween. Their string-keyed identity
     // (a registered custom-filter name, not an ArbitraryProperty) therefore never has to be modelled at all.
+    //
+    // Both halves are held to what the properties actually write by StyleArbitraryLonghandTableTests, which
+    // probes each one: a mapped row that stops matching fails, and so does a filter row that stops being
+    // empty.
     internal static class StyleArbitraryLonghands
     {
         private static readonly StyleLonghandSet[] s_sets = Build();
