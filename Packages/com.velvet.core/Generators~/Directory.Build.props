@@ -6,9 +6,8 @@
     git and writes the commit id into the assembly, which rewrites binaries whose sources did not move
     and makes a rebuild-and-compare answer "different" unless it runs at the very commit the binary was
     built at. It is not the only such input — each deployed project drops its Release PDB for the
-    second one, and says so where it does. scripts/generators/deployed_dll_check.py is what fails when
-    either stops holding, and on the runner it compares a Linux build against a binary built
-    elsewhere, so it holds the SourceRoot below too.
+    second one, and says so where it does. scripts/generators/deployed_dll_check.py is what fails
+    when either stops holding.
   -->
   <PropertyGroup>
     <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
@@ -16,8 +15,10 @@
 
   <!--
     Declared rather than taken from the queries above, because ContinuousIntegrationBuild rewrites
-    source paths against it: with neither, the build succeeds and embeds the absolute path of whoever
-    ran it.
+    source paths against it and turning the queries off leaves it with nothing to rewrite against.
+    What that reaches is the Debug PDB, which embeds the builder's absolute path without it and
+    /_/src/... with it. Nothing pins this: the deployed pair is Release, Release emits no PDB, and
+    the byte comparison is byte-identical either way — measured by removing the line.
   -->
   <ItemGroup>
     <SourceRoot Include="$(MSBuildThisFileDirectory)" />

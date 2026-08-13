@@ -6,10 +6,10 @@
        `_GenerateRestoreProjectPathWalk` before any compile starts. Its siblings could have referenced that
        project directly; they go through this one so there is a single wiring to add and to check.
 
-       Referencing the committed DLL under `Runtime/Plugins/Generators` instead was rejected: nothing verifies
-       that it was rebuilt from the current sources, so an edit to a rule would be enforced by the previous
-       rule until someone remembered to redeploy - the same "remember to do it" failure the wiring exists to
-       remove. -->
+       Referencing the committed DLL under `Runtime/Plugins/Generators` instead was rejected: build.py deploys
+       that DLL after this compile, so an edit to a rule would be enforced by the previous rule throughout the
+       very build that introduced it. scripts/generators/deployed_dll_check.py does compare that DLL against
+       its sources, but only afterwards, which is not the moment this wiring exists for. -->
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>

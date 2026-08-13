@@ -35,6 +35,16 @@ DEPLOYMENTS = (
 )
 
 
+def build_command(project):
+    """--no-incremental because MSBuild decides whether to recompile from source timestamps, while
+    what makes the deployed pair reproducible is a set of properties. A bin/ left by a build that
+    passed different ones -- `-p:DebugType=portable` to get a Release PDB, say -- is newer than every
+    source, so an incremental build keeps it and the deployment below copies it out unchanged.
+    scripts/generators/deployed_dll_check.py builds through this, and its tests pin the flag.
+    """
+    return ["dotnet", "build", project, "-c", CONFIGURATION, "--no-incremental", "--nologo"]
+
+
 def run(command, failure):
     result = subprocess.run(command, cwd=HERE)
     if result.returncode != 0:
@@ -61,10 +71,7 @@ def main():
     # pair exists to avoid.
     for name, project, _, _ in DEPLOYMENTS:
         print(f"[{name}] dotnet build -c {CONFIGURATION}", flush=True)
-        run(
-            ["dotnet", "build", project, "-c", CONFIGURATION, "--nologo"],
-            f"dotnet build failed: {project}",
-        )
+        run(build_command(project), f"dotnet build failed: {project}")
 
     for name, _, built_dll, deploy_dir in DEPLOYMENTS:
         destination = HERE / deploy_dir / f"{name}.dll"

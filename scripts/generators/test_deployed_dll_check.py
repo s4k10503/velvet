@@ -26,9 +26,16 @@ def load_module():
     return module
 
 
+def load_build_script():
+    """The repository's own build.py, for the cases that must not pass against a stand-in."""
+    root = Path(__file__).resolve().parents[2] / "Packages/com.velvet.core/Generators~"
+    return check.build_script(root)
+
+
 check = load_module()
 
 BUILD_PY = """
+CONFIGURATION = "Release"
 DEPLOYMENTS = (
     ("Only", "src/Only/Only.csproj", "src/Only/bin/Release/netstandard2.0/Only.dll", "../Plugins"),
 )
@@ -146,7 +153,7 @@ class DeploymentMapTests(unittest.TestCase):
             (root / "build.py").write_text(BUILD_PY, encoding="utf-8")
 
             # Act
-            planned = check.deployments(root)
+            planned = check.deployments(check.build_script(root), root)
 
             # Assert
             self.assertEqual(planned[0].committed, root / ".." / "Plugins" / "Only.dll")
@@ -154,16 +161,39 @@ class DeploymentMapTests(unittest.TestCase):
     def test_Given_BuildPyIsAbsent_When_TheMapIsRead_Then_ItRefuses(self):
         with tempfile.TemporaryDirectory() as directory:
             # Act / Assert
-            self.assertRaises(check.Refusal, check.deployments, Path(directory))
+            self.assertRaises(check.Refusal, check.build_script, Path(directory))
 
     def test_Given_BuildPyDeploysNothing_When_TheMapIsRead_Then_ItRefusesRatherThanCompareNothing(self):
         with tempfile.TemporaryDirectory() as directory:
             # Arrange
             root = Path(directory)
-            (root / "build.py").write_text("DEPLOYMENTS = ()", encoding="utf-8")
+            (root / "build.py").write_text('CONFIGURATION = "Release"\nDEPLOYMENTS = ()\n',
+                                           encoding="utf-8")
 
             # Act / Assert
-            self.assertRaises(check.Refusal, check.deployments, root)
+            self.assertRaises(check.Refusal, check.deployments, check.build_script(root), root)
+
+
+class RecompileTests(unittest.TestCase):
+    def test_Given_ABinLeftByOtherProperties_When_TheRealBuildCommandIsAsked_Then_ItForcesTheCompile(self):
+        # Arrange — the real build.py, since a comment naming the flag must not satisfy this.
+        real = load_build_script()
+
+        # Act
+        command = real.build_command("src/Only/Only.csproj")
+
+        # Assert
+        self.assertIn("--no-incremental", command)
+
+    def test_Given_BuildPyWouldBuildAnotherConfiguration_When_Loaded_Then_ItRefuses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            # Arrange — CONFIGURATION comes from the environment, and the committed pair is Release.
+            root = Path(directory)
+            (root / "build.py").write_text('CONFIGURATION = "Debug"\nDEPLOYMENTS = ()\n',
+                                           encoding="utf-8")
+
+            # Act / Assert
+            self.assertRaises(check.Refusal, check.build_script, root)
 
 
 class BuildFailureTests(unittest.TestCase):
@@ -175,7 +205,8 @@ class BuildFailureTests(unittest.TestCase):
             # Act / Assert
             with mock.patch.object(check.subprocess, "run",
                                    return_value=subprocess.CompletedProcess([], 1)):
-                self.assertRaises(check.Refusal, check.build, Path(directory), planned)
+                self.assertRaises(check.Refusal, check.build,
+                                  load_build_script(), Path(directory), planned)
 
     def test_Given_DotnetIsNotOnPath_When_TheCheckRuns_Then_ItRefuses(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -184,7 +215,8 @@ class BuildFailureTests(unittest.TestCase):
 
             # Act / Assert
             with mock.patch.object(check.subprocess, "run", side_effect=OSError("no dotnet")):
-                self.assertRaises(check.Refusal, check.build, Path(directory), planned)
+                self.assertRaises(check.Refusal, check.build,
+                                  load_build_script(), Path(directory), planned)
 
 
 class ExitCodeTests(unittest.TestCase):

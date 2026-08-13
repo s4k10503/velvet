@@ -25,6 +25,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 GENERATORS_REL = Path("Packages/com.velvet.core/Generators~")
+
+# The committed pair is a Release build, and build.py takes the configuration from the environment.
+# Comparing a Debug build against it would report a mismatch that says nothing about the sources.
 CONFIGURATION = "Release"
 
 MISMATCH_EXIT = 1
@@ -74,8 +77,8 @@ def sdk_problem(pinned: str, installed: str) -> str | None:
             "a rebuild from another SDK cannot say whether the committed DLLs match their sources")
 
 
-def deployments(generators_root: Path) -> list[Deployment]:
-    """Read from build.py, which owns which assembly is deployed where."""
+def build_script(generators_root: Path):
+    """build.py as a module: it owns which assembly is deployed where, and how each one is built."""
     script = generators_root / "build.py"
     try:
         spec = importlib.util.spec_from_file_location("velvet_generators_build", script)
@@ -83,27 +86,38 @@ def deployments(generators_root: Path) -> list[Deployment]:
             raise Refusal(f"{script} could not be loaded as a module")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        declared = list(module.DEPLOYMENTS)
     except Refusal:
         raise
     except Exception as error:
-        raise Refusal(f"could not read DEPLOYMENTS from {script}: {error}") from error
+        raise Refusal(f"could not load {script}: {error}") from error
+    if module.CONFIGURATION != CONFIGURATION:
+        raise Refusal(
+            f"build.py would build {module.CONFIGURATION} and the committed pair is {CONFIGURATION} "
+            f"— unset CONFIGURATION in the environment")
+    return module
+
+
+def deployments(module, generators_root: Path) -> list[Deployment]:
+    try:
+        declared = list(module.DEPLOYMENTS)
+    except Exception as error:
+        raise Refusal(f"could not read DEPLOYMENTS from build.py: {error}") from error
 
     if not declared:
-        raise Refusal(f"{script} declares no deployments, so this would compare nothing")
+        raise Refusal("build.py declares no deployments, so this would compare nothing")
     return [Deployment(name, generators_root / project, generators_root / built,
                        generators_root / deploy_dir / f"{name}.dll")
             for name, project, built, deploy_dir in declared]
 
 
-def build(generators_root: Path, planned: list[Deployment]) -> None:
-    """Builds without deploying: build.py would copy the rebuild over the committed DLL, and the
-    comparison after it would be against itself."""
+def build(module, generators_root: Path, planned: list[Deployment]) -> None:
+    """Builds through build.py's own command but stops short of its deployment, which would copy the
+    rebuild over the committed DLL and leave the comparison to be made against itself."""
     for deployment in planned:
         print(f"[deployed-dll-check] dotnet build {deployment.name} -c {CONFIGURATION}", flush=True)
         try:
             result = subprocess.run(
-                ["dotnet", "build", str(deployment.project), "-c", CONFIGURATION, "--nologo"],
+                module.build_command(str(deployment.project)),
                 cwd=str(generators_root), check=False)
         except OSError as error:
             raise Refusal(f"could not run dotnet build for {deployment.project}: {error}") from error
@@ -157,8 +171,9 @@ def main() -> int:
                               installed_sdk_version(generators_root))
         if problem:
             raise Refusal(problem)
-        planned = deployments(generators_root)
-        build(generators_root, planned)
+        module = build_script(generators_root)
+        planned = deployments(module, generators_root)
+        build(module, generators_root, planned)
     except Refusal as refusal:
         print(f"error: the committed generator DLLs could not be checked: {refusal}", file=sys.stderr)
         return REFUSED_EXIT
