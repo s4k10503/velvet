@@ -22,7 +22,21 @@ A change is not done because it compiles or because the suite is green. It is do
 
 - **Prove each new test RED without your fix and GREEN with it.** Quote the actual failure text. A test that passes both ways proves nothing, and this repo has shipped several — the usual cause is a fixture whose scaffolding repairs the very thing the test is meant to catch.
 - Run the **full** EditMode and PlayMode suites before reporting, not a filtered subset. A change that looks local often is not.
+- **Take those runs concurrently rather than waiting for a quiet machine.** Each worktree holds its own `Library` and its own project lock, so contention costs wall-clock and not pass/fail: two full passes under three-way contention returned EditMode 3923 and 3922 with PlayMode 161 both times, one of them measured both ways by the same agent. Waiting for a window that never comes has starved three agents in one day. Serialise only a mutation campaign, where timing decides a verdict. If a case fails and you suspect timing, re-run that case alone before reporting it.
 - Report counts as measured. If something is unverified, say which and why.
+- **Check the tree the run measured is the tree you are reporting on.** An edit landing after a run started means the run measured a tree that no longer exists — `DocumentationDriftTests` reads the repository's markdown, so a late documentation edit alone invalidates a count.
+
+## Claims you are handed are claims to verify
+
+A measurement in your instructions, a mechanism named in an issue, a reason recorded in a closed pull request — none of these is evidence. Each has been wrong here, repeatedly, and building correctly on one produces a confident false result that is very hard to catch afterwards.
+
+- An issue's "what React does" is a claim. So is a withdrawal comment on a closed pull request: one asserted a cause its own data could not support, and designing around it would have produced a correct-looking false finding.
+- **Measure whether a caveat applies to your change rather than repeating it.** "The tool under-generates" is worth less than "no clause cut fires in my 52 changed lines, so my campaign is not thinned".
+- When you take a perturbation to prove a guard catches something, **take its spelling from how the surrounding code is actually written**. Perturbing only the easiest spelling proves only that spelling; a real hole survived three review rounds that way, and another was found only by trying a spelling the probe did not contain.
+
+## Before you report
+
+Sweep every sentence you added or changed — comments, test summaries, CHANGELOG, the report — for every universal it asserts: *every*, *only*, *never*, *any*, *always*, *nothing*, *each*. Check each against the set it quantifies over. **Sweep against the merge base**, not `origin/main`: `origin/main` moves under you, and three agents in one day audited its prose as their own, one nearly "correcting" a table it had never touched. Report the sweep including a zero result.
 
 Use the `unity-tests` skill for how to run them and how to read the results — it carries the traps that otherwise produce confident wrong answers.
 

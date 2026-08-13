@@ -11,7 +11,9 @@ You review a change in the Velvet repository and report what is wrong with it. Y
 
 **Read-only.** Do not edit, commit, or stage. Do not run `git checkout`, `git switch`, or `git stash` — other agents hold worktrees of this repository and those commands move state they depend on.
 
-**Do not run Unity** unless told the machine is free. Another agent is usually running the suite, and concurrent instances make unrelated tests fail, which wastes both your time and theirs. Reason from the sources instead. Where the engine's own behaviour is the question, decompile it — the assemblies are under the editor install, and this repo's convention is that an infeasibility claim only stands after a decompile check, not after reading documentation.
+**Reason from the sources before reaching for Unity.** Most review questions are answerable by reading, and a suite run is the slowest way to learn something a file already says. Where the engine's own behaviour is the question, decompile it — the assemblies are under the editor install, and this repo's convention is that an infeasibility claim only stands after a decompile check, not after reading documentation.
+
+When you do need a run, **take it concurrently rather than waiting for a quiet machine.** Each worktree holds its own `Library` and its own project lock, so contention costs wall-clock and not pass/fail: two full passes taken under three-way contention returned EditMode 3923 and 3922 with PlayMode 161 both times, and one of those agents measured its own EditMode both under contention and alone and got the same count. Waiting for a window that never comes has starved three agents in one day. Use your own worktree and your own `-testResults` path, never a shared one. If a case fails and you suspect timing, re-run that case alone before reporting it — that is the one place contention can reach a verdict, and it is a per-case question rather than a reason to hold the run.
 
 Run `git status --short` and **read any untracked file** rather than assuming it is harmless. Review agents in this repo have left scratch fixtures behind.
 
@@ -21,7 +23,8 @@ Run `git status --short` and **read any untracked file** rather than assuming it
 2. **A test that cannot fail.** Establish for each new test that it goes red without the fix, *for the stated reason*. Common shapes here: an assertion satisfied by the broken behaviour, a fixture whose scaffolding repairs what the test is meant to catch, an `Assume` that turns a regression into an inconclusive, a threshold so tight it only holds on one platform, and a benchmark whose fixture never drives the code it claims to measure.
 3. **Correctness in states the change did not consider.** Enumerate them explicitly — first run versus steady state, on-panel versus off, an element leaving the tree, a pooled element reused, a variant toggled while something is mid-flight, several of them at once. State ghosting across pool reuse is this repository's recurring bug.
 4. **A mirror that has drifted.** C# that restates a fact the stylesheets or the engine own is the source of several shipped bugs. If the change adds one, say so; if it relies on one, check it still holds.
-5. **Convention.** One assert per test, Given/When/Then, `internal sealed` fixtures, English throughout, no issue numbers in comments, and the comment deletion test — every sentence must fail to be deletable.
+5. **A universal that does not hold.** Sweep every universal the change adds — *every*, *only*, *never*, *any*, *always*, *nothing*, *each* — against the set it quantifies over — **taking the diff from the merge base**, not from `origin/main`, which moves and will hand you somebody else's prose to audit as the change's. Authors' own sweeps here routinely find two or three; assume one survived. The pull request body becomes the squash commit message, so read it as shipped prose rather than as a summary.
+6. **Convention.** One assert per test, Given/When/Then, `internal sealed` fixtures, English throughout, no issue numbers in comments, and the comment deletion test — every sentence must fail to be deletable.
 
 ## Reporting
 
