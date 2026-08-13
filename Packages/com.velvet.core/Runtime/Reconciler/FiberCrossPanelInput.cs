@@ -57,15 +57,15 @@ namespace Velvet
     // it, but not the right thing — see Continue's truncation check for how a same-panel target avoids
     // double-invoking whatever the two chains share).
     //
-    // Known limitation: resolving "which ComponentFiber logically owns this event" depends on
-    // FiberNodeFactory stamping element.userData with _ctx.FiberStack.Current at CreateElement time —
-    // which is only meaningful while a component's Body is actually rendering. A Portal/WorldSpace
-    // child that is a bare host element (e.g. V.Portal(children: [V.Div(...)])) with no enclosing
-    // V.Component gets userData stamped from whatever fiber happens to be current during the deferred
-    // drain (see ChildReconciler.DrainPendingPortalMounts), which is not reliably the logical
-    // enclosing component. Wrap portal/world-space children in a component to get correct synthetic
-    // bubbling; a bare element's own events: handlers still fire normally (native bubbling is
-    // unaffected everywhere), only its FURTHER bubbling past the portal boundary is affected.
+    // Known limitation: Continue below resolves "which ComponentFiber logically owns this event" by
+    // finding an element on the physical chain whose userData is a fiber carrying a
+    // DetachedMountContext, and the deferred mount stamps that only onto the top-level child FIBERS it
+    // created (ChildReconciler.DrainPendingPortalMounts). A Portal/WorldSpace child that is a bare host
+    // element (e.g. V.Portal(children: [V.Div(...)])) with no enclosing V.Component contributes no such
+    // fiber, so the chain carries nothing to resolve from. Wrap portal/world-space children in a
+    // component to get synthetic bubbling; a bare element's own events: handlers still fire normally
+    // (native bubbling is unaffected everywhere), only its FURTHER bubbling past the portal boundary
+    // is affected.
     internal static class FiberCrossPanelEventDispatcher
     {
         // Registers one BubbleUp listener per synthetic-bubbling-eligible event type on bridgeAnchor —
