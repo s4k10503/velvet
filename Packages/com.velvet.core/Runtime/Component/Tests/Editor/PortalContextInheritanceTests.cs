@@ -13,11 +13,11 @@ namespace Velvet.Tests
     /// </summary>
     /// <remarks>
     /// Covers both MOUNT-time inheritance and an ISOLATED re-render of a portal-hosted consumer (its own
-    /// setState, without the host re-rendering). The deferred drain parents portal children off the reconcile
-    /// root, so the spine's parent-walk cannot reach the host's enclosing Provider; instead the drain stamps
-    /// each top-level portal child with the context that enclosed the Portal (ComponentFiber.DetachedMountContext)
-    /// and FiberContextSpine rebuilds it on the isolated re-render. The VirtualList counterpart of the same
-    /// mechanism is exercised by VirtualListTests.
+    /// setState, without the host re-rendering). The spine's parent-walk reaches the declaring component but
+    /// not the Provider inside it, because that component's committed tree carries the Portal as an opaque
+    /// leaf; instead the drain stamps each top-level portal child with the context that enclosed the Portal
+    /// (ComponentFiber.DetachedMountContext) and FiberContextSpine rebuilds it on the isolated re-render.
+    /// The VirtualList counterpart of the same mechanism is exercised by VirtualListTests.
     /// </remarks>
     [TestFixture]
     internal sealed class PortalContextInheritanceTests

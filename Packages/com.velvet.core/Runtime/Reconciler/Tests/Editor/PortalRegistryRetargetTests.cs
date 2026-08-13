@@ -33,9 +33,11 @@ namespace Velvet.Tests
     /// orders and after either range has moved the other. A component rendering nothing at all is
     /// disposed on the same terms — as the portal's only child, and as a trailing one adding no slot
     /// to a range its siblings gave.</item>
-    /// <item>A component that leaves the portal's children for a position outside it survives the portal
-    /// closing, while a sibling that stayed under the portal is disposed by that same close — whether the
-    /// leaver left in an earlier render or in the very render that closes the portal.</item>
+    /// <item>A component written outside the portal in the render that leaves the portal's children is
+    /// left standing at its new position by the close, while a sibling that stayed under the portal is
+    /// disposed by that same close — whether the leaver left in an earlier render or in the very render
+    /// that closes the portal. It is a fresh instance there, which
+    /// <see cref="PortalChildFiberContinuityTests"/> owns.</item>
     /// <item>A component the portal's child mounted on its own, in a re-render no portal reconcile was in
     /// flight for, is disposed with the portal all the same.</item>
     /// </list>
@@ -580,12 +582,11 @@ namespace Velvet.Tests
             return V.Div(name: "staying");
         }
 
-        // The "c" component is written into the portal's children by a PATCH rather than by the mount, which
-        // is what gives it the same registry key its position outside the portal takes: both register under
-        // the fiber declaring the portal, and an explicit key makes the position within that fiber
-        // irrelevant. "stay" never leaves the portal, so the close has a disposal of its own to make:
-        // without one, a close that takes nothing further and a close that takes nothing at all produce the
-        // same reading.
+        // The "c" component is written into the portal's children by a PATCH rather than by the mount, and
+        // an explicit key makes its position within the declaring fiber irrelevant, so the two occurrences
+        // of it agree on every part of the registry key except the portal scope. "stay" never leaves the
+        // portal, so the close has a disposal of its own to make: without one, a close that takes nothing
+        // further and a close that takes nothing at all produce the same reading.
         [Component]
         private static VNode ReHomingPortalHost()
         {
@@ -637,13 +638,17 @@ namespace Velvet.Tests
                 Is.EqualTo((true, 0, 1)));
         }
 
+        // GREEN_ON_BASE(characterization): the close reaching no further than its own children is what the
+        // base does too. What the reading no longer carries is the cleanup count: the component leaves one
+        // position for another and mounts fresh at the new one, so a cleanup runs in this render for the
+        // move rather than for the close, and counting it here cannot tell the two apart.
         [Test]
-        public void Given_AComponentReHomedInThePortalsClosingRender_When_ThatRenderCommits_Then_ItSurvivesTheClose()
+        public void Given_AComponentWrittenOutsideAPortalInItsClosingRender_When_ThatRenderCommits_Then_TheCloseLeavesItsNewPositionAlone()
         {
             // Arrange — the same host driven straight from phase 1 to phase 3, so the component leaves the
-            // portal's children and the portal goes in ONE render. The inline walk carries the fiber to its
-            // outside position before FinalizeGeneralCommit removes the portal; the phase-2 stop above puts
-            // the removal first instead, which is why it cannot stand in for this.
+            // portal's children and the portal goes in ONE render. The inline walk reaches its outside
+            // position before FinalizeGeneralCommit removes the portal; the phase-2 stop above puts the
+            // removal first instead, which is why it cannot stand in for this.
             var container = new VisualElement();
             var target = new VisualElement();
             FiberPortalRegistry.Register("notify-target", target);
@@ -651,7 +656,6 @@ namespace Velvet.Tests
             s_setRehomePhase.Invoke(1);
             _mounted.FlushStateForTest();
             _mounted.FlushEffectsForTest();
-            s_childCleanups = 0;
             s_stayingCleanups = 0;
 
             // Act
@@ -659,10 +663,12 @@ namespace Velvet.Tests
             _mounted.FlushStateForTest();
             _mounted.FlushEffectsForTest();
 
-            // Assert — the same reading as the phase-2 stop above, and folded for the same reasons.
+            // Assert — the staying child's disposal is folded in because a close that reaches nothing at all
+            // leaves the new position standing just as well, and the element is the reading because a close
+            // that took the new position too would have unmounted it.
             Assert.That(
-                (s_stayingCleanups > 0, s_childCleanups, container.Query<VisualElement>("content").ToList().Count),
-                Is.EqualTo((true, 0, 1)));
+                (s_stayingCleanups > 0, container.Query<VisualElement>("content").ToList().Count),
+                Is.EqualTo((true, 1)));
         }
 
         private static StateUpdater<bool> s_setLateChildShown;
