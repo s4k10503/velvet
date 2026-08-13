@@ -427,8 +427,8 @@ def mutations_for(path, text, target_lines):
         if VOID_CALL.match(stripped) and not stripped.startswith(("return", "throw", "yield")):
             found.append(Mutant(path, number, 0, stripped, ";", "void call removed"))
         limit = len(line.rstrip())
-        # `cut`, not `text`: binding the file's source here left every later line of the file read
-        # out of a clause string, so one `||` early in a changed range silenced everything after it.
+        # `cut`, not `text`: binding the file's source here left every line processed after the
+        # first cut read out of a clause string, so one `||` early in a range silenced the rest.
         for column, cut in clause_cuts(line, start, mask, limit):
             found.append(Mutant(path, number, column, cut, "", "clause removed"))
         if GUARD_STATEMENT.match(stripped) and all(mask[start:start + limit]):

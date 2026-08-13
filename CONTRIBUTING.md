@@ -147,8 +147,10 @@ is read the three ways the base-red one below is: one over a statement whose mut
 and fails, one whose category or reason the script refuses fails, and one the branch did not itself
 write answers for the base's change rather than for this one — restate it. It answers for the statement
 rather than the line, because a condition broken across two lines carries mutants on both. Only a
-whole-suite run over the diff reads any: `--files`, `--filter`, `--assemblies` and `--platform` each ask
-a narrower question, and under one nearly everything survives.
+whole-suite run over the diff reads any: `--files`, `--filter` and `--assemblies` each ask a narrower
+question, and under one nearly everything survives. `--platform` is not one of those — it runs a whole
+suite, just a different one — so it reads declarations and writes a receipt, and the platform is part
+of the receipt's key so that an EditMode question is never answered by a PlayMode run.
 
 The run also fails on the ways it can measure less than it looks like it measured: a `--max` cap that
 left mutants unrun, an editor killed at `--timeout`, an assembly the editor never rebuilt, a second
@@ -170,7 +172,7 @@ tests would void the receipt on the ordinary act of adding one after the run.
 **Merge time is not gated, and cannot be from here.** A guard on `gh pr merge` would read the checkout
 the command runs in, which at merge time is `main` after a pull — a tree with no change in it — so it
 would pass every merge while printing a verdict about a change it never read. `scripts/pr/settle.py`
-merges through `gh api -X PUT` besides, which no hook matcher sees. The effective contract is one
+merges through the REST merge endpoint besides, which no hook matcher sees. The effective contract is one
 campaign at pull-request-open time, and a review round that changes production code after that is
 measured by nothing until the next `gh pr create`.
 
@@ -180,7 +182,7 @@ Over the twenty commits before this one, nine generated no mutant at all and the
 baseline, so a median branch is around 37 minutes and the largest around an hour and a half; on the CI
 runner, where the EditMode job alone takes 5m47s, a median branch is 21 sequential Unity jobs.
 Run it on a branch before opening the pull request. `Test ▸ test-quality` holds the half that
-needs no editor: that the mutants can be generated at all, and that every declaration in the tree is one
+needs no editor: that the mutants can be generated at all, and that every declaration in the package is one
 the script would accept rather than one it silently refuses.
 
 A campaign holds a mutation in the working tree while the suite runs, and records what it holds in

@@ -40,19 +40,19 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from shell_commands import program_invocations  # noqa: E402
+from shell_commands import program_invocations, unexpanded  # noqa: E402
 
 HOOK_TOOLS = {"Bash"}
 
 # Read for one thing only: whether an operand says the change is somewhere other than this checkout.
-# An unexpanded one could be either, and a guard that cannot tell which change it is judging refuses
-# — the rule `merge_unproven_head.py` states for the same reason.
+# An operand the shell has not expanded could be one, so this refuses on the same rule and over the
+# same operands as `merge_unproven_head.py`.
 UNEXPANDED_POLICY = "refuse"
-UNEXPANDED_PROBE = {"command": "gh pr create --head $BRANCH"}
+UNEXPANDED_PROBE = 'gh pr create --head $BRANCH'
 
 # Both readings here are git's — the checkout the command runs in, and the merge base the receipt is
 # keyed on. A git that cannot answer has not established that no receipt covers the change; it has
-# established nothing, and "no receipt is owed" is the only reading that lets a command through.
+# established nothing, and nothing it established says a receipt is not owed.
 UNREADABLE_POLICY = "refuse"
 UNREADABLE_PROBE = {"command": "gh pr create --fill"}
 
@@ -116,6 +116,11 @@ def main():
         return 0
 
     for operands in invocations:
+        loose = [token for token in operands if not token.startswith("-") and unexpanded(token)]
+        if loose:
+            return refuse(UNREAD,
+                          "`{}` is an operand the shell has not expanded, so which change this "
+                          "pull\nrequest would be about cannot be read here.".format(loose[0]))
         named = elsewhere(operands)
         if named:
             return refuse(UNREAD,

@@ -309,6 +309,7 @@ class RepositoryReachTests(unittest.TestCase):
 
 
 class GenerationHealthTests(unittest.TestCase):
+    # GREEN_ON_BASE(characterization): cuts stayed balanced before, and must across the new operator reach.
     def test_Given_EveryRuntimeSource_When_MutantsAreGenerated_Then_NoCutSpansAnUnbalancedParenthesis(self):
         # Arrange — an unbalanced cut compiles nowhere, and uncompilable noise hides real survivors.
         sources = [path for path in RUNTIME.rglob("*.cs") if "/Tests/" not in path.as_posix()]
@@ -701,7 +702,7 @@ class StubbedCampaign:
             return 0.0, True
         Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else GREEN_RESULTS)
         Path(log).write_text(
-            "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error CS1002: ; expected\n"
+            "Packages/com.velvet.core/Runtime/Probe.cs(5,9): error VEL501: too many branches\n"
             if (mutant and self.build_error) else "")
         return 0.0, False
 
@@ -1265,6 +1266,7 @@ class CampaignVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 1)
 
+    # GREEN_ON_BASE(characterization): the passing run the cap case above must be told apart from.
     def test_Given_EveryMutantWithinTheCap_When_TheRunFinishes_Then_ItPasses(self):
         # Arrange — the same two mutants with the cap above them, so the case above is not passing
         # for a run that always fails.
@@ -1338,9 +1340,10 @@ class CampaignVerdictTests(unittest.TestCase):
 
 
 class UncompilableMutantTests(unittest.TestCase):
-    def test_Given_AMutantTheBuildRejected_When_TheRunIsDecided_Then_ItIsNotASurvivor(self):
-        # Arrange — the suite writes a green result either way when the build never produced an
-        # assembly for it, so read without the log this reads as a mutation nothing noticed.
+    def test_Given_AMutantThisRepositorysAnalyzersRejected_When_ItIsDecided_Then_ItIsNotASurvivor(self):
+        # Arrange — VEL501 is this repository's own branching-complexity limit, reported as an error
+        # and invisible to a reading that matches `error CS`. The suite writes a green result either
+        # way when the build produced no assembly, so without the log this reads as a survivor.
         campaign = StubbedCampaign()
         campaign.build_error = True
 
@@ -1355,7 +1358,11 @@ class SignalledCampaignTests(unittest.TestCase):
     """The campaign's own restore-on-signal, rather than the helper's.
 
     The case next door drives a bespoke script calling `Holder.guard()` itself, so it pins the helper
-    and stays green with the call removed from `main`. This runs the campaign.
+    and stays green with the call removed from `main`. This runs the campaign, and two things decide
+    whether it can tell the difference: the signal has to land while the mutation is on disk, and the
+    stubbed editor has to write a results file the baseline can actually parse. Missing either one
+    leaves the campaign stopped before the loop with the source untouched, which is the same reading
+    a restored tree gives.
     """
 
     def test_Given_ARunningCampaign_When_ItIsSignalled_Then_TheSourceIsPutBack(self):
@@ -1374,8 +1381,10 @@ class SignalledCampaignTests(unittest.TestCase):
                 while True:
                     pass
 
+            results_text = sys.argv[2]
+
             def green(_u, _p, _pl, _s, results, log, _t, _h=None):
-                open(results, "w").write(sys.argv[2])
+                open(results, "w").write(results_text)
                 open(log, "w").write("")
                 return 0.0, False
 
@@ -1397,7 +1406,10 @@ class SignalledCampaignTests(unittest.TestCase):
             [sys.executable, str(driver), str(Path(mutation_check.__file__)), GREEN_RESULTS,
              str(campaign.project), str(campaign.project / "out")],
             stdout=subprocess.PIPE, text=True)
-        running.stdout.readline()
+        while True:
+            said = running.stdout.readline()
+            if not said or said.strip() == "holding":
+                break
         os.kill(running.pid, signal.SIGTERM)
         running.wait(timeout=60)
 
