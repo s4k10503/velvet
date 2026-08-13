@@ -315,9 +315,10 @@ jobs:
   # base is never asked about, and the run comes back green having measured one fewer thing.
   #
   # neuter_check.py splits the same way and could not run here at all otherwise — a sweep is one
-  # editor run per cut. What --audit holds is everything the sweep rests on and never exercises: the
-  # anchors it would cut at, the record of what no cut reaches, and the baseline its output is read as
-  # a diff against.
+  # editor run per cut. --audit is the half needing none of them: the anchors, the record of which
+  # mechanisms no cut reaches, and the hole baseline a sweep's output is read as a diff against. The
+  # baseline was held by nothing in any workflow; the other two were held only by the Unity suite,
+  # which is skipped whole where no licence is configured and counts as passing when it is.
   # ---------------------------------------------------------------------------
   test-quality:
     name: Test quality

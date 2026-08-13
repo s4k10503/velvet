@@ -492,6 +492,18 @@
       ]
     },
     {
+      "name": "text-effect-apply",
+      "mechanism": "text-effect",
+      "summary": "the text-effect applier returns the raw string, wrapping and transforming nothing",
+      "edits": [
+        {
+          "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextEffectClass.cs",
+          "anchor": "LeadingValue? leading = null)",
+          "neuter": "return raw;"
+        }
+      ]
+    },
+    {
       "name": "font-parser",
       "mechanism": "font",
       "summary": "the font class parser claims no token and resolves no font intent",
@@ -853,7 +865,8 @@
     {
       "fixture": "Velvet.Tests.StyleTextEffectClassTests",
       "cuts": [
-        "text-effect-parser"
+        "text-effect-parser",
+        "text-effect-apply"
       ],
       "caseScopes": [],
       "platform": "EditMode"

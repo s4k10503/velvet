@@ -41,8 +41,9 @@ HOLES_FILE = "scripts/test_quality/neuter_holes.txt"
 PACKAGE_ROOT = "Packages/com.velvet.core"
 
 # A parser and its applier are the two halves a class-driven payload passes through, and both are named
-# by convention, which is what lets the uncovered record be derived rather than listed. Neither shape is
-# a guess: every registered cut is of one of these two kinds.
+# by convention, which is what lets the uncovered record be derived rather than listed. What sits outside
+# these two globs is required by nothing to have a cut: a manipulator, a build step and FiberNodePatcher
+# are all cut today and would each be recorded by no glob if the cut were dropped.
 MECHANISM_GLOBS = (
     ("Runtime/Styling", "Style*Class.cs"),
     ("Runtime/Reconciler", "Fiber*Applier.cs"),
@@ -232,7 +233,7 @@ def read_record(path):
 
 
 def mechanisms(project):
-    """Every class-driven mechanism, as its path under the package."""
+    """Every mechanism the uncovered record answers for, as its path under the package."""
     found = []
     for folder, pattern in MECHANISM_GLOBS:
         found += [f"{folder}/{path.name}" for path in (project / PACKAGE_ROOT / folder).glob(pattern)]

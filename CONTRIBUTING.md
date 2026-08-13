@@ -152,12 +152,12 @@ A sweep is one editor run per cut, which no pull request has the budget for, so 
 python3 scripts/test_quality/neuter_check.py --audit
 ```
 
-It holds the three things a sweep rests on and never exercises — the anchors, the hole baseline, and
+It holds the three things a sweep runs on — the anchors, the hole baseline, and
 `scripts/test_quality/neuter_uncovered.txt`, which records every `Style*Class` and `Fiber*Applier` no cut
 reaches. That record is the one a mechanism arriving tomorrow answers to: a class-driven mechanism fails
 by being ignored, which reads exactly like a class nobody wrote, so a new one must be given a cut or
-recorded as having none. Each comparison is a set difference and every one of them agrees with an empty
-record, so the audit refuses wherever a reader came back empty rather than reporting agreement.
+recorded as having none. Every one of those readings agrees with an empty record, so the audit refuses
+wherever a reader came back empty rather than reporting agreement.
 
 ### Checking that a new test could have failed
 
