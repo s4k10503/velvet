@@ -25,6 +25,11 @@ namespace Velvet.Tests
     /// no-input overloads that adapt to a <see cref="Unit"/> result.</item>
     /// <item>Concurrent mutations both run: neither cancels the other and each fires its own callbacks, while
     /// the observed status, data and variables come from the latest call.</item>
+    /// <item>A call <c>Reset</c> abandoned still runs to completion and delivers its own callbacks, but neither
+    /// its result nor its failure reaches the handle.</item>
+    /// <item>The outcome is committed after the handlers, so a handler of a call nothing has superseded or reset
+    /// observes it still pending; and a mutation whose <c>OnSuccess</c> threw leaves no data standing under the
+    /// resulting error.</item>
     /// <item>If the component unmounts while a mutation is in flight, the caller's await still observes the function
     /// result but the disposed fiber does not receive a Success state transition.</item>
     /// </list>
@@ -53,6 +58,8 @@ namespace Velvet.Tests
             s_onSuccessThrowException = null;
             s_delivered.Clear();
             s_onErrorThrowException = null;
+            s_onSuccessObserved = null;
+            s_onErrorObserved = null;
         }
 
         [Test]
@@ -183,6 +190,52 @@ namespace Velvet.Tests
             Assert.That((s_captured.Status, s_captured.Data, s_captured.Variables, s_captured.Error),
                 Is.EqualTo((MutationStatus.Idle, default(int), default(int), (Exception?)null)),
                 "Reset restores Idle and clears data, variables, and error");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnInFlightMutation_When_ResetAndThenItSucceeds_Then_TheHandleStaysIdle() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var gate = new UniTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRecordingSuccessesRender, key: "reset-in-flight-success"));
+            var abandoned = s_captured!.MutateAsync(7);
+
+            // Act
+            s_captured.Reset();
+            gate.TrySetResult(42);
+            await abandoned;
+            mounted.FlushStateForTest();
+
+            // Assert — the first term is the abandoned call arriving, the half Reset leaves alone. Without
+            // it the handle has nothing it had to keep out, and the rest holds for the wrong reason.
+            Assert.That((string.Join(",", s_delivered), s_captured.Status, s_captured.Data),
+                Is.EqualTo(("42", MutationStatus.Idle, 0)),
+                "A call Reset abandoned delivers its own success and writes none of it to the handle");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AnInFlightMutation_When_ResetAndThenItFails_Then_TheHandleStaysIdle() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var failingException = new InvalidOperationException("simulated");
+            var gate = new UniTaskCompletionSource<int>();
+            s_mutationFn = (_, _) => gate.Task;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationRender, key: "reset-in-flight-error"));
+            var abandoned = s_captured!.MutateAsync(7);
+
+            // Act
+            s_captured.Reset();
+            gate.TrySetException(failingException);
+            Exception? rethrown = null;
+            try { await abandoned; } catch (InvalidOperationException caught) { rethrown = caught; }
+            mounted.FlushStateForTest();
+
+            // Assert — the first term is the abandoned call failing, without which the handle stays idle
+            // whatever the failure path does with it.
+            Assert.That((ReferenceEquals(rethrown, failingException), s_captured.Status, s_captured.Error),
+                Is.EqualTo((true, MutationStatus.Idle, (Exception?)null)),
+                "A call Reset abandoned rejects to its caller and writes none of its failure to the handle");
         });
 
         [Test]
@@ -508,6 +561,74 @@ namespace Velvet.Tests
         });
 
         [UnityTest]
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrows_Then_NoDataStandsUnderTheError() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            s_onSuccessThrowException = new InvalidOperationException("onSuccess");
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnSuccessRender, key: "onsuccess-nodata"));
+
+            // Act
+            try { await s_captured!.MutateAsync(21); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert — a view that renders Data without reading Status first shows the result of a call
+            // the framework has already called a failure.
+            Assert.That((s_captured!.Status, s_captured.Data), Is.EqualTo((MutationStatus.Error, 0)),
+                "A mutation whose OnSuccess threw exposes no data under its Error status");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_SucceededMutation_When_OnSuccessThrowsOnFireAndForgetMutate_Then_NoDataStandsUnderTheError() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange — the handle is the only report this path makes, since a forgotten call rethrows
+            // to nobody.
+            s_onSuccessThrowException = new InvalidOperationException("onSuccess");
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationWithThrowingOnSuccessRender, key: "onsuccess-forget-nodata"));
+
+            // Act
+            s_captured!.Mutate(21);
+            await UniTask.Yield();
+            await UniTask.Yield();
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That((s_captured!.Status, s_captured.Data), Is.EqualTo((MutationStatus.Error, 0)),
+                "A forgotten mutation whose OnSuccess threw exposes no data under its Error status");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_ASucceedingMutation_When_OnSuccessRuns_Then_TheOutcomeIsNotCommittedYet() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationObservingInOnSuccessRender, key: "onsuccess-observes"));
+
+            // Act
+            await s_captured!.MutateAsync(21);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_onSuccessObserved, Is.EqualTo((MutationStatus.Pending, 0)),
+                "OnSuccess runs before the success is committed, so the handle it reads is still the pending call's");
+        });
+
+        [UnityTest]
+        public IEnumerator Given_AFailingMutation_When_OnErrorRuns_Then_TheOutcomeIsNotCommittedYet() => UniTask.ToCoroutine(async () =>
+        {
+            // Arrange
+            var failingException = new InvalidOperationException("simulated");
+            s_mutationFn = (_, _) => throw failingException;
+            using var mounted = V.Mount(_root, V.Component(CaptureMutationObservingInOnErrorRender, key: "onerror-observes"));
+
+            // Act
+            try { await s_captured!.MutateAsync(1); } catch (InvalidOperationException) { }
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(s_onErrorObserved, Is.EqualTo((MutationStatus.Pending, (Exception?)null)),
+                "OnError runs before the failure is committed, so the handle it reads is still the pending call's");
+        });
+
+        [UnityTest]
         public IEnumerator Given_FailingMutation_When_OnErrorThrows_Then_StatusRemainsErrorWithMutationException() => UniTask.ToCoroutine(async () =>
         {
             // Arrange
@@ -637,6 +758,24 @@ namespace Velvet.Tests
         }
 
         [Component]
+        public static VNode CaptureMutationObservingInOnSuccessRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: s_mutationFn,
+                OnSuccess: (_, _) => s_onSuccessObserved = (s_captured!.Status, s_captured.Data)));
+            return V.Label(text: "ok");
+        }
+
+        [Component]
+        public static VNode CaptureMutationObservingInOnErrorRender()
+        {
+            s_captured = Hooks.UseMutation(new MutationOptions<int, int>(
+                MutationFn: s_mutationFn,
+                OnError: (_, _) => s_onErrorObserved = (s_captured!.Status, s_captured.Error)));
+            return V.Label(text: "ok");
+        }
+
+        [Component]
         public static VNode CaptureUnitMutationRender()
         {
             _ = Hooks.UseMutation(new MutationOptions<Unit, Unit>(
@@ -651,5 +790,7 @@ namespace Velvet.Tests
         private static MutationResult<Unit, Unit>? s_noInputCaptured;
         private static Exception? s_onSuccessThrowException;
         private static Exception? s_onErrorThrowException;
+        private static (MutationStatus Status, int Data)? s_onSuccessObserved;
+        private static (MutationStatus Status, Exception? Error)? s_onErrorObserved;
     }
 }
