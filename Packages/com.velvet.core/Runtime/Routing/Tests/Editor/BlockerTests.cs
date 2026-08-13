@@ -53,7 +53,7 @@ namespace Velvet.Tests
             var manager = new RouteBlockerManager();
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.False);
@@ -67,7 +67,7 @@ namespace Velvet.Tests
             manager.Register(_ => true, new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.True);
@@ -82,7 +82,7 @@ namespace Velvet.Tests
             manager.Register(_ => true, state);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Blocked));
@@ -96,7 +96,7 @@ namespace Velvet.Tests
             manager.Register(_ => false, new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.False);
@@ -111,7 +111,7 @@ namespace Velvet.Tests
             manager.Register(_ => false, state);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
@@ -126,7 +126,7 @@ namespace Velvet.Tests
             manager.Register(_ => true, new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.True);
@@ -141,7 +141,7 @@ namespace Velvet.Tests
 
             // Act
             registration.Dispose();
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.False);
@@ -156,7 +156,7 @@ namespace Velvet.Tests
             var state2 = new RouteBlockerState();
             manager.Register(_ => true, state1);
             manager.Register(_ => true, state2);
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
             Assume.That(state1.Status, Is.EqualTo(RouteBlockerStatus.Blocked), "Precondition: both blockers blocked");
             Assume.That(state2.Status, Is.EqualTo(RouteBlockerStatus.Blocked), "Precondition: both blockers blocked");
 
@@ -181,7 +181,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => UniTask.FromResult(true), new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.True);
@@ -196,7 +196,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => UniTask.FromResult(true), state);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Blocked));
@@ -210,7 +210,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => UniTask.FromResult(false), new RouteBlockerState());
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(blocked, Is.False);
@@ -225,7 +225,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => UniTask.FromResult(false), state);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));
@@ -242,7 +242,7 @@ namespace Velvet.Tests
             manager.Register((_, __) => UniTask.FromResult(true), asyncState);
 
             // Act
-            manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That(
@@ -640,7 +640,7 @@ namespace Velvet.Tests
             }, state);
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert — a dead registration neither blocks the navigation nor strands its state.
             Assert.That((blocked, state.Status), Is.EqualTo((false, RouteBlockerStatus.Idle)));
@@ -662,7 +662,7 @@ namespace Velvet.Tests
             laterRegistration = manager.Register(_ => true, laterState);
 
             // Act
-            var blocked = manager.CheckAsync(Attempt()).GetAwaiter().GetResult();
+            var blocked = manager.CheckAsync(Attempt(), NoResume).GetAwaiter().GetResult();
 
             // Assert
             Assert.That((blocked, laterState.Status), Is.EqualTo((false, RouteBlockerStatus.Idle)));
@@ -680,7 +680,7 @@ namespace Velvet.Tests
             cts.Cancel();
 
             // Act
-            manager.CheckAsync(Attempt(), cts.Token).GetAwaiter().GetResult();
+            manager.CheckAsync(Attempt(), NoResume, cts.Token).GetAwaiter().GetResult();
 
             // Assert — the abandoned attempt leaves no Blocked state behind.
             Assert.That(state.Status, Is.EqualTo(RouteBlockerStatus.Idle));

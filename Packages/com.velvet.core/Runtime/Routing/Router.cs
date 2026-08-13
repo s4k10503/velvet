@@ -439,6 +439,9 @@ namespace Velvet
             // CurrentLocation and _historyIndex, and both describe this round's location from here on.
             _committedRound = round;
             Status = RouterStatus.Ready;
+            // Before the notification, so the render it drives sees a Blocker that has finished proceeding
+            // rather than one still holding the attempt this commit completed.
+            _blockerManager.ClearProceeding();
             OnLocationChanged?.Invoke(location);
 
             return NavigationResult.Success;
@@ -571,7 +574,7 @@ namespace Velvet
             // called (intentional).
             _blockerManager.ResetAllBlocked();
 
-            var blocked = await _blockerManager.CheckAsync(attempt, cancellationToken);
+            var blocked = await _blockerManager.CheckAsync(attempt, () => Resume(attempt), cancellationToken);
             // A superseded navigation (a newer attempt cancelled our linked token) must unwind at the blocker
             // boundary. CheckAsync forwards the token to each blocker but cannot force one to honor it — a
             // blocker that returns false (or a synchronous blocker) leaves the loop returning false, which
@@ -591,6 +594,23 @@ namespace Velvet
                 return NavigationResult.Blocked;
             }
             return null;
+        }
+
+        // Invoked by RouteBlockerState.Proceed(), which is where the attempt resumed here was parked.
+        private void Resume(NavigationAttempt attempt)
+        {
+            switch (attempt.NavigationMode)
+            {
+                case NavigationMode.Back:
+                    GoBack().Forget();
+                    break;
+                case NavigationMode.Forward:
+                    GoForward().Forget();
+                    break;
+                default:
+                    NavigateAsync(attempt.NextPath, attempt.NavigationMode).Forget();
+                    break;
+            }
         }
 
         #endregion

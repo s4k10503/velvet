@@ -48,14 +48,27 @@ namespace Velvet
         /// </summary>
         /// <remarks>
         /// When multiple Blockers are registered, every one of them is evaluated (no short-circuit).
-        /// Every Blocker that blocks transitions its State to Blocked.
+        /// Every Blocker that blocks transitions its State to Blocked and takes <paramref name="resume"/> as
+        /// what its <see cref="RouteBlockerState.Proceed"/> re-issues.
         /// </remarks>
-        internal async UniTask<bool> CheckAsync(NavigationAttempt attempt, CancellationToken cancellationToken = default)
+        /// <param name="attempt">The navigation attempt each Blocker decides on.</param>
+        /// <param name="resume">Re-issues <paramref name="attempt"/>; invoked by <see cref="RouteBlockerState.Proceed"/>.</param>
+        /// <param name="cancellationToken">Token forwarded to each asynchronous Blocker.</param>
+        internal async UniTask<bool> CheckAsync(NavigationAttempt attempt, Action resume,
+            CancellationToken cancellationToken = default)
         {
             var anyBlocked = false;
             // ToArray() snapshots the list so a blocker that unregisters during an await does not mutate it.
             foreach (var entry in _blockers.ToArray())
             {
+                // A Blocker whose Proceed() released this navigation is not asked about it again — the user
+                // has already answered. It returns to Idle when the navigation commits, so the window this
+                // skip covers is the resumed navigation and anything that supersedes it.
+                if (entry.State.Status == RouteBlockerStatus.Proceeding)
+                {
+                    continue;
+                }
+
                 // An entry carries exactly one of SyncCheck / AsyncCheck; anything else contributes nothing.
                 bool blocked;
                 if (entry.SyncCheck != null)
@@ -85,7 +98,7 @@ namespace Velvet
                 // down): nothing live is waiting on their state.
                 if (blocked && _blockers.Contains(entry))
                 {
-                    entry.State.Block(attempt);
+                    entry.State.Block(attempt, resume);
                     anyBlocked = true;
                 }
             }
@@ -97,14 +110,35 @@ namespace Velvet
         #region ResetAllBlocked
 
         /// <summary>
-        /// Resets every Blocker that is currently blocked, without invoking callbacks.
+        /// Resets every Blocker that is currently blocked, without re-issuing its attempt.
         /// Called from <see cref="Router"/> at the start of a new navigation attempt.
         /// </summary>
+        /// <remarks>
+        /// A <see cref="RouteBlockerStatus.Proceeding"/> Blocker is left alone: the attempt starting here may
+        /// be the one it released, and returning it to Idle would let <see cref="CheckAsync"/> block that
+        /// attempt a second time. <see cref="ClearProceeding"/> is what ends that state.
+        /// </remarks>
         public void ResetAllBlocked()
         {
             foreach (var entry in _blockers)
             {
                 if (entry.State.Status == RouteBlockerStatus.Blocked)
+                {
+                    entry.State.InternalReset();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Returns every <see cref="RouteBlockerStatus.Proceeding"/> Blocker to Idle. Called from
+        /// <see cref="Router"/> once a navigation has committed, which is what re-arms a Blocker that
+        /// released one.
+        /// </summary>
+        internal void ClearProceeding()
+        {
+            foreach (var entry in _blockers)
+            {
+                if (entry.State.Status == RouteBlockerStatus.Proceeding)
                 {
                     entry.State.InternalReset();
                 }
