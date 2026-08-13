@@ -66,7 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fallback occupied — the fallback left the tree and the half-loaded content took its place. Each
   boundary now keeps the answer it gave for the children it suspended over, so an outer boundary
   resolving says nothing about an inner one that has not. An outer boundary that suspends still hides
-  the inner boundary's fallback along with everything else it covers, and releases it again on resolve.
+  the inner boundary's fallback, and releases it again on resolve.
 - Two `V.Suspense` boundaries in one component's render no longer share a single suspended mark. One
   showing its fallback while a second, placed after it, rendered its children left the component
   unmarked, so a state update inside the first one's hidden children stopped being deferred and

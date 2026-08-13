@@ -1022,15 +1022,15 @@ namespace Velvet
                     }
                     // Mark THIS Suspense's primary children (the fibers added during the children
                     // expansion) as offscreen iff suspended. The offscreen guard in FlushState defers
-                    // their lane flush while suspended (their slot is occupied by the fallback), but the
-                    // fallback subtree — expanded below, so this loop never reaches it — remains flushable
-                    // (the fallback renders normally; only the primary subtree is offscreen).
+                    // their lane flush while suspended (their slot is occupied by the fallback). The
+                    // fallback subtree is expanded below, so this loop never reaches it and this Suspense
+                    // leaves it flushable; what marks a nested Suspense's fallback subtree is the
+                    // enclosing expansion, whose own fallback occupies that slot too.
                     //
                     // A nested Suspense that suspended has already answered for the fibers it created, and
                     // this delta contains them, so its answer stands. Skipping by "the fiber's nearest
                     // boundary is a nested one" instead would also skip that boundary's fallback subtree
-                    // and its plain children, which an enclosing fallback hides too and which no expansion
-                    // would then be left to clear.
+                    // and its plain children, which no expansion would then be left to clear.
                     foreach (var f in newFibers)
                     {
                         if (fibersBefore.Contains(f)) continue;

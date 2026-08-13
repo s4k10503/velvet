@@ -22,11 +22,14 @@ namespace Velvet.Tests
     /// <item>A nested boundary catches its own descendant's suspension, so an outer boundary does not over-suspend
     /// when only the inner boundary's primary is pending.</item>
     /// <item>Sibling Suspense boundaries are tracked independently: resolving one boundary's child leaves the
-    /// other sibling's fallback unchanged, and one showing its fallback keeps its own hidden descendants
-    /// deferred without deferring the other's, whichever of the two expanded first.</item>
+    /// other sibling's fallback unchanged. With the suspended one expanded first, it keeps its own hidden
+    /// descendants deferred without deferring the resolved sibling's; with the resolved one expanded first,
+    /// the later suspension does not reach back over the children already expanded.</item>
     /// <item>A nested boundary owns its own descendants' visibility: an enclosing boundary that resolves leaves
     /// the inner boundary's primary subtree deferred, while an enclosing boundary that suspends defers the
-    /// inner boundary's visible fallback subtree too and releases it again on resolve.</item>
+    /// inner boundary's visible fallback subtree too and releases it again on resolve. Where one component
+    /// fiber owns both Suspense nodes, a suspended enclosing one also defers a resolved inner one's
+    /// children.</item>
     /// <item>A <c>Hooks.Use</c> resource that faults — synchronously or asynchronously — routes the exception to
     /// the nearest enclosing error boundary rather than the fallback.</item>
     /// <item>An unrelated parent re-render does not remove a still-pending child's fallback.</item>
@@ -489,6 +492,28 @@ namespace Velvet.Tests
             // Assert
             Assert.That(_root.FindLabelByText("inner-fallback-1"), Is.Not.Null,
                 "A visible inner fallback flushes its own state update once the enclosing boundary has resolved");
+        }
+
+        // GREEN_ON_BASE(characterization): the enclosing expansion's mark over a resolved inner
+        // Suspense's children is the only thing deferring them here.
+        [Test]
+        public void Given_TwoSuspenseNodesOnOneBoundaryFiber_When_TheOuterSuspendsAndAnInnerChildUpdates_Then_OuterFallbackKeepsItsSlot()
+        {
+            // Arrange — no component sits between the two V.Suspense nodes, so one boundary fiber owns
+            // both records and FindNearestSuspenseBoundary answers with it for the inner one's children.
+            // The inner Suspense resolves, so it claims nothing and marks its children visible; the outer
+            // then suspends on its own second child and marks them over
+            var source = new UniTaskCompletionSource<string>();
+            s_sameFiberOuterFactory = _ => source.Task;
+            using var mounted = V.Mount(_root, V.Component(SameFiberNestedHostRender, key: "host"));
+
+            // Act
+            s_sameFiberInnerSetter.Invoke(1);
+            mounted.FlushStateForTest();
+
+            // Assert
+            Assert.That(_root.FindLabelByText("outer-loading"), Is.Not.Null,
+                "A resolved inner Suspense's children are offscreen under the suspended enclosing one, so their flush does not patch over its fallback");
         }
 
         #endregion
@@ -1057,15 +1082,19 @@ namespace Velvet.Tests
 
         private static Func<CancellationToken, UniTask<string>> s_nestedInnerFactory;
         private static Func<CancellationToken, UniTask<string>> s_nestedOuterFactory;
+        private static Func<CancellationToken, UniTask<string>> s_sameFiberOuterFactory;
         private static Action<int> s_nestedPrimarySetter;
         private static Action<int> s_nestedFallbackSetter;
+        private static Action<int> s_sameFiberInnerSetter;
 
         private static void ResetNestedOffscreen()
         {
             s_nestedInnerFactory = null;
             s_nestedOuterFactory = null;
+            s_sameFiberOuterFactory = null;
             s_nestedPrimarySetter = null;
             s_nestedFallbackSetter = null;
+            s_sameFiberInnerSetter = null;
         }
 
         // Renders before its suspending sibling so its fiber is created — and its setter captured — while
@@ -1123,6 +1152,37 @@ namespace Velvet.Tests
             => V.Suspense(
                 fallback: V.Component(NestedStatefulFallbackRender, key: "fb"),
                 children: new VNode[] { V.Component(NestedInnerSuspendingChildRender, key: "suspending") });
+
+        [Component]
+        private static VNode SameFiberInnerStatefulChildRender()
+        {
+            var (tick, setTick) = Hooks.UseState(0);
+            s_sameFiberInnerSetter = setTick;
+            return V.Label(text: $"inner-child-{tick}");
+        }
+
+        [Component]
+        private static VNode SameFiberOuterSuspendingChildRender()
+        {
+            var value = Hooks.Use(s_sameFiberOuterFactory, "same-fiber-outer");
+            return V.Label(text: value);
+        }
+
+        // Both V.Suspense nodes expand under the same FiberStack.Current — no component is written between
+        // them to push another — so one boundary fiber holds both records.
+        [Component]
+        private static VNode SameFiberNestedHostRender()
+            => V.Suspense(
+                fallback: V.Label(text: "outer-loading"),
+                children: new VNode[]
+                {
+                    V.Suspense(
+                        fallback: V.Label(text: "inner-loading"),
+                        children: new VNode[] { V.Component(SameFiberInnerStatefulChildRender, key: "inner-child") },
+                        key: "inner"),
+                    V.Component(SameFiberOuterSuspendingChildRender, key: "outer-suspending"),
+                },
+                key: "outer");
 
         // The second child suspends outside the inner boundary, so the outer boundary suspends as well.
         [Component]
