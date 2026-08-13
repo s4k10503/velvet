@@ -471,7 +471,7 @@ def watch(project, base):
         print(f"Refusing to watch: {watcher_state.HEARTBEAT} was written inside the last "
               f"{watcher_state.STALE_AFTER}s by something that is not holding {watcher_state.LOCK} "
               f"— a watcher from a checkout older than the lock, either still running or only just "
-              f"stopped. Find it with `ps -Ao pid=,command= | grep '[s]ettle.py watch'` and kill "
+              f"stopped. Find it with `ps -Ao pid=,command= | grep 'settle[.]py watch'` and kill "
               f"it; if it is already gone, its last heartbeat ages out within "
               f"{watcher_state.STALE_AFTER}s.", file=sys.stderr)
         return 1

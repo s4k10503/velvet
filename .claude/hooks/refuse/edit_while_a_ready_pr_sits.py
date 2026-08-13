@@ -105,7 +105,7 @@ def main():
                 "Something IS watching — what failed is the reading. A watcher started before the "
                 "heartbeat named its own process writes the older form, and starting a second one "
                 "is refused while it runs. End it and start one from this checkout:\n\n"
-                "  ps -Ao pid=,command= | grep '[s]ettle.py watch'\n"
+                "  ps -Ao pid=,command= | grep 'settle[.]py watch'\n"
                 "  kill <pid>\n"
                 f"  # its last heartbeat ages out within {STALE_AFTER}s, and until it does\n"
                 "  # `settle.py watch` refuses to start\n"
