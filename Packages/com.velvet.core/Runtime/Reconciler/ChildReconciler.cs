@@ -75,8 +75,8 @@ namespace Velvet
         //     prefix scan's slot always exists by construction (Pass 1 never changes childCount ahead
         //     of index i).
         //   Removal deliberately stays BEFORE CreateElement (remove-then-create), not
-        //     create-then-remove: an inline-mounted component fiber is keyed by
-        //     (parentFiber, positionKey, identity) — NOT by which VisualElement currently hosts it
+        //     create-then-remove: an inline-mounted component fiber is keyed by its tree position —
+        //     NOT by which VisualElement currently hosts it
         //     (FiberRenderer.SetupMount's comment on the registry key; ComponentRegistry.cs). If the
         //     OLD element (and the same-keyed nested fiber ComponentRegistry still has registered
         //     under it) is still present when CreateElement builds the NEW element's same-keyed
@@ -317,20 +317,23 @@ namespace Velvet
                         stack.PushRaw(contextSnapshot[s].Key, contextSnapshot[s].Value);
                     }
                 }
-                // The drain runs in the top-level reconcile finally, so FiberStack.Current is the reconcile
-                // root: the top-level Portal child fibers created below parent off it (not the component that
-                // rendered V.Portal). Snapshot its direct children before, so the fibers added by this Portal's
+                // A Portal child registers in ComponentRegistry under whatever fiber is current
+                // while it mounts, and a later patch of the same Portal reaches
+                // FiberNodePatcher.PatchPortalChildren from the reconcile of the tree the declaring
+                // component itself returned — with that component's own fiber current. So the declaring
+                // fiber is the half of the registry key a patch looks the child up by, and the mount has
+                // to agree or the first patch misses its own fiber and builds a second one. This drain
+                // runs from the top-level reconcile finally instead, long after that fiber came off the
+                // stack, so it pushes the one captured at enqueue (LogicalParent) back for the nested
+                // reconcile below. Same push, for the same registry-parent reason, as the VirtualList
+                // detached-item scope (Reconciler.BeginDetachedItemScope). A Portal reconciled outside any
+                // component body has no declaring fiber, and then neither side has one to key on.
+                var declaringFiber = logicalParent is { IsDisposed: false } ? logicalParent : null;
+                // Snapshot the anchor's direct children before, so the fibers added by this Portal's
                 // reconcile can be identified afterwards and stamped with the context needed to reconstruct
                 // their enclosing Providers on an isolated re-render (the spine cannot otherwise reach them).
-                var drainAnchor = _ctx.FiberStack.Current;
-                if (drainAnchor != null)
-                {
-                    (childFibersBefore ??= new HashSet<ComponentFiber>()).Clear();
-                    for (var f = drainAnchor.Child; f != null; f = f.Sibling)
-                    {
-                        childFibersBefore.Add(f);
-                    }
-                }
+                var drainAnchor = declaringFiber ?? _ctx.FiberStack.Current;
+                CaptureAnchorChildren(drainAnchor, ref childFibersBefore);
                 // The nested Reconcile below re-enters ChildReconciler.Reconcile on THIS SAME instance, whose
                 // entry unconditionally discards PendingIndexedState/PendingKeyedState as stale state left by a
                 // finished pass — correct for a genuine fresh top-level call, but wrong here: this drain runs
@@ -361,12 +364,21 @@ namespace Velvet
                 // with the field already restored, so its own entry sets its own placeholder.
                 var enclosingPortal = _ctx.CurrentPortalPlaceholder;
                 _ctx.CurrentPortalPlaceholder = placeholder;
+                // Pushing the declaring fiber gives this Portal's children the registry parent that
+                // fiber's own in-tree children already have, so the two would otherwise collide on a
+                // whole key. The scope is the member that separates them —
+                // ReconcilerContext.PortalChildKeyScope owns it. Entered after the push, so the nesting
+                // it records is the one the children below reconcile at.
+                if (declaringFiber != null) _ctx.FiberStack.Push(declaringFiber);
+                var enclosingChildScope = _ctx.EnterPortalChildKeyScope(placeholder);
                 try
                 {
                     Reconcile(resolvedTarget, Array.Empty<VNode>(), children, slotStart: slotStart);
                 }
                 finally
                 {
+                    _ctx.ExitPortalChildKeyScope(enclosingChildScope);
+                    if (declaringFiber != null) _ctx.FiberStack.Pop();
                     _ctx.CurrentPortalPlaceholder = enclosingPortal;
                     if (contextSnapshot != null)
                     {
@@ -378,16 +390,7 @@ namespace Velvet
                     PendingIndexedState = parkedIndexed;
                     PendingKeyedState = parkedKeyed;
                 }
-                if (drainAnchor != null)
-                {
-                    DetachedMountContext? detachedContext = null;
-                    for (var f = drainAnchor.Child; f != null; f = f.Sibling)
-                    {
-                        if (childFibersBefore!.Contains(f)) continue;
-                        detachedContext ??= new DetachedMountContext(contextSnapshot, children, drainAnchor, logicalParent);
-                        f.DetachedMountContext = detachedContext;
-                    }
-                }
+                StampDrainedChildren(drainAnchor, childFibersBefore, contextSnapshot, children, logicalParent);
                 // The growth this mount contributed, in logical slots — the same basis as slotStart.
                 var slotLength = LogicalChildSlots.Count(resolvedTarget) - slotStart;
                 _ctx.PortalState[placeholder] = new PortalSlotInfo(
@@ -397,6 +400,35 @@ namespace Velvet
             // last member this pass tears down here, never synchronously mid-diff. `this` mirrors
             // ResolveQueuedMount's own reason above (a self-caused park from THIS instance's own pass).
             FiberZLayerCoordinator.DrainTeardowns(_ctx);
+        }
+
+        // Taken by ref so one set serves the whole drain loop: each entry's snapshot is consumed by its own
+        // StampDrainedChildren call before the next entry clears it.
+        private static void CaptureAnchorChildren(ComponentFiber? anchor, ref HashSet<ComponentFiber>? before)
+        {
+            if (anchor == null) return;
+            (before ??= new HashSet<ComponentFiber>()).Clear();
+            for (var f = anchor.Child; f != null; f = f.Sibling)
+            {
+                before.Add(f);
+            }
+        }
+
+        // Stamps the fibers this drain entry just added under anchor with what an isolated re-render needs
+        // to rebuild their enclosing Providers — the same diff-against-a-before-set that
+        // FiberNodePatcher.StampNewTopLevelChildren applies on the patch half of the pair.
+        private static void StampDrainedChildren(
+            ComponentFiber? anchor, HashSet<ComponentFiber>? before,
+            List<KeyValuePair<object, object>>? contextSnapshot, VNode?[] children, ComponentFiber? logicalParent)
+        {
+            if (anchor == null) return;
+            DetachedMountContext? detachedContext = null;
+            for (var f = anchor.Child; f != null; f = f.Sibling)
+            {
+                if (before!.Contains(f)) continue;
+                detachedContext ??= new DetachedMountContext(contextSnapshot, children, anchor, logicalParent);
+                f.DetachedMountContext = detachedContext;
+            }
         }
 
         private (VisualElement Target, VNode?[] Children) ResolveLayerPortalTarget(

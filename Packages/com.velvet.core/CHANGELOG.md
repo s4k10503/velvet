@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
+  its state, refs and effects do not survive the move and the departing instance's cleanups run. A
+  component written into a live portal's children that a previous render had outside them — and the same
+  move back out — used to keep its instance whenever a patch of the portal's children had been the last
+  thing to register the portal-side occurrence, the render that closes the portal included; only an
+  occurrence the portal's own deferred mount had registered mounted fresh. Which of the two a given edit
+  got was decided by which of those two entrances had last put the child in the portal, and neither the
+  guide nor `createPortal` promised the surviving half. The portals guide states the contract that now
+  holds in both directions. Keeping state across such a move means lifting it above the portal — to a
+  `Store`, or to a `UseState` in the component that declares the portal.
 - `V.TextField`'s four new parameters sit between `isPasswordField:` and `enabled:`, so a call passing
   arguments positionally past `isPasswordField` now binds them to different parameters. Every argument
   there but a `null` literal changes type across the shift, so such a call fails to compile rather than
@@ -46,17 +56,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `RouteBlockerState.Proceed()` now re-issues the navigation its Blocker held, so the confirm-dialog flow
-  it exists for reaches the destination: the user clicks "Leave" and the router goes there. It used to
-  clear the state and invoke a callback nothing assigned, leaving the dialog closed and the navigation
-  gone — the only way through was to copy `Attempt.NextPath` and `Attempt.NavigationMode` out before
-  calling `Proceed()`, re-issue them by hand, and arrange for the predicate to stop blocking, because a
-  re-issued attempt was evaluated by that predicate again. A blocked Back or Forward resumes as the same
-  history step, and the Blocker is not consulted about the navigation it released. `RouteBlockerStatus`
-  has a third member, `Proceeding`, for the span between `Proceed()` and that navigation committing — the
-  Blocker still reports its `Attempt` throughout, and returns to `Idle` on the commit, which is what arms
-  it again for the next navigation. A `switch` over `RouteBlockerStatus` with no default arm needs one for
-  it. `Reset()` is unchanged: it abandons the attempt.
+- A component the reconciler carries to a different container now re-renders itself into the container
+  it is in. Its slot index and the stamp a portal teardown disposes by both followed the move and its
+  container did not, so its own `setState` reconciled its new output into the container it had left,
+  while the container it had moved into kept the element from before the move.
+  It also let the container it had left take it down: where the arriving container is reconciled first
+  and the departing one leaves the tree in that same render, the departing subtree's teardown still
+  found the carried component named as living inside it and ran its cleanups.
+  Two components at the same unkeyed position in *different* containers still share one instance where
+  both containers sit in the declaring component's own tree, which is a separate defect; what changes
+  for them is which of the two containers goes stale, since the shared instance's slot index already
+  named the last one reconciled and its container now agrees. Give each an explicit `key:` to keep them
+  apart.
+- A `V.Component` written inside a `V.Portal` now survives a patch of that portal's children. Its mount
+  ran in the deferred pass that follows the reconcile, which registered it under a different parent from
+  the one every later patch looks it up by, so the first patch failed to find it: the component was
+  built a second time with fresh hook state and fresh effects, the first instance's effect cleanups
+  never ran, and the element it had rendered stayed behind in the target. A modal whose content
+  component held its own `UseState` lost it the first time anything else in that portal re-rendered —
+  once, because the instance built to replace it registers where the patch looks, so it survives every
+  patch after that. The element the first instance rendered stayed in the target for the life of the
+  tree.
+- A component a declaring render writes both inside a `V.Portal` and at the same position outside it now
+  keeps its own instance on each side, whichever of the two mounts first. They used to merge into one, in
+  both orders and each with its own damage. With the one outside mounted first, the first patch of the
+  portal's children replaced the portal's child with it. With the portal's mounted first, the position
+  outside took the portal's own instance over and rendered it in both places, and the next patch of that
+  portal built a second child and left the elements of the previous slot range in the target with nothing
+  to reconcile them away.
 - Registering a portal target id again with a different element now moves the portals already mounted
   into the old one, instead of leaving them writing into an element the UI has replaced. A
   `"modal-root"` that a screen owns — torn down on navigation and re-registered from the rebuilt
@@ -141,6 +168,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A composite field pooled without a label lost the class its constructor adds for that case, so a
   recycled one no longer matched a fresh one's class list.
+
+- `UseMutation`'s `Reset` now abandons the call in flight instead of only clearing what it had written
+  so far. Pressing Save and then Reset used to leave the save owning the handle, so when it landed it
+  wrote `Success` and its result straight back over the idle state the user had asked for. The
+  abandoned call is still not cancelled and still delivers its own `OnSuccess` / `OnError` — what it
+  no longer does is write the handle, which is what v5's `reset()` detaching the observer amounts to.
+
+- A `UseMutation` handle no longer shows `Data` for a call it reports as failed. The result was
+  written before `OnSuccess` ran, so a handler that threw — which correctly makes the mutation an
+  error — left that result on show underneath the error, and a view rendering `Data` without checking
+  `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
+  where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
+  under `Status == Success`.
+- `RouteBlockerState.Proceed()` now re-issues the navigation its Blocker held, so the confirm-dialog flow
+  it exists for reaches the destination: the user clicks "Leave" and the router goes there. It used to
+  clear the state and invoke a callback nothing assigned, leaving the dialog closed and the navigation
+  gone — the only way through was to copy `Attempt.NextPath` and `Attempt.NavigationMode` out before
+  calling `Proceed()`, re-issue them by hand, and arrange for the predicate to stop blocking, because a
+  re-issued attempt was evaluated by that predicate again. A blocked Back or Forward resumes as the same
+  history step, and the Blocker is not consulted about the navigation it released. `RouteBlockerStatus`
+  has a third member, `Proceeding`, for the span between `Proceed()` and that navigation committing — the
+  Blocker still reports its `Attempt` throughout, and returns to `Idle` on the commit, which is what arms
+  it again for the next navigation. A `switch` over `RouteBlockerStatus` with no default arm needs one for
+  it. `Reset()` is unchanged: it abandons the attempt.
 
 ## [2.1.0] - 2026-08-09
 
