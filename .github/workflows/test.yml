@@ -135,6 +135,15 @@ jobs:
         if: always()
         run: python3 scripts/test_quality/assert_no_inconclusive.py "${{ matrix.testMode }}-results"
 
+      # The step above asks what the results say; this one asks whether they are this checkout's to
+      # read. The cache restored above falls back across commits by design, so Library/ScriptAssemblies
+      # can hold assemblies built from other sources, and a results file is written where the caller
+      # points rather than by the run that reads it. Both readings come out of the artifacts
+      # directory, which holds the editor log beside the XML.
+      - name: Assert the results are this checkout's
+        if: always()
+        run: python3 scripts/test_quality/assert_results_from_this_tree.py "${{ matrix.testMode }}-results"
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
@@ -316,6 +325,8 @@ jobs:
       - run: python3 scripts/test_quality/test_neuter_check.py
 
       - run: python3 scripts/test_quality/test_base_red_check.py
+
+      - run: python3 scripts/test_quality/test_assert_results_from_this_tree.py
 
   # ---------------------------------------------------------------------------
   # The one check branch protection requires from this workflow. Naming a real

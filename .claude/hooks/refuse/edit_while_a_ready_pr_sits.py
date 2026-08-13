@@ -24,8 +24,11 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
+sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 from deferrals import DEFERRALS, deferred, unusable
+from watcher_state import READY_STATE, STALE_AFTER, alive, unreadable_beat
 
 # Held on the editing tools, which carry a file path rather than a shell command, so there is no operand
 # for the shell to expand and nothing here reads one.
@@ -34,25 +37,15 @@ UNEXPANDED_POLICY = "n/a"
 UNREADABLE_POLICY = "none"
 UNREADABLE_PROBE = {"file_path": "CHANGELOG.md", "old_string": "a", "new_string": "b"}
 
-READY_STATE = Path.home() / ".velvet-pr-ready"
-HEARTBEAT = Path.home() / ".velvet-pr-watch.heartbeat"
-
 # Long enough that a pull request going green mid-task is not an interruption, short enough that
 # "I will get to it" cannot outlive the task that said it.
 GRACE = 900
 
-# Two polls plus a margin: one missed poll is a slow API call, two is a watcher that stopped.
-HEARTBEAT_TTL = 180
+# Its own deferral key. A pull request number holds one pull request; this holds the reading itself,
+# and the two are not the same claim.
+WATCHER_KEY = "watcher"
 
 HOOK_TOOLS = {"Edit", "Write", "NotebookEdit"}
-
-
-def watcher_age():
-    """Seconds since the watching process last wrote, or None when it never has."""
-    try:
-        return time.time() - int(HEARTBEAT.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
-        return None
 
 
 def sitting(now):
@@ -86,18 +79,54 @@ def main():
     if event.get("tool_name") not in HOOK_TOOLS:
         return 0
 
-    age = watcher_age()
-    if age is None or age > HEARTBEAT_TTL:
+    now = time.time()
+    if not alive():
+        # Both refusals here hold every editing tool in every session; this is the one that had no
+        # deferral, and the command it names can itself refuse — a watcher wedged mid-poll holds the
+        # lock while its heartbeat goes stale, and starting a replacement is what `hold_the_watch`
+        # declines. So the way out of this branch cannot go through the thing that is stuck.
+        held = deferred(WATCHER_KEY, now)
+        if held is not None:
+            reason, minutes = held
+            sys.stderr.write(f"Nothing is watching the open pull requests, and {WATCHER_KEY} is held "
+                             f"{minutes}m ago because: {reason}\n")
+            return 0
+        broken = unusable(WATCHER_KEY, now)
+        if broken is not None:
+            sys.stderr.write(f"A deferral was written for {WATCHER_KEY}, and {broken} — so it is "
+                             "being ignored.\n")
+        # Two states reach here and they want opposite actions: start a watcher, or end one. Saying
+        # "nothing is watching" of the second is this guard's blindness written as a fact about the
+        # watcher, and the command it would name refuses while that watcher runs.
+        if unreadable_beat(now):
+            sys.stderr.write(
+                "Refusing to write: a watcher is writing the heartbeat in a form this cannot read, "
+                "so whether a pull request is sitting green cannot be read.\n\n"
+                "Something IS watching — what failed is the reading. A watcher started before the "
+                "heartbeat named its own process writes the older form, and starting a second one "
+                "is refused while it runs. End it and start one from this checkout:\n\n"
+                "  ps -Ao pid=,command= | grep 'settle[.]py watch'\n"
+                "  kill <pid>\n"
+                f"  # its last heartbeat ages out within {STALE_AFTER}s, and until it does\n"
+                "  # `settle.py watch` refuses to start\n"
+                "  python3 scripts/pr/settle.py watch\n\n"
+                "If the pause is deliberate, arm the deferral for what the WORK is waiting on; the "
+                "reason expires, so it gets re-read rather than forgotten:\n\n"
+                f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)}" >> {DEFERRALS}\n')
+            return 2
         sys.stderr.write(
             "Refusing to write: nothing is watching the open pull requests, so whether one is sitting "
             "green cannot be read.\n\n"
             "An unwatched pull request and none at all look identical from here, which is the state "
             "this guard exists to stop being invisible.\n\n"
             "  python3 scripts/pr/settle.py watch\n\n"
-            "Run it in the background and this clears within a poll.\n")
+            "That reports what stops it starting, if anything does — a watcher already holding the "
+            "lock is named there with the command to end it. If the pause is deliberate, arm the "
+            "deferral for what the WORK is waiting on rather than for the watcher being off; the "
+            "reason expires, so it gets re-read rather than forgotten:\n\n"
+            f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)}" >> {DEFERRALS}\n')
         return 2
 
-    now = time.time()
     found = sitting(now)
     if not found:
         return 0

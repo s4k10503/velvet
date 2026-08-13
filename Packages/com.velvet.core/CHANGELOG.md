@@ -125,6 +125,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so a subscription a closing modal's top-level component opened outlived the modal. The disposal
   follows the portal the component was written under, so on a container several portals share, one of
   them closing leaves the others' components mounted and takes only its own.
+- A `V.Suspense` nested inside another one's children no longer loses its fallback when the outer
+  boundary resolves. The outer boundary's expansion wrote its own answer over every fiber it had
+  created, the inner boundary's hidden children included, so a state update inside content the inner
+  boundary was still waiting on stopped being deferred and committed into the slot range the inner
+  fallback occupied — the fallback left the tree and the half-loaded content took its place. Each
+  boundary now keeps the answer it gave for the children it suspended over, so an outer boundary
+  resolving says nothing about an inner one that has not. An outer boundary that suspends still hides
+  the inner boundary's fallback, and releases it again on resolve.
 - Two `V.Suspense` boundaries in one component's render no longer share a single suspended mark. One
   showing its fallback while a second, placed after it, rendered its children left the component
   unmarked, so a state update inside the first one's hidden children stopped being deferred and
