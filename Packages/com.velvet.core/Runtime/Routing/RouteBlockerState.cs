@@ -45,9 +45,8 @@ namespace Velvet
                 return;
             }
 
-            // Proceeding must be visible before the re-issued navigation reaches the Blocker check, which it
-            // does synchronously for a synchronous Blocker: that check is what reads this status to leave the
-            // attempt alone, so setting it afterwards would let the navigation be blocked a second time.
+            // Set before the re-issue rather than after: the navigation it starts consults the Blockers, and
+            // this status is what tells that pass to leave this one alone.
             Status = RouteBlockerStatus.Proceeding;
             var resume = _resume;
             _resume = null;

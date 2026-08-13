@@ -435,8 +435,8 @@ namespace Velvet
             // CurrentLocation and _historyIndex, and both describe this round's location from here on.
             _committedRound = round;
             Status = RouterStatus.Ready;
-            // Before the notification, so the render it drives sees a Blocker that has finished proceeding
-            // rather than one still holding the attempt this commit completed.
+            // Cleared before the notification, so a handler reading a Blocker off it sees one that has
+            // finished proceeding rather than one still holding the attempt this commit completed.
             _blockerManager.ClearProceeding();
             OnLocationChanged?.Invoke(location);
 
