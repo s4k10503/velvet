@@ -77,34 +77,6 @@ jobs:
       - name: Committed generator DLLs
         run: python3 scripts/generators/deployed_dll_check.py
 
-      # TEMPORARY PROBE - remove before merge.
-      - name: Probe - what the runner built
-        if: always()
-        working-directory: Packages/com.velvet.core/Generators~
-        run: |
-          mkdir -p /tmp/probe
-          cp src/Velvet.SourceGenerators/bin/Release/netstandard2.0/Velvet.SourceGenerators.dll /tmp/probe/
-          cp src/Velvet.SourceGenerators/bin/Release/netstandard2.0/Velvet.SourceGenerators.pdb /tmp/probe/
-          cp src/Velvet.SourceGenerators.CodeFixes/bin/Release/netstandard2.0/Velvet.SourceGenerators.CodeFixes.dll /tmp/probe/
-          dotnet --version > /tmp/probe/sdk.txt
-          dotnet --info >> /tmp/probe/sdk.txt
-          strings -a src/Velvet.SourceGenerators/bin/Release/netstandard2.0/Velvet.SourceGenerators.pdb > /tmp/probe/pdb-strings.txt
-          rm -rf src/Velvet.SourceGenerators/bin src/Velvet.SourceGenerators/obj
-          rm -rf src/Velvet.SourceGenerators.CodeFixes/bin src/Velvet.SourceGenerators.CodeFixes/obj
-          dotnet build src/Velvet.SourceGenerators/Velvet.SourceGenerators.csproj -c Release --nologo -p:DebugType=none
-          dotnet build src/Velvet.SourceGenerators.CodeFixes/Velvet.SourceGenerators.CodeFixes.csproj -c Release --nologo -p:DebugType=none
-          mkdir -p /tmp/probe/nodbg
-          cp src/Velvet.SourceGenerators/bin/Release/netstandard2.0/Velvet.SourceGenerators.dll /tmp/probe/nodbg/
-          cp src/Velvet.SourceGenerators.CodeFixes/bin/Release/netstandard2.0/Velvet.SourceGenerators.CodeFixes.dll /tmp/probe/nodbg/
-
-      # TEMPORARY PROBE - remove before merge.
-      - name: Probe - upload
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: runner-build
-          path: /tmp/probe
-
       # A guard that exits 0 having compared nothing looks exactly like one that compared and was
       # satisfied. These drive the states where it would — an absent binary, a failing build, an SDK
       # other than the pin — which a run over a healthy checkout does not reach.
