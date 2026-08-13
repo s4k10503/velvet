@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Rebuild the source generators and redeploy their committed DLLs.
 
-Set CONFIGURATION to build something other than Release.
+Release only, and not by omission: what makes the deployed pair reproducible is declared per configuration
+-- each deployed project drops its Release PDB and keeps its Debug one -- so a Debug build deployed here
+carries a debug directory pointing at a PDB nothing ships, and scripts/generators/deployed_dll_check.py
+cannot say whether it corresponds to its sources. This used to take the configuration from the environment.
 """
 
-import os
 import shutil
 import subprocess
 import sys
@@ -12,7 +14,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
-CONFIGURATION = os.environ.get("CONFIGURATION", "Release")
+CONFIGURATION = "Release"
 
 STYLE_TABLE_PROJECT = "src/Velvet.StyleTable/Velvet.StyleTable.csproj"
 STYLE_SHEET_DIR = "../Runtime/Styles"

@@ -175,8 +175,9 @@ class DeploymentMapTests(unittest.TestCase):
 
 
 class RecompileTests(unittest.TestCase):
-    def test_Given_ABinLeftByOtherProperties_When_TheRealBuildCommandIsAsked_Then_ItForcesTheCompile(self):
-        # Arrange — the real build.py, since a comment naming the flag must not satisfy this.
+    def test_Given_TheRealBuildScript_When_ItsBuildCommandIsAsked_Then_TheCompileIsForced(self):
+        # Arrange — the real build.py rather than a stand-in, so a comment naming the flag cannot
+        # satisfy this: what is asserted is membership in the list the command is run from.
         real = load_build_script()
 
         # Act
@@ -185,9 +186,10 @@ class RecompileTests(unittest.TestCase):
         # Assert
         self.assertIn("--no-incremental", command)
 
-    def test_Given_BuildPyWouldBuildAnotherConfiguration_When_Loaded_Then_ItRefuses(self):
+    def test_Given_ABuildScriptNamingAnotherConfiguration_When_Loaded_Then_ItRefuses(self):
         with tempfile.TemporaryDirectory() as directory:
-            # Arrange — CONFIGURATION comes from the environment, and the committed pair is Release.
+            # Arrange — the committed pair is Release, and what makes it reproducible is declared per
+            # configuration, so a build of another one is not evidence about these sources.
             root = Path(directory)
             (root / "build.py").write_text('CONFIGURATION = "Debug"\nDEPLOYMENTS = ()\n',
                                            encoding="utf-8")

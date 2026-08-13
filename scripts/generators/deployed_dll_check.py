@@ -26,8 +26,8 @@ from typing import NamedTuple
 
 GENERATORS_REL = Path("Packages/com.velvet.core/Generators~")
 
-# The committed pair is a Release build, and build.py takes the configuration from the environment.
-# Comparing a Debug build against it would report a mismatch that says nothing about the sources.
+# build.py declares the same, and refusing on a disagreement is what stops this comparing a build of one
+# configuration against a committed artifact of another.
 CONFIGURATION = "Release"
 
 MISMATCH_EXIT = 1
@@ -92,8 +92,8 @@ def build_script(generators_root: Path):
         raise Refusal(f"could not load {script}: {error}") from error
     if module.CONFIGURATION != CONFIGURATION:
         raise Refusal(
-            f"build.py would build {module.CONFIGURATION} and the committed pair is {CONFIGURATION} "
-            f"— unset CONFIGURATION in the environment")
+            f"build.py would build {module.CONFIGURATION} and the committed pair is {CONFIGURATION}, "
+            f"so a comparison would report a difference that says nothing about the sources")
     return module
 
 
