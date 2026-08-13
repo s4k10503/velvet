@@ -59,6 +59,13 @@ def applied(text, mutant):
     return mutation_check.apply_mutation(text, mutant).splitlines()[mutant.line - 1].strip()
 
 
+def code_parens(fragment):
+    """How far the fragment's parentheses are out of balance, counting only what the compiler sees."""
+    mask = mutation_check.code_mask(fragment)
+    seen = [fragment[offset] for offset in range(len(fragment)) if mask[offset]]
+    return seen.count("(") - seen.count(")")
+
+
 def survivor(path, line, verdict=None):
     mutant = mutation_check.Mutant(path, line, 0, "a", "b", "equality")
     mutant.verdict = verdict or mutation_check.SURVIVED
@@ -159,6 +166,52 @@ class ClauseRemovalTests(unittest.TestCase):
         self.assertEqual(cuts, ["if (a == null)"])
 
 
+class GenerationAcrossLinesTests(unittest.TestCase):
+    """Whether a line still generates once an earlier line in the same file has yielded a clause cut.
+
+    Every case in this file used to sit on one line, or put the clause cut last, so all 74 of them
+    were green while a file's generation stopped dead at its first `||`.
+    """
+
+    def test_Given_ALineAfterAClauseCut_When_MutantsAreGenerated_Then_ItStillGenerates(self):
+        # Arrange — the first line yields a clause cut; the second is a discarded call, which is a
+        # shape the operator set reaches on its own.
+        text = "if (a == null || b <= 0) return;\nowners.Remove(child);\n"
+
+        # Act
+        lines = sorted({mutant.line for mutant in mutants_of(text)})
+
+        # Assert
+        self.assertEqual(lines, [1, 2])
+
+    def test_Given_ManyLinesAfterAClauseCut_When_MutantsAreGenerated_Then_NoneOfThemGoesDark(self):
+        # Arrange — the loss grew with distance from the cut, so one line after it is too weak a
+        # reading: with the file's source rebound, everything below the first cut reports nothing.
+        text = ("if (a == null || b <= 0) return;\n"
+                + "".join("var v{0} = Compute({0} <= {0});\n".format(index) for index in range(1, 9)))
+
+        # Act
+        lines = sorted({mutant.line for mutant in mutants_of(text, "boundary")})
+
+        # Assert
+        self.assertEqual(lines, [1, 2, 3, 4, 5, 6, 7, 8, 9])
+
+    def test_Given_TheRepositorysOwnSources_When_MutantsAreGenerated_Then_TheTotalHoldsAFloor(self):
+        # Arrange — the count is what moved: 2097 across these files before the loop variable stopped
+        # rebinding the file's source, and over eleven thousand after. A floor rather than the exact
+        # number, which every edit to the package moves.
+        sources = [path for path in (RUNTIME).rglob("*.cs")
+                   if "/Tests/" not in path.as_posix() and "/Plugins/" not in path.as_posix()]
+
+        # Act
+        total = sum(len(mutation_check.mutations_for(
+            path, path.read_text(), set(range(1, len(path.read_text().splitlines()) + 1))))
+            for path in sources)
+
+        # Assert — the source count rides along because an empty scan clears any floor by arithmetic.
+        self.assertEqual((len(sources) > 200, total > 8000), (True, True))
+
+
 class GuardRemovalTests(unittest.TestCase):
     def test_Given_ASingleLineReturnGuard_When_ItIsRemoved_Then_OnlyTheGuardGoes(self):
         # Arrange
@@ -224,12 +277,14 @@ class GenerationHealthTests(unittest.TestCase):
         # Arrange — an unbalanced cut compiles nowhere, and uncompilable noise hides real survivors.
         sources = [path for path in RUNTIME.rglob("*.cs") if "/Tests/" not in path.as_posix()]
 
-        # Act
+        # Act — counted through the mask rather than over the raw text. A cut carrying
+        # `EndsWith(")", …)` holds a parenthesis the compiler never sees, and reading it raw reports
+        # a balanced cut as broken; every operator here reads code the same way.
         unbalanced = []
         for path in sources:
             text = path.read_text()
             for mutant in mutants_of(text, "clause removed"):
-                if mutant.before.count("(") != mutant.before.count(")"):
+                if code_parens(mutant.before) != 0:
                     unbalanced.append(f"{path.name}:{mutant.line} {mutant.before.strip()}")
 
         # Assert — the source count rides along because an empty scan satisfies "none unbalanced".
@@ -596,15 +651,18 @@ class StubbedCampaign:
     def write_receipt(self, verdict):
         """A receipt for exactly this tree, written through the module so the digest cannot drift."""
         since = mutation_check.merge_base_of(self.project, "HEAD")
-        digest = mutation_check.scope_digest(since, {self.source: None}, self.project)
+        digest = mutation_check.scope_digest(since, {self.source: None}, self.project, "EditMode")
         return mutation_check.write_receipt(self.project / "out", digest, "HEAD", verdict, "stub")
 
     kills = False
+    times_out = False
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         # The baseline has to be green whatever the mutants do, or the run stops before the loop.
-        killing = self.kills and Path(results).name != "baseline.xml"
-        Path(results).write_text(FAILING_RESULTS if killing else GREEN_RESULTS)
+        mutant = Path(results).name != "baseline.xml"
+        if mutant and self.times_out:
+            return 0.0, True
+        Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else GREEN_RESULTS)
         Path(log).write_text("")
         return 0.0, False
 
@@ -1032,7 +1090,7 @@ class ReceiptTests(unittest.TestCase):
         code = campaign.run_over_diff("--receipt")
 
         # Assert
-        self.assertEqual(code, 1)
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
 
     def test_Given_APassingCampaign_When_AReceiptIsAsked_Then_ItIsAccepted(self):
         # Arrange
@@ -1055,7 +1113,7 @@ class ReceiptTests(unittest.TestCase):
         code = campaign.run_over_diff("--receipt")
 
         # Assert
-        self.assertEqual(code, 1)
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
 
     def test_Given_ACampaignNothingCouldAsk_When_AReceiptIsAsked_Then_ItIsAccepted(self):
         # Arrange — a change no operator reaches cannot earn a passing run, and refusing its pull
@@ -1091,7 +1149,7 @@ class ReceiptTests(unittest.TestCase):
         code = campaign.run_over_diff("--receipt")
 
         # Assert
-        self.assertEqual(code, 1)
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
 
     def test_Given_APassingCampaign_When_AMutatedFileIsEditedWithoutCommitting_Then_ItIsRefusedAgain(self):
         # Arrange — the reading the head tree sha cannot take: this edit moves no tree sha at all.
@@ -1103,7 +1161,7 @@ class ReceiptTests(unittest.TestCase):
         code = campaign.run_over_diff("--receipt")
 
         # Assert
-        self.assertEqual(code, 1)
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
 
 
 class MutationRefusalStatusTests(unittest.TestCase):
@@ -1136,6 +1194,162 @@ class MutationRefusalStatusTests(unittest.TestCase):
         # Assert — the registered count rides along because an empty list satisfies `all`.
         self.assertEqual((len(registered), all(int(declared.group(1)) < each for each in registered)),
                          (1, True))
+
+
+class CampaignVerdictTests(unittest.TestCase):
+    """What the run's own exit status and receipt are a function of.
+
+    Each case here was written after removing the term it names left the whole suite green: the cap,
+    the unmeasured mutants, the receipt a change nothing reaches earns, and the merge base in the key.
+    """
+
+    SEVERAL = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                internal static bool Ready(int a, int b) => a <= b;
+                internal static bool Live(int a, int b) => a >= b;
+            }
+        }
+        """)
+
+    def test_Given_MoreMutantsThanTheCap_When_TheRunFinishes_Then_ItFails(self):
+        # Arrange — two mutants against a cap of one, so the run measured fewer than the branch has
+        # and reporting a pass would be a verdict about the one it never ran.
+        campaign = StubbedCampaign(self.SEVERAL)
+        campaign.kills = True
+
+        # Act
+        code = campaign.run_over_diff("--max", "1")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+    def test_Given_EveryMutantWithinTheCap_When_TheRunFinishes_Then_ItPasses(self):
+        # Arrange — the same two mutants with the cap above them, so the case above is not passing
+        # for a run that always fails.
+        campaign = StubbedCampaign(self.SEVERAL)
+        campaign.kills = True
+
+        # Act
+        code = campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_AMutantTheEditorNeverRan_When_TheRunFinishes_Then_ItFails(self):
+        # Arrange — a mutant whose editor was killed at --timeout is one nobody asked about, and a
+        # mutation that hangs the suite is indistinguishable from a --timeout that was too short.
+        campaign = StubbedCampaign()
+        campaign.times_out = True
+
+        # Act
+        code = campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual(code, 1)
+
+    def test_Given_ACampaignNoOperatorReaches_When_ItRefuses_Then_ItStillLeavesAReceipt(self):
+        # Arrange — such a branch cannot earn a passing run, so without the receipt it could never
+        # open a pull request at all.
+        campaign = StubbedCampaign(textwrap.dedent("""\
+            namespace Velvet
+            {
+                internal sealed class Probe
+                {
+                    private int _value;
+                    internal void Settle(int next) { _value = next; }
+                }
+            }
+            """))
+        campaign.run_over_diff("--max", "40")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, 0)
+
+    def test_Given_TwoMergeBases_When_TheScopeIsDigested_Then_TheKeysDiffer(self):
+        # Arrange — the merge base is half the key, and every document leads with it. Without it a
+        # receipt earned against one base answers for a branch rebased onto another.
+        campaign = StubbedCampaign()
+        targets = {campaign.source: None}
+
+        # Act
+        keys = {mutation_check.scope_digest(base, targets, campaign.project, "EditMode")
+                for base in ("aaaaaaa", "bbbbbbb")}
+
+        # Assert
+        self.assertEqual(len(keys), 2)
+
+    def test_Given_TwoPlatforms_When_TheScopeIsDigested_Then_TheKeysDiffer(self):
+        # Arrange — a PlayMode campaign is a statement about the PlayMode suite, and a receipt that
+        # did not say so would let one sign off a question the other was asked.
+        campaign = StubbedCampaign()
+        targets = {campaign.source: None}
+
+        # Act
+        keys = {mutation_check.scope_digest("aaaaaaa", targets, campaign.project, platform)
+                for platform in ("EditMode", "PlayMode")}
+
+        # Assert
+        self.assertEqual(len(keys), 2)
+
+
+class SignalledCampaignTests(unittest.TestCase):
+    """The campaign's own restore-on-signal, rather than the helper's.
+
+    The case next door drives a bespoke script calling `Holder.guard()` itself, so it pins the helper
+    and stays green with the call removed from `main`. This runs the campaign.
+    """
+
+    def test_Given_ARunningCampaign_When_ItIsSignalled_Then_TheSourceIsPutBack(self):
+        # Arrange — a campaign whose editor never returns, so the signal lands while it holds.
+        campaign = StubbedCampaign()
+        original = campaign.source.read_text()
+        driver = campaign.project / "drive.py"
+        driver.write_text(textwrap.dedent("""\
+            import importlib.util, sys
+            spec = importlib.util.spec_from_file_location("mutation_check", sys.argv[1])
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            def hang(*a, **k):
+                print("holding", flush=True)
+                while True:
+                    pass
+
+            def green(_u, _p, _pl, _s, results, log, _t, _h=None):
+                open(results, "w").write(sys.argv[2])
+                open(log, "w").write("")
+                return 0.0, False
+
+            calls = {"n": 0}
+
+            def suite(*a, **k):
+                calls["n"] += 1
+                return green(*a, **k) if calls["n"] == 1 else hang()
+
+            module.run_suite = suite
+            module.unity_busy = lambda: 0
+            sys.argv = ["mutation_check.py", "--project", sys.argv[3], "--base", "HEAD",
+                        "--output", sys.argv[4], "--max", "1"]
+            sys.exit(module.main())
+            """))
+
+        # Act
+        running = subprocess.Popen(
+            [sys.executable, str(driver), str(Path(mutation_check.__file__)), GREEN_RESULTS,
+             str(campaign.project), str(campaign.project / "out")],
+            stdout=subprocess.PIPE, text=True)
+        running.stdout.readline()
+        os.kill(running.pid, signal.SIGTERM)
+        running.wait(timeout=60)
+
+        # Assert
+        self.assertEqual(campaign.source.read_text(), original)
 
 
 class MaskRefusalTests(unittest.TestCase):

@@ -129,7 +129,7 @@ that need a run, the declarations and the cap among them, it does not take.
 
 [Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
 covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
-survivor, and which line shapes the operators reach — which is 27% of the changed code lines measured
+survivor, and which line shapes the operators reach — which is 33% of the changed code lines measured
 over the twenty commits before this paragraph, so **a survivor count is a statement about the lines an
 operator reached and not about the change**. The run prints both numbers and names the lines it could
 not ask about.
@@ -163,11 +163,11 @@ does not cover is a test-side change: removing a test can make a killed mutant s
 tests would void the receipt on the ordinary act of adding one after the run.
 
 **Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
-Over the twenty commits before this one, ten generated no mutant at all — a rename, a move, a signature,
-a documentation comment — and the other ten ranged 4 to 49 with a median of 13. A mutant's
-launch-compile-run measured 100–118 s here against a 94 s baseline, so a median branch is around
-25 minutes and the largest around an hour and a half; on the CI runner, where the EditMode job alone
-takes 5m47s, a median branch is 14 sequential Unity jobs. Run it on a branch before opening the pull request. `Test ▸ test-quality` holds the half that
+Over the twenty commits before this one, nine generated no mutant at all and the other eleven ranged
+3 to 51 with a median of 20. A mutant's launch-compile-run measured 100–118 s here against a 94 s
+baseline, so a median branch is around 37 minutes and the largest around an hour and a half; on the CI
+runner, where the EditMode job alone takes 5m47s, a median branch is 21 sequential Unity jobs.
+Run it on a branch before opening the pull request. `Test ▸ test-quality` holds the half that
 needs no editor: that the mutants can be generated at all, and that every declaration in the tree is one
 the script would accept rather than one it silently refuses.
 

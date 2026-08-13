@@ -596,11 +596,6 @@ namespace Velvet.Tests
              "\"cwd\":\"%SCRATCH%\",\"tool_input\":{\"file_path\":\"%SCRATCH%/CHANGELOG.md\","
              + "\"old_string\":\"- As shipped.\","
              + "\"new_string\":\"- As shipped.\\n\\n- Smuggled in.\"}"),
-            // In the project rather than the scratch directory: what the mutation-receipt guard
-            // decides about is the tree the command is run in, and a scratch directory holds no
-            // branch for it to ask about.
-            ("a pull request created in this checkout",
-             "\"cwd\":\"%PROJECT%\",\"tool_input\":{\"command\":\"gh pr create --fill\"}"),
         };
 
         // No matcher in the settings routes this, so a guard that answers under it has a gate that is

@@ -61,6 +61,7 @@ UNITY_RUNNING = "^/Applications/.*/MacOS/Unity -runTests"
 SENTINEL = "MUTATION_IN_PROGRESS.json"
 
 KILLED = "killed"
+TIMED_OUT = "not measured (timed out)"
 SURVIVED = "survived"
 INCONCLUSIVE = "survived (inconclusive)"
 UNCOMPILABLE = "uncompilable"
@@ -83,9 +84,10 @@ LINES_LISTED = 25
 # name is unavailable, which is the only reading that does not let a mutation through.
 UNREADABLE = object()
 
-# What `--carried` exits with when it refuses, so a caller can tell a refusal from a script that
-# could not run at all. Both stop a commit; only one of them is about a campaign.
+# What `--carried` and `--receipt` exit with when they refuse, so a caller can tell a refusal from a
+# script that could not take the reading at all. Both stop the tool; only one is about a campaign.
 CARRIED_REFUSAL = 3
+RECEIPT_REFUSAL = 3
 
 
 class Mutant:
@@ -379,6 +381,11 @@ def clause_cuts(line, start, mask, limit):
                     if level == depth:
                         break
                     level -= 1
+                elif character == ";":
+                    # A chain that is a whole statement rather than a condition closes no group, so
+                    # without this the probe runs to the end of the line and takes the terminator
+                    # with it: `var ok = a && b;` came back as `var ok = a`, which compiles nowhere.
+                    break
                 elif level == depth and any(line.startswith(c, probe) for c in LOGIC_JOINS):
                     break
             probe += 1
@@ -420,8 +427,10 @@ def mutations_for(path, text, target_lines):
         if VOID_CALL.match(stripped) and not stripped.startswith(("return", "throw", "yield")):
             found.append(Mutant(path, number, 0, stripped, ";", "void call removed"))
         limit = len(line.rstrip())
-        for column, text in clause_cuts(line, start, mask, limit):
-            found.append(Mutant(path, number, column, text, "", "clause removed"))
+        # `cut`, not `text`: binding the file's source here left every later line of the file read
+        # out of a clause string, so one `||` early in a changed range silenced everything after it.
+        for column, cut in clause_cuts(line, start, mask, limit):
+            found.append(Mutant(path, number, column, cut, "", "clause removed"))
         if GUARD_STATEMENT.match(stripped) and all(mask[start:start + limit]):
             found.append(Mutant(path, number, line.index(stripped), stripped, "", "guard removed"))
     return found
@@ -700,7 +709,12 @@ def failing_names(results):
 def read_counts(results):
     if not results.exists():
         return None
-    root = ET.parse(str(results)).getroot()
+    try:
+        root = ET.parse(str(results)).getroot()
+    except ET.ParseError:
+        # A killed editor leaves a part-written file. Raising here ends an hours-long campaign one
+        # line before the verdict that would have classified it.
+        return None
     if root.tag != "test-run":
         return None
     return {key: int(root.get(key, "0")) for key in ("total", "passed", "failed", "inconclusive")}
@@ -727,7 +741,7 @@ def refusal(code, message):
     return code
 
 
-def scope_digest(base, targets, project):
+def scope_digest(base, targets, project, platform):
     """What a campaign measured, in a form a later check can compare a tree against.
 
     Not the head tree: the campaign diffs the merge base against the **working tree**, so an
@@ -740,7 +754,7 @@ def scope_digest(base, targets, project):
     and this stays valid across it; including tests would void the receipt on the ordinary act of
     adding one after the run, which is most of a branch's commits.
     """
-    parts = [base]
+    parts = [base, platform]
     for path in sorted(targets, key=str):
         # Repository-relative, so a receipt does not depend on where the checkout sits: a resolved
         # path and an unresolved one reach the same file and digest differently.
@@ -1003,10 +1017,10 @@ def main():
             print("no mutable change; no campaign is owed")
             return 0
         since = merge_base_of(project, args.base)
-        digest = scope_digest(since, targets, project)
+        digest = scope_digest(since, targets, project, args.platform)
         held = read_receipt(output, digest)
         if held is None:
-            return refusal(1,
+            return refusal(RECEIPT_REFUSAL,
                            "no campaign has measured this tree's mutable change:\n"
                            + "\n".join("  {}".format(relative_to(path, project))
                                        for path in sorted(targets, key=str))
@@ -1014,7 +1028,7 @@ def main():
                              "  python3 scripts/test_quality/mutation_check.py --base {}".format(
                                  args.base))
         if held.get("verdict") not in PASSING_RECEIPTS:
-            return refusal(1, "the campaign over this tree ended {}: {}".format(
+            return refusal(RECEIPT_REFUSAL, "the campaign over this tree ended {}: {}".format(
                 held.get("verdict"), held.get("detail")))
         print("campaign {} over {}: {}".format(held.get("verdict"), digest[:12], held.get("detail")))
         return 0
@@ -1041,8 +1055,10 @@ def main():
             left = sum(len(lines) for lines in unreached.values())
             # Recorded, because the branch cannot earn a passing run and this is the reading it got.
             # A campaign nothing can ask anything of is a finished campaign, not an absent one.
-            if whole:
-                write_receipt(output, scope_digest(merge_base_of(project, args.base), targets, project),
+            if whole and not args.list:
+                write_receipt(output,
+                              scope_digest(merge_base_of(project, args.base), targets, project,
+                                           args.platform),
                               args.base, "unreachable",
                               "no operator reaches any of {} changed code line(s)".format(left))
             raise SystemExit(
@@ -1114,14 +1130,23 @@ def main():
             mutant.path.write_text(mutated)
             wall, timed_out = run_suite(args.unity, project, args.platform, scope, results, log,
                                         args.timeout, holder)
-            holder.release()
+            if holder.release() is None:
+                # The record is still there naming a file still mutated. Going on would apply the
+                # next mutation over this one and end by restoring the wrong text.
+                raise SystemExit("could not put {} back, so the campaign cannot continue; the record "
+                                 "at {} names what is outstanding".format(mutant.path, holder.sentinel))
 
             counts = read_counts(results)
             dll = assemblies_dir / "{}.dll".format(assembly_of(mutant.path))
             blamed = build_error(log)
             if timed_out:
-                mutant.verdict = KILLED
-                mutant.detail = "the run did not finish; the mutation left something not terminating"
+                # Not killed. A mutation that leaves a loop unbounded and a --timeout shorter than the
+                # suite reach here identically, and nothing in the results tells them apart: a killed
+                # editor writes no verdict either way. One of the two is a mutant nobody asked about,
+                # so the run refuses and says which reading to take.
+                mutant.verdict = TIMED_OUT
+                mutant.detail = ("the editor was killed at --timeout {}s; raise it, or read the log "
+                                 "for a mutation that does not terminate".format(args.timeout))
             elif blamed:
                 mutant.verdict = UNCOMPILABLE
                 mutant.detail = "the build stopped in {}".format(blamed)
@@ -1161,9 +1186,9 @@ def main():
     if not survivors:
         print("(none)")
 
-    unmeasured = [m for m in mutants if m.verdict == NOT_BUILT]
+    unmeasured = [m for m in mutants if m.verdict in (NOT_BUILT, TIMED_OUT)]
     if unmeasured:
-        print("\n--- mutants the editor never compiled; nothing was asked of the suite ---")
+        print("\n--- mutants nothing was asked of the suite about ---")
         for mutant in unmeasured:
             print("{}  {}".format(mutant.describe(project), mutant.detail))
 
@@ -1203,7 +1228,7 @@ def main():
     if whole:
         detail = "{} mutant(s), {} survivor(s) unanswered, {} line(s) unreached".format(
             len(mutants), len(unanswered), sum(len(lines) for lines in unreached.values()))
-        written = write_receipt(output, scope_digest(merge_base_of(project, args.base), targets, project),
+        written = write_receipt(output, scope_digest(merge_base_of(project, args.base), targets, project, args.platform),
                                 args.base, "fail" if failed else "pass", detail)
         print("\nreceipt: {}".format(written))
     return 1 if failed else 0
