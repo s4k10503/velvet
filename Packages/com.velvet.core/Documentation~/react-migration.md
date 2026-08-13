@@ -262,6 +262,17 @@ the flag off mid-edit receives the pending text rather than stranding it on scre
 > **Inner automatic memoization** (equivalent to React Compiler) is **default-on** for all `[Component]`; the ILPP caches VNode construction keyed on hook-derived inputs. No annotation needed. To exclude a specific Component, use `[Component(Compiler = false)]` (equivalent to React's `"use no memo"`).  
 > `Hooks.UseMemo(factory, deps)` is the value-memoization hook (React's `useMemo`). `V.Memoized(factory, deps)` is a node-level escape hatch that explicitly memoizes a **VNode subtree** (callable outside a render, e.g. what `[MemoizeMethod]` expands to); the reconciler reuses the cached subtree while the deps are unchanged. Both read `deps` per [§1-4](#1-4-what-a-dependency-list-means).
 
+<a id="what-a-position-is"></a>
+> **Note — what a position is**  
+> A component instance and its hook state belong to the position it is rendered at, as in React. The element a `V.Component` is written into is part of that position, so two containers hold two instances even where nothing else about the two call sites differs:
+>
+> ```csharp
+> V.Div(name: "left",  children: new VNode?[] { V.Component(Counter) })
+> V.Div(name: "right", children: new VNode?[] { V.Component(Counter) })
+> ```
+>
+> Those are two counters with two counts. Writing a component into a different container than the previous render did is therefore a fresh mount there and an unmount of the one it left — its state, refs and effects do not travel, and `key:` does not carry them, because a key separates siblings of one container rather than one container from another. A key is still what separates two occurrences **in** one container, and what keeps a reordered sibling matched with itself.
+
 ### 2-4. Context
 
 | React | Velvet | Notes |

@@ -30,6 +30,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The container a `V.Component` is written into is part of which instance it is, as the position of a
+  component is in React. Two sibling containers each holding the same component now hold two instances
+  with their own state, where they used to share one: the shared instance rendered its output into
+  whichever container the reconcile reached last, so the other container held a copy that no later
+  render ever updated, and a control inside that copy drove the surviving instance's state. Giving the
+  two occurrences the same `key:` shared one instance too; a key now makes no difference between
+  containers, because it separates siblings of one container rather than one container from another.
+  The consequence to read before upgrading is the other direction: writing a component into a
+  **different** container than the previous render did is now a fresh mount there and an unmount of
+  the one it left, so its state, refs and effects do not travel. The entry below states the same of a
+  portal's boundary, which holds even where the two sides share a container, so neither rule subsumes
+  the other. Keeping state across such a move means lifting it above both containers, to a `Store` or
+  to a `UseState` in the component that declares them. The migration guide states what a position is.
 - Moving a component across a `V.Portal`'s boundary is an unmount and a remount in every case now, so
   its state, refs and effects do not survive the move and the departing instance's cleanups run. A
   component written into a live portal's children that a previous render had outside them — and the same
