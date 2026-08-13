@@ -374,6 +374,14 @@ namespace Velvet.Tests
 
         private static readonly Regex OnKeyPattern = new(@"^  (?<event>[a-z_]+):", RegexOptions.Compiled);
 
+        // The one thing the Trigger column says that is not an event. Held both ways round, because
+        // deleting the clause is the repair a reader that stopped matching asks for, and the row would
+        // then have lost something true.
+        private const string ForkClause = "skipped when the workflow runs in a fork";
+
+        private static readonly Regex RepositoryGatePattern =
+            new(@"github\.repository\s*==", RegexOptions.Compiled);
+
         private static readonly Regex EventNameReferencePattern =
             new(@"github\.event_name", RegexOptions.Compiled);
 
@@ -383,35 +391,47 @@ namespace Velvet.Tests
         private static readonly Regex EventEqualityPattern =
             new(@"github\.event_name\s*==\s*(?<quote>['""])(?<event>[a-z_]+)\k<quote>", RegexOptions.Compiled);
 
-        /// <summary>The lines of a workflow's `on:` block.</summary>
+        // Three spellings of one key. One this misses leaves
+        // Given_EveryRowOfContributingsCiTable_When_ItsTriggerCellIsRead_Then_ItNamesWhatStartsThatJob
+        // printing an empty event set as what the row's job starts on.
+        private static readonly Regex OnKeyLinePattern =
+            new(@"^(?:on|""on""|'on'):[ \t]*(?<rest>.*)$", RegexOptions.Compiled);
+
+        /// <summary>The lines of a workflow's `on:` block, or null where it is not written as one.</summary>
         private static List<string> OnBlock(string workflow)
         {
-            var lines = workflow.Split('\n');
-            var start = Array.FindIndex(lines, line => line.TrimEnd('\r') == "on:");
+            var lines = workflow.Split('\n').Select(line => line.TrimEnd('\r')).ToList();
+            var start = lines.FindIndex(line => OnKeyLinePattern.IsMatch(line));
             if (start < 0)
             {
-                return new List<string>();
+                return null;
             }
 
-            var end = Array.FindIndex(lines, start + 1, line =>
+            // A flow sequence or a scalar puts the events on the key's own line, where the per-event keys
+            // read below do not exist. Refused rather than returned as a workflow subscribing to nothing,
+            // which is a claim this cannot make from having read nothing.
+            var rest = OnKeyLinePattern.Match(lines[start]).Groups["rest"].Value;
+            if (rest.Length > 0 && !rest.StartsWith("#", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var end = lines.FindIndex(start + 1, line =>
                 line.Length > 0 && !char.IsWhiteSpace(line[0]) && !line.StartsWith("#", StringComparison.Ordinal));
-            return lines.Skip(start + 1).Take((end < 0 ? lines.Length : end) - start - 1)
-                .Select(line => line.TrimEnd('\r'))
-                .ToList();
+            return lines.Skip(start + 1).Take((end < 0 ? lines.Count : end) - start - 1).ToList();
         }
 
         /// <summary>The events a workflow subscribes to, read out of its own `on:` block.</summary>
-        private static IEnumerable<string> SubscribedEvents(string workflow) =>
-            OnBlock(workflow)
+        private static IEnumerable<string> SubscribedEvents(List<string> onBlock) =>
+            onBlock
                 .Select(line => OnKeyPattern.Match(line))
                 .Where(match => match.Success)
                 .Select(match => match.Groups["event"].Value);
 
-        /// <summary>How the Trigger column spells this workflow's push subscription.</summary>
-        private static string PushPhrase(string workflow)
+        /// <summary>How the Trigger column spells the push subscription in this `on:` block.</summary>
+        private static string PushPhrase(List<string> onBlock)
         {
-            var block = OnBlock(workflow);
-            var push = block.FindIndex(line =>
+            var push = onBlock.FindIndex(line =>
                 OnKeyPattern.Match(line) is { Success: true } key && key.Groups["event"].Value == "push");
             if (push < 0)
             {
@@ -419,9 +439,9 @@ namespace Velvet.Tests
             }
 
             // paths-ignore counts, for the reason TriggerFilters in WorkflowTriggerCoverageTests gives.
-            for (var i = push + 1; i < block.Count && !OnKeyPattern.IsMatch(block[i]); i++)
+            for (var i = push + 1; i < onBlock.Count && !OnKeyPattern.IsMatch(onBlock[i]); i++)
             {
-                if (block[i].TrimStart().StartsWith("paths", StringComparison.Ordinal))
+                if (onBlock[i].TrimStart().StartsWith("paths", StringComparison.Ordinal))
                 {
                     return "push (filtered)";
                 }
@@ -464,6 +484,7 @@ namespace Velvet.Tests
 
             // Act
             var wrong = new List<string>();
+            var judged = 0;
             foreach (var row in rows)
             {
                 var workflow = workflows.FirstOrDefault(entry => entry.Name == row.Workflow);
@@ -472,8 +493,16 @@ namespace Velvet.Tests
                     continue;
                 }
 
+                judged++;
                 var label = row.Workflow + (row.Job.Length > 0 ? " ▸ " + row.Job : string.Empty);
-                var starts = SubscribedEvents(workflow.Text).Intersect(ContributorEvents, StringComparer.Ordinal)
+                var onBlock = OnBlock(workflow.Text);
+                if (onBlock == null)
+                {
+                    wrong.Add(label + " (its workflow writes `on:` in a shape this does not read)");
+                    continue;
+                }
+
+                var starts = SubscribedEvents(onBlock).Intersect(ContributorEvents, StringComparer.Ordinal)
                     .ToHashSet(StringComparer.Ordinal);
                 var job = row.Job.Length == 0
                     ? null
@@ -488,6 +517,13 @@ namespace Velvet.Tests
                     continue;
                 }
 
+                if (RepositoryGatePattern.IsMatch(gate) != row.Trigger.Contains(ForkClause, StringComparison.Ordinal))
+                {
+                    wrong.Add(label + (RepositoryGatePattern.IsMatch(gate)
+                        ? " (its if: pins the repository and its trigger does not say it is skipped in a fork)"
+                        : " (its trigger says it is skipped in a fork and its if: pins no repository)"));
+                }
+
                 if (named == 1)
                 {
                     starts.IntersectWith(new[] { equality.Groups["event"].Value });
@@ -495,7 +531,7 @@ namespace Velvet.Tests
 
                 // Spelt as the column spells it only after any gate has narrowed the events: a gate names
                 // the raw `push`, which intersects with nothing once the set holds `push (filtered)`.
-                var spelt = starts.Select(name => name == "push" ? PushPhrase(workflow.Text) : name)
+                var spelt = starts.Select(name => name == "push" ? PushPhrase(onBlock) : name)
                     .ToHashSet(StringComparer.Ordinal);
                 var claimed = TriggerPhrases
                     .Where(phrase => row.Trigger.Contains(phrase.Phrase, StringComparison.Ordinal))
@@ -512,9 +548,13 @@ namespace Velvet.Tests
                 }
             }
 
-            // Assert — the floor is on the rows for the reason
-            // Given_EveryRowOfContributingsCiTable_When_TheWorkflowsAreRead_Then_ItNamesOneThatExists gives.
-            Assert.That((rows.Count >= 2, string.Join("\n", wrong)), Is.EqualTo((true, string.Empty)));
+            // Assert — the floors are on what this judged and on the repository gates it found, rather
+            // than on the rows it was offered: a table matched to no workflow reports nothing wrong, and
+            // so does a gate reader that stopped matching once the clause it answers for has been deleted
+            // to clear the one row that reported it.
+            var pinned = workflows.Sum(entry => JobNames(entry.Text)
+                .Count(key => RepositoryGatePattern.IsMatch(JobLevelIf(AggregateBlock(entry.Text, key)) ?? string.Empty)));
+            Assert.That((judged >= 2, pinned >= 1, string.Join("\n", wrong)), Is.EqualTo((true, true, string.Empty)));
         }
 
         // Read by the output the license check publishes rather than by that job's name, so renaming the
