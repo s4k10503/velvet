@@ -297,7 +297,7 @@ on every platform.
 | `Test ▸ base-red` (EditMode / PlayMode) | every PR | **required** (skipped if absent) | no |
 | `Test ▸ Required checks (Unity)` | push (filtered) / every PR / merge group | not required | **yes** |
 | `UPM ▸ split` | push to `main` / manual (`workflow_dispatch`, which also tags and publishes the release) | not required | no |
-| `Docs` (DocFX → GitHub Pages) | push to `main` / release / manual | **required** (skipped if absent) | no |
+| `Docs` (DocFX → GitHub Pages) | push (filtered) / release / manual | **required** (skipped if absent) | no |
 
 The two required checks are aggregates, and the real jobs are not required themselves. A required check
 that does not run stays `Pending` and blocks the pull request with nothing able to clear it, which is what
