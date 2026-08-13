@@ -181,17 +181,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Status` first showed it. The outcome is now committed after the handlers on both paths, which is
   where v5 dispatches it, so a handler no longer reads its own call's outcome and `Data` stands only
   under `Status == Success`.
+
 - `RouteBlockerState.Proceed()` now re-issues the navigation its Blocker held, so the confirm-dialog flow
   it exists for reaches the destination: the user clicks "Leave" and the router goes there. It used to
   clear the state and invoke a callback nothing assigned, leaving the dialog closed and the navigation
   gone — reaching the destination meant copying `Attempt.NextPath` and `Attempt.NavigationMode` out before
   calling `Proceed()`, re-issuing them by hand, and arranging for the predicate to stop blocking, because
-  a re-issued attempt was put to that predicate again. A blocked Back or Forward resumes as the same
-  history step. `RouteBlockerStatus` has a third member, `Proceeding`, for the span between `Proceed()`
-  and the re-issued navigation settling: over it the Blocker still reports its `Attempt` and is consulted
-  about nothing, and it returns to `Idle` — which is what arms it for the next navigation — once that
-  navigation commits, ends without committing, or is abandoned. `Reset()` otherwise behaves as it did:
-  it abandons the attempt and leaves the router where it is. An exhaustive `switch` expression over
+  a re-issued attempt was put to that predicate again. What is re-issued is the navigation the caller
+  asked for, so a blocked Back or Forward resumes as the same history step, and one a Guard redirected
+  takes the redirect again from that step rather than committing the redirect target over the entry the
+  user was standing on. `RouteBlockerStatus` has a third member, `Proceeding`, for the span between
+  `Proceed()` and the re-issued navigation settling: over it the Blocker still reports its `Attempt` and
+  is consulted about nothing, and it returns to `Idle` — which is what arms it for the next navigation —
+  once that navigation has committed, ended without committing or been abandoned, and no Blocker is still
+  holding it. A second Blocker vetoing the re-issue is what holds it, and the first waits on that one
+  being answered. `Reset()` still abandons the attempt and leaves the router where it is, and now ends it
+  for the Blockers holding it alongside: their dialogs close too, and a `Proceed()` on one of them no
+  longer sends the router at a destination the user declined. An exhaustive `switch` expression over
   `RouteBlockerStatus` needs an arm for the new member. The navigation-blocking guide covers the whole
   flow, including what changes with more than one Blocker registered, where React Router supports a
   single one.

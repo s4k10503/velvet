@@ -11,12 +11,14 @@ namespace Velvet.Tests
     /// Replace by its path and in its mode, a Back or Forward as the same history step.</item>
     /// <item>While the re-issued navigation runs, the Blocker still holds the attempt it released — the
     /// status it reports over that span is pinned by <see cref="BlockerTests"/>.</item>
-    /// <item>The Blocker comes back to Idle when that navigation lands, and when it ends without landing,
-    /// so the next navigation is blocked again either way. On the landing it is already Idle by the time
-    /// <see cref="Router.OnLocationChanged"/> runs.</item>
-    /// <item>A second Blocker that blocks the re-issued navigation holds it instead: the first stays out of
-    /// the way until that one proceeds too, and comes back into it when that one resets.</item>
-    /// <item><see cref="RouteBlockerState.Reset"/> releases the Blocker and re-issues nothing.</item>
+    /// <item>The Blocker comes back to Idle once that navigation lands or ends without landing and no
+    /// Blocker is still holding it, so the next navigation is blocked again either way. On the landing it
+    /// is already Idle by the time <see cref="Router.OnLocationChanged"/> runs.</item>
+    /// <item>A second Blocker that blocks the re-issued navigation is what holds it then: the first stays
+    /// out of the way until that one proceeds too, and comes back into it when that one resets.</item>
+    /// <item><see cref="RouteBlockerState.Reset"/> releases the Blocker and re-issues nothing. It ends the
+    /// attempt for the Blockers holding it beside this one, so a later <c>Proceed</c> on one of them
+    /// resumes nothing.</item>
     /// </list>
     /// </summary>
     [TestFixture]
@@ -108,6 +110,32 @@ namespace Velvet.Tests
             // Assert — an unblocked GoBack lands on index 0 by itself, so the block is what makes the index
             // evidence about the resume rather than about the step.
             Assert.That((blockedResult, router.HistoryIndex), Is.EqualTo((NavigationResult.Blocked, 0)));
+        }
+
+        [Test]
+        public void Given_ABackStepAGuardRedirected_When_Proceed_Then_TheRedirectLandsOnTheBackTargetsSlot()
+        {
+            // Arrange — the Guard on "/b" lets the first arrival through and redirects the Back step, which
+            // reaches the Blocker as a Replace to "/login". Only the step the user asked for says which slot
+            // that Replace belongs in.
+            var guardChecks = 0;
+            var router = BuildRouter("/a", Route("a"),
+                Route("b", guard: _ => ++guardChecks == 1 ? null : "/login"),
+                Route("c"), Route("login"));
+            router.NavigateSync("/b");
+            router.NavigateSync("/c");
+            var state = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, state);
+            var blockedResult = router.GoBackSync();
+
+            // Act
+            state.Proceed();
+
+            // Assert — CanGoForward is what separates the Back target's slot from the slot the user was on:
+            // both land "/login", and only the step's own slot leaves "/c" ahead of it.
+            Assert.That(
+                (blockedResult, router.HistoryIndex, router.CurrentLocation.Path, router.CanGoForward),
+                Is.EqualTo((NavigationResult.Blocked, 1, "/login", true)));
         }
 
         [Test]
@@ -286,6 +314,32 @@ namespace Velvet.Tests
             Assert.That(
                 (blockedResult, checks, nextResult, router.CurrentLocation.Path),
                 Is.EqualTo((NavigationResult.Blocked, 3, NavigationResult.Blocked, "/home")));
+        }
+
+        // GREEN_ON_BASE(characterization): the base's Proceed re-issues nothing, so no Blocker can resurrect
+        // a declined attempt there and this reads as trivially true. It pins the release that the re-issue
+        // makes reachable: without it the second Proceed sends the router at the destination the first
+        // Blocker was answered "stay" about.
+        [Test]
+        public void Given_TwoBlockersHoldingOneAttempt_When_OneResets_Then_TheOthersProceedResumesNothing()
+        {
+            // Arrange
+            var router = BuildRouter("/home", Route("home"), Route("other"));
+            var first = new RouteBlockerState();
+            var second = new RouteBlockerState();
+            router.RouteBlockerManager.Register(_ => true, first);
+            router.RouteBlockerManager.Register(_ => true, second);
+            var blockedResult = router.NavigateSync("/other");
+            first.Reset();
+
+            // Act
+            second.Proceed();
+
+            // Assert — the first Blocker's status is what says the declined attempt is gone: a resume would
+            // put it back in front of the same dialog, at the same location either way.
+            Assert.That(
+                (blockedResult, first.Status, router.CurrentLocation.Path),
+                Is.EqualTo((NavigationResult.Blocked, RouteBlockerStatus.Idle, "/home")));
         }
 
         // GREEN_ON_BASE(characterization): Reset() releases the Blocker and abandons the blocked attempt on

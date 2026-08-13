@@ -55,9 +55,10 @@ namespace Velvet
         }
 
         /// <summary>
-        /// Releases the block and abandons the navigation this Blocker held, leaving the router where it is;
-        /// a Blocker that had proceeded into that navigation is armed again once none is holding it. Does
-        /// nothing unless <see cref="Status"/> is <see cref="RouteBlockerStatus.Blocked"/>.
+        /// Releases the block and abandons the navigation this Blocker held, leaving the router where it is.
+        /// Every other Blocker holding that navigation is released with it, and one that had proceeded into
+        /// it is armed again. Does nothing unless <see cref="Status"/> is
+        /// <see cref="RouteBlockerStatus.Blocked"/>.
         /// </summary>
         public void Reset()
         {

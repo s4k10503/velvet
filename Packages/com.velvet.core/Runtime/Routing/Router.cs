@@ -382,7 +382,7 @@ namespace Velvet
                 // this line leaves Status describing its own outcome, so a navigation that matches no route
                 // must not dispossess an attempt parked in a blocker — that attempt is then the only one able
                 // to put Status back.
-                pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode));
+                pending = new PendingNavigation(++_navigationSequence, CommitIndexFor(mode), path, mode);
             }
 
             RouterLocation location;
@@ -455,11 +455,19 @@ namespace Velvet
             internal readonly int Sequence;
             // The history slot this attempt commits into. Unused by a Push, which appends.
             internal readonly int CommitIndex;
+            // What the caller asked for, which a redirect inherits rather than restates: a Guard rewrites
+            // both the path and the mode on its way in, so the attempt a Blocker is handed no longer says
+            // which slot it belongs in. Blocker.Proceed() re-issues these, and the redirect is taken again
+            // from a navigation that resolves the same CommitIndex this one did.
+            internal readonly string OriginPath;
+            internal readonly NavigationMode OriginMode;
 
-            internal PendingNavigation(int sequence, int commitIndex)
+            internal PendingNavigation(int sequence, int commitIndex, string originPath, NavigationMode originMode)
             {
                 Sequence = sequence;
                 CommitIndex = commitIndex;
+                OriginPath = originPath;
+                OriginMode = originMode;
             }
         }
 
@@ -568,7 +576,7 @@ namespace Velvet
             // called (intentional).
             _blockerManager.ResetAllBlocked();
 
-            var blocked = await _blockerManager.CheckAsync(attempt, () => Resume(attempt), cancellationToken);
+            var blocked = await _blockerManager.CheckAsync(attempt, () => Resume(pending), cancellationToken);
             // A superseded navigation (a newer attempt cancelled our linked token) must unwind at the blocker
             // boundary. CheckAsync forwards the token to each blocker but cannot force one to honor it — a
             // blocker that returns false (or a synchronous blocker) leaves the loop returning false, which
@@ -591,29 +599,18 @@ namespace Velvet
         }
 
         // Invoked by RouteBlockerState.Proceed(), which is where the attempt resumed here was parked.
-        private void Resume(NavigationAttempt attempt) => ResumeAsync(attempt).Forget();
+        private void Resume(PendingNavigation pending) => ResumeAsync(pending).Forget();
 
-        private async UniTask ResumeAsync(NavigationAttempt attempt)
+        private async UniTask ResumeAsync(PendingNavigation pending)
         {
-#pragma warning disable CS8524 // no discard arm: a mode added without a way to resume it must not compile
-            var reissued = attempt.NavigationMode switch
-            {
-                NavigationMode.Back => GoBack(),
-                NavigationMode.Forward => GoForward(),
-                NavigationMode.Push or NavigationMode.Replace =>
-                    NavigateAsync(attempt.NextPath, attempt.NavigationMode),
-            };
-#pragma warning restore CS8524
-
             try
             {
-                await reissued;
+                await NavigateAsync(pending.OriginPath, pending.OriginMode);
             }
             finally
             {
-                // The commit is one way a proceeding Blocker comes back to Idle and this is the other: an
-                // attempt that reaches no commit leaves the Blockers that released it holding a navigation
-                // that is over.
+                // An attempt that reaches no commit leaves the Blockers that released it holding a
+                // navigation that is over, and the commit is the only other thing that ends that.
                 _blockerManager.SettleProceeding();
             }
         }
