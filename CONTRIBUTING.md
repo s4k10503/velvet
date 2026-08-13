@@ -218,8 +218,31 @@ so a rename is caught by the pull request that makes it rather than by the next 
 Most holes are legitimate — a negative assertion no cut can falsify, a case whose subject is another cut's
 layer — so what is worth catching is not the count but a change to the set, which a hole appearing while
 another disappears leaves identical. `scripts/test_quality/neuter_holes.txt` carries the approved set;
-`--report` regenerates it, so a sweep is read as a diff against it. Nothing runs the sweep automatically:
-wiring it into CI needs a licence activation this repository does not have.
+`--report` regenerates it, so a sweep is read as a diff against it.
+
+A sweep is one editor run per cut with a source edit between each. `Test ▸ unity-tests` is a single
+run with no edit between, and `Test ▸ test-quality` has no editor at all, so what runs there is the
+half that needs none:
+
+```bash
+python3 scripts/test_quality/neuter_check.py --audit
+```
+
+It reads the anchors a sweep cuts at, the hole baseline a sweep's output is diffed against, and
+`scripts/test_quality/neuter_uncovered.txt`, which records the parsers and appliers no cut reaches.
+Only the anchors are read by a sweep itself — the record by nothing else at all, the baseline only
+when `--baseline` is passed — so before this, two of the three were checked by running neither.
+Which files those are is two name shapes globbed in `neuter_check.py`, and they are not every
+class-driven mechanism — a parser named otherwise, or a manipulator, is answered for by nobody. Within
+the two, the record is what an arrival answers to: a class-driven mechanism fails by being ignored,
+which reads exactly like a class nobody wrote, so one arriving tomorrow must be given a cut or
+recorded as having none.
+
+Each of the three carries a floor, and the audit refuses when one of them reads short. The hole baseline's floor
+is on the fixtures it names, because `--report` writes only the fixtures its run swept: aimed at the
+record from a narrowed sweep it would replace the rest with them, which is refused before the run
+rather than after. A floor catches a collapse, not a thinning — a record rewritten to eighteen
+fixtures of one line each still passes.
 
 ### Checking that a new test could have failed
 
