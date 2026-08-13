@@ -40,21 +40,25 @@ UNCOVERED_FILE = "scripts/test_quality/neuter_uncovered.txt"
 HOLES_FILE = "scripts/test_quality/neuter_holes.txt"
 PACKAGE_ROOT = "Packages/com.velvet.core"
 
-# A parser and its applier are the two halves a class-driven payload passes through, and both are named
-# by convention, which is what lets the uncovered record be derived rather than listed. What sits outside
-# these two globs is required by nothing to have a cut: a manipulator, a build step and FiberNodePatcher
-# are all cut today and would each be recorded by no glob if the cut were dropped.
+# Two name shapes, not every class-driven mechanism. A manipulator, a build step and FiberNodePatcher
+# are cut today and no glob here would record any of them; MotionPropertyClassParser and
+# FiberWrapperElementAppliers sit inside these very directories and outside both patterns. What is
+# derived is coverage of these two shapes, and a mechanism outside them is answered for by nobody.
 MECHANISM_GLOBS = (
     ("Runtime/Styling", "Style*Class.cs"),
     ("Runtime/Reconciler", "Fiber*Applier.cs"),
 )
 
-# A moved directory globs nothing and a renamed JSON key parses to no cut, and neither disagrees with
-# any record. So these are what separate an audit that read the repository from one that read nothing
-# and exited 0. They are floors rather than exact counts, so a cut added tomorrow needs no edit here.
+# A moved directory globs nothing, a renamed JSON key parses to no cut, and a record overwritten by a
+# one-fixture --report names one fixture. None of the three disagrees with anything, so these are what
+# separate an audit that read the repository from one that read nothing and exited 0. Each is checked
+# on its own: OR them together and a test can only hold that some one of them is still positive.
+# Floors rather than exact counts, so a cut added tomorrow needs no edit here — but a campaign that
+# closes holes down past the last one lowers it here, where the shrinking record is reviewed with it.
 MECHANISM_FLOOR = 25
 CUT_FLOOR = 25
 FIXTURE_FLOOR = 15
+HOLE_FIXTURE_FLOOR = 18
 
 # Failed is the one result no hole may carry: report_pair keeps a case only when the cut did not turn it
 # red, so a line saying otherwise came from something other than a sweep.
@@ -288,10 +292,9 @@ def declaring_sources(project, short_name):
             if pattern.search(path.read_text())]
 
 
-# A renamed case carries the given name into the results and not its method's, so a reader of
-# declarations alone hands back eighteen of StyleFontTests' recorded holes as declared by nothing. Both
-# spellings of the rename are read; they are the only two this repository's test sources use, and a
-# third would arrive as a case declared by nothing rather than as silence.
+# RenamedCases in test_neuter_check.py pins the two rename spellings below. One this misses — a
+# rename built from an expression rather than a literal, which the test sources also hold — arrives as
+# a case declared by nothing rather than as silence.
 CASE_DECLARATION = re.compile(
     r"public\s+(?:void|IEnumerator)\s+(Given_\w+)"
     r"|TestName\s*=\s*\"(Given_\w+)\""
@@ -338,16 +341,24 @@ def holes_problems(project, cuts):
         return [f"{HOLES_FILE} not found; a sweep has nothing to be read as a diff against"]
     lines = [(number, line) for number, line in enumerate(path.read_text().splitlines(), start=1)
              if line.strip()]
+    problems = []
+    covered = {line.split("\t")[0] for _, line in lines}
+    if len(covered) < HOLE_FIXTURE_FLOOR:
+        problems.append(f"{HOLES_FILE} names fewer than {HOLE_FIXTURE_FLOOR} fixtures "
+                        f"({len(covered)}); a record a partial sweep overwrote agrees with every line "
+                        "still in it")
     cases = {fixture: declared_cases(project, fixture) for fixture in cuts["fixtures"]}
-    return hole_problems(lines, cuts, cases)
+    return problems + hole_problems(lines, cuts, cases)
 
 
 def audit(project, cuts):
     """Everything a sweep rests on that can be decided without an editor."""
     problems = validate(project, cuts)
-    if len(cuts["cuts"]) < CUT_FLOOR or len(cuts["fixtures"]) < FIXTURE_FLOOR:
-        problems.append(f"the cut map parsed to {len(cuts['cuts'])} cuts and {len(cuts['fixtures'])} "
-                        f"fixtures, fewer than {CUT_FLOOR} and {FIXTURE_FLOOR}")
+    if len(cuts["cuts"]) < CUT_FLOOR:
+        problems.append(f"the cut map parsed to {len(cuts['cuts'])} cuts, fewer than {CUT_FLOOR}")
+    if len(cuts["fixtures"]) < FIXTURE_FLOOR:
+        problems.append(f"the cut map parsed to {len(cuts['fixtures'])} fixtures, "
+                        f"fewer than {FIXTURE_FLOOR}")
     return problems + coverage_problems(project, cuts) + holes_problems(project, cuts)
 
 
@@ -434,8 +445,18 @@ def baseline_problem(fixture, baseline):
 
 
 def baseline_arg_problems(args):
-    """Arguments that would make --baseline meaningless, checked before the first editor run."""
+    """Arguments that would make --report or --baseline meaningless, checked before the first run.
+
+    --report writes the fixtures this run swept and nothing else, so aiming a narrowed sweep at the
+    checked-in record replaces the rest of it with them. The audit downstream reads a truncated record
+    as one every line still in it agrees with, and the next full sweep reads it as holes that opened.
+    """
     problems = []
+    if args.report and args.fixtures and (
+            Path(args.report).resolve() == (Path(args.project).resolve() / HOLES_FILE)):
+        problems.append(
+            f"--fixtures narrows this sweep to {len(args.fixtures)}, and --report would write only "
+            f"those over {HOLES_FILE}. Report elsewhere and fold the lines in, or sweep every fixture.")
     if not args.baseline:
         return problems
     baseline = Path(args.baseline).resolve()

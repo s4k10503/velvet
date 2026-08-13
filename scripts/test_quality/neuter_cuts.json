@@ -545,7 +545,7 @@
     {
       "name": "child-variant-parser",
       "mechanism": "child-variant",
-      "summary": "the child variant parser claims no [&>*] token and resolves no payload",
+      "summary": "the child variant parser extracts and parses no [&>*] payload",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleChildVariantClass.cs",
@@ -584,7 +584,7 @@
     {
       "name": "balance-token",
       "mechanism": "balance",
-      "summary": "the balance class parser claims no text-balance token",
+      "summary": "the balance class parser finds no text-balance class on a class list",
       "edits": [
         {
           "file": "Packages/com.velvet.core/Runtime/Styling/StyleTextBalanceClass.cs",

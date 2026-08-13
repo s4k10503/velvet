@@ -9,6 +9,7 @@ reader that came back empty agrees with every record it is handed.
 Run: python3 scripts/test_quality/test_neuter_check.py
 """
 
+import argparse
 import importlib.util
 import json
 import tempfile
@@ -125,18 +126,19 @@ class CutMap(unittest.TestCase):
 
 
 class AuditReadsNothing(unittest.TestCase):
-    """What the audit does on a tree it can find neither a mechanism nor a cut in.
+    """What the audit does on each reader that came back with nothing.
 
-    An empty glob and an empty cut map disagree with no record, so the reading that must never pass is
-    the one where there was no reading: an audit that exits 0 having looked at an empty tree is
-    indistinguishable from one that checked the repository. The empty cut map is what makes these two
-    cases sharp — with no anchor to locate, nothing but the floors can report.
+    A glob that matched no file, a map that parsed to no cut and no fixture, and a record naming no
+    fixture each disagree with nothing, so an audit that exits 0 having read an empty tree is
+    indistinguishable from one that checked the repository. A case per floor rather than one over all
+    of them: with the cut and fixture floors OR'd into a single branch, either could be set to zero
+    and this suite stayed green.
     """
 
-    def audit_empty_tree(self):
+    def audit_empty_tree(self, cuts=None):
         with tempfile.TemporaryDirectory() as tree:
             project = scaffold(Path(tree))
-            return neuter_check.audit(project, {"cuts": {}, "fixtures": {}})
+            return neuter_check.audit(project, cuts or {"cuts": {}, "fixtures": {}})
 
     def test_Given_ATreeWithNoMechanismInIt_When_TheAuditReadsIt_Then_TheGlobFloorRefuses(self):
         # Act
@@ -145,12 +147,63 @@ class AuditReadsNothing(unittest.TestCase):
         # Assert
         self.assertTrue(any("mechanism glob found 0" in problem for problem in problems), problems)
 
-    def test_Given_ACutMapThatParsedToNothing_When_TheAuditReadsIt_Then_TheMapFloorRefuses(self):
+    def test_Given_ACutMapThatParsedToNoCut_When_TheAuditReadsIt_Then_TheCutFloorRefuses(self):
+        # Arrange — enough fixtures that only the cut term can report.
+        fixtures = {f"Velvet.Tests.F{n}": {"cuts": []} for n in range(neuter_check.FIXTURE_FLOOR)}
+
+        # Act
+        problems = self.audit_empty_tree({"cuts": {}, "fixtures": fixtures})
+
+        # Assert
+        self.assertTrue(any("parsed to 0 cuts" in problem for problem in problems), problems)
+
+    def test_Given_ACutMapThatParsedToNoFixture_When_TheAuditReadsIt_Then_TheFixtureFloorRefuses(self):
+        # Arrange — enough cuts that only the fixture term can report.
+        cuts = {f"c{n}": {"edits": []} for n in range(neuter_check.CUT_FLOOR)}
+
+        # Act
+        problems = self.audit_empty_tree({"cuts": cuts, "fixtures": {}})
+
+        # Assert
+        self.assertTrue(any("parsed to 0 fixtures" in problem for problem in problems), problems)
+
+    def test_Given_AHoleRecordNamingNoFixture_When_TheAuditReadsIt_Then_TheRecordFloorRefuses(self):
         # Act
         problems = self.audit_empty_tree()
 
         # Assert
-        self.assertTrue(any("cut map parsed to 0" in problem for problem in problems), problems)
+        self.assertTrue(any("fixtures (0)" in problem for problem in problems), problems)
+
+
+class ReportOverTheRecord(unittest.TestCase):
+    """--report writes the fixtures a run swept and nothing else, so a narrowed sweep aimed at the
+    checked-in record replaces the rest of it with them — which the audit downstream reads as a record
+    every line still in it agrees with."""
+
+    def problems(self, fixtures, report):
+        return neuter_check.baseline_arg_problems(argparse.Namespace(
+            project=".", fixtures=fixtures, report=report, baseline=None))
+
+    def test_Given_ANarrowedSweep_When_ItReportsOverTheRecord_Then_ItIsRefused(self):
+        # Act
+        problems = self.problems(["Velvet.Tests.HasVariantTests"], neuter_check.HOLES_FILE)
+
+        # Assert
+        self.assertIn("--report would write only those over", "\n".join(problems))
+
+    def test_Given_AWholeSweep_When_ItReportsOverTheRecord_Then_NothingIsReported(self):
+        # Act
+        problems = self.problems(None, neuter_check.HOLES_FILE)
+
+        # Assert
+        self.assertEqual(problems, [])
+
+    def test_Given_ANarrowedSweep_When_ItReportsElsewhere_Then_NothingIsReported(self):
+        # Act
+        problems = self.problems(["Velvet.Tests.HasVariantTests"], "Logs/sweep.txt")
+
+        # Assert
+        self.assertEqual(problems, [])
 
 
 class CoverageDrift(unittest.TestCase):
@@ -174,7 +227,7 @@ class CoverageDrift(unittest.TestCase):
         # Assert
         self.assertIn("a cut disables it", "\n".join(drift))
 
-    def test_Given_AMechanismACutDisables_When_TheRecordDoesNotName_It_Then_NothingIsReported(self):
+    def test_Given_AMechanismACutDisables_When_TheRecordDoesNotNameIt_Then_NothingIsReported(self):
         # Arrange
         path = "Runtime/Styling/StyleNewClass.cs"
 
@@ -200,9 +253,9 @@ class CoverageDrift(unittest.TestCase):
 class RenamedCases(unittest.TestCase):
     """A renamed case is declared by no method, and the given name is the one the results carry.
 
-    Read from method declarations alone, eighteen of StyleFontTests' recorded holes name a case this
-    repository does not appear to declare — which the hole baseline would report as rot in the record
-    rather than as a reader that stops at one of the three spellings.
+    Read from method declarations alone, the hole baseline names cases this repository appears not to
+    declare, and the audit reports every one as rot in the record rather than as a reader stopping
+    short of a spelling.
     """
 
     def cases_of(self, body):

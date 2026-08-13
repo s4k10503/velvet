@@ -154,13 +154,17 @@ python3 scripts/test_quality/neuter_check.py --audit
 ```
 
 It holds the three things a sweep runs on: the anchors, the hole baseline, and
-`scripts/test_quality/neuter_uncovered.txt`, which records the class-driven mechanisms no cut reaches
-— derived by a glob in `neuter_check.py` rather than listed there or here. That record is what a
-mechanism arriving tomorrow answers to: a class-driven mechanism fails by being ignored, which reads
-exactly like a class nobody wrote, so a new one must be given a cut or recorded as having none.
+`scripts/test_quality/neuter_uncovered.txt`, which records the parsers and appliers no cut reaches.
+Which files those are is two name shapes globbed in `neuter_check.py`, and they are not every
+class-driven mechanism — a parser named otherwise, or a manipulator, is answered for by nobody. Within
+the two, the record is what an arrival answers to: a class-driven mechanism fails by being ignored,
+which reads exactly like a class nobody wrote, so one arriving tomorrow must be given a cut or
+recorded as having none.
 
-Each of those three readings agrees with an empty record, so the audit refuses on a reader that came
-back with nothing rather than reporting agreement.
+Each of those three readings agrees with a reader that came back with nothing, so each carries a floor
+and the audit refuses rather than reporting agreement. The hole baseline's floor is on the fixtures it
+names, because `--report` writes only the fixtures its run swept: aimed at the record from a narrowed
+sweep it would replace the rest with them, which is refused before the run rather than after.
 
 ### Checking that a new test could have failed
 
