@@ -145,19 +145,22 @@ layer — so what is worth catching is not the count but a change to the set, wh
 another disappears leaves identical. `scripts/test_quality/neuter_holes.txt` carries the approved set;
 `--report` regenerates it, so a sweep is read as a diff against it.
 
-A sweep is one editor run per cut, which no pull request has the budget for, so what runs in
-`Test ▸ test-quality` is the half that needs no editor:
+A sweep is one editor run per cut with a source edit between each. `Test ▸ unity-tests` is a single
+run with no edit between, and `Test ▸ test-quality` has no editor at all, so what runs there is the
+half that needs none:
 
 ```bash
 python3 scripts/test_quality/neuter_check.py --audit
 ```
 
-It holds the three things a sweep runs on — the anchors, the hole baseline, and
-`scripts/test_quality/neuter_uncovered.txt`, which records the class-driven mechanisms no cut reaches.
-Which files those are is a glob in `neuter_check.py` rather than a list here, and it is the one a
+It holds the three things a sweep runs on: the anchors, the hole baseline, and
+`scripts/test_quality/neuter_uncovered.txt`, which records the class-driven mechanisms no cut reaches
+— derived by a glob in `neuter_check.py` rather than listed there or here. That record is what a
 mechanism arriving tomorrow answers to: a class-driven mechanism fails by being ignored, which reads
-exactly like a class nobody wrote, so a new one must be given a cut or recorded as having none. Every one of those readings agrees with an empty record, so the audit refuses
-wherever a reader came back empty rather than reporting agreement.
+exactly like a class nobody wrote, so a new one must be given a cut or recorded as having none.
+
+Each of those three readings agrees with an empty record, so the audit refuses on a reader that came
+back with nothing rather than reporting agreement.
 
 ### Checking that a new test could have failed
 
