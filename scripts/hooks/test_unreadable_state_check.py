@@ -428,7 +428,33 @@ NO_CHECKS_AND_A_ROLLUP = """#!/bin/sh
 case "$1 $2" in
   "pr list")   echo 51 ;;
   "pr checks") echo "no checks reported on the 'topic' branch" >&2; exit 1 ;;
-  "pr view")   case "$*" in *statusCheckRollup*) echo 0 ;; *) echo CLEAN ;; esac ;;
+  "pr view")   case "$*" in
+                 *statusCheckRollup*)
+                   case "$*" in
+                     *--jq*) echo 0 ;;
+                     *) echo '{"statusCheckRollup":[]}' ;;
+                   esac ;;
+                 *) echo CLEAN ;;
+               esac ;;
+  *)           exit 0 ;;
+esac
+"""
+
+# The rollup answers, and what it answers is not a list. This stub applies `--jq` the way gh would,
+# so a guard that asks for `| length` is handed the 0 jq gives for a null and a guard that reads the
+# payload is handed the null itself — the two readings of one answer, which is the whole question.
+NO_CHECKS_AND_A_NULL_ROLLUP = """#!/bin/sh
+case "$1 $2" in
+  "pr list")   echo 51 ;;
+  "pr checks") echo "no checks reported on the 'topic' branch" >&2; exit 1 ;;
+  "pr view")   case "$*" in
+                 *statusCheckRollup*)
+                   case "$*" in
+                     *--jq*) echo 0 ;;
+                     *) echo '{"statusCheckRollup":null}' ;;
+                   esac ;;
+                 *) echo CLEAN ;;
+               esac ;;
   *)           exit 0 ;;
 esac
 """
@@ -489,6 +515,14 @@ class ZeroCheckTests(unittest.TestCase):
         # Act / Assert
         self.assertIn(check.SELF_REPORT, said)
 
+    def test_Given_ARollupThatIsNotAList_When_ItIsRead_Then_ItIsNotTakenForNone(self):
+        # Arrange — the merge state answers CLEAN, so a rollup misread as empty produces the
+        # zero-check reminder about a list nothing here understood.
+        said = self.said(NO_CHECKS_AND_A_NULL_ROLLUP)
+
+        # Act / Assert
+        self.assertEqual((check.SELF_REPORT in said, "no checks apply to it" in said), (True, False))
+
     def test_Given_AnUnreadCheckListBesideAReadableMergeState_When_Judged_Then_NoneIsNotReportedAsZero(self):
         # Arrange — the merge state answers CLEAN, so a check read taken for an empty one produces
         # the zero-check reminder: "no checks apply to it", about a list nothing here read.
@@ -496,6 +530,61 @@ class ZeroCheckTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual((check.SELF_REPORT in said, "no checks apply to it" in said), (True, False))
+
+
+# Two open pull requests, neither carrying a check, both readable. What varies between the cases
+# below is only how many of them a deferral holds.
+TWO_SETTLED_PULL_REQUESTS = """#!/bin/sh
+case "$1 $2" in
+  "pr list")   printf '1\n2\n' ;;
+  "pr checks") echo "no checks reported on the 'topic' branch" >&2; exit 1 ;;
+  "pr view")   case "$*" in
+                 *statusCheckRollup*) echo '{"statusCheckRollup":[]}' ;;
+                 *) echo BEHIND ;;
+               esac ;;
+  *)           exit 0 ;;
+esac
+"""
+
+NOTHING_WAS_READ = "none of them was read this time"
+
+
+class AllHeldTests(unittest.TestCase):
+    """Every open pull request deferred means the guard read none of them.
+
+    A deferral is checked before the pull request is, so the held list after checking each one and
+    the held list after checking nothing are the same list. Which of the two it is costs no reading
+    to know — the count says it — and saying it is the difference between a report about the pull
+    requests and a report about what was claimed of them.
+    """
+
+    GUARD = REPO_ROOT / ".claude/hooks/stop/unsettled_pr.py"
+
+    def said(self, deferrals):
+        home = Path(tempfile.mkdtemp(prefix="velvet-all-held-home-"))
+        try:
+            (home / ".velvet-pr-deferrals").write_text(deferrals, encoding="utf-8")
+            _, _, errors, _ = check.run_guard(self.GUARD, check.STOP_PAYLOAD, "probe", REPO_ROOT,
+                                              home, {"probe": {"gh": TWO_SETTLED_PULL_REQUESTS}})
+            return errors
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def held(self, *numbers):
+        stamp = int(time.time())
+        return "".join(f"{number} waiting on a review {stamp}\n" for number in numbers)
+
+    def test_Given_EveryOpenPullRequestHeld_When_TheSessionEnds_Then_ItSaysNoneWasRead(self):
+        # Act / Assert
+        self.assertIn(NOTHING_WAS_READ, self.said(self.held(1, 2)))
+
+    def test_Given_OnlySomeHeld_When_TheSessionEnds_Then_TheOthersWereReadAndItDoesNotSayOtherwise(self):
+        # Arrange — the control: the sentence has to be about all of them being held, not about any
+        # of them being held.
+        said = self.said(self.held(1))
+
+        # Act / Assert
+        self.assertEqual((NOTHING_WAS_READ in said, "PR #1" in said), (False, True))
 
 
 class WatcherDeferralTests(unittest.TestCase):

@@ -114,9 +114,13 @@ class OpenPullRequestTests(unittest.TestCase):
         self.assertGreater(len(subcommands), 1)
 
 
-# What a Stop may spend on this reading before the pause stops being one. A judgement rather than a
-# reading of the settings: the timeout registered there is orders larger than anything anyone would
-# wait at a Stop, so comparing against it passes whatever is written here and pins nothing.
+# What a Stop may spend on this reading before the pause stops being one.
+#
+# Owned here rather than read from the settings, and that is not the mirror it might look like: a
+# mirror copies a value some other file decides, and drifts when that file changes. This decides
+# nothing twice. It is a judgement about how long a person will wait before a pause stops reading as
+# one, which no configured number states — the timeout registered for these guards is orders larger
+# than that, so comparing against it would pass whatever is written here and pin nothing.
 LONGEST_WORTH_WAITING = 20
 
 

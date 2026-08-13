@@ -73,12 +73,22 @@ def merge_state(pr):
 def carries_no_check(pr):
     """Whether the head really carries no check, asked a way that answers instead of erroring.
 
-    The rollup is read for its length and nothing else — the buckets stay `gh pr checks`'s to name,
-    so this adds no second copy of what a conclusion means.
+    The rollup is read for whether it is an empty list and nothing else — the buckets stay
+    `gh pr checks`'s to name, so this adds no second copy of what a conclusion means.
+
+    Read whole rather than through `--jq '.statusCheckRollup | length'`: jq answers 0 for a field
+    that is absent or null exactly as it does for one that is an empty list, so the shorter form
+    turns a payload this could not understand into "there are none" — which is the reading that put
+    an unread pull request into the settled set in the first place. Only an empty list says so.
     """
-    out, _, code = gh(["pr", "view", pr, "--json", "statusCheckRollup",
-                       "--jq", ".statusCheckRollup | length"])
-    return code == 0 and out == "0"
+    out, _, code = gh(["pr", "view", pr, "--json", "statusCheckRollup"])
+    if code != 0:
+        return False
+    try:
+        rollup = json.loads(out or "{}").get("statusCheckRollup")
+    except ValueError:
+        return False
+    return isinstance(rollup, list) and not rollup
 
 
 def checks_of(pr):
@@ -212,7 +222,14 @@ def main():
         # A held PR still gets said out loud on the way past, so the claim is re-read rather than
         # trusted.
         if held:
-            print("Held, not settled — check each reason is still true:", file=sys.stderr)
+            # A held pull request is skipped above before `judge`, so every one of them held means
+            # no pull request was read this time. Under the ordinary heading that list reads as
+            # "each was checked and each is held", which is a different claim — and the count
+            # separates the two without any reading of its own.
+            print("Every open pull request is held, so none of them was read this time. What "
+                  "follows is what was claimed, not what is true of them now:"
+                  if len(held) == len(prs) else
+                  "Held, not settled — check each reason is still true:", file=sys.stderr)
             print("\n" + "\n".join(held), file=sys.stderr)
         if ignored:
             print("\nDeferrals that were ignored:", file=sys.stderr)
