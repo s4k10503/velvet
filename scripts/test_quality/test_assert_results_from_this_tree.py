@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Unit tests for assert_results_from_this_tree.py, plus its type reader over this repository.
+"""Unit tests for assert_results_from_this_tree.py, plus two of its readings held against real sources.
 
-Every case here is built from a results file and a log rather than from an editor run, because what
-the guard has to survive is the state an editor run leaves behind when it does not finish -- a
-results file at a path a later run never reached. The one reading that needs real material is the
-type reader, and it gets this repository's own fixtures.
+The cases over its verdict are built from a results file and a log rather than from an editor run,
+because what the guard has to survive is the state an editor run leaves behind when it does not
+finish -- a results file at a path a later run never reached. Two readings are held against material
+nothing here invents instead: the type reader against this repository's own fixtures, and the log
+pattern against every diagnostic identifier the analyzer sources declare.
 
 Run: python3 scripts/test_quality/test_assert_results_from_this_tree.py
 """
@@ -189,6 +190,21 @@ class ProvenanceTests(unittest.TestCase):
             # Assert
             self.assertEqual(code, 1)
 
+    def test_Given_AnAssemblyNeitherThisTreeNorAPackageNames_When_ItReportsAStrangerBesideOurs_Then_ItIsRefused(self):
+        # Arrange -- the shape a seeded Library reports: this tree's own assemblies compile and run,
+        # and the Library carries a test assembly no asmdef here names, holding another checkout's
+        # fixture. One of ours has to report alongside it, or the floor refuses for want of anything
+        # of this worktree's having run and the fixture reading is never reached.
+        with workspace() as tree:
+            tree.wrote([("Velvet.Tests.Probe.Editor", ["Velvet.Tests.ProbeTests"]),
+                        ("Velvet.Tests.Scratch.Editor", ["Velvet.Tests.ZzScratchDiagnosticsTests"])])
+
+            # Act
+            code, said = tree.verdict()
+
+            # Assert
+            self.assertEqual((code, "ZzScratchDiagnosticsTests" in said), (1, True))
+
     def test_Given_ANestedFixtureDeclaredHere_When_ItIsReportedWithAPlus_Then_ItIsNotRefused(self):
         # Arrange
         with workspace() as tree:
@@ -265,9 +281,10 @@ class LogTests(unittest.TestCase):
             self.assertEqual((code, "VEL501" in said), (1, True))
 
     def test_Given_ALogCarryingUnitysOwnCapitalisedErrorLine_When_TheRunIsRead_Then_ItIsNotRefused(self):
-        # Arrange -- Unity's own subsystems print a capitalised error line into every editor log,
-        # and the separator is the only thing between it and a diagnostic: measured, a pattern
-        # widened to the bare word refuses every results-writing log on this machine, all 265.
+        # Arrange -- chatter a log that compiled carries anyway. What this case pins is the capital:
+        # it dies under a reading that reaches `Error:`, whether by IGNORECASE or by an alternation,
+        # and a widening to the bare lowercase word leaves it green -- that one is what the case
+        # over a run's own output catches.
         with workspace() as tree:
             tree.wrote(log="Saving results to: {}\n[Licensing::Module] Error: Access token is "
                            "unavailable; failed to update\n".format(tree.results))
@@ -447,6 +464,23 @@ class UnreadableTests(unittest.TestCase):
             # Assert
             self.assertEqual(code, 2)
 
+    def test_Given_ACaseUnderNoAssemblySuite_When_OneUnderAnAssemblyIsReadBesideIt_Then_TheReadingIsRefused(self):
+        # Arrange -- the loose case names a fixture this tree does declare, so the alternative of
+        # sorting the unattributed bucket alongside the rest would have exited 0 on a file half of
+        # which could not be attributed at all.
+        with workspace() as tree:
+            loose = ('<test-case name="Case" fullname="Velvet.Tests.ProbeTests.Case" '
+                     'classname="Velvet.Tests.ProbeTests" result="Passed" />')
+            tree.wrote(results=results_xml([("Velvet.Tests.Probe.Editor",
+                                             ["Velvet.Tests.ProbeTests"])])
+                       .replace("</test-run>", loose + "</test-run>"))
+
+            # Act
+            code, said = tree.verdict()
+
+            # Assert
+            self.assertEqual((code, "no assembly suite" in said), (2, True))
+
     def test_Given_AResultsFileNoParserCanRead_When_TheRunIsRead_Then_TheReadingIsRefused(self):
         # Arrange
         with workspace() as tree:
@@ -501,8 +535,12 @@ class DiagnosticIdTests(unittest.TestCase):
     def test_Given_EveryDiagnosticIdTheAnalyzersHereDeclare_When_RaisedAsAnError_Then_TheLogReadingMatchesIt(self):
         # Arrange -- read off the analyzer sources rather than listed, since which of them is an
         # error is not fixed: a descriptor can be declared at error severity, and any of them can be
-        # promoted to one by warnaserror or by a severity entry. A reading keyed on an ID space
-        # would have to be widened once per addition, and nothing would say when.
+        # promoted to one by warnaserror or by a severity entry.
+        #
+        # What this holds is that the reading is keyed on the rendering rather than on an ID space:
+        # it dies when the pattern is narrowed back to one, `: error CS` above all. It is not
+        # coverage of a newly declared identifier and cannot be -- the pattern never reads the name,
+        # which is exactly why adding one needs no change here.
         generators = REPO_ROOT / "Packages" / "com.velvet.core" / "Generators~" / "src"
         ids = sorted({found for path in generators.rglob("*.cs")
                       for found in ANALYZER_ID.findall(

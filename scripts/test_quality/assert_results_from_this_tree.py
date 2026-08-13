@@ -12,9 +12,9 @@ exit code is the caller's to notice, and nobody was reading it.
 Three readings, and the run has to survive all of them:
 
   - the log names the results file, which is how a run says the file is its own;
-  - the log carries no diagnostic at error severity, whoever raised it;
-  - every fixture reported under an assembly this worktree declares is a type some source here
-    declares.
+  - the log carries no line rendered as a compiler error, whichever analyzer raised it;
+  - every fixture reported is a type some source here declares, unless the assembly reporting it is
+    a resolved package's and not this worktree's.
 
 The third asks nothing of the log, so it is what stands where a results file IS the run's own and
 the tree is not the one it was taken from -- a checkout that moved between the run and the reading,
@@ -37,13 +37,14 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 # Not the CS ID space: an analyzer under Generators~ raises its own at error severity, which fails
-# the compile with no CS code in the log to find it by. Matched on the separator a diagnostic line
+# the compile with no CS code in the log to find it by. Matched on the rendering a diagnostic line
 # carries rather than on a list of ID prefixes -- the test module reads the identifiers the
 # analyzers declare and holds this pattern to matching every one.
 #
-# The separator is not decoration. Every editor log carries capitalised `] Error:` lines from Unity's
-# own subsystems, so a pattern widened to the bare word refuses every run there has ever been; the
-# test module pins that too.
+# The whole shape is read, and the test module has a case per way of giving one up. Drop the
+# separator and a run's own prose -- "mount error: the target was null" -- refuses the run that
+# printed it. Allow a capital as well and the `] Error:` lines Unity's own subsystems print refuse
+# a run that compiled cleanly.
 COMPILE_ERROR = re.compile(r": error ")
 
 SAVED_RESULTS = re.compile(r"^Saving results to: (.+?)\s*$", re.MULTILINE)
@@ -80,7 +81,7 @@ class Unreadable(Exception):
 # --------------------------------------------------------------------------------------------------
 
 def worktree_files(project, pathspec):
-    """Every file matching a pathspec that git does not ignore, tracked or not.
+    """Every file matching a pathspec that git tracks or does not ignore.
 
     Asked of git rather than walked, so a fixture written a minute ago and never added counts as
     this worktree's while everything under the directories .gitignore names -- Library/PackageCache
@@ -144,7 +145,7 @@ def _opened(stack, entering, peak, leaving):
 
 
 def declared_types(text):
-    """Every type a C# source declares, fully qualified, an enclosing scope joined on with a dot.
+    """Every class, struct or record a C# source declares, fully qualified with its enclosing scopes.
 
     Same stack discipline as base_red_check.py's case reader, which owns why a scope leaves the
     stack on the depth its body opened at. Namespaces are on a stack of their own rather than a
@@ -184,7 +185,7 @@ def declared_types(text):
 
 
 def types_here(project):
-    """Every type any C# source in this worktree declares."""
+    """Every class, struct or record any C# source in this worktree declares."""
     sources = worktree_files(project, "*.cs")
     if not sources:
         raise Unreadable("{}: no C# source here, so no fixture could be attributed to this "
@@ -248,6 +249,11 @@ def fixtures_by_assembly(path):
         for case in node.findall("test-case"):
             name = CLR_ARITY.sub("", CLR_NESTING.sub(".", case.get("classname") or ""))
             if name:
+                # No suite above it says which assembly ran it, so whether that assembly is this
+                # worktree's cannot be read -- and read alongside cases that do carry one, the file
+                # would pass on the strength of the ones that could be attributed.
+                if assembly is None:
+                    raise Unreadable("{}: {} is reported under no assembly suite".format(path, name))
                 found.setdefault(assembly, set()).add(name)
         for child in node:
             walk(child, assembly)
@@ -261,7 +267,7 @@ def fixtures_by_assembly(path):
 # --------------------------------------------------------------------------------------------------
 
 def compile_errors(logs):
-    """Every error-severity diagnostic any log carries, as (log, line).
+    """Every line any log renders as a compiler error, as (log, line).
 
     Distinct: the reproduction's three diagnostics came back as nine lines, and the repetition
     buries the other two readings under them.
@@ -278,7 +284,9 @@ def unclaimed_results(results, logs):
     """Every results file no log says a run wrote.
 
     Compared by name, not by path: game-ci runs the editor in a container and the log carries the
-    path it had there, which is not where the check reads the file from afterwards.
+    path it had there, which is not where the check reads the file from afterwards. So two runs
+    writing a results file of the same name are one reading here, and what separates them is the
+    recipe giving each worktree its own Logs directory rather than anything this function can see.
     """
     claimed = {Path(name).name
                for path in logs
@@ -290,10 +298,11 @@ def foreign_fixtures(reported, ours, resolved, types):
     """(assemblies of this worktree's that ran, every fixture checked that no source here declares).
 
     An assembly this worktree names is checked even where a package names one too, since of the two
-    answers available for such a name, only checking it can refuse a stranger. One that is neither
-    -- a test asmdef this worktree renamed, reported out of a Library seeded before the rename -- is
-    checked for the same reason and counted for neither, since the floor above asks whether anything
-    of THIS worktree's ran and a stranger answering is the state it exists to catch.
+    answers available for such a name, only checking it can refuse a stranger. One that is NEITHER
+    -- another checkout's test assembly, reported out of a seeded Library no asmdef here names -- is
+    checked too: that is the shape a seeded Library reports, and skipping it would take the stranger
+    it carries out of scope along with it. It does not count toward the floor, which asks whether
+    anything of this worktree's ran and cannot take a stranger for an answer.
     """
     found = []
     ran = []
@@ -307,7 +316,7 @@ def foreign_fixtures(reported, ours, resolved, types):
 
 
 def refusals(project, results, logs):
-    """Every reason the results are not this worktree's reading. Empty means they are."""
+    """Every reason the results are not this worktree's reading. Empty means none of them said so."""
     # First, and returning on its own: a run that did not compile wrote no results, so every reading
     # below would refuse it for the absence rather than for the cause, and the caller would be told
     # a file is missing while the diagnostic explaining why sits unread in the log beside it.
@@ -374,7 +383,7 @@ def main(argv):
 
     if not found:
         print("checked {} test run(s) against {}: {} assembl(ies) of this worktree, {} log(s) "
-              "carrying no error".format(runs, args.project, len(ours_ran), len(logs)))
+              "rendering no compiler error".format(runs, args.project, len(ours_ran), len(logs)))
         return 0
 
     print("these results are not this worktree's reading:", file=sys.stderr)
