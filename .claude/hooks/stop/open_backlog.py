@@ -34,12 +34,19 @@ import json
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 from deferrals import DEFERRALS, deferred, unusable  # noqa: E402
+from repository import open_pull_requests, unreadable_report  # noqa: E402
+
+UNREADABLE_POLICY = "refuse"
+
+# An open pull request is this guard's whole answer — it hands the stall to unsettled_pr.py rather
+# than reporting one twice — so a listing that answered ends the question here whatever fails after
+# it. Nothing past that point is read, so nothing past it is being reported unread.
+UNREADABLE_ALLOWS = ("gh-graphql-error",)
 
 EXCLUDING_LABELS = {"blocked", "needs-decision"}
 
@@ -53,23 +60,24 @@ def gh(args):
     return result.stdout.strip(), (result.stdout + result.stderr).strip(), result.returncode
 
 
-def unreachable(call, code, output):
+# Each subject's own remedy: the guard reads two, and one report told a reader with an unread issue
+# list to run `gh pr view`.
+PULL_REQUESTS_ANOTHER_WAY = ("`gh pr view <n>`, `gh run list --branch <b>`, or the output of the "
+                             "watcher `scripts/pr/settle.py watch` writes")
+
+BACKLOG_ANOTHER_WAY = ("`gh issue list --assignee @me` from another shell, or the issue list on "
+                       "github.com")
+
+
+def unreachable(subject, attempts, another_way):
     """A gh that cannot answer is not an empty answer.
 
     Every one of these used to take `|| exit 0` with stderr discarded, so an unauthenticated,
     offline or rate-limited run reported exactly what a cleared backlog reports. Refusing instead is
-    what puts the difference in front of the reader; the deferral is the way past it when the
-    network is the thing that is wrong.
+    what puts the difference in front of the reader; `lib/repository.py` owns the shape the refusal
+    takes and why it is a statement about this guard rather than about the backlog.
     """
-    print(f"""Do not stop: the backlog could not be read, so nothing here says it is clear.
-
-  gh {call} exited {code}
-{output}
-
-If gh is unauthenticated or the network is down, say so and arm the deferral rather than treating
-an unanswered question as a settled one:
-
-  echo "backlog <what clears it> $(date +%s)" >> {DEFERRALS}""", file=sys.stderr)
+    print(unreadable_report(subject, attempts, "backlog", another_way), file=sys.stderr)
     return 2
 
 
@@ -91,23 +99,26 @@ def main():
         print(f"  held {minutes}m ago because: {reason}", file=sys.stderr)
         return 0
 
-    listing, combined, code = gh(["pr", "list", "--state", "open", "--json", "number",
-                                  "--jq", ".[].number"])
-    if code != 0:
-        return unreachable("pr list", code, combined)
-    if listing:
+    reading = open_pull_requests()
+    if reading.numbers is None:
+        return unreachable("the open pull requests", reading.attempts,
+                           PULL_REQUESTS_ANOTHER_WAY)
+    if reading.numbers:
         return 0
 
     me, combined, code = gh(["api", "user", "--jq", ".login"])
     if code != 0:
-        return unreachable("api user", code, combined)
+        return unreachable("the backlog", [("gh api user", f"exited {code}\n{combined}")],
+                           BACKLOG_ANOTHER_WAY)
     if not me:
-        return unreachable("api user", 0, "  it named no login")
+        return unreachable("the backlog", [("gh api user", "answered, and named no login")],
+                           BACKLOG_ANOTHER_WAY)
 
     raw, combined, code = gh(["issue", "list", "--state", "open", "--assignee", me,
                               "--json", "number,title,labels"])
     if code != 0:
-        return unreachable("issue list", code, combined)
+        return unreachable("the backlog", [("gh issue list", f"exited {code}\n{combined}")],
+                           BACKLOG_ANOTHER_WAY)
     try:
         issues = json.loads(raw or "[]")
     except ValueError:
