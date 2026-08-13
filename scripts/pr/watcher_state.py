@@ -80,6 +80,21 @@ def alive(now=None):
             and running(read[1]))
 
 
+def unreadable_beat(now=None):
+    """Whether something inside the window is writing a heartbeat this cannot read.
+
+    A watcher older than the pid field writes one field and nothing else, so a reader looking only at
+    `alive` sees exactly what an absent file gives it and would call that "nothing is watching".
+    Something is watching; what failed is the reading. Separating the two is what lets a guard name
+    the recovery, which is to end that watcher rather than to start another.
+    """
+    try:
+        text = HEARTBEAT.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return stamped(text, time.time() if now is None else now) is not None and written(text) is None
+
+
 def beating_elsewhere(mine, now=None):
     """Whether a watcher this process is not is still writing the heartbeat.
 

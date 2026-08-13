@@ -28,7 +28,7 @@ HOOK_DIRECTORY = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(HOOK_DIRECTORY / "lib"))
 sys.path.insert(0, str(HOOK_DIRECTORY.parent.parent / "scripts" / "pr"))
 from deferrals import DEFERRALS, deferred, unusable
-from watcher_state import READY_STATE, alive
+from watcher_state import READY_STATE, STALE_AFTER, alive, unreadable_beat
 
 # Held on the editing tools, which carry a file path rather than a shell command, so there is no operand
 # for the shell to expand and nothing here reads one.
@@ -95,6 +95,25 @@ def main():
         if broken is not None:
             sys.stderr.write(f"A deferral was written for {WATCHER_KEY}, and {broken} — so it is "
                              "being ignored.\n")
+        # Two states reach here and they want opposite actions: start a watcher, or end one. Saying
+        # "nothing is watching" of the second is this guard's blindness written as a fact about the
+        # watcher, and the command it would name refuses while that watcher runs.
+        if unreadable_beat(now):
+            sys.stderr.write(
+                "Refusing to write: a watcher is writing the heartbeat in a form this cannot read, "
+                "so whether a pull request is sitting green cannot be read.\n\n"
+                "Something IS watching — what failed is the reading. A watcher started before the "
+                "heartbeat named its own process writes the older form, and starting a second one "
+                "is refused while it runs. End it and start one from this checkout:\n\n"
+                "  ps -Ao pid=,command= | grep '[s]ettle.py watch'\n"
+                "  kill <pid>\n"
+                f"  # its last heartbeat ages out within {STALE_AFTER}s, and until it does\n"
+                "  # `settle.py watch` refuses to start\n"
+                "  python3 scripts/pr/settle.py watch\n\n"
+                "If the pause is deliberate, arm the deferral for what the WORK is waiting on; the "
+                "reason expires, so it gets re-read rather than forgotten:\n\n"
+                f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)}" >> {DEFERRALS}\n')
+            return 2
         sys.stderr.write(
             "Refusing to write: nothing is watching the open pull requests, so whether one is sitting "
             "green cannot be read.\n\n"

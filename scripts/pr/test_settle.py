@@ -205,7 +205,7 @@ def fabricate(number, results=PASSING, draft=False, merge_state="clean", holds_b
 
 @contextlib.contextmanager
 def fabricated_readings(states):
-    """Every reading a poll takes, answered from a table of pull request states.
+    """Every reading a poll takes from git or the API, answered from a table of pull request states.
 
     Patched at the readings rather than at `blocking_reasons`, so the decision itself is what runs:
     stubbing the verdict would make the agreement below true by construction.
@@ -299,8 +299,9 @@ class ReadinessTests(unittest.TestCase):
     refused every Edit and Write in every session and named a merge that could not take it.
     """
 
-    # Every state the two readings could differ on, plus the ordinary green one so the table is not
-    # made of exceptions alone.
+    # Every per-pull-request state the two readings could differ on, plus the ordinary green one so
+    # the table is not made of exceptions alone. The publication reason is not among them: it is one
+    # reading for the whole repository, so it cannot differ between entries of a table like this.
     TABLE = {
         1: fabricate(1),
         2: fabricate(2, draft=True),

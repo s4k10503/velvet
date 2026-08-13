@@ -62,9 +62,8 @@ def gh(args, cwd=None, timeout=7):
 
     A bound per call rather than per invocation, since a guard makes several: merge_unproven_head
     makes three. It is a judgement about how long a tool call may pause before the pause is the
-    problem, and not a share of the timeout the settings register — that number is in seconds and
-    runs to hours, so nothing here is bounded by it. scripts/hooks/test_hook_repository.py says the
-    same of the reading below.
+    problem, and it is not derived from the timeout the settings register for these hooks — nothing
+    here reads that number.
     """
     answer = gh_answer(args, cwd, timeout)
     return answer.stdout if answer.code == 0 else None

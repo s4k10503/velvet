@@ -119,8 +119,7 @@ class OpenPullRequestTests(unittest.TestCase):
 # Owned here rather than read from the settings, and that is not the mirror it might look like: a
 # mirror copies a value some other file decides, and drifts when that file changes. This decides
 # nothing twice. It is a judgement about how long a person will wait before a pause stops reading as
-# one, which no configured number states — the timeout registered for these guards is orders larger
-# than that, so comparing against it would pass whatever is written here and pin nothing.
+# one, which no configured number states.
 LONGEST_WORTH_WAITING = 20
 
 
@@ -133,8 +132,8 @@ class ReadingBudgetTests(unittest.TestCase):
     fixed — the reading in `repository`, whose cost is the number of ways of asking times the bound
     each one gets, and which is where a third way would be added.
 
-    An earlier version compared against the timeout the settings register, having read that number in
-    the wrong unit; read in the right one it is hours, so it passes anything and fires for nothing.
+    An earlier version compared against the timeout the settings register, having read that number
+    in a unit it turned out not to be in. Nothing here reads it now.
     """
 
     def test_Given_EveryWayOfAsking_When_TheirTimeoutsAreAdded_Then_TheyStayWorthWaitingFor(self):

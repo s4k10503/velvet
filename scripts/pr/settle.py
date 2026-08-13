@@ -5,12 +5,18 @@ Both halves existed as instructions rather than as code: `stop/unsettled_pr.py` 
 the reader to reimplement, and the merge was typed by hand. An instruction is re-derived each time,
 and that hook's own text owns what a re-derived watcher gets wrong.
 
-**Every precondition below has a refuse hook behind it**, so a `gh pr merge` typed by hand is held
-to them as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks match on
-`gh pr merge` and do not see the `gh api -X PUT .../merge` this script sends, so teaching them that
-shape is its own change. What this adds is reporting them together: one run names everything wrong
-rather than costing a round of CI per reason. If a precondition is worth having here it belongs in a
-hook, because a script nobody is obliged to run guards nothing.
+**Five of the preconditions below have a refuse hook behind them**, so a `gh pr merge` typed by hand
+is held to those as well; `refuse/merge_unproven_head.py` records which hook holds which. Those hooks
+match on `gh pr merge` and do not see the `gh api -X PUT .../merge` this script sends, so teaching
+them that shape is its own change. What this adds is reporting them together: one run names
+everything wrong rather than costing a round of CI per reason.
+
+**Two have no hook: a draft head, and a head on another repository.** Neither is left out by
+oversight. The fork one is not a fact about the pull request at all — it says this checkout has no
+ref for that branch, so the containment reading cannot be taken here — and a hook would have to
+answer the same question from the same place. The rule that a precondition worth having belongs in a
+hook still stands for the five; these two are stated rather than made true by hooks written to make
+a sentence true.
 
 Seven preconditions:
 
@@ -100,7 +106,8 @@ GIT_TIMEOUT = 300
 
 
 def run(command, timeout):
-    """subprocess.run with a bound, reporting a timeout as the failure every caller here catches."""
+    """subprocess.run with a bound, reporting a timeout as the same RuntimeError a failed call
+    raises — so a hang reaches a caller as something it already handles rather than as a new kind."""
     try:
         return subprocess.run(command, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -451,8 +458,8 @@ def watch(project, base):
     lock, holder = hold_the_watch()
     if lock is None:
         print(f"Refusing to watch: process {holder or 'unknown'} already holds "
-              f"{watcher_state.LOCK}. A second watcher polls the same API on its own cycle against "
-              f"the same quota, and writes the same heartbeat, so neither says which one is alive.\n"
+              f"{watcher_state.LOCK}. A second watcher draws on the same quota on its own cycle, "
+              f"which is the whole of what it costs now that the heartbeat names its writer.\n"
               f"\nIf that process is wedged rather than watching — every guard reading the heartbeat "
               f"says nothing is watching while this refuses to replace it — kill it and run this "
               f"again:\n\n  kill {holder or '<pid>'}\n", file=sys.stderr)

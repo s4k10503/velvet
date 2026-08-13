@@ -85,9 +85,15 @@ def carries_no_check(pr):
     if code != 0:
         return False
     try:
-        rollup = json.loads(out or "{}").get("statusCheckRollup")
+        payload = json.loads(out or "{}")
     except ValueError:
         return False
+    # A payload that is not an object has no field to read, and reaching for one raises out of a
+    # Stop hook — which exits 1, which the harness does not treat as a refusal. So the shape is
+    # checked rather than assumed, the same way the list below is.
+    if not isinstance(payload, dict):
+        return False
+    rollup = payload.get("statusCheckRollup")
     return isinstance(rollup, list) and not rollup
 
 

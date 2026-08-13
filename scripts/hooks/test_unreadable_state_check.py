@@ -249,7 +249,8 @@ STOP_READ = 'done = subprocess.run(["gh", "pr", "list"], capture_output=True, te
 
 def stop_guard(policy, body, allows=None, reason=""):
     return (STOP_PREAMBLE
-            + f'\n\nUNREADABLE_POLICY = "{policy}"\n'
+            + (f"\n\n# {reason}\n" if reason and allows is None else "\n\n")
+            + f'UNREADABLE_POLICY = "{policy}"\n'
             + ("" if allows is None
                else (f"\n# {reason}\n" if reason else "\n") + f"UNREADABLE_ALLOWS = {allows}\n")
             + "\n\ndef main():\n"
@@ -395,6 +396,39 @@ class StopGuardTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(len(found), 1, stop_faults(root))
+
+    def test_Given_AStopGuardDeclaringAllowWithNoCommentAboveIt_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange — the sibling is there so the missing comment is the only fault left.
+        root = directory(lenient=stop_guard("allow", STOP_FAILS_OPEN),
+                         holds=stop_guard("refuse", STOP_BLOCKS_SAYING))
+
+        # Act
+        found = [line for line in stop_faults(root) if "no comment above it" in line]
+
+        # Assert
+        self.assertEqual(len(found), 1, stop_faults(root))
+
+    def test_Given_AStopGuardDeclaringAllowAndNoSiblingRefusing_When_TheCheckRuns_Then_ItIsReported(self):
+        # Arrange — one line of a new guard otherwise reaches the silence this exists to stop.
+        root = directory(lenient=stop_guard("allow", STOP_FAILS_OPEN,
+                                            reason="nothing holds this"))
+
+        # Act
+        found = [line for line in stop_faults(root) if "no sibling refuses there" in line]
+
+        # Assert — every mode that reaches the read reports it.
+        self.assertEqual(len(found), 2, stop_faults(root))
+
+    def test_Given_AStopGuardDeclaringAllowAndASiblingRefusing_When_TheCheckRuns_Then_NothingIsReported(self):
+        # Arrange — the control: a policy nothing can declare is not a policy.
+        root = directory(lenient=stop_guard("allow", STOP_FAILS_OPEN, reason="the sibling holds this"),
+                         holds=stop_guard("refuse", STOP_BLOCKS_SAYING))
+
+        # Act
+        found = stop_faults(root)
+
+        # Assert
+        self.assertEqual(found, [])
 
     def test_Given_ThisRepositorysStopGuards_When_NoReadingAnswers_Then_EachAnswersWhatItDeclares(self):
         # Arrange
@@ -691,6 +725,48 @@ class AllHeldTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual((NOTHING_WAS_READ in said, "PR #1" in said), (False, True))
+
+
+class UnreadableHeartbeatTests(unittest.TestCase):
+    """A watcher older than the pid field, which is what merging that change walks into.
+
+    It writes one field, so a reader that only asks `alive` gets what an absent file gives it. The
+    two want opposite actions — start a watcher, end one — and the command for the first refuses
+    while the second is running, so telling them apart is the whole of getting out.
+    """
+
+    GUARD = REPO_ROOT / ".claude/hooks/refuse/edit_while_a_ready_pr_sits.py"
+    PAYLOAD = json.dumps({"tool_name": "Edit", "cwd": str(REPO_ROOT),
+                          "tool_input": {"file_path": "CHANGELOG.md",
+                                         "old_string": "a", "new_string": "b"}})
+
+    def said(self, heartbeat):
+        home = Path(tempfile.mkdtemp(prefix="velvet-old-beat-home-"))
+        try:
+            if heartbeat is not None:
+                (home / ".velvet-pr-watch.heartbeat").write_text(heartbeat, encoding="utf-8")
+            _, _, errors, _ = check.run_guard(self.GUARD, self.PAYLOAD, "gh-empty", REPO_ROOT, home)
+            return errors
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_Given_AFreshHeartbeatInTheOlderForm_When_AWriteIsAttempted_Then_ItSaysSomethingIsWatching(self):
+        # Arrange — one field and a live stamp, which is what a watcher predating the pid writes.
+        said = self.said(f"{int(time.time())}\n")
+
+        # Act / Assert — the recovery is to end that watcher, so the message must not say there is
+        # none to end.
+        self.assertEqual(("Something IS watching" in said, "nothing is watching" in said),
+                         (True, False))
+
+    def test_Given_NoHeartbeatAtAll_When_AWriteIsAttempted_Then_ItStillSaysNothingIsWatching(self):
+        # Arrange — the control: the older-form message must be about the older form, not about
+        # every refusal this branch makes.
+        said = self.said(None)
+
+        # Act / Assert
+        self.assertEqual(("Something IS watching" in said, "nothing is watching" in said),
+                         (False, True))
 
 
 class WatcherDeferralTests(unittest.TestCase):

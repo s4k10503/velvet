@@ -299,9 +299,12 @@ def stop_faults(stop_directory, cwd, floor=STOP_FLOOR):
 def _stop_guard_faults(hook, subjects, cwd, home):
     source = Path(hook).read_text(encoding="utf-8")
     module = ast.parse(source)
-    policy, _ = _assigned(module, POLICY)
+    policy, policy_line = _assigned(module, POLICY)
     if policy not in POLICIES:
         return [f"{hook.name}: {POLICY} must be one of {', '.join(POLICIES)}, found {policy!r}"]
+    if policy == ALLOW and not _has_reason(source, policy_line):
+        return [f"{hook.name}: {POLICY} is \"{ALLOW}\" with no comment above it saying what holds "
+                "instead"]
 
     allows, allows_line = _assigned(module, ALLOWS)
     if allows is not None and not _has_reason(source, allows_line):
@@ -316,9 +319,11 @@ def _stop_guard_faults(hook, subjects, cwd, home):
             continue
         evidence.append(mode)
         if mode in allows:
-            found += _exemption_faults(hook, mode, verdict, cwd, home, subjects)
+            found += _letting_go_faults(hook, mode, verdict, cwd, home, subjects, ALLOWS)
         elif policy == NONE:
             found.append(f"{hook.name}: declares \"{NONE}\" and consulted a broken program in {mode}")
+        elif policy == ALLOW:
+            found += _letting_go_faults(hook, mode, verdict, cwd, home, subjects, POLICY)
         elif verdict != policy:
             found.append(f"{hook.name}: declares \"{policy}\", answers \"{verdict}\" in {mode}")
         elif verdict == REFUSE and SELF_REPORT not in errors:
@@ -332,12 +337,13 @@ def _stop_guard_faults(hook, subjects, cwd, home):
     return found
 
 
-def _exemption_faults(hook, mode, verdict, cwd, home, subjects):
-    """What is wrong with a declared exemption: a stale one, or one nothing stands behind.
+def _letting_go_faults(hook, mode, verdict, cwd, home, subjects, claim):
+    """What is wrong with a guard that lets the session end: a stale claim, or one nothing backs.
 
-    A guard whose own question was answered may let the session end in a mode that broke somebody
-    else's reading. What it may not do is be the only guard there, which is the exemption turning
-    into the silence the whole check exists to stop.
+    Two claims arrive here and neither may be taken on its own word. A guard whose own question was
+    answered may let the session end in a mode that broke somebody else's reading, and a guard may
+    declare outright that letting go is its policy — but what neither may do is be the only guard
+    there, which is the claim turning into the silence the whole check exists to stop.
 
     The backing is measured under the empty HOME `stop_faults` makes, so it answers about the guards
     and not about a machine's deferrals — which is what makes it a verdict about this repository
@@ -345,11 +351,12 @@ def _exemption_faults(hook, mode, verdict, cwd, home, subjects):
     a live deferral would suppress still counts as backing here.
     """
     if verdict == REFUSE:
-        return [f"{hook.name}: {ALLOWS} names {mode} and it refuses there — the declaration is stale"]
+        return [f"{hook.name}: {claim} says it lets go in {mode} and it refuses there — the "
+                "declaration is stale"]
     backing = _stop_backed(hook, mode, cwd, home, subjects)
     return [] if backing else [
-        f"{hook.name}: {ALLOWS} names {mode} and no sibling refuses there, so the session ends with "
-        "the reading that failed unreported"]
+        f"{hook.name}: {claim} lets the session end in {mode} and no sibling refuses there, so it "
+        "ends with the reading that failed unreported"]
 
 
 def main(argv):

@@ -379,8 +379,8 @@ policy on is what would close it server-side, at the cost that buys.
 **A green pull request left sitting starts refusing every edit.**
 `.claude/hooks/refuse/edit_while_a_ready_pr_sits.py` refuses every editing tool once one has been ready
 for fifteen minutes, and the instruction it prints is `settle.py merge`. Ready is that command's own
-decision rather than a second reading beside it, so a pull request this window declines — like a draft
-or one that conflicts — is not recorded ready while the window can be read. It is read by
+decision rather than a second reading beside it, so a pull request this window declines is not
+recorded ready while the window can be read. It is read by
 `published_check.unpublished_reason`, which answers None on any git failure, so an `ls-remote` that
 times out mid-poll records the green ones ready again and the stall is back for as long as that
 lasts. The deferral the hook's own message describes is still what clears it.
