@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -20,7 +21,14 @@ namespace Velvet.Tests
     /// <item>A poolable parent (a Button) rented back for a fresh AnimatePresence at the same position
     /// therefore finds no prior state.</item>
     /// <item>A presence rendered again is a first render again, so <c>initial: false</c> suppresses its
-    /// child's enter as it did on the first.</item>
+    /// child's enter as it did on the first — a surviving entry makes the second mount a later addition
+    /// to a presence already on screen instead.</item>
+    /// <item>A presence inside a <c>V.Portal</c>'s own children retires with the Portal's range, which is
+    /// the only route that reaches it.</item>
+    /// <item>An abort stops the removal pass of the container it reaches and holds for the rest of the
+    /// pass, so whether an entry may retire is read per container: one whose own removals ran retires
+    /// even though a later container's did not. The reading covers the fast path too, where the removals
+    /// are the time-sliced diff's rather than the general walk's finalize.</item>
     /// <item>A pass that walks neither side of a presence retires nothing of it — the last case holds
     /// that to what it already did, since retiring a live entry strands its leaf where the next old side
     /// can no longer name it.</item>
@@ -57,6 +65,8 @@ namespace Velvet.Tests
         private static PresenceStore s_store;
         private static TickStore s_ticks;
         private static int s_enterCompletions;
+        private static VisualElement s_overlay;
+        private static VisualElement s_otherOverlay;
 
         private static readonly Dictionary<string, string> s_fade = new()
         {
@@ -73,6 +83,8 @@ namespace Velvet.Tests
             s_store = null;
             s_ticks = null;
             s_enterCompletions = 0;
+            s_overlay = new VisualElement { name = "overlay" };
+            s_otherOverlay = new VisualElement { name = "other-overlay" };
         }
 
         [Component]
@@ -90,6 +102,9 @@ namespace Velvet.Tests
             return V.Div(name: "outer", children: new VNode[] { state.Shown ? inner : null });
         }
 
+        // A classic Motion, deliberately not a variant one: a variant Motion with no initial label rests
+        // at variants[animate] and fires OnEnterComplete from the dispatch as well, so the reading would
+        // not separate a suppressed enter from a played one.
         [Component]
         private static VNode SuppressedEnterHost()
         {
@@ -97,9 +112,8 @@ namespace Velvet.Tests
             VNode presence = V.AnimatePresence(key: "presence", initial: false, children: new VNode[]
             {
                 V.Motion(name: "item-" + state.ChildKey, key: state.ChildKey,
-                    variants: s_fade, animate: "visible", exit: "hidden",
-                    onEnterComplete: () => s_enterCompletions++,
-                    transition: new StyleTransitionConfig { DurationSec = 0.3f }),
+                    transition: StyleTransition.Fade,
+                    onEnterComplete: () => s_enterCompletions++),
             });
             return V.Div(name: "host", children: new VNode[] { state.Shown ? presence : null });
         }
@@ -121,6 +135,60 @@ namespace Velvet.Tests
                 V.Component(UnrelatedSibling, key: "tick"),
             });
         }
+
+        // The presence is replaced by a flat list of host leaves, which needs no inline expansion — so the
+        // new side takes the time-sliced diff rather than the general walk, and the removals that empty
+        // its slots run there instead.
+        [Component]
+        private static VNode FastPathHost()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            return V.Div(name: "host", children: state.Shown
+                ? new VNode[] { Presence(state.ChildKey) }
+                : new VNode[] { V.Label(text: "gone") });
+        }
+
+        [Component]
+        private static VNode PortalHost()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            VNode portal = V.Portal(s_overlay, new VNode[] { Presence(state.ChildKey) });
+            return V.Div(name: "host", children: new VNode[] { state.Shown ? portal : null });
+        }
+
+        [Component]
+        private static VNode RetargetingPortalHost()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            var target = state.Shown ? s_overlay : s_otherOverlay;
+            return V.Div(name: "host", children: new VNode[]
+            {
+                V.Portal(target, new VNode[] { Presence(state.ChildKey) }),
+            });
+        }
+
+        // A presence beside a boundary that catches on the same update. Its own container finalizes
+        // before the boundary aborts the pass.
+        [Component]
+        private static VNode PresenceBesideAThrowingBoundary()
+        {
+            var state = Hooks.UseStore(s_store, s => s);
+            return V.Div(name: "outer", children: new VNode[]
+            {
+                V.Div(name: "host", children: new VNode[] { state.Shown ? Presence(state.ChildKey) : null }),
+                state.Shown ? null : V.Component(CatchingBoundary, key: "boundary"),
+            });
+        }
+
+        [Component(IsErrorBoundary = true)]
+        private static VNode CatchingBoundary()
+        {
+            Hooks.UseFallback(_ => V.Label(text: "caught"));
+            return V.Component(Thrower, key: "thrower");
+        }
+
+        [Component]
+        private static VNode Thrower() => throw new InvalidOperationException("boom");
 
         [Component]
         private static VNode PooledButtonHost()
@@ -214,9 +282,10 @@ namespace Velvet.Tests
         [Test]
         public void Given_AnAnimatePresenceWithInitialFalse_When_ItIsRenderedAgainAfterLeavingTheTree_Then_ItsChildMountsWithTheEnterSuppressedAgain()
         {
-            // Arrange — a suppressed enter is what fires the resolved Motion's OnEnterComplete straight
-            // away, so counting those readings reads the suppression. A boundary state outliving the node
-            // makes the second mount look like a later addition to a presence already on screen.
+            // Arrange — a suppressed enter is what fires a classic Motion's OnEnterComplete straight away,
+            // where a played one defers it to the animation, so counting those readings reads the
+            // suppression. A boundary state outliving the node makes the second mount a later addition to
+            // a presence already on screen instead.
             using var store = new PresenceStore();
             s_store = store;
             using var mounted = V.Mount(_root, V.Component(SuppressedEnterHost, key: "host"));
@@ -232,6 +301,86 @@ namespace Velvet.Tests
             // Assert — that the first mount contributed exactly one is folded in, so a second mount
             // reading twice cannot stand in for it.
             Assert.That((onFirstMount, s_enterCompletions), Is.EqualTo((1, 2)));
+        }
+
+        [Test]
+        public void Given_APresenceReplacedByPlainLeaves_When_TheNewSideTakesTheFastPath_Then_ItsBoundaryStateIsRetired()
+        {
+            // Arrange — the container reconciles through the indexed/keyed diff rather than the general
+            // walk, so what says its slots were emptied is not the general path's own finalize.
+            using var store = new PresenceStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(FastPathHost, key: "host"));
+            var ctx = mounted.Root.Reconciler.Context;
+            var recorded = ctx.PresenceStates.Count;
+
+            // Act
+            store.Set(false, "a");
+            mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            // Assert — same fold as the sibling case above.
+            Assert.That((recorded, ctx.PresenceStates.Count), Is.EqualTo((1, 0)));
+        }
+
+        [Test]
+        public void Given_AnAnimatePresenceInsideAPortal_When_ThePortalStopsBeingRendered_Then_TheDepartedChildIsNotResurrected()
+        {
+            // Arrange — the entry is keyed by the Portal's resolved target, a container the caller owns
+            // and nothing tears down, and no walk descends into a PortalNode. Neither of the other routes
+            // can see this one go.
+            using var store = new PresenceStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(PortalHost, key: "host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            store.Set(false, "a");
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            store.Set(true, "b");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(NamesOf(s_overlay), Is.EqualTo("item-b"));
+        }
+
+        [Test]
+        public void Given_AnAnimatePresenceInsideAPortal_When_ThePortalIsRetargetedAndBack_Then_TheDepartedChildIsNotResurrected()
+        {
+            // Arrange — a new target releases the range on the old one, which is the same teardown the
+            // unmount above takes.
+            using var store = new PresenceStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(RetargetingPortalHost, key: "host"));
+            var scheduler = mounted.Root.Reconciler.Context.BatchScheduler;
+            store.Set(false, "a");
+            scheduler.DrainImmediateForTest();
+
+            // Act
+            store.Set(true, "b");
+            scheduler.DrainImmediateForTest();
+
+            // Assert
+            Assert.That(NamesOf(s_overlay), Is.EqualTo("item-b"));
+        }
+
+        [Test]
+        public void Given_APresenceContainerThatFinalized_When_ALaterBoundaryAbortsTheSamePass_Then_ItsBoundaryStateStillRetires()
+        {
+            // Arrange — an abort holds for the rest of the pass, so a reading taken per pass would spare
+            // this entry; the container it names emptied its own slots before the abort was raised.
+            using var store = new PresenceStore();
+            s_store = store;
+            using var mounted = V.Mount(_root, V.Component(PresenceBesideAThrowingBoundary, key: "host"));
+            var ctx = mounted.Root.Reconciler.Context;
+            var recorded = ctx.PresenceStates.Count;
+
+            // Act — the presence leaves and the boundary catches, in one update.
+            store.Set(false, "a");
+            mounted.Root.Reconciler.Context.BatchScheduler.DrainImmediateForTest();
+
+            // Assert — same fold as the sibling case above. Nothing reproduces this presence again, so a
+            // pass that skipped it is the last one this route can act on.
+            Assert.That((recorded, ctx.PresenceStates.Count), Is.EqualTo((1, 0)));
         }
 
         // GREEN_ON_BASE(characterization): the live state a retirement route must not reach, since a pass

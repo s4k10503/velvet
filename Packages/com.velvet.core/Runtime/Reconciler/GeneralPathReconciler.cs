@@ -109,7 +109,8 @@ namespace Velvet
         // Components render, and each emitted host leaf is matched against oldNodes
         // and committed via CommitLeaf while the live stack still reflects its ancestor
         // Providers. Removals and the LIS reorder run afterwards in FinalizeGeneralCommit.
-        internal void ReconcileGeneral(
+        // Returns whether the removal pass ran, which an abort raised anywhere earlier in the pass skips.
+        internal bool ReconcileGeneral(
             VisualElement? parent,
             VNode?[] oldNodes,
             VNode?[] newChildren,
@@ -168,8 +169,10 @@ namespace Velvet
                 // mirroring the flat path: a deleted FunctionComponent's effect cleanups fire while its
                 // Ref.Current is still valid, then the DOM is removed. The sweep (full dispose) runs after.
                 RunOrphanEffectCleanups(oldFibers, newFibers);
-                if (!_ctx.IsAborted) FinalizeGeneralCommit(commit);
+                var removalsRan = !_ctx.IsAborted;
+                if (removalsRan) FinalizeGeneralCommit(commit);
                 SweepOrphans(oldFibers, newFibers);
+                return removalsRan;
             }
             finally
             {
@@ -1246,6 +1249,10 @@ namespace Velvet
             {
                 state = new ReconcilerContext.PresenceBoundaryState();
                 _ctx.PresenceStates[stateKey] = state;
+            }
+            if (_ctx.CurrentPortalPlaceholder != null)
+            {
+                state!.OwningPortalPlaceholder = _ctx.CurrentPortalPlaceholder;
             }
 
             var newKeyed = _factory.BuildKeyedMapCopy(presence.Children);

@@ -522,6 +522,7 @@ namespace Velvet
             // never run (ComponentRegistry.DisposeInlineFibersOwnedByPortal owns why the selection is by
             // the placeholder rather than by the range being torn out).
             _ctx.ComponentRegistry.DisposeInlineFibersOwnedByPortal(element);
+            _ctx.PrunePresencePortalState(element);
 
             // Both ends of the range are LOGICAL, so BOTH are converted. Adding the logical length to the
             // already-converted start mixes the two bases, and tears out one element too many the moment an

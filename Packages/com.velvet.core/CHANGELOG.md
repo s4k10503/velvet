@@ -66,7 +66,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `initial: false` no longer suppressed the enter, since the second mount was not taken for a first
   render. The entry also survived its parent element being torn down — once per removal, so a panel
   mounted and unmounted repeatedly accumulated one per cycle — and a poolable parent (a `V.Button`)
-  rented back for a fresh presence at the same position picked the stale entry up again.
+  rented back for a fresh presence at the same position picked the stale entry up again. A presence
+  written inside a `V.Portal`'s own children was the same defect reached a third way, since its
+  bookkeeping is keyed by the container the portal renders into and that container belongs to the
+  caller: closing the portal, and pointing it at a different container and back, both resurrected the
+  children the presence had already let go.
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the

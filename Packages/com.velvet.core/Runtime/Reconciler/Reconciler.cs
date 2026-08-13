@@ -232,7 +232,7 @@ namespace Velvet
                 // Scoped to one top-level pass because that is the span holding both readings it
                 // compares, and placed after the portal drain above so a presence the drain's own nested
                 // reconciles rendered is marked before the marks are read.
-                _ctx.RetirePresenceStatesNotReRendered(domFinalized: !LastTopLevelWasAborted);
+                _ctx.RetirePresenceStatesNotReRendered();
                 // Return the inline children's old trees (queued by SubsumeFiberIntoThisPass) to the
                 // VNode pool now that the whole pass is done using them as patch baselines — deferred
                 // to here to avoid a mid-pass use-after-return that duplicates re-expanded subtrees.

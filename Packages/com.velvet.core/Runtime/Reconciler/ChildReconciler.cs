@@ -197,6 +197,11 @@ namespace Velvet
                 OldProviders = oldProviders,
             };
             VNode?[] oldNodes;
+            // The presence reproductions this container's own walk takes, retirable only once the removal
+            // pass below has run — see ReconcilerContext.EndPresenceReproductionScope. False on the way out
+            // of a throw for the same reason it is false on an abort.
+            var presenceScope = _ctx.BeginPresenceReproductionScope();
+            var removalsRan = false;
             try
             {
                 // Old side is always expanded structurally into the flat leaf array used for matching.
@@ -209,7 +214,7 @@ namespace Velvet
                     // (CreateElement / PatchNode) while its ancestor Providers are still pushed, so
                     // element descendants render in-scope without a pre-captured snapshot. Orphan
                     // effect-cleanup + sweep and the LIS reorder are performed inside.
-                    _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing);
+                    removalsRan = _general.ReconcileGeneral(parent, oldNodes, newChildren, slotStart, in pairing);
                 }
                 else
                 {
@@ -228,10 +233,12 @@ namespace Velvet
                         ReconcileIndexed(parent, oldNodes, newNodes, frameBudgetMs, slotStart, slotLimit);
                     }
                     _general.SweepOrphans(oldFibers, newFibers);
+                    removalsRan = true;
                 }
             }
             finally
             {
+                _ctx.EndPresenceReproductionScope(presenceScope, removalsRan);
                 _ctx.BufferPool.ReturnProviderTable(oldProviders);
                 _ctx.BufferPool.ReturnFiberList(oldFibers);
                 _ctx.BufferPool.ReturnFiberSet(newFibers);
