@@ -27,6 +27,15 @@ namespace Velvet.Tests
     [TestFixture]
     internal sealed class PerChildManipulatorClaimGuardTests
     {
+        // The claim primitive and the table it writes into are named rather than referenced, and the gap
+        // manipulator is built through its constructor rather than by calling it, so this fixture builds
+        // against a tree that has none of the three — which is what lets the merge base be asked whether
+        // these cases are red there. A rename needs no maintenance here: every manipulator would follow it,
+        // so the subject sweep below reports all four as silent and says which.
+        private const string OwnershipTypeName = "Velvet.StyleChildOwnership";
+        private const string ReleaseMethodName = "TryRelease";
+        private const string BoxOwnersTableName = "ChildBoxOwners";
+
         private static PropertyInfo[] ContextProperties()
             => typeof(ReconcilerContext).GetProperties(
                 BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
@@ -65,6 +74,17 @@ namespace Velvet.Tests
             => (type.IsArray && type.GetElementType() == typeof(VisualElement))
                 || (type.IsGenericType && type.GetGenericArguments().Any(argument => argument == typeof(VisualElement)));
 
+        /// <summary>A gap manipulator that claims what it writes, built through the constructor that takes
+        /// the context it claims through.</summary>
+        private static StyleGapManipulator ClaimingGap(ReconcilerContext ctx)
+            => (StyleGapManipulator)Activator.CreateInstance(
+                typeof(StyleGapManipulator),
+                new object[] { ctx, 16f, GapAxis.Horizontal, false, false });
+
+        private static bool Claimed(ReconcilerContext ctx, VisualElement child)
+            => ((IDictionary)typeof(ReconcilerContext).GetProperty(BoxOwnersTableName)!.GetValue(ctx)!)
+                .Contains(child);
+
         private static bool AsksTheClaim(ModuleDefinition module, Type type)
         {
             var definition = module.GetType(type.FullName!.Replace('+', '/'));
@@ -73,8 +93,8 @@ namespace Velvet.Tests
                     .Where(method => method.HasBody)
                     .SelectMany(method => method.Body.Instructions)
                     .Any(instruction => instruction.Operand is MethodReference reference
-                        && reference.DeclaringType.FullName == typeof(StyleChildOwnership).FullName
-                        && reference.Name == nameof(StyleChildOwnership.TryRelease));
+                        && reference.DeclaringType.FullName == OwnershipTypeName
+                        && reference.Name == ReleaseMethodName);
         }
 
         [Test]
@@ -96,7 +116,7 @@ namespace Velvet.Tests
             Assert.That((subjects.Count > 1, string.Join("\n", silent)), Is.EqualTo((true, string.Empty)),
                 "these track children by reference and reset a value on one that has left, with nothing "
                 + "asking whether the value is still theirs; route every turn-off through "
-                + nameof(StyleChildOwnership) + " against a claim table on ReconcilerContext");
+                + OwnershipTypeName + " against a claim table on ReconcilerContext");
         }
 
         [Test]
@@ -109,9 +129,9 @@ namespace Velvet.Tests
             container.Add(new VisualElement());
             var child = new VisualElement();
             container.Add(child);
-            var gap = new StyleGapManipulator(ctx, 16f, GapAxis.Horizontal, false, false);
+            var gap = ClaimingGap(ctx);
             container.AddManipulator(gap);
-            var claimed = ctx.ChildBoxOwners.ContainsKey(child);
+            var claimed = Claimed(ctx, child);
             container.Remove(child);
             new VisualElement().Add(child);
 
@@ -120,7 +140,7 @@ namespace Velvet.Tests
 
             // Assert — that the container had claimed it rides along, since a table that never held the
             // element and one the release emptied read the same.
-            Assert.That((claimed, ctx.ChildBoxOwners.ContainsKey(child)), Is.EqualTo((true, false)));
+            Assert.That((claimed, Claimed(ctx, child)), Is.EqualTo((true, false)));
         }
 
         [Test]
