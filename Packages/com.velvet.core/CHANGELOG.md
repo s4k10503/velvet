@@ -44,6 +44,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   arguments positionally past `isPasswordField` now binds them to different parameters. Every argument
   there but a `null` literal changes type across the shift, so such a call fails to compile rather than
   rebinding silently; pass them by name.
+- `StyleVariantClass.BreakpointPx` and `IsResponsive` throw for a value naming no `StyleVariantKind`,
+  where they answered `0f` and `false` before 2.0.1. Every named kind is answered as it was; only a cast
+  outside the enum's range reaches the throw, and a silent `0f` there is how such a cast survives to
+  produce a wrong layout instead of a stack trace. The classification switches this comes from are now
+  exhaustive by compilation rather than by review — `Runtime/csc.rsp` compiles CS8509 as an error — so a
+  `StyleVariantKind` member added without an arm fails the build rather than warning into a log that
+  nothing gates on. That response file ships with the package, so a project compiling `Velvet.asmdef`
+  compiles CS8509 as an error too; it applies to Velvet's own sources only, and none of the switches it
+  reaches is over an engine-owned enum.
 
 ### Fixed
 
