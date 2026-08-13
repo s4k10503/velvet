@@ -70,11 +70,29 @@ def merge_state(pr):
     return state if code == 0 else None
 
 
+def carries_no_check(pr):
+    """Whether the head really carries no check, asked a way that answers instead of erroring.
+
+    The rollup is read for its length and nothing else — the buckets stay `gh pr checks`'s to name,
+    so this adds no second copy of what a conclusion means.
+    """
+    out, _, code = gh(["pr", "view", pr, "--json", "statusCheckRollup",
+                       "--jq", ".statusCheckRollup | length"])
+    return code == 0 and out == "0"
+
+
 def checks_of(pr):
-    """The pull request's check list, or None when the read did not answer."""
+    """The pull request's check list, or None when the read did not answer.
+
+    `gh pr checks` exits non-zero for both "I could not read" and "there are none", so its exit code
+    cannot separate an exhausted quota from a head no workflow has run for yet. Reading the second as
+    the first blocks on every pull request in its first minutes; reading the first as the second is
+    what let one nobody could see into the settled set. So a non-zero exit is taken to the rollup,
+    which answers 0 rather than erroring, and only an answer there makes this an empty list.
+    """
     out, _, code = gh(["pr", "checks", pr, "--json", "name,bucket"])
     if code != 0:
-        return None
+        return [] if carries_no_check(pr) else None
     try:
         return json.loads(out or "[]")
     except ValueError:

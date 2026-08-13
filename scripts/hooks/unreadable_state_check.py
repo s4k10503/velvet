@@ -338,6 +338,11 @@ def _exemption_faults(hook, mode, verdict, cwd, home, subjects):
     A guard whose own question was answered may let the session end in a mode that broke somebody
     else's reading. What it may not do is be the only guard there, which is the exemption turning
     into the silence the whole check exists to stop.
+
+    The backing is measured under the empty HOME `stop_faults` makes, so it answers about the guards
+    and not about a machine's deferrals — which is what makes it a verdict about this repository
+    rather than about whoever ran it, and also the limit of what it can say: a sibling whose refusal
+    a live deferral would suppress still counts as backing here.
     """
     if verdict == REFUSE:
         return [f"{hook.name}: {ALLOWS} names {mode} and it refuses there — the declaration is stale"]

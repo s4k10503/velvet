@@ -176,16 +176,16 @@ class MergeDecisionTests(unittest.TestCase):
             "its head is on another repository: this settles branches on origin, so nothing here "
             "read whether it contains origin/main"])
 
-    def test_Given_TheTwoMergeStatesThatDiffer_When_Decided_Then_TheyBlockAlikeAndSayDifferently(self):
-        # Arrange — a conflicting branch cannot contain the base, so both states are posed with the
-        # containment reading that really accompanies them. That reading is what blocks either way,
-        # which is the point: `dirty` changes no verdict, it adds the reason that names the conflict,
-        # and `unknown` is left out because there is nothing for it to add.
-        counted = (len(reasons(merge_state="unknown", holds_base=False)),
-                   len(reasons(merge_state="dirty", holds_base=False)))
+    def test_Given_ADirtyStateBesideAContainmentThatHolds_When_Decided_Then_ItIsWhatBlocks(self):
+        # Arrange — the state the predicate earns its keep in, and the reason it is read rather than
+        # left to the message: the containment reading is of the tip the cycle's fetch saw, GitHub's
+        # is of a newer one, so a branch can hold the first and conflict with the second. Posed
+        # beside `unknown` to keep the absence of a reading from becoming a reason.
+        counted = (len(reasons(merge_state="dirty", holds_base=True)),
+                   len(reasons(merge_state="unknown", holds_base=True)))
 
         # Act / Assert
-        self.assertEqual(counted, (1, 2))
+        self.assertEqual(counted, (1, 0))
 
 
 # One pull request's whole state, so `watch` and `merge` can be posed the same table.
@@ -240,12 +240,13 @@ class Polled(Exception):
     """Raised out of the watcher's sleep, which is the only way one poll of it ends."""
 
 
-# What a poll recorded, and what it said. A pull request whose readings raised is dropped from the
-# poll rather than reported, and the two are the same ready set — the saying is where they differ.
-Poll = collections.namedtuple("Poll", "ready output")
+# What a poll recorded, what it said, and what it left in the heartbeat. A pull request whose
+# readings raised is dropped from the poll rather than reported, and the two are the same ready set
+# — the saying is where they differ.
+Poll = collections.namedtuple("Poll", "ready output beat")
 
 
-def poll(states):
+def poll(states, listing_answers=True):
     """One poll of `watch` over a table of fabricated readings.
 
     Every file the watcher touches is redirected, the lock included: taking the real one would make
@@ -254,9 +255,13 @@ def poll(states):
     printed = io.StringIO()
     with tempfile.TemporaryDirectory(prefix="settle-ready-") as directory:
         ready_state = Path(directory) / "ready"
+        heartbeat = Path(directory) / "beat"
         with fabricated_readings(states) as stack:
+            if not listing_answers:
+                stack.enter_context(
+                    mock.patch.object(settle, "open_pull_requests", refuse_to_answer))
             for name, path in (("READY_STATE", ready_state),
-                               ("HEARTBEAT", Path(directory) / "beat"),
+                               ("HEARTBEAT", heartbeat),
                                ("LOCK", Path(directory) / "lock")):
                 stack.enter_context(mock.patch.object(settle.watcher_state, name, path))
             stack.enter_context(mock.patch.object(settle.time, "sleep", side_effect=Polled))
@@ -265,8 +270,13 @@ def poll(states):
                 settle.watch(Path("."), "main")
             except Polled:
                 pass
-        recorded = {int(line.split()[0]) for line in ready_state.read_text().splitlines() if line}
-    return Poll(recorded, printed.getvalue())
+        # None rather than an empty set when the file was never written: a poll that recorded
+        # nothing and a poll that got as far as truncating the file are different facts, and this
+        # harness would otherwise report the second as the first.
+        recorded = (None if not ready_state.exists() else
+                    {int(line.split()[0]) for line in ready_state.read_text().splitlines() if line})
+        written = heartbeat.read_text() if heartbeat.exists() else None
+    return Poll(recorded, printed.getvalue(), written)
 
 
 def polled(states):
@@ -336,6 +346,26 @@ class ReadinessTests(unittest.TestCase):
 
         # Act / Assert
         self.assertEqual(polled(table), {592})
+
+
+class HeartbeatDuringAPollTests(unittest.TestCase):
+    """What the heartbeat says while a poll is failing, which is what the guards read it for."""
+
+    def test_Given_APollWhoseListingNeverAnswers_When_ItEnds_Then_NoHeartbeatVouchesForIt(self):
+        # Arrange — the wedge the call bounds exist for, reaching the guards as a file they believe.
+        # A stamp written on the way in holds it inside the staleness window for the whole of it,
+        # and the guards then read a live watcher beside a ready file this poll emptied.
+        outcome = poll({1: fabricate(1)}, listing_answers=False)
+
+        # Act / Assert
+        self.assertIsNone(outcome.beat)
+
+    def test_Given_APollThatRead_When_ItEnds_Then_TheHeartbeatNamesThisProcess(self):
+        # Arrange — the control: a heartbeat nothing ever writes is not a heartbeat.
+        outcome = poll({1: fabricate(1)})
+
+        # Act / Assert
+        self.assertIn(f" {os.getpid()}", outcome.beat or "")
 
 
 class ForkMergeTests(unittest.TestCase):
@@ -760,6 +790,37 @@ class CheckReadTests(unittest.TestCase):
         # Assert
         self.assertEqual(asked, [f"repos/owner/name/commits/{GREEN}/check-runs?per_page=100",
                                  f"repos/owner/name/commits/{GREEN}/status?per_page=100"])
+
+
+class ForkReadingTests(unittest.TestCase):
+    """Which two names decide a fork, since getting it wrong makes every pull request one."""
+
+    PAYLOAD = {"head": {"sha": GREEN, "ref": "topic", "repo": {"full_name": "Owner/Velvet"}},
+               "base": {"repo": {"full_name": "Owner/Velvet"}},
+               "draft": False, "mergeable_state": "clean"}
+
+    def read(self, payload, slug):
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(settle, "repository", lambda *_: slug))
+            stack.enter_context(mock.patch.object(settle, "rest_json", lambda *_: payload))
+            return settle.pull_request(Path("."), 1)
+
+    def test_Given_AHeadOnTheSameRepository_When_TheSlugIsCasedDifferently_Then_ItIsNoFork(self):
+        # Arrange — a clone made with different capitals answers everywhere and reads back canonical,
+        # so a comparison against the remote URL's spelling calls every pull request a fork and the
+        # ready state empties for good.
+        read = self.read(self.PAYLOAD, "owner/velvet")
+
+        # Act / Assert
+        self.assertFalse(read.fork)
+
+    def test_Given_AHeadOnAnotherRepository_When_ItIsRead_Then_ItIsAFork(self):
+        # Arrange — the control: a comparison that never says fork is not a comparison.
+        payload = dict(self.PAYLOAD, head=dict(self.PAYLOAD["head"],
+                                               repo={"full_name": "somebody/velvet"}))
+
+        # Act / Assert
+        self.assertTrue(self.read(payload, "Owner/Velvet").fork)
 
 
 class RepositoryReadTests(unittest.TestCase):

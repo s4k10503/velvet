@@ -275,8 +275,12 @@ deferral the message invited named the API error instead of whatever the work wa
 `.claude/hooks/lib/repository.py` owns both halves of the remedy: a second way of asking, drawn on a
 different quota, before blindness is declared at all, and the sentence a block has to carry when it
 is. The same check runs every guard in `.claude/hooks/stop` and requires that sentence of one that
-blocks, posing only the mode where every reading fails — an empty answer is the ordinary state
-`open_backlog.py` acts on.
+blocks. It poses two modes: nothing answers, and — the one a second way of asking creates — the
+listing answers while every per-pull-request read fails, which is where a guard can report on a
+pull request it learned nothing about. An empty answer is posed as neither, being the ordinary state
+`open_backlog.py` acts on. A guard whose own question is answered in a mode that broke somebody
+else's reading declares `UNREADABLE_ALLOWS`, with a comment and with a sibling that refuses there,
+so the exemption cannot be what ends the session.
 
 ### Source generators
 

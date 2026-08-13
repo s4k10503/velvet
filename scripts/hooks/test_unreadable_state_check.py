@@ -421,6 +421,83 @@ class RepositoryTests(unittest.TestCase):
                          (True, []))
 
 
+# `gh pr checks --json` exits 1 on a head with no check at all, the same code it exits when it could
+# not read, so a guard reading the code alone cannot tell a pull request in its first minutes from an
+# exhausted quota. These stubs pose both, with the rollup answering or not.
+NO_CHECKS_AND_A_ROLLUP = """#!/bin/sh
+case "$1 $2" in
+  "pr list")   echo 51 ;;
+  "pr checks") echo "no checks reported on the 'topic' branch" >&2; exit 1 ;;
+  "pr view")   case "$*" in *statusCheckRollup*) echo 0 ;; *) echo CLEAN ;; esac ;;
+  *)           exit 0 ;;
+esac
+"""
+
+NO_CHECKS_AND_NO_ROLLUP = """#!/bin/sh
+case "$1 $2" in
+  "pr list")   echo 51 ;;
+  *)           echo "GraphQL: API rate limit already exceeded" >&2; exit 1 ;;
+esac
+"""
+
+
+# The rollup fails while the merge state answers, which is where reading a failed check read as an
+# empty one stops merely mis-wording and starts asserting a fact nothing established.
+NO_CHECKS_AND_A_MERGE_STATE = """#!/bin/sh
+case "$1 $2" in
+  "pr list")   echo 51 ;;
+  "pr checks") echo "GraphQL: API rate limit already exceeded" >&2; exit 1 ;;
+  "pr view")   case "$*" in
+                 *statusCheckRollup*) echo "GraphQL: API rate limit already exceeded" >&2; exit 1 ;;
+                 *) echo CLEAN ;;
+               esac ;;
+  *)           exit 0 ;;
+esac
+"""
+
+
+class ZeroCheckTests(unittest.TestCase):
+    """A head no workflow has run for yet, which `gh pr checks` reports by failing.
+
+    Read as a failed reading it blocks every pull request in its first minutes and takes the whole
+    zero-check branch out of reach; read as an answer without asking anything else, an exhausted
+    quota walks back in as "no checks".
+    """
+
+    GUARD = REPO_ROOT / ".claude/hooks/stop/unsettled_pr.py"
+
+    def said(self, stub):
+        home = Path(tempfile.mkdtemp(prefix="velvet-zero-check-home-"))
+        try:
+            _, _, errors, _ = check.run_guard(self.GUARD, check.STOP_PAYLOAD, "probe", REPO_ROOT,
+                                              home, {"probe": {"gh": stub}})
+            return errors
+        finally:
+            shutil.rmtree(home, ignore_errors=True)
+
+    def test_Given_AHeadWithNoCheckAtAll_When_TheRollupAnswers_Then_ItIsNotCalledUnread(self):
+        # Arrange — the rollup says zero, so the answer was "none" and the reading did not fail.
+        said = self.said(NO_CHECKS_AND_A_ROLLUP)
+
+        # Act / Assert — the zero-check reminder, and not the sentence for a guard that read nothing.
+        self.assertEqual(("no checks apply to it" in said, check.SELF_REPORT in said), (True, False))
+
+    def test_Given_TheSameFailureWithNoRollupEither_When_ItIsJudged_Then_ItIsCalledUnread(self):
+        # Arrange — nothing answered, so "there are none" is not something this established.
+        said = self.said(NO_CHECKS_AND_NO_ROLLUP)
+
+        # Act / Assert
+        self.assertIn(check.SELF_REPORT, said)
+
+    def test_Given_AnUnreadCheckListBesideAReadableMergeState_When_Judged_Then_NoneIsNotReportedAsZero(self):
+        # Arrange — the merge state answers CLEAN, so a check read taken for an empty one produces
+        # the zero-check reminder: "no checks apply to it", about a list nothing here read.
+        said = self.said(NO_CHECKS_AND_A_MERGE_STATE)
+
+        # Act / Assert
+        self.assertEqual((check.SELF_REPORT in said, "no checks apply to it" in said), (True, False))
+
+
 class WatcherDeferralTests(unittest.TestCase):
     """A refusal that holds every editing tool in every session, and the way past it.
 

@@ -102,9 +102,10 @@ def main():
             "this guard exists to stop being invisible.\n\n"
             "  python3 scripts/pr/settle.py watch\n\n"
             "That reports what stops it starting, if anything does — a watcher already holding the "
-            "lock is named there with the command to end it. If the watcher is deliberately off, say "
-            "what turns it back on; the reason expires, so it gets re-read rather than forgotten:\n\n"
-            f'  echo "{WATCHER_KEY} <what turns it back on> {int(now)}" >> {DEFERRALS}\n')
+            "lock is named there with the command to end it. If the pause is deliberate, arm the "
+            "deferral for what the WORK is waiting on rather than for the watcher being off; the "
+            "reason expires, so it gets re-read rather than forgotten:\n\n"
+            f'  echo "{WATCHER_KEY} <what the work is waiting on> {int(now)}" >> {DEFERRALS}\n')
         return 2
 
     found = sitting(now)

@@ -11,7 +11,6 @@ Run: python3 scripts/hooks/test_hook_repository.py
 
 import contextlib
 import importlib.util
-import json
 import os
 import tempfile
 import unittest
@@ -19,8 +18,6 @@ from pathlib import Path
 from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SETTINGS = REPO_ROOT / ".claude/settings.json"
-STOP_GUARDS = ".claude/hooks/stop/"
 
 FAILS = 'echo "HTTP 403: API rate limit exceeded" >&2; exit 1'
 ANSWERS = "echo 612; echo 377"
@@ -117,36 +114,31 @@ class OpenPullRequestTests(unittest.TestCase):
         self.assertGreater(len(subcommands), 1)
 
 
-def stop_guard_budget():
-    """The tightest timeout the settings register for a Stop guard reading the pull requests.
-
-    Raises rather than defaulting when nothing matches: a budget nobody found would make the case
-    below pass against a number this repository does not hold.
-    """
-    settings = json.loads(SETTINGS.read_text(encoding="utf-8"))
-    return min(hook["timeout"]
-               for entry in settings.get("hooks", {}).get("Stop", [])
-               for hook in entry.get("hooks", [])
-               if STOP_GUARDS in hook.get("command", ""))
+# What a Stop may spend on this reading before the pause stops being one. A judgement rather than a
+# reading of the settings: the timeout registered there is orders larger than anything anyone would
+# wait at a Stop, so comparing against it passes whatever is written here and pins nothing.
+LONGEST_WORTH_WAITING = 20
 
 
 class ReadingBudgetTests(unittest.TestCase):
     """A tripwire on the shared reading, and not a claim about a guard's worst case.
 
     Neither guard's worst case is bounded by anything here: both make their own 60-second calls, and
-    unsettled_pr.py makes two of them per pull request, so what they can spend rises with the number
-    of pull requests and no fixed sum describes it. What this holds is the one part that is fixed —
-    the reading in `repository`, whose cost is the number of ways of asking times the bound each one
-    gets, and which is where a third way would be added.
+    unsettled_pr.py makes up to three of them per pull request, so what they can spend rises with the
+    number of pull requests and no fixed sum describes it. What this holds is the one part that is
+    fixed — the reading in `repository`, whose cost is the number of ways of asking times the bound
+    each one gets, and which is where a third way would be added.
+
+    An earlier version compared against the timeout the settings register, having read that number in
+    the wrong unit; read in the right one it is hours, so it passes anything and fires for nothing.
     """
 
-    def test_Given_EveryWayOfAsking_When_TheirTimeoutsAreAdded_Then_TheyFitInTheGuardsOwn(self):
-        # Arrange — the registered number is scaled the way `repository.gh`'s own bound reads it.
-        spent = (len(repository.OPEN_PULL_REQUEST_READS)
-                 * repository.OPEN_PULL_REQUEST_TIMEOUT * 1000)
+    def test_Given_EveryWayOfAsking_When_TheirTimeoutsAreAdded_Then_TheyStayWorthWaitingFor(self):
+        # Arrange
+        spent = len(repository.OPEN_PULL_REQUEST_READS) * repository.OPEN_PULL_REQUEST_TIMEOUT
 
         # Act / Assert
-        self.assertLess(spent, stop_guard_budget())
+        self.assertLessEqual(spent, LONGEST_WORTH_WAITING)
 
 
 class UnreadableReportTests(unittest.TestCase):

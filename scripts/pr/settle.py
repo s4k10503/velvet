@@ -12,7 +12,7 @@ shape is its own change. What this adds is reporting them together: one run name
 rather than costing a round of CI per reason. If a precondition is worth having here it belongs in a
 hook, because a script nobody is obliged to run guards nothing.
 
-Seven preconditions:
+Eight preconditions:
 
 - **Checks are bound to the head SHA they were read at.** `gh pr checks` answers about whatever the
   API last recorded, which after a force-push is the previous commit's run. So the head is read, then
@@ -31,6 +31,9 @@ Seven preconditions:
 - **The base must not hold an unpublished release.** `scripts/release/published_check.py` owns that
   decision, and CONTRIBUTING.md's release section owns what goes wrong without it.
 - **A draft is not merged**, and neither is one whose merge state is `dirty`.
+- **A head on another repository is not merged from here.** Its branch is a ref this checkout has
+  not got, so the containment reading above cannot be taken at all — and a reading nobody took is
+  not a precondition anybody met.
 
 `watch` records a pull request as ready by asking `blocking_reasons` — the same question `merge`
 decides from, not a second one beside it. Asked twice, the two disagreed: a draft with conflicts was
@@ -199,12 +202,18 @@ def pull_request(project, number):
     `fork` is what stops `branch` being handed to git: a cross-repository head names a branch on the
     fork, `origin/<it>` is not a ref here, and `contains_base` exits 128 on the lookup. A head whose
     repository is gone reads as a fork too, which is the same answer — this checkout cannot see it.
+
+    Both names come off this payload rather than one of them off `remote.origin.url`. GitHub answers
+    the same pull request for any casing of the path, so a clone made with different capitals, or a
+    repository since renamed, would make every pull request read as a fork — and then nothing is ever
+    ready and the guard that reads that never fires again.
     """
     payload = rest_json("repos/{}/pulls/{}".format(repository(project), number))
     head = payload.get("head") or {}
     home = ((head.get("repo") or {}).get("full_name") or "")
+    base_repository = ((payload.get("base") or {}).get("repo") or {}).get("full_name") or ""
     return PullRequest(head["sha"], head["ref"], bool(payload.get("draft")),
-                       payload.get("mergeable_state") or "", home != repository(project))
+                       payload.get("mergeable_state") or "", home != base_repository)
 
 
 # The bucket names this script decides from. A conclusion absent from the table falls to `fail` at
@@ -310,12 +319,15 @@ def reasons_from(before, after, results, branch, base, holds_base, held_by_workt
     if before != after:
         return reasons + [f"head moved from {before[:7]} to {after[:7]} while its checks were being read"]
 
-    # This reason changes no verdict, and that is the whole of why only `dirty` is read. A branch
-    # holding every commit on the base fast-forwards, so it cannot conflict: `dirty` implies
-    # `holds_base` is false, and the reason below it already blocks. What this adds is a message that
-    # names the conflict rather than telling a conflicting branch to merge the base in. `unknown` is
-    # left out because there is nothing for it to add — the same containment reading, taken from
-    # fetched refs rather than from GitHub, has already decided.
+    # Not merely a better message for what the containment reading already blocks. The two readings
+    # are of different base tips: `project_state` fetches once a cycle and this is a fresh read per
+    # pull request, so a branch can contain the tip that fetch saw while GitHub reports a conflict
+    # against a newer one. There the containment reason is absent and this is the only thing
+    # blocking, which is why it is read rather than left to the message.
+    #
+    # `unknown` is still left out: it is the absence of a reading rather than a reading, and a state
+    # that comes and goes would drop and re-add the entry, resetting the age
+    # `refuse/edit_while_a_ready_pr_sits.py` measures a pull request by.
     if merge_state == "dirty":
         reasons.append(f"it conflicts with {base}: resolve the conflict in the branch, which "
                        f"`settle.py update` declines to do")
@@ -422,6 +434,18 @@ def hold_the_watch():
     return handle, ""
 
 
+def beat():
+    """Record that a reading has just answered.
+
+    After the readings and never before them, and never on the path that caught their failure. A
+    watcher whose calls hang costs up to the bound on each of them, and one that stamped the file on
+    the way in would keep it inside the staleness window for the whole of that — so the guards would
+    read a live watcher while nothing was being read, and `write_ready_state` would meanwhile empty
+    the ready file. A wedge has to go stale; that is what makes it visible.
+    """
+    watcher_state.HEARTBEAT.write_text(watcher_state.beat(os.getpid()))
+
+
 def watch(project, base):
     """Emit each check that reaches a terminal state, once, and hold the heartbeat open meanwhile."""
     lock, holder = hold_the_watch()
@@ -448,7 +472,6 @@ def watch(project, base):
     seen = set()
     ready_since = {}
     while True:
-        watcher_state.HEARTBEAT.write_text(watcher_state.beat(os.getpid()))
         try:
             pull_requests = open_pull_requests(project)
             state = project_state(project, base)
@@ -456,18 +479,16 @@ def watch(project, base):
             print(f"! {error}", flush=True)
             time.sleep(watcher_state.POLL_SECONDS)
             continue
+        beat()
 
         ready = set()
         for number in pull_requests:
-            # Written again per pull request, not once per cycle: a poll over several of them takes
-            # longer than the window a reader believes a heartbeat for, and a watcher that is working
-            # must not read as one that stopped.
-            watcher_state.HEARTBEAT.write_text(watcher_state.beat(os.getpid()))
             try:
                 blocking = blocking_reasons(project, number, base, state)
             except RuntimeError as error:
                 print(f"! PR#{number}: {error}", flush=True)
                 continue
+            beat()
 
             for result in blocking.results:
                 if result["bucket"] == "pending":

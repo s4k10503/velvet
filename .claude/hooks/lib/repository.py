@@ -83,9 +83,9 @@ OPEN_PULL_REQUEST_READS = (
 # What was asked and what came back, for a caller that has to report a failure rather than a subject.
 PullRequests = collections.namedtuple("PullRequests", "numbers attempts")
 
-# Same rule as `gh` above: the calling hook's registered timeout divided by the calls one invocation
-# makes. Adding a way of asking without re-dividing is what scripts/hooks/test_hook_repository.py
-# fails on.
+# Bounded so that asking twice cannot take twice as long as anyone budgeted for asking once, and
+# held against the guards' registered timeout by scripts/hooks/test_hook_repository.py — which says
+# there what that comparison does and does not cover.
 OPEN_PULL_REQUEST_TIMEOUT = 8
 
 
@@ -121,8 +121,11 @@ def unreadable_report(subject, attempts, key, another_way):
     reading expires, is rewritten identically, and leaves on the record a reason nothing was waiting
     on.
 
-    Both outcomes a Stop guard can have exit 2 — the guards' own docstrings own what that means, and
-    there is no second blocking code to spend — so the whole of the distinction is this text.
+    Both outcomes here exit 2, and the distinction is therefore the text alone. Putting it in the
+    exit as well would mean blocking one of the two through a form this repository has never
+    measured, and a refusal that bets on an unmeasured form and loses is a refusal that fails open —
+    which is the defect this whole family exists to remove. So the second way stays unused until
+    something here can measure it.
     """
     asked = "\n\n".join(f"  {call}\n{detail}" for call, detail in attempts)
     header = "Every way of asking failed:" if len(attempts) > 1 else "What was asked, and what came back:"
