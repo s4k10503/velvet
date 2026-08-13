@@ -422,18 +422,6 @@
       ]
     },
     {
-      "name": "has-parser",
-      "mechanism": "has-variant",
-      "summary": "the has-* variant parser recognises no token and resolves no selector",
-      "edits": [
-        {
-          "file": "Packages/com.velvet.core/Runtime/Styling/StyleHasVariantClass.cs",
-          "anchor": "public static bool TryParse(string token, out StyleHasKind kind, out string? className, out string? payload)",
-          "neuter": "kind = default; className = null; payload = null; return false;"
-        }
-      ]
-    },
-    {
       "name": "attribute-variant-parser",
       "mechanism": "attribute-variant",
       "summary": "the data-* and aria-* variant parser recognises no token and resolves no payload",
@@ -827,14 +815,6 @@
       "fixture": "Velvet.Tests.ZIndexStackingTests",
       "cuts": [
         "zindex-parser"
-      ],
-      "caseScopes": [],
-      "platform": "EditMode"
-    },
-    {
-      "fixture": "Velvet.Tests.HasVariantTests",
-      "cuts": [
-        "has-parser"
       ],
       "caseScopes": [],
       "platform": "EditMode"
