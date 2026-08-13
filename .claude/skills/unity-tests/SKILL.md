@@ -30,9 +30,11 @@ python3 scripts/test_quality/assert_no_inconclusive.py Logs/results.xml
 ps -Ao command= | grep -c '^/Applications/.*/MacOS/Uni[t]y -runTests'
 ```
 
-Concurrent Unity instances do not change what the suite reports. Measured on one tree: the same EditMode suite, run five times with zero, two and three other runs alive, reported 3943 passed / 0 failed / 0 inconclusive / 0 skipped every time, and the duration ranged 114–141 s without tracking concurrency — the slowest reading was the least contended one. So do not wait for a quiet machine; that wait has starved agents for hours.
+Concurrent instances cost time and change nothing the suite reports. Measured on one tree, one EditMode suite, sampling the neighbour count every three seconds for each run's whole life and excluding the run itself: alone — 34 samples, every one zero — 3943 passed / 0 failed / 0 inconclusive / 0 skipped in 81.7 s; beside three other full suites — 48 samples, peak three and never below two — the same four counts in 122.7 s. So do not wait for a quiet machine for a suite run; that wait has starved agents for hours. Budget the time, not the verdict.
 
-What the count above is still for: one tree and one suite is what the reading rests on, so **a single failing case you suspect of timing gets re-run alone before you report it.** That is a question about one case rather than a reason to hold the run.
+Take the count above **while the run is alive and subtract the run itself**, not once at launch: an earlier reading of this labelled two arms from a single sample and got both wrong, and `neuter_check.sweep_fixture` already carries the sampling loop to copy.
+
+The reading is one tree and one suite, so **a single failing case you suspect of timing gets re-run alone before you report it** — a question about one case rather than a reason to hold the run. A **player** run is separate and does need the machine to itself, for the reason its own section gives.
 
 **Compile errors appear only in the log**, never in the XML — and `grep ": error "` over it, not `error CS`. An analyzer under `Generators~` raises its own at error severity, which fails the compile with no `CS` code anywhere in the log; that has happened here, and the run wrote no results. The abort banner is **not** in the log — it goes to the process output, and a failed-compile `-logFile` carries the line "Scripts have compiler errors" instead. A run that will not compile exits 1 and writes **no** XML, so whatever sits at that path is the last run that got there, and reading it gives another tree's counts under a `-testFilter` nobody posed. Measured: one passing case named for a fixture the worktree did not contain, from a filter naming something else. `assert_results_from_this_tree.py` is what refuses this; run it before you read a count, not after you have quoted one.
 
@@ -82,7 +84,8 @@ A mutation that reddens a test proves the test is sensitive to *that mutation*, 
 Consecutive review rounds on one branch kept finding one more instance of a defect already fixed, each fix right, the class never moving — because each round fixed what it was handed. Two sweeps end that, and both cost minutes:
 
 - **Every assertion**: remove the condition the case arranges and check that something goes red. If nothing does, the arrangement is decoration.
-- **Every sentence containing `every`, `no other`, `always` or `none`**: check it against the set it quantifies over. Universals written from memory have been false here more often than they have held, including inside the rule that forbids writing an unverified claim, and including in a comment written after that rule landed.
+- **Every sentence containing `every`, `no other`, `always`, `none`, `never`, `only`, `any`, `nothing`, `each` or `cannot`**: check it against the set it quantifies over. Universals written from memory have been false here more often than they have held, including inside the rule that forbids writing an unverified claim, and including in a comment written after that rule landed.
+- **Every superlative**, which the word list above does not reach: `the slowest`, `the one place`, `the only`. A sentence claiming a maximum is a universal over the same set with an ordering on top, and one shipped here contradicted the table printed two lines above it — the sweep, run exactly as written, reported zero and passed it through.
 
 Report what a sweep found, zero included. One nobody hears about is indistinguishable from one nobody ran.
 
