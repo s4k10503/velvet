@@ -1221,6 +1221,54 @@ namespace Velvet
             }
         }
 
+        // Removes the DOM-less AnimatePresence state expanded into this element. Called from
+        // FiberElementCleaner, which owns which teardowns reach it. The presence's own node can stop
+        // being rendered while this element stays put, so this is not the only retirement route —
+        // RetirePresenceStatesNotReRendered is the other.
+        internal void PrunePresenceParentElementState(VisualElement parent)
+        {
+            if (PresenceStates.Count == 0) return;
+            List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)>? stale = null;
+            foreach (var key in PresenceStates.Keys)
+            {
+                if (ReferenceEquals(key.parent, parent)) (stale ??= new()).Add(key);
+            }
+            if (stale != null)
+            {
+                foreach (var key in stale) PresenceStates.Remove(key);
+            }
+        }
+
+        // The presence entries one top-level pass reproduced on its old side, and the ones its new side
+        // rendered again. The case this pair exists for is the one neither prune above can see: an
+        // AnimatePresence node stops being rendered while both halves of its key — the boundary fiber and
+        // the parent element — go on living, and the difference between the two readings is what says so.
+        private readonly List<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceReproduced = new();
+        private readonly HashSet<(ComponentFiber? boundary, VisualElement? parent, string presenceKey)> _presenceReRendered = new();
+
+        internal void MarkPresenceReproduced((ComponentFiber? boundary, VisualElement? parent, string presenceKey) key)
+            => _presenceReproduced.Add(key);
+
+        internal void MarkPresenceReRendered((ComponentFiber? boundary, VisualElement? parent, string presenceKey) key)
+            => _presenceReRendered.Add(key);
+
+        // Retires every entry the pass reproduced without rendering again, then drops the pass's marks.
+        // domFinalized is false for a pass that aborted, where GeneralPathReconciler skipped
+        // FinalizeGeneralCommit: the leaves the old side reproduced are still in the DOM, and the entry is
+        // what the next old side reproduces them from. Such a pass drops its marks and retires nothing.
+        internal void RetirePresenceStatesNotReRendered(bool domFinalized)
+        {
+            if (domFinalized)
+            {
+                foreach (var key in _presenceReproduced)
+                {
+                    if (!_presenceReRendered.Contains(key)) PresenceStates.Remove(key);
+                }
+            }
+            _presenceReproduced.Clear();
+            _presenceReRendered.Clear();
+        }
+
         // Tree-wide auto-batching scheduler. Coalesces setState across every fiber that shares this
         // context into a single frame-boundary flush so an event handler touching N fibers commits in
         // one reconcile pass rather than N. Inline-mounted descendants share the root fiber's context

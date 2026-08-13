@@ -197,6 +197,7 @@ namespace Velvet
             CleanupFocusAndNavigationResources(element);
             CleanupDndResources(element);
             CleanupControllerResources(element);
+            _ctx.PrunePresenceParentElementState(element);
         }
 
         // Refs, animation/layout scheduling, the event + component registries, and every

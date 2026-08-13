@@ -1236,6 +1236,7 @@ namespace Velvet
 
             if (!walk.IsNewSide)
             {
+                _ctx.MarkPresenceReproduced(stateKey);
                 ReproduceCommittedPresence(walk, stateKey, presencePosition);
                 return;
             }
@@ -1340,6 +1341,10 @@ namespace Velvet
                 {
                     foreach (var completion in tally.Deferred) completion();
                 }
+
+                // Marked here rather than beside stateKey above, so an expansion that unwound is not
+                // counted as having rendered this presence again.
+                _ctx.MarkPresenceReRendered(stateKey);
             }
             finally
             {

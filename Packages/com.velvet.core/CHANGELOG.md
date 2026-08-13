@@ -56,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `V.AnimatePresence` that stops being rendered takes its bookkeeping with it. That bookkeeping is
+  keyed by the component the presence renders in, the parent element its children expand into, and the
+  presence's position — and only the component being disposed, or the whole tree being unmounted,
+  retired it. So a `cond ? V.AnimatePresence(…) : null` flipping to `null` left an entry holding the
+  committed children plus each key's exit anchor and Motion element, well after the removal had taken
+  those elements out of the tree. Rendering the presence again at that position then started from
+  that stale set: children that had left were spliced back into the DOM as exiting ghosts, and
+  `initial: false` no longer suppressed the enter, since the second mount was not taken for a first
+  render. The entry also survived its parent element being torn down — once per removal, so a panel
+  mounted and unmounted repeatedly accumulated one per cycle — and a poolable parent (a `V.Button`)
+  rented back for a fresh presence at the same position picked the stale entry up again.
 - A child that moves from one `gap-*`, `divide-*` or `grid-cols-*` container to another keeps the
   spacing, divider or column sizing the container it joined wrote. Each of the three tracked the children
   it had written to by raw reference and reset the value on one no longer in the container, and the
