@@ -59,6 +59,33 @@ def applied(text, mutant):
     return mutation_check.apply_mutation(text, mutant).splitlines()[mutant.line - 1].strip()
 
 
+def encloses_separator(fragment):
+    """Whether a cut carries punctuation belonging to the construct around it rather than to itself.
+
+    A comma at the fragment's own depth ended a member of an initialiser or an argument list; a `?`
+    with a later `:` was a ternary whose branches the chain sat inside. Taking either leaves C# that
+    compiles nowhere, and an uncompilable mutant asks the suite nothing.
+    """
+    mask = mutation_check.code_mask(fragment)
+    seen = "".join(fragment[offset] for offset in range(len(fragment)) if mask[offset])
+    depth = 0
+    questions, colons = [], []
+    for position, character in enumerate(seen):
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        elif depth:
+            continue
+        elif character == ",":
+            return True
+        elif character == "?" and seen[position + 1:position + 2] not in (".", "?", "[", ">"):
+            questions.append(position)
+        elif character == ":" and ":" not in (seen[position + 1:position + 2], seen[position - 1:position]):
+            colons.append(position)
+    return any(colon > question for question in questions for colon in colons)
+
+
 def code_parens(fragment):
     """How far the fragment's parentheses are out of balance, counting only what the compiler sees."""
     mask = mutation_check.code_mask(fragment)
@@ -216,8 +243,9 @@ class StatementChainCutTests(unittest.TestCase):
     """A chain that is a whole statement rather than a condition closes no group.
 
     The balance check next door cannot see this: the remainder's code parentheses are balanced, and
-    what it is missing is the semicolon. An uncompilable mutant fails its run, and a failing run is
-    scored as a kill — so this shape reports a false kill rather than noise.
+    what it is missing is the semicolon. What such a mutant costs is measured in
+    `UncompilableMutantTests` — the build stops, no test is asked anything, and the verdict is its
+    own rather than a kill.
     """
 
     def test_Given_AChainThatIsAWholeStatement_When_ACutIsApplied_Then_ItKeepsTheTerminator(self):
@@ -229,6 +257,55 @@ class StatementChainCutTests(unittest.TestCase):
 
         # Assert
         self.assertEqual(cuts, ["var isRgb = !isRgba;"])
+
+    def test_Given_AChainEndingAnInitialiserMember_When_ACutIsApplied_Then_ItKeepsTheComma(self):
+        # Arrange — the object-initializer shape. Neither health guard next door sees it: the cut's
+        # code parentheses balance, and the line ends where it did, so both stay green while the
+        # member and the one after it run together.
+        text = "        Memoize = forceMemoize || Registry.IsMemoized(identity),\n"
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["Memoize = forceMemoize,"])
+
+    def test_Given_AChainBeforeATernary_When_ACutIsApplied_Then_ItKeepsBothHalvesOfIt(self):
+        # Arrange — the ternary shape, whose `?` and `:` belong to the expression around the chain.
+        text = "var next = index >= 0 && count > 0 ? count - 1 - index : index;\n"
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["var next = index >= 0 ? count - 1 - index : index;"])
+
+    def test_Given_ANullConditionalInAChain_When_ACutIsApplied_Then_ItIsNotReadAsATernary(self):
+        # Arrange — `?.` and a nullable type carry a question mark that ends nothing, and stopping on
+        # them would truncate a cut that was correct.
+        text = "var editor = live && element.panel?.contextType == ContextType.Editor;\n"
+
+        # Act
+        cuts = [applied(text, mutant) for mutant in mutants_of(text, "clause removed")]
+
+        # Assert
+        self.assertEqual(cuts, ["var editor = live;"])
+
+    def test_Given_EveryRuntimeSource_When_ACutIsApplied_Then_NoneCarriesAnEnclosingSeparator(self):
+        # Arrange — the sweep for both shapes, because the package holds 1141 cuts and 25 of them
+        # were in these two before the probe learned to stop.
+        sources = [path for path in RUNTIME.rglob("*.cs") if "/Tests/" not in path.as_posix()]
+
+        # Act
+        carrying = []
+        for path in sources:
+            text = path.read_text()
+            for mutant in mutants_of(text, "clause removed"):
+                if encloses_separator(mutant.before):
+                    carrying.append(f"{path.name}:{mutant.line} {mutant.before.strip()}")
+
+        # Assert — the source count rides along because an empty scan carries nothing by arithmetic.
+        self.assertEqual((len(sources) > 200, carrying), (True, []))
 
     def test_Given_EveryRuntimeSource_When_ACutIsApplied_Then_NoneDropsATerminator(self):
         # Arrange — the sweep, because one hand-written line is a single shape and the operator now
@@ -694,10 +771,13 @@ class StubbedCampaign:
     kills = False
     times_out = False
     build_error = False
+    not_rebuilt = False
 
     def run_suite(self, _unity, _project, _platform, _scope, results, log, _timeout, _holder=None):
         # The baseline has to be green whatever the mutants do, or the run stops before the loop.
         mutant = Path(results).name != "baseline.xml"
+        if self.not_rebuilt:
+            (self.project / "Library" / "ScriptAssemblies" / "None.dll").write_bytes(b"same")
         if mutant and self.times_out:
             return 0.0, True
         Path(results).write_text(FAILING_RESULTS if (mutant and self.kills) else GREEN_RESULTS)
@@ -1191,6 +1271,19 @@ class ReceiptTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
 
+    def test_Given_ANarrowedCampaign_When_AReceiptIsAskedAfterIt_Then_NoneCoversTheChange(self):
+        # Arrange — a `--filter` run asks whether one fixture notices, and under it nearly everything
+        # survives. A receipt from one would sign a branch off against a question nobody asked.
+        campaign = StubbedCampaign()
+        campaign.kills = True
+        campaign.run_over_diff("--max", "40", "--filter", "Velvet.Tests.Probe")
+
+        # Act
+        code = campaign.run_over_diff("--receipt")
+
+        # Assert
+        self.assertEqual(code, mutation_check.RECEIPT_REFUSAL)
+
     def test_Given_APassingCampaign_When_AMutatedFileIsEditedWithoutCommitting_Then_ItIsRefusedAgain(self):
         # Arrange — the reading the head tree sha cannot take: this edit moves no tree sha at all.
         campaign = StubbedCampaign()
@@ -1291,6 +1384,19 @@ class CampaignVerdictTests(unittest.TestCase):
         # Assert
         self.assertEqual(code, 1)
 
+    # GREEN_ON_BASE(characterization): failing on this is what the receipt now rests on as well.
+    def test_Given_AMutantTheEditorNeverRebuilt_When_TheRunFinishes_Then_ItFails(self):
+        # Arrange — the assembly comes out byte-identical, so the suite ran the unmutated binary and
+        # answered about nothing. Pre-existing behaviour, and it now decides a receipt as well.
+        campaign = StubbedCampaign()
+        campaign.not_rebuilt = True
+
+        # Act
+        code = campaign.run_over_diff("--max", "40")
+
+        # Assert
+        self.assertEqual(code, 1)
+
     def test_Given_ACampaignNoOperatorReaches_When_ItRefuses_Then_ItStillLeavesAReceipt(self):
         # Arrange — such a branch cannot earn a passing run, so without the receipt it could never
         # open a pull request at all.
@@ -1340,7 +1446,15 @@ class CampaignVerdictTests(unittest.TestCase):
 
 
 class UncompilableMutantTests(unittest.TestCase):
-    def test_Given_AMutantThisRepositorysAnalyzersRejected_When_ItIsDecided_Then_ItIsNotASurvivor(self):
+    """A mutant the build rejected is one nobody asked about, and this run must not pass on it.
+
+    It is not a survivor -- no test could fail on a binary that was never produced -- so a reading
+    that only counts survivors lets it through, and the receipt it writes says the change was
+    measured. That is this file's own thesis, and it was open here: the earlier version of this case
+    asserted the passing exit and locked it in.
+    """
+
+    def test_Given_AMutantThisRepositorysAnalyzersRejected_When_ItIsDecided_Then_NothingSignsItOff(self):
         # Arrange — VEL501 is this repository's own branching-complexity limit, reported as an error
         # and invisible to a reading that matches `error CS`. The suite writes a green result either
         # way when the build produced no assembly, so without the log this reads as a survivor.
@@ -1348,10 +1462,79 @@ class UncompilableMutantTests(unittest.TestCase):
         campaign.build_error = True
 
         # Act
-        code = campaign.run_over_diff("--max", "40")
+        run = campaign.run_over_diff("--max", "40")
+        receipt = campaign.run_over_diff("--receipt")
 
-        # Assert
-        self.assertEqual(code, 0)
+        # Assert — both together, because a run that treats this as an ordinary survivor also exits
+        # 1, and the receipt is the half `gh pr create` reads.
+        self.assertEqual((run, receipt), (1, mutation_check.RECEIPT_REFUSAL))
+
+
+class HoldOrderingTests(unittest.TestCase):
+    """The record is written before the mutation, which is the whole of the interruption mechanism.
+
+    Every other case reads the tree after the campaign has finished or been signalled, and both
+    orders look identical there. What separates them is what is on disk at the instant the record is
+    taken, so that is what this reads.
+    """
+
+    def test_Given_ACampaignAboutToMutate_When_TheRecordIsTaken_Then_TheSourceIsStillTheOriginal(self):
+        # Arrange — the other order leaves a window where a mutation is on disk and nothing names it,
+        # which is the state a killed campaign was found in twice.
+        campaign = StubbedCampaign()
+        original = campaign.source.read_text()
+        seen = []
+        held = mutation_check.Holder.hold
+
+        def watch(self, source, first, mutated, description):
+            seen.append(Path(source).read_text())
+            return held(self, source, first, mutated, description)
+
+        # Act
+        mutation_check.Holder.hold = watch
+        try:
+            campaign.run_over_diff("--max", "1")
+        finally:
+            mutation_check.Holder.hold = held
+
+        # Assert — the count rides along because no call at all also leaves nothing unequal.
+        self.assertEqual((len(seen), seen[:1]), (1, [original]))
+
+
+class DeclarationOwnershipTests(unittest.TestCase):
+    """Which declarations count as this branch's, read the way the campaign reads them.
+
+    `VerdictTests` builds `Declaration` objects by hand, so the field is set there rather than
+    derived; setting `written_here` to a constant in `declarations_for` reddened none of them.
+    """
+
+    SOURCE = textwrap.dedent("""\
+        namespace Velvet
+        {
+            internal static class Probe
+            {
+                // MUTANT_SURVIVES(equivalent): every caller clamps the operand already.
+                internal static bool Ready(int a, int b) => a <= b;
+            }
+        }
+        """)
+
+    def read(self, changed_lines):
+        campaign = StubbedCampaign(self.SOURCE)
+        found = mutation_check.declarations_for(
+            {campaign.source: None}, {campaign.source: changed_lines})
+        return sorted({held.written_here for held in found.values()})
+
+    def test_Given_ADeclarationOnALineTheBranchWrote_When_ItIsRead_Then_ItIsTheBranchsOwn(self):
+        # Arrange — the declaration sits on line 5 of the fixture.
+        # Act / Assert
+        self.assertEqual(self.read({5}), [True])
+
+    def test_Given_ADeclarationOnALineTheBranchDidNotWrite_When_ItIsRead_Then_ItIsNotTheBranchsOwn(self):
+        # Arrange — the same file with the declaration's own line outside the diff, which is a
+        # declaration the base already carried and does not answer for this change.
+        # Act / Assert
+        self.assertEqual(self.read({6}), [False])
 
 
 class SignalledCampaignTests(unittest.TestCase):

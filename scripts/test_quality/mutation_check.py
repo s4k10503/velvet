@@ -13,16 +13,17 @@ written -- or it is answered above the line it lives on, with a reason a reviewe
     // MUTANT_SURVIVES(equivalent): both spellings clamp to the same bound, so nothing can differ.
 
 A declaration answers for the change written under it, so it is read the three ways `base_red_check.py`
-reads `GREEN_ON_BASE`: one over a line whose mutants all died is stale and fails, one whose category or
-reason is malformed fails, and one the branch did not itself write answers for a change the base already
-carries rather than for this one.
+reads `GREEN_ON_BASE`: one over a statement whose mutants all died is stale and fails, one whose category
+or reason is malformed fails, and one the branch did not itself write answers for a change the base
+already carries rather than for this one.
 
 **Success means every mutant was measured, and every survivor answered for.** Not that nothing was
 reported: most of what goes wrong with a campaign ends in a mutant nobody asked about, and a mutant
 nobody asked about must never be a pass. So the ways a run can measure less than it looks like it
-measured each fail on their own -- a cap that left mutants unrun, an assembly the editor never rebuilt,
-a second editor sharing the machine, and a file whose comment and string mask swallowed code, which
-generates no mutant there and says nothing.
+measured each fail on their own -- a cap that left mutants unrun, an editor killed at --timeout, a
+build that rejected the mutation, an assembly the editor never rebuilt, a second editor sharing the
+machine, and a file whose comment and string mask swallowed code, which generates no mutant there and
+says nothing.
 
 It is not success over the whole change, and the difference is most of one: the operators reach a
 minority of the code lines a branch touches, so the reach is printed beside every verdict rather than
@@ -381,15 +382,32 @@ def clause_cuts(line, start, mask, limit):
                     if level == depth:
                         break
                     level -= 1
-                elif character == ";":
+                elif level != depth:
+                    # Everything below ends the clause, and only at the join's own depth: a comma one
+                    # level in belongs to an argument list the clause is calling, and stopping there
+                    # cut `s.StartsWith("rgb(", …)` in half.
+                    pass
+                elif character in ";,":
                     # A chain that is a whole statement rather than a condition closes no group, so
-                    # without this the probe runs to the end of the line and takes the terminator
-                    # with it: `var ok = a && b;` came back as `var ok = a`, which compiles nowhere.
+                    # without these the probe runs to the end of the line and takes the terminator or
+                    # the separator with it: `var ok = a && b;` came back as `var ok = a`, and an
+                    # object initializer's `Memoize = a || b,` lost the comma that ended the member.
+                    break
+                elif character == "?" and line[probe + 1:probe + 2] not in (".", "?", "[", ">"):
+                    # A ternary's own punctuation belongs to the expression around the chain, not to
+                    # the chain: `x = a || b ? c : d` cut to `x = a` where the type came from the
+                    # ternary. The four spellings excluded are `?.`, `??`, `?[` and a nullable type.
+                    break
+                elif character == ":" and ":" not in (line[probe + 1:probe + 2],
+                                                      line[probe - 1:probe]):
+                    # The other half of one, reached when the chain sits inside a ternary's branch.
                     break
                 elif level == depth and any(line.startswith(c, probe) for c in LOGIC_JOINS):
                     break
             probe += 1
-        text = line[column:probe]
+        # Trailing space left behind rather than taken: a cut ending at a `?` would otherwise
+        # close up against it and leave `index >= 0? count`, which compiles and reads as a typo.
+        text = line[column:probe].rstrip()
         if text.strip() != join.strip():
             cuts.append((column, text))
     return cuts
@@ -1186,7 +1204,7 @@ def main():
     if not survivors:
         print("(none)")
 
-    unmeasured = [m for m in mutants if m.verdict in (NOT_BUILT, TIMED_OUT)]
+    unmeasured = [m for m in mutants if m.verdict in (NOT_BUILT, TIMED_OUT, UNCOMPILABLE)]
     if unmeasured:
         print("\n--- mutants nothing was asked of the suite about ---")
         for mutant in unmeasured:

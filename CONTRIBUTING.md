@@ -129,8 +129,8 @@ that need a run, the declarations and the cap among them, it does not take.
 
 [Generators~/README.md ▸ Mutation testing](Packages/com.velvet.core/Generators~/README.md#mutation-testing)
 covers this and the generator solution's own run, and owns what the verdicts mean, how to read a
-survivor, and which line shapes the operators reach — which is 33% of the changed code lines measured
-over the twenty commits before this paragraph, so **a survivor count is a statement about the lines an
+survivor, and which line shapes the operators reach — which is 32% of the changed code lines measured
+over the twenty commits ending at `48057c8`, so **a survivor count is a statement about the lines an
 operator reached and not about the change**. The run prints both numbers and names the lines it could
 not ask about.
 
@@ -177,10 +177,10 @@ campaign at pull-request-open time, and a review round that changes production c
 measured by nothing until the next `gh pr create`.
 
 **Nothing in CI runs the campaign, and at the measured cost nothing can.** A mutant is one editor launch.
-Over the twenty commits before this one, nine generated no mutant at all and the other eleven ranged
-3 to 51 with a median of 20. A mutant's launch-compile-run measured 100–118 s here against a 94 s
-baseline, so a median branch is around 37 minutes and the largest around an hour and a half; on the CI
-runner, where the EditMode job alone takes 5m47s, a median branch is 21 sequential Unity jobs.
+Over the twenty commits ending at `48057c8`, ten generated no mutant at all and the other ten ranged
+3 to 51 with a median of 22. A mutant's launch-compile-run measured 100–118 s here against a 94 s
+baseline, so a median branch is around 41 minutes and the largest around an hour and a half; on the CI
+runner, where the EditMode job alone takes 5m47s, a median branch is 23 sequential Unity jobs.
 Run it on a branch before opening the pull request. `Test ▸ test-quality` holds the half that
 needs no editor: that the mutants can be generated at all, and that every declaration in the package is one
 the script would accept rather than one it silently refuses.

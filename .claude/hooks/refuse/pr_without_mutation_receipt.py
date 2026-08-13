@@ -3,9 +3,9 @@
 
 A green suite says nothing about whether the tests would have noticed the change, and the campaign
 that asks is the one instrument here that nothing runs: it needs an editor per mutant, which is
-around 25 minutes for a median branch and 14 sequential Unity jobs on the runner, so no workflow can
-carry it. Its verdicts were therefore reported in pull-request bodies and never gated on, which is
-how a branch shipped "two surviving mutants, same hole" as a declaration.
+around 41 minutes for a median branch and 23 sequential Unity jobs on the runner, so no workflow
+can carry it; CONTRIBUTING.md owns that measurement. Its verdicts were therefore reported in
+pull-request bodies and never gated on, which is how a branch shipped "two surviving mutants, same hole" as a declaration.
 
 The campaign leaves a receipt naming what it measured. This asks for one covering the change in the
 checkout the command runs in, and mutation_check.py owns both what that means and what a passing
@@ -48,7 +48,7 @@ HOOK_TOOLS = {"Bash"}
 # An operand the shell has not expanded could be one, so this refuses on the same rule and over the
 # same operands as `merge_unproven_head.py`.
 UNEXPANDED_POLICY = "refuse"
-UNEXPANDED_PROBE = 'gh pr create --head $BRANCH'
+UNEXPANDED_PROBE = 'gh pr create $FLAGS'
 
 # Both readings here are git's — the checkout the command runs in, and the merge base the receipt is
 # keyed on. A git that cannot answer has not established that no receipt covers the change; it has
@@ -70,6 +70,7 @@ TIMEOUT = 15
 # Operands saying the change is not this checkout's. `--head` names another branch; the repository
 # flags name another repository entirely.
 ELSEWHERE = ("-R", "--repo", "-H", "--head")
+SHORT_ELSEWHERE = ("-R", "-H")
 
 OWED = "no mutation campaign covers this branch's change."
 UNREAD = "this guard could not read the state it decides from."
@@ -85,10 +86,16 @@ def repo_root(cwd):
 
 
 def elsewhere(operands):
-    """The operand saying this command is about a change other than the one in this checkout."""
+    """The operand saying this command is about a change other than the one in this checkout.
+
+    Three spellings reach the same flag: separated, `--repo=x`, and a short flag carrying its value
+    with no gap. The last is why this is a prefix test rather than a membership one -- `-Rother/repo`
+    is one token that equals nothing in the set.
+    """
     for token in operands:
         head = token.split("=", 1)[0]
-        if head in ELSEWHERE:
+        if head in ELSEWHERE or any(token.startswith(short) and len(token) > len(short)
+                                    for short in SHORT_ELSEWHERE):
             return token
     return None
 
@@ -116,7 +123,7 @@ def main():
         return 0
 
     for operands in invocations:
-        loose = [token for token in operands if not token.startswith("-") and unexpanded(token)]
+        loose = [token for token in operands if unexpanded(token)]
         if loose:
             return refuse(UNREAD,
                           "`{}` is an operand the shell has not expanded, so which change this "
