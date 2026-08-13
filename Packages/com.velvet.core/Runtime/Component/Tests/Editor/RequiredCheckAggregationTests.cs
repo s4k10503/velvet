@@ -340,10 +340,6 @@ namespace Velvet.Tests
                 Is.EqualTo((true, true, string.Empty)));
         }
 
-        // GREEN_ON_BASE(characterization): the two namings already agree on both sides — every job key in
-        // these workflows is plain, so the base's narrower pattern found them all. What this holds is the
-        // pattern the branch widened, against being narrowed again by someone who has only the passing
-        // cases to go on.
         // The events a contributor's own work starts. `workflow_dispatch` and `release` sit outside by
         // decision rather than by omission: neither is something a pull request or a push to main causes,
         // and the table does not offer them for the required workflows.
@@ -434,6 +430,10 @@ namespace Velvet.Tests
             Assert.That((rows.Count >= 2, string.Join("\n", wrong)), Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(characterization): the two namings already agree on both sides — every job key in
+        // these workflows is plain, so the base's narrower pattern found them all. What this holds is the
+        // pattern the branch widened, against being narrowed again by someone who has only the passing
+        // cases to go on.
         [Test]
         public void Given_EveryJobARequiredAggregateNames_When_TheWorkflowIsEnumerated_Then_ItIsFound()
         {
@@ -500,6 +500,9 @@ namespace Velvet.Tests
             Assert.That((aggregates.Count >= 2, string.Join("\n", wrong)), Is.EqualTo((true, string.Empty)));
         }
 
+        // GREEN_ON_BASE(characterization): what this case asks did not change — only the reader it asks
+        // through, from a flow-list-only match to one that takes either YAML spelling. The spelling that
+        // separates the two is in neither workflow, so both answer the same here.
         [Test]
         public void Given_EveryJobInARequiredWorkflow_When_TheAggregateIsRead_Then_ItDependsOnThatJob()
         {
