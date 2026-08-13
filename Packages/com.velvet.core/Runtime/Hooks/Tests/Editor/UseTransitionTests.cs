@@ -16,14 +16,19 @@ namespace Velvet.Tests
     /// <item>Setting a state to an equal value inside a transition schedules no re-render.</item>
     /// <item>A Normal-priority update may interrupt a pending transition, but <c>isPending</c> stays true while the
     /// transition lane remains queued and returns to false only after a subsequent flush drains that lane.</item>
-    /// <item>An async <c>startTransition</c> keeps <c>isPending</c> true across awaits until the task completes,
-    /// and its post-await updates still take the transition lane.</item>
+    /// <item>An async <c>startTransition</c> keeps <c>isPending</c> true across awaits until the task completes.
+    /// Its post-await updates fall outside the scope its callback opened: they take the Normal lane, or the
+    /// priority of whatever scope they do land in — a discrete handler's, or a further <c>startTransition</c>
+    /// call's. An update from elsewhere that lands while the action awaits keeps its own priority.</item>
     /// <item>A nested <c>startTransition</c> joins the outer transition: it applies its updates without starting a
-    /// new transition and without throwing.</item>
+    /// new transition and without throwing; a callback leaving by an exception still closes its scope.</item>
+    /// <item>A transition's callback covers the updates it schedules on other fibers too, so a setter a component
+    /// received as a prop is deferred by the transition that wraps the call.</item>
     /// <item>Each <c>UseTransition</c> slot tracks its own pending flag independently of other slots in the same
     /// component, including a slot started while another slot's async transition is still awaiting.</item>
     /// <item>A transition whose callback queues nothing settles when that callback returns, even while another
-    /// slot's transition work is still queued on the same fiber.</item>
+    /// slot's transition work is still queued on the same fiber and even while another slot's in-flight action
+    /// writes to it.</item>
     /// <item>A transition committed by a subsuming parent render clears its pending flag even when a
     /// <c>UseDeferredValue</c> in the same component holds the transition lane queued.</item>
     /// <item>A discrete update on the same component keeps its urgent priority while an async transition is in
@@ -195,6 +200,33 @@ namespace Velvet.Tests
             Assert.AreEqual(2, s_transitionRenderCount, "The nested transition's update commits on flush");
         }
 
+        // GREEN_ON_BASE(characterization): the unwind closed the per-fiber scope the base kept too. It is pinned
+        // here because the scope this branch replaces it with is process-wide, where a leak would put every
+        // later update in the process on the transition lane rather than one component's.
+        [Test]
+        public void Given_ATransitionCallbackThatThrew_When_ALaterSetterRuns_Then_ThatUpdateTakesTheNormalLane()
+        {
+            // Arrange — the callback leaves by an exception, so the scope closes on the unwind or not at all
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            try
+            {
+                s_transitionStart.Invoke(() => throw new InvalidOperationException("transition callback"));
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            // Act
+            s_transitionSetValue.Invoke(1);
+
+            // Assert
+            Assert.That(
+                (s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
+                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                Is.EqualTo((true, false)),
+                "A transition callback that throws leaves no scope open behind it");
+        }
+
         #endregion
 
         #region Async startTransition
@@ -245,7 +277,7 @@ namespace Velvet.Tests
         }
 
         [Test]
-        public void Given_AnAsyncTransition_When_ItsContinuationSetsStateAfterTheAwait_Then_ThatUpdateTakesTheTransitionLane()
+        public void Given_AnAsyncTransition_When_ItsContinuationSetsStateAfterTheAwait_Then_ThatUpdateTakesTheNormalLane()
         {
             // Arrange
             using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
@@ -256,17 +288,76 @@ namespace Velvet.Tests
                 s_transitionSetValue.Invoke(1);
             };
             s_transitionStarter.Invoke(asyncUpdates);
-            Assume.That(s_transitionFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
+            var awaitingBeforeTheAct = s_transitionFiber.IsTransitionPending;
 
-            // Act — the awaited task completes, so the continuation runs with nothing of the starter call left
-            // on the stack
+            // Act — the awaited task completes, so the continuation runs after the starter call's scope closed
             gate.TrySetResult();
 
-            // Assert
-            Assert.That(s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition), Is.True,
-                "An async action's post-await update is still scheduled on the transition lane");
+            // Assert — three terms, because the absent transition lane is what a write that never landed looks
+            // like, and because a case where no transition was awaiting reads the same as one where the scope
+            // correctly closed
+            Assert.That(
+                (awaitingBeforeTheAct,
+                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
+                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                Is.EqualTo((true, true, false)),
+                "An update made after an await is outside the scope the action's own callback opened");
         }
 
+        [Test]
+        public void Given_AnAsyncTransitionsContinuation_When_ItWrapsOneOfTwoUpdatesAgain_Then_OnlyTheWrappedOneTakesTheTransitionLane()
+        {
+            // Arrange — the continuation makes two writes, one bare and one wrapped in a further call on the
+            // same starter, so the two lanes separate the update the caller re-marked from the one it did not
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () =>
+            {
+                await gate.Task;
+                s_transitionSetValue.Invoke(1);
+                s_transitionStarter.Invoke(() => s_transitionSetValue.Invoke(2));
+            };
+            s_transitionStarter.Invoke(asyncUpdates);
+            var awaitingBeforeTheAct = s_transitionFiber.IsTransitionPending;
+
+            // Act
+            gate.TrySetResult();
+
+            // Assert — the awaiting window is folded in, since a continuation that never ran leaves both lanes
+            // saying nothing about which of the two writes the wrapping reached
+            Assert.That(
+                (awaitingBeforeTheAct,
+                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
+                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                Is.EqualTo((true, true, true)),
+                "Re-wrapping is what puts a post-await update back in the transition, and it covers only that update");
+        }
+
+        [Test]
+        public void Given_AnAwaitingAsyncTransition_When_AnUnrelatedSetterRuns_Then_ThatUpdateTakesTheNormalLane()
+        {
+            // Arrange — the action parks on its await having scheduled nothing, so the fiber carries no lane
+            using var mounted = V.Mount(_root, V.Component(TransitionRender, key: "transition"));
+            var gate = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> asyncUpdates = async () => await gate.Task;
+            s_transitionStarter.Invoke(asyncUpdates);
+            var awaitingBeforeTheAct = s_transitionFiber.IsTransitionPending;
+
+            // Act — a write belonging to nothing the action did: a timer tick, a store notification
+            s_transitionSetValue.Invoke(1);
+
+            // Assert — the in-flight window is folded in rather than assumed, since the lanes say nothing
+            // unless the transition was still awaiting when the write landed
+            Assert.That(
+                (awaitingBeforeTheAct,
+                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Normal),
+                 s_transitionFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
+                Is.EqualTo((true, true, false)),
+                "An update outside the transition's callback keeps its own priority while that transition awaits");
+        }
+
+        // GREEN_ON_BASE(characterization): an async action's isPending clears on completion either way; what
+        // this branch changed is how many lanes it leaves behind, so the case gained a second flush.
         [Test]
         public void Given_AsyncStartTransition_When_TaskCompletesAndFlushes_Then_IsPendingClears()
         {
@@ -282,8 +373,10 @@ namespace Velvet.Tests
             s_transitionStarter.Invoke(asyncUpdates);
             Assume.That(s_transitionFiber.IsTransitionPending, Is.True, "Precondition: the async transition is awaiting");
 
-            // Act — complete the awaited task so the continuation runs and the lane flushes
+            // Act — complete the awaited task so the continuation runs, then drain both lanes the action left:
+            // the write before the await is the transition's, the one after it is a Normal update
             gate.TrySetResult();
+            mounted.FlushStateForTest();
             mounted.FlushStateForTest();
 
             // Assert
@@ -387,6 +480,82 @@ namespace Velvet.Tests
                 "A transition that queued nothing settles when its callback returns, whatever another slot left queued");
         }
 
+        [Test]
+        public void Given_TwoAsyncTransitionsInFlight_When_OneContinuationSetsState_Then_TheOtherSlotClearsOnItsOwnCompletion()
+        {
+            // Arrange — both slots park on their own gate, and only slot A's action ever writes
+            using var mounted = V.Mount(_root, V.Component(TwoTransitionRender, key: "two"));
+            var gateA = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            var gateB = new Cysharp.Threading.Tasks.UniTaskCompletionSource();
+            Func<Cysharp.Threading.Tasks.UniTask> actionA = async () =>
+            {
+                await gateA.Task;
+                s_twoSetValue.Invoke(1);
+            };
+            Func<Cysharp.Threading.Tasks.UniTask> actionB = async () => await gateB.Task;
+            s_twoStarterA.Invoke(actionA);
+            s_twoStarterB.Invoke(actionB);
+            var bothInFlightBeforeTheAct = s_twoFiber.TransitionSlots[0].IsAsyncInFlight
+                && s_twoFiber.TransitionSlots[1].IsAsyncInFlight;
+
+            // Act — A resumes and writes, then B's own action completes having queued nothing
+            gateA.TrySetResult();
+            gateB.TrySetResult();
+
+            // Assert — three terms, because B clearing means nothing unless two actions really were in flight
+            // together and A's write really landed
+            Assert.That(
+                (bothInFlightBeforeTheAct, s_twoFiber.IsDirty, s_twoFiber.TransitionSlots[1].IsPending),
+                Is.EqualTo((true, true, false)),
+                "A slot settles on what its own callback queued, not on what another slot's action wrote");
+        }
+
+        #endregion
+
+        #region A transition wrapping a setter owned by another fiber
+
+        [Test]
+        public void Given_AChildsTransition_When_ItWrapsASetterReceivedFromTheParent_Then_TheParentsUpdateTakesTheTransitionLane()
+        {
+            // Arrange
+            using var mounted = V.Mount(_root, V.Component(PropSetterParentRender, key: "prop-setter-parent"));
+
+            // Act — the child defers an update to state it does not own, reached through the prop setter
+            s_propSetterChildStart.Invoke(() => s_propSetterChildSetCount.Invoke(1));
+
+            // Assert — both lanes are read, since a write that never landed would satisfy the transition term
+            Assert.That(
+                (s_propSetterParentFiber.LaneQueue.Contains(FiberUpdatePriority.Transition),
+                 s_propSetterParentFiber.LaneQueue.Contains(FiberUpdatePriority.Normal)),
+                Is.EqualTo((true, false)),
+                "A transition covers the updates its callback schedules against another fiber's state too");
+        }
+
+        private static ComponentFiber s_propSetterParentFiber;
+        private static TransitionStarter s_propSetterChildStart;
+        private static StateUpdater<int> s_propSetterChildSetCount;
+
+        [Component]
+        private static VNode PropSetterParentRender()
+        {
+            s_propSetterParentFiber = FiberAmbientStack.Current;
+            var (count, setCount) = Hooks.UseState(0);
+            return V.Div(children: new VNode[]
+            {
+                V.Label(name: "prop-setter-out", text: count.ToString()),
+                V.Component(PropSetterChildRender, setCount, key: "prop-setter-child"),
+            });
+        }
+
+        [Component]
+        private static VNode PropSetterChildRender(StateUpdater<int> setCount)
+        {
+            var (_, start) = Hooks.UseTransition();
+            s_propSetterChildStart = start;
+            s_propSetterChildSetCount = setCount;
+            return V.Label();
+        }
+
         #endregion
 
         #region A deferred value holding the same lane
@@ -470,6 +639,8 @@ namespace Velvet.Tests
                 "A discrete update is not demoted while an async transition is in flight on the same fiber");
         }
 
+        // GREEN_ON_BASE(characterization): an explicitly wrapped update kept transition priority before this
+        // branch too; only the comment naming the mechanism changed, since the carve-out it named is gone.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AClickReusesTheSameStarter_Then_ItsUpdateStaysOnTheTransitionLane()
         {
@@ -483,14 +654,16 @@ namespace Velvet.Tests
             // Act — a discrete click whose handler wraps its update in that same starter
             _root.Q<Button>("bump-deferred").SimulateClick();
 
-            // Assert — an explicitly wrapped update keeps transition priority even when the discrete carve-out
-            // would otherwise apply, so it is queued rather than committed by the click's synchronous flush
+            // Assert — an explicitly wrapped update keeps transition priority inside a discrete handler, so it
+            // is queued rather than committed by the click's synchronous flush
             Assert.That(
                 (_root.Q<Label>("out").text, s_clickableFiber.LaneQueue.Contains(FiberUpdatePriority.Transition)),
                 Is.EqualTo(("0", true)),
                 "A joined startTransition call keeps its updates on the transition lane inside a discrete event");
         }
 
+        // GREEN_ON_BASE(characterization): a continuation resumed inside a discrete handler took that handler's
+        // priority before this branch too, as the deliberate cost of a carve-out this branch removes instead.
         [Test]
         public void Given_AnAwaitingAsyncTransition_When_AClickCompletesItsAwaitedTask_Then_TheResumedUpdateTakesUrgentPriority()
         {
@@ -509,8 +682,8 @@ namespace Velvet.Tests
             // Act — a discrete click completes the awaited task, which resumes the action inside the handler
             _root.Q<Button>("release").SimulateClick();
 
-            // Assert — the accepted cost of the discrete carve-out: this fiber looks exactly as it does for an
-            // unrelated write from the same handler, so the resumed update commits at the handler's priority
+            // Assert — the continuation is outside its own transition, so what classifies it is the handler it
+            // resumed inside
             Assert.That(_root.Q<Label>("out").text, Is.EqualTo("1"),
                 "An action resumed inside a discrete handler has its updates classified as that handler's");
         }
@@ -524,6 +697,7 @@ namespace Velvet.Tests
         private static Action<Action> s_twoStartA;
         private static Action<Action> s_twoStartB;
         private static TransitionStarter s_twoStarterA;
+        private static TransitionStarter s_twoStarterB;
         private static bool s_twoLastIsPendingA;
         private static bool s_twoLastIsPendingB;
         private static ComponentFiber s_twoFiber;
@@ -541,6 +715,7 @@ namespace Velvet.Tests
             s_twoStartA = startA;
             s_twoStartB = startB;
             s_twoStarterA = startA;
+            s_twoStarterB = startB;
             s_twoLastIsPendingA = isPendingA;
             s_twoLastIsPendingB = isPendingB;
             return V.Label();
@@ -630,6 +805,7 @@ namespace Velvet.Tests
             s_twoStartA = null;
             s_twoStartB = null;
             s_twoStarterA = default;
+            s_twoStarterB = default;
             s_twoLastIsPendingA = false;
             s_twoLastIsPendingB = false;
             s_twoFiber = null;
@@ -642,6 +818,9 @@ namespace Velvet.Tests
             s_deferredChildFiber = null;
             s_deferredChildStart = default;
             s_deferredChildSetCount = default;
+            s_propSetterParentFiber = null;
+            s_propSetterChildStart = default;
+            s_propSetterChildSetCount = default;
         }
 
         [Component]
