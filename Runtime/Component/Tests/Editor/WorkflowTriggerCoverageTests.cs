@@ -33,8 +33,11 @@ namespace Velvet.Tests
         // other's filter unread, and it was excluding four scripts its own jobs run and the two
         // AdditionalFiles Roslyn reads at compile time — the exact failure this fixture describes, in the
         // workflow it did not look at. A workflow added tomorrow is asked the same question for existing.
+        // Both extensions, because GitHub Actions runs both and a workflow spelled the other way would
+        // otherwise be outside every question here.
         private static IEnumerable<string> Workflows() =>
             Directory.EnumerateFiles(Path.GetFullPath(".github/workflows"), "*.yml")
+                .Concat(Directory.EnumerateFiles(Path.GetFullPath(".github/workflows"), "*.yaml"))
                 .Select(RepoRelative)
                 .OrderBy(path => path, StringComparer.Ordinal);
 
