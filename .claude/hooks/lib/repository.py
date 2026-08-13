@@ -60,8 +60,11 @@ def gh_answer(args, cwd=None, timeout=7):
 def gh(args, cwd=None, timeout=7):
     """Run gh and return its stdout, or None when it could not answer.
 
-    The bound is a hook's budget divided by the calls one invocation makes, not by one call:
-    merge_unproven_head makes three inside 25 s, metadata_less_create one inside 15.
+    A bound per call rather than per invocation, since a guard makes several: merge_unproven_head
+    makes three. It is a judgement about how long a tool call may pause before the pause is the
+    problem, and not a share of the timeout the settings register — that number is in seconds and
+    runs to hours, so nothing here is bounded by it. scripts/hooks/test_hook_repository.py says the
+    same of the reading below.
     """
     answer = gh_answer(args, cwd, timeout)
     return answer.stdout if answer.code == 0 else None

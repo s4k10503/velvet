@@ -357,8 +357,20 @@ class HeartbeatDuringAPollTests(unittest.TestCase):
         # and the guards then read a live watcher beside a ready file this poll emptied.
         outcome = poll({1: fabricate(1)}, listing_answers=False)
 
-        # Act / Assert
-        self.assertIsNone(outcome.beat)
+        # Act / Assert — and the ready file is unwritten beside it, which is the state a guard would
+        # otherwise read as "a live watcher, and nothing ready".
+        self.assertEqual((outcome.beat, outcome.ready), (None, None))
+
+    def test_Given_APollOverSeveralPullRequests_When_ItRuns_Then_ItStampsOncePerReading(self):
+        # Arrange — the per-pull-request write, which the per-cycle one cannot stand in for: a poll
+        # over several of them can outlast the window a reader believes a stamp for, and one stamp at
+        # the top of the cycle is the whole of what such a reader would have.
+        stamps = []
+        with mock.patch.object(settle, "beat", lambda: stamps.append(1)):
+            poll({1: fabricate(1), 2: fabricate(2)})
+
+        # Act / Assert — one for the readings that open the cycle, one per pull request read.
+        self.assertEqual(len(stamps), 3)
 
     def test_Given_APollThatRead_When_ItEnds_Then_TheHeartbeatNamesThisProcess(self):
         # Arrange — the control: a heartbeat nothing ever writes is not a heartbeat.

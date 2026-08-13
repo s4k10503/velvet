@@ -482,6 +482,37 @@ esac
 """
 
 
+# The head really carries no check — the rollup says so — and the merge state read then fails. This
+# is the one state that reaches `merge_state`'s own answer, and where an empty string standing for
+# both "GitHub named none" and "the read failed" makes an unread pull request settled.
+NO_CHECKS_AND_NO_MERGE_STATE = """#!/bin/sh
+case "$1 $2" in
+  "pr list")   echo 51 ;;
+  "pr checks") echo "no checks reported on the 'topic' branch" >&2; exit 1 ;;
+  "pr view")   case "$*" in
+                 *statusCheckRollup*) echo '{"statusCheckRollup":[]}' ;;
+                 *) echo "GraphQL: API rate limit already exceeded" >&2; exit 1 ;;
+               esac ;;
+  *)           exit 0 ;;
+esac
+"""
+
+
+# The merge state read succeeds and names nothing, which is what a renamed field leaves behind. It
+# is the one state that reaches EXPECTED_WITHOUT_CHECKS with an empty string in hand.
+NO_CHECKS_AND_AN_UNNAMED_MERGE_STATE = """#!/bin/sh
+case "$1 $2" in
+  "pr list")   echo 51 ;;
+  "pr checks") echo "no checks reported on the 'topic' branch" >&2; exit 1 ;;
+  "pr view")   case "$*" in
+                 *statusCheckRollup*) echo '{"statusCheckRollup":[]}' ;;
+                 *) exit 0 ;;
+               esac ;;
+  *)           exit 0 ;;
+esac
+"""
+
+
 class ZeroCheckTests(unittest.TestCase):
     """A head no workflow has run for yet, which `gh pr checks` reports by failing.
 
@@ -508,12 +539,35 @@ class ZeroCheckTests(unittest.TestCase):
         # Act / Assert — the zero-check reminder, and not the sentence for a guard that read nothing.
         self.assertEqual(("no checks apply to it" in said, check.SELF_REPORT in said), (True, False))
 
-    def test_Given_TheSameFailureWithNoRollupEither_When_ItIsJudged_Then_ItIsCalledUnread(self):
-        # Arrange — nothing answered, so "there are none" is not something this established.
+    def test_Given_TheSameFailureWithNoRollupEither_When_ItIsJudged_Then_ThePullRequestIsNamed(self):
+        # Arrange — nothing answered at all. This one carries the per-pull-request half rather than
+        # anything about `checks_of`: the two cases either side of it are what separate a failed
+        # check read from an answered-empty one, and both shapes of that read leave this green. What
+        # it holds is that the block names the pull request it could not read, rather than stopping
+        # at the listing.
         said = self.said(NO_CHECKS_AND_NO_ROLLUP)
 
         # Act / Assert
-        self.assertIn(check.SELF_REPORT, said)
+        self.assertEqual((check.SELF_REPORT in said, "PR #51" in said), (True, True))
+
+    def test_Given_AMergeStateThatAnsweredAndNamedNothing_When_Judged_Then_ItIsNotSettledEither(self):
+        # Arrange — gh exits 0 and selects nothing, which is what a renamed field leaves. Listing the
+        # empty string among the states that explain an absent check list made this pull request
+        # settled; leaving it out sends it to the reason that reports what the state was.
+        said = self.said(NO_CHECKS_AND_AN_UNNAMED_MERGE_STATE)
+
+        # Act / Assert
+        self.assertIn("merge state is unnamed", said)
+
+    def test_Given_AHeadWithNoCheckAndAnUnreadMergeState_When_Judged_Then_ItIsNotCalledSettled(self):
+        # Arrange — the rollup establishes that there are none, so the check list is an answer and
+        # the merge state is the only thing left unread. An empty string standing for both "GitHub
+        # named none" and "the read failed" puts this pull request in EXPECTED_WITHOUT_CHECKS and
+        # ends the session on it.
+        said = self.said(NO_CHECKS_AND_NO_MERGE_STATE)
+
+        # Act / Assert
+        self.assertEqual((check.SELF_REPORT in said, "its merge state" in said), (True, True))
 
     def test_Given_ARollupThatIsNotAList_When_ItIsRead_Then_ItIsNotTakenForNone(self):
         # Arrange — the merge state answers CLEAN, so a rollup misread as empty produces the

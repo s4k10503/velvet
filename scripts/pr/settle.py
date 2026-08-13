@@ -12,11 +12,11 @@ shape is its own change. What this adds is reporting them together: one run name
 rather than costing a round of CI per reason. If a precondition is worth having here it belongs in a
 hook, because a script nobody is obliged to run guards nothing.
 
-Eight preconditions:
+Seven preconditions:
 
-- **Checks are bound to the head SHA they were read at.** `gh pr checks` answers about whatever the
-  API last recorded, which after a force-push is the previous commit's run. So the head is read, then
-  the checks, then the head again, and a change between the two readings voids the answer. The merge
+- **Checks are bound to the head SHA they were read at.** The checks API answers about whatever it
+  last recorded, which after a force-push is the previous commit's run. So the head is read, then the
+  checks, then the head again, and a change between the two readings voids the answer. The merge
   request carries that SHA as well, so a push landing after the last reading is refused by GitHub
   rather than by whoever reads the history next.
 - **The branch must contain the current base.** `mergeStateStatus` reports CLEAN for a branch whose
